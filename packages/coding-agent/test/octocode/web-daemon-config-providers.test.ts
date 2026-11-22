@@ -68,10 +68,9 @@ describe("providers from configuration", () => {
 		const snapshot = await snapshotOf();
 		expect(Value.Check(ConfigSnapshotSchema, snapshot)).toBe(true);
 		expect(JSON.stringify(snapshot)).not.toContain(SECRET);
-		expect(row(snapshot, "openai")).toMatchObject({
-			configured: true,
-			origins: [{ product: "pi", file: "models-json", hasKey: true }],
-		});
+		// An official id in Pi's models.json is skipped (models.json is for custom providers only): no key, no origin.
+		expect(row(snapshot, "openai")).toMatchObject({ configured: false });
+		expect(row(snapshot, "openai")?.origins).toBeUndefined();
 		expect(row(snapshot, "guy-provider-anthropic-x")).toMatchObject({
 			configured: true,
 			origins: [{ product: "pi", file: "models-json", hasKey: true }],
@@ -105,20 +104,52 @@ describe("providers from configuration", () => {
 		]);
 	});
 
+	it("names a models.json-only provider, lists its models and counts an unset key variable as not configured", async () => {
+		write(path.join(agentDir, "models.json"), {
+			providers: {
+				acme: {
+					name: "Acme Gateway",
+					baseUrl: "https://acme.example/v1",
+					api: "openai-completions",
+					apiKey: "$ACME_GATEWAY_KEY",
+					models: [{ id: "acme-large" }, { id: "acme-small" }],
+				},
+			},
+		});
+		const unset = row(await snapshotOf(), "acme");
+		expect(unset).toMatchObject({
+			name: "Acme Gateway",
+			models: ["acme-large", "acme-small"],
+			configured: false,
+			origins: [{ product: "octocode", file: "models-json", hasKey: true, keyUnset: true }],
+		});
+		const set = await buildConfigSnapshot({
+			agentDir,
+			piDirs: [piDir],
+			home: root,
+			keychain: null,
+			env: { ACME_GATEWAY_KEY: "x" },
+		});
+		expect(row(set, "acme")?.configured).toBe(true);
+		expect(row(set, "acme")?.origins?.[0]?.keyUnset).toBeUndefined();
+	});
+
+	it("reports where models.json lives", async () => {
+		expect((await snapshotOf()).modelsPath).toBe(path.join(agentDir, "models.json"));
+	});
+
 	it("hides Pi's providers while the Pi source is off and restores them when it is on again", async () => {
 		await writeConfigProvider({ action: "set-source", source: "pi", enabled: false }, options());
 		expect(readJson(settingsFile())).toEqual({ providerSources: { pi: false } });
 		const off = await snapshotOf();
 		expect(off.sources?.find((source) => source.id === "pi")).toMatchObject({ enabled: false });
-		expect(row(off, "openai")).toMatchObject({ configured: false });
-		expect(row(off, "openai")?.origins).toBeUndefined();
 		expect(row(off, "guy-provider-anthropic-x")).toBeUndefined();
 		expect(row(off, "anthropic")?.origins).toBeUndefined();
 		expect(row(off, "opencode-go")?.configured).toBe(true);
 
 		await writeConfigProvider({ action: "set-source", source: "pi", enabled: true }, options());
 		expect(readJson(settingsFile()).providerSources).toEqual({});
-		expect(row(await snapshotOf(), "openai")?.configured).toBe(true);
+		expect(row(await snapshotOf(), "guy-provider-anthropic-x")?.configured).toBe(true);
 	});
 
 	it("reports an unreadable models.json with fixed text", async () => {

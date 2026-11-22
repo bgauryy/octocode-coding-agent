@@ -1,4 +1,4 @@
-import { BASH_TOOL, SKILL_TOOL } from "./tools/tool-names.ts";
+import { BASH_TOOL } from "./tools/tool-names.ts";
 import { currentToolRoles } from "../../../mcp/src/api.ts";
 import { isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
 /**
@@ -11,7 +11,6 @@ import { dirname, join, resolve } from "node:path";
 import { getReadmePath } from "../config.ts";
 import { renderPrompt } from "./prompt-template.ts";
 import { checkoutLabel, octocodeWorktreeAt } from "./worktree-path.ts";
-import { formatSkillsForPrompt, type Skill } from "./skills.ts";
 import { formatHarnessesForPrompt } from "./discovery/vendors/prompt.ts";
 import type { HarnessStatus } from "./discovery/vendors/types.ts";
 import {
@@ -23,7 +22,7 @@ import {
 export interface BuildSystemPromptOptions {
 	/**
 	 * Custom system prompt (`SYSTEM.md`): replaces the default preamble and leaves out the docs pointer and the default
-	 * rule lines (conciseness, bash search). The tool list, tool guidelines, MCP servers, project context, skills, policy
+	 * rule lines (conciseness, bash search). The tool list, tool guidelines, MCP servers, project context, policy
 	 * and environment stay (`system-prompt-spec.ts`).
 	 */
 	customPrompt?: string;
@@ -58,7 +57,7 @@ export interface BuildSystemPromptOptions {
 	toolGuidelines?: Record<string, string[]>;
 	/** Additional guideline bullets appended to the default system prompt rules. */
 	promptGuidelines?: string[];
-	/** Text appended from user configuration before project context, skills, and cwd. */
+	/** Text appended from user configuration before project context and cwd. */
 	appendSystemPrompt?: string;
 	/**
 	 * XML-wrapped prompt sections keyed by tag name. A known name (`system-prompt-spec.ts`) takes its declared place and
@@ -80,10 +79,6 @@ export interface BuildSystemPromptOptions {
 	environment?: string;
 	/** Pre-loaded context files. */
 	contextFiles?: Array<{ path: string; content: string }>;
-	/** Pre-loaded skills. */
-	skills?: Skill[];
-	/** Names the skills section lists; the other skills are counted, not listed. Absent: all are listed. */
-	skillCatalog?: readonly string[];
 }
 
 export type NormalizedBuildSystemPromptOptions = BuildSystemPromptOptions & {
@@ -97,7 +92,6 @@ export type NormalizedBuildSystemPromptOptions = BuildSystemPromptOptions & {
 	sections: Record<string, string>;
 	baseSections: Record<string, string>;
 	contextFiles: Array<{ path: string; content: string }>;
-	skills: Skill[];
 };
 
 /**
@@ -188,8 +182,6 @@ export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOption
 		...(input.harnesses ? { harnesses: input.harnesses.map((status) => ({ ...status })) } : {}),
 		environment: input.environment,
 		contextFiles: (input.contextFiles ?? []).map((file) => ({ ...file })),
-		skills: (input.skills ?? []).map((skill) => ({ ...skill })),
-		...(input.skillCatalog ? { skillCatalog: [...input.skillCatalog] } : {}),
 	};
 }
 
@@ -237,17 +229,6 @@ function buildRules(
  */
 const policyOwnsSearch = (sections: Record<string, string | undefined>): boolean => sections.research !== undefined;
 
-/** The skill hint's file reader: the skill tool, then bash; `indirect` when only an MCP reader or another tool reaches files. */
-function skillReader(selectedTools: string[], declaredTools: string[]): Parameters<typeof formatSkillsForPrompt>[1] {
-	// The skill tool loads a skill by name and needs no file reader, so it comes first. A reader role's tool takes the
-	// server's own arguments, so the hint names no tool for it.
-	const { readers } = currentToolRoles();
-	if (declaredTools.includes(SKILL_TOOL)) return SKILL_TOOL;
-	if (declaredTools.some((name) => readers.has(name))) return "indirect";
-	if (declaredTools.includes(BASH_TOOL)) return "bash";
-	return selectedTools.includes(BASH_TOOL) || selectedTools.some((name) => readers.has(name)) ? "indirect" : undefined;
-}
-
 /**
  * Build the ordered, independently replaceable sections of the structured system prompt: collect each default
  * section's content, apply the custom prompt and the producers' sections, and let `composeSystemPromptSections` order
@@ -270,8 +251,6 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 		cwd,
 		environment,
 		contextFiles,
-		skills,
-		skillCatalog,
 	} = options;
 
 	for (const name of [...Object.keys(customSections), ...Object.keys(baseSections)])
@@ -323,9 +302,6 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	Object.assign(contents, baseSections);
 	contents.addendum = appendSystemPrompt;
 	if (contextFiles.length > 0) contents.project_context = renderProjectContext(contextFiles);
-	// A hidden reader is still reachable through another tool, so skills stay but the hint names no tool.
-	const reader = skillReader(selectedTools, declaredTools);
-	if (reader && skills.length > 0) contents.skills = formatSkillsForPrompt(skills, reader, skillCatalog).trim();
 	const harnesses = formatHarnessesForPrompt(input.harnesses ?? []);
 	if (harnesses) contents.harnesses = harnesses;
 	contents.cwd = cwd.replace(/\\/g, "/");

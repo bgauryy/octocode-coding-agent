@@ -1,5 +1,5 @@
 /**
- * Settings keys the terminal applies at once, for `/configuration set <key> <value>`: the same host appliers the live
+ * Settings keys the terminal applies at once, for `/settings set <key> <value>`: the same host appliers the live
  * "Interface and session" list calls, run after the catalog has saved the value.
  */
 

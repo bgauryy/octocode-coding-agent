@@ -6,11 +6,13 @@ import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
 import { OptimizePromptsSchema } from "./settings-schema/prompt-optimization.ts";
 import { LeanPromptSchema } from "./settings-schema/lean-prompt.ts";
 import { ModelAvailabilitySettingsProperties } from "./settings-schema/model-availability.ts";
+import { BacklogSettingsSchema } from "./settings-schema/backlog.ts";
 import { RetentionSettingsSchema } from "./settings-schema/retention.ts";
 import { SessionApiTurnPermissionSchema } from "./settings-schema/session-api.ts";
 import { SubagentSettingsSchema } from "./settings-schema/subagents.ts";
 import { TimerSettingsProperties } from "./settings-schema/timer.ts";
 import { MonitorSettingsProperties } from "./settings-schema/monitor.ts";
+import { RuntimeSettingsProperties } from "./settings-schema/runtime.ts";
 import { FullscreenSettingsProperties } from "./settings-schema/fullscreen.ts";
 import { WebSettingsProperties } from "./settings-schema/web.ts";
 import { McpSettingsProperties } from "./settings-schema/mcp.ts";
@@ -194,7 +196,7 @@ export const SettingsSchema = Type.Object(
 		toggles: Type.Optional(
 			Type.Record(Type.String(), Type.Boolean(), {
 				description:
-					"Harness, plugin and hook switches by ID, as `/configuration` writes them: `harness:<vendor>` (`agents`, `mcp-json`, `pi`, `claude`, `codex`, `cursor`; `true` or `false` overrides the vendor's default, see [commands](commands.md)), `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<source>` or `hook:<id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository.",
+					"Harness, plugin and hook switches by ID, as `/settings` writes them: `harness:<vendor>` (`agents`, `mcp-json`, `pi`, `claude`, `codex`, `cursor`; `true` or `false` overrides the vendor's default, see [commands](commands.md)), `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<source>` or `hook:<id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository.",
 			}),
 		),
 		packages: Type.Optional(
@@ -347,6 +349,7 @@ export const SettingsSchema = Type.Object(
 		),
 		...TimerSettingsProperties,
 		...MonitorSettingsProperties,
+		...RuntimeSettingsProperties,
 		...MemorySettingsProperties,
 		cacheWarming: Type.Optional(
 			Type.Union([Type.Literal("off"), Type.Literal("streaming"), Type.Literal("idle")], {
@@ -356,6 +359,7 @@ export const SettingsSchema = Type.Object(
 			}),
 		),
 		retention: Type.Optional(RetentionSettingsSchema),
+		backlog: Type.Optional(BacklogSettingsSchema),
 		subagents: Type.Optional(SubagentSettingsSchema),
 		optimizePrompts: Type.Optional(OptimizePromptsSchema),
 		leanPrompt: Type.Optional(LeanPromptSchema),

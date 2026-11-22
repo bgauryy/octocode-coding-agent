@@ -48,7 +48,7 @@ it("shares complete native and research-tool declarations before role-specific t
 		"file",
 		"web",
 		"mcp",
-		"wait",
+		"notify",
 		...main.tools.filter((tool) => isMcpTool(tool.name)).map((tool) => tool.name),
 	];
 	expect(shared.length).toBeGreaterThan(4);
@@ -72,7 +72,8 @@ describe.each(AGENTS)("$name context", (agent) => {
 		expect(names.map((name) => name.split(":")[0])).toEqual(expect.arrayContaining(BASE));
 		expect(names, "text outside every section").not.toContain("(system text outside a section)");
 		if (agent.kind === "main") {
-			expect(names).toEqual(expect.arrayContaining([...POLICY, "mcps", "skills", "docs"]));
+			expect(names).toEqual(expect.arrayContaining([...POLICY, "mcps", "docs"]));
+			expect(names).not.toContain("skills");
 			expect(names).not.toContain("subagent");
 			expect(names).not.toContain("role");
 			return;
@@ -142,9 +143,9 @@ describe.each(AGENTS)("$name context", (agent) => {
 
 describe("the real assembled prefix of a main session", () => {
 	// What a main session in this repository sends before the user's first word, counting the text Octocode owns: the
-	// captured system text without its `mcps` section (each server's instructions, verbatim) and without the bundled
-	// Octocode skills' names and descriptions (verbatim from the sibling release), each native tool's name, description and
-	// compact parameter JSON as the provider receives it, and this repository's AGENTS.md (the capture uses a stand-in).
+	// captured system text without its `mcps` section (each server's instructions, verbatim), each native tool's name, description and
+	// compact parameter JSON as the provider receives it (the `skill` tool without its bundled Octocode skills, verbatim from the
+	// sibling release), and this repository's AGENTS.md (the capture uses a stand-in).
 	// MCP server text is the server's own and never rewritten (M14), so it is reported in the message, not capped here;
 	// `prompt-size.test.ts` and `served-first-request.test.ts` cap what each role pays for it. The tools and `mcps` block
 	// are declared up front by decision, so this does not ask for a cut: it makes growth a decision too. The ceiling sits
@@ -162,13 +163,17 @@ describe("the real assembled prefix of a main session", () => {
 		const mcpsSection = main.sections
 			.filter((section) => section.name === "mcps" || section.name.startsWith("mcps:"))
 			.reduce((sum, section) => sum + Buffer.byteLength(section.text), 0);
-		// The bundled Octocode skills' names and descriptions come verbatim from the sibling release, like server text.
+		// The bundled Octocode skills' names and descriptions come verbatim from the sibling release, like server text. They
+		// are listed in the `skill` tool's description, the rest of which (the core skills, the usage text) is Octocode's own.
+		const skillTool = main.tools.find((tool) => tool.name === "skill");
 		const siblingSkills = Buffer.byteLength(
-			/<octocode_skills>[\s\S]*?<\/octocode_skills>/.exec(systemText(main))?.[0] ?? "",
+			/<octocode_skills>[\s\S]*?<\/octocode_skills>/.exec(skillTool?.description ?? "")?.[0] ?? "",
 		);
 		const parts = {
-			system: Buffer.byteLength(systemText(main)) - mcpsSection - siblingSkills,
-			tools: main.tools.filter((tool) => !isMcpTool(tool.name)).reduce((sum, tool) => sum + declared(tool), 0),
+			system: Buffer.byteLength(systemText(main)) - mcpsSection,
+			tools:
+				main.tools.filter((tool) => !isMcpTool(tool.name)).reduce((sum, tool) => sum + declared(tool), 0) -
+				siblingSkills,
 			agents: fs.statSync(fileURLToPath(new URL("../../../../AGENTS.md", import.meta.url))).size,
 		};
 		const server = {
@@ -178,10 +183,14 @@ describe("the real assembled prefix of a main session", () => {
 		};
 		const own = parts.system + parts.tools + parts.agents;
 		// Not vacuous: a capture that lost its sections, its native tools or its MCP servers would pass any ceiling.
-		expect(parts.system).toBeGreaterThan(15_000);
+		// The skill catalog lives in the `skill` tool's description (counted in `parts.tools`), not in the system text, so the
+		// system floor sits under the section total (13,095 measured) and still fails if the policy sections go missing.
+		expect(parts.system).toBeGreaterThan(12_000);
 		expect(parts.tools).toBeGreaterThan(15_000);
 		expect(server.instructions).toBeGreaterThan(0);
 		expect(server.skills).toBeGreaterThan(0);
+		expect(skillTool?.description).toContain("<core_skills>");
+		expect(systemText(main)).not.toContain("<octocode_skills>");
 		expect(server.tools).toBeGreaterThan(0);
 		expect(
 			own,

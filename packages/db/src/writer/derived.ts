@@ -18,7 +18,14 @@ export type DerivedCommand =
 	| { kind: "session-stats"; id: string; stats: sessions.StatsRow }
 	| { kind: "session-catalog"; id: string; entry: sessions.CatalogEntry }
 	| { kind: "session-git"; id: string; branch: string | null; head: string | null }
-	| { kind: "session-title"; id: string; title: string | null; source: string | null; fileMtime: number | null }
+	| {
+			kind: "session-title";
+			id: string;
+			title: string | null;
+			source: string | null;
+			fileMtime: number | null;
+			owner: { cwd: string; file: string };
+	  }
 	| { kind: "session-end"; id: string; pid: number };
 
 /** Every command a database writer runs: the session mirror's and the bookkeeping ones. */
@@ -88,7 +95,7 @@ function runDerived(agent: AgentDb, command: DerivedCommand): void {
 		case "session-git":
 			return sessions.saveGit(db, command.id, command.branch, command.head);
 		case "session-title":
-			return sessions.saveTitle(db, command.id, command.title, command.source, command.fileMtime);
+			return sessions.saveTitle(db, command.id, command.title, command.source, command.fileMtime, command.owner);
 		case "session-end":
 			return sessions.clearPid(db, command.id, command.pid);
 	}

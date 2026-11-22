@@ -4,6 +4,7 @@ import {
 	isClaudeSubscriptionToken,
 } from "../api/anthropic-messages/token.ts";
 import { anthropicMessagesApi } from "../api/anthropic-messages.lazy.ts";
+import { askCustomHost, endpointEnv, simpleHostOption } from "../auth/endpoint.ts";
 import type { ApiKeyAuth, AuthResult } from "../auth/types.ts";
 import { verifyByRequest } from "../auth/verify.ts";
 import {
@@ -20,9 +21,12 @@ import type { ProviderEnv } from "../types.ts";
 import { ModelsError } from "../utils/models-error.ts";
 import { ANTHROPIC_MODELS } from "./anthropic.models.ts";
 
+const ANTHROPIC_HOST = simpleHostOption("https://llm.example.com");
+
 function anthropicApiKeyAuth(): ApiKeyAuth {
 	return {
 		name: "Anthropic API key",
+		host: ANTHROPIC_HOST,
 		keyPage: "https://platform.claude.com/settings/keys",
 		verify: async ({ key, signal }) =>
 			verifyByRequest(
@@ -43,7 +47,8 @@ function anthropicApiKeyAuth(): ApiKeyAuth {
 			if (!key) throw new ModelsError("auth", "No Anthropic API key was entered. Nothing was saved.");
 			// A Claude subscription token is never saved: Anthropic allows it only in Claude Code.
 			if (isClaudeSubscriptionToken(key)) throw new Error(CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL);
-			return { type: "api_key", key };
+			const endpoint = await askCustomHost(interaction, "Anthropic", ANTHROPIC_HOST);
+			return { type: "api_key", key, ...(endpoint ? { endpoint } : {}) };
 		},
 		// A Claude subscription token, saved or set in the environment, configures nothing: no model of
 		// this provider is offered. `resolve` still returns it, so a request names the reason and hosts can explain it.
@@ -63,7 +68,7 @@ async function resolveAnthropicAuth({
 }: Parameters<ApiKeyAuth["resolve"]>[0]): Promise<AuthResult | undefined> {
 	signal.throwIfAborted();
 	if (credential?.key) {
-		return { auth: { apiKey: credential.key }, env: credential.env, source: "stored credential" };
+		return { auth: { apiKey: credential.key }, env: endpointEnv(credential), source: "stored credential" };
 	}
 
 	const authToken = await ctx.env(ANTHROPIC_AUTH_TOKEN_ENV);

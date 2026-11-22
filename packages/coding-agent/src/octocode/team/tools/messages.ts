@@ -33,11 +33,17 @@ async function forwardResult(
 		replyRequired?: boolean;
 		interrupt?: boolean;
 		wake?: boolean;
+		callback?: unknown;
 	},
 	signal?: AbortSignal,
 ) {
 	if (params.to === undefined) throw new Error("Say who to forward to with `to`.");
-	if (params.interrupt || params.replyRequired !== undefined || params.wake !== undefined)
+	if (
+		params.interrupt ||
+		params.replyRequired !== undefined ||
+		params.callback !== undefined ||
+		params.wake !== undefined
+	)
 		throw new Error(
 			"A forward keeps the original message's reply request and never interrupts or wakes; drop those fields.",
 		);
@@ -80,10 +86,13 @@ async function sendToPeer(
 		replyTo?: number;
 		interrupt?: boolean;
 		replyRequired?: boolean;
+		callback?: unknown;
 	},
 	ctx: FeatureContext,
 	signal?: AbortSignal,
 ) {
+	if (params.callback !== undefined)
+		throw new Error(`${params.to} is another process: callback reaches teammates only. Nothing was sent.`);
 	if (params.forward !== undefined || params.interrupt)
 		throw new Error(
 			`${params.to} is another process: forward and interrupt reach teammates only. Nothing was sent; call again without them, with your text in message.`,
@@ -134,6 +143,7 @@ export function registerSendMessageTool(
 		const result = await team.send(params.to, body, {
 			...(signal ? { signal } : {}),
 			...(params.replyRequired !== undefined ? { replyRequired: params.replyRequired } : {}),
+			...(params.callback ? { callback: params.callback } : {}),
 			...(params.replyTo !== undefined ? { replyTo: params.replyTo } : {}),
 			...(params.interrupt ? { interrupt: true } : {}),
 			...(params.wake !== undefined ? { wake: params.wake } : {}),
@@ -206,45 +216,58 @@ export function registerSendMessageTool(
 					Type.String({
 						// Only a top-level session has `peers`; a subagent reaches its own session tree (`resolveTarget`).
 						description: peers
-							? 'Agent id, role or "parent" (exact ids cross trees); "all": your tree; omit with replyTo: its sender. Or an Octocode process name, or "coordinator" from a linked worktree: the main checkout session.'
-							: 'Agent id, role or "parent" in your tree (parent relays beyond); "all": whole tree; omit with replyTo: its sender.',
+							? 'Agent id, role, "parent" (exact ids cross trees), Octocode process name or "all" (your tree); "coordinator" from a linked worktree: the main checkout; omit with replyTo'
+							: 'Agent id, role, "parent" (relays beyond) or "all"; omit with replyTo',
 					}),
 				),
 				message: Type.Optional(Type.String()),
 				item: Type.Optional(
 					Type.String({
-						description: "Backlog item for the running child `to` names (claimed if unclaimed)",
+						description: "Backlog item for the running child `to` (claimed if unclaimed)",
 					}),
 				),
 				attach: Type.Optional(
 					Type.String({
-						description: "Worktree text file ≤64 KB, by reference; recipient writes it by sha256",
+						description: "Worktree text file ≤64 KB, sent by reference",
 					}),
 				),
 				forward: Type.Optional(
 					Type.Integer({
-						description: "Message # passed on as is (message: a note); replies go to its sender. Teammates only",
+						description: "Message # forwarded as is (message: a note); replies go to its sender",
 					}),
 				),
 				replyRequired: Type.Optional(
 					Type.Boolean({
-						description: "true: ask for an answer, waking each recipient (all: whole tree); else FYI",
+						description: "true: ask for an answer, waking recipients; else FYI",
 					}),
+				),
+				callback: Type.Optional(
+					Type.Object(
+						{
+							on: Type.Union(
+								["reply", "done", "item.state", "job.exit", "agent.ended"].map((each) => Type.Literal(each)),
+								{ description: "What settles it; reply is replyRequired" },
+							),
+							filter: Type.Optional(Type.Record(Type.String(), Type.String(), { description: "ref, state, job" })),
+							note: Type.Optional(Type.String()),
+							timeoutMinutes: Type.Optional(Type.Integer({ description: "Else 10 (reply) or 60" })),
+						},
+						{ description: "Ticket resolved or rejected back to you; more than replyRequired" },
+					),
 				),
 				wake: Type.Optional(
 					Type.Boolean({
-						description: "Default: an idle named agent starts a paced turn; false: read next turn. Not with to: all",
+						description: "Default: wake an idle named agent; false: read next turn. Not with to: all",
 					}),
 				),
 				replyTo: Type.Optional(
 					Type.Integer({
-						description: "Message # answered: wakes the asker, closes its ask. Teammates only",
+						description: "Message # answered: wakes the asker, closes its ask",
 					}),
 				),
 				interrupt: Type.Optional(
 					Type.Boolean({
-						description:
-							"true: stop its current step (to: all stops only your subagents); default: next step. Teammates only",
+						description: "true: stop its current step; default: next step",
 					}),
 				),
 			}),

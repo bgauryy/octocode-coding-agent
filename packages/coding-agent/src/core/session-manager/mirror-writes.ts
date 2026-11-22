@@ -35,8 +35,10 @@ export function setNoticeHandler(handler: ((message: string) => void) | undefine
 
 export const currentNoticeHandler = () => noticeHandler;
 
-export function notify(message: string): void {
-	if (noticeHandler) noticeHandler(message);
+/** Report to the session that owns the problem when it has a handler, else to the process-wide one, else stderr. */
+export function notify(message: string, state?: Pick<SessionState, "notice">): void {
+	const handler = state?.notice ?? noticeHandler;
+	if (handler) handler(message);
 	else process.stderr.write(`${message}\n`);
 }
 
@@ -377,7 +379,7 @@ function retryWhenFree(t: Transcript): void {
 /** Report a pending mirror once per distinct problem; a failed full save waits before an append tries the next. */
 export function problem(t: Transcript, error: unknown, full: boolean): void {
 	const message = errorMessage(error);
-	if (t.problem !== message) notify(`Session saved to ${t.file}. Database mirror pending: ${message}`);
+	if (t.problem !== message) notify(`Session saved to ${t.file}. Database mirror pending: ${message}`, t.state);
 	t.problem = message;
 	if (full) {
 		const failures = (t.rebuild?.failures ?? 0) + 1;

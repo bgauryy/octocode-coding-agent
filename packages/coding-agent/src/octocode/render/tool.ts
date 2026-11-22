@@ -21,10 +21,9 @@ import { type ColorToken, type Phase, type RenderContext, STOPPED_COLOR } from "
  * A finished row closes to its summary line. While it runs, or when it failed, it shows the whole body up to 12 lines,
  * else a 5-line preview and `… +K lines (ctrl+o to expand)`; a renderer may pass its own preview size.
  *
- * The mark is the state light (`stateMark` with `light`): one ⏺ in the state's colour, steady grey (dim) before execution,
- * breathing yellow once Octocode started the call but its checks or approval still run, breathing green while running
- * (the newest row also has a live 1s clock), green when done (it glows once as the call finishes), red on error and when
- * stopped or not run. The braille spinner stays on the main working line.
+ * The mark is the state light (`stateMark` with `light`): grey ⏺ (dim) before execution, yellow ⏺ once Octocode started
+ * the call but its checks or approval still run, a ◒◐◓◑ spinner while running (the newest row also has a live 1s
+ * clock), green ⏺ when done, red ⏺ on error and when stopped or not run. Only the spinner moves.
  * Expanded shows every line. Every string drawn here is sanitized: tool arguments and output are untrusted.
  */
 

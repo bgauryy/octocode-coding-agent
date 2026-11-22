@@ -11,6 +11,7 @@ import {
 	formatNoApiKeyFoundMessage,
 	formatNoModelSelectedMessage,
 } from "../auth-guidance.ts";
+import { withInputOrigin } from "../input-origin.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { SessionCompaction } from "./compaction-control.ts";
 import type { SessionInternals } from "./host.ts";
@@ -248,7 +249,7 @@ export async function releaseHeldInput(host: PromptingHost): Promise<void> {
 		return;
 	}
 	session.agent.removeQueuedMessage(next);
-	inputs.consumeQueuedUserMessage(next);
+	const sentFrom = inputs.consumeQueuedUserMessage(next);
 	if (next.role !== "user") {
 		if (next.role !== "custom") return;
 		await host.runLoop.startRun({ messageType: "custom", message: next });
@@ -256,11 +257,14 @@ export async function releaseHeldInput(host: PromptingHost): Promise<void> {
 	}
 	const { text, images } = splitUserContent(next.content);
 	const input = inputs.getUserInput(next);
-	await host.runLoop.startRun(
-		{ messageType: "user", prompt: text, images },
-		undefined,
-		input ? { ...input, origin: "queued" } : { text, images, source: "interactive", origin: "queued" },
-	);
+	// The run this starts is the queued message's: it carries the origin the message was sent from.
+	const start = () =>
+		host.runLoop.startRun(
+			{ messageType: "user", prompt: text, images },
+			undefined,
+			input ? { ...input, origin: "queued" } : { text, images, source: "interactive", origin: "queued" },
+		);
+	await (sentFrom ? withInputOrigin(sentFrom, start) : start());
 }
 
 export function splitUserContent(content: string | (TextContent | ImageContent)[]): {

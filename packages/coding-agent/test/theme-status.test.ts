@@ -1,14 +1,6 @@
 import { animationClock, GLYPH, MOTION, rgbColor, SPINNER, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-	LIGHT_COLOR,
-	markFrameMs,
-	markMoves,
-	STATE_COLOR,
-	stateMark,
-	WAIT_PULSE_MS,
-	type UiState,
-} from "../src/theme/status.ts";
+import { LIGHT_COLOR, markFrameMs, markMoves, STATE_COLOR, stateMark, type UiState } from "../src/theme/status.ts";
 
 const tagged = {
 	fg: (color: string, text: string) => `<${color}>${text}`,
@@ -63,43 +55,57 @@ describe("stateMark", () => {
 describe("the state light", () => {
 	afterEach(() => animationClock.setReducedMotion(false));
 	const light = (state: UiState, options = {}) => stateMark(tagged, state, { light: true, ...options });
+	const frames = ["◒", "◐", "◓", "◑"];
+	const frameMs = markFrameMs("running", { light: true });
 
 	it("measures one cell wide", () => {
 		expect(visibleWidth(GLYPH.light)).toBe(1);
 		expect(GLYPH.light).toBe("\u23FA");
+		for (const frame of frames) expect(visibleWidth(frame)).toBe(1);
 	});
 
-	it("draws ⏺ in each state's light colour: green works, yellow waits, red fails or stops, dim is unlit", () => {
+	it("draws ⏺ steady in each settled state's colour: green done, red failed or stopped, yellow waiting, grey idle", () => {
+		for (const reduced of [true, false]) {
+			animationClock.setReducedMotion(reduced);
+			for (const now of [0, 1_234, 99_999]) {
+				expect(light("pending", { now })).toBe("<dim>⏺");
+				expect(light("done", { now, since: 0 })).toBe("<success>⏺");
+				expect(light("failed", { now })).toBe("<error>⏺");
+				expect(light("stopped", { now })).toBe("<error>⏺");
+				expect(light("waiting", { now, since: 0 })).toBe("<warning>⏺");
+			}
+		}
+		expect(LIGHT_COLOR.done).toBe("success");
+		expect(LIGHT_COLOR.stopped).toBe("error");
+	});
+
+	it("spins ◒◐◓◑ in one colour while running, without a colour pulse", () => {
+		const seen = Array.from({ length: 8 }, (_, i) => light("running", { now: i * frameMs }));
+		expect(seen.map((mark) => mark.replace(/^<\w+>/, ""))).toEqual([...frames, ...frames]);
+		expect(new Set(seen.map((mark) => mark.match(/^<\w+>/)?.[0])).size).toBe(1);
+		expect(seen.join("")).not.toContain("rgb");
+	});
+
+	it("shows a running light as a steady glyph in reduced motion", () => {
 		animationClock.setReducedMotion(true);
-		expect(states.map((state) => light(state))).toEqual([
-			"<dim>⏺",
-			"<success>⏺",
-			"<warning>⏺",
-			"<success>⏺",
-			"<error>⏺",
-			"<error>⏺",
-		]);
-		expect(LIGHT_COLOR.running).toBe("success");
-		expect(states.map((state) => markMoves(state, { light: true }))).toEqual(states.map(() => false));
+		expect(light("running", { now: 0 })).toBe(light("running", { now: 5 * frameMs }));
+		expect(light("running", { now: 0 })).not.toContain("⏺");
 	});
 
-	it("breathes while running, holds a waiting light after its pulse, and settles after done", () => {
-		const start = light("running", { now: 0 });
-		const mid = light("running", { now: MOTION.breathePeriodMs / 2 });
-		expect(start).toBe("<success>⏺");
-		expect(mid).toMatch(/^<rgb .*>⏺$/);
-		expect(mid).not.toBe(start);
-		expect(light("waiting", { now: WAIT_PULSE_MS + 1, since: 0 })).toBe("<warning>⏺");
-		expect(light("waiting", { now: MOTION.breathePeriodMs / 2, since: 0 })).toMatch(/^<rgb .*>⏺$/);
-		expect(light("done", { now: 100, since: 100 })).toMatch(/^<rgb .*>⏺$/);
-		expect(light("done", { now: 100 + MOTION.flashMs, since: 100 })).toBe("<success>⏺");
-		expect(light("running", { now: 0 })).not.toContain(SPINNER.braille[0]);
+	it("repaints only while a spinner runs", () => {
+		const moves = (state: UiState, options = {}) => markMoves(state, { light: true, ...options });
+		expect(moves("running")).toBe(true);
+		for (const state of states.filter((s) => s !== "running")) {
+			expect(moves(state, { now: 100, since: 100 })).toBe(false);
+			expect(moves(state)).toBe(false);
+		}
+		animationClock.setReducedMotion(true);
+		expect(moves("running")).toBe(false);
 	});
 
 	it("repaints a running light calmly: at the background pace, never faster than a glow frame", () => {
-		const ms = markFrameMs("running", { light: true });
-		expect(ms).toBeGreaterThanOrEqual(MOTION.glowFrameMs);
-		expect(ms).toBeGreaterThanOrEqual(MOTION.backgroundSpinnerMs);
+		expect(frameMs).toBeGreaterThanOrEqual(MOTION.glowFrameMs);
+		expect(frameMs).toBeGreaterThanOrEqual(MOTION.backgroundSpinnerMs);
 		expect(markFrameMs("running")).toBe(MOTION.spinnerMs);
 	});
 });

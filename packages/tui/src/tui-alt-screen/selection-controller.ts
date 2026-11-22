@@ -23,7 +23,6 @@ import {
 	NATIVE_CLIPBOARD_BYTES,
 	TERMINAL_CLIPBOARD_BYTES,
 } from "./selection-copy.ts";
-
 export { NATIVE_CLIPBOARD_BYTES };
 import type { ClickTarget, SelectionGranularity, SelectionPoint, SelectionRange, SgrMouseEvent } from "./types.ts";
 
@@ -129,6 +128,16 @@ export class AltScreenSelection {
 		const visible = this.getVisibleScrollViewRows(scrollView);
 		if (!visible || visible.visibleBottom < visible.visibleTop) return undefined;
 		return scrollSelectionPoint(visible, scrollView, x, y);
+	}
+
+	/** An explicit wheel gesture extends a held selection even when the pointer stays in its press cell. */
+	wheelScrolled(scrollView: ScrollView, x: number, y: number): void {
+		if (!this.selectionPressActive || this.selectionAnchor?.scrollView !== scrollView) return;
+		const point = this.getScrollSelectionPoint(scrollView, x, y);
+		if (!point) return;
+		this.pressCell = undefined;
+		this.selectionDragged = true;
+		this.updateSelectionFocus(point);
 	}
 
 	private getSelectionPoint(event: SgrMouseEvent, scrollView?: ScrollView): SelectionPoint {

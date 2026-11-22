@@ -439,7 +439,7 @@ describe("bash tool", () => {
 		const { message, options } = sent[0];
 		expect(options).toEqual({ triggerTurn: true, deliverAs: "followUp", together: true });
 		expect(message.content).toMatch(
-			/^\[exit 2 · [^\n]*\]\nBackground bash bash-1 failed with exit code 2: echo started/,
+			/^\[src job:bash-1 ✓proven via in-process\] t2\n\[exit 2 · [^\n]*\]\nBackground bash bash-1 failed with exit code 2: echo started/,
 		);
 		expect(message.content).toMatch(/started\ndone/);
 	});

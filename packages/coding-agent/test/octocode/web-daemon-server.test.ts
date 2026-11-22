@@ -6,6 +6,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { AGENT_DIR } from "../../src/storage/agent-layout.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { DaemonHealthSchema, DaemonStatusSchema } from "@octocodeai/octocode-contracts/daemon";
@@ -313,7 +314,7 @@ describe("daemon with attached sessions and repositories", () => {
 		const ctx = await daemon();
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "web-daemon-reports-"));
 		cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }));
-		const folder = path.join(root, ".octocode", "octocode-rfc-generator", "2026-01-01-demo");
+		const folder = path.join(root, AGENT_DIR, "octocode-rfc-generator", "2026-01-01-demo");
 		fs.mkdirSync(folder, { recursive: true });
 		fs.writeFileSync(path.join(folder, "RFC.md"), "---\nstatus: Proposed\n---\n# Demo RFC\n");
 		fs.writeFileSync(path.join(root, "secret.md"), "# not a report\n");

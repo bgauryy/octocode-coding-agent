@@ -6,7 +6,8 @@ import { leadsProcessGroup, trackDetachedChildPid, untrackDetachedChildPid } fro
 import { killShellGroupsNow, SHELL_GROUPS_FILE_ENV, stopShellGroups } from "../../shared/shell-groups.ts";
 import { type ChildEffect, newChildState, parseEvent, reduceEvent } from "../events.ts";
 import { RequestBudget } from "../budget.ts";
-import { heartbeatDue, SETTLED_EXIT_MS } from "../liveness.ts";
+import { idleWaitReporter } from "../idle-wait.ts";
+import { heartbeatDue, INTERRUPT_FOLLOW_UP_MS, SETTLED_EXIT_MS } from "../liveness.ts";
 import { ChildRelay } from "../relay.ts";
 import { ReportTracker } from "../report.ts";
 import { subagentProcessEnv } from "./env.ts";
@@ -29,9 +30,6 @@ import { savedNotices, StderrTail } from "./stderr.ts";
 import { ChildWatchdog } from "./watchdog.ts";
 import { ChildShutdown } from "./shutdown.ts";
 import { hint } from "./caller-hint.ts";
-
-/** How long a child whose run settled aborted, without this process asking, gets to start the run a team interrupt's message triggers. */
-const INTERRUPT_FOLLOW_UP_MS = 1_500;
 
 /** What `runChild` prepared before the spawn: the CLI, the request history, and the files the child reads. */
 interface PreparedChild {
@@ -73,6 +71,7 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 					prepared.rolePromptFile,
 					prepared.resources.skillSnapshotFile,
 					prepared.resources.mcpServersFile,
+					prepared.resources.parentHeapFile,
 				),
 				...(shellGroups ? { [SHELL_GROUPS_FILE_ENV]: shellGroups } : {}),
 			},
@@ -156,8 +155,7 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 			relay.cancelAll();
 			phase.stop(() => shutdown.stop(signal?.reason === USER_STOP ? USER_STOP_GRACE_MS : SUBAGENT_STOP_GRACE_MS));
 		};
-		// The request budget: one steer at the soft limit; at the hard limit one last request without tools, then the same
-		// stop as above (0: off).
+		// The request budget: one steer at the soft limit; at the hard limit one last request without tools, then stop (0: off).
 		const steer = (message: string) => void send({ type: "steer", message });
 		const budget: RequestBudget = new RequestBudget(history.limit, steer, abort, history.requests, {
 			final: (message) => {
@@ -191,18 +189,19 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 		});
 		// The row's "last progress": a model or tool event, the end of a wait for the user, or a heartbeat inside declared long work. A stdout byte is none.
 		const stamp = (at: number) => host?.output?.(identity.id, at);
+		const reportIdle = idleWaitReporter(host?.idleWait && ((text) => host.idleWait?.(identity.id, text)));
 		const watchdog = new ChildWatchdog(
 			state,
 			limits,
 			() => Boolean(streamFailure) || relay.open > 0,
 			abort,
 			(now, resumed) => {
+				reportIdle(state);
 				if (resumed ? state.running : heartbeatDue(state, now, relay.open > 0)) stamp(now);
 			},
 		);
 		watchdog.start();
-		// Whether the child still works toward its answer: its sibling reports may wait for it (`report-groups.ts`). Once it
-		// settled, whether its report is still on its way: it leaves, exits and is cleaned up, until a stall or the outcome.
+		// Whether the child still works toward its answer (sibling reports may wait for it, `report-groups.ts`); once it settled, whether its report is still on its way.
 		const working = () =>
 			settledHere
 				? !concludedHere && !streamFailure && !watchdog.stalled

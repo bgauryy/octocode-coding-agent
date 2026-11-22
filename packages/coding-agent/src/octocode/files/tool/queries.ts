@@ -15,20 +15,20 @@ const QuerySchema = Type.Object({
 	type: Type.Unsafe<"edit" | "write" | "delete">({
 		type: "string",
 		enum: ["edit", "write", "delete"],
-		description: "edit: exact replacements; write: create or replace; delete: /rewind restores it; only if needed",
+		description: "edit: exact replacements; write: create or replace; delete: /rewind restores",
 	}),
 	path: Type.String({ description: "Absolute path or relative to cwd" }),
 	edits: Type.Optional(
 		Type.Array(
 			Type.Object({
 				oldText: Type.String({
-					description: "Exact text, unique unless replaceAll; with line: that whole original line, no terminator",
+					description: "Exact text, unique unless replaceAll; with line: the whole original line",
 				}),
 				newText: Type.String({ description: "Replacement text" }),
 				line: Type.Optional(Type.Integer({ description: "1-based line anchor; needs sourceSha256" })),
 				sourceSha256: Type.Optional(
 					Type.String({
-						description: "Whole-file SHA-256 as read or from the last OK line; needs line",
+						description: "File SHA-256 as last read or written; needs line",
 					}),
 				),
 				replaceAll: Type.Optional(
@@ -38,14 +38,12 @@ const QuerySchema = Type.Object({
 				),
 			}),
 			{
-				description: "edit: non-overlapping, matched against the original content",
+				description: "edit: non-overlapping, matched against the original",
 			},
 		),
 	),
 	content: Type.Optional(Type.String({ description: "write: complete file content" })),
-	fromAttachment: Type.Optional(
-		Type.String({ description: "write: sha256 of a received attachment, instead of content" }),
-	),
+	fromAttachment: Type.Optional(Type.String({ description: "write: sha256 of a received attachment" })),
 });
 
 export const Params = Type.Object({

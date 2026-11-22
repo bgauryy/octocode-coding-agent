@@ -5,6 +5,7 @@ import { checkSpec } from "./check.ts";
 import { commandSpec } from "./command.ts";
 import { itemSpec } from "./item.ts";
 import { landedSpec } from "./landed.ts";
+import { machineSpec } from "./machine.ts";
 import {
 	type BaseCondition,
 	type CheckOutcome,
@@ -22,6 +23,7 @@ const BASE = [
 	commandSpec,
 	changedSpec,
 	landedSpec,
+	machineSpec,
 ] as unknown as ConditionSpec<BaseCondition>[];
 const baseSpec = (kind: string) => BASE.find((spec) => spec.kind === kind);
 
@@ -83,10 +85,11 @@ export function parseUntil(until: unknown): TimerCondition | undefined {
 /**
  * The `condition_kind` column of a condition's row. The column admits a closed list of names that a schema change would
  * have to widen, so `changed` and `landed` are stored as `item` (their text names the real kind, and carries `ref` as an
- * `item` wait does, so the board's watcher lookup finds them).
+ * `item` wait does, so the board's watcher lookup finds them); `machine` is stored as `item` too and has no `ref`, so
+ * that lookup skips it.
  */
 export const storedKind = (condition: TimerCondition): TimerConditionKind =>
-	condition.kind === "changed" || condition.kind === "landed" ? "item" : condition.kind;
+	condition.kind === "changed" || condition.kind === "landed" || condition.kind === "machine" ? "item" : condition.kind;
 
 /** The text stored on the row. */
 export const encodeCondition = (condition: TimerCondition) => specOf(condition.kind)!.encode(condition);
@@ -96,7 +99,7 @@ export function decodeCondition(kind: string, stored: string): TimerCondition | 
 		if (kind === "item") {
 			// `changed` and `landed` share the `item` column value; an older row has no `kind` in its text and is an item wait.
 			const named = (JSON.parse(stored) as { kind?: unknown }).kind;
-			if (named === "changed" || named === "landed") return specOf(named)?.decode(stored);
+			if (named === "changed" || named === "landed" || named === "machine") return specOf(named)?.decode(stored);
 		}
 		return specOf(kind)?.decode(stored);
 	} catch {

@@ -2,15 +2,15 @@ import { currentToolRoles } from "../../../../mcp/src/api.ts";
 import { ROLE_VARIANT_ORDER } from "../../core/tool-roles.ts";
 import { isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
 
-/** Every child can save files, communicate, wait with timers, recover history and read memories; local research is added separately. */
-export const CORE_TOOLS = ["file", "agent", "wait", "archive", "memory"] as const;
+/** Every child can save files, communicate, ask for notices with timers, recover history and read memories; local research is added separately. */
+export const CORE_TOOLS = ["file", "agent", "notify", "archive", "memory"] as const;
 /**
  * Every child, lean and read-only ones included, can run commands (`read-only-role.ts` still refuses a read-only role's
  * mutations). Not in `CORE_TOOLS`: a profile may replace `bash` with another shell tool such as `powershell`.
  */
 export const SHELL_TOOLS = ["bash"] as const;
 /**
- * What a lean child keeps besides its own list: commands and the means to message its parent. No `wait`: a lean task is
+ * What a lean child keeps besides its own list: commands and the means to message its parent. No `notify`: a lean task is
  * short and its end reports on its own; a profile that needs one names it in `tools`.
  */
 export const LEAN_FLOOR = [...SHELL_TOOLS, "agent"] as const;

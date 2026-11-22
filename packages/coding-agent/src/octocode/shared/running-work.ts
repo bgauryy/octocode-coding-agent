@@ -1,11 +1,26 @@
 import { createStore } from "zustand/vanilla";
 import { ENTITY } from "./entity.ts";
 import { plural } from "./text.ts";
+import { clip } from "@octocodeai/octocode-common/clip";
+import { formatDuration } from "../../utils/duration.ts";
+
+const FOOTER_COMMAND_MAX = 32;
+
+/** `yarn test 5s`: the newest running job's command and how long it has run. */
+function newestJob(rows: readonly WorkRow[], now: number): string {
+	const newest = rows.reduce<WorkRow | undefined>(
+		(best, row) => (row.startedAt !== undefined && row.startedAt >= (best?.startedAt ?? 0) ? row : best),
+		undefined,
+	);
+	if (!newest || newest.startedAt === undefined) return "";
+	const command = clip(newest.detail ?? newest.title, FOOTER_COMMAND_MAX);
+	return `${command} ${formatDuration(Math.max(0, now - newest.startedAt))}`.trim();
+}
 
 /** What the running-work view lists, in the order it groups them. */
-export type WorkKind = "agent" | "bash" | "timer" | "external";
+export type WorkKind = "agent" | "bash" | "job" | "timer" | "external";
 
-const KIND_ORDER: readonly WorkKind[] = ["agent", "bash", "timer", "external"];
+const KIND_ORDER: readonly WorkKind[] = ["agent", "bash", "job", "timer", "external"];
 
 /**
  * One item of running work outside the team database: a background bash job, a timer, an external prompt, or a
@@ -65,7 +80,7 @@ interface WorkState {
 }
 
 /** Kinds that keep the session busy; a timer only waits to wake it. */
-const BUSY_KINDS: readonly WorkKind[] = ["bash", "external"];
+const BUSY_KINDS: readonly WorkKind[] = ["bash", "job", "external"];
 
 /**
  * The rows of every kind that runs now and the background subagents, in one zustand store, and who wants to know when
@@ -169,13 +184,22 @@ export function runningWorkOf(owner: object): RunningWork {
  * The footer's typed counts, `2 agents · 1 bash · 1 wait`; empty when nothing runs. `agents` is the team's live
  * subagents of this session plus background ones it does not list yet.
  */
-export function workCounts(agents: number, rows: readonly WorkRow[], queued = 0): string {
+export function workCounts(agents: number, rows: readonly WorkRow[], queued = 0, now?: number): string {
 	const count = (kind: WorkKind) => rows.filter((row) => row.kind === kind).length;
-	const [bash, waits, external] = [count("bash"), count("timer"), count("external")];
+	const jobs =
+		now === undefined
+			? ""
+			: newestJob(
+					rows.filter((row) => row.kind === "bash"),
+					now,
+				);
+	const [bash, tasks, waits, external] = [count("bash"), count("job"), count("timer"), count("external")];
 	return [
 		...(agents > 0 ? [`${ENTITY.subagent} ${plural(agents, "agent")}`] : []),
 		...(queued > 0 ? [`${queued} queued`] : []),
 		...(bash > 0 ? [`${bash} bash`] : []),
+		...(tasks > 0 ? [plural(tasks, "job")] : []),
+		...(jobs ? [jobs] : []),
 		...(waits > 0 ? [plural(waits, "wait")] : []),
 		...(external > 0 ? [`${external} external`] : []),
 	].join(" · ");

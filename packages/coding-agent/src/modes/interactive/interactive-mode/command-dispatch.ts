@@ -181,7 +181,7 @@ async function showModelsMenu(host: CommandDispatchHost): Promise<void> {
 	else if (choice === CREDENTIAL_CHECK) await runNativeCommand(host, "modelsettings", "check");
 }
 
-async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: string): Promise<void> {
+export async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: string): Promise<void> {
 	if (await runTerminalAction(host, name, args)) return;
 	switch (name) {
 		case "btw":
@@ -192,7 +192,7 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 		case "help":
 			await showCommandPicker(host, args);
 			return;
-		case "configuration":
+		case "settings":
 			await handleConfigurationCommand(host, args);
 			return;
 		case "modelsettings":
@@ -237,8 +237,7 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
 			return;
 		case "find":
 			if (isViewportTUI(host.ui)) host.ui.openSearch();
-			else
-				host.showWarning("Transcript search needs fullscreen mode (/configuration, or start with fullscreen enabled).");
+			else host.showWarning("Transcript search needs fullscreen mode (/settings, or start with fullscreen enabled).");
 			return;
 		case "fork":
 			if (args.trim()) await handleForkLaunchCommand(host, args);
@@ -308,7 +307,7 @@ async function runBuiltinCommand(host: CommandDispatchHost, name: string, args: 
  * Why slash input `/name args` is not run as a command: an unknown name, arguments to a built-in that takes none, or a
  * first word a command does not declare (`argumentWords`). Undefined when the input runs.
  */
-function slashRefusal(host: CommandDispatchHost, text: string, name: string, args: string): string | undefined {
+export function slashRefusal(host: CommandDispatchHost, text: string, name: string, args: string): string | undefined {
 	const builtin = getBuiltinCommand(name);
 	if (builtin) return args && !builtin.argumentHint ? `/${name} does not take arguments.` : undefined;
 	const unknown = unknownCommandWarning(text, name, host.getSlashCommands(true));

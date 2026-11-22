@@ -209,7 +209,8 @@ export class AgentsView {
 		// The tab title counts the same agents.
 		this.work.setAgents(agents);
 		// The panel's root row already counts the agents it lists.
-		const text = workCounts(teamShown ? 0 : agents, this.work.all(), this.work.queued().length) || undefined;
+		const text =
+			workCounts(teamShown ? 0 : agents, this.work.all(), this.work.queued().length, Date.now()) || undefined;
 		if (text === this.runningStatus) return;
 		this.runningStatus = text;
 		try {

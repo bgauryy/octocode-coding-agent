@@ -19,7 +19,7 @@ describe("Test credential", () => {
 		await authStorage.modify("opencode", async () => ({ type: "api_key", key: "test-key" }));
 		const registry = await createInMemoryModelRegistry(authStorage);
 		// The model list answers 200 for any key; only a request shows the refusal.
-		const fetchList = vi.fn(async () => new Response(JSON.stringify({ data: [] }), { status: 200 }));
+		const fetchList = vi.fn(async (_url: unknown) => new Response(JSON.stringify({ data: [] }), { status: 200 }));
 		vi.stubGlobal("fetch", fetchList);
 		const requested: string[] = [];
 		vi.spyOn(ModelRegistry.prototype, "streamSimple").mockImplementation((model) => {
@@ -57,7 +57,8 @@ describe("Test credential", () => {
 		await testProviderCredential(host as never, "opencode", "OpenCode Zen");
 
 		expect(requested.length).toBeGreaterThan(0);
-		expect(fetchList).not.toHaveBeenCalled();
+		// The free model list is only read to name configured ids the host does not serve; it never decides the verdict.
+		expect(fetchList.mock.calls.every(([url]) => String(url).endsWith("/models"))).toBe(true);
 		expect(shown.error.join("\n")).toContain("FreeUsageLimitError");
 		expect(providerHealth.get("opencode")?.via).toBe("check");
 	});

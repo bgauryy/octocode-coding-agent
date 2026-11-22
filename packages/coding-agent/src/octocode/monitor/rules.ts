@@ -59,18 +59,27 @@ export function readings(sample: MachineSample, t: MonitorThresholds): Reading[]
 const weight = (rule: MachineRule) =>
 	rule === "memory" || rule === "swap" ? (p: MachineProcess) => p.rss : (p: MachineProcess) => p.cpu;
 
-/** The three busiest processes for `rule` and the Octocode process whose processes add up to the most of it. */
+/**
+ * The three busiest processes for `rule` and the Octocode process whose processes add up to the most of it. A process
+ * counts for an Octocode process only when that process or a descendant of it started it (`busiest.ts` follows the parent
+ * chain downward from each titled process), so an editor or terminal host above a session is never its cause. The owner is
+ * named only when its total outweighs the heaviest process nobody of Octocode owns: otherwise "your processes use the
+ * most" would ask the session to stop work for memory or CPU that another program holds.
+ */
 export function causeOf(sample: MachineSample, rule: MachineRule): Pick<MachineAlert, "owner" | "culprits"> {
 	const of = weight(rule);
 	const culprits = [...sample.processes].sort((a, b) => of(b) - of(a)).slice(0, 3);
 	const byOwner = new Map<string, number>();
-	for (const process of sample.processes)
+	let foreign = 0;
+	for (const process of sample.processes) {
 		if (process.owner) byOwner.set(process.owner, (byOwner.get(process.owner) ?? 0) + of(process));
+		else foreign = Math.max(foreign, of(process));
+	}
 	let owner: string | null = null;
 	let most = 0;
 	for (const [title, total] of byOwner)
 		if (total > most || (total === most && owner !== null && title < owner)) [owner, most] = [title, total];
-	return { owner, culprits };
+	return { owner: most > foreign ? owner : null, culprits };
 }
 
 export class MachineRules {

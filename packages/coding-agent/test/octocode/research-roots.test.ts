@@ -33,6 +33,18 @@ function user() {
 	};
 }
 
+describe("user research roots: unreadable sources", () => {
+	it("warns, naming the file, when settings.json or .octocoderc is not valid JSON", () => {
+		const u = user();
+		fs.writeFileSync(path.join(u.octo, "settings.json"), "{ not json");
+		fs.writeFileSync(path.join(u.octo, ".octocoderc"), "{ not json");
+		const result = userResearchRoots(u.env, u.home, u.octo);
+		expect(result.roots).toEqual([]);
+		expect(result.warnings.some((warning) => warning.includes(path.join(u.octo, "settings.json")))).toBe(true);
+		expect(result.warnings.some((warning) => warning.includes(path.join(u.octo, ".octocoderc")))).toBe(true);
+	});
+});
+
 describe("user research roots: sources", () => {
 	it("reads settings, .env, .octocoderc and the process environment, stored by realpath, deduplicated and sorted", () => {
 		const u = user();

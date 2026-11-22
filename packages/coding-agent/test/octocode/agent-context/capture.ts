@@ -502,7 +502,6 @@ export async function captureChild(
 			parentId: "parent-example",
 			parentSession: "parent-session-example",
 			scratch: fx.scratch,
-			skillsInTask: skillPlan.inTask,
 			permission: { mode: "workspace", grants: [] },
 			// What `configureIdentity` hands a child of a warm parent: the parent's in-use set less its role-dependent tools.
 			...(served ? { mcpRecent: childInUseTools(SERVED_RECENT_TOOLS) } : {}),
@@ -542,7 +541,7 @@ export async function captureChild(
 			snapshotFile,
 			serversFile,
 		);
-		const skillText = skillPlan.inTask ? taskSkillText(snapshot, skillPlan.inline) : "";
+		const skillText = skillPlan.names ? taskSkillText(snapshot, skillPlan.inline) : "";
 		const task = withIdentity(
 			childTaskInput(parent.task, { referenced: "", browserMode: profile?.headless, skillText }),
 			// A real start always names the run mode (`subagents/spawn.ts`); these show the background one.

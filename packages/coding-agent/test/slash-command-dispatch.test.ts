@@ -48,7 +48,17 @@ describe("built-in slash commands", () => {
 			expect(Object.keys(command)).not.toContain("aliases");
 			expect(getBuiltinCommand(command.name)).toBe(command);
 		}
-		for (const name of ["qui", "Settings", "sessions", "login", "models", "thinking", "exit", "config", "settings"])
+		for (const name of [
+			"qui",
+			"Settings",
+			"sessions",
+			"login",
+			"models",
+			"thinking",
+			"exit",
+			"config",
+			"configuration",
+		])
 			expect(getBuiltinCommand(name)).toBeUndefined();
 	});
 

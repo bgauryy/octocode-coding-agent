@@ -1,10 +1,10 @@
-import { fencedParts } from "../shared/fence.ts";
+import { fencedParts, withoutSourceHeader } from "../shared/fence.ts";
 import { contentText } from "../shared/util.ts";
 import type { ResultDetails } from "./run-types.ts";
 
 /** Semantic report shared by terminal and browser adapters; neither interface parses the other's rendered output. */
 export function presentAgentReport(content: unknown, details: Partial<ResultDetails> = {}) {
-	const [head = "", ...rest] = contentText(content).split("\n");
+	const [head = "", ...rest] = withoutSourceHeader(contentText(content)).split("\n");
 	const text = rest.join("\n");
 	const fenced = fencedParts(text);
 	let body = fenced ? (fenced.footer ? `${fenced.body}\n\n${fenced.footer}` : fenced.body) : text;

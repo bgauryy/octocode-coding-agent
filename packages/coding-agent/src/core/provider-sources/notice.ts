@@ -4,7 +4,7 @@ import type { ModelRuntime } from "../model-runtime.ts";
 /** What a session needs for the notice: its model, the runtime that knows disabled providers, and a next-turn message. */
 export interface ProviderNoticeSession {
 	readonly model: Pick<Model<any>, "provider" | "id"> | undefined;
-	readonly modelRuntime: Pick<ModelRuntime, "isProviderDisabled" | "getProvider">;
+	readonly modelRuntime: Pick<ModelRuntime, "isProviderDisabled" | "isModelHidden" | "getProvider">;
 	sendCustomMessage(
 		message: { customType: string; content: string; display: "only" },
 		options: { deliverAs: "nextTurn" },
@@ -21,6 +21,20 @@ const noticed = new WeakMap<object, string>();
  */
 export function noticeDisabledProvider(session: ProviderNoticeSession): void {
 	const model = session.model;
+	if (model && !session.modelRuntime.isProviderDisabled(model.provider) && session.modelRuntime.isModelHidden(model)) {
+		const key = `${model.provider}/${model.id}`;
+		if (noticed.get(session) === key) return;
+		noticed.set(session, key);
+		void session.sendCustomMessage(
+			{
+				customType: PROVIDER_NOTICE_TYPE,
+				content: `The model ${key} is hidden in /providers, but this session uses it. Subagent purposes and profiles no longer pick it. Switch with /model, or tick it again in /providers.`,
+				display: "only",
+			},
+			{ deliverAs: "nextTurn" },
+		);
+		return;
+	}
 	if (!model || !session.modelRuntime.isProviderDisabled(model.provider)) {
 		noticed.delete(session);
 		return;

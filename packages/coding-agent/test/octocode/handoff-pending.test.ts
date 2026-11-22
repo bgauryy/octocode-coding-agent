@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { fenceUntrusted } from "../../src/octocode/shared/fence.ts";
+import { fenceUntrusted, withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { ReportQueue } from "../../src/octocode/subagents/handoff.ts";
 import { fakeHost } from "./fake-host.ts";
@@ -37,7 +37,7 @@ function queueFor(f: ReturnType<typeof fakeHost>) {
 
 const files = (dir: string) => fs.readdirSync(dir).sort();
 const delivered = (sent: Array<{ message: { content: unknown } }>) =>
-	sent.map((entry) => String(entry.message.content));
+	sent.map((entry) => withoutSourceHeader(String(entry.message.content)));
 
 /** A host whose `sendMessage` throws while `down`, as a session that already ended does. */
 function flakyHost() {
@@ -71,7 +71,7 @@ describe("pending reports", () => {
 		const append = f.api.session.sendMessage;
 		let attempts = 0;
 		f.api.session.sendMessage = (message, options) => {
-			if (message.content === report("quiet", false).content && attempts++ === 0)
+			if (withoutSourceHeader(String(message.content)) === report("quiet", false).content && attempts++ === 0)
 				return Promise.reject(new Error("temporarily unavailable"));
 			return append(message, options);
 		};
@@ -186,7 +186,7 @@ describe("pending reports", () => {
 		queue.add(report("first"));
 		queue.add(report("second"));
 		queue.flush();
-		expect(f.sent.map(({ message }) => message.content)).toEqual([report("first").content]);
+		expect(delivered(f.sent)).toEqual([report("first").content]);
 		const pending = await takePendingReports(queue.pendingDir);
 		try {
 			expect(pending.map((item) => item.details.id)).toEqual(["second"]);

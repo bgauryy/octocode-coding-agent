@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { runInproc, type Skill } from "../../src/agents/inproc.ts";
-import { parseSkillListing, runOctocodeAgent } from "../../src/adapters/octocode-agent/index.ts";
+import { parseSkillListing, runOctocodeAgent, skillToolDescription } from "../../src/adapters/octocode-agent/index.ts";
 import { script } from "../../src/gateway.ts";
 import { NoAnswer, runTrials, type LiveSummary } from "../../src/live.ts";
 import { forwardOf, resolveTier, type Tier } from "../../src/tiers.ts";
@@ -15,7 +15,7 @@ import { PROMPTS, UNRELATED } from "./matrix.ts";
 const TMP = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../.octocode/tmp");
 const resolved = resolveTier();
 
-/** Mirrors the bundled skills intro (`system/skills-intro.md`), with the inproc agent's `load_skill` as the tool. */
+/** Mirrors the `skill` tool's description wording, with the inproc agent's `load_skill` as the tool. */
 const SYSTEM =
 	"You are a coding assistant. Call load_skill (one call per name) to load a skill when its description matches the work at hand " +
 	"(a shared word is not a match); several can apply. If no skill matches, answer directly without calling load_skill.";
@@ -108,7 +108,7 @@ describe("skill trigger matrix (bundled skill descriptions, per model tier)", ()
 		// The real skill descriptions come from a captured request of the bundle (isolated HOME, no model).
 		const cap = await gateway({ responder: script([{ text: "ok" }]) });
 		await runOctocodeAgent({ gatewayUrl: cap.url, prompt: "hi" });
-		const listed = parseSkillListing(String(cap.trace.requests[0].messages[0].content));
+		const listed = parseSkillListing(skillToolDescription(cap.trace.requests[0].raw));
 		expect(listed.length).toBeGreaterThan(0);
 		const skills: Skill[] = listed.map((s) => ({ ...s, body: `${s.name} skill body (instructions omitted).` }));
 		const missing = listed.map((s) => s.name).filter((n) => !PROMPTS[n]);

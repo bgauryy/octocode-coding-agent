@@ -1,4 +1,3 @@
-import { type Tool, validateToolArguments } from "@octocodeai/octocode-ai";
 import { beforeAll, describe, expect, it } from "vitest";
 import { renderPrompt } from "../../src/core/prompt-template.ts";
 import { registerBacklogPlanTool } from "../../src/octocode/native/tools/backlog-plan/tool.ts";

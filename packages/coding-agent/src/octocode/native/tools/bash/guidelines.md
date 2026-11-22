@@ -1,1 +1,1 @@
-Trimmed output is saved at the result path: read line ranges, do not rerun. Under another agent's reservation, spell paths literally and edit with `file`: bash refuses writes it cannot check. Bash writes are not checkpointed for /rewind.
+Trimmed output is saved at the result path: read line ranges, do not rerun. Edit source with `file`, not `sed -i` or scripts: only `file` changes are checkpointed for /rewind. Under another agent's reservation, spell paths literally: bash refuses writes it cannot check.

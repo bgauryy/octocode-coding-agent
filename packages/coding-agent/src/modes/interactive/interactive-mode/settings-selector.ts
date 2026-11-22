@@ -1,5 +1,5 @@
 /**
- * The live interface settings of /configuration: shows the current settings and applies each change to the session and the
+ * The live interface settings of /settings: shows the current settings and applies each change to the session and the
  * terminal UI.
  */
 

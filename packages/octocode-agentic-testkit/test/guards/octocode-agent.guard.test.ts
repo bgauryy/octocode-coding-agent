@@ -10,7 +10,8 @@ import { requireBundle } from "./support.ts";
 const CEILING = {
 	systemPromptBytes: 30_800,
 	/** Thin MCP declarations keep short enums, `maxItems` and `required` (review CK-013, user decision): 43,472 B plus 5%. */
-	toolJsonBytes: 45_600,
+	// Our tools plus the bundled MCP tool text.
+	toolJsonBytes: 54_200,
 	/** Warm requests (all but the first) must read at least this share of the prompt from cache. */
 	warmCacheReadRatio: 0.9,
 };

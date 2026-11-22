@@ -72,8 +72,8 @@ export interface FeatureContext {
 	isProjectTrusted(): boolean;
 	/** The call's abort signal in tool_call handlers; otherwise the current turn's signal, if streaming; in agent_before_settle handlers, the signal a session abort fires. */
 	signal: AbortSignal | undefined;
-	/** Abort the current agent operation */
-	abort(reason?: "interrupted" | "internal"): void;
+	/** Abort the current agent operation. `peer` is another agent's interrupt: it spares a running compaction in the loop's `new` mode. */
+	abort(reason?: "interrupted" | "peer" | "internal"): void;
 	/** Record that the current run failed, for whoever drives the session from outside (print mode's exit code, RPC's outcome). A later good response supersedes it, as a retry does. */
 	failRun(reason: string): void;
 	/** Whether there are queued messages waiting */

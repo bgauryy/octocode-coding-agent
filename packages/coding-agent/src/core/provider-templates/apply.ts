@@ -1,13 +1,8 @@
-import { mkdir, readFile } from "node:fs/promises";
-import { dirname } from "node:path";
-import { Compile } from "typebox/compile";
-import { atomicWriteFile, sha256 } from "@octocodeai/octocode-common/atomic-file";
-import { hasJsonComments, stripJsonComments } from "@octocodeai/octocode-common/json";
-import { stripBom } from "@octocodeai/octocode-common/text";
+import { normalizeEndpointHost } from "@octocodeai/octocode-ai";
 import { urlCredentialProblem } from "@octocodeai/octocode-common/url-credentials";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { type ModelsJsonModel, type ModelsJsonProvider, ModelsConfigSchema } from "../model-config.ts";
+import type { ModelsJsonModel, ModelsJsonProvider } from "../model-config.ts";
 import { NO_KEY } from "../models-json-keys.ts";
+import { rewriteProviders } from "./models-file.ts";
 import type { ProviderTemplate } from "./templates.ts";
 
 /**
@@ -15,14 +10,20 @@ import type { ProviderTemplate } from "./templates.ts";
  * is a marker, not a secret.
  */
 
-/** How the provider gets its key: saved in auth.json through `/providers`, a `$NAME` reference, or none (local). */
-export type TemplateKey = { kind: "saved" } | { kind: "env"; name: string } | { kind: "none" };
+/**
+ * How the provider gets its key: a `!` reference to a keychain entry (the default), plain text in auth.json through
+ * `/providers` (an explicit choice), a `$NAME` reference, or none (local).
+ */
+export type TemplateKey =
+	| { kind: "keychain"; reference: string }
+	| { kind: "saved" }
+	| { kind: "env"; name: string }
+	| { kind: "none" };
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const PROVIDER_ID = /^[a-z0-9][a-z0-9._-]*$/;
-const validateModelsConfig = Compile(ModelsConfigSchema);
 
-/** The template's fixed host, or the host the user gave: an http(s) URL without credentials or a trailing slash. */
+/** The template's fixed host, or the host the user gave: an https URL (http for localhost) without credentials or a trailing slash. */
 export function templateBaseUrl(template: ProviderTemplate, host?: string): string {
 	const given = template.baseUrl ?? (host?.trim() || (template.hostDefault ? template.hostHint : undefined));
 	if (!given) throw new Error(`${template.name} needs the host of your server, for example ${template.hostHint}.`);
@@ -36,10 +37,11 @@ export function templateBaseUrl(template: ProviderTemplate, host?: string): stri
 		throw new Error("The host must start with http:// or https://.");
 	const problem = urlCredentialProblem(given);
 	if (problem) throw new Error(`The host must not carry a key (${problem}); the key is asked for next.`);
-	return given.replace(/\/+$/, "");
+	// A host the user typed takes the same rule as every other custom host: https, or http for localhost only.
+	return template.baseUrl ? given.replace(/\/+$/, "") : normalizeEndpointHost(given);
 }
 
-/** The `models.json` provider entry for a template. Never holds a key: only a `$NAME` reference or the local marker. */
+/** The `models.json` provider entry for a template. Never holds a key: only a `!` or `$NAME` reference or the local marker. */
 export function templateProviderEntry(
 	template: ProviderTemplate,
 	options: { host?: string; key: TemplateKey; models: readonly ModelsJsonModel[] },
@@ -48,7 +50,16 @@ export function templateProviderEntry(
 	const { key } = options;
 	if (key.kind === "env" && !ENV_NAME.test(key.name)) throw new Error(`Not an environment variable name: ${key.name}`);
 	if (key.kind === "none" && template.key !== "optional") throw new Error(`${template.name} needs an API key.`);
-	const apiKey = key.kind === "env" ? `$${key.name}` : key.kind === "none" ? NO_KEY : undefined;
+	if (key.kind === "keychain" && !key.reference.startsWith("!"))
+		throw new Error("A keychain key is written as a keychain reference (starting with !), never as the key.");
+	const apiKey =
+		key.kind === "env"
+			? `$${key.name}`
+			: key.kind === "none"
+				? NO_KEY
+				: key.kind === "keychain"
+					? key.reference
+					: undefined;
 	return {
 		name: template.name,
 		baseUrl: templateBaseUrl(template, options.host),
@@ -78,34 +89,15 @@ export function freeProviderId(base: string, taken: ReadonlySet<string>): string
  */
 export async function addTemplateProvider(file: string, id: string, entry: ModelsJsonProvider): Promise<void> {
 	if (!PROVIDER_ID.test(id)) throw new Error(`Not a provider id: ${id} (lower-case letters, digits, ".", "_", "-").`);
-	let text: string | undefined;
-	try {
-		text = await readFile(file, "utf8");
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-	}
 	const snippet = JSON.stringify({ [id]: entry }, null, "\t");
-	if (text !== undefined && hasJsonComments(text)) {
-		throw new Error(`${file} has comments, which a rewrite would drop. Add this under "providers":\n${snippet}`);
-	}
-	let config: Record<string, unknown> = { providers: {} };
-	if (text !== undefined && stripBom(text).trim()) {
-		try {
-			config = JSON.parse(stripJsonComments(stripBom(text))) as Record<string, unknown>;
-		} catch {
-			throw new Error(`${file} is not valid JSON; fix it first, then add the provider again.`);
-		}
-		if (!isRecord(config)) throw new Error(`${file} must hold a JSON object.`);
-	}
-	const providers = config.providers ?? {};
-	if (!isRecord(providers)) throw new Error(`${file}: "providers" must be an object.`);
-	if (Object.hasOwn(providers, id)) {
-		throw new Error(`${file} already defines the provider "${id}"; it was not changed. Choose another id.`);
-	}
-	const next = { ...config, providers: { ...providers, [id]: entry } };
-	if (!validateModelsConfig.Check(next)) throw new Error(`The new entry does not fit models.json:\n${snippet}`);
-	await mkdir(dirname(file), { recursive: true, mode: 0o700 });
-	await atomicWriteFile(file, `${JSON.stringify(next, null, "\t")}\n`, text === undefined ? null : sha256(text), {
-		mode: 0o600,
-	});
+	await rewriteProviders(
+		file,
+		(providers) => {
+			if (Object.hasOwn(providers, id)) {
+				throw new Error(`${file} already defines the provider "${id}"; it was not changed. Choose another id.`);
+			}
+			return { ...providers, [id]: entry };
+		},
+		`Add this under "providers":\n${snippet}`,
+	);
 }

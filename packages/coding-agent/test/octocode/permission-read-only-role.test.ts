@@ -206,7 +206,8 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 			[`D=${scratch}; D=${cwd}/src; echo x > $D/a.ts`, /cannot resolve/],
 			[`false || D=${scratch}; echo x > $D/a.ts`, /cannot resolve/],
 			[`D=${scratch}; read D; echo x > $D/a.ts`, /cannot resolve/],
-			[`D=${scratch}; for D in src; do echo x > $D/a.ts; done`, /cannot resolve/],
+			// A loop over plain words runs its body once per word: the loop's value, not the earlier one, is the path.
+			[`D=${scratch}; for D in src; do echo x > $D/a.ts; done`, /Changing [^ ]*src\/a\.ts from the shell/],
 			[`(D=${scratch}); echo x > $D/a.ts`, /cannot resolve/],
 		] as Array<[string, RegExp]>)
 			expect(await attempt("bash", { command }), command).toMatch(expected);
@@ -345,7 +346,8 @@ describe.each((["full", "workspace"] as const).map((mode) => [mode]))("read-only
 		const cases: Array<[string, RegExp]> = [
 			["touch $OUT", /target the guard cannot resolve: `\$OUT` is an expansion[^]*spell the path out/],
 			["echo x > $OUT", /target the guard cannot resolve: `\$OUT` is not a plain path/],
-			["for c in a b; do touch $c; done", /cannot resolve: `\$c` is an expansion/],
+			["for c in $(ls); do touch $c; done", /cannot resolve: `\$c` is an expansion/],
+			["for c in a b; do touch $c; done", /Changing a from the shell is refused/],
 			['bash -c "$X"', /cannot resolve: `bash` runs a script the guard cannot read/],
 			[
 				"git commit -m x",

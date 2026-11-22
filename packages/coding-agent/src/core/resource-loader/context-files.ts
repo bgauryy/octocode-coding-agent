@@ -32,16 +32,35 @@ export function resolvePromptInput(input: string | undefined, description: strin
 	return input;
 }
 
-/** Each project context file enters every request whole, so an oversized or hostile one is cut here. */
+/**
+ * Each project context file enters every request whole, so an oversized or hostile one is cut here. There is no total
+ * cap across files: dropping an ancestor's file would silently remove instructions the user relies on, so the total is
+ * reported by `contextFilesBudgetWarning` and held by the prompt-size ceilings instead.
+ */
 const CONTEXT_FILE_MAX_BYTES = 64 * 1024;
 
+/** The cap includes the notice, so a cut file never exceeds `CONTEXT_FILE_MAX_BYTES` and always fits a budget of it. */
 function capContextFile(path: string, content: string): string {
 	const bytes = Buffer.from(content, "utf8");
 	if (bytes.length <= CONTEXT_FILE_MAX_BYTES) return content;
-	let end = CONTEXT_FILE_MAX_BYTES;
+	const notice = `\n\n${renderPrompt("notices/context-file-cut.md", { path })}`;
+	let end = Math.max(0, CONTEXT_FILE_MAX_BYTES - Buffer.byteLength(notice));
 	// Back up to a character boundary: UTF-8 continuation bytes are 0b10xxxxxx.
 	while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
-	return `${bytes.subarray(0, end).toString("utf8")}\n\n${renderPrompt("notices/context-file-cut.md", { path })}`;
+	return `${bytes.subarray(0, end).toString("utf8")}${notice}`;
+}
+
+/** Files already read and capped, by path: reused while the file's size and modification time are unchanged. */
+const CONTEXT_FILE_CACHE_MAX = 256;
+const contextFileCache = new Map<string, { stamp: string; content: string }>();
+
+function readContextFile(filePath: string, stamp: string): string {
+	const cached = contextFileCache.get(filePath);
+	if (cached?.stamp === stamp) return cached.content;
+	const content = capContextFile(filePath, stripBom(readFileSync(filePath, "utf-8")));
+	if (contextFileCache.size >= CONTEXT_FILE_CACHE_MAX) contextFileCache.delete(contextFileCache.keys().next().value!);
+	contextFileCache.set(filePath, { stamp, content });
+	return content;
 }
 
 function loadContextFileFromDir(dir: string): { path: string; content: string } | null {
@@ -49,13 +68,11 @@ function loadContextFileFromDir(dir: string): { path: string; content: string } 
 		const filePath = join(dir, filename);
 		if (existsSync(filePath)) {
 			try {
-				if (!statSync(filePath).isFile()) {
+				const stat = statSync(filePath);
+				if (!stat.isFile()) {
 					continue;
 				}
-				return {
-					path: filePath,
-					content: capContextFile(filePath, stripBom(readFileSync(filePath, "utf-8"))),
-				};
+				return { path: filePath, content: readContextFile(filePath, `${stat.size}:${stat.mtimeMs}:${stat.ino}`) };
 			} catch (error) {
 				process.stderr.write(`${cliStyle.warn(`Warning: Could not read ${filePath}: ${String(error)}`)}\n`);
 			}

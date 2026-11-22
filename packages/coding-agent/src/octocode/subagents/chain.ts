@@ -31,9 +31,16 @@ export interface QueuedChild {
 	release: () => void;
 }
 
+/** A place held in the queue for a call that passed `openPrerequisites` and has not queued its child yet. */
+interface Place {
+	item: string | undefined;
+	after: string[];
+}
+
 /** The queued children of one session, by name: what validates a new `after`, what `coordinate list` shows, what cancels. */
 export class ChainQueue {
 	private readonly entries = new Map<string, QueuedChild>();
+	private readonly places = new Set<Place>();
 	readonly gate: PrerequisiteGate;
 	private readonly emit: (notice: AgentChainNotice) => void;
 	private readonly watchers = new Set<() => void>();
@@ -44,9 +51,21 @@ export class ChainQueue {
 		this.emit = emit;
 	}
 
-	/** Children that wait (queued or held); a started one no longer counts. */
+	/** Children that wait (queued or held) and the places held for calls about to queue one; a started child no longer counts. */
 	get size(): number {
-		return this.waiting().length;
+		return this.waiting().length + this.places.size;
+	}
+
+	/**
+	 * Holds a place for a call whose `after` was just checked (`openPrerequisites`): its capacity and the edges it adds
+	 * count for every check that follows. Call it in the same turn of the event loop as that check, so two calls started
+	 * together cannot both pass against a queue neither has joined yet. The returned function gives the place back (a
+	 * call that queued its child, or failed first); it is safe to call twice.
+	 */
+	reserve(item: string | undefined, after: readonly Prerequisite[]): () => void {
+		const place: Place = { item, after: after.map(prerequisiteName) };
+		this.places.add(place);
+		return () => void this.places.delete(place);
 	}
 
 	/** Children still waiting: queued behind prerequisites, or held. */
@@ -97,6 +116,11 @@ export class ChainQueue {
 
 	all(): QueuedChild[] {
 		return [...this.entries.values()];
+	}
+
+	/** The places held for calls about to queue a child (`reserve`). */
+	heldPlaces(): ReadonlySet<Place> {
+		return this.places;
 	}
 
 	/** The backlog items queued children will work on: their start is announced, so they need no ready notice. */
@@ -208,6 +232,17 @@ export function openPrerequisites(
 	item: string | undefined,
 	waitsOn: readonly string[],
 ): Prerequisite[] {
+	return checkPrerequisites(host, queue, named, item, waitsOn).open;
+}
+
+/** `openPrerequisites`, with every prerequisite the call names too: those already met still hand their results to the child. */
+export function checkPrerequisites(
+	host: AfterHost,
+	queue: ChainQueue,
+	named: readonly string[],
+	item: string | undefined,
+	waitsOn: readonly string[],
+): { open: Prerequisite[]; named: Prerequisite[] } {
 	if (named.length > MAX_AFTER) throw new Error(`after names ${named.length} prerequisites: at most ${MAX_AFTER}.`);
 	const wanted = new Map<string, Prerequisite>();
 	for (const text of [...named, ...waitsOn]) {
@@ -240,14 +275,15 @@ export function openPrerequisites(
 				`after names ${name}, which already ended without success (${ended.reason}${ended.outcome ? `, ${ended.outcome}` : ""}).`,
 			);
 	}
-	const open = [...wanted.values()].filter((each) => queue.gate.standing(each).state === "open");
-	if (open.length === 0) return [];
+	const all = [...wanted.values()];
+	const open = all.filter((each) => queue.gate.standing(each).state === "open");
+	if (open.length === 0) return { open, named: all };
 	if (queue.size >= MAX_QUEUED)
 		throw new Error(
 			`${queue.size} children are already queued: at most ${MAX_QUEUED}. Wait for some to start, or stop one.`,
 		);
 	if (item) refuseCycle(host, queue, open.map(prerequisiteName), item);
-	return open;
+	return { open, named: all };
 }
 
 /** Throws when following what `from` waits on (item dependencies and queued children's `after`) reaches `item`. */
@@ -263,6 +299,8 @@ function refuseCycle(host: AfterHost, queue: ChainQueue, from: readonly string[]
 		const prerequisite = parsePrerequisite(name);
 		if (prerequisite?.kind === "item") next.push(...host.item(prerequisite.ref).dependsOn);
 		for (const entry of queue.all()) if (entry.item === name || `agent:${entry.id}` === name) next.push(...entry.after);
+		// A call that passed its check and has not queued its child yet waits on the same edges.
+		for (const place of queue.heldPlaces()) if (place.item === name) next.push(...place.after);
 		stack.push(...next);
 	}
 }

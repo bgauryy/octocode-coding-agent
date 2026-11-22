@@ -75,7 +75,7 @@
 		"@octocodeai/octocode-tui": "1.3.0",
 		"@octocodeai/octocode-tui-ink": "1.3.0",
 		"@octocodeai/octocode-webview": "1.3.0",
-		"@opencode-ai/models": "0.0.135",
+		"@opencode-ai/models": "0.0.142",
 		"@silvia-odwyer/photon-node": "0.3.4",
 		"chalk": "6.0.1",
 		"croner": "11.0.1",

@@ -97,7 +97,7 @@ describe("file cancellation around filesystem mutations", () => {
 	});
 
 	it.each(["write", "edit"] as const)(
-		"keeps the checkpoint if %s is aborted after its atomic replacement",
+		"reports %s as done and keeps the checkpoint if aborted after its atomic replacement",
 		async (type) => {
 			const { file, guard, checkpoints, tool, ctx } = setup();
 			const controller = new AbortController();
@@ -114,8 +114,8 @@ describe("file cancellation around filesystem mutations", () => {
 					...(type === "write" ? { content: "changed" } : { edits: [{ oldText: "original", newText: "changed" }] }),
 				};
 				const result = await tool.execute("cancel-write", { queries: [query] }, controller.signal, undefined, ctx);
-				expect(result.isError).toBe(true);
-				expect(result.content[0].text).toMatch(/abort[\s\S]*The file was changed/i);
+				expect(result.isError).toBeUndefined();
+				expect(result.content[0].text).not.toMatch(/abort/i);
 				expect(result.details.receipts).toHaveLength(1);
 				expect(fs.readFileSync(file, "utf8")).toBe("changed");
 				expect(checkpoints.list()).toHaveLength(1);

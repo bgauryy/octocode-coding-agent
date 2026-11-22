@@ -1,5 +1,15 @@
 /** Command palette, live activity and session views, Markdown and code. */
-export const LIVE_CSS = `/* Command palette */
+export const LIVE_CSS = `
+.commands-view { max-width: 880px; margin-inline: auto; }
+.command-form { display: grid; gap: 12px; padding: 16px; min-width: 0; }
+.command-form > button { justify-self: start; }
+.command-form select, .command-form input { width: 100%; min-width: 0; }
+.command-form select[size] { padding: 4px; }
+.command-form option { padding: 4px 8px; }
+.command-output { max-height: 52vh; overflow: auto; }
+.command-answer { display: flex; align-items: end; gap: 8px; }
+.command-answer .field { flex: 1; }
+/* Command palette */
 .palette-backdrop { background: rgb(13 17 23 / .35); z-index: 30; }
 .palette { position: fixed; top: 12vh; left: 50%; z-index: 31; display: flex; flex-direction: column; width: min(640px, calc(100% - 24px)); max-height: 70vh; transform: translateX(-50%); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-lg); overflow: hidden; animation: pop-in .16s var(--ease); }
 .palette-input { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border-soft); color: var(--text-3); }

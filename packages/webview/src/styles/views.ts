@@ -20,7 +20,7 @@ export const VIEWS_CSS = `/* Board */
 .board-view .column-description { display: none; }
 .board-sort { margin-left: auto; }
 .board-view .result-count, .backlog-view .result-count { margin-left: 0; }
-.board { display: flex; gap: 16px; align-items: stretch; overflow-x: auto; padding: 2px 2px 16px; scroll-snap-type: x proximity; min-height: 52vh; }
+.board { position: relative; display: flex; gap: 16px; align-items: stretch; overflow-x: auto; padding: 2px 2px 16px; scroll-snap-type: x proximity; min-height: 52vh; }
 .column { --lane: var(--state-backlog); display: flex; flex-direction: column; flex: 1 0 280px; min-width: 280px; max-height: calc(100vh - 270px); min-height: 240px; border-radius: var(--radius-lg); background: color-mix(in srgb, var(--surface-3) 58%, var(--bg)); border: 1px solid var(--border-soft); border-top: 3px solid var(--lane); scroll-snap-align: start; }
 .column.state-todo { --lane: var(--tool); }
 .column.state-ongoing { --lane: var(--state-ongoing); }
@@ -85,6 +85,7 @@ export const VIEWS_CSS = `/* Board */
 .popup-body h3 { font-size: var(--fs-lg); }
 .popup .actions { display: flex; gap: 8px; }
 .toast { position: fixed; left: 50%; bottom: 20px; z-index: 50; display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100% - 24px)); padding: 10px 12px 10px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--text); color: var(--bg); box-shadow: var(--shadow-lg); font-size: var(--fs-sm); transform: translateX(-50%); }
+.toast > span { min-width: 0; max-height: 25vh; overflow: auto; overflow-wrap: anywhere; user-select: text; }
 .toast-error { border-color: var(--danger); }
 .toast button { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
 .toast-action { font-weight: 700; text-decoration: underline; }

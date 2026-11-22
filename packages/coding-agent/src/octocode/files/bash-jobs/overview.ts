@@ -3,7 +3,7 @@ import { formatSpan } from "../../shared/format.ts";
 
 /** What `/jobs` shows when nothing is running: how to start each kind. */
 const EMPTY =
-	"Nothing is running. Start a background job with bash (background: true), a wait with the wait tool, or a schedule with /loop <interval> <prompt>.";
+	"Nothing is running. Start a background job with bash (background: true), a notification with the notify tool, or a schedule with /loop <interval> <prompt>.";
 
 /** How to end each kind, one dim line under the list. */
 const CANCEL_HINT = "Cancel any row: /jobs kill <id>";

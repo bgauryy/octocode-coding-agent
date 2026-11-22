@@ -16,6 +16,7 @@ export const fakeCachePolicy: ModelRegistry["getCachePolicy"] = (model, settings
 export const meteredBilling = {
 	getProviderBilling: (): "plan" | "metered" => "metered",
 	allowsUnattendedUse: (): boolean => true,
+	getModelOrigin: (): "built-in" => "built-in",
 };
 
 /** Identity theme: colours and styles pass text through, so rendered components read as plain text. */
@@ -319,6 +320,7 @@ export function fakeCtx(options: {
 		modelRegistry: {
 			getAvailable: () => [],
 			getAll: () => [],
+			isModelHidden: () => false,
 			find: () => undefined,
 			getCachePolicy: fakeCachePolicy,
 			getProviderAuthStatus: () => ({ configured: true, source: "stored" }),
@@ -329,6 +331,7 @@ export function fakeCtx(options: {
 			ModelRegistry,
 			| "getAvailable"
 			| "getAll"
+			| "isModelHidden"
 			| "find"
 			| "getCachePolicy"
 			| "getProviderAuthStatus"

@@ -17,6 +17,7 @@ import {
 	canRunTask,
 	currentPrice,
 	fallbackNote,
+	hasPrice,
 	isModelTier,
 	MODEL_TIERS,
 	type ModelRef,
@@ -90,6 +91,33 @@ function thinkingLevelsText(model: ModelRef): string {
 	return ` · thinking ${levels}`;
 }
 
+/**
+ * ` · from …`: where the price and the window come from (the entry's origin, or models.dev when the entry has no
+ * price), one word when both agree. Empty for a model whose origin was not looked up and when both are built-in,
+ * the common case (`SOURCE_NOTE` says so).
+ */
+function sourceText(model: ModelRef, catalog: Catalog | undefined): string {
+	if (!model.origin) return "";
+	const own = currentPrice(model.cost);
+	const price =
+		own && own.input + own.output > 0
+			? model.origin
+			: listedCost(catalog, model.provider, model.id)
+				? "models.dev"
+				: "none";
+	const window = model.contextWindow
+		? model.origin
+		: lookup(catalog, model.provider, model.id)?.context
+			? "models.dev"
+			: "none";
+	if (price === "built-in" && window === "built-in") return "";
+	return price === window ? ` · from ${price}` : ` · from ${price} (price), ${window} (window)`;
+}
+
+/** One line under a listing: what an unmarked row means. */
+export const SOURCE_NOTE =
+	"Price and window are built-in data unless a row says `from` models.json or models.dev (a guess when `default`).";
+
 /** One model's line: price, context window and abilities, the parent's marked. */
 export function modelLine(model: ModelRef, parent: ModelRef | undefined, catalog: Catalog | undefined): string {
 	const known = lookup(catalog, model.provider, model.id);
@@ -100,7 +128,7 @@ export function modelLine(model: ModelRef, parent: ModelRef | undefined, catalog
 	const cutoff =
 		known?.knowledge && /^\d{4}-\d{2}(?:-\d{2})?$/.test(known.knowledge) ? ` · cutoff ${known.knowledge}` : "";
 	const window = model.contextWindow !== undefined && model.contextWindow !== 0 ? model.contextWindow : known?.context;
-	return `${mark}${name(model)} · ${priceText(modelCost(model, catalog))} per M in/out · ${contextSize(window)} · ${caps}${levels}${cutoff}`;
+	return `${mark}${name(model)} · ${priceText(modelCost(model, catalog))} per M in/out · ${contextSize(window)} · ${caps}${levels}${cutoff}${sourceText(model, catalog)}`;
 }
 
 /**
@@ -171,14 +199,12 @@ export function describeRoutes(
 	billing?: TierBilling,
 ): string {
 	const own = parent && (available.find((model) => name(model) === name(parent)) ?? parent);
-	const parentPriced =
-		(own !== undefined && priceRank(modelCost(own, catalog)) !== Infinity) ||
-		(parent !== undefined && resolveTier("small", [...available, parent], parent, catalog) !== undefined);
+	const parentPriced = own !== undefined && hasPrice(own, catalog);
 	const why = (tier: string) =>
-		!parent
+		!parent || tier === "large"
 			? ""
 			: !parentPriced
-				? " (its price is unknown, so nothing ranks below it)"
+				? " (its price is unknown and no model is smaller by size guess)"
 				: tier === "medium"
 					? " (no capable model at 15–80% of its price)"
 					: " (no cheaper capable model)";
@@ -245,10 +271,8 @@ function tierChoice(
 	if (route.setting && route.model)
 		return { model: supportedThinking(route.model, available), note: `setting ${route.setting}` };
 	const chosen = tierModel(tier, available, parent, catalog, refused, billing);
-	return {
-		...(chosen ? { model: name(chosen) } : {}),
-		...(route.skipped ? { note: `automatic; ${route.skipped}` } : {}),
-	};
+	const note = route.skipped ? `automatic; ${route.skipped}` : route.guessed ? "size guess, price unknown" : undefined;
+	return { ...(chosen ? { model: name(chosen) } : {}), ...(note ? { note } : {}) };
 }
 
 /** What a profile's route runs on: `provider/id:level`, the routing error, or the parent's model. */

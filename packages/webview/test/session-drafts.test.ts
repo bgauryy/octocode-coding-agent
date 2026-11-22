@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+/** @vitest-environment jsdom */
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { createSessionDrafts, type SessionDraftStorage } from "../src/session-drafts.ts";
 import { createWorkspaceStore } from "../src/state.ts";
@@ -19,6 +20,9 @@ function storage(): SessionDraftStorage & { values: Map<string, string> } {
 const draft = (text: string, to = "prompt") => ({ id: "request-id-not-persisted", text, to });
 
 describe("per-tab session composer drafts", () => {
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+	const settle = () => vi.advanceTimersByTime(400);
 	it("restores independent sessions across navigation and reload with only text and mode", () => {
 		const tab = storage(),
 			first = createWorkspaceStore(tab),
@@ -29,6 +33,7 @@ describe("per-tab session composer drafts", () => {
 		});
 		second.getState().setDraft("session-command:session-b", draft("Keep B", "followUp"));
 		first.getState().setDraft("session-sent:session-a:request", draft("Do not persist sent receipts"));
+		settle();
 		const restored = createWorkspaceStore(tab).getState().drafts;
 		expect(restored["session-command:session-a"]).toMatchObject({ text: "Keep A", to: "steer" });
 		expect(restored["session-command:session-b"]).toMatchObject({ text: "Keep B", to: "followUp" });
@@ -68,9 +73,11 @@ describe("per-tab session composer drafts", () => {
 		store.getState().setDraft("session-command:a", draft("Keep A"));
 		store.getState().setDraft("session-command:b", draft("Keep B"));
 		store.getState().setDraft("session-command:a", null);
+		settle();
 		expect(createWorkspaceStore(tab).getState().drafts["session-command:a"]).toBeUndefined();
 		expect(createWorkspaceStore(tab).getState().drafts["session-command:b"].text).toBe("Keep B");
 		store.getState().setDraft("session-command:b", draft("   "));
+		settle();
 		expect(tab.values.size).toBe(0);
 	});
 	it("keeps editing usable if storage is unavailable or full", () => {
@@ -100,16 +107,33 @@ describe("per-tab session composer drafts", () => {
 		const tab = storage(),
 			store = createWorkspaceStore(tab);
 		for (let n = 0; n < 12; n++) store.getState().setDraft(`session-command:s${n}`, draft(`Draft ${n}`));
+		settle();
 		expect(Object.keys(createWorkspaceStore(tab).getState().drafts)).toHaveLength(10);
 		expect(createWorkspaceStore(tab).getState().drafts["session-command:s0"]).toBeUndefined();
 		const large = "x".repeat(64 * 1024);
 		for (let n = 0; n < 8; n++) store.getState().setDraft(`session-command:l${n}`, draft(large));
+		settle();
 		const retained = Object.values(createWorkspaceStore(tab).getState().drafts);
 		expect(retained.reduce((sum, item) => sum + item.text.length, 0)).toBeLessThanOrEqual(256 * 1024);
 		const oversized = large + "x";
 		store.getState().setDraft("session-command:l7", draft(oversized));
+		settle();
 		expect(store.getState().drafts["session-command:l7"].text).toBe(oversized);
 		expect(createWorkspaceStore(tab).getState().drafts["session-command:l7"]).toBeUndefined();
+	});
+	it("writes storage once per pause in typing, flushing early when the tab hides", () => {
+		const tab = storage(),
+			writes = vi.spyOn(tab, "setItem"),
+			store = createWorkspaceStore(tab);
+		for (let n = 1; n <= 50; n++) store.getState().setDraft("session-command:a", draft("x".repeat(n)));
+		expect(writes).not.toHaveBeenCalled();
+		settle();
+		expect(writes).toHaveBeenCalledTimes(1);
+		expect(createSessionDrafts(tab).read()["session-command:a"].text).toHaveLength(50);
+		store.getState().setDraft("session-command:a", draft("late edit"));
+		window.dispatchEvent(new Event("pagehide"));
+		expect(writes).toHaveBeenCalledTimes(2);
+		expect(vi.getTimerCount()).toBe(0);
 	});
 	it("ignores malformed storage and invalid modes", () => {
 		const tab = storage();

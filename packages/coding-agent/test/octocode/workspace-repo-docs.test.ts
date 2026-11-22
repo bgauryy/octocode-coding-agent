@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { AGENT_DIR } from "../../src/storage/agent-layout.ts";
 import type { IncomingMessage } from "node:http";
 import { afterEach, expect, it } from "vitest";
 import { handleDocsRequest } from "../../src/octocode/workspace/docs.ts";
@@ -78,8 +79,8 @@ it("lists only tracked Markdown, as regular files, outside .octocode and node_mo
 
 it("lists repository documents beside .octocode docs for a trusted project and hides them otherwise", async () => {
 	const { root } = repo();
-	fs.mkdirSync(path.join(root, ".octocode", "plans"), { recursive: true });
-	fs.writeFileSync(path.join(root, ".octocode", "plans", "p.md"), "# Authored\n");
+	fs.mkdirSync(path.join(root, AGENT_DIR, "plans"), { recursive: true });
+	fs.writeFileSync(path.join(root, AGENT_DIR, "plans", "p.md"), "# Authored\n");
 	const trusted = await call(root, "/api/docs", true);
 	expect(trusted.status).toBe(200);
 	expect(trusted.body.docs.map((doc: { path: string }) => doc.path).sort()).toEqual([

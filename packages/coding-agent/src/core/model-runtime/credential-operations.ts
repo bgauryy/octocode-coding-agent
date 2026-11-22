@@ -22,6 +22,8 @@ export interface CredentialOperationsHost {
 	readonly credentials: RuntimeCredentials;
 	readonly layers: ProviderLayers;
 	readonly availability: ModelAvailability;
+	/** Called once a login, import or runtime API key is saved and synchronized, never after a removal. */
+	readonly credentialSaved: (providerId: string) => void;
 }
 
 const credentialListeners = new Set<(providerId: string) => void>();
@@ -97,6 +99,7 @@ export class CredentialOperations {
 		return this.enqueueCredentialOperation(providerId, signal, async () => {
 			this.host.credentials.setRuntimeApiKey(providerId, apiKey);
 			await this.synchronizeCredentialState(providerId, "setRuntimeApiKey", { type: "api_key", key: apiKey }, signal);
+			this.host.credentialSaved(providerId);
 		});
 	}
 
@@ -122,6 +125,7 @@ export class CredentialOperations {
 				? await this.host.credentials.withWriteTransform(providerId, hostOptions.transformCredential, login)
 				: await login();
 			await this.synchronizeCredentialState(providerId, "login", credential, signal);
+			this.host.credentialSaved(providerId);
 			return credential;
 		});
 	}
@@ -151,6 +155,7 @@ export class CredentialOperations {
 				? await this.host.credentials.withWriteTransform(providerId, hostOptions.transformCredential, write)
 				: await write();
 			await this.synchronizeCredentialState(providerId, "importCredential", saved, signal);
+			this.host.credentialSaved(providerId);
 		});
 	}
 }

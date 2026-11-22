@@ -1,9 +1,17 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import type { Db, MachineProcess, MachineSample } from "../../../../db/src/api.ts";
+import {
+	type Db,
+	type MachineAlertRow,
+	type MachineProcess,
+	type MachineSample,
+	machineSamples,
+	withoutWaiting,
+} from "../../../../db/src/api.ts";
 import type { FeatureContext, FeatureSetup } from "../../core/features/index.ts";
 import { renderPrompt } from "../../core/prompt-template.ts";
 import { MONITOR_DEFAULTS } from "../../core/settings-schema/monitor.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
+import { MONITOR_SOURCE } from "../events/source.ts";
 import { processStartTime } from "../shared/process.ts";
 import { STATUS } from "../shared/status.ts";
 import { isStaleSessionError } from "../shared/util.ts";
@@ -26,11 +34,14 @@ type MonitorSettings = {
 };
 
 export interface MonitorOptions {
-	/** A subagent reads the samples but never takes them, and raises no user notification. */
+	/**
+	 * A subagent neither samples nor runs `MachineRules`, and raises no user notification: it hears only the alerts whose
+	 * culprit it owns.
+	 */
 	isSubagent: boolean;
 	/** This session's running background bash jobs. */
 	jobs: () => readonly WatchedJob[];
-	/** The user's Notification hooks; called only by the session holding the sampler lease, so one alert is one notice. */
+	/** The user's Notification hooks; called only by the publisher (the session holding the sampler lease), so one alert is one notice. */
 	notify?: (notice: { type: string; title: string; message: string }, ctx: FeatureContext) => void;
 	// Boundaries a test replaces.
 	db?: () => Db;
@@ -56,12 +67,13 @@ function describeProcess(process: MachineProcess, rule: MachineRule): string {
 	return `${process.command} ${figure}${process.owner ? ` (${process.owner})` : ""}`;
 }
 
-function alertText(alert: MachineAlert, own: boolean): string {
+function alertText(alert: Omit<MachineAlert, "rule"> & { rule: string }, own: boolean): string {
 	return renderPrompt("notices/monitor/alert.md", {
-		what: WHAT[alert.rule](alert.value),
+		what: WHAT[alert.rule as MachineRule](alert.value),
 		samples: alert.streak,
 		threshold: alert.threshold,
-		culprits: alert.culprits.map((process) => describeProcess(process, alert.rule)).join(", ") || "unknown",
+		culprits:
+			alert.culprits.map((process) => describeProcess(process, alert.rule as MachineRule)).join(", ") || "unknown",
 		own,
 		owner: alert.owner ?? "",
 	}).trim();
@@ -88,9 +100,11 @@ function settingsOf(api: FeatureSetup): MonitorSettings {
 }
 
 /**
- * The threshold monitor of a session: runs the machine sampler (one process per machine takes the samples), checks each
- * new sample against `monitor.*`, wakes this session when its own processes weigh most in a tripped threshold or one of
- * its background jobs is stuck, and leaves other sessions a note for their next turn and a footer mark.
+ * The threshold monitor of a session. One process per machine publishes the machine's alerts: the sampler lease holder
+ * checks each new sample against `monitor.*` and files each tripped threshold once in the database. Every session reads
+ * the alerts filed after it started: the session that owns the cause is woken, a root session gets a note for its next turn
+ * and a footer mark, and a subagent gets nothing unless it owns the cause (it never runs `MachineRules`). A stuck
+ * background job wakes its own session.
  */
 export function registerMonitor(api: FeatureSetup, options: MonitorOptions): void {
 	const db = options.db ?? (() => sharedAgentDb().db);
@@ -112,7 +126,9 @@ export function registerMonitor(api: FeatureSetup, options: MonitorOptions): voi
 		const initial = settingsOf(api);
 		if (!initial.enabled) return;
 		const current = generation;
-		const rules = new MachineRules(() => settingsOf(api));
+		// The footer mark and the ledger of a root session follow the thresholds; only the lease holder's alerts are published.
+		const rules = options.isSubagent ? undefined : new MachineRules(() => settingsOf(api));
+		let cursor = 0;
 		let warned = false;
 		const onError = (error: unknown) => {
 			if (current !== generation || isStaleSessionError(error)) return;
@@ -133,7 +149,7 @@ export function registerMonitor(api: FeatureSetup, options: MonitorOptions): voi
 							message,
 							{ triggerTurn: true, deliverAs: "followUp" },
 						)
-					: api.session.sendMessage(message, { triggerTurn: false });
+					: wakeGateOf(api).emit([], message, { triggerTurn: false }, false, [MONITOR_SOURCE]);
 				Promise.resolve(sending).then(
 					() => ledger.record(attention, true),
 					(error: unknown) => {
@@ -146,23 +162,49 @@ export function registerMonitor(api: FeatureSetup, options: MonitorOptions): voi
 				onError(error);
 			}
 		};
+		/** Files what the rules decided on this sample: the one place a machine alert is made. */
+		const publish = (alerts: readonly MachineAlert[]) => {
+			for (const alert of alerts) {
+				machineSamples.recordAlert(db(), alert);
+				const { rule, value } = alert;
+				options.notify?.(
+					{
+						type: "monitor_alert",
+						title: `Octocode: ${WHAT[rule](value)}`,
+						message: alertText(alert, alert.owner === title()),
+					},
+					ctx,
+				);
+			}
+		};
+		/** Delivers what the publisher filed since the last read: a wake to the owner, a note to a root session, nothing to others. */
+		const deliver = (rows: readonly MachineAlertRow[]) => {
+			for (const row of rows) {
+				cursor = row.seq;
+				const own = row.owner === title();
+				if (!own && options.isSubagent) continue;
+				const rule = row.rule as MachineRule;
+				send(
+					alertText(row, own),
+					{ rule: machineRuleId(rule), value: row.value, threshold: row.threshold, at: row.at },
+					own,
+				);
+			}
+		};
 		const onSample = (sample: MachineSample, holds: boolean) => {
 			if (current !== generation) return;
-			const { alerts, active } = rules.observe(sample);
-			if (ctx.hasUI) ctx.ui.setStatus(STATUS.monitor, statusText(active), "warning");
-			for (const rule of MACHINE_RULES)
-				ledger.trip(
-					machineRuleId(rule),
-					active.some((reading) => reading.rule === rule),
-				);
-			for (const alert of alerts) {
-				const own = alert.owner === title();
-				const content = alertText(alert, own);
-				const { rule, value, threshold, at } = alert;
-				send(content, { rule: machineRuleId(rule), value, threshold, at }, own);
-				if (holds && !options.isSubagent)
-					options.notify?.({ type: "monitor_alert", title: `Octocode: ${WHAT[rule](value)}`, message: content }, ctx);
+			const observed = rules?.observe(sample);
+			if (observed) {
+				const { active } = observed;
+				if (ctx.hasUI) ctx.ui.setStatus(STATUS.monitor, statusText(active), "warning");
+				for (const rule of MACHINE_RULES)
+					ledger.trip(
+						machineRuleId(rule),
+						active.some((reading) => reading.rule === rule),
+					);
 			}
+			if (holds && observed) publish(observed.alerts);
+			deliver(withoutWaiting(db(), () => machineSamples.alertsAfter(db(), cursor)));
 			const minutes = settingsOf(api).stuckJobMinutes;
 			watch.check(options.jobs(), now(), minutes).then((stuck) => {
 				if (current !== generation) return;
@@ -175,6 +217,7 @@ export function registerMonitor(api: FeatureSetup, options: MonitorOptions): voi
 			}, onError);
 		};
 		try {
+			cursor = withoutWaiting(db(), () => machineSamples.lastAlertSeq(db()));
 			sampler = start({
 				db: db(),
 				holder: `${process.pid}:${processStartTime(process.pid) ?? ""}`,

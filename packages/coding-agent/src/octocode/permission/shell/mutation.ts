@@ -33,6 +33,7 @@ import { runInput, type RunInput } from "./input-runners.ts";
 import { inputMayWrite, plainReader, readerWritingOptions, readOnlyCommand } from "./read-only.ts";
 import { writerEffect } from "./writers.ts";
 import { sedFiles, sedInPlace, sedWrites } from "./sed-script.ts";
+import { unrollLoops } from "./loops.ts";
 import { base, wrappedCommand } from "./words.ts";
 
 /** The shell entry points `team-surfaces.ts` wires into the team gate: this file's mutation reads and the parsed command list. */
@@ -318,7 +319,8 @@ export function shellMutation(command: string, depth = 0, env: NodeJS.ProcessEnv
 	};
 	if (readOnlyCommand(command)) return found;
 	// Every write-target check (state folder, read-only role, reservations, isolated tree) shares this one cd-following.
-	const syntax = bashSyntax(depth === 0 ? followingBareCd(command, env) : command);
+	// A plain `for` loop is read as the commands it runs per word, so a path spelled with its variable is known.
+	const syntax = bashSyntax(unrollLoops(depth === 0 ? followingBareCd(command, env) : command));
 	found.unparsed = syntax.incomplete;
 	// `bashSyntax` lists no assignment or `-v` test; the tree shows them (an unparsed line is `unparsed` already).
 	const swap = parseBash(command, (root) => programSwap(root, true, env));

@@ -86,6 +86,27 @@ describe("ConfigView provider sources and switches", () => {
 		expect(screen.getByText("Route: subscription")).toBeInTheDocument();
 		expect(screen.getByText("Route: external")).toBeInTheDocument();
 	});
+	it("shows a models.json-only provider with its models, and says its key variable is unset", async () => {
+		const snapshot: ConfigSnapshot = {
+			...base,
+			providers: [
+				{
+					provider: "acme",
+					name: "Acme Gateway",
+					models: ["acme-large", "acme-small"],
+					configured: false,
+					sources: [],
+					origins: [{ product: "octocode", file: "models-json", hasKey: true, keyUnset: true }],
+				},
+			],
+		};
+		render(<ConfigView load={async () => snapshot} saveProvider={vi.fn()} />);
+		expect(await screen.findByText("Acme Gateway")).toBeInTheDocument();
+		expect(within(screen.getByText("Acme Gateway").closest("li")!).getByText("Not configured")).toBeInTheDocument();
+		expect(screen.getByText("acme-large, acme-small")).toBeInTheDocument();
+		expect(screen.getByText("Octocode models.json (key variable not set)")).toBeInTheDocument();
+	});
+
 	it("shows the sources and where each provider is configured", async () => {
 		render(<ConfigView load={async () => base} saveProvider={vi.fn()} />);
 		const sources = await screen.findByRole("list", { name: "Provider sources" });

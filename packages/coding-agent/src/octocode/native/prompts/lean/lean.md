@@ -21,11 +21,6 @@
 {{/unless}}
 {{/if}}
 {{/unless}}
-{{#unless main}}
-{{#if canSave}}
-- Put long output in a file in your scratch folder and cite its path.
-{{/if}}
-{{/unless}}
 {{> shared/evidence.md}}
 {{#if main}}
 - Bottom line first, then evidence and next step.

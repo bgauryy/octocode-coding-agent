@@ -247,7 +247,7 @@ describe("subagents", () => {
 			name: "researcher",
 			description: "Reads code",
 			prompt: "Be precise.",
-			tools: "read,grep,bash,file,agent,wait,archive,memory,skill,mcp,mcp__*",
+			tools: "read,grep,bash,file,agent,notify,archive,memory,skill,mcp,mcp__*",
 			hash: expect.stringMatching(/^[0-9a-f]{16}$/),
 		});
 		const args = buildAgentArgs(profile, "anthropic/claude", SESSION);
@@ -263,7 +263,7 @@ describe("subagents", () => {
 			"--model",
 			"anthropic/claude",
 			"--tools",
-			"read,grep,bash,file,agent,wait,archive,memory,skill,mcp,mcp__*",
+			"read,grep,bash,file,agent,notify,archive,memory,skill,mcp,mcp__*",
 		]);
 		expect(args).not.toContain("--append-system-prompt");
 	});
@@ -317,7 +317,7 @@ describe("subagents", () => {
 			"--session-id",
 			SESSION.id,
 			"--tools",
-			["bash", "file", "agent", "wait", "archive", "memory", "skill", "mcp", ...localResearchTools()]
+			["bash", "file", "agent", "notify", "archive", "memory", "skill", "mcp", ...localResearchTools()]
 				.map((name) => `+${name}`)
 				.join(","),
 			"--exclude-tools",

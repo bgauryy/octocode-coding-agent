@@ -43,27 +43,26 @@ describe("child cache monitoring and affinity", () => {
 		expect(childCacheLabel({ promptTokens: 0, cacheRead: 0, cacheWrite: 0 })).toContain("n/a cached");
 	});
 	it("separates prefixes that differ in tools, lean or read-only mode, or added MCP servers", () => {
-		const plan = { inTask: true, inline: false };
-		const base = prefixKey("researcher", "openai/model", plan, { tools: "+file,+agent" });
-		expect(prefixKey("researcher", "openai/model", plan, { tools: "+file,+agent" })).toBe(base);
-		expect(prefixKey("researcher", "openai/model", plan, { tools: "+file" })).not.toBe(base);
-		expect(prefixKey("researcher", "openai/model", plan, { tools: "+file,+agent", lean: true })).not.toBe(base);
-		expect(prefixKey("researcher", "openai/model", plan, { tools: "+file,+agent", readOnly: true })).not.toBe(base);
-		expect(prefixKey("researcher", "openai/model", plan, { tools: "+file,+agent", mcpServers: ["x"] })).not.toBe(base);
+		const base = prefixKey("researcher", "openai/model", { tools: "+file,+agent" });
+		expect(prefixKey("researcher", "openai/model", { tools: "+file,+agent" })).toBe(base);
+		expect(prefixKey("researcher", "openai/model", { tools: "+file" })).not.toBe(base);
+		expect(prefixKey("researcher", "openai/model", { tools: "+file,+agent", lean: true })).not.toBe(base);
+		expect(prefixKey("researcher", "openai/model", { tools: "+file,+agent", readOnly: true })).not.toBe(base);
+		expect(prefixKey("researcher", "openai/model", { tools: "+file,+agent", mcpServers: ["x"] })).not.toBe(base);
 		// Server order does not matter; the same set is the same prefix.
-		expect(prefixKey("researcher", "openai/model", plan, { tools: "+file,+agent", mcpServers: ["b", "a"] })).toBe(
-			prefixKey("researcher", "openai/model", plan, { tools: "+file,+agent", mcpServers: ["a", "b"] }),
+		expect(prefixKey("researcher", "openai/model", { tools: "+file,+agent", mcpServers: ["b", "a"] })).toBe(
+			prefixKey("researcher", "openai/model", { tools: "+file,+agent", mcpServers: ["a", "b"] }),
 		);
 		expect(base).not.toContain("+file");
 	});
 	it("groups children by prefix, across parents, without exposing task or session identifiers", () => {
-		const prefix = prefixKey("researcher", "openai/model", { inTask: true, inline: false });
+		const prefix = prefixKey("researcher", "openai/model");
 		const key = childPromptCacheKey(prefix);
 		expect(key).toHaveLength(63);
 		expect(key).not.toContain("researcher");
 		// One prefix is one group whichever session launched the child: a new parent's children read what earlier ones wrote.
 		expect(childPromptCacheKey(prefix)).toBe(key);
-		expect(childPromptCacheKey(prefixKey("coder", "openai/model", { inTask: true, inline: false }))).not.toBe(key);
+		expect(childPromptCacheKey(prefixKey("coder", "openai/model"))).not.toBe(key);
 		const env = { OCTOCODE_PROMPT_CACHE_KEY: "old" };
 		expect(subagentProcessEnv(undefined, env, { id: "child-a", promptCacheKey: key }).OCTOCODE_PROMPT_CACHE_KEY).toBe(
 			key,

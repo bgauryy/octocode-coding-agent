@@ -1,3 +1,4 @@
+import { sendCallbacks } from "./send-callbacks.ts";
 import type { FeatureContext } from "../../../core/features/index.ts";
 import { type MessageEnvelope, USER_SENDER } from "../../shared/messages.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
@@ -231,6 +232,7 @@ export async function sendMessage(
 		interrupt: options.interrupt === true,
 	};
 	const reply = options.replyTo !== undefined ? { replyTo: options.replyTo } : {};
+	const callbacks = sendCallbacks(db, from, options, replyRequired, text);
 	// Stored with controls shown as escapes: every reader (the model, the panel, other processes) gets text that cannot steer a terminal, and the evidence stays.
 	const stored = () => spilledMessage(visibleControls(text), from);
 	if (typeof targets === "string") {
@@ -274,7 +276,7 @@ export async function sendMessage(
 			await patiently(db, () => db.refs.closeQuestion(question, from), signal);
 			return { error: `${targets} Its question #${options.replyTo} is closed; nothing was sent.` };
 		}
-		const denied = (await check(to, text, options.replyTo, hookFlags)) ?? ready();
+		const denied = (await check(to, text, options.replyTo, hookFlags)) ?? ready() ?? callbacks.refusal([to]);
 		if (denied) return { error: denied };
 		const delivered = stored();
 		if (typeof delivered !== "string") return delivered;
@@ -284,9 +286,10 @@ export async function sendMessage(
 				() => db.refs.relay(from, parent, to, delivered, { replyRequired, ...reply }),
 				signal,
 			);
-			return id === undefined
-				? { error: `${targets} Your coordinator ${parent} left, so it could not be relayed. Nothing was sent.` }
-				: { sent: [to], id, relayed: parent };
+			if (id === undefined)
+				return { error: `${targets} Your coordinator ${parent} left, so it could not be relayed. Nothing was sent.` };
+			callbacks.sent(id, [to]);
+			return { sent: [to], id, relayed: parent };
 		}
 		const resumed = await resumeWith(
 			host,
@@ -301,7 +304,9 @@ export async function sendMessage(
 			text,
 			signal,
 		);
-		return resumed ? { sent: [to], ...resumed } : { error: finishedText(host, to) };
+		if (!resumed) return { error: finishedText(host, to) };
+		callbacks.sent(resumed.id, [to]);
+		return { sent: [to], ...resumed };
 	}
 	const refused = options.interrupt ? interruptRefusal(members, targets, from, to, scope) : undefined;
 	if (refused) return { error: refused };
@@ -315,7 +320,7 @@ export async function sendMessage(
 		const denied = await check(target.id, text, options.replyTo, hookFlags);
 		if (denied) return { error: denied };
 	}
-	const notReady = ready();
+	const notReady = ready() ?? callbacks.refusal(targets.map((target) => target.id));
 	if (notReady) return { error: notReady };
 	const delivered = stored();
 	if (typeof delivered !== "string") return delivered;
@@ -367,6 +372,7 @@ export async function sendMessage(
 					: working.has(recipient)
 						? "next-step"
 						: "queued-quiet";
+	callbacks.sent(id, sent);
 	if (from === USER_SENDER) host.mail.createdForUser(id, delivered, sent);
 	return {
 		sent,

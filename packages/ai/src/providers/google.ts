@@ -9,7 +9,15 @@ export function googleProvider(): Provider<"google-generative-ai"> {
 		id: "google",
 		name: "Google",
 		baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-		auth: { apiKey: envApiKeyAuth("Gemini API key", apiKeyEnvVars("google")) },
+		auth: {
+			apiKey: envApiKeyAuth(
+				"Gemini API key",
+				apiKeyEnvVars("google"),
+				undefined,
+				undefined,
+				"https://gemini-proxy.example.com/v1beta",
+			),
+		},
 		models: Object.values(GOOGLE_MODELS),
 		api: googleGenerativeAIApi(),
 	});

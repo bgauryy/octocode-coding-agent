@@ -29,7 +29,7 @@ export interface RelatedView {
 	/** Every ongoing item. */
 	ongoing(): Item[];
 	/** The sessions with an active `wait` on any of `refs`. */
-	watchers(refs: readonly string[]): backlog.ItemWatcher[];
+	watchers(refs: readonly string[], notifiedState?: string): backlog.ItemWatcher[];
 	/** The paths each live agent reserves. */
 	reservations(): Array<{ agent: string; paths: readonly string[] }>;
 }
@@ -77,7 +77,7 @@ export function related(change: BacklogChange, view: RelatedView): Related[] {
 		if (blocker) holder(blocker, "dependency");
 	}
 	if (ended || change.kind === "released" || change.kind === "note" || change.kind === "step")
-		for (const watcher of view.watchers([change.ref]))
+		for (const watcher of view.watchers([change.ref], ended ? change.kind : undefined))
 			found.push({ relation: "watcher", ref: change.ref, session: watcher.session });
 	const own = new Set([change.by, item?.assignee, change.assignee, change.beforeAssignee].filter(Boolean));
 	const seen = new Set<string>();

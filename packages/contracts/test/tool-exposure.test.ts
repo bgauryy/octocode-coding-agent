@@ -62,7 +62,7 @@ describe("tool exposure contract", () => {
 			{ kind: "native", tool: "web", pin: "deferred", scope: "global" },
 			{ kind: "native", tool: "backlogPlan", pin: null, scope: "global" },
 			{ kind: "native", tool: "memory", pin: "direct", scope: "global" },
-			{ kind: "native", tool: "wait", pin: "deferred", scope: "global" },
+			{ kind: "native", tool: "notify", pin: "deferred", scope: "global" },
 		])
 			expect(Value.Check(ToolPinCommandSchema, command), JSON.stringify(command)).toBe(true);
 	});

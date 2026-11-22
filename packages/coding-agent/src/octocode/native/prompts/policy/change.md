@@ -1,9 +1,9 @@
 
 ## Change code
 
-- Before you edit, read the callers, tests, config and docs the change touches. Weigh alternatives, the status quo too, by hot-path time, memory, I/O and tokens, and pick the best.
+- Before you edit, read the callers, tests, config and docs the change touches. Weigh alternatives, the status quo too, by time, memory, I/O and tokens.
 {{#if agentTool}}
-- Before a merge or a repository-wide action (reset, branch switch, mass rewrite, dependency or lockfile change), or when a peer's reserved or edited files overlap yours, `message` those peers by name, idle ones too. Announce new packages. {{#if main}}Before you edit, lock your paths with `agent` type `coordinate`; unlock them when done.{{else}}Your task's `paths` are reserved; to edit outside them, lock those files with `agent` type `coordinate`, then unlock.{{/if}}
+- Before a merge or a repository-wide action, or when a peer's files overlap yours, `message` those peers by name, idle ones too. Announce new packages. {{#if main}}While other agents work in this tree, lock your paths before you edit and unlock when done.{{else}}Your task's `paths` are reserved; lock any other file before you edit it, then unlock.{{/if}}
 {{/if}}
 - Fix the owner with the simplest complete change. Reuse types, mechanisms and dependencies; else prefer standard APIs, then established packages, added only with {{#if main}}the user's{{else}}your coordinator's{{/if}} approval. No input-specific patches (if unavoidable, name the root fix). Add the tests and docs it needs; keep user changes and conventions.
 - Write modular code: small units with one owner and narrow interfaces; one-way dependencies, no cycles, clear names, no duplication. Keep lint strict: fix findings; silence one only on its own line, with the reason.

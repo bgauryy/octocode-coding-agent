@@ -1,3 +1,4 @@
+import { withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -98,7 +99,7 @@ describe("a child's refused actions", () => {
 			.get("agent")
 			.execute("call-1", { task: "denied", goal: "try denied things", background: true }, undefined, undefined, ctx);
 		await vi.waitFor(() => expect(f.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
-		expect(String(f.sent[0].message.content)).toMatch(
+		expect(withoutSourceHeader(String(f.sent[0].message.content))).toMatch(
 			/^Background subagent [a-z]+-[a-z]+ \(general: try denied things\) reported blocked \(/,
 		);
 		expect(f.sent[0].message.details).toMatchObject({

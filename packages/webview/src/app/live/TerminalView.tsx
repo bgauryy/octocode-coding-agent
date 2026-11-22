@@ -1,4 +1,5 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useState } from "react";
+import { TextFold } from "../ui/LongText.tsx";
 import { useCopy, useElapsed, useStickToBottom } from "../hooks.ts";
 import { plural, span } from "../model/format.ts";
 import { ArrowDownIcon, CheckIcon, CopyIcon, TerminalIcon, WrapIcon } from "../ui/icons.tsx";
@@ -12,11 +13,9 @@ import type { TerminalEntry } from "./model.ts";
 export function TerminalTranscript({ entries }: { entries: readonly TerminalEntry[] }) {
 	const { ref: log, atBottom, jump } = useStickToBottom<HTMLOListElement>(entries);
 	const [wrap, setWrap] = useState(true);
-	const transcript = useMemo(
-		() => entries.map((entry) => `$ ${entry.command}${entry.output ? `\n${entry.output}` : ""}`).join("\n\n"),
-		[entries],
+	const [copied, copy] = useCopy(() =>
+		entries.map((entry) => `$ ${entry.command}${entry.output ? `\n${entry.output}` : ""}`).join("\n\n"),
 	);
-	const [copied, copy] = useCopy(transcript);
 	const running = entries.filter((entry) => entry.status === "running").length;
 
 	return (
@@ -93,7 +92,11 @@ const TerminalLine = memo(function TerminalLine({ entry }: { entry: TerminalEntr
 					{running ? `running · ${span(elapsed)}` : entry.status}
 				</span>
 			</div>
-			{entry.output && <pre className="terminal-output">{entry.output}</pre>}
+			{entry.output && (
+				<TextFold text={entry.output} label="Output">
+					<pre className="terminal-output">{entry.output}</pre>
+				</TextFold>
+			)}
 		</li>
 	);
 });

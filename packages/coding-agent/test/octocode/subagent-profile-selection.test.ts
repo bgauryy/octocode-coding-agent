@@ -117,7 +117,7 @@ describe("profile selectors against native Octocode tool exposure", () => {
 			}));
 			const active = new Set(session.getActiveToolNames());
 			expect([...active]).toEqual(
-				expect.arrayContaining(["file", "agent", "wait", "archive", "memory", ...localResearchTools()]),
+				expect.arrayContaining(["file", "agent", "notify", "archive", "memory", ...localResearchTools()]),
 			);
 			if (fields.tools === "web,mcp__example__lookup") {
 				expect(active.has("mcp__example__lookup")).toBe(true);
@@ -135,7 +135,7 @@ describe("profile selectors against native Octocode tool exposure", () => {
 				defaults?.length === 1 &&
 				defaults[0] === "read"
 			) {
-				expect([...active]).toEqual(expect.arrayContaining(["agent", "wait", "archive", "memory"]));
+				expect([...active]).toEqual(expect.arrayContaining(["agent", "notify", "archive", "memory"]));
 				// Without a `-bash` entry the child gets the shell even when its parent's defaults have none.
 				expect(active.has("bash")).toBe(fields.tools === undefined);
 			}
@@ -213,7 +213,7 @@ describe("bundled roles", () => {
 		expect(lean?.lean).toBe(true);
 		for (const tool of ["bash", "file"]) expect(profileSelectsTool(lean, tool, defaults), tool).toBe(true);
 		expect(profileSelectsTool(lean, "agent", defaults), "agent").toBe(true);
-		for (const tool of ["wait", "archive", "memory", "skill", "mcp"])
+		for (const tool of ["notify", "archive", "memory", "skill", "mcp"])
 			expect(profileSelectsTool(lean, tool, defaults), tool).toBe(false);
 	});
 

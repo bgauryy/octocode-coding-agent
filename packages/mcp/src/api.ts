@@ -19,6 +19,7 @@ export {
 	type McpToolSwitchView,
 	type McpToolWriteScope,
 } from "./host.ts";
+export type { McpCallsPort } from "./host/calls.ts";
 export type { StdioWrappedLaunch } from "./client/transports/stdio-launch.ts";
 export { getMcpToolsPage } from "./tools-page.ts";
 export { loadMcpCommand } from "./cli.lazy.ts";

@@ -168,7 +168,7 @@ export interface ContextActions {
 	isProjectTrusted: () => boolean;
 	getSignal: () => AbortSignal | undefined;
 	getTurnId?: () => string | undefined;
-	abort: (reason?: "interrupted" | "internal") => void;
+	abort: (reason?: "interrupted" | "peer" | "internal") => void;
 	failRun?: (reason: string) => void;
 	hasPendingMessages: () => boolean;
 	isMessageQueued: (details: object) => boolean;

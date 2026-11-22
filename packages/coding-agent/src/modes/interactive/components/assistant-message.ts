@@ -219,12 +219,23 @@ export class AssistantMessageComponent extends Container {
 		if (!isStreaming) this.rebuildContent();
 	}
 
+	private addResponse(id: string, body: Component): void {
+		const response = new LongResponse(
+			body,
+			this.responseOverrides.get(id) ?? this.expanded,
+			(expanded) => this.responseOverrides.set(id, expanded),
+			this.isStreaming,
+			this.contentOptions.keepScrollbackOnCollapse,
+		);
+		this.responses.push(response);
+		this.contentContainer.addChild(response);
+	}
+
 	/** Intermediate deltas update state; only a displayed frame or a completed message rebuilds its presentation. */
 	private rebuildContent(): void {
 		if (!this.contentDirty || !this.lastMessage) return;
 		this.contentDirty = false;
 		const message = this.lastMessage;
-		const isStreaming = this.isStreaming;
 		const blocks = message.content ?? [{ id: `${message.id}:text`, type: "text" as const, text: message.text }];
 		this.contentContainer.clear();
 		this.responses.length = 0;
@@ -243,22 +254,20 @@ export class AssistantMessageComponent extends Container {
 				// Assistant text messages with no background - trim the text
 				// Set paddingY=0 to avoid extra spacing before tool executions
 				const text = contentText(content, this.contentOptions.readAsset).trim();
-				const response = new LongResponse(
-					this.markdownBlock(content.id, text),
-					this.responseOverrides.get(content.id) ?? this.expanded,
-					(expanded) => this.responseOverrides.set(content.id, expanded),
-					isStreaming,
-					this.contentOptions.keepScrollbackOnCollapse,
-				);
-				this.responses.push(response);
-				this.contentContainer.addChild(response);
-				for (const annotation of content.annotations ?? []) {
+				const markdown = this.markdownBlock(content.id, text);
+				if (!content.annotations?.length) {
+					this.addResponse(content.id, markdown);
+					continue;
+				}
+				const body = new Container();
+				body.addChild(markdown);
+				for (const annotation of content.annotations) {
 					const source = [annotation.title, annotation.url ?? annotation.fileId ?? annotation.text]
 						.filter(Boolean)
 						.join(" · ");
-					if (source)
-						this.contentContainer.addChild(new Text(theme.fg("dim", sanitizeTerminalText(source)), this.outputPad, 0));
+					if (source) body.addChild(new Text(theme.fg("dim", sanitizeTerminalText(source)), this.outputPad, 0));
 				}
+				this.addResponse(content.id, body);
 			} else if (content.type === "thinking") {
 				const thinkingBlocks: string[] = [];
 				const spanIds: string[] = [];
@@ -356,7 +365,7 @@ export class AssistantMessageComponent extends Container {
 		} else if (message.stopReason === "error" && !isAbortWording(message.errorMessage)) {
 			const errorMsg = sanitizeTerminalText(message.errorMessage || "Unknown error");
 			this.contentContainer.addChild(new Spacer(1));
-			this.contentContainer.addChild(new Text(theme.fg("error", `Error: ${errorMsg}`), this.outputPad, 0));
+			this.addResponse(`${message.id}:error`, new Text(theme.fg("error", `Error: ${errorMsg}`), this.outputPad, 0));
 		} else if (!hasToolCalls && (message.stopReason === "aborted" || message.stopReason === "error")) {
 			// A tool row that already says `aborted` is the one statement of the interrupt.
 			this.interruptShownByTool ??= toolInterruptShown();

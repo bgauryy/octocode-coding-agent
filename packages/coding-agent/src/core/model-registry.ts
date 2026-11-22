@@ -28,6 +28,7 @@ import type {
 } from "@octocodeai/octocode-ai";
 import type { CachePreferenceLayer, CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import type { ModelRuntime } from "./model-runtime.ts";
+import type { ModelOrigin } from "./model-runtime/provider-layers.ts";
 import type { CredentialKind, ProviderKind } from "./model-runtime/catalog.ts";
 import type { AuthStatus, ProviderConfigInput } from "./provider-composer.ts";
 import type { VirtualModelDefinition } from "./virtual-models.ts";
@@ -70,6 +71,10 @@ export class ModelRegistry {
 
 	getAll(): Model<Api>[] {
 		return [...this.runtime.getModels()];
+	}
+
+	isModelHidden(model: Pick<Model<Api>, "provider" | "id">): boolean {
+		return this.runtime.isModelHidden(model);
 	}
 
 	getAvailable(): Model<Api>[] {
@@ -222,6 +227,10 @@ export class ModelRegistry {
 	/** False for a plan whose vendor allows only interactive use: automatic background routing skips it. */
 	allowsUnattendedUse(provider: string): boolean {
 		return this.runtime.allowsUnattendedUse(provider);
+	}
+
+	getModelOrigin(model: Model<Api>): ModelOrigin {
+		return this.runtime.getModelOrigin(model);
 	}
 
 	isUsingOAuth(model: Model<Api>): boolean {

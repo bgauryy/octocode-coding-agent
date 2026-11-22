@@ -139,7 +139,7 @@ export function createMcpRefreshSetup(harnesses: Harness[]) {
 				createMcpFeature({
 					loadConfig: () => ({ servers, errors: [] }),
 					startupWaitMs: 10,
-					// `/configuration enable|disable mcp:<name>` change the session's servers; nothing is written to a real mcp.json.
+					// `/settings enable|disable mcp:<name>` change the session's servers; nothing is written to a real mcp.json.
 					updateConfig: () => {},
 					// These cases pin the thin-declaration presentations; `declared`, the setting's default, has its own tests.
 					presentation: options.presentation ?? "compact",
@@ -158,7 +158,7 @@ export function createMcpRefreshSetup(harnesses: Harness[]) {
 		if (options.sessionManager)
 			harness.session.agent.state.messages = options.sessionManager.buildSessionContext().messages;
 		await harness.session.bindFeatures({ uiContext: createTestUiContext() });
-		/** What `/configuration enable|disable mcp:<name>` calls: the MCP owner's live switch of this session. */
+		/** What `/settings enable|disable mcp:<name>` calls: the MCP owner's live switch of this session. */
 		const switchMcp = (name: string, enabled: boolean) => getMcpSwitch(events!)!({ name, enabled, inProject: false });
 		const callable = () => harness.session.getCallableToolNames();
 		await vi.waitFor(() => expect(callable()).toContain("mcp__docs__search"));

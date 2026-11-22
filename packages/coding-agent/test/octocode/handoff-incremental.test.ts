@@ -93,6 +93,38 @@ describe("incremental report receipts", () => {
 		}
 	});
 
+	it("neither re-queues nor re-sends a delivered report whose send is rejected, even when it is added again", async () => {
+		vi.useFakeTimers();
+		const fake = fakeHost();
+		const send = vi.fn(() => Promise.reject(new Error("accepted, then rejected")));
+		fake.api.session.sendMessage = send;
+		const entries: SessionEntry[] = [];
+		const queue = new ReportQueue(fake.api);
+		queue.start({ getSessionFile: () => undefined, getEntries: () => entries });
+		queue.pendingDir = tmp();
+		const report: Report = {
+			reportId: "r1",
+			content: "report",
+			details: { id: "child", status: "done", summary: "Done" },
+			wake: true,
+		};
+		try {
+			queue.add(report);
+			entries.push(entry("receipt", AGENT_RESULT_TYPE, { reportId: "r1" }));
+			queue.flush();
+			await vi.advanceTimersByTimeAsync(60_000);
+			queue.add({ ...report });
+			queue.retryExhausted();
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(send).toHaveBeenCalledTimes(1);
+			expect(queue.pendingIds().size).toBe(0);
+			expect(fs.readdirSync(queue.pendingDir)).toEqual([]);
+		} finally {
+			queue.persist();
+			vi.useRealTimers();
+		}
+	});
+
 	it("skips a malformed transcript line that mentions a receipt and still reads the receipt after it", async () => {
 		vi.useFakeTimers();
 		const fake = fakeHost();

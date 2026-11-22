@@ -1,4 +1,5 @@
 import http from "node:http";
+import { TERMINAL_COMMAND_ROUTE } from "@octocodeai/octocode-contracts/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { workspaces } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
@@ -112,9 +113,9 @@ describe("daemon board writes", () => {
 		const { server, call } = await daemon();
 		const writable = async (token: string) =>
 			(await (await call(token, "/api/access")).json()) as { writable: boolean };
-		expect(await writable(server.token)).toEqual({ writable: true });
-		expect(await writable(server.remoteToken)).toEqual({ writable: true });
-		expect(await writable(server.viewToken)).toEqual({ writable: false });
+		expect(await writable(server.token)).toEqual({ writable: true, terminalCommands: true });
+		expect(await writable(server.remoteToken)).toEqual({ writable: true, terminalCommands: false });
+		expect(await writable(server.viewToken)).toEqual({ writable: false, terminalCommands: false });
 		expect((await call(undefined, "/api/access")).status).toBe(401);
 	});
 
@@ -181,6 +182,12 @@ describe("daemon board writes", () => {
 			await new Promise((resolve) => setTimeout(resolve, 50));
 		}
 		expect(server.registry.attached).toBe(1);
+		const commands = `/s/sess-1${TERMINAL_COMMAND_ROUTE}`;
+		for (const token of [server.remoteToken, server.viewToken]) {
+			expect((await call(token, commands)).status).toBe(403);
+			expect((await call(token, commands, { action: "list" })).status).toBe(403);
+		}
+		expect((await call(server.token, commands, { action: "shell" })).status).toBe(400);
 		const path = "/s/sess-1/api/backlogs";
 		const added = await call(server.token, path, { command: "task.add", goal: "Step in the session" });
 		expect(added.status).toBe(200);

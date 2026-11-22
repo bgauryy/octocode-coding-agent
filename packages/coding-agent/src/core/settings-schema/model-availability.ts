@@ -19,6 +19,12 @@ export const ModelAvailabilitySettingsProperties = {
 				"Provider ids turned off in /providers. Their models leave the model selector, cycling and subagent routing; saved credentials stay. Global only.",
 		}),
 	),
+	hiddenModels: Type.Optional(
+		Type.Record(Type.String(), Type.Array(Type.String()), {
+			description:
+				"Per provider, the model ids hidden by unticking them on its /providers page or the web provider page. Hidden models leave the model selector, cycling and subagent routing; a provider with no entry shows all its models. Global only.",
+		}),
+	),
 	providerSources: Type.Optional(
 		Type.Object(
 			{

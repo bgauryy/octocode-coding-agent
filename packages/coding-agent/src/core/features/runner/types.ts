@@ -141,7 +141,7 @@ export interface RunnerBindings {
 	getTurnIdFn: () => string | undefined;
 	getSignalFn: () => AbortSignal | undefined;
 	waitForIdleFn: () => Promise<void>;
-	abortFn: (reason?: "interrupted" | "internal") => void;
+	abortFn: (reason?: "interrupted" | "peer" | "internal") => void;
 	failRunFn: (reason: string) => void;
 	hasPendingMessagesFn: () => boolean;
 	isMessageQueuedFn: (details: object) => boolean;

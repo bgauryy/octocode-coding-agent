@@ -157,7 +157,7 @@ async function run(args: string, ctx: CommandContext, store: MemoryStore, deps: 
 	if (verb === "auto")
 		return say(
 			ctx,
-			`Automatic recall is ${autoStatus(deps)}. Change it with /configuration set memory.recall off|main|all (add --local for this project).`,
+			`Automatic recall is ${autoStatus(deps)}. Change it with /settings set memory.recall off|main|all (add --local for this project).`,
 			"info",
 		);
 	if (verb === "last") {

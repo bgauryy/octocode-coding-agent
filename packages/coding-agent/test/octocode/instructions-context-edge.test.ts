@@ -25,7 +25,9 @@ describe("instruction context edges", () => {
 		expect(systemPromptSectionSpec("harnesses")).toMatchObject({ name: "harnesses", tier: "session" });
 		const order = SYSTEM_PROMPT_SECTIONS.map((spec) => spec.name);
 		expect(order.indexOf("harnesses")).toBe(order.indexOf("role") + 1);
-		expect(order.indexOf("cwd")).toBe(order.indexOf("harnesses") + 1);
+		// `children` closes the session tier, so its late arrival keeps the sections before it cached.
+		expect(order.indexOf("children")).toBe(order.indexOf("harnesses") + 1);
+		expect(order.indexOf("cwd")).toBe(order.indexOf("children") + 1);
 		expect(Object.keys(sections).slice(-6)).toEqual([
 			"role",
 			"harnesses",

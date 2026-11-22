@@ -23,6 +23,21 @@ beforeEach(() => {
 	fs.mkdirSync(path.join(cwd, ".octocode"), { recursive: true });
 	// Its own agent database: the suite's default one trusts the whole temp folder, which would trust every workspace here.
 	vi.stubEnv("OCTOCODE_HOME", path.join(root, "home"));
+	fs.writeFileSync(
+		path.join(agentDir, "models.json"),
+		JSON.stringify({
+			providers: Object.fromEntries(
+				[
+					["local", "qwen"],
+					["global", "first"],
+					["workspace", "second"],
+				].map(([provider, model]) => [
+					provider,
+					{ baseUrl: "http://localhost:1/v1", api: "openai-completions", models: [{ id: model }] },
+				]),
+			),
+		}),
+	);
 });
 afterEach(async () => {
 	vi.unstubAllEnvs();
@@ -57,6 +72,22 @@ describe("writeConfigSetting", () => {
 		expect(readJson(globalFile())).toEqual({ theme: "dark", defaultProvider: "local", defaultModel: "qwen" });
 		await writeConfigSetting({ key: "modelDefault", scope: "global", value: null }, { agentDir });
 		expect(readJson(globalFile())).toEqual({ theme: "dark" });
+	});
+
+	it("refuses an unknown provider or model with the closest known ones, and writes nothing", async () => {
+		const pair = (provider: string, model: string) =>
+			writeConfigSetting({ key: "modelDefault", scope: "global", value: { provider, model } }, { agentDir });
+		await expect(pair("locl", "qwen")).rejects.toMatchObject({
+			status: 400,
+			message: expect.stringContaining("local"),
+		});
+		await expect(pair("local", "qwne")).rejects.toMatchObject({
+			status: 400,
+			message: expect.stringContaining("qwen"),
+		});
+		expect(fs.existsSync(globalFile())).toBe(false);
+		await pair("local", "qwen");
+		expect(readJson(globalFile())).toEqual({ defaultProvider: "local", defaultModel: "qwen" });
 	});
 
 	it("refuses untrusted or empty paired selections without changing either field", async () => {

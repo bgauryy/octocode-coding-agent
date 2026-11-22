@@ -23,7 +23,7 @@ function parsePairs(option: string, pairs: string[] | undefined, error: (line: s
 	return record;
 }
 
-/** A server definition read from `add` arguments: what `octocode mcp add` and `/configuration add mcp` both write. */
+/** A server definition read from `add` arguments: what `octocode mcp add` and `/settings add mcp` both write. */
 export interface ParsedMcpAdd {
 	name: string;
 	/** Validated definition: `{ url, headers?, oauth? }` or `{ command, args?, env?, cwd? }`, with `exposure` and `description`. */

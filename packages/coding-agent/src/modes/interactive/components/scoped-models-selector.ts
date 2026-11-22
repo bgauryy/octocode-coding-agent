@@ -41,6 +41,9 @@ interface ModelsConfig {
 	refreshStatus?: string;
 	/** Each provider's kind for its badge (`ModelRuntime.getProviderKind`); without it the badge names the provider only. */
 	providerKind?: (provider: string) => string;
+	/** The heading and the line under it; the defaults describe the Ctrl+P shortcut list. */
+	title?: string;
+	subtitle?: string;
 	/** Terminal rows, for the list's height; without it the list shows eight rows. */
 	rows?: number;
 }
@@ -116,8 +119,9 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		syncEmpty(this.list, "models");
 
 		this.addChild(new DynamicBorder());
-		this.addChild(new Text(theme.fg("accent", theme.bold("Model shortcuts")), 1, 0));
-		this.addChild(new Text(theme.fg("muted", `Session-only. ${keyText("app.models.save")} saves globally.`), 1, 0));
+		this.addChild(new Text(theme.fg("accent", theme.bold(plainText(config.title ?? "Model shortcuts"))), 1, 0));
+		const subtitle = config.subtitle ?? `Session-only. ${keyText("app.models.save")} saves globally.`;
+		this.addChild(new Text(theme.fg("muted", plainText(subtitle)), 1, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(this.list);
 		this.addChild(new LinesView(() => this.selectedLines()));

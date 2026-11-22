@@ -4,7 +4,7 @@ import { currentToolRoles } from "../../../../mcp/src/api.ts";
 import type { RegisteredTool, ToolDefinition } from "../features/index.ts";
 import { BUILTIN_PATH_PREFIX, createSyntheticSourceInfo } from "../source-info.ts";
 import type { ToolDefinitionEntry } from "./types.ts";
-import { ROLE_INVARIANT_TOOLS, ROLE_VARIANT_ORDER } from "../tool-roles.ts";
+import { ROLE_INVARIANT_TOOLS, ROLE_VARIANT_ORDER, TAIL_TOOLS } from "../tool-roles.ts";
 
 function normalizePromptSnippet(text: string | undefined): string | undefined {
 	if (!text) return undefined;
@@ -109,7 +109,7 @@ const rankIn = (list: readonly string[], name: string) => {
 /**
  * The order tools are declared in, so that sessions and children of one configuration declare the same bytes (the tool
  * declarations lead the cached prompt prefix): role-invariant tools in a fixed order, then other tools sorted by name, then MCP tools (namespace `mcp__<server>`) sorted by namespace and name, with servers whose entry gives tools
- * roles first (every agent that has MCP tools gets those), then role-variant tools (declared by `roleVariant`, in `ROLE_VARIANT_ORDER`, then by name). MCP registration and activation
+ * roles first (every agent that has MCP tools gets those), then role-variant tools (declared by `roleVariant`, in `ROLE_VARIANT_ORDER`, then by name), then `TAIL_TOOLS` (`skill`). MCP registration and activation
  * order follows connection timing, which would otherwise change the declared tools, and so the cached prefix, between
  * sessions of one configuration. The benefit is stability across sessions and reuse between siblings of one profile,
  * and, through the breakpoint at `findToolCacheBoundary` (`tool-roles.ts`), between a parent and its children and between roles.
@@ -121,12 +121,14 @@ export function orderToolNames(
 ): string[] {
 	const first: Array<{ name: string; rank: number }> = [];
 	const last: Array<{ name: string; rank: number }> = [];
+	const tail: Array<{ name: string; rank: number }> = [];
 	const others: string[] = [];
 	const mcp: Array<{ name: string; namespace: string }> = [];
 	for (const name of new Set(names)) {
 		const invariant = rankIn(ROLE_INVARIANT_TOOLS, name);
 		const namespace = namespaceOf(name);
 		if (invariant !== undefined) first.push({ name, rank: invariant });
+		else if (rankIn(TAIL_TOOLS, name) !== undefined) tail.push({ name, rank: rankIn(TAIL_TOOLS, name) ?? 0 });
 		else if (isRoleVariant(name))
 			last.push({ name, rank: rankIn(ROLE_VARIANT_ORDER, name) ?? ROLE_VARIANT_ORDER.length });
 		else if (namespace?.startsWith("mcp__")) mcp.push({ name, namespace });
@@ -145,5 +147,6 @@ export function orderToolNames(
 		...others.sort(compareText),
 		...mcp.map((tool) => tool.name),
 		...last.sort(byRank).map((tool) => tool.name),
+		...tail.sort(byRank).map((tool) => tool.name),
 	];
 }

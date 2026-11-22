@@ -91,7 +91,7 @@ const referenceArtifacts: readonly ReferenceArtifact[] = [
 			{
 				heading: "Providers",
 				intro:
-					"Each key under `providers` is a provider ID. A built-in provider ID changes that provider. Any other ID adds a provider, which needs `baseUrl` and an `api` at provider or model level.",
+					"Each key under `providers` is a provider ID. `models.json` defines custom providers: each ID adds a provider, which needs `baseUrl` and an `api` at provider or model level. An official provider ID (such as `anthropic` or `amazon-bedrock`) is refused with a message and the other providers in the file still load; rename the entry for a custom endpoint, and set an official provider's host or key in `/providers`. The one entry an official ID keeps is `modelOverrides` limited to `compat`, `contextWindow`, `maxTokens` and `inputLimits`.",
 				schema: ModelsJsonSchemas.provider,
 				links: { models: "#models", modelOverrides: "#model-overrides", compat: "#compatibility" },
 			},

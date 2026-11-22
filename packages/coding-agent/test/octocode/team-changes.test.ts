@@ -158,6 +158,7 @@ describe("recent changes by agent", () => {
 		expect(limited.split("\n").filter((line) => line.startsWith("- "))).toHaveLength(1);
 		expect(limited).toContain("lib/three.ts");
 		expect(limited).toMatch(/2 more; raise limit/);
+		await expect(changes(b, { paths: ["../elsewhere/"] })).rejects.toThrow(/outside it: \.\.\/elsewhere\//);
 		expect(text(await changes(b, { paths: ["nothing/"] }))).toBe(
 			"No agent changed files under nothing/ in the last 60m. Files changed outside agents (you, git, scripts, bash commands whose writes cannot be named) are not tracked: search files by modification time for those.",
 		);

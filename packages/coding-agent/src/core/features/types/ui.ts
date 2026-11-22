@@ -51,8 +51,22 @@ export interface AskView {
 	timeoutSeconds?: number;
 }
 
-/** How a custom dialog is answered by a remote client (see `SessionUI.custom`). */
-export interface RemoteAnswer<T> {
+/**
+ * How a custom dialog is answered by a remote client (see `SessionUI.custom`): by one choice or text, or, when it
+ * carries `questions`, by one reply per question (a batch or a multi-select).
+ */
+export type RemoteAnswer<T> = RemoteChoice<T> | RemoteQuestions;
+
+/** A dialog of typed questions: the client draws them and answers with `replies`, checked against them. */
+interface RemoteQuestions {
+	title: string;
+	questions: readonly Question[];
+	/** A client has started answering: stop the countdown the dialog runs, if any. */
+	hold?(): void;
+}
+
+/** A dialog answered by one of its options or by text. */
+interface RemoteChoice<T> {
 	title: string;
 	/** The choices a client may send; each must be answered by `answer({ choice })`. */
 	options: string[];

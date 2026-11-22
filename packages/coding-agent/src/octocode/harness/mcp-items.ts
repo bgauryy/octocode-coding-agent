@@ -4,7 +4,7 @@ import type { InventoryItem } from "../../core/extensibility/inventory-types.ts"
 
 /**
  * One `mcp:<name>` row per MCP server in the session's registry snapshot, worded by the MCP owner's row formatter
- * (`/mcp list` and `/configuration list mcp` use the same facts): `Core · connected · 14 tools · direct · every agent · built in`.
+ * (`/mcp list` and `/settings list mcp` use the same facts): `Core · connected · 14 tools · direct · every agent · built in`.
  * The MCP owner keeps its own `enabled` setting (in the server's `mcp.json` or a project override) and applies a switch at
  * once, so these rows carry no `toggles` key.
  */

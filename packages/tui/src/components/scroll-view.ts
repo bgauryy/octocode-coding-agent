@@ -73,6 +73,11 @@ export class ScrollView extends Container {
 		return this.currentScrollTop;
 	}
 
+	/** Content extent in the same coordinate system as scrollTop, including measurements since the last paint. */
+	get scrollHeight(): number {
+		return this.contentHeight;
+	}
+
 	get isFollowingEnd(): boolean {
 		return this.followingEnd;
 	}

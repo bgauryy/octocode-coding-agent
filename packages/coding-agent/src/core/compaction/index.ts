@@ -3,6 +3,7 @@
  */
 
 export * from "./bounded-summary.ts";
+export * from "./boundary-stop.ts";
 export * from "./branch-summarization.ts";
 export * from "./checkpoint.ts";
 export * from "./compaction.ts";

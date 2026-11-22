@@ -19,6 +19,7 @@ import type {
 } from "../types.ts";
 import { EVENT_KINDS } from "../bus/events.ts";
 import { isUserBashEventResult } from "./event-handlers.ts";
+import { withinShutdownDeadline } from "./shutdown-deadline.ts";
 import type {
 	BoundaryBaseEvent,
 	BoundaryDispatchResult,
@@ -105,7 +106,11 @@ export async function dispatchEvent<TEvent extends RunnerEmitEvent>(
 								branchEntries: structuredClone(event.branchEntries),
 							}
 						: event;
-				const handlerResult = await handler(observedEvent, ctx);
+				const running = handler(observedEvent, ctx);
+				const handlerResult =
+					event.type === "session_shutdown"
+						? await withinShutdownDeadline(Promise.resolve(running), ext.path, (error) => host.emitError(error))
+						: await running;
 				if (observing) continue;
 
 				if (isSessionBeforeEvent(event) && handlerResult) {

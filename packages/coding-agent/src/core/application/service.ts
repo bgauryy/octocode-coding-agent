@@ -1,3 +1,4 @@
+import { terminalCommandsFor } from "./terminal-commands.ts";
 import { randomUUID } from "node:crypto";
 import {
 	type ApplicationCommand,
@@ -68,6 +69,10 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		this.delivery.notify();
 	}
 
+	/** Registered by the interactive host for its local workspace page. */
+	get terminalCommands() {
+		return terminalCommandsFor(this.session);
+	}
 	private receiptStore?: ApplicationReceiptStore;
 	private readonly recording = new Map<string, RecordingCommand>();
 	setReceiptStore(store: ApplicationReceiptStore): void {

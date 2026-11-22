@@ -4,7 +4,7 @@ import type { Theme } from "../../../theme/theme.ts";
 import type { WorkRow } from "../../shared/running-work.ts";
 import { needsYou } from "./attention.ts";
 import { type Finished, panelBudget } from "./compact.ts";
-import { peers as peerSessions, roster } from "./roster.ts";
+import { keepRows, peers as peerSessions, roster } from "./roster.ts";
 import { agentLines, type Detail, frame, gridRows, moreLine, peerLines, rootLines } from "./rows.ts";
 import type { PanelEntry } from "./state.ts";
 import { sentMessages } from "./traffic.ts";
@@ -14,7 +14,7 @@ import { type Marks, workRows } from "./work.ts";
 const MAX_AGENTS = 6;
 const MAX_PEERS = 2;
 
-/** The marks of work rows: the state light the agents' rows use, breathing while the work runs; a timer's holds still. */
+/** The marks of work rows: the state light the agents' rows use, a spinner while the work runs; a timer's holds still. */
 const workMarks = (theme: Theme, now: number): Marks => ({
 	live: stateMark(theme, "running", { now, light: true }),
 	waiting: stateMark(theme, "waiting", { now, light: true, since: 0 }),
@@ -93,7 +93,8 @@ export function widgetRows(
 			})),
 		);
 		const head = rootLines(f, grid.root, step);
-		const hidden = tree.slice(agents.length);
+		const listed = new Set(agents);
+		const hidden = tree.filter((entry) => !listed.has(entry));
 		const more = hidden.length > 0 ? [moreLine(hidden, now, theme, width)] : [];
 		const peerBlock = peerLines(f, grid.peers, peerMembers.length - grid.peers.length, step.peers === "one");
 		const none = (lines: string[]) => lines.map(() => undefined);
@@ -107,14 +108,14 @@ export function widgetRows(
 		owners: [...block.owners, ...workBlock.map(() => undefined)],
 	});
 	const agentBudget = Math.max(3, budget - workBlock.length);
-	const shown = tree.slice(0, MAX_AGENTS);
+	const shown = keepRows(tree, MAX_AGENTS, now);
 	for (const step of STEPS) {
 		const block = build(step, shown);
 		if (block.lines.length <= agentBudget) return withWork(block);
 	}
 	// Few terminal rows: one grid row per agent, as many as fit beside this session's row and a "+N more" row; the lines
 	// of agents worth a short terminal stay while they fit, their `↳` reasons longest.
-	const fits = tree.length + 1 <= agentBudget ? tree : tree.slice(0, Math.max(1, agentBudget - 2));
+	const fits = tree.length + 1 <= agentBudget ? tree : keepRows(tree, Math.max(1, agentBudget - 2), now);
 	const last = STEPS[STEPS.length - 1];
 	const tail: Step[] = [
 		{ ...last, peers: "none" },

@@ -58,4 +58,4 @@ Octocode expands the template before the text reaches the agent. Arguments follo
 | `.octocode/prompts/`                                                  | This project  | Loads only in a trusted folder; review a project's templates before trusting it |
 | `prompts` setting, `--prompt-template` paths, [packages](packages.md) | As configured | Can select nested Markdown files and globs                                      |
 
-`/configuration enable|disable prompt:<name>` switches one template; `--no-prompt-templates` disables discovery for a run. Locations and precedence: [configuration](configuration.md#where-each-configuration-belongs).
+`/settings enable|disable prompt:<name>` switches one template; `--no-prompt-templates` disables discovery for a run. Locations and precedence: [configuration](configuration.md#where-each-configuration-belongs).

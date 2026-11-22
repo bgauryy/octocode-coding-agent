@@ -17,10 +17,19 @@ import { processStartAsync } from "../packages/common/src/process-start.ts";
  * never wait for their own parent. `OCTOCODE_RUN_LOCK=off` skips the lock. The record names the agent, backlog item and
  * background job the `bash` tool set in the environment of the run (`OCTOCODE_AGENT_NAME`, `OCTOCODE_ITEM`,
  * `OCTOCODE_JOB_ID`), so a waiter sees who holds the lock, not only a pid.
+ *
+ * Before it takes the lock, a run waits while the host's load per core is above `OCTOCODE_RUN_LOCK_LOAD` (default 2; 0
+ * turns the wait off), for at most `OCTOCODE_RUN_LOCK_LOAD_WAIT` seconds (default 300), then goes on. The reading is the
+ * kernel's one-minute load average, the figure the machine monitor samples.
  */
 
 export const RUN_LOCK_ENV = "OCTOCODE_RUN_LOCK";
 export const RUN_LOCK_HELD_ENV = "OCTOCODE_RUN_LOCK_HELD";
+
+const LOAD_LIMIT_ENV = "OCTOCODE_RUN_LOCK_LOAD";
+const LOAD_WAIT_ENV = "OCTOCODE_RUN_LOCK_LOAD_WAIT";
+const DEFAULT_LOAD_LIMIT = 2;
+const DEFAULT_LOAD_WAIT_SECONDS = 300;
 
 /** A lock directory without an owner record this old was left by a holder killed while taking it. */
 const UNRECORDED_STALE_MS = 30_000;
@@ -44,6 +53,12 @@ export interface RunLockOptions {
 	dir?: string;
 	env?: NodeJS.ProcessEnv;
 	pollMs?: number;
+	/** The host's load per core now; default: the one-minute load average over the core count. */
+	load?: () => number | undefined;
+	/** Defer while the load per core is above this (default `OCTOCODE_RUN_LOCK_LOAD`); 0 never defers. */
+	loadAbove?: number;
+	/** The longest the load may defer the run, in ms (default `OCTOCODE_RUN_LOCK_LOAD_WAIT`). */
+	loadMaxWaitMs?: number;
 	/** How often a waiter repeats who it waits for. */
 	noticeMs?: number;
 	log?: (line: string) => void;
@@ -77,6 +92,43 @@ function ownerNames(env: NodeJS.ProcessEnv): Pick<RunLockOwner, "agent" | "item"
 	if (item) names.item = item;
 	if (job) names.job = job;
 	return names;
+}
+
+const hostLoad = (): number | undefined => {
+	const cores = os.availableParallelism();
+	return cores > 0 ? os.loadavg()[0] / cores : undefined;
+};
+
+function numberOf(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
+	const value = Number(env[name]);
+	return env[name]?.trim() && Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+/**
+ * The load reflex: wait, polling, while the load per core is above the limit, for at most the bound; one line says it
+ * began and one how it ended. Returns how long it waited, in ms.
+ */
+async function deferForLoad(
+	options: RunLockOptions,
+	env: NodeJS.ProcessEnv,
+	pollMs: number,
+	log: (line: string) => void,
+): Promise<number> {
+	const limit = options.loadAbove ?? numberOf(env, LOAD_LIMIT_ENV, DEFAULT_LOAD_LIMIT);
+	const maxMs = options.loadMaxWaitMs ?? numberOf(env, LOAD_WAIT_ENV, DEFAULT_LOAD_WAIT_SECONDS) * 1000;
+	const read = options.load ?? hostLoad;
+	const busy = () => (read() ?? 0) > limit;
+	if (limit <= 0 || maxMs <= 0 || !busy()) return 0;
+	const start = Date.now();
+	log(
+		`Deferring ${options.label} while load is ${read()?.toFixed(1)} per core (limit ${limit}); waits at most ${Math.round(maxMs / 1000)}s.`,
+	);
+	while (busy() && Date.now() - start < maxMs) await sleep(pollMs, undefined, { signal: options.signal });
+	const waited = Date.now() - start;
+	log(
+		`${busy() ? "Load still high" : "Load dropped"} (${read()?.toFixed(1)} per core) after ${Math.round(waited / 1000)}s: starting.`,
+	);
+	return waited;
 }
 
 function tryTake(dir: string, owner: RunLockOwner): boolean {
@@ -155,6 +207,7 @@ export async function acquireRunLock(options: RunLockOptions): Promise<() => voi
 	const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
 	const pollMs = options.pollMs ?? 2000;
 	const noticeMs = options.noticeMs ?? 60_000;
+	await deferForLoad(options, env, pollMs, log);
 	fs.mkdirSync(path.dirname(dir), { recursive: true });
 	const owner: RunLockOwner = {
 		token: randomUUID(),

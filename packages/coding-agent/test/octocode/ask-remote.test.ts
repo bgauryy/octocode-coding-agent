@@ -78,13 +78,44 @@ describe("askUser answered from the web or an RPC client", () => {
 		expect(tracker.answer(second, { choice: "Small (Recommended)" })).toMatchObject({ ok: false });
 	});
 
-	it("keeps a batch or multi-select terminal-only", async () => {
-		const { events, ctx, flush, key } = setup();
-		const batch = showAskDialog(ctx, [scope, { ...scope, question: "Again?" }]);
+	it("answers a batch by one reply per question and refuses replies that do not fit", async () => {
+		const { tracker, events, ctx, flush, state } = setup();
+		const batch = showAskDialog(ctx, [scope, { ...scope, question: "Again?", multiSelect: true }]);
 		await flush();
 		const start = events.find((event) => event.type === "ui_prompt_start")!;
 		expect(start.options).toBeUndefined();
-		key("\x1b");
-		await batch;
+		expect(awaitingFor(start as never)).toMatchObject({ id: start.id, questions: [{ id: "q1" }, { id: "q2" }] });
+		const id = start.id as string;
+		// One reply for two questions, an unknown option and a second pick on a single choice are no answers.
+		expect(tracker.answer(id, { replies: [{ id: "q1", picks: ["1"] }] })).toMatchObject({ ok: false });
+		expect(
+			tracker.answer(id, {
+				replies: [
+					{ id: "q1", picks: ["9"] },
+					{ id: "q2", picks: ["1"] },
+				],
+			}),
+		).toMatchObject({
+			ok: false,
+		});
+		expect(
+			tracker.answer(id, {
+				replies: [
+					{ id: "q1", picks: ["1", "2"] },
+					{ id: "q2", picks: ["1"] },
+				],
+			}),
+		).toMatchObject({ ok: false });
+		expect(
+			tracker.answer(id, {
+				replies: [
+					{ id: "q1", picks: ["2"] },
+					{ id: "q2", picks: ["1", "2"] },
+				],
+			}),
+		).toEqual({ ok: true });
+		const result = await batch;
+		expect(result.answers.map((entry) => entry.answer)).toEqual(["Large", "Small (Recommended), Large"]);
+		expect(state.disposed).toBe(true);
 	});
 });

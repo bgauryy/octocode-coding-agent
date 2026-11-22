@@ -1,4 +1,4 @@
-import type { MutableModels, Provider } from "@octocodeai/octocode-ai";
+import type { Api, MutableModels, Provider } from "@octocodeai/octocode-ai";
 import type { ModelConfig } from "../model-config.ts";
 import { composeModelProvider, type ProviderConfigInput, validateFeatureProvider } from "../provider-composer.ts";
 import { type KnownModelLookup, knownModelLookup } from "../provider-composer/known-models.ts";
@@ -10,6 +10,8 @@ import {
 } from "../virtual-models.ts";
 import type { RegisteredVirtualModel } from "./types.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+
+export type ModelOrigin = "models.json" | "models.json+built-in" | "models.json+default" | "built-in";
 
 /**
  * The provider layers the model runtime composes into its Models collection: built-in providers, native feature
@@ -53,6 +55,21 @@ export class ProviderLayers {
 				.get(providerId)
 				?.models?.some((model) => model.id === modelId && "contextWindow" in model) === true
 		);
+	}
+
+	/**
+	 * Where a model's facts (window, price, effort levels) come from: its models.json entry alone, an entry that
+	 * inherits the rest from a built-in model or falls back to defaults, an override over a built-in model, or the
+	 * built-in catalog.
+	 */
+	modelOrigin(providerId: string, modelId: string, api: Api): ModelOrigin {
+		const config = this.config.getProvider(providerId);
+		const entry = config?.models?.find((model) => model.id === modelId);
+		if (entry) {
+			if (entry.contextWindow !== undefined && entry.cost !== undefined) return "models.json";
+			return this.known(api, modelId) ? "models.json+built-in" : "models.json+default";
+		}
+		return config?.modelOverrides?.[modelId] ? "models.json+built-in" : "built-in";
 	}
 
 	/** Returns the provider without virtual models, or undefined when only virtual models define it. */

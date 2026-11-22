@@ -48,20 +48,20 @@ function write(file: string, text: string): void {
 	fs.writeFileSync(file, text);
 }
 
-/** The system prompt of one real run in `box`. */
-async function promptOf(box: ReturnType<typeof sandbox>): Promise<string> {
+/** The system prompt and the `skill` tool's description (the skill catalog) of one real run in `box`. */
+async function promptOf(box: ReturnType<typeof sandbox>): Promise<{ system: string; skillTool: string }> {
 	const run = box.start(["-p", script([{ text: "done" }])]);
 	const { code } = await run.exited;
 	expect(code).toBe(0);
 	const request = endpoint.requests.at(-1);
 	endpoint.requests.length = 0;
-	return request?.system ?? "";
+	return { system: request?.system ?? "", skillTool: request?.declarations.skill?.description ?? "" };
 }
 
 describe("sections built from what the session loaded", () => {
 	it("adds a configured MCP server, skill and hook under their own markers, and removes them with the configuration", async () => {
 		const box = sandbox(endpoint);
-		const mcp = path.join(box.home, ".octocode", "octocodecode", "mcp.json");
+		const mcp = path.join(box.home, ".octocode", "mcp.json");
 		const skill = path.join(box.home, ".agents", "skills", "demo-skill", "SKILL.md");
 		const hooks = path.join(box.home, ".claude", "settings.json");
 
@@ -87,20 +87,23 @@ describe("sections built from what the session loaded", () => {
 			}),
 		);
 
-		const loaded = await promptOf(box);
+		const { system: loaded, skillTool: loadedSkills } = await promptOf(box);
 		expect(section(loaded, "mcps")).toContain('<mcp name="docs" tools="mcp__docs__*">');
 		expect(section(loaded, "mcps")).toContain("lookup");
-		const skills = section(loaded, "skills");
-		expect(skills).toContain("demo-skill");
-		expect(skills).toContain("Use for demo work in this test.");
+		// The catalog is the `skill` tool's description, not a prompt section.
+		expect(loadedSkills).toContain("demo-skill");
+		expect(loadedSkills).toContain("Use for demo work in this test.");
+		expect(section(loaded, "skills")).toBeUndefined();
+		expect(loaded).not.toContain("demo-skill");
 		// A skill's body loads on demand: the catalog names it and no more.
 		expect(loaded).not.toContain("DEMO-SKILL-BODY");
+		expect(loadedSkills).not.toContain("DEMO-SKILL-BODY");
 		expect(section(loaded, "hooks")).toContain("- PreToolUse: Bash");
 		// A hook's command can hold a secret.
 		expect(loaded).not.toContain("SECRET-HOOK-COMMAND");
 
 		// Every dynamic section comes after the rules that do not change with configuration, in the order of the map.
-		const order = ["<tools>", "<mcps>", "<work>", "<skills>", "<hooks>"].map((tag) => loaded.indexOf(tag));
+		const order = ["<tools>", "<mcps>", "<work>", "<hooks>"].map((tag) => loaded.indexOf(tag));
 		expect(order.every((at) => at >= 0)).toBe(true);
 		expect(order).toEqual([...order].sort((a, b) => a - b));
 
@@ -108,9 +111,9 @@ describe("sections built from what the session loaded", () => {
 		fs.rmSync(path.dirname(skill), { recursive: true });
 		fs.rmSync(hooks);
 
-		const bare = await promptOf(box);
+		const { system: bare, skillTool: bareSkills } = await promptOf(box);
 		expect(bare).not.toContain("mcp__docs__");
-		expect(bare).not.toContain("demo-skill");
+		expect(bareSkills).not.toContain("demo-skill");
 		expect(section(bare, "hooks")).toBeUndefined();
 		// The same instructions, with nothing about what was removed left in them.
 		expect(section(bare, "work")).toBe(section(loaded, "work"));

@@ -1,3 +1,4 @@
+import { handleTerminalCommands, sessionCommand } from "./terminal-commands.ts";
 import {
 	ApplicationCommandSchema,
 	type ApplicationConnection,
@@ -180,6 +181,16 @@ export async function startWorkspaceWeb(
 			const requestUrl = new URL(req.url ?? "/", origin);
 			if (await handleWebPrefsRequest(req, requestUrl.pathname, webPrefs, reply, WEB_PAGE_ASSETS)) return;
 			if (await handleApplicationDataRequest(req, requestUrl, workspace?.application, backlog.session, reply)) return;
+			if (
+				await handleTerminalCommands(
+					req,
+					requestUrl,
+					true,
+					(request) => sessionCommand(backlog.session, request),
+					reply,
+				)
+			)
+				return;
 			if (await sessionConfig?.handle(req, requestUrl, reply)) return;
 			if (await handleProfilerRequest(req, requestUrl, workspace?.profiler, reply)) return;
 			if (requestUrl.pathname === WORKSPACE_ROUTES.audit && req.method === "GET") {

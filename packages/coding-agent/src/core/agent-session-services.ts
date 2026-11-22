@@ -8,6 +8,7 @@ import { DefaultResourceLoader, type DefaultResourceLoaderOptions, type Resource
 import { SettingsManager } from "./settings-manager.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { checkAuthFileSafety } from "./auth-storage/file-safety.ts";
+import { applyProviderVisibility } from "./provider-models.ts";
 import { providerSourceGate } from "./provider-sources/gate.ts";
 
 /**
@@ -80,7 +81,7 @@ export async function createAgentSessionServices(
 			signal: options.modelRuntimeSignal,
 		}));
 	try {
-		modelRuntime.setDisabledProviders(settingsManager.getDisabledProviders());
+		applyProviderVisibility(modelRuntime, settingsManager);
 		const resourceLoader = new DefaultResourceLoader({
 			...options.resourceLoaderOptions,
 			cwd,

@@ -56,35 +56,35 @@ export function registerAskUser(api: FeatureSetup, storedQuestion?: StoredQuesti
 			roleVariant: true,
 			label: "Ask user",
 			promptSnippet: renderPrompt("tools/ask-user/snippet.md"),
-			description: `Ask the user anything (decision, approval, fact, what they meant); answers arrive this turn. Never write a user question in a reply. Batch related, self-contained questions, at most ${MAX_QUESTIONS} (more refused). Decisions: 2-${MAX_OPTIONS} options, each with its trade-off, the recommendation backed by evidence and project instructions first, labelled ' (Recommended)'; the UI adds the write-in. timeout takes the recommended option when unanswered: only for routine go-on questions with a safe default, never costly, irreversible or authorizing ones.`,
+			description: `Ask for decisions, approvals or facts here to get answers this turn. Group up to ${MAX_QUESTIONS} questions. For decisions give 2-${MAX_OPTIONS} options with trade-offs, first labelled ' (Recommended)'. The UI adds write-in. Only routine questions may time out to the recommendation.`,
 			parameters: Type.Object({
 				forward: Type.Optional(
 					Type.Number({
-						description: "A child's message number: its question goes verbatim above your first",
+						description: "A child's message number: its question leads yours",
 					}),
 				),
 				timeout: Type.Optional(Type.Integer({ description: "Seconds" })),
 				questions: Type.Array(
 					Type.Object({
-						question: Type.String({ description: "One short sentence" }),
+						question: Type.String({ description: "One sentence" }),
 						header: Type.Optional(
 							Type.String({
-								description: "Tab label, ~12 characters shown",
+								description: "Tab label",
 							}),
 						),
 						options: Type.Optional(
 							Type.Array(
 								Type.Object({
-									label: Type.String({ description: "A few words" }),
+									label: Type.String({ description: "Few words" }),
 									description: Type.String({
-										description: "Why pick it: its trade-off (gain vs cost or risk) and evidence",
+										description: "Trade-off, evidence",
 									}),
 								}),
 							),
 						),
 						type: Type.Optional(
 							StringEnum(QUESTION_TYPES, {
-								description: "multi: pick several; default: choice, or text without options",
+								description: "multi: pick several",
 							}),
 						),
 					}),

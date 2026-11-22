@@ -22,8 +22,10 @@ const suggest = async (text: string) => {
 };
 
 describe("slash menu aliases", () => {
-	it("resolves `settings` to `configuration`", () => {
-		expect(COMMAND_ALIASES.get("settings")).toBe("configuration");
+	it("resolves `configuration` and `config` to the visible `settings`", () => {
+		expect(COMMAND_ALIASES.get("configuration")).toBe("settings");
+		expect(COMMAND_ALIASES.get("config")).toBe("settings");
+		expect(COMMAND_ALIASES.has("settings")).toBe(false);
 	});
 
 	it("suggests the target when typing an alias, naming the alias in the row", async () => {

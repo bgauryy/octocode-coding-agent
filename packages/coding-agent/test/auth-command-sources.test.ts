@@ -56,6 +56,8 @@ describe("auth command credential sources", () => {
 			status: "ready",
 			provider: "cerebras",
 			authType: "api_key",
+			source: "stored credential",
+			verified: false,
 			credentials: "pi-test-key",
 		});
 		expect(process.exitCode).toBe(0);

@@ -24,6 +24,7 @@ import { createInteractiveModeHost } from "../../src/modes/interactive/interacti
 import type { InteractiveModeHost } from "../../src/modes/interactive/interactive-mode/host.ts";
 import { submitPrompt } from "../../src/modes/interactive/interactive-mode/refused-input.ts";
 import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
+import { recordProcessAlive } from "../../src/octocode/web-daemon/records.ts";
 import { daemonRequest, findWebDaemon } from "../../src/octocode/web-daemon/launcher.ts";
 import { resetOctocodeEnv, tmp } from "./helpers.ts";
 import { testFeatures } from "../helpers/features.ts";
@@ -301,7 +302,10 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 		closeSharedAgentDb();
 		// `/web` and `/remote` start the detached user-level daemon in this home: ask it to exit with the run.
 		const daemon = await findWebDaemon(process.env);
-		if (daemon) await daemonRequest(daemon, DAEMON_ROUTES.drain, { method: "POST" });
+		if (daemon) {
+			await daemonRequest(daemon, DAEMON_ROUTES.drain, { method: "POST" });
+			await until(async () => !(await recordProcessAlive(daemon.record)), "isolated web daemon to exit");
+		}
 		for (const key of Object.keys(process.env)) delete process.env[key];
 		Object.assign(process.env, savedEnv);
 	};

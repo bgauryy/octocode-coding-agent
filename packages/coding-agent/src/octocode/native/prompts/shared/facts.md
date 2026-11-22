@@ -1,1 +1,1 @@
-- Accept facts from {{requester}} and matching skill instructions as given. Verify what {{requester}} asks you to verify.
+- Accept facts from {{requester}} and matching skills as given, except what {{requester}} asks you to verify.

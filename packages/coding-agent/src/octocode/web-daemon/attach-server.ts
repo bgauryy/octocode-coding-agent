@@ -1,3 +1,4 @@
+import { sessionCommand } from "../workspace/terminal-commands.ts";
 import { randomBytes } from "node:crypto";
 import { sameSecret } from "@octocodeai/octocode-common/env";
 import net, { type AddressInfo } from "node:net";
@@ -14,7 +15,11 @@ import {
 	type AttachResponse,
 	type AttachToolStates,
 } from "@octocodeai/octocode-contracts/daemon";
-import type { ApplicationConnection, ApplicationFrame } from "@octocodeai/octocode-contracts";
+import {
+	APPLICATION_PROTOCOL_VERSION,
+	type ApplicationConnection,
+	type ApplicationFrame,
+} from "@octocodeai/octocode-contracts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { processStartTime } from "../shared/process.ts";
 import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
@@ -70,20 +75,25 @@ function startStream(source: AttachSource, peer: Peer, streamId: string, cursor:
 	peer.streams.set(streamId, connection);
 	// The answer goes out first; frames follow after it.
 	const forward = async () => {
+		// The last cursor a frame carried: a resync names where the stream stood, not an empty position.
+		let last: ApplicationFrame["cursor"] | undefined;
 		try {
 			for await (const frame of connection) {
 				if (peer.streams.get(streamId) !== connection) break;
+				last = (frame as { cursor?: ApplicationFrame["cursor"] }).cursor ?? last;
 				if (peer.send({ event: "application.frame", streamId, frame })) continue;
 				// A frame over the event cap is never sent: the stream resynchronizes instead, and no other stream is touched.
-				const cursor = (frame as { cursor?: ApplicationFrame["cursor"] }).cursor ?? {
-					sessionId: source.sessionId,
-					epoch: "",
-					sequence: 0,
-				};
+				const cursor = last ?? { sessionId: source.sessionId, epoch: "", sequence: 0 };
 				peer.send({
 					event: "application.frame",
 					streamId,
-					frame: { protocolVersion: 1, cursor, at: Date.now(), type: "resync", reason: "overflow" },
+					frame: {
+						protocolVersion: APPLICATION_PROTOCOL_VERSION,
+						cursor,
+						at: Date.now(),
+						type: "resync",
+						reason: "overflow",
+					},
 				});
 				break;
 			}
@@ -161,6 +171,8 @@ async function answer(source: AttachSource, peer: Peer, request: AttachRequest):
 			return undefined;
 		case "workspace.execute":
 			return workspace.execute(request.params.command);
+		case "session.commands":
+			return sessionCommand(source.sessionId, request.params);
 		case "session.tools":
 			if (!source.tools) throw new Error("Tool states are unavailable in this session.");
 			return source.tools();

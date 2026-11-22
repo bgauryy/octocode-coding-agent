@@ -47,6 +47,36 @@ export function adoptTree(pid: number | undefined): void {
 	if (process.platform === "win32") void windowsTree.assign(pid);
 }
 
+// Polls once a second; ends when either the parent or the root is gone. A root left behind by a dead parent gets SIGTERM
+// for its group, then SIGKILL one second later.
+const PARENT_WATCH = [
+	'while kill -0 "$1" 2>/dev/null && kill -0 "$2" 2>/dev/null; do sleep 1; done',
+	'if kill -0 "$2" 2>/dev/null && ! kill -0 "$1" 2>/dev/null; then',
+	'kill -s TERM -- "-$2" 2>/dev/null; sleep 1; kill -s KILL -- "-$2" 2>/dev/null',
+	"fi",
+].join("\n");
+
+/**
+ * For a root that leads its own process group (spawned `detached`) and must not outlive this process even when this
+ * process is killed without cleanup: starts a detached `sh` that ends the group once this process is gone, and exits
+ * within a second of the root's own exit. The root keeps its own pipes; the watcher holds none. Returns the watcher's
+ * pid (undefined on Windows, where the job ends with Octocode, or when it could not start).
+ */
+export function reapWithParent(pid: number | undefined): number | undefined {
+	if (process.platform === "win32" || !validPid(pid)) return undefined;
+	try {
+		const watcher = spawn("/bin/sh", ["-c", PARENT_WATCH, "sh", String(process.pid), String(pid)], {
+			stdio: "ignore",
+			detached: true,
+		});
+		watcher.on("error", () => undefined);
+		watcher.unref();
+		return watcher.pid;
+	} catch {
+		return undefined;
+	}
+}
+
 /**
  * Sends `signal` to the process tree rooted at `pid`: its process group on POSIX (spawn it with `detached: true` so it
  * leads one; otherwise only the process itself is signalled), and on Windows, which has no signals, its job (see

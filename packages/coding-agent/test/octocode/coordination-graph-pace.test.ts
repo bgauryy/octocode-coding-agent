@@ -1,3 +1,4 @@
+import { withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -116,7 +117,7 @@ function agentTool() {
 }
 
 const reportOf = <T extends { message: { content: unknown } }>(sent: T[], id: string) =>
-	sent.find((entry) => String(entry.message.content).startsWith(`Background subagent ${id} `));
+	sent.find((entry) => withoutSourceHeader(String(entry.message.content)).startsWith(`Background subagent ${id} `));
 
 describe("item 1: a graph notice that wakes the coordinator is retried like a report", () => {
 	it("tries again when the turn it started fails at the provider", async () => {

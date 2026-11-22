@@ -3,9 +3,8 @@ import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import { applicationMessageDisplayed } from "@octocodeai/octocode-projections";
 import { disposeTranscript } from "./transcript-dispose.ts";
 import type { ApplicationService } from "../../../core/application/index.ts";
-import { Spacer, Text } from "@octocodeai/octocode-tui";
-import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
-import { theme } from "../../../theme/theme.ts";
+import { Spacer } from "@octocodeai/octocode-tui";
+import { noticeLine } from "./display.ts";
 import { AssistantMessageComponent } from "../components/assistant-message.ts";
 import {
 	deferLargeStrings,
@@ -64,7 +63,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 	const showError = (message: string) => {
 		host.chatContainer.addChild(new Spacer(1));
 		host.chatContainer.addChild(
-			new Text(theme.fg("error", sanitizeTerminalText(message).slice(0, 1000)), host.outputPad, 0),
+			noticeLine("error", message, host.outputPad, host.uiStore.getState().view.toolsExpanded),
 		);
 		host.ui.requestRender();
 	};

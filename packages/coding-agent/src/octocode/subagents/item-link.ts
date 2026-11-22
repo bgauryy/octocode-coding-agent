@@ -1,6 +1,7 @@
 import type { FeatureContext } from "../../core/features/index.ts";
 import { type Backlog, openBacklog, openBacklogWhenReady } from "../backlog/context.ts";
 import { attachReport, checkDelegable, claimDelegated } from "../backlog/delegation.ts";
+import { BacklogError, type Item } from "../backlog/item.ts";
 import { graphNotice } from "../backlog/graph-notice.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { SubagentOutcome } from "./process/outcome.ts";
@@ -20,6 +21,7 @@ export interface ItemLink {
 	/**
 	 * Notes the report on the item and, when the child's changes were saved on `ref`, links that ref there; the lines
 	 * the parent's footer gets (never rejects: the report itself still arrives). `lingers`: the child stays reachable after it.
+	 * `stopped`: the run was stopped or cancelled; a claim the delegation made is returned to the state the item had, unless the child lingers.
 	 */
 	attach(
 		outcome: SubagentOutcome | undefined,
@@ -27,6 +29,7 @@ export interface ItemLink {
 		ref?: string,
 		patch?: string,
 		lingers?: boolean,
+		stopped?: boolean,
 	): Promise<string>;
 	/** The graph line the last `attach` added (what became ready, or what waits on an item its child left open). */
 	readonly notice: string | undefined;
@@ -47,6 +50,26 @@ function itemGraphNotice(
 		return graphNotice(backlog, ref, agent, lingers, queued);
 	} catch {
 		return undefined;
+	}
+}
+
+/** Returns `ref` to `state` when this session still holds it as ongoing; false when another owner holds it or it moved on. Never rejects. */
+async function releaseClaim(backlog: Backlog, ref: string, state: Item["state"], agent: string): Promise<boolean> {
+	try {
+		return await backlog.store.transactionWhenReady(() => {
+			const item = backlog.store.get(ref);
+			if (!item || item.state !== "ongoing" || item.assignee !== backlog.session) return false;
+			backlog.store.update(
+				ref,
+				{ state, version: item.version, note: `Returned to ${state}: ${agent} was stopped before it finished.` },
+				backlog.actor,
+			);
+			return true;
+		});
+	} catch (error) {
+		// Another session changed the item meanwhile: it stands as it is.
+		if (!(error instanceof BacklogError)) throw error;
+		return false;
 	}
 }
 
@@ -114,8 +137,21 @@ export function itemLink(
 			}, signal);
 			claimed = true;
 		},
-		async attach(outcome, agent, ref, patch, lingers = false) {
-			const lines: string[] = claimed ? [`Claimed ${itemRef} for this session to delegate it.`] : [];
+		async attach(outcome, agent, ref, patch, lingers = false, stopped = false) {
+			const lines: string[] = [];
+			if (claimed && stopped && !lingers) {
+				try {
+					const released = await releaseClaim(backlog, itemRef, checked.item.state, agent);
+					if (released) claimed = false;
+					lines.push(
+						released
+							? `Returned ${itemRef} to ${checked.item.state}: ${agent} was stopped.`
+							: `${itemRef} was not returned: it changed hands.`,
+					);
+				} catch (error) {
+					lines.push(`Could not return ${itemRef} to ${checked.item.state}: ${errorMessage(error)}`);
+				}
+			} else if (claimed) lines.push(`Claimed ${itemRef} for this session to delegate it.`);
 			if (outcome) {
 				try {
 					const report = {

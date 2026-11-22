@@ -17,6 +17,15 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { recordProblem } from "../diagnostics-log.ts";
 import { registerResolvedSecret } from "../secret-redaction.ts";
 import type { KeychainBackend } from "./keychain.ts";
+import {
+	endpointAccount,
+	endpointBlob,
+	endpointReference,
+	endpointStub,
+	hasKeychainRecord,
+	resolveKeychainEndpoint,
+	resolveKeychainEndpointAsync,
+} from "./keychain-endpoint.ts";
 
 /** The keychain account an OAuth blob is kept under, beside the account an API key of the same provider would use. */
 export const oauthAccount = (provider: string): string => `${provider}.oauth`;
@@ -27,11 +36,16 @@ export function oauthReference(credential: Credential | undefined): string | und
 	return typeof reference === "string" && reference.startsWith("!") ? reference : undefined;
 }
 
-/** The keychain entry behind `credential` (an API key's `!` reference, or an OAuth stub's), as account and reference. */
+/**
+ * The keychain entry behind `credential` (an API key's `!` reference, an endpoint stub's, or an OAuth stub's), as
+ * account and reference.
+ */
 export function keychainEntry(
 	provider: string,
 	credential: Credential | undefined,
 ): { account: string; reference: string } | undefined {
+	const endpoint = endpointReference(credential);
+	if (endpoint) return { account: endpointAccount(provider), reference: endpoint };
 	if (credential?.type === "api_key" && credential.key?.startsWith("!"))
 		return { account: provider, reference: credential.key };
 	const reference = oauthReference(credential);
@@ -73,7 +87,7 @@ function parseBlob(blob: string | undefined): OAuthCredential | undefined {
  */
 export function resolveKeychainOAuth(credential: Credential | undefined, fresh = false): Credential | undefined {
 	const reference = oauthReference(credential);
-	if (!reference) return credential;
+	if (!reference) return resolveKeychainEndpoint(credential, fresh);
 	const blob = fresh ? resolveConfigValueUncached(reference) : resolveConfigValue(reference);
 	if (fresh) registerResolvedSecret(blob);
 	return parseBlob(blob) ?? credential;
@@ -82,7 +96,7 @@ export function resolveKeychainOAuth(credential: Credential | undefined, fresh =
 /** `resolveKeychainOAuth` (cached read) that does not block the thread while the keychain command runs. */
 export async function resolveKeychainOAuthAsync(credential: Credential | undefined): Promise<Credential | undefined> {
 	const reference = oauthReference(credential);
-	if (!reference) return credential;
+	if (!reference) return resolveKeychainEndpointAsync(credential);
 	return parseBlob(await resolveConfigValueAsync(reference)) ?? credential;
 }
 
@@ -98,6 +112,7 @@ export async function keepInKeychain(
 	previous: Credential | undefined,
 	next: Credential,
 ): Promise<Credential> {
+	if (next.type === "api_key") return keepEndpointInKeychain(keychain, provider, previous, next);
 	if (next.type !== "oauth" || next.signedOut || oauthReference(next)) return next;
 	const account = oauthAccount(provider);
 	const reference = oauthReference(previous);
@@ -111,6 +126,28 @@ export async function keepInKeychain(
 		clearConfigValueCache();
 	}
 	return oauthStub(next, reference);
+}
+
+/** `keepInKeychain` for a credential with a custom host whose earlier version kept its record in this keychain. */
+async function keepEndpointInKeychain(
+	keychain: KeychainBackend | undefined,
+	provider: string,
+	previous: Credential | undefined,
+	next: Credential,
+): Promise<Credential> {
+	if (next.type !== "api_key" || !hasKeychainRecord(next)) return next;
+	const account = endpointAccount(provider);
+	const reference = endpointReference(previous);
+	if (!keychain || !reference || !keychain.isOwnReference(reference, account)) return next;
+	try {
+		await keychain.store(account, endpointBlob(next));
+	} catch (error) {
+		reportKeychainFallback(provider, error);
+		return next;
+	} finally {
+		clearConfigValueCache();
+	}
+	return endpointStub(reference);
 }
 
 /** Says once per failed write that the tokens now sit in auth.json; the keychain's own message never carries them. */

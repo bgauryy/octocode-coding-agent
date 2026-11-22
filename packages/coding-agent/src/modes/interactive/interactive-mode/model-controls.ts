@@ -12,6 +12,7 @@ import { showModelSelector } from "../model-picker.ts";
 import { ScopedModelsSelectorComponent } from "../components/scoped-models-selector.ts";
 import { ThinkingSelectorComponent } from "../components/thinking-selector.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
+import { confirmUnlistedModel } from "./unlisted-model.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { claudeSubscriptionRefusal } from "./provider-actions.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -25,6 +26,7 @@ type ModelControlsHost = Pick<
 	| "maybeWarnAboutAnthropicSubscriptionAuth"
 	| "session"
 	| "settingsManager"
+	| "showConfirmDialog"
 	| "showError"
 	| "showSelectorDialog"
 	| "showModelSelector"
@@ -127,7 +129,12 @@ export async function handleModelCommand(host: ModelControlsHost, searchTerm?: s
 	const setDefault = searchTerm.endsWith("--set-default") || searchTerm.endsWith("--default");
 	const modelTerm = setDefault ? searchTerm.replace(/\s+--(?:set-)?default\s*$/, "").trim() : searchTerm.trim();
 
-	const model = await host.findExactModelMatch(modelTerm);
+	let model = await host.findExactModelMatch(modelTerm);
+	if (!model) {
+		const unlisted = await confirmUnlistedModel(host, modelTerm);
+		if (unlisted === "declined") return;
+		model = unlisted;
+	}
 	if (model) {
 		try {
 			await getApplicationPort(host.session).invoke("setModel", model, {

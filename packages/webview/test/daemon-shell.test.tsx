@@ -228,7 +228,12 @@ describe("DaemonShell", () => {
 describe("daemonLive", () => {
 	it("keeps the session's views and, for a repository, only the views that read saved data", () => {
 		if (!live) throw new Error("live extension");
-		expect(daemonLive(live, { kind: "session", id: "s" }).views).toBe(live.views);
+		expect(daemonLive(live, { kind: "session", id: "s" }, true, true).views).toBe(live.views);
+		for (const writable of [true, false]) {
+			expect(daemonLive(live, { kind: "session", id: "s" }, writable, false).views.map((view) => view.name)).toEqual(
+				live.views.filter((view) => view.name !== "commands").map((view) => view.name),
+			);
+		}
 		expect(daemonLive(live, { kind: "repo", id: "r" }).views.map((view) => view.name)).toEqual([
 			"rfc",
 			"research",

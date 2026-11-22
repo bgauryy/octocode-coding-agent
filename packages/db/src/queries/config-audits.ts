@@ -12,8 +12,8 @@ export interface ConfigAuditEntry {
 	actor: string;
 	/**
 	 * `credential.set`, `credential.clear`, `credential.signin` (an OAuth sign-in that ended or a request refused),
-	 * `credential.refused`, `provider.toggle` (a provider enabled or disabled), `source.toggle` (the Pi source on or off) or `harness.toggle`
-	 * (a Harness panel switch; the target is its `/configuration` id, or only the kind when
+	 * `credential.refused`, `provider.toggle` (a provider enabled or disabled), `provider.edit-host`, `provider.edit-limits` and `provider.remove-custom` (a custom provider changed in models.json), `source.toggle` (the Pi source on or off), `runner.check`, `runner.enable`, `runner.disable`, `runner.pause` or `runner.resume` (External agents panel) or `harness.toggle`
+	 * (a Harness panel switch; the target is its `/settings` id, or only the kind when
 	 * that id holds a file path).
 	 */
 	action: string;

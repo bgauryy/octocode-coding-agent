@@ -1,5 +1,5 @@
 /**
- * The facts of one MCP server row, worded once: `/mcp list`, `/harness` and `/configuration list mcp` render from these,
+ * The facts of one MCP server row, worded once: `/mcp list`, `/harness` and `/settings list mcp` render from these,
  * each in its own layout. Pure: it reads no file and no session.
  */
 

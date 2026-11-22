@@ -27,6 +27,7 @@ const options = (env: NodeJS.ProcessEnv = {}, lines: string[] = []) => ({
 	dir,
 	env,
 	pollMs: 10,
+	load: () => 0,
 	log: (line: string) => lines.push(line),
 });
 
@@ -95,7 +96,7 @@ describe("full-run lock", () => {
 	it("takes over at once from a holder that exited", async () => {
 		const child = spawn(process.execPath, ["-e", ""]);
 		await new Promise((resolve) => child.once("exit", resolve));
-		holdAs(child.pid!, undefined);
+		holdAs(child.pid, undefined);
 		const release = await acquireRunLock(options());
 		assert.equal(readRunLockOwner(dir)?.pid, process.pid);
 		release();
@@ -129,13 +130,13 @@ describe("full-run lock", () => {
 	it("takes over from a pid that now names a later process, and waits for a live holder", async () => {
 		const child = spawn("sleep", ["30"]);
 		try {
-			const started = (await processStartAsync(child.pid!))?.started;
+			const started = (await processStartAsync(child.pid))?.started;
 			assert.ok(started);
-			holdAs(child.pid!, String(Number(started) - 100));
+			holdAs(child.pid, String(Number(started) - 100));
 			const reused = await acquireRunLock(options());
 			reused();
 
-			holdAs(child.pid!, started);
+			holdAs(child.pid, started);
 			const lines: string[] = [];
 			const waiting = acquireRunLock(options({}, lines));
 			await new Promise((resolve) => setTimeout(resolve, 100));
@@ -189,5 +190,41 @@ describe("full-run lock status", () => {
 		} finally {
 			child.kill();
 		}
+	});
+
+	it("defers while the load is above the limit and starts after it drops", async () => {
+		let load = 3;
+		const lines: string[] = [];
+		const started = acquireRunLock({ ...options({}, lines), load: () => load, loadAbove: 2, loadMaxWaitMs: 5000 });
+		let taken = false;
+		void started.then(() => (taken = true));
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		assert.equal(taken, false, "waits while loaded");
+		assert.equal(fs.existsSync(dir), false, "does not hold the lock while it defers");
+		load = 0.5;
+		(await started)();
+		assert.match(lines.join("\n"), /Deferring .*3\.0 per core/);
+		assert.match(lines.join("\n"), /Load dropped/);
+	});
+
+	it("stops deferring at the bound and starts anyway", async () => {
+		const lines: string[] = [];
+		const began = Date.now();
+		const release = await acquireRunLock({
+			...options({}, lines),
+			load: () => 9,
+			loadAbove: 2,
+			loadMaxWaitMs: 100,
+		});
+		release();
+		assert.ok(Date.now() - began < 2000);
+		assert.match(lines.join("\n"), /Load still high/);
+	});
+
+	it("does not defer when the limit is 0 or the lock is off", async () => {
+		const lines: string[] = [];
+		(await acquireRunLock({ ...options({}, lines), load: () => 9, loadAbove: 0 }))();
+		(await acquireRunLock({ ...options({ [RUN_LOCK_ENV]: "off" }, lines), load: () => 9, loadAbove: 2 }))();
+		assert.deepEqual(lines, []);
 	});
 });

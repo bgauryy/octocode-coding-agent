@@ -223,7 +223,7 @@ describe("a task run by an external runner", () => {
 });
 
 describe("the models tool", () => {
-	it("lists the blocks index.ts gives it, connected runners included, and nothing when the listing fails", async () => {
+	it("lists the blocks index.ts gives it, connected runners included, and the failure when the listing fails", async () => {
 		const run = async (list: () => Promise<string[]>) => {
 			let tool: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }> } | undefined;
 			registerModelsTool(
@@ -244,10 +244,10 @@ describe("the models tool", () => {
 		};
 		const rows = "Connected runners: pass `runner` on a task\n  ● claude-code · Claude Code 2.1.322 · claude.ai · plan";
 		expect(await run(async () => [rows])).toContain(rows);
-		expect(
-			await run(async () => {
-				throw new Error("boom");
-			}),
-		).not.toContain("Connected runners");
+		const failed = await run(async () => {
+			throw new Error("boom");
+		});
+		expect(failed).not.toContain("Connected runners");
+		expect(failed).toContain("listing failed (boom)");
 	});
 });

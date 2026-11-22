@@ -2,6 +2,9 @@ import type { FeatureSetup } from "../../core/features/index.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
 import { type WakeGate, wakeGateOf } from "./gate.ts";
+import { installTicketResults } from "./ticket-results.ts";
+import { installLive, type LiveHostOptions } from "./live-host.ts";
+import { installShadow, type ShadowHostOptions } from "./shadow-host.ts";
 
 /** The longest hold window the setting allows, in seconds: longer would make a report feel lost. */
 const MAX_WAKE_HOLD_SECONDS = 10;
@@ -29,7 +32,10 @@ export function wakeHoldMs(setting: unknown): number {
  * before a woken run's first request, and holds an idle session's wake for `subagents.wakeHoldSeconds` when that is set.
  * Wake sources send through `wakeGateOf(api)`.
  */
-export function registerWake(api: FeatureSetup): WakeGate {
+export function registerWake(
+	api: FeatureSetup,
+	loops: { shadow?: ShadowHostOptions; live?: LiveHostOptions } = {},
+): WakeGate {
 	const gate = wakeGateOf(api);
 	gate.setHold(() =>
 		wakeHoldMs(api.settings.get().subagents?.wakeHoldSeconds ?? SETTINGS_DEFAULTS.subagents.wakeHoldSeconds),
@@ -52,5 +58,10 @@ export function registerWake(api: FeatureSetup): WakeGate {
 	api.bus.on("session_shutdown", async () => {
 		gate.dispose();
 	});
+	// Last: the shadow's shutdown handler compares what the gate just sent. Each is a no-op outside its own mode
+	// (`runtime.eventLoop`: `shadow`, `new`).
+	installShadow(api, gate, loops.shadow);
+	installLive(api, gate, loops.live);
+	installTicketResults(api, gate);
 	return gate;
 }

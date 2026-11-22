@@ -1,4 +1,5 @@
 import type { ModelRuntime } from "../model-runtime.ts";
+import { applyProviderVisibility } from "../provider-models.ts";
 import type { SettingsManager } from "../settings-manager.ts";
 import { applyProviderSources } from "./apply.ts";
 import { noticeDisabledProvider, type ProviderNoticeSession } from "./notice.ts";
@@ -23,7 +24,7 @@ export function watchProviderSettings(
 	session: ProviderNoticeSession,
 ): () => void {
 	return settings.watchProviderToggles(() => {
-		runtime.setDisabledProviders(settings.getDisabledProviders());
+		applyProviderVisibility(runtime, settings);
 		noticeDisabledProvider(session);
 		applyProviderSources(runtime, settings.getProviderSources())
 			.then(() => {

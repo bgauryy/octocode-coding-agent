@@ -1,3 +1,4 @@
+import { withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -61,7 +62,7 @@ describe("idle item notice", () => {
 		await s.settle();
 		expect(s.fake.sent).toHaveLength(1);
 		expect(s.fake.sent[0]).toMatchObject({
-			message: { content: notice(first) },
+			message: { content: expect.stringContaining(notice(first)) },
 			options: { triggerTurn: true },
 		});
 		await s.settle();
@@ -69,7 +70,7 @@ describe("idle item notice", () => {
 		const second = s.hold("second");
 		await s.settle();
 		expect(s.fake.sent).toHaveLength(2);
-		expect(s.fake.sent[1].message.content).toBe(notice(second));
+		expect(withoutSourceHeader(s.fake.sent[1].message.content)).toBe(notice(second));
 	});
 
 	it("does not name an item whose reported child can still be resumed", async () => {
@@ -79,7 +80,7 @@ describe("idle item notice", () => {
 		s.lingering.set(reported, "reported-child");
 		s.runs.running.set("other", undefined);
 		await s.settle();
-		expect(s.fake.sent.map((entry) => entry.message.content)).toEqual([notice(free)]);
+		expect(s.fake.sent.map((entry) => withoutSourceHeader(entry.message.content))).toEqual([notice(free)]);
 	});
 
 	it("tells the same item again after the wait ended", async () => {

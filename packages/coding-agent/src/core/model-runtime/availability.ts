@@ -2,6 +2,7 @@ import type { Api, AuthCheck, AuthOperationOptions, AuthType, Model, MutableMode
 import { operationSignal } from "@octocodeai/octocode-ai/utils/abort";
 import { type AuthStatus, configuredRequestAuthStatus } from "../provider-composer.ts";
 import type { RuntimeCredentials } from "../runtime-credentials.ts";
+import { type HiddenModels, isModelHidden } from "../provider-models.ts";
 import type { ProviderLayers } from "./provider-layers.ts";
 import type { ModelRuntimeSnapshot } from "./types.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -23,26 +24,15 @@ export class ModelAvailability {
 	/** Models usable by credentials, before the user's disabled providers are removed from the snapshot. */
 	private rawAvailable: readonly Model<Api>[] = [];
 	private disabledProviders: ReadonlySet<string> = new Set();
+	private hiddenModels: HiddenModels = {};
 	private availabilityRefreshSeq = 0;
 	private availabilityErrorSeq = 0;
 	private readonly providerAvailabilitySeq = new Map<string, number>();
 	availabilityError: string | undefined;
-	/** Stops the credential watcher; `dispose` calls it once. */
-	private stopWatching: (() => void) | undefined;
 
 	constructor(models: MutableModels, credentials: RuntimeCredentials) {
 		this.models = models;
 		this.credentials = credentials;
-		// A credential another process saved or removed reaches the sync snapshot only through a refresh pass. The
-		// failure is kept in `availabilityError`; the next pass retries.
-		this.stopWatching = credentials.watch(() => void this.queueAvailabilityRefresh().catch(() => {}));
-	}
-
-	/** Stop following credential changes made by other processes. The snapshot stays readable; repeated calls do nothing. */
-	dispose(): void {
-		const stop = this.stopWatching;
-		this.stopWatching = undefined;
-		stop?.();
 	}
 
 	/**
@@ -54,12 +44,22 @@ export class ModelAvailability {
 		this.publishAvailable();
 	}
 
+	/** Models the user unticked on their provider's page. They leave `snapshot.available` like a disabled provider's. */
+	setHiddenModels(hidden: HiddenModels): void {
+		this.hiddenModels = hidden;
+		this.publishAvailable();
+	}
+
+	isModelHidden(model: { provider: string; id: string }): boolean {
+		return isModelHidden(this.hiddenModels, model.provider, model.id);
+	}
+
 	isProviderDisabled(providerId: string): boolean {
 		return this.disabledProviders.has(providerId);
 	}
 
 	private visible(models: readonly Model<Api>[]): Model<Api>[] {
-		return models.filter((model) => !this.disabledProviders.has(model.provider));
+		return models.filter((model) => !this.disabledProviders.has(model.provider) && !this.isModelHidden(model));
 	}
 
 	private publishAvailable(): void {

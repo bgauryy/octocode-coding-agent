@@ -3,13 +3,15 @@ import os from "node:os";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import path from "node:path";
-import { fauxAssistantMessage, getCurrentSystemPrompt } from "@octocodeai/octocode-ai";
+import { fauxAssistantMessage, getCurrentTools } from "@octocodeai/octocode-ai";
 import { expect, it } from "vitest";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
-import { createBashTool } from "../src/core/tools/bash.ts";
+import { withNativePermissionOwners } from "../src/octocode/permission/native-tools.ts";
+import { registerSkillTool } from "../src/octocode/native/tools/skill/tool.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createHarness, getMessageText } from "./suite/harness.ts";
 import { approveFixtureSkillFiles } from "./octocode/guard-helpers.ts";
+import { testFeature } from "./helpers/features.ts";
 
 const NAME = "policy-fixture";
 const DESCRIPTION = "Unique policy fixture catalog description";
@@ -59,6 +61,15 @@ async function fixture(
 		agentDir,
 		disabledFeatures: ["mcp"],
 		noSkills: !options.plugin,
+		// The native `skill` tool lists the skills a model may load.
+		features: [
+			{
+				...testFeature("octocode", (api) => {
+					registerSkillTool(withNativePermissionOwners(api));
+				}),
+				owner: "native",
+			},
+		],
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
@@ -70,8 +81,6 @@ async function fixture(
 	await loader.reload();
 	const harness = await createHarness({
 		resourceLoader: loader,
-		// A tool the catalog can name as the skill reader: a plain `read` tool no longer lists skills.
-		tools: [createBashTool(cwd)],
 		settings: { retry: { enabled: false } },
 	});
 	return {
@@ -91,7 +100,7 @@ async function request(f: Fixture, prompt: string) {
 		messages = "";
 	f.harness.setResponses([
 		(context) => {
-			system = getCurrentSystemPrompt(context.messages);
+			system = getCurrentTools(context.messages).find((tool) => tool.name === "skill")?.description ?? "";
 			messages = JSON.stringify(context.messages);
 			return fauxAssistantMessage("done");
 		},
@@ -258,7 +267,7 @@ it("does not execute or connect declared dependencies during resource loading or
 			}),
 		]);
 		expect((await request(f, `/skill:${NAME}`)).user).toContain(BODY);
-		expect(f.harness.session.getActiveToolNames()).toEqual(["bash"]);
+		expect(f.harness.session.getActiveToolNames()).toEqual(["skill"]);
 		expect(fs.existsSync(sentinel)).toBe(false);
 		expect(connections).toBe(0);
 	} finally {

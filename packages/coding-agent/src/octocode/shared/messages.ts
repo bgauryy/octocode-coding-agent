@@ -18,6 +18,8 @@ export const INTERNAL_MESSAGE_TYPE = MAIL_MESSAGE_TYPE;
 export const EXTERNAL_MESSAGE_TYPE = "octocode-external-message";
 /** The custom message a background bash job sends its session when it ends (`native/tools/bash/tool.ts`); subagent reports read it too. */
 export const JOB_TYPE = "octocode-bash-job";
+/** The custom message a tool call that outlived its foreground budget sends its session when it ends (`jobs/report.ts`). */
+export const TASK_TYPE = "octocode-task-result";
 /** The custom message a timer sends its session when it fires (`timer/register.ts`). */
 export const TIMER_TYPE = "octocode-timer";
 /** The custom message type of a background subagent's report (`subagents/handoff.ts`). */

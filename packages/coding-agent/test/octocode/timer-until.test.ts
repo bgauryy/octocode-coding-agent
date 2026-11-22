@@ -555,7 +555,7 @@ describe("the timer tool and check", () => {
 		return { op: "on", note: "n", ...base, ...(check ? { check } : {}) };
 	};
 	const set = (host: ReturnType<typeof fakeHost>, ctx: unknown, until: Record<string, unknown>) =>
-		host.tools.get("wait").execute("c", onArgs(until), undefined, undefined, ctx);
+		host.tools.get("notify").execute("c", onArgs(until), undefined, undefined, ctx);
 	const checkUntil = { check: "done?", command: "test -e x.txt" };
 
 	it("refuses a check while it is off and nobody can be asked", async () => {
@@ -577,7 +577,7 @@ describe("the timer tool and check", () => {
 		ctx.ui.confirms.push(true);
 		await host.fire("session_start", { reason: "startup" }, ctx);
 		const first = await set(host, ctx, checkUntil);
-		expect(first.content[0].text).toMatch(/Judging is capped: 5 judgments and \$0\.05 per wait/);
+		expect(first.content[0].text).toMatch(/Judging is capped: 5 judgments and \$0\.05 per request/);
 		expect(ctx.ui.confirms).toHaveLength(0);
 		const second = await set(host, ctx, checkUntil);
 		expect(second.content[0].text).toContain("Judging is capped");
@@ -594,7 +594,7 @@ describe("the timer tool and check", () => {
 		await host.fire("session_start", { reason: "startup" }, ctx);
 		try {
 			await expect(
-				host.tools.get("wait").execute("c", onArgs(checkUntil), controller.signal, undefined, ctx),
+				host.tools.get("notify").execute("c", onArgs(checkUntil), controller.signal, undefined, ctx),
 			).rejects.toThrow("cancelled");
 			expect(timers.activeCount(agent.db, "s1")).toBe(0);
 		} finally {
@@ -671,7 +671,7 @@ describe("the timer tool and check", () => {
 		).toEqual(["until x.txt unlocked", "until `nc -z localhost 5173` exits 0"]);
 		const row = timers.forSession(agent.db, "s1")[0];
 		timers.recordResult(agent.db, row.id, { exit: null, output: "", spend: { calls: 1, usd: 0.003 } }, Date.now());
-		const list = await host.tools.get("wait").execute("l", { op: "list" }, undefined, undefined, ctx);
+		const list = await host.tools.get("notify").execute("l", { op: "list" }, undefined, undefined, ctx);
 		expect(list.content[0].text).toContain("watching");
 		expect(list.content[0].text).toContain("polling every 15s");
 		await host.fire("session_shutdown", {}, ctx);
@@ -679,13 +679,14 @@ describe("the timer tool and check", () => {
 
 	it("declares a closed event list and refuses anything else with the choices", async () => {
 		const { host, ctx } = session();
-		const tool = host.tools.get("wait");
+		const tool = host.tools.get("notify");
 		expect(Object.keys(tool.parameters.properties)).not.toContain("until");
 		expect([...tool.parameters.properties.event.enum].sort((a: string, b: string) => a.localeCompare(b))).toEqual([
 			"agent.ended",
 			"check.result",
 			"item.changed",
 			"item.state",
+			"machine.load",
 			"path.unlocked",
 			"peer.landed",
 		]);
@@ -693,7 +694,7 @@ describe("the timer tool and check", () => {
 		await expect(call({ event: "file.changed" })).rejects.toThrow(
 			/No event "file\.changed": the choices are agent\.report/,
 		);
-		await expect(call({ event: "agent.report" })).rejects.toThrow("already wakes you");
+		await expect(call({ event: "agent.report" })).rejects.toThrow("You are already notified");
 		await expect(call({ event: "time.due" })).rejects.toThrow("use set with after or every");
 		await expect(call({ event: "path.unlocked" })).rejects.toThrow("path.unlocked needs filter.path");
 		await expect(call({ event: "path.unlocked", filter: { path: "a", ref: "B1" } })).rejects.toThrow(
@@ -715,7 +716,7 @@ describe("the timer tool and check", () => {
 	it("listens with on, answers one line, lists what wakes it unasked, and ends with off", async () => {
 		const { host, ctx } = session();
 		await host.fire("session_start", { reason: "startup" }, ctx);
-		const tool = host.tools.get("wait");
+		const tool = host.tools.get("notify");
 		const run = (args: object) => tool.execute("c", args, undefined, undefined, ctx);
 		const on = await run({
 			op: "on",

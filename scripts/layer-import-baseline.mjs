@@ -105,6 +105,7 @@ export const LAYER_RULES = [
 			"coding-agent/src/octocode/compaction/edit-ledger.ts",
 			"coding-agent/src/octocode/compaction/register.ts",
 			"coding-agent/src/octocode/files/bash-reads.ts",
+			"coding-agent/src/octocode/files/bash-writes.ts",
 			"coding-agent/src/octocode/files/bash/mutation.ts",
 			"coding-agent/src/octocode/index.ts",
 			"coding-agent/src/octocode/team-surfaces.ts",

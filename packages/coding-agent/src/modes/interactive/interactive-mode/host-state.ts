@@ -11,7 +11,6 @@ import type {
 	Spacer,
 	TUI,
 	TuiAltScreen,
-	ThemedText,
 	TuiMainScreen,
 } from "@octocodeai/octocode-tui";
 import type * as TuiLayouts from "@octocodeai/octocode-tui";
@@ -92,7 +91,7 @@ export interface InteractiveModeState {
 	escapeAbortedRun: boolean;
 	lastSigintTime: number;
 	lastStatusSpacer: Spacer | undefined;
-	lastStatusText: ThemedText | undefined;
+	lastStatusText: Component | undefined;
 	readonly loadedResourcesContainer: Container;
 	mainScreenRenderState: TuiMainScreenRenderState | undefined;
 	managedToolStatusStarted: boolean;

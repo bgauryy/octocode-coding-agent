@@ -228,7 +228,8 @@ export function registerBashTool(
 				await recordShellMutation(params.command, ctx.cwd, sessionId, settings.type === "powershell");
 				const verification = params.verify ? beginVerification(params.command, ctx.cwd, sessionId) : undefined;
 				const item = itemKey(params.item);
-				if (params.item !== undefined && !item)
+				// The field is declared for background jobs: a foreground call (which may still move to the background) ignores a non-ref.
+				if (params.background && params.item !== undefined && !item)
 					throw new Error(`item must be a backlog item ref like B12, not "${params.item}"`);
 				// Shared resources the command takes (the full-run lock) name this owner.
 				const owner = runOwner(agentNameOf(api).get(), item);
@@ -327,7 +328,7 @@ export function registerBashTool(
 						settings.type === "bash" && !raw.details?.exitCode
 							? readHint(params.command, ctx.cwd, sessionId)
 							: undefined;
-					const timer = (api.tools.getActive?.() ?? []).includes("wait");
+					const timer = (api.tools.getActive?.() ?? []).includes("notify");
 					const waitHint = settings.type === "bash" ? sleepHint(params.command, timer) : undefined;
 					const notes = [...notices, ...(hint ? [hint] : []), ...(waitHint ? [waitHint] : [])].join("\n\n");
 					const result = notes

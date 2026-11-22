@@ -20,9 +20,10 @@ export function completionsFetch(
 		undefined,
 		options.env,
 	);
-	return async (_input, init) =>
-		(options.fetch ?? globalThis.fetch)(client.url, {
-			...init,
-			headers: client.headers,
-		});
+	return async (_input, init) => {
+		// The SDK's headers (content type, accept) stay; the client's (authorization, user agent, provider headers) win.
+		const headers = new Headers(init?.headers);
+		for (const [name, value] of Object.entries(client.headers ?? {})) headers.set(name, value);
+		return (options.fetch ?? globalThis.fetch)(client.url, { ...init, headers });
+	};
 }

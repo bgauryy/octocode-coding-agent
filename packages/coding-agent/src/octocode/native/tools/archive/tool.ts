@@ -91,7 +91,7 @@ export function registerArchiveTool(api: FeatureSetup, options: { isSubagent?: b
 		id: Type.Optional(Type.String({ description: "Reference from list/search" })),
 		keywords: Type.Optional(Type.String({ description: "Rank by topic" })),
 		limit: Type.Optional(Type.Integer({ description: "Records/source: 1–50, default 10" })),
-		cursor: Type.Optional(Type.String({ description: "Continue with the returned cursor" })),
+		cursor: Type.Optional(Type.String({ description: "Returned cursor" })),
 	};
 	const main = Type.Object({
 		...history.parameters.properties,
@@ -103,7 +103,7 @@ export function registerArchiveTool(api: FeatureSetup, options: { isSubagent?: b
 		),
 		query: Type.Optional(
 			Type.String({
-				description: "Case-insensitive regex filter; with errors: by tool name or error text",
+				description: "Case-insensitive regex; errors: tool name or text",
 			}),
 		),
 		agentId: Type.Optional(Type.String({ description: "Events/profile: agent name" })),
@@ -120,14 +120,14 @@ export function registerArchiveTool(api: FeatureSetup, options: { isSubagent?: b
 		...shared,
 		...fields,
 		line: Type.Optional(Type.Integer({ description: "Read from this line" })),
-		since: Type.Optional(Type.String({ description: "Files changed since this ISO time" })),
+		since: Type.Optional(Type.String({ description: "Files changed since ISO time" })),
 		source: Type.Optional(
 			StringEnum(["all", "sessions", "compactions", "agents", "profile"] as const, {
 				description: "Record collection (default all)",
 			}),
 		),
 		query: Type.Optional(Type.String({ description: "Case-insensitive regex filter" })),
-		agentId: Type.Optional(Type.String({ description: "Profile: agent name from the overview" })),
+		agentId: Type.Optional(Type.String({ description: "Profile: agent name" })),
 		request: main.properties.request,
 	});
 	api.tools.register(

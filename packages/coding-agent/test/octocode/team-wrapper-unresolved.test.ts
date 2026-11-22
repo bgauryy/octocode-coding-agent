@@ -70,7 +70,8 @@ describe("reservation gate: a wrapper line with no resolvable command", () => {
 		await owner.lock(["src/a.ts"]);
 		// `sort`, not `rg`: a line of readers with no write form now runs with a computed word (RFC core-tools B4).
 		expect(await peer.gate('for id in a b; do rg -l "$id" .; done')).toBeUndefined();
-		const reader = await peer.gate('for id in a b; do sort "$id" x; done');
+		expect(await peer.gate('for id in a b; do sort "$id" x; done')).toBeUndefined(); // plain loop words are known
+		const reader = await peer.gate('for id in $(ls); do sort "$id" x; done');
 		expect(reader?.reason).toContain('(`sort`). Why: `sort` is given `"$id"`');
 		expect(reader?.reason).not.toContain("inline code");
 		const arithmetic = await peer.gate("echo $(( $(cat n)-S ))");

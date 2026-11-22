@@ -251,7 +251,11 @@ function buildLayout(
 			get scrollContentLines() {
 				return materialize();
 			},
-			scrollContentRow: (row) => windowRows[row - windowStart],
+			get scrollContentRow() {
+				// Between paints a measuring slice can shift the window. Pin its origin for the duration of a copy.
+				const start = doc.rowOf(window.first, 0);
+				return (row: number) => windowRows[row - start];
+			},
 			scrollContentHeight: total,
 			materialize: () => {
 				materialize();

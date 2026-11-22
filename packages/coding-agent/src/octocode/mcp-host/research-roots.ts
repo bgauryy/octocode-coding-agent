@@ -111,25 +111,30 @@ const commaList = (value: string | undefined): string[] =>
 		.map((part) => part.trim())
 		.filter(Boolean);
 
-/** The global `settings.json` `research.allowedPaths`; the project file is never consulted, trusted or not. */
-function settingsRoots(agentDir: string): unknown[] {
-	try {
-		const paths = SettingsManager.create(agentDir, agentDir, { projectTrusted: false }).getGlobalSettings().research
-			?.allowedPaths;
-		return Array.isArray(paths) ? paths : [];
-	} catch {
-		return [];
-	}
+/**
+ * The global `settings.json` `research.allowedPaths`; the project file is never consulted, trusted or not. The manager
+ * records an unreadable or invalid file instead of throwing: that is reported as a warning, and its roots are none.
+ */
+function settingsRoots(agentDir: string, warnings: string[]): unknown[] {
+	const settings = SettingsManager.create(agentDir, agentDir, { projectTrusted: false });
+	for (const error of settings.drainErrors())
+		warnings.push(
+			`Allowed folders from ${path.join(agentDir, "settings.json")} were not read: ${error.error.message}.`,
+		);
+	const paths = settings.getGlobalSettings().research?.allowedPaths;
+	return Array.isArray(paths) ? paths : [];
 }
 
-/** `local.allowedPaths` of the home `.octocoderc`. */
-function rcRoots(file: string): unknown[] {
+/** `local.allowedPaths` of the home `.octocoderc`; a file that is not valid JSON is a warning, not a silent drop. */
+function rcRoots(file: string, warnings: string[]): unknown[] {
 	const text = readText(file);
 	if (text === undefined) return [];
 	try {
 		const paths = (JSON.parse(text) as { local?: { allowedPaths?: unknown } } | null)?.local?.allowedPaths;
 		return Array.isArray(paths) ? paths : [];
-	} catch {
+	} catch (error) {
+		if (!(error instanceof SyntaxError)) throw error;
+		warnings.push(`Allowed folders from ${file} were not read: ${error.message}.`);
 		return [];
 	}
 }
@@ -146,14 +151,14 @@ export function userResearchRoots(
 ): McpResearchRoots {
 	const shared = sharedHome(env, home);
 	const envFile = readText(path.join(shared, ".env"));
+	const warnings: string[] = [];
 	const sources: Array<[string, unknown[]]> = [
-		[`research.allowedPaths in ${path.join(agentDir, "settings.json")}`, settingsRoots(agentDir)],
+		[`research.allowedPaths in ${path.join(agentDir, "settings.json")}`, settingsRoots(agentDir, warnings)],
 		[`ALLOWED_PATHS in ${path.join(shared, ".env")}`, commaList(envFile && dotenvValue(envFile, "ALLOWED_PATHS"))],
-		[`local.allowedPaths in ${path.join(shared, ".octocoderc")}`, rcRoots(path.join(shared, ".octocoderc"))],
+		[`local.allowedPaths in ${path.join(shared, ".octocoderc")}`, rcRoots(path.join(shared, ".octocoderc"), warnings)],
 		["the ALLOWED_PATHS environment variable", commaList(env.ALLOWED_PATHS)],
 	];
 	const roots = new Set<string>();
-	const warnings: string[] = [];
 	for (const [source, entries] of sources)
 		for (const raw of entries) {
 			const result = checked(raw, env, home);

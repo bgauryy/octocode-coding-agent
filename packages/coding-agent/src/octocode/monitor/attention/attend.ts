@@ -1,3 +1,4 @@
+import { MONITOR_SOURCE } from "../../events/source.ts";
 import { isStaleSessionError } from "../../shared/util.ts";
 import { wakeGateOf } from "../../wake/gate.ts";
 import { type Attention, monitorLedgerOf } from "../ledger.ts";
@@ -71,7 +72,13 @@ export function attend(
 						sent,
 						{ triggerTurn: true, ...(delivery.deliverAs ? { deliverAs: delivery.deliverAs } : {}) },
 					)
-				: gate.emit([], sent, { triggerTurn: false, ...(delivery.deliverAs ? { deliverAs: delivery.deliverAs } : {}) });
+				: gate.emit(
+						[],
+						sent,
+						{ triggerTurn: false, ...(delivery.deliverAs ? { deliverAs: delivery.deliverAs } : {}) },
+						false,
+						[MONITOR_SOURCE],
+					);
 	} catch (error) {
 		if (!isStaleSessionError(error)) throw error;
 		ledger.record(told, false);

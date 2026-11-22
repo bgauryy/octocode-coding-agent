@@ -40,6 +40,10 @@ export function addApplicationUserMessage(
 	const skill = message.content?.some((block) => block.type !== "text")
 		? undefined
 		: parseSkillBlock(sanitizeTerminalText(text));
+	const addUser = (component: UserMessageComponent) => {
+		component.setExpanded(host.uiStore.getState().view.toolsExpanded);
+		host.chatContainer.addChild(component);
+	};
 	if (skill) {
 		const component = new SkillInvocationMessageComponent(
 			skill,
@@ -51,7 +55,7 @@ export function addApplicationUserMessage(
 		host.chatContainer.addChild(component);
 		if (skill.userMessage) {
 			host.chatContainer.addChild(new Spacer(1));
-			host.chatContainer.addChild(
+			addUser(
 				new UserMessageComponent(
 					skill.userMessage,
 					host.getMarkdownThemeWithSettings(),
@@ -61,7 +65,7 @@ export function addApplicationUserMessage(
 			);
 		}
 	} else {
-		host.chatContainer.addChild(
+		addUser(
 			new UserMessageComponent(
 				message,
 				host.getMarkdownThemeWithSettings(),
@@ -69,6 +73,7 @@ export function addApplicationUserMessage(
 				host.getMarkdownTransformers(),
 				{
 					readAsset,
+					keepScrollbackOnCollapse: () => host.ui.keepScrollbackOnCollapse?.(),
 					showImages: host.settingsManager.getShowImages(),
 					imageWidthCells: host.settingsManager.getImageWidthCells(),
 					requestRender: () => host.ui.requestRender(),

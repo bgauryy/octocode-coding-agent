@@ -24,7 +24,7 @@ const FREE_FORM = new Map<string, string>([
 	["agent.tasks", "batch entries, each validated against the single task call's schema (native/tools/agent/batch.ts)"],
 	["backlog.items", "batch entries, each validated against the single write's fields (native/tools/backlog/tool.ts)"],
 	["memory.items", "batch entries, each validated as a single set or delete (native/tools/memory/tool.ts)"],
-	["wait.items", "batch entries, each validated against the single call's fields (native/tools/wait/tool.ts)"],
+	["notify.items", "batch entries, each validated against the single call's fields (native/tools/notify/tool.ts)"],
 ]);
 
 type Node = Record<string, unknown>;

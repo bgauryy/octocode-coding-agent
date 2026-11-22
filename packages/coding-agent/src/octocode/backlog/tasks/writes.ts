@@ -155,7 +155,11 @@ export function reparentTask(
 			const task = requireTask(agentDb.db, repo, ref);
 			if (version !== undefined && version !== task.version) throw conflict(task);
 			taskAccess(agentDb.db, repo, task, actor);
-			tasks.reparentTask(agentDb.db, task.rowId, target(agentDb.db, repo, to, actor), now());
+			const owner = target(agentDb.db, repo, to, actor);
+			// An ongoing step keeps its assignee: the new owner must not already have one ongoing for that assignee.
+			if (task.state === "ongoing" && task.assignee)
+				refuseSecondOngoing(agentDb.db, repo, owner, { ...actor, id: task.assignee }, task);
+			tasks.reparentTask(agentDb.db, task.rowId, owner, now());
 			return requireTask(agentDb.db, repo, ref);
 		}),
 	);

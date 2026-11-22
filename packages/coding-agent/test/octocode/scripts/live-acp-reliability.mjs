@@ -7,8 +7,6 @@ import { randomUUID, createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { parseArgs } from "node:util";
 import assert from "node:assert/strict";
-import { testFeatures } from "../../helpers/features.ts";
-import { nativeFeatureSet } from "../../helpers/native-features.ts";
 
 const USAGE = `Optional ACP reliability check for the current coding-agent source.
   yarn node packages/coding-agent/test/octocode/scripts/live-acp-reliability.mjs --fixture [--out DIR]
@@ -88,6 +86,8 @@ fs.writeFileSync(
 		},
 	}),
 );
+const { testFeatures } = await import("../../helpers/features.ts");
+const { nativeFeatureSet } = await import("../../helpers/native-features.ts");
 const { createFauxCore, fauxAssistantMessage, fauxToolCall } = await import("@octocodeai/octocode-ai");
 const { createTestSession } = await import(path.join(packageRoot, "test/helpers/session.ts"));
 const { trustFolder } = await import(path.join(packageRoot, "test/octocode/helpers.ts"));

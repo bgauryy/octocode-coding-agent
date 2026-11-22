@@ -60,6 +60,7 @@ export const FEEDBACK_CSS = `/* Loaders and run state */
 .status-failed .terminal-status { color: var(--term-bad); }
 .status-failed .prompt-symbol { color: var(--term-bad); }
 .status-running .terminal-status { color: var(--term-accent); }
+.terminal-entry .fold > summary { color: inherit; }
 .terminal-output { margin: 0; padding-left: 18px; color: #c9d1d9; white-space: pre; }
 .terminal-body.is-wrapped .terminal-output { white-space: pre-wrap; overflow-wrap: anywhere; }
 .terminal-empty { place-items: center; padding: 48px 16px; text-align: center; font-family: var(--font); }
@@ -71,9 +72,18 @@ export const FEEDBACK_CSS = `/* Loaders and run state */
 @keyframes pop-in { from { opacity: 0; transform: translate(-50%, -6px) scale(.98); } }
 
 @media (max-width: 720px) {
-	header.top { padding: 12px 16px 0; }
+	header.top { padding: 4px 12px 0; }
+	nav.tabs { flex: 1 0 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+	.header-row > nav.tabs { order: 1; }
+	.header-row .tab { flex-shrink: 0; min-height: 40px; }
+	.header-row .brand { max-width: 100%; min-width: 0; }
+	.board-view > .view-heading, .backlog-view > .view-heading { flex-basis: 100%; }
+	.board-view > .toolbar, .backlog-view > .toolbar { flex-basis: 100%; }
+	.board-view > .view-heading > *, .backlog-view > .view-heading > * { max-width: 100%; }
 	main { padding: 16px 16px 40px; }
-	.palette-trigger { min-width: 0; flex: 1; }
+	.palette-trigger { justify-content: center; min-width: 32px; padding-inline: 6px; }
+	.overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+	.overview .metric { min-width: 0; padding: 8px; }
 	.palette-trigger span:not(.kbd), .palette-trigger .kbd { display: none; }
 	.progress-summary { margin-left: 0; }
 	.board { margin-right: -16px; padding-right: 16px; }

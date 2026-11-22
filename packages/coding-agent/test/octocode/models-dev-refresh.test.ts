@@ -103,3 +103,38 @@ describe("refreshCatalog", () => {
 		expect(fs.existsSync(file)).toBe(false);
 	});
 });
+
+describe("loadCatalog overlapping refreshes", () => {
+	it("keeps one request per index file and never hands one file's index to another", async () => {
+		const first = home("missing");
+		const second = home("missing");
+		let release: () => void = () => undefined;
+		const gate = new Promise<void>((resolve) => (release = resolve));
+		const fetched = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+			await gate;
+			return new Response(JSON.stringify(api), { status: 200 });
+		});
+		const calls = [
+			catalog.loadCatalog({ file: first.file }),
+			catalog.loadCatalog({ file: first.file }),
+			catalog.loadCatalog({ file: second.file }),
+		];
+		release();
+		await Promise.all(calls);
+		expect(fetched.mock.calls.length).toBe(2);
+		expect(catalog.readCatalog(first.file)).toBeDefined();
+		expect(catalog.readCatalog(second.file)).toBeDefined();
+	});
+
+	it("does not overwrite an index a newer fetch already saved", async () => {
+		const { file } = home("missing");
+		vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+			const newer = { fetchedAt: Date.now() + 60_000, models: { newer: { toolCall: true } }, providers: ["x"] };
+			fs.writeFileSync(file, JSON.stringify(newer));
+			return new Response(JSON.stringify(api), { status: 200 });
+		});
+		const result = await catalog.loadCatalog({ file });
+		expect(result?.models).toHaveProperty("newer");
+		expect(catalog.readCatalog(file)?.models).toHaveProperty("newer");
+	});
+});

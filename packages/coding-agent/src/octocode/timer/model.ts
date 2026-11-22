@@ -9,7 +9,7 @@ import {
 	storedKind,
 } from "./conditions/index.ts";
 import { formatSpan } from "../shared/format.ts";
-import type { AgentEvent } from "../wake/catalog.ts";
+import type { PayloadEvent as AgentEvent } from "../events/topics.ts";
 import { cronFields, cronOf, cronSummary, cronWakeText } from "./cron.ts";
 import { CHECK_CAPS } from "./judge.ts";
 import type { CheckOutcome, TimerCondition } from "./conditions/types.ts";
@@ -27,8 +27,10 @@ export const MIN_CHECK_SECONDS = 5;
 /** How long an `until` timer waits without a deadline of its own. */
 const DEFAULT_UNTIL_DEADLINE_SECONDS = 3600;
 
-/** The `set` and `on` arguments of the `wait` tool, with `on`'s event already mapped to its `until` condition. */
+/** The `set` and `on` arguments of the `notify` tool, with `on`'s event already mapped to its `until` condition. */
 export interface TimerSetInput {
+	/** The call's op (`set` or `on`): the errors name it. */
+	op?: string;
 	note?: string;
 	after?: number;
 	every?: number;
@@ -71,7 +73,7 @@ export function timerFields(
 	},
 ): NewTimer {
 	const note = input.note?.trim();
-	if (!note) throw new Error("set needs a note: what to do when the wait wakes you.");
+	if (!note) throw new Error(`${input.op === "on" ? "on" : "set"} needs a note: what to do when the notice arrives.`);
 	const condition = parseUntil(input.until);
 	const after = seconds(input.after, "after");
 	const every = seconds(input.every, "every");
@@ -113,7 +115,7 @@ export function timerFields(
 	}
 	if (every !== undefined) {
 		if (every < MIN_EVERY_SECONDS)
-			throw new Error(`every is at least ${MIN_EVERY_SECONDS} seconds; to wait for a condition, add until.`);
+			throw new Error(`every is at least ${MIN_EVERY_SECONDS} seconds; to be notified of a condition, add until.`);
 		return {
 			...base,
 			kind: "every",
@@ -125,7 +127,7 @@ export function timerFields(
 	}
 	if (after === undefined) throw new Error("set needs after (one wake), every (repeating) or until (a condition).");
 	if (input.maxRuns !== undefined || deadline !== undefined)
-		throw new Error("maxRuns and deadline bound every or until; a wait with only after wakes once.");
+		throw new Error("maxRuns and deadline bound every or until; a request with only after notifies once.");
 	return { ...base, kind: "once", dueAt: now + after * 1000 };
 }
 
@@ -266,8 +268,8 @@ export function wakeDetails(row: TimerRow): TimerWakeDetails {
 export function wakeText(row: TimerRow): string {
 	const cron = cronOf(row);
 	if (cron) return cronWakeText(row, cron);
-	const ended = row.status === "active" ? "" : ` (wait ${row.status})`;
-	const lines = [`Wait ${row.id} fired: ${wakeReason(row, false)}${ended}.`, `Note: ${row.note}`];
+	const ended = row.status === "active" ? "" : ` (${row.status})`;
+	const lines = [`Notification ${row.id}: ${wakeReason(row, false)}${ended}.`, `Note: ${row.note}`];
 	if (row.status === "active" && (row.kind === "every" || row.max_runs !== null))
 		lines.push(`It repeats: off id ${row.id} to stop it.`);
 	// A condition that held with nothing to show says no more than "condition met".

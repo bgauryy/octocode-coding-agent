@@ -14,7 +14,10 @@ import { runBacklog } from "../../../backlog/tool-run.ts";
 import { AUDIT_SHOWN } from "../../../backlog/audit-text.ts";
 import { type CompletionGate, completionInfo } from "../../../backlog/completion-gate.ts";
 import { doneRefusal, type Holdings } from "../../../backlog/done-guard.ts";
+import { reviewBeforeDone } from "../../../backlog/qa-run.ts";
+import type { QaReviewer } from "../../../backlog/qa-gate.ts";
 import { completeStep } from "../../../backlog/tool-step.ts";
+import { SETTINGS_DEFAULTS } from "../../../../core/settings-defaults.ts";
 import { closeField, completionField, legacyEntityFields } from "../../../backlog/tool-schema.ts";
 import { oneWrite } from "../../../backlog/tool-support.ts";
 import { backlogPrompt } from "../../../backlog/tool-text.ts";
@@ -86,6 +89,8 @@ export function registerBacklogTool(
 		completing?: CompletionGate;
 		/** What this session still runs: `done` is refused while it runs or holds anything for the item. */
 		holdings?: Holdings;
+		/** Reviews an important item's completion before `done` writes it (`backlog.qa`); a session without it completes as the hooks allow. */
+		review?: QaReviewer;
 	},
 ): void {
 	const subagent = options.isSubagent;
@@ -160,8 +165,13 @@ export function registerBacklogTool(
 						throw new Error(`items carries each entry's fields: move ${other.join(", ")} into the entries.`);
 					const entries = args.items.map((entry) => parseJsonStrings(entry));
 					try {
-						return await batchUpdate(entries, OP_FIELDS[op], "items", (entry) =>
-							write({ ...(entry as Omit<Params, "op">), op }, op, ctx, signal),
+						return await batchUpdate(
+							entries,
+							OP_FIELDS[op],
+							"items",
+							(entry) => write({ ...(entry as Omit<Params, "op">), op }, op, ctx, signal),
+							undefined,
+							signal,
 						);
 					} finally {
 						options.changed?.(ctx); // a refused or cancelled batch may still have applied entries
@@ -195,6 +205,8 @@ export function registerBacklogTool(
 
 	/** One write: the done guard and TaskCompleted hooks, then the store write, alone in its transaction. */
 	async function write(args: Params, op: Exclude<Op, "get">, ctx: FeatureContext, signal?: AbortSignal) {
+		/** The QA note recorded with the completion, when a review ran or was skipped. */
+		let qa: string | undefined;
 		if ((op === "done" || op === "close") && args.id) {
 			// The built-in guard, then the TaskCompleted hooks, run before the write, here, in the process that writes; a refusal leaves the item as it is.
 			const backlog = await openBacklogWhenReady(ctx, options, signal);
@@ -208,13 +220,27 @@ export function registerBacklogTool(
 					throw new Error(
 						`${item.ref} was not ${change === "done" ? "completed" : "closed"}: a TaskCompleted hook refused it: ${refusal}`,
 					);
+				if (op === "done" && options.review)
+					qa = await reviewBeforeDone(
+						backlog,
+						item,
+						args.completion,
+						api.settings.get().backlog?.qa ?? SETTINGS_DEFAULTS.backlog.qa,
+						options.review,
+						ctx,
+						signal,
+					);
 			}
 		}
-		return oneWrite(async () => {
+		const written = await oneWrite(async () => {
 			signal?.throwIfAborted();
 			const backlog = await openBacklogWhenReady(ctx, options, signal);
-			return backlog.store.transactionWhenReady(() => work(backlog, args, op), signal);
+			const given = qa ? { ...args, note: [args.note, qa].filter(Boolean).join("\n\n") } : args;
+			return backlog.store.transactionWhenReady(() => work(backlog, given, op), signal);
 		});
+		return qa
+			? { ...written, content: [{ type: "text" as const, text: `${written.content[0]?.text ?? ""}\n${qa}` }] }
+			: written;
 	}
 
 	/** Each work operation as the store write it is: the store applies every rule (who holds the item, what a state needs). */

@@ -53,6 +53,51 @@ describe("agent task `item` for an item this session does not hold", () => {
 		expect(await link.attach(undefined, "w1")).toBe("");
 	});
 
+	it("returns an item the delegation claimed to the state it had when its child was stopped or cancelled", async () => {
+		const { ctx, backlog } = session();
+		backlog.store.add({ goal: "g", why: "w", title: "was todo", state: "todo", createdBy: "user" });
+		backlog.store.add({ goal: "g", why: "w", title: "was backlog", state: "backlog", createdBy: "user" });
+		for (const [ref, before] of [
+			["B1", "todo"],
+			["B2", "backlog"],
+		] as const) {
+			const link = itemLink(ctx, ref)!;
+			await link.claim();
+			expect(backlog.store.get(ref)).toMatchObject({ state: "ongoing", assignee: "session-test" });
+			const lines = await link.attach(undefined, "w1", undefined, undefined, false, true);
+			expect(lines).toContain(`Returned ${ref} to ${before}`);
+			expect(backlog.store.get(ref)).toMatchObject({ state: before });
+			expect(backlog.store.get(ref)?.assignee).toBeUndefined();
+		}
+	});
+
+	it("keeps a stopped child's item this session held before the delegation, or another owner took since", async () => {
+		const { ctx, backlog } = session();
+		backlog.store.add({ goal: "g", why: "w", title: "held", state: "todo", createdBy: "user" });
+		backlog.store.update("B1", { state: "ongoing" }, { id: "session-test" });
+		const held = itemLink(ctx, "B1")!;
+		await held.claim();
+		await held.attach(undefined, "w1", undefined, undefined, false, true);
+		expect(backlog.store.get("B1")).toMatchObject({ state: "ongoing", assignee: "session-test" });
+
+		backlog.store.add({ goal: "g", why: "w", title: "taken", state: "todo", createdBy: "user" });
+		const link = itemLink(ctx, "B2")!;
+		await link.claim();
+		backlog.store.update("B2", { state: "todo" }, { id: "session-test" });
+		backlog.store.update("B2", { state: "ongoing" }, { id: "other-session" });
+		await link.attach(undefined, "w2", undefined, undefined, false, true);
+		expect(backlog.store.get("B2")).toMatchObject({ state: "ongoing", assignee: "other-session" });
+	});
+
+	it("keeps the claim of a child that lingers after its stop", async () => {
+		const { ctx, backlog } = session();
+		backlog.store.add({ goal: "g", why: "w", title: "x", state: "todo", createdBy: "user" });
+		const link = itemLink(ctx, "B1")!;
+		await link.claim();
+		await link.attach(undefined, "w1", undefined, undefined, true, true);
+		expect(backlog.store.get("B1")).toMatchObject({ state: "ongoing", assignee: "session-test" });
+	});
+
 	it("refuses at claim time an item another session took after the check", async () => {
 		const { ctx, backlog } = session();
 		backlog.store.add({ goal: "g", why: "w", title: "raced", state: "todo", createdBy: "user" });

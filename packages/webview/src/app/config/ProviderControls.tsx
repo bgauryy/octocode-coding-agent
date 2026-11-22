@@ -91,7 +91,8 @@ export function SourcesPanel({ sources, set }: { sources: readonly ProviderSourc
 
 function originText(origin: ProviderOrigin): string {
 	const base = `${PRODUCT_LABELS[origin.product]} ${FILE_LABELS[origin.file]}`;
-	return origin.file === "models-json" && origin.hasKey ? `${base} (API key set)` : base;
+	if (origin.file !== "models-json" || !origin.hasKey) return base;
+	return origin.keyUnset ? `${base} (key variable not set)` : `${base} (API key set)`;
 }
 
 /** Where a provider is configured, and the Enable/Disable control. Disabling hides its models and keeps its credentials. */

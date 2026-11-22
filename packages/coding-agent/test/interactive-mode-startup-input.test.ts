@@ -3,7 +3,7 @@ import {
 	handleStartupSubmit,
 	setupEditorSubmitHandler,
 } from "../src/modes/interactive/interactive-mode/command-dispatch.ts";
-import { getUserInput } from "../src/modes/interactive/interactive-mode/startup.ts";
+import { getUserInput } from "../src/modes/interactive/interactive-mode/input-handlers.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 type SubmitContext = {

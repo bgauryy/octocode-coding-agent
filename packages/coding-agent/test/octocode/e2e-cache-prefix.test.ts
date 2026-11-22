@@ -171,7 +171,7 @@ describe("deferred tools under the default exposure", () => {
 /**
  * `/reload` re-reads AGENTS.md files and skills. The base system message of the first request is never rewritten: what
  * changed rides in one appended system message that carries only the sections that differ (`project_context` for
- * AGENTS.md, `skills` for skills), so the earlier request stays a byte-identical prefix that the provider may read at its
+ * AGENTS.md; a changed skill catalog is a re-declaration of the `skill` tool), so the earlier request stays a byte-identical prefix that the provider may read at its
  * cache-read rate. Byte identity enables reuse; it does not prove a hit, retention or billing, which only provider usage shows.
  */
 describe("a /reload between prompts", () => {
@@ -216,7 +216,7 @@ describe("a /reload between prompts", () => {
 		return { sections: added.map((message) => Object.keys(message.sections)), text: JSON.stringify(added) };
 	};
 
-	it("a changed skill is appended as the skills section alone", async () => {
+	it("a changed skill is re-declared in the skill tool, appended as a tool update with no prompt section", async () => {
 		const { s, skills } = await session();
 		skill(skills, "alpha", "Changed alpha description.");
 		skill(skills, "beta", "Brand new beta.");
@@ -230,15 +230,66 @@ describe("a /reload between prompts", () => {
 		);
 		await s.session.reload();
 		await s.run("second", [say("two")]);
+		// The catalog is the `skill` tool's description: the earlier messages stay a byte-identical prefix and the change rides
+		// one appended system message that removes and re-adds that tool, with no prompt section.
 		expect(extendsPrefix(s.contexts[0], s.contexts[1])).toBe(true);
-		const change = appended(s.contexts[0], s.contexts[1]);
-		expect(change.sections).toEqual([["skills"]]);
-		expect(change.text).toContain("Changed alpha description.");
-		expect(change.text).toContain("Brand new beta.");
-		// Not vacuous: the first request carried the original, and the change is not in its prefix.
-		expect(serialized(s.contexts[0])).toContain("Original alpha description.");
-		expect(serialized(s.contexts[0])).not.toContain("Changed alpha description.");
+		const added = s.contexts[1].messages.slice(s.contexts[0].messages.length) as unknown as Array<{
+			role: string;
+			sections?: Record<string, string>;
+			toolsAdded?: Array<{ name: string; description: string }>;
+			toolsRemoved?: Array<{ name: string }>;
+		}>;
+		const update = added.filter((message) => message.role === "system");
+		expect(update).toHaveLength(1);
+		expect(update[0].sections ?? {}).toEqual({});
+		expect(update[0].toolsRemoved?.map((tool) => tool.name)).toEqual(["skill"]);
+		expect(update[0].toolsAdded?.map((tool) => tool.name)).toEqual(["skill"]);
+		const description = update[0].toolsAdded?.[0].description ?? "";
+		expect(description).toContain("Changed alpha description.");
+		expect(description).toContain("Brand new beta.");
+		// Not vacuous: the first request declared the original, and the change is in neither its prompt nor its tools.
+		const first = getCurrentTools(s.contexts[0].messages).find((tool) => tool.name === "skill");
+		expect(first?.description).toContain("Original alpha description.");
+		expect(first?.description).not.toContain("Changed alpha description.");
+		expect(serialized(s.contexts[1], s.contexts[0].messages.length)).not.toContain("Changed alpha description.");
 	});
+
+	it("a changed skill keeps the provider's tool order: skill stays last, every tool before it is a byte-identical prefix", async () => {
+		const { s, skills } = await session();
+		const model = getBuiltinModel("anthropic", "claude-sonnet-4-5");
+		const sentTools = async (context: TranscriptContext) => {
+			let payload: { tools?: Array<{ name: string }> } = {};
+			await anthropicStream(model, normalizeContext(context), {
+				apiKey: "sk-ant-api-test",
+				env: {},
+				onPayload: (value) => {
+					payload = structuredClone(value) as typeof payload;
+					throw new Error("captured");
+				},
+			}).result();
+			return payload.tools ?? [];
+		};
+		const before = await sentTools(s.contexts[0]);
+		skill(skills, "alpha", "Changed alpha description.");
+		skill(skills, "beta", "Brand new beta.");
+		approveFixtureSkillFiles(
+			["alpha", "beta"].map((name) => ({
+				name,
+				filePath: path.join(skills, name, "SKILL.md"),
+				category: "global" as const,
+			})),
+			s.cwd,
+		);
+		await s.session.reload();
+		await s.run("second", [say("two")]);
+		const after = await sentTools(s.contexts[1]);
+		const names = (tools: Array<{ name: string }>) => tools.map((tool) => tool.name);
+		// The same declaration order before and after; `skill` is the last tool, the only one whose bytes changed.
+		expect(names(after)).toEqual(names(before));
+		expect(names(after).at(-1)).toBe("skill");
+		expect(JSON.stringify(after.slice(0, -1))).toBe(JSON.stringify(before.slice(0, -1)));
+		expect(JSON.stringify(after.at(-1))).not.toBe(JSON.stringify(before.at(-1)));
+	}, 60_000);
 
 	it("a changed AGENTS.md is appended as the project_context section alone", async () => {
 		const { s } = await session();

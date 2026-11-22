@@ -70,7 +70,7 @@ flowchart LR
 - Destructive shell: wiping `/`, home or a system folder, `git reset --hard`, `git clean -f`, `git checkout .`, `git restore .`, forced `git push`, `rm -r` at or above the checkout root, changes under `~/.ssh`.
 - Tool output reaches the model unredacted; add a `tool_result` [hook](hooks.md) to redact.
 - `workspace` mode does not defend against code an agent hides (`python -c`, `node -e`, computed options, programs a git line names): use `manual` to review every command. Plan mode and peer reservations refuse these.
-- A `wait` command (`on` `check.result`) runs unattended, so setting it is decided as the `bash` call it is. Claude rules see two operations, `wait` and `Bash`: a deny or ask on either applies, an allow needs both.
+- A `notify` command (`on` `check.result`) runs unattended, so setting it is decided as the `bash` call it is. Claude rules see two operations, `notify` and `Bash`: a deny or ask on either applies, an allow needs both.
 
 ### Project trust
 

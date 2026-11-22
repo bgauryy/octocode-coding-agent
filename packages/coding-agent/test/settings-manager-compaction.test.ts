@@ -13,7 +13,11 @@ describe("built-in compaction policy", () => {
 			const model = { provider: "p", id: "m", contextWindow };
 			const policy = manager.getCompactionSettings(model);
 			expect(policy.enabled).toBe(true);
-			expect(policy.reserveTokens).toBe(Math.min(16384, Math.floor(contextWindow / 8)));
+			// A window whose sixth holds an inline summary reserves for it (24,576, within a sixth).
+			const fraction = Math.min(16384, Math.floor(contextWindow / 8));
+			expect(policy.reserveTokens).toBe(
+				contextWindow / 6 >= 20485 ? Math.min(24_576, Math.floor(contextWindow / 6)) : fraction,
+			);
 			expect(policy.keepRecentTokens).toBe(Math.min(20000, Math.floor(contextWindow / 4)));
 			expect(policy.reserveTokens + policy.keepRecentTokens).toBeLessThan(contextWindow);
 			expect(reserveTokensFor(model)).toBe(policy.reserveTokens);
@@ -36,10 +40,11 @@ describe("built-in compaction policy", () => {
 		storage.withLock("project", () => JSON.stringify({ compaction }));
 		const manager = SettingsManager.fromStorage(storage);
 		const model = { provider: "p", id: "m", contextWindow: 200000 };
-		expect(manager.getCompactionSettings(model)).toEqual(defaults);
+		const policy = { ...defaults, reserveTokens: 24_576 };
+		expect(manager.getCompactionSettings(model)).toEqual(policy);
 		await manager.reload();
-		expect(manager.getCompactionSettings(model)).toEqual(defaults);
-		expect(autoCompactAt(model)).toBe(200000 - 16384);
+		expect(manager.getCompactionSettings(model)).toEqual(policy);
+		expect(autoCompactAt(model)).toBe(200000 - 24_576);
 	});
 
 	it("does not publish customization or a setter", () => {

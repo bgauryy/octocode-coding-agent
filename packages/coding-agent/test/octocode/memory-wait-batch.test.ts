@@ -90,7 +90,7 @@ describe("wait batched writes", () => {
 		});
 		const ctx = { ...fakeCtx({ cwd: root }), sessionManager: { getSessionId: () => "s1", getBranch: () => [] } };
 		await host.fire("session_start", { reason: "startup" }, ctx);
-		const tool = host.tools.get("wait");
+		const tool = host.tools.get("notify");
 		const run = (params: Record<string, unknown>) => tool.execute("c", params, undefined, undefined, ctx).then(textOf);
 		const set = await run({
 			op: "set",

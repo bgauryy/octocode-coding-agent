@@ -63,7 +63,11 @@ export interface CatalogRow {
 	file_mtime: number | null;
 }
 
-/** Records the catalog columns of session `id`, creating its row when it has none. */
+/**
+ * Records the catalog columns of session `id`, creating its row when it has none. Like `bind`, a copy cannot replace
+ * another project's history: a row that already has a file in another folder keeps its catalog when the entry names a
+ * different folder and file (the same file or the same folder may always be refreshed).
+ */
 export function saveCatalog(db: DatabaseSync, id: string, entry: CatalogEntry): void {
 	db.prepare(
 		`INSERT INTO sessions (id, title, title_source, cwd, file, parent_file, created_at, last_active, message_count, first_prompt, file_mtime)
@@ -71,7 +75,8 @@ export function saveCatalog(db: DatabaseSync, id: string, entry: CatalogEntry): 
          ON CONFLICT(id) DO UPDATE SET title = excluded.title, title_source = excluded.title_source, cwd = excluded.cwd,
            file = excluded.file, parent_file = excluded.parent_file, created_at = excluded.created_at,
            last_active = excluded.last_active, message_count = excluded.message_count, first_prompt = excluded.first_prompt,
-           file_mtime = excluded.file_mtime`,
+           file_mtime = excluded.file_mtime
+         WHERE sessions.file IS NULL OR sessions.cwd = excluded.cwd OR sessions.file = excluded.file`,
 	).run(
 		id,
 		entry.title,
@@ -87,20 +92,22 @@ export function saveCatalog(db: DatabaseSync, id: string, entry: CatalogEntry): 
 	);
 }
 
-/** Records a new name for session `id` (null clears it) and the file's modification time after the rename wrote it. */
+/**
+ * Records a new name for session `id` (null clears it) and the file's modification time after the rename wrote it.
+ * Like `saveCatalog`, a copy cannot rename another project's history: the row changes only when it is in the caller's
+ * `cwd` or holds the caller's `file`.
+ */
 export function saveTitle(
 	db: DatabaseSync,
 	id: string,
 	title: string | null,
 	titleSource: string | null,
 	fileMtime: number | null,
+	owner: { cwd: string; file: string },
 ): void {
-	db.prepare("UPDATE sessions SET title = ?, title_source = ?, file_mtime = ? WHERE id = ? AND file IS NOT NULL").run(
-		title,
-		titleSource,
-		fileMtime,
-		id,
-	);
+	db.prepare(
+		"UPDATE sessions SET title = ?, title_source = ?, file_mtime = ? WHERE id = ? AND file IS NOT NULL AND (cwd = ? OR file = ?)",
+	).run(title, titleSource, fileMtime, id, owner.cwd, owner.file);
 }
 
 /** The rows with catalog data, those of sessions that ran in `cwd` when given. */

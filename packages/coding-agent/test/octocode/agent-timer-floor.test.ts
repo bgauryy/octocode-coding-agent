@@ -23,8 +23,8 @@ describe("agent keeps timer", () => {
 		Object.assign(ctx.ui, { onTerminalInput: () => () => undefined });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		const tools = fake.api.tools.getAll() as { name: string; companionTools?: readonly string[] }[];
-		expect(tools.find((tool) => tool.name === "agent")?.companionTools).toEqual(["wait"]);
-		expect(tools.some((tool) => tool.name === "wait")).toBe(true);
+		expect(tools.find((tool) => tool.name === "agent")?.companionTools).toEqual(["notify"]);
+		expect(tools.some((tool) => tool.name === "notify")).toBe(true);
 	});
 
 	it("declares no companion in a lean child, which gets no delegation rules and has timer only from its own list", async () => {

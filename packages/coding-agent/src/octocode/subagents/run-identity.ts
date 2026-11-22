@@ -41,7 +41,6 @@ export function configureIdentity(
 	}
 	// A lean child reads its skills inlined in the task; it loads none itself.
 	if (!skillPlan.inline) run.identity.skillResources = skillResources;
-	run.identity.skillsInTask = skillPlan.inTask;
 	run.profile = withRoleSkills(run.profile, skillPlan.roleSkills, skillResources);
 	// Servers the model added with `mcp` (the user confirmed each), and the ones it stopped, reach the child as a transient file.
 	const { servers: addedServers, stopped, recent } = getMcpSessionHandoff(api.channels);

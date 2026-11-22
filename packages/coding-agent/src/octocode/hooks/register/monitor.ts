@@ -5,7 +5,12 @@ import type { AttentionRuleId } from "../../monitor/attention/rules.ts";
 import { type Attention, monitorLedgerOf } from "../../monitor/ledger.ts";
 import type { MachineRule } from "../../monitor/rules.ts";
 import { processStartTime } from "../../shared/process.ts";
+import { MONITOR_SOURCE } from "../../events/source.ts";
+import type { AgentEvent } from "../../events/topics.ts";
+import { describeEvent } from "../../wake/catalog.ts";
+import { recordProblem } from "../../../core/diagnostics-log.ts";
 import { hookObserver } from "./observe.ts";
+import { closeHookSubscribers, hookSubscribersOf } from "./subscribers.ts";
 import type { Dispatch, HookSession, ReportFailure } from "./types.ts";
 
 const EVENT = "MonitorAlert";
@@ -43,12 +48,53 @@ function alertHookInput(alert: Attention & { delivered: boolean }, now: () => nu
 	};
 }
 
+/** The alert as a `monitor.alert` event for the log; whether it reached the session rides in the replay body. */
+function alertEvent(alert: Attention & { delivered: boolean }, now: () => number): Omit<AgentEvent, "seq"> {
+	const at = alert.at ?? now();
+	const payload = {
+		kind: "monitor.alert" as const,
+		rule: alert.rule,
+		value: alert.value,
+		threshold: alert.threshold,
+		at,
+		...(alert.subject === undefined ? {} : { subject: alert.subject }),
+	};
+	const { label, key } = describeEvent(payload);
+	const { kind: _kind, ...fields } = payload;
+	return {
+		topic: "monitor.alert",
+		key,
+		at,
+		source: MONITOR_SOURCE,
+		payload: fields,
+		digest: label,
+		body: { delivered: alert.delivered },
+	};
+}
+
+/** The alert a stored `monitor.alert` event holds. */
+function alertOf(event: AgentEvent): Attention & { delivered: boolean } {
+	const payload = event.payload as AgentEvent<"monitor.alert">["payload"];
+	return {
+		rule: payload.rule as AttentionRuleId,
+		value: payload.value,
+		threshold: payload.threshold,
+		at: payload.at,
+		...(payload.subject === undefined ? {} : { subject: payload.subject }),
+		delivered: event.body?.delivered === true,
+	};
+}
+
 /**
  * MonitorAlert: observes each alert the monitor ledger records, once, with the rule id as the matcher. The ledger already
  * keeps one alert per trip (cooldowns and hysteresis live in the rules), so this adds no second filter. Machine rules run
  * only in the process that holds the sampler lease; the session rules (jobs, context, idle agents, idle items) belong
  * to this session and always run. The hook runs in the background under the presence deadline and shutdown waits for
  * it; it cannot block or add context.
+ *
+ * With `runtime.eventLoop: new` the ledger writes each alert to the event log and the hook hears it as a subscriber of
+ * `monitor.alert` (`events/subscribers.ts`): once, with its offset kept across a restart. In `old` and `shadow` it listens to
+ * the ledger directly.
  */
 export function registerMonitorHooks(
 	api: FeatureSetup,
@@ -76,10 +122,30 @@ export function registerMonitorHooks(
 	};
 	api.bus.on("session_start", async (_event, ctx) => {
 		stop();
-		unsubscribe = monitorLedgerOf(api).subscribe((alert) => observe(alert, ctx));
+		const subscribers = hookSubscribersOf(api, ctx);
+		if (!subscribers) {
+			unsubscribe = monitorLedgerOf(api).subscribe((alert) => observe(alert, ctx));
+			return;
+		}
+		const fail = (error: unknown) => void recordProblem("hook:monitor-alert", error);
+		const unhear = subscribers.subscribe({
+			hook: "monitor-alert",
+			topic: "monitor.alert",
+			handle: (event) => observe(alertOf(event), ctx),
+		});
+		const unpublish = monitorLedgerOf(api).subscribe((alert) => {
+			subscribers.publish(alertEvent(alert, now)).catch(fail);
+		});
+		unsubscribe = () => {
+			unpublish();
+			unhear();
+		};
+		// What an earlier run published and did not handle is handled now, once.
+		subscribers.pump().catch(fail);
 	});
 	api.bus.on("session_shutdown", async () => {
 		stop();
+		await closeHookSubscribers(api);
 		await settled();
 	});
 }

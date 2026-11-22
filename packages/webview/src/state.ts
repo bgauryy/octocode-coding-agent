@@ -37,14 +37,15 @@ export function createWorkspaceStore(storage?: SessionDraftStorage) {
 		drafts: sessionDrafts.read(),
 		requests: {},
 		setRequest: (key, request) => set((state) => ({ requests: { ...state.requests, [key]: request } })),
-		setDraft: (key, draft) =>
+		setDraft: (key, draft) => {
+			sessionDrafts.write(key, draft);
 			set((state) => {
-				sessionDrafts.write(key, draft);
 				const drafts = { ...state.drafts };
 				if (draft) drafts[key] = draft;
 				else delete drafts[key];
 				return { drafts };
-			}),
+			});
+		},
 		snapshot: null,
 		filter: "all",
 		paused: false,
@@ -60,16 +61,26 @@ export function createWorkspaceStore(storage?: SessionDraftStorage) {
 						paused: false,
 						displayedEvents: snapshot.events,
 					};
-				const sameEvents =
-					state.paused ||
-					state.displayedEvents === snapshot.events ||
-					JSON.stringify(state.displayedEvents) === JSON.stringify(snapshot.events);
+				const sameEvents = state.paused || sameEventRefs(state.displayedEvents, snapshot.events);
 				return { snapshot, displayedEvents: state.paused || sameEvents ? state.displayedEvents : snapshot.events };
 			}),
 		setFilter: (filter) => set({ filter }),
 		setPaused: (paused) =>
 			set((state) => ({ paused, displayedEvents: paused ? state.displayedEvents : (state.snapshot?.events ?? []) })),
 	}));
+}
+
+/**
+ * Equal content, compared newest first and element by element. The session interns events, so an unchanged event is
+ * the same object and costs one reference check; only a rebuilt event is serialized, and the scan stops at the first
+ * difference instead of serializing the whole feed twice.
+ */
+function sameEventRefs(a: readonly WorkspaceEvent[], b: readonly WorkspaceEvent[]): boolean {
+	if (a === b) return true;
+	if (a.length !== b.length) return false;
+	for (let i = a.length - 1; i >= 0; i--)
+		if (a[i] !== b[i] && JSON.stringify(a[i]) !== JSON.stringify(b[i])) return false;
+	return true;
 }
 
 export function selectEvents(state: Pick<WorkspaceState, "displayedEvents" | "filter">) {

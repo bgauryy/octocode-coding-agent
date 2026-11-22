@@ -43,6 +43,15 @@ describe("ConfigView settings editing", () => {
 		await userEvent.click(form.getByRole("button", { name: "Save" }));
 		expect(await form.findByRole("status")).toHaveTextContent("Workspace defaults still take precedence here.");
 	});
+	it("tells where hosts and custom providers are defined", async () => {
+		const snapshot = { ...base, modelsPath: "/home/u/.octocode/agent/models.json" };
+		render(<ConfigView load={async () => snapshot} save={vi.fn()} />);
+		await screen.findByRole("heading", { name: "Settings" });
+		expect(editor("defaultModel").getByText(/defined in models\.json/)).toHaveTextContent(
+			"/home/u/.octocode/agent/models.json",
+		);
+	});
+
 	it("has no editor when the host does not allow writes or no save is given", async () => {
 		const save = vi.fn();
 		const view = render(<ConfigView load={async () => ({ ...base, writable: false })} save={save} />);

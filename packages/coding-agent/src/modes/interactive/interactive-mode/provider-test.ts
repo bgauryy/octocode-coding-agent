@@ -1,35 +1,34 @@
-import { ModelRegistry } from "../../../core/model-registry.ts";
-import {
-	checkCandidates,
-	checkProviders,
-	describeHealth,
-	providerHealth,
-} from "../../../octocode/subagents/provider-health.ts";
+import type { ProviderTestResult } from "@octocodeai/octocode-contracts/config";
+import { connectedProviders, testAll, testProvider } from "../../../octocode/subagents/provider-test.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 
+type TestView = Pick<ProviderManagerHost, "session" | "showStatus" | "showError" | "showWarning">;
+
+const mark = (result: ProviderTestResult) => (result.status === "ok" ? "✓" : result.status === "failed" ? "✗" : "–");
+const line = (result: ProviderTestResult) => `${mark(result)} ${result.name}: ${result.message}`;
+
 /**
- * The provider page's `Test credential`: the check `/modelsettings check` runs, for this provider only, always as one
- * small request: a model list can accept a key that inference refuses (OpenCode lists models for any key, then refuses
- * free-tier chat to other clients). The result line comes from the same health record, whose error text is already
- * redacted; no key is shown.
+ * The provider page's `Test`: one small request for this provider (a model list can accept a key that inference
+ * refuses), then the host's own model list against the configured ids, which names ids the host does not serve and the
+ * nearest served ones. The shared `testProvider` runs it; the line carries redacted error text, never a key.
  */
-export async function testProviderCredential(
-	host: Pick<ProviderManagerHost, "session" | "showStatus" | "showError" | "showWarning">,
-	id: string,
-	name: string,
-): Promise<void> {
-	const registry = new ModelRegistry(host.session.modelRuntime);
-	const available = registry.getAvailable().filter((candidate) => candidate.provider === id);
-	if (available.length === 0) {
-		host.showWarning(`${name} has no available model to test with.`);
-		return;
-	}
-	host.showStatus(`Testing ${name}…`);
-	// Only `streamSimple`: without `getProvider`/`getProviderAuth` the check skips the model-list shortcut.
-	const requestOnly = { streamSimple: registry.streamSimple.bind(registry) };
-	await checkProviders(requestOnly, checkCandidates(available, host.session.model), providerHealth);
-	const status = providerHealth.get(id);
-	if (!status) host.showWarning(`${name}: the check gave no result.`);
-	else if (status.ok) host.showStatus(`${name}:${describeHealth(status)}`);
-	else host.showError(`${name}:${describeHealth(status)}`);
+export async function testProviderCredential(view: TestView, id: string, name: string): Promise<void> {
+	const { session } = view;
+	view.showStatus(`Testing ${name}…`);
+	const result = await testProvider({ runtime: session.modelRuntime, model: session.model }, id, name);
+	if (result.status === "skipped") view.showWarning(result.message);
+	else if (result.status === "ok") view.showStatus(line(result));
+	else view.showError(line(result));
+}
+
+/** `Test all`: every connected provider and the installed external agents, one result line each, only when chosen. */
+export async function testAllProviders(view: TestView): Promise<void> {
+	const { session } = view;
+	const count = connectedProviders(session.modelRuntime).length;
+	view.showStatus(`Testing ${count} provider${count === 1 ? "" : "s"} and the external agents…`);
+	const results = await testAll({ runtime: session.modelRuntime, model: session.model });
+	const text = results.map(line).join("\n");
+	if (results.length === 0) view.showWarning("No connected provider or external agent to test.");
+	else if (results.some((result) => result.status === "failed")) view.showError(text);
+	else view.showStatus(text);
 }

@@ -10,6 +10,8 @@ import type { ApplicationMessage } from "@octocodeai/octocode-contracts";
 import type { MarkdownTransformer } from "../../../core/features/types.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 import { surfaceFill } from "../../../theme/bands.ts";
+import { withoutSourceHeader } from "@octocodeai/octocode-common/text";
+import { LongResponse } from "./long-response.ts";
 import { createMarkdownTransform } from "./markdown-transform.ts";
 import {
 	ContentAttachmentComponent,
@@ -45,6 +47,8 @@ trackRenderChanges(MarkedMarkdown.prototype);
  * Component that renders a user message
  */
 export class UserMessageComponent extends Container {
+	private readonly body = new Container();
+	private readonly response: LongResponse;
 	private message: ApplicationMessage;
 	private markdownTheme: MarkdownTheme;
 	private outputPad: number;
@@ -66,7 +70,13 @@ export class UserMessageComponent extends Container {
 		this.outputPad = outputPad;
 		this.markdownTransformers = markdownTransformers;
 		this.contentOptions = contentOptions;
+		this.response = new LongResponse(this.body, false, undefined, false, contentOptions.keepScrollbackOnCollapse);
+		this.addChild(this.response);
 		this.rebuild();
+	}
+
+	setExpanded(expanded: boolean): void {
+		this.response.setExpanded(expanded);
 	}
 
 	setOutputPad(padding: number): void {
@@ -85,21 +95,22 @@ export class UserMessageComponent extends Container {
 	}
 
 	private rebuild(): void {
-		this.clear();
+		this.body.clear();
 		this.message = new FullContentReader().message(this.message, this.contentOptions.readAsset);
 		const content = this.message.content ?? [
 			{ id: `${this.message.id}:text`, type: "text" as const, text: this.message.text },
 		];
 		for (const block of content) {
 			if (block.type !== "text") {
-				this.addChild(new ContentAttachmentComponent(block, this.contentOptions));
+				this.body.addChild(new ContentAttachmentComponent(block, this.contentOptions));
 				continue;
 			}
 			// The Markdown pads and colors its own background: a Box around it would keep a second full-width copy of every
 			// line, with identical output.
-			this.addChild(
+			this.body.addChild(
 				new MarkedMarkdown(
-					contentText(block, this.contentOptions.readAsset),
+					// The model reads the source header the event loop adds; the row shows the message.
+					withoutSourceHeader(contentText(block, this.contentOptions.readAsset)),
 					this.outputPad,
 					1,
 					this.markdownTheme,

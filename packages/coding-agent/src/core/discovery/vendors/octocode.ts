@@ -19,6 +19,7 @@ import {
 	productRoots,
 	promptName,
 	skillItemsIn,
+	withinTrust,
 } from "../sources.ts";
 import type { ConfigItem, DiscoverInput } from "../types.ts";
 import { mcpSource } from "./mcp-items.ts";
@@ -40,7 +41,13 @@ function skills(input: DiscoverInput): ConfigItem[] {
 	if (externalSkillsEnabled(env) && resolve(home) !== resolve(globalDirs[0])) globalDirs.push(home);
 	return [
 		...(project
-			? skillItemsIn([join(project.dir, "skills"), ...collectAncestorProjectSkillDirs(input.cwd)], project, input)
+			? skillItemsIn(
+					[join(project.dir, "skills"), ...collectAncestorProjectSkillDirs(input.cwd)].filter((dir) =>
+						withinTrust(input, dir),
+					),
+					project,
+					input,
+				)
 			: []),
 		...skillItemsIn(globalDirs, global, input),
 		...(input.builtinSkillsDir
@@ -53,7 +60,7 @@ function skills(input: DiscoverInput): ConfigItem[] {
 function hooks(input: DiscoverInput): ConfigItem[] {
 	const items = [
 		...hookFileItems([globalPaths(input.env ?? process.env, input.home).hooks], "octocode", "global", input),
-		...(listsProject(input)
+		...(listsProject(input) && withinTrust(input, repoKey(input.cwd).root)
 			? hookFileItems([join(repoKey(input.cwd).root, ".octocode", "hooks.json")], "octocode", "project", input)
 			: []),
 	];

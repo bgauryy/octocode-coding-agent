@@ -6,7 +6,7 @@ export type CacheWarmingAction = "warm" | "stop";
 export interface CacheWarmingDecision {
 	/** "streaming" while the agent run that sent the request is still active. */
 	phase: "streaming" | "idle";
-	/** Price of this refresh: a cache read of the prompt plus one output token. */
+	/** Price of this refresh: a cache read of the prompt plus the output the adapter bills for the capped request. */
 	warmCost: number;
 	/** Extra price of the next real request if the cache entry is lost (only the history, with layered lifetimes). */
 	missCost: number;
@@ -65,6 +65,8 @@ export interface ActiveRun extends CacheWarmRequest {
 	/** Estimated instruction-prefix tokens that outlive the history entry; 0 for a single lifetime. */
 	instructionTokens: number;
 	delayMs: number;
+	/** Output tokens a refresh can bill, once the credential is resolved (see `effectiveOutputTokens`). */
+	warmOutputTokens?: number;
 	/** Latest safe time to send this refresh, leaving half the original expiry margin. */
 	refreshDeadlineAt: number;
 	startedAt: number;

@@ -9,6 +9,7 @@ import type { MarkdownTransformer, ToolRenderers } from "../../../core/features/
 import { withBuiltInRenderers } from "../../../octocode/files/built-in-renderers.ts";
 import { itemTitle, withItemTitlesInMarkdown } from "../../../octocode/render/item-titles.ts";
 import { ensurePngTranscoder as ensureSharedPngTranscoder } from "../../../utils/image-convert.ts";
+import { LongResponse } from "../components/long-response.ts";
 import { STATE_COLOR } from "../../../theme/status.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 import type { ThemeColor } from "../../../theme/theme-tokens.ts";
@@ -89,27 +90,27 @@ export function clearEditor(host: DisplayHost): void {
 }
 
 /**
- * The three notice kinds: one `<glyph> <tone> <sentence>` line. The glyph says the state in its colour (`STATE_COLOR`;
+ * Transcript notices: one `<glyph> <tone> <sentence>` line. The glyph says the state in its colour (`STATE_COLOR`;
  * `warning` is the risk colour); the sea mark beside it says the tone (`TONE`).
  */
-type NoticeKind = "success" | "warning" | "error";
+type NoticeKind = "info" | "success" | "warning" | "error";
 
-const NOTICE_MARK: Record<NoticeKind, { glyph: string; tone: string; color: ThemeColor }> = {
-	success: { glyph: GLYPH.done, tone: TONE.calm, color: STATE_COLOR.done },
-	warning: { glyph: GLYPH.warning, tone: TONE.caution, color: "warning" },
-	error: { glyph: GLYPH.failed, tone: TONE.problem, color: STATE_COLOR.failed },
+const NOTICE_MARK: Record<NoticeKind, { label: string; color: ThemeColor }> = {
+	info: { label: "System ·", color: "accent" },
+	success: { label: `${GLYPH.done} ${TONE.calm}`, color: STATE_COLOR.done },
+	warning: { label: `${GLYPH.warning} ${TONE.caution}`, color: "warning" },
+	error: { label: `${GLYPH.failed} ${TONE.problem}`, color: STATE_COLOR.failed },
 };
 
-/** A notice line at the transcript's left pad: `✓ 🐚 New session started`, `⚠ 🦀 Project config not loaded`, `✗ 🦈 Compaction failed`. */
-export function noticeLine(kind: NoticeKind, message: string, pad: number): ThemedText {
-	const { glyph: state, tone, color } = NOTICE_MARK[kind];
-	const glyph = `${state} ${tone}`;
+/** A notice at the transcript's left pad, with a textual or symbolic label that remains visible without color. */
+export function noticeLine(kind: NoticeKind, message: string, pad: number, expanded = false): LongResponse {
+	const { label: glyph, color } = NOTICE_MARK[kind];
 	// Messages often carry tool or provider output (gh stderr, feature errors); none of it may drive the terminal.
 	const text = sanitizeTerminalText(message);
 	// An error must stand out whole; elsewhere the mark carries the state, so a long warning is no wall of amber.
 	const paint = () =>
 		kind === "error" ? theme.fg(color, `${glyph} ${text}`) : `${theme.fg(color, glyph)} ${theme.fg("text", text)}`;
-	return new ThemedText(paint, pad, 0);
+	return new LongResponse(new ThemedText(paint, pad, 0), expanded);
 }
 
 export function showError(host: DisplayHost, errorMessage: string): void {

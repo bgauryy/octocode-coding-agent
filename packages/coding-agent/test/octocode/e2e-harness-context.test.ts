@@ -1,10 +1,10 @@
 import { approveFixtureSkillFiles } from "./guard-helpers.ts";
 import { openSandboxDb } from "./e2e-helpers/seed-trust.ts";
+import { GENERAL_CATALOG } from "../../src/octocode/subagents/general-defaults.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { enableHarnesses } from "./e2e-helpers/harness-toggles.ts";
-import { GENERAL_CATALOG } from "../../src/octocode/subagents/general-defaults.ts";
 import {
 	type Endpoint,
 	killEverything,
@@ -65,11 +65,10 @@ async function firstRequest(box: ReturnType<typeof sandbox>): Promise<ModelReque
 	return first;
 }
 
-const section = (prompt: string, name: string): string =>
-	new RegExp(`<${name}>\\n([\\s\\S]*?)\\n</${name}>`).exec(prompt)?.[1] ?? "";
-
-const skillNames = (prompt: string): string[] =>
-	[...section(prompt, "skills").matchAll(/<skill name="([^"]+)"/g)].map((match) => match[1]);
+/** The skill tool's declaration: the one place the request lists skills, as `path: description` lines. */
+const skillList = (request: ModelRequest): string => request.declarations.skill?.description ?? "";
+const skillNames = (request: ModelRequest): string[] =>
+	[...skillList(request).matchAll(/(?:^|\/)([^/\n]+)\/SKILL\.md: /gm)].map((match) => match[1]);
 /** Native skills marked `metadata.audience: coordinator`: a subagent lacks the tools they need (src/octocode/turn.ts). */
 const NATIVE_SKILLS = path.join(import.meta.dirname, "../../src/octocode/native/skills");
 const COORDINATOR_ONLY = fs.readdirSync(NATIVE_SKILLS).filter((name) => {
@@ -108,10 +107,10 @@ describe("harness context in the first model request", () => {
 		skillFile(box, ".claude", "claude-demo");
 
 		const off = await firstRequest(box);
-		const offSkills = section(off.system, "skills");
-		expect(offSkills).toContain('<skill name="agents-demo">');
-		expect(offSkills, "the skill tool loads skills, so the list carries no SKILL.md path").not.toContain(agentsSkill);
-		expect(off.system, "Claude skill is absent while its harness is off").not.toContain("claude-demo");
+		const offSkills = skillList(off);
+		expect(offSkills).toContain(`${agentsSkill}: Use for agents-demo work`);
+		expect(off.system, "the system prompt carries no skill list").not.toContain("agents-demo");
+		expect(offSkills, "Claude skill is absent while its harness is off").not.toContain("claude-demo");
 		expect(off.system, "a skill body loads on demand").not.toContain("BODY-agents-demo");
 		const before = harnessesLine(off.system);
 		expect(before, "the prompt has a Harnesses: line").not.toBe("");
@@ -122,7 +121,7 @@ describe("harness context in the first model request", () => {
 
 		enableHarnesses(box, "claude", "cursor");
 		const on = await firstRequest(box);
-		const onSkills = section(on.system, "skills");
+		const onSkills = skillList(on);
 		expect(onSkills).toContain("agents-demo");
 		expect(onSkills, "Claude skill listed once harness:claude is on").toContain("claude-demo");
 		const after = harnessesLine(on.system);
@@ -142,12 +141,11 @@ describe("harness context in the first model request", () => {
 			path.join(box.project, ".octocode", "settings.json"),
 			JSON.stringify({ toggles: { "harness:claude": true } }),
 		);
-		const { system } = await firstRequest(box);
+		const request = await firstRequest(box);
+		const { system } = request;
 		expect(system).toContain("AGENTS-BASE-MARKER");
 		expect(system).not.toContain("CLAUDE-MD-MARKER");
-		expect(section(system, "skills"), "project toggle reaches the project's own Claude skills").toContain(
-			"claude-demo",
-		);
+		expect(skillList(request), "project toggle reaches the project's own Claude skills").toContain("claude-demo");
 		expect(harnessesLine(system), "a harness switched on only by a project key reads as on for this project").toMatch(
 			/Claude Code on/,
 		);
@@ -172,14 +170,15 @@ describe("harness context in the first model request", () => {
 		expect(parent, "parent request").toBeDefined();
 		expect(kid, "the subagent sent a model request").toBeDefined();
 		expect(COORDINATOR_ONLY, "native skills marked audience: coordinator").toContain("octocode-backlog");
-		expect(skillNames(parent!.system)).toEqual(expect.arrayContaining(COORDINATOR_ONLY));
+		expect(skillNames(parent!)).toEqual(expect.arrayContaining(COORDINATOR_ONLY));
+		// The child lists the parent's skills, less the coordinator-only ones, and its declaration says so.
 		// A role's catalog narrows only the bundled skills: the project's own `agents-demo` stays listed.
-		expect(skillNames(kid!.system)).toEqual(
-			skillNames(parent!.system).filter(
+		expect(skillNames(kid!)).toEqual(
+			skillNames(parent!).filter(
 				(name) => !COORDINATOR_ONLY.includes(name) && (GENERAL_CATALOG.includes(name) || name === "agents-demo"),
 			),
 		);
-		expect(section(kid!.system, "skills")).toContain("agents-demo");
+		expect(skillList(kid!)).toContain("agents-demo");
 		expect(kid!.system).not.toContain("claude-demo");
 		// Only the main session can run /harness, so only its prompt names the harnesses (src/octocode/turn.ts).
 		expect(stateOf(harnessesLine(parent!.system), ".agents")).toBe("on");

@@ -1,6 +1,8 @@
 import { Container } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { NothingToCompactError } from "../src/core/agent-session/compaction-control.ts";
+import { createSessionUI } from "../src/modes/interactive/interactive-mode/session-ui.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import * as display from "../src/modes/interactive/interactive-mode/display.ts";
 import * as sessionCommands from "../src/modes/interactive/interactive-mode/session-commands.ts";
 import { initTheme, theme } from "../src/theme/theme.ts";
@@ -47,6 +49,20 @@ describe("notices", () => {
 			.flatMap((child) => child.render(60))
 			.map((line) => stripAnsi(line).trimEnd())
 			.filter((line) => line !== "");
+
+	test("keeps consecutive system notifications as separate transcript messages", () => {
+		const chatContainer = new Container();
+		const host = createFakeHost({
+			chatContainer,
+			outputPad: 1,
+			uiStore: createUiStore(),
+			ui: { requestRender: vi.fn() },
+		} as any);
+		const ui = createSessionUI(host);
+		ui.notify("Build started", "info");
+		ui.notify("Build finished");
+		expect(lines(chatContainer)).toEqual([" System · Build started", " System · Build finished"]);
+	});
 
 	test.each([
 		["showWarning", display.showWarning, "⚠ ▲", "Project config not loaded (8 files)."],

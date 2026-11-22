@@ -3,8 +3,8 @@ import { renderPrompt } from "../../src/core/prompt-template.ts";
 import { leanPromptSections } from "../../src/octocode/native/prompts/lean.ts";
 import { octocodePromptSections } from "../../src/octocode/native/prompts/policy.ts";
 
-/** What tells an agent to reserve files with the `agent` tool's `coordinate` type. */
-const LOCKS = /type `coordinate`/;
+/** What tells an agent to lock the files it edits (policy/change.md). */
+const LOCKS = /\block (?:your paths|it with `agent`|any other file)/;
 
 const policy = (canDelegate: boolean, readOnly: boolean, canUseAgent = true) =>
 	Object.values(octocodePromptSections({ profiles: [], canDelegate, readOnly, canUseAgent })).join("\n");

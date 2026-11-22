@@ -26,6 +26,7 @@ async function signIn(id: string, key: string, status: number | Error, choice = 
 	const questions: string[] = [];
 	const outcome = await loginProvider(providers as never, store, id, "api_key", {
 		prompt: async (request) => {
+			if (request.type === "text") return "";
 			if (request.type !== "select") return key;
 			questions.push(request.message);
 			return choice;

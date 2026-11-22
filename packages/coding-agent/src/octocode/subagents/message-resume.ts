@@ -2,7 +2,8 @@ import { sessionChildren } from "../child-sessions/session-children.ts";
 import { USER_SENDER } from "../shared/messages.ts";
 import type { Resumer, ResumeRequest } from "../team/session/send.ts";
 import { followUpText } from "./follow-up.ts";
-import { spawnAgent, type SpawnEnv } from "./spawn.ts";
+import { spawnAgent } from "./spawn.ts";
+import type { SpawnEnv } from "./spawn-env.ts";
 
 /** The parent or the user asks, and the message is theirs (written or passed on by them), not a peer's relayed one. */
 function ownDecision(parentId: string | undefined, from: string, request: ResumeRequest | undefined): boolean {

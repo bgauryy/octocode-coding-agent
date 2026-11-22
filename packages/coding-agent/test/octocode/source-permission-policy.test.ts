@@ -33,9 +33,7 @@ describe("Claude permission policy", () => {
 	});
 	it("matches raw scalar parameters and does not invent omitted inputs", () => {
 		const policy = parseSourcePolicy({ permissions: { ask: ["Agent(model:opus)"] } }, source);
-		expect(
-			evaluateSourcePolicy(policy, call("agent", { type: "task", model: "opus" }), "/work").decision,
-		).toBe("ask");
+		expect(evaluateSourcePolicy(policy, call("agent", { type: "task", model: "opus" }), "/work").decision).toBe("ask");
 		expect(evaluateSourcePolicy(policy, call("agent", { type: "task" }), "/work").decision).toBe("none");
 	});
 	it("does not use path specifiers as tool-wide denial", () => {

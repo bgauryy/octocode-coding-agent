@@ -32,18 +32,25 @@ import {
 	type MutableModels,
 	type Provider,
 } from "@octocodeai/octocode-ai";
-import { getConfigValueEnvVarNames, isCommandConfigValue } from "./config-value.ts";
+import type { ModelConfig } from "./model-config.ts";
+import { missingCredentialWarning } from "./model-runtime/missing-credentials.ts";
+import { ProviderPins } from "./model-runtime/provider-pins.ts";
+import { loadSettledConfig } from "./model-runtime/settled-config.ts";
 import { ModelCatalog } from "./model-runtime/catalog.ts";
 import { ModelAvailability } from "./model-runtime/availability.ts";
 import { loadModelRuntimeParts, type ModelRuntimeParts, refreshOnCreate } from "./model-runtime/create.ts";
 import { CredentialOperations } from "./model-runtime/credential-operations.ts";
+import { CredentialNetworkRefresh } from "./model-runtime/credential-refresh.ts";
+import { RuntimeLiveReload } from "./model-runtime/live-reload.ts";
 import { refreshModelRuntime } from "./model-runtime/refresh.ts";
+import { ReloadErrors } from "./model-runtime/reload-errors.ts";
 import { ProviderRegistrations } from "./model-runtime/registrations.ts";
-import { ProviderLayers } from "./model-runtime/provider-layers.ts";
+import { type ModelOrigin, ProviderLayers } from "./model-runtime/provider-layers.ts";
 import {
 	cancelDeferredResponse,
 	classifyWithModel,
 	generateModelImages,
+	type ModelRequestHost,
 	resolveModelAuth,
 	type RuntimeSimpleStreamOptions,
 	streamChatModel,
@@ -77,37 +84,50 @@ export class ModelRuntime extends ModelCatalog implements Models {
 	protected readonly availability: ModelAvailability;
 	private readonly credentialOperations: CredentialOperations;
 	private readonly registrations: ProviderRegistrations;
-	/** Why the last refresh a provider (un)registration started failed; shown by getError until one succeeds. */
-	private registrationRefreshError: string | undefined;
+	/** Why the last refresh a provider (un)registration or a live reload started failed; shown by getError until one succeeds. */
+	private readonly reloadErrors = new ReloadErrors();
+	private readonly credentialRefresh = new CredentialNetworkRefresh((o) => this.refresh(o), this.reloadErrors.set);
+	private readonly liveReload: RuntimeLiveReload;
+	private readonly pins: ProviderPins;
+	/** Serves requests whose provider a reload removed. */
+	private readonly requestHost: ModelRequestHost;
 
-	private constructor({
-		credentials,
-		config,
-		modelsPath,
-		modelsStore,
-		providers,
-		modelNetworkEnabled,
-	}: ModelRuntimeParts) {
+	private constructor(parts: ModelRuntimeParts) {
 		super();
+		const { credentials, config, modelsPath, modelsStore, providers } = parts;
 		this.credentials = credentials;
 		this.modelsPath = modelsPath;
-		this.modelNetworkEnabled = modelNetworkEnabled;
+		this.modelNetworkEnabled = parts.modelNetworkEnabled;
 		this.models = createModels({ credentials, modelsStore });
+		this.pins = new ProviderPins(credentials);
+		this.requestHost = this.pins.host(this);
 		this.layers = new ProviderLayers(this.models, config, providers);
 		this.availability = new ModelAvailability(this.models, credentials);
+		this.credentialRefresh.enabled = parts.refreshAfterCredentialChange;
 		this.credentialOperations = new CredentialOperations({
 			models: this.models,
 			credentials,
 			layers: this.layers,
 			availability: this.availability,
+			credentialSaved: (providerId) => this.credentialRefresh.schedule(providerId),
 		});
 		this.registrations = new ProviderRegistrations(this.layers, this.availability, () => {
-			this.refresh({ allowNetwork: false }).then(
-				() => (this.registrationRefreshError = undefined),
-				(error: unknown) => (this.registrationRefreshError = error instanceof Error ? error.message : String(error)),
-			);
+			this.refresh({ allowNetwork: false }).then(() => this.reloadErrors.set(undefined), this.reloadErrors.set);
 		});
 		this.rebuildProviders();
+		// A change to models.json or auth.json reaches a running session through one full local reload.
+		this.liveReload = new RuntimeLiveReload({
+			modelsPath,
+			credentials,
+			reload: async () => {
+				// Only a settled, parsed models.json is applied (that result, not a second read); else the providers stay.
+				const next = await loadSettledConfig(this.modelsPath);
+				if (next.isUnreadable()) return this.reloadErrors.set(next.getError());
+				await this.applyRefresh({ allowNetwork: false }, next);
+				this.reloadErrors.set(this.layers.config.getError());
+			},
+			onError: this.reloadErrors.set,
+		});
 	}
 
 	static async create(options: CreateModelRuntimeOptions = {}): Promise<ModelRuntime> {
@@ -123,12 +143,15 @@ export class ModelRuntime extends ModelCatalog implements Models {
 	}
 
 	/**
-	 * Stop watching the credential file for changes other processes make. The runtime keeps serving requests and the
+	 * Stop watching models.json and the credential file for changes other processes make. The runtime keeps serving requests and the
 	 * last availability snapshot; only refreshes driven by those outside changes stop. A replaced session's runtime is
 	 * disposed so watchers and refresh passes do not pile up per switch. Repeated calls do nothing.
 	 */
 	dispose(): void {
-		this.availability.dispose();
+		this.credentialRefresh.dispose();
+		this.liveReload.dispose();
+		this.reloadErrors.clearListeners();
+		this.pins.clearListeners();
 	}
 
 	private rebuildProviders(): void {
@@ -136,10 +159,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		this.availability.updateModelSnapshot();
 	}
 
-	/**
-	 * A built-in provider as shipped, before models.json and features: the models a `models.json` entry can inherit
-	 * from (see `provider-composer/known-models.ts`).
-	 */
+	/** A built-in provider as shipped, before models.json and features (what a `models.json` entry can inherit from). */
 	getBuiltinProvider(providerId: string): Provider | undefined {
 		return this.layers.builtins.get(providerId);
 	}
@@ -152,6 +172,11 @@ export class ModelRuntime extends ModelCatalog implements Models {
 	/** The models.json file defining the provider; undefined for a built-in or feature provider. */
 	getProviderDefinitionFile(providerId: string): string | undefined {
 		return this.layers.config.getProviderFile(providerId);
+	}
+
+	/** Where the model's facts come from (see `ProviderLayers.modelOrigin`). */
+	getModelOrigin(model: Pick<Model<Api>, "provider" | "id" | "api">): ModelOrigin {
+		return this.layers.modelOrigin(model.provider, model.id, model.api);
 	}
 
 	hasContextWindowOverride(providerId: string, modelId: string): boolean {
@@ -176,31 +201,29 @@ export class ModelRuntime extends ModelCatalog implements Models {
 					!this.isProviderDisabled(providerId) &&
 					!this.hasConfiguredAuth(providerId),
 			)
-			.map((providerId) => this.missingCredentialWarning(providerId));
+			.map((providerId) => missingCredentialWarning(this.layers, providerId));
 	}
 
-	private missingCredentialWarning(providerId: string): string {
-		const subject = `models.json provider "${providerId}"`;
-		const apiKey = this.layers.config.getProvider(providerId)?.apiKey;
-		if (apiKey !== undefined && isCommandConfigValue(apiKey)) {
-			return `${subject} has no credential: its apiKey comes from a command, which could not be used, so its models cannot run.`;
-		}
-		const unset = apiKey === undefined ? [] : getConfigValueEnvVarNames(apiKey).filter((name) => !process.env[name]);
-		if (unset.length > 0) {
-			const names = unset.map((name) => `$${name}`).join(", ");
-			return `${subject} has no credential: its apiKey uses ${names}, which ${unset.length > 1 ? "are" : "is"} not set, so its models cannot run. Set it, or save a key or sign in with /providers.`;
-		}
-		return (
-			`${subject} has no credential, so its models cannot run. Add "apiKey" to it ` +
-			`(a key, "$ENV_NAME" or "!command"), or save a key or sign in with /providers.`
-		);
+	/** Calls `listener` with the ids of providers a reload removed. Returns the unsubscribe. */
+	onProvidersRemoved(listener: (providerIds: readonly string[]) => void): () => void {
+		return this.pins.onRemoved(listener);
+	}
+
+	/** Why the last live reload of models.json or auth.json failed; the providers loaded before stay in use. Cleared by a good reload. */
+	getReloadError(): string | undefined {
+		return this.reloadErrors.current;
+	}
+
+	/** Calls `listener` once for each new reload failure (not again for the same message). Returns the unsubscribe. */
+	onReloadError(listener: (message: string) => void): () => void {
+		return this.reloadErrors.subscribe(listener);
 	}
 
 	getError(): string | undefined {
 		const errors = this.layers.getErrors();
 		const availabilityError = this.availability.availabilityError;
 		if (availabilityError) errors.push(`Availability refresh: ${availabilityError}`);
-		if (this.registrationRefreshError) errors.push(`Model refresh: ${this.registrationRefreshError}`);
+		if (this.reloadErrors.current) errors.push(`Model refresh: ${this.reloadErrors.current}`);
 		return errors.length > 0 ? errors.join("\n\n") : undefined;
 	}
 
@@ -241,7 +264,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		context: Context,
 		options?: ModelsApiStreamOptions<TApi>,
 	): AssistantMessageEventStream {
-		return streamChatModel(this, model, context, options);
+		return streamChatModel(this.requestHost, model, context, options);
 	}
 
 	complete<TApi extends Api>(
@@ -253,7 +276,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 	}
 
 	streamSimple(model: Model<Api>, context: Context, options?: RuntimeSimpleStreamOptions): AssistantMessageEventStream {
-		return streamSimpleChatModel(this, model, context, options);
+		return streamSimpleChatModel(this.requestHost, model, context, options);
 	}
 
 	completeSimple(model: Model<Api>, context: Context, options?: RuntimeSimpleStreamOptions): Promise<AssistantMessage> {
@@ -265,7 +288,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		handle: DeferredHandle,
 		options?: ModelsDeferredFetchOptions,
 	): AssistantMessageEventStream {
-		return streamDeferredResponse(this, model, handle, options);
+		return streamDeferredResponse(this.requestHost, model, handle, options);
 	}
 
 	async fetchDeferred(
@@ -281,7 +304,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		handle: DeferredHandle,
 		options?: ModelsDeferredCancelOptions,
 	): Promise<void> {
-		await cancelDeferredResponse(this, model, handle, options);
+		await cancelDeferredResponse(this.requestHost, model, handle, options);
 	}
 
 	async generateImages(
@@ -289,7 +312,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		context: ImagesContext,
 		options?: ModelsImagesOptions,
 	): Promise<AssistantImages> {
-		return generateModelImages(this, model, context, options);
+		return generateModelImages(this.requestHost, model, context, options);
 	}
 
 	async classify(
@@ -297,7 +320,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		context: ClassifierContext,
 		options?: ModelsClassifierOptions,
 	): Promise<ClassifierResult> {
-		return classifyWithModel(this, model, context, options);
+		return classifyWithModel(this.requestHost, model, context, options);
 	}
 
 	login(...args: Parameters<CredentialOperations["login"]>): Promise<Credential> {
@@ -309,8 +332,16 @@ export class ModelRuntime extends ModelCatalog implements Models {
 	}
 
 	refresh(options: ModelsRefreshOptions = {}): Promise<ModelsRefreshResult> {
-		const { models, layers, availability, modelsPath, modelNetworkEnabled } = this;
-		return refreshModelRuntime({ models, layers, availability, modelsPath, modelNetworkEnabled }, options);
+		return this.applyRefresh(options);
+	}
+
+	private applyRefresh(options: ModelsRefreshOptions, config?: ModelConfig): Promise<ModelsRefreshResult> {
+		const { models, layers, availability, modelsPath, modelNetworkEnabled, pins } = this;
+		return refreshModelRuntime(
+			{ models, layers, availability, modelsPath, modelNetworkEnabled, pins },
+			options,
+			config,
+		);
 	}
 
 	registerNativeProvider(provider: Provider): void {

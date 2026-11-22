@@ -25,6 +25,7 @@ import { offerForkOfTornSession } from "./session-navigation.ts";
 import { renderInitialSessionState } from "./resume-notice.ts";
 import { cancelStartupSubmit, dispatchStartupSubmit } from "./command-dispatch.ts";
 import { submitPrompt } from "./refused-input.ts";
+import { announceReloadErrors } from "./reload-notice.ts";
 import { withStartupCleanup } from "./startup-cleanup.ts";
 
 /** Interactive-mode members used by startup and the main loop. */
@@ -59,10 +60,8 @@ type StartupHost = Pick<
 	| "keybindings"
 	| "maybeWarnAboutAnthropicSubscriptionAuth"
 	| "mountInteractiveTui"
-	| "onInputCallback"
 	| "options"
 	| "pendingMessagesContainer"
-	| "pendingUserInputs"
 	| "programStatus"
 	| "rebindCurrentSession"
 	| "registerSignalHandlers"
@@ -338,6 +337,7 @@ export async function run(host: StartupHost): Promise<void> {
 	if (modelsJsonError) {
 		host.showError(`models.json error: ${modelsJsonError}`);
 	}
+	announceReloadErrors(host);
 
 	if (modelFallbackMessage) {
 		host.showWarning(modelFallbackMessage);
@@ -383,18 +383,4 @@ export async function run(host: StartupHost): Promise<void> {
 			if (!session.isStreaming) clearStatusIndicator.call(host, "working");
 		}
 	}
-}
-
-export async function getUserInput(host: StartupHost): Promise<string> {
-	const queuedInput = host.pendingUserInputs.shift();
-	if (queuedInput !== undefined) {
-		return queuedInput;
-	}
-
-	return new Promise((resolve) => {
-		host.onInputCallback = (text: string) => {
-			host.onInputCallback = undefined;
-			resolve(text);
-		};
-	});
 }

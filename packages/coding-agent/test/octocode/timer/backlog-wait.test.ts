@@ -345,6 +345,24 @@ describe("stored conditions", () => {
 		expect(decodeCondition("item", encodeCondition(armedItem))).toEqual(armedItem);
 	});
 
+	it("leaves the wake to a matching state timer and still reports other watchers", () => {
+		for (const [sessionId, state] of [
+			["waiting", "done"],
+			["waiting", "ongoing"],
+			["other", "ongoing"],
+		]) {
+			timers.insert(
+				agent.db,
+				timerFields({ note: "notify", until: { item: { ref: "B4", state } } }, Date.now(), {
+					workspaceId: WS,
+					sessionId,
+					cwd: root,
+				}),
+			);
+		}
+		expect(queries.itemWatchers(agent.db, WS, ["B4"], "done")).toEqual([{ session: "other", refs: ["B4"] }]);
+	});
+
 	it("keeps item.changed and peer.landed under the stored kind item, which the table already admits", () => {
 		const changed = parseUntil({ changed: { ref: "B4", change: "note", since: 3 } })!;
 		const landed = parseUntil({ landed: { ref: "B4", path: "src/a", since: 3 } })!;

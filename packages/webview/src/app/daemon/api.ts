@@ -4,6 +4,8 @@ import type {
 	McpAddAvailability,
 	ConfigCredentialCommand,
 	ConfigProviderCommand,
+	ProviderTestCommand,
+	ProviderTestReport,
 	ConfigSettingCommand,
 	ConfigSnapshot,
 	HarnessList,
@@ -13,11 +15,13 @@ import type {
 	SecurityList,
 	SignInCommand,
 	SignInState,
+	RunnerCommand,
+	RunnerList,
 	ToolExposureList,
 	ToolPinCommand,
 } from "@octocodeai/octocode-contracts/config";
 import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
-import type { DaemonRepo, DaemonSessions } from "@octocodeai/octocode-contracts/daemon";
+import type { DaemonAccess, DaemonRepo, DaemonSessions } from "@octocodeai/octocode-contracts/daemon";
 import { bearer } from "../../access.ts";
 import { requestJson } from "../../request.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -25,6 +29,11 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 function harnessList(value: unknown): HarnessList {
 	if (!isRecord(value) || !Array.isArray(value.rows)) throw new Error("Invalid harness response");
 	return value as unknown as HarnessList;
+}
+
+function runnerList(value: unknown): RunnerList {
+	if (!isRecord(value) || !Array.isArray(value.runners)) throw new Error("Invalid external agents response");
+	return value as unknown as RunnerList;
 }
 
 function securityList(value: unknown): SecurityList {
@@ -87,9 +96,12 @@ export function createDaemonApi(access: string, route: (path: string) => string 
 			return value as unknown as { repos: DaemonRepo[]; truncated?: boolean };
 		},
 		/** Whether this token may change the board. The page only hides controls by it; the daemon still refuses a write. */
-		access: async (signal?: AbortSignal): Promise<boolean> => {
+		access: async (signal?: AbortSignal): Promise<DaemonAccess> => {
 			const value = await requestJson(DAEMON_ROUTES.access, { headers, signal }, "Could not read the link's access");
-			return isRecord(value) && value.writable === true;
+			return {
+				writable: isRecord(value) && value.writable === true,
+				terminalCommands: isRecord(value) && value.terminalCommands === true,
+			};
 		},
 		mcpAddStatus: (repoId?: string): Promise<McpAddAvailability> =>
 			requestJson(
@@ -135,6 +147,12 @@ export function createDaemonApi(access: string, route: (path: string) => string 
 			post(withRepo(route(DAEMON_ROUTES.configProviders), repoId), command, "Could not change the provider").then(
 				configSnapshot,
 			),
+		/** Tests one connected provider, or all of them: spends at most one small request each, only on this call. */
+		testProviders: (command: ProviderTestCommand): Promise<ProviderTestReport> =>
+			post(route(DAEMON_ROUTES.configProviderTest), command, "Could not run the test").then((value) => {
+				if (!isRecord(value) || !Array.isArray(value.results)) throw new Error("Invalid test response");
+				return value as ProviderTestReport;
+			}),
 		/** Starts, polls, answers or cancels a sign-in the host runs. An answer may carry a pasted code; the reply is the sign-in's state. */
 		signIn: (command: SignInCommand): Promise<SignInState> =>
 			post(route(DAEMON_ROUTES.configSignin), command, "Could not reach the sign-in").then((value) => {
@@ -169,6 +187,14 @@ export function createDaemonApi(access: string, route: (path: string) => string 
 		/** Approves, denies or forgets one reviewed item; the host records it and answers with the fresh list or refuses with its reason. */
 		decideSecurity: (command: SecurityActionCommand): Promise<SecurityList> =>
 			post(route(DAEMON_ROUTES.configSecurity), command, "Could not record the decision").then(securityList),
+		/** The external agents as last detected (launch capability only). */
+		runners: (): Promise<RunnerList> =>
+			requestJson(route(DAEMON_ROUTES.configRunners), { headers }, "Could not load the external agents").then(
+				runnerList,
+			),
+		/** Checks, enables, disables or pauses external agents; the host answers with the fresh list or refuses with its reason. */
+		actRunners: (command: RunnerCommand): Promise<RunnerList> =>
+			post(route(DAEMON_ROUTES.configRunners), command, "Could not change the external agent").then(runnerList),
 		/** Each tool's exposure state and pin (launch capability only); `repoId` reads that workspace's configuration too. */
 		tools: (repoId?: string): Promise<ToolExposureList> =>
 			requestJson(withRepo(route(DAEMON_ROUTES.configTools), repoId), { headers }, "Could not load the tools").then(

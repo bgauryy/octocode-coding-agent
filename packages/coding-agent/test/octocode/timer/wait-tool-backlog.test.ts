@@ -56,7 +56,7 @@ describe("the wait tool on backlog events", () => {
 		const { host, ctx } = session();
 		await host.fire("session_start", { reason: "startup" }, ctx);
 		const on = (args: object) =>
-			host.tools.get("wait").execute("c", { op: "on", note: "n", ...args }, undefined, undefined, ctx);
+			host.tools.get("notify").execute("c", { op: "on", note: "n", ...args }, undefined, undefined, ctx);
 
 		await expect(on({ event: "item.changed", filter: { ref: "B9" } })).rejects.toThrow(/No backlog item B9/);
 		await expect(on({ event: "item.changed", filter: { ref: "B1" }, once: false })).rejects.toThrow(/wakes once/);
@@ -90,7 +90,7 @@ describe("the wait tool on backlog events", () => {
 		const { host, ctx } = session((absolute) => (absolute.endsWith("src/a") ? "peer holds src/a" : undefined));
 		await host.fire("session_start", { reason: "startup" }, ctx);
 		const result = await host.tools
-			.get("wait")
+			.get("notify")
 			.execute(
 				"c",
 				{ op: "on", note: "n", event: "peer.landed", filter: { ref: "B1", path: "src/a" } },

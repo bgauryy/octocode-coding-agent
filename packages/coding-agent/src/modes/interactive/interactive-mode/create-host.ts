@@ -3,6 +3,8 @@
  * owns the host and hands it to its collaborators, so they all read and write the same live state.
  */
 
+import { CommandTranscript } from "./web-command-context.ts";
+import { bindWebCommands } from "./web-commands.ts";
 import { Container, setCapabilityOverrides, setKeybindings } from "@octocodeai/octocode-tui";
 import { getAgentDir, VERSION } from "../../../config.ts";
 import { openReference } from "../reference-opener.ts";
@@ -166,8 +168,11 @@ export function createInteractiveModeHost(
 		}
 		host.resetFeatureUI();
 	});
+	let unbindWebCommands: () => void;
 	host.runtimeHost.setRebindSession(async () => {
 		await host.rebindCurrentSession({ renderBeforeBind: true });
+		unbindWebCommands();
+		unbindWebCommands = bindWebCommands(host);
 		host.themeController.applyFromSettings();
 	});
 	host.version = VERSION;
@@ -190,7 +195,7 @@ export function createInteractiveModeHost(
 	// Header container that holds the built-in or custom header
 	host.headerContainer = new Container();
 	host.loadedResourcesContainer = new Container();
-	host.chatContainer = new Container();
+	host.chatContainer = new CommandTranscript();
 	host.documentContainer = new Container();
 	host.documentContainer.addChild(host.headerContainer);
 	host.documentContainer.addChild(host.loadedResourcesContainer);
@@ -232,8 +237,10 @@ export function createInteractiveModeHost(
 	const stopUiBinders = bindUiState(host);
 	const stopHost = host.stop;
 	host.stop = (fullscreenExitOutput) => {
+		unbindWebCommands();
 		stopUiBinders();
 		stopHost(fullscreenExitOutput);
 	};
+	unbindWebCommands = bindWebCommands(host);
 	return host;
 }

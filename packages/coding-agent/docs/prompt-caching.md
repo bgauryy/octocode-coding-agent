@@ -62,8 +62,8 @@ Multiples of the model's base input price per token, from the providers' pages a
 ## Configure retention
 
 ```text
-/configuration set instructionCacheRetention long
-/configuration set cacheRetention long
+/settings set instructionCacheRetention long
+/settings set cacheRetention long
 ```
 
 Or set the same fields in global or trusted project `settings.json`. They also work on a provider, model definition or `modelOverrides` entry in `models.json`:

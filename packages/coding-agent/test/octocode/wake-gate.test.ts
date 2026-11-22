@@ -71,6 +71,9 @@ function setup(settings: Record<string, unknown> = {}) {
 const nudges = (fake: ReturnType<typeof fakeHost>) =>
 	fake.sent.filter((entry) => entry.message.customType === "octocode-idle-item");
 
+/** The text of a sent message under its source header (the header is pinned in events/source.test.ts). */
+const unsourced = (content: unknown) => String(content).replace(/^\[src [^\n]*\n/, "");
+
 describe("idle-item nudge gate (rule D2)", () => {
 	it("still names an item the ended run was only woken about, and does not count a drop", async () => {
 		const s = setup();
@@ -225,7 +228,11 @@ describe("hold window", () => {
 		vi.advanceTimersByTime(1000);
 		await first;
 		expect(
-			s.fake.sent.map((entry) => [entry.message.content, entry.options.triggerTurn, entry.options.deliverAs]),
+			s.fake.sent.map((entry) => [
+				unsourced(entry.message.content),
+				entry.options.triggerTurn,
+				entry.options.deliverAs,
+			]),
 		).toEqual([
 			["m1", false, "followUp"],
 			["m2", true, "followUp"],
@@ -285,6 +292,11 @@ describe("woke row", () => {
 		expect(s.fake.entries).toHaveLength(1);
 		const [entry] = s.fake.entries;
 		expect(entry.customType).toBe(WAKE_TYPE);
+		expect(wakeLines(entry.data)[0]).toMatchObject({
+			kind: "agent.report",
+			from: "child jolly-reef",
+			data: { agent: "jolly-reef", outcome: "done", item: "B526" },
+		});
 		expect(wakeLines(entry.data).map((line) => line.label)).toEqual([
 			"report jolly-reef done (B526)",
 			"job bash-5 exit 0 \u00b7 4s",
@@ -381,7 +393,7 @@ describe("session end with held wakes", () => {
 		s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true, deliverAs: "followUp" });
 		s.gate.emit(reportOn(undefined, "b"), msg(2), { triggerTurn: true, deliverAs: "followUp" });
 		await s.fake.emit("session_shutdown", {}, s.ctx);
-		expect(s.fake.sent.map((entry) => [entry.message.content, entry.options.triggerTurn])).toEqual([
+		expect(s.fake.sent.map((entry) => [unsourced(entry.message.content), entry.options.triggerTurn])).toEqual([
 			["m1", false],
 			["m2", false],
 		]);

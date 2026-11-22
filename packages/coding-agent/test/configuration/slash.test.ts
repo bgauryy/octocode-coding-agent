@@ -39,35 +39,36 @@ function mode() {
 	return { instance, printed };
 }
 
-describe("/configuration", () => {
-	it("is the one built-in for configuration; /settings and /config are aliases that open it", async () => {
-		expect(getBuiltinCommand("configuration")?.argumentHint).toContain("enable");
-		expect(getBuiltinCommand("settings")).toBeUndefined();
+describe("/settings", () => {
+	it("is the one built-in for settings; /configuration and /config are hidden aliases that open it", async () => {
+		expect(getBuiltinCommand("settings")?.argumentHint).toContain("enable");
+		expect(getBuiltinCommand("configuration")).toBeUndefined();
 		expect(getBuiltinCommand("config")).toBeUndefined();
 		const { instance } = mode();
 		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
 		await instance.defaultEditor.onSubmit("/settings");
+		await instance.defaultEditor.onSubmit("/configuration");
 		await instance.defaultEditor.onSubmit("/config");
 		expect(instance.showWarning).not.toHaveBeenCalled();
-		await vi.waitFor(() => expect(instance.showSelector).toHaveBeenCalledTimes(2));
+		await vi.waitFor(() => expect(instance.showSelector).toHaveBeenCalledTimes(3));
 	});
 
 	it("opens the selector without arguments", async () => {
 		const { instance } = mode();
-		await instance.defaultEditor.onSubmit("/configuration");
+		await instance.defaultEditor.onSubmit("/settings");
 		await vi.waitFor(() => expect(instance.showSelector).toHaveBeenCalledTimes(1));
 	});
 
 	it("runs text verbs and prints each result with when it applies", async () => {
 		const { instance, printed } = mode();
-		await instance.defaultEditor.onSubmit("/configuration disable tool:backlog");
+		await instance.defaultEditor.onSubmit("/settings disable tool:backlog");
 		expect(printed.join("\n")).toContain("applies in the next session");
 		expect(readJson(globalSettingsFile(sandbox))?.defaultTools).toEqual(["-backlog"]);
-		await instance.defaultEditor.onSubmit("/configuration get tool:backlog");
+		await instance.defaultEditor.onSubmit("/settings get tool:backlog");
 		expect(printed.at(-1)).toContain("value: off");
-		await instance.defaultEditor.onSubmit("/configuration enable tool:backlg");
+		await instance.defaultEditor.onSubmit("/settings enable tool:backlg");
 		expect(printed.at(-1)).toContain("Did you mean: tool:backlog");
-		await instance.defaultEditor.onSubmit("/configuration disable tool:timer --local");
+		await instance.defaultEditor.onSubmit("/settings disable tool:timer --local");
 		expect(printed.at(-1)).toContain("not trusted");
 		expect(instance.showError).not.toHaveBeenCalled();
 	});

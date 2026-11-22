@@ -45,7 +45,7 @@ const lines = (members: Member[], traffic: Traffic[] = [], width = 120, rows?: n
 const messageRow = (out: string[]) => out.find((line) => line.includes("↳"))!;
 
 describe("agents panel: the agent that needs you", () => {
-	it("marks an agent with an unanswered question to this session, sorts it first and leads the header with the count", () => {
+	it("marks an agent with an unanswered question to this session, keeps its place and leads the header with the count", () => {
 		const out = lines(
 			[member("busy-0001"), member("quiet-0002", { status: "idle" }), member("plucky-otter")],
 			[ask("plucky-otter")],
@@ -54,11 +54,13 @@ describe("agents panel: the agent that needs you", () => {
 		expect(out.join("\n")).not.toContain("→ you");
 		// The marks say the states: no tally of words on this session's row.
 		expect(out[0]).not.toMatch(/working|idle|asks parent/);
-		expect(out[1]).toMatch(/^ [├└] ⏺ plucky-otter/);
+		const row = out.findIndex((line) => /^ [├└] ⏺ plucky-otter/.test(line));
+		// After busy-0001 and quiet-0002, each with its detail line: the order they joined in.
+		expect(row).toBe(5);
 		// The parent agent owns this answer, not the user: the reason, then the question, follow the open detail line.
-		expect(out[3]).toContain("↳ asks parent");
-		expect(out[4]).toContain(`✉ #11 → ${ME} · awaiting reply`);
-		expect(out[5]).toContain('"Should I delete');
+		expect(out[row + 2]).toContain("↳ asks parent");
+		expect(out[row + 3]).toContain(`✉ #11 → ${ME} · awaiting reply`);
+		expect(out[row + 4]).toContain('"Should I delete');
 	});
 
 	it("treats a member waiting for an approval as needing the user", () => {
@@ -85,13 +87,13 @@ describe("agents panel: the agent that needs you", () => {
 		expect(needs.get("calm-heron")).toMatchObject({ kind: "approval", count: 2, message: { id: 4 } });
 	});
 
-	it("hoists a branch whose grandchild needs you above its quiet siblings", () => {
+	it("keeps a branch in place when its grandchild needs you", () => {
 		const out = lines(
 			[member("quiet-0001"), member("parent-0002"), member("child-0003", { parentId: "parent-0002" })],
 			[ask("child-0003")],
 		);
 		const order = out.filter((line) => /[├└] /.test(line)).map((line) => line.match(/(quiet|parent|child)-\d{4}/)?.[0]);
-		expect(order.slice(0, 2)).toEqual(["parent-0002", "child-0003"]);
+		expect(order.slice(0, 3)).toEqual(["quiet-0001", "parent-0002", "child-0003"]);
 	});
 
 	it("does not call an answered question, or another session's question, a need", () => {

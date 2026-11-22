@@ -143,11 +143,18 @@ export interface ItemWatcher {
 
 /**
  * The sessions of workspace `repo` whose active `item` waits name any of `refs`, with every ref each names. A condition
- * that does not decode (a kind this version does not know) names nothing.
+ * that does not decode (a kind this version does not know) names nothing. When a state is supplied, sessions with
+ * a matching state timer already get its notification and need no additional peer wake.
  */
-export function itemWatchers(db: DatabaseSync, repo: string, refs: readonly string[]): ItemWatcher[] {
+export function itemWatchers(
+	db: DatabaseSync,
+	repo: string,
+	refs: readonly string[],
+	notifiedState?: string,
+): ItemWatcher[] {
 	const wanted = new Set(refs);
 	const named = new Map<string, Set<string>>();
+	const notified = new Set<string>();
 	const rows = allRows<{ session_id: string; condition: string }>(
 		db.prepare(
 			"SELECT session_id, condition FROM timers WHERE workspace_id = ? AND status = 'active' AND condition_kind = 'item'",
@@ -155,13 +162,15 @@ export function itemWatchers(db: DatabaseSync, repo: string, refs: readonly stri
 		repo,
 	);
 	for (const row of rows) {
-		const ref = (JSON.parse(row.condition) as { ref?: unknown }).ref;
+		const { ref, state } = JSON.parse(row.condition) as { ref?: unknown; state?: unknown };
 		if (typeof ref !== "string") continue;
 		const mine = ref.split(/[\s,]+/).filter(Boolean);
 		if (!mine.some((each) => wanted.has(each))) continue;
+		if (notifiedState !== undefined && state === notifiedState) notified.add(row.session_id);
 		const set = named.get(row.session_id) ?? new Set<string>();
 		for (const each of mine) set.add(each);
 		named.set(row.session_id, set);
 	}
+	for (const session of notified) named.delete(session);
 	return [...named].map(([session, set]) => ({ session, refs: [...set] }));
 }

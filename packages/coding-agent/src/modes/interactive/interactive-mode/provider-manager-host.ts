@@ -8,6 +8,7 @@ export type ProviderManagerHost = Pick<
 	| "showSelector"
 	| "showSelectorDialog"
 	| "showInputDialog"
+	| "showSecretDialog"
 	| "showLoginDialog"
 	| "showApiKeyLoginDialog"
 	| "showAmbientAuthDialog"

@@ -35,6 +35,7 @@ import { handleCommand as handleRpcCommand, type RpcCommandHost } from "./rpc-mo
 import { error } from "./rpc-mode/responses.ts";
 import { RPC_PROTOCOL_VERSION, type RpcReady, type RpcSessionIdentity } from "./session-identity.ts";
 import { ACP_WORKER_ENV } from "@octocodeai/octocode-common/env";
+import { setProcessInputOrigin } from "../../core/input-origin.ts";
 import { createSessionControls } from "./rpc-mode/session-controls.ts";
 import { armShutdownDeadline } from "./shutdown-deadline.ts";
 import { rpcInput } from "./rpc-input.ts";
@@ -59,6 +60,8 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 	takeOverStdout();
 	const acpOwnsSession = process.env[ACP_WORKER_ENV] === "1";
 	delete process.env[ACP_WORKER_ENV];
+	// Nothing typed over RPC is the terminal user's: sensitive actions confirm in the client.
+	setProcessInputOrigin(acpOwnsSession ? "acp" : "rpc");
 	let session = runtimeHost.session;
 	let unsubscribe: (() => void) | undefined;
 	let unsubscribeBackpressure: (() => void) | undefined;

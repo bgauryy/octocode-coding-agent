@@ -208,9 +208,9 @@ function researchTools(role: ReadRole, active: readonly string[]): string[] {
 	return (role === "reader" ? [research.reader] : research.search).filter((tool) => active.includes(tool));
 }
 
-/** The research policy's route for this read (`shared/research-routes.md`): the role's tools first, bash the fallback. */
+/** The research policy's route for this read (`shared/research-routes.md`): the role's tools; bash only after they refuse or fail. */
 const hintText = (role: ReadRole, tools: readonly string[]): string =>
-	`Hint: ${role === "reader" ? "read" : "search"} source with ${tools.map((tool) => `\`${tool}\``).join(" or ")}, with bash as the fallback. Bash suits builds, tests, scripts, git and command output.`;
+	`Hint: ${role === "reader" ? "read" : "search"} source with ${tools.map((tool) => `\`${tool}\``).join(" or ")}; use bash for source only after they refuse the path or fail. Bash is for builds, tests, scripts and git.`;
 
 /**
  * One line for a tool result after a successful read, at most `READ_HINT_LIMIT` times per session and only while the research

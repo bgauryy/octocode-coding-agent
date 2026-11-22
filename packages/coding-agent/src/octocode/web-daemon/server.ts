@@ -1,3 +1,4 @@
+import { handleTerminalCommands } from "../workspace/terminal-commands.ts";
 import { randomBytes } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -56,6 +57,8 @@ export interface DaemonServerOptions {
 	writeCredential?: ConfigRoutes["writeCredential"];
 	/** Applies a validated `POST /api/admin/config/providers` switch (a provider or the Pi source on or off). */
 	writeProvider?: ConfigRoutes["writeProvider"];
+	/** Runs a validated `POST /api/admin/config/providers/test`; the reply is a `ProviderTestReport`. */
+	testProviders?: ConfigRoutes["testProviders"];
 	/** Runs a validated `POST /api/admin/config/signin` command; the reply is a `SignInState`. */
 	signIn?: ConfigRoutes["signIn"];
 	/** Lists the Harness panel's switches (`GET /api/admin/config/harness`). */
@@ -68,6 +71,10 @@ export interface DaemonServerOptions {
 	security?: ConfigRoutes["security"];
 	/** Applies a validated `POST /api/admin/config/security` approve, deny or forget. */
 	writeSecurity?: ConfigRoutes["writeSecurity"];
+	/** Lists the External agents panel's runners (`GET /api/admin/config/runners`). */
+	runners?: ConfigRoutes["runners"];
+	/** Applies a validated `POST /api/admin/config/runners` command. */
+	writeRunners?: ConfigRoutes["writeRunners"];
 	/** Lists the Tools panel's rows (`GET /api/admin/config/tools`). */
 	tools?: ConfigRoutes["tools"];
 	/** Applies a validated `POST /api/admin/config/tools` pin. */
@@ -209,7 +216,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 			return reply(403, { error: "This link cannot use admin routes. Run the command in the Octocode terminal." });
 		notify();
 		if (req.method === "GET" && url.pathname === DAEMON_ROUTES.access)
-			return reply(200, { writable: access !== "view" });
+			return reply(200, { writable: access !== "view", terminalCommands: access === "launch" });
 		// Preferences change with the launch capability only, like settings; a published link reads them.
 		if (req.method === "POST" && url.pathname === WEB_PREFS_ROUTE && access !== "launch")
 			return reply(403, {
@@ -253,6 +260,16 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 			if (!session) return reply(404, { error: "That session is not attached. Open /web in a running session." });
 			const repo = catalog.resolve(session.record.repo.key);
 			if (!repo) return reply(404, { error: "Unknown repository" });
+			if (
+				await handleTerminalCommands(
+					req,
+					scopedUrl,
+					access === "launch",
+					(request) => session.client.request("session.commands", request),
+					reply,
+				)
+			)
+				return;
 			if (await handleSessionSettings(req, scopedUrl, access, options, session, repo, reply)) return;
 			if (
 				await handleSessionRequest(

@@ -1,4 +1,5 @@
-import type { CacheRetention, ProviderEnv, StreamOptions } from "../types.ts";
+import type { Api, CacheRetention, Model, ProviderEnv, StreamOptions } from "../types.ts";
+import { isChatGPTSignIn } from "./chatgpt-sign-in.ts";
 import { getProviderEnvValue } from "./provider-env.ts";
 
 export const INSTRUCTION_CACHE_RETENTION_ENV = "OCTOCODE_INSTRUCTION_CACHE_RETENTION";
@@ -118,4 +119,17 @@ export function resolveInstructionCacheRetention(options?: StreamOptions): Cache
 	if (options?.cacheRetention !== undefined) return undefined;
 	const value = getProviderEnvValue(INSTRUCTION_CACHE_RETENTION_ENV, options?.env);
 	return value === "long" || value === "short" || value === "none" ? value : undefined;
+}
+
+/**
+ * The most output tokens a request that asks for `requested` can bill, as the adapter sends it. Responses adapters raise
+ * a cap below 16 to 16, and send no cap at all to the ChatGPT sign-in endpoint or a gateway that rejects
+ * `max_output_tokens`, so that request may generate up to the model's limit. A cost estimate for a capped replay (a
+ * cache keep-alive) must use this, not the cap it asked for.
+ */
+export function effectiveOutputTokens(model: Model<Api>, requested: number, apiKey?: string): number {
+	if (!model.api.endsWith("responses")) return requested;
+	const compat = model.compat as { supportsMaxOutputTokens?: boolean } | undefined;
+	if (compat?.supportsMaxOutputTokens === false || isChatGPTSignIn(model, apiKey)) return model.maxTokens;
+	return Math.max(16, requested);
 }

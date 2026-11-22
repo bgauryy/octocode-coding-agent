@@ -26,12 +26,12 @@ const ITEM = {
 	type: { type: "string", enum: [...ITEM_TYPES], description: "default feature; epic groups work" },
 	parentId: {
 		anyOf: [{ type: "string" }, { type: "null" }],
-		description: "epic id or an earlier entry's exact title; null clears",
+		description: "epic id or an earlier entry's title; null clears",
 	},
-	dependsOn: list("prerequisite ids or earlier entries' exact titles; [] clears"),
+	dependsOn: list("prerequisite ids or earlier entries' titles; [] clears"),
 	paths: list("affected files, dirs, components"),
 	evidence: list("observations with source (path:line, command)"),
-	plan: text("approach, steps; blast radius, before -> after"),
+	plan: text("approach, steps, blast radius"),
 	priority: { type: "string", enum: [...PRIORITIES], description: "p0 urgent … p3 someday (default p2)" },
 	tags: { type: "array", items: { type: "string" } },
 	from: text('origin item id; "" clears'),
@@ -65,7 +65,7 @@ export function planParameters(ops: string) {
 			items: Type.Optional(
 				Type.Array(
 					Type.Unsafe<Record<string, unknown>>({ type: "object", properties: ITEM, additionalProperties: false }),
-					{ description: "one per item; a refused one does not stop the rest" },
+					{ description: "a refused one does not stop the rest" },
 				),
 			),
 			...listFields,

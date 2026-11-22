@@ -74,14 +74,14 @@ describe("skill tool", () => {
 		expect(text).toContain(renderPrompt("system/skill-references.md", { dir: f.alpha }).trim());
 		expect(text).toContain("BODY_alpha");
 		expect(text).not.toContain("description: Use for alpha");
-		expect(result.details).toMatchObject({ name: "alpha", baseDir: f.alpha, lines: 4 });
+		expect((result.details.skills as unknown[])[0]).toMatchObject({ name: "alpha", baseDir: f.alpha, lines: 4 });
 		expect(tool.defaultActive).not.toBe(false);
 	});
 
 	it("accepts the forms a user types: /skill:name, skill:name and another case", async () => {
 		const { call } = setup(fixtures().snapshot);
 		for (const name of ["/skill:alpha", "skill:alpha", "ALPHA", " alpha "])
-			expect((await call(name)).details).toMatchObject({ name: "alpha" });
+			expect(((await call(name)).details.skills as unknown[])[0]).toMatchObject({ name: "alpha" });
 	});
 
 	it("refuses an unknown name and names the close matches", async () => {
@@ -93,7 +93,7 @@ describe("skill tool", () => {
 	it("never reads another path: a path is not a skill name, whatever file it points at", async () => {
 		const f = fixtures();
 		const { call } = setup(f.snapshot);
-		for (const name of [f.secret, path.join(f.alpha, "SKILL.md"), "../secret.txt", path.join(f.alpha, "reference.md")])
+		for (const name of [f.secret, "../secret.txt", path.join(f.alpha, "reference.md")])
 			await expect(call(name)).rejects.toThrow(/Unknown skill/);
 		const reads: string[] = [];
 		const original = fs.readFileSync;
@@ -125,13 +125,13 @@ describe("skill tool", () => {
 		await expect(call("alpha")).rejects.toThrow(/no skill a model can load/);
 		expect(tool.prepareLoadout({})).toEqual({ hiddenDeclarations: ["skill"] });
 		snapshot = f.snapshot;
-		expect((await call("alpha")).details).toMatchObject({ name: "alpha" });
-		expect(tool.prepareLoadout({})).toBeUndefined();
+		expect(((await call("alpha")).details.skills as unknown[])[0]).toMatchObject({ name: "alpha" });
+		expect(tool.prepareLoadout({})).toHaveProperty("descriptions");
 		snapshot = () => {
 			throw new Error("moved");
 		};
 		await expect(call("alpha")).rejects.toThrow("moved");
-		expect(tool.prepareLoadout({})).toBeUndefined();
+		expect(tool.prepareLoadout({})).toHaveProperty("descriptions");
 	});
 
 	it("expands a Claude skill's host variables like the /skill command, and returns an oversized file whole", async () => {
@@ -156,13 +156,16 @@ describe("skill tool", () => {
 		fs.symlinkSync(f.alpha, alias, "dir");
 		const loaded = loadSkillsFromDir({ dir: alias, source: "test" });
 		const { call } = setup(() => captureSkillResourceSnapshot(loaded));
-		expect((await call("alpha")).details.baseDir).toBe(f.alpha);
+		expect(((await call("alpha")).details.skills as Array<{ baseDir: string }>)[0].baseDir).toBe(f.alpha);
 		fs.unlinkSync(alias);
 		fs.symlinkSync(path.join(f.root, "alpine"), alias, "dir");
 		const result = await call("alpha");
 		expect(result.content[0].text).toContain("BODY_alpha");
 		expect(result.content[0].text).not.toContain("BODY_alpine");
-		expect(result.details).toMatchObject({ location: path.join(f.alpha, "SKILL.md"), baseDir: f.alpha });
+		expect((result.details.skills as unknown[])[0]).toMatchObject({
+			location: path.join(f.alpha, "SKILL.md"),
+			baseDir: f.alpha,
+		});
 		fs.unlinkSync(path.join(f.alpha, "SKILL.md"));
 		fs.symlinkSync(f.secret, path.join(f.alpha, "SKILL.md"));
 		// The catalog's snapshot is validated once per loaded skill list; the file the tool reads is checked when read.
@@ -179,7 +182,7 @@ describe("skill tool", () => {
 		it("draws the call as `Skill(<name>)` and the result as one compact, expandable line", async () => {
 			const { call, tool } = setup(fixtures().snapshot);
 			expect(rendered(tool.renderCall({ name: "alpha" }, theme, context({ isPartial: true })))).toMatch(
-				/^⏺ Skill\(alpha\)/,
+				/^[◒◐◓◑] Skill\(alpha\)/,
 			);
 			expect(rendered(tool.renderCall({ name: "skill:alpha" }, theme, context()))).toContain("Skill(alpha)");
 			const result = await call("alpha");
@@ -195,7 +198,10 @@ describe("skill tool", () => {
 		it("names the skill's group and origin, and shows its description, file and instructions when expanded", async () => {
 			const { call, tool } = setup(fixtures().snapshot);
 			const result = await call("alpha");
-			expect(result.details).toMatchObject({ category: "global", description: "Use for alpha work." });
+			expect((result.details.skills as unknown[])[0]).toMatchObject({
+				category: "global",
+				description: "Use for alpha work.",
+			});
 			const collapsed = rendered(tool.renderResult(result, { expanded: false }, theme, context()));
 			expect(collapsed).toMatch(/Global skill \u00b7 4 lines \u00b7 temporary \u00b7 test/);
 			expect(collapsed).not.toContain("Use for alpha work.");
@@ -225,7 +231,7 @@ describe("skill tool", () => {
 			const display = tool.display({ args: { name: "alpha" }, status: "completed", result });
 			expect(display.outcome.text).toBe("Global skill \u00b7 4 lines \u00b7 temporary \u00b7 test");
 			expect(display.blocks.map((block: { type: string }) => block.type)).toEqual(["text", "path", "markdown"]);
-			expect(display.blocks[0].text).toBe("Use for alpha work.");
+			expect(display.blocks[0].text).toBe("alpha: Use for alpha work.");
 		});
 
 		it("keeps every line of a validation failure, not just its heading", () => {
@@ -320,8 +326,7 @@ describe("a session with skills", () => {
 		]);
 		await h.session.prompt("do alpha work");
 		const sections = getCurrentSystemMessage(h.session.messages)?.sections;
-		expect(sections?.skills).toContain('<skill name="alpha">');
-		expect(sections?.skills).not.toContain('<skill name="hidden"');
+		expect(sections?.skills).toBeUndefined();
 		const result = getToolResult(h, "skill");
 		expect(result.isError).toBe(false);
 		expect(JSON.stringify(result.content)).toContain("BODY_alpha");
@@ -330,7 +335,7 @@ describe("a session with skills", () => {
 		);
 	});
 
-	it("keeps the tool and its prompt hint out of a session without a model-invocable skill", async () => {
+	it("keeps the tool out of a session without a model-invocable skill", async () => {
 		const none = env.loaded.skills.filter((skill) => skill.disableModelInvocation);
 		const h = await start(none);
 		h.setResponses([fauxAssistantMessage("hi")]);

@@ -1,6 +1,6 @@
 ---
 name: octocode-code-review
-description: "Use to review a diff, commit, branch, uncommitted edits, a subagent worktree before merge, or finished work against its request: evidenced findings on code, tests, docs; verdict Ready, Changes required or Verification incomplete."
+description: "Use to review a diff, commit, branch, uncommitted edits, a subagent worktree before merge, or finished work against its request: evidenced findings and a verdict."
 ---
 
 # Code review

@@ -90,19 +90,14 @@ export const LEAN_ENV = "OCTOCODE_LEAN";
 export const OPERATOR_EXCLUDE_TOOLS_ENV = "OCTOCODE_OPERATOR_EXCLUDE_TOOLS";
 export const OPERATOR_NO_MCP_ENV = "OCTOCODE_OPERATOR_NO_MCP";
 /**
- * Set when the parent chose the child's skills: they ride in its task, so its prompt carries no skills section and its
- * `skill` tool stays declared even with none; children of one profile then share the cached prompt whatever their skills.
- */
-export const SKILLS_IN_TASK_ENV = "OCTOCODE_SKILLS_IN_TASK";
-/**
- * Comma-separated skill names a subagent's prompt lists (its profile's `catalog:`); the others stay loadable by name and
- * the prompt counts them. Unset: the whole catalog is listed; empty: none is.
+ * Comma-separated skill names a subagent's `skill` tool lists (its profile's `catalog:`); the others stay loadable by
+ * name. Unset: every bundled skill is listed; empty: none is.
  */
 export const SKILL_CATALOG_ENV = "OCTOCODE_SKILL_CATALOG";
 /** Set for a subagent whose profile is read-only (`readOnly: true`): it investigates and reports, keeping source unchanged. */
 export const READ_ONLY_ENV = "OCTOCODE_READ_ONLY";
 
-/** A subagent's own handoff folder (`<workspace>/.octocode/code/temp/agents/<id>`): long results go there as files, not into its report. */
+/** A subagent's own handoff folder (`<workspace>/.octocode/agent/temp/agents/<id>`): long results go there as files, not into its report. */
 export const AGENT_SCRATCH_ENV = "OCTOCODE_AGENT_SCRATCH";
 /** Absolute path used as-is as the team workspace (e.g. a subagent in a git worktree joins its parent's team). */
 export const TEAM_WORKSPACE_ENV = "OCTOCODE_TEAM_WORKSPACE";
@@ -235,6 +230,9 @@ export function envInt(
 }
 
 export const SKILL_SNAPSHOT_FILE_ENV = "OCTOCODE_SKILL_SNAPSHOT_FILE";
+
+/** Set in a subagent: an owner-only file listing the heap handles (handle and path) its parent held when it started, which the child may cite or resolve but never change. */
+export const PARENT_HEAP_FILE_ENV = "OCTOCODE_PARENT_HEAP_FILE";
 
 /** Comma-separated MCP tool roles (`readOnly`) whose open tools a child defers instead of declaring (`mcpDefer` in a profile; `mcp/src/deferral.ts`). */
 export const MCP_DEFER_ROLES_ENV = "OCTOCODE_MCP_DEFER_ROLES";

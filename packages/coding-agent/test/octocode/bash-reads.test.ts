@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { bashReads } from "../../src/octocode/files/bash-reads.ts";
+import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { fakeCtx, fakePermission, asSetup } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -156,6 +157,31 @@ describe("the file tool and plain bash prints", () => {
 		};
 		return { cwd, file, guard, bash, change };
 	}
+
+	it("counts a file this session wrote through bash as read, until another writer changes it", async () => {
+		const { cwd, bash, change } = setup();
+		await shellParserReady();
+		const made = path.join(cwd, "walk.py");
+		fs.writeFileSync(made, "print(1)\n");
+		await bash("printf 'print(1)\\n' > walk.py");
+		expect(await change({ type: "write", path: "walk.py", content: "print(2)\n" })).toMatchObject({ ok: true });
+		expect(fs.readFileSync(made, "utf8")).toBe("print(2)\n");
+		// Another writer: the content moved after the session's own write.
+		fs.writeFileSync(made, "print(3) # other\n");
+		const refused = await change({ type: "write", path: "walk.py", content: "print(4)\n" });
+		expect(refused.ok).toBe(false);
+		expect(refused.message).toMatch(/changed on disk|not read/);
+	});
+
+	it("does not count a file bash only names, or a write whose file was changed by someone else afterwards", async () => {
+		const { cwd, bash, change } = setup();
+		await shellParserReady();
+		fs.writeFileSync(path.join(cwd, "other.txt"), "x\n");
+		await bash("cat a.txt > copy.txt");
+		const refused = await change({ type: "write", path: "other.txt", content: "y\n" });
+		expect(refused.ok).toBe(false);
+		expect(refused.message).toMatch(/was not read in this session/);
+	});
 
 	it("refuses an unread file and names bash as the reader", async () => {
 		const { change } = setup();

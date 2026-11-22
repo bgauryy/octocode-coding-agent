@@ -57,7 +57,7 @@ const USAGE = [
 ].join("\n");
 
 /**
- * The retired `/harness enable|disable` as the `/configuration` line that replaces it. A word that is an id already
+ * The retired `/harness enable|disable` as the `/settings` line that replaces it. A word that is an id already
  * (`kind:name`) stays; a bare name resolves through the catalog when exactly one entry has that name.
  */
 async function switchMoved(
@@ -84,11 +84,11 @@ async function switchMoved(
 		else unresolved.push(word);
 	}
 	const flags = `${local ? " --local" : ""}${force ? " --force" : ""}`;
-	const head = `/harness ${action} moved to /configuration.`;
+	const head = `/harness ${action} moved to /settings.`;
 	if (unresolved.length)
-		return `${head} ${unresolved.map((word) => `"${word}"`).join(", ")} needs an id (kind:name, such as harness:claude, hook:<id>, plugin:<id>, skill:<name>, mcp:<name>): /configuration list <name> shows the ids.${ids.length ? ` Run /configuration ${action} ${ids.join(" ")}${flags} for the rest.` : ""}`;
-	if (!ids.length) return `${head} Run /configuration ${action} <id>... (/configuration list shows the ids).`;
-	return `${head} Run /configuration ${action} ${ids.join(" ")}${flags}.`;
+		return `${head} ${unresolved.map((word) => `"${word}"`).join(", ")} needs an id (kind:name, such as harness:claude, hook:<id>, plugin:<id>, skill:<name>, mcp:<name>): /settings list <name> shows the ids.${ids.length ? ` Run /settings ${action} ${ids.join(" ")}${flags} for the rest.` : ""}`;
+	if (!ids.length) return `${head} Run /settings ${action} <id>... (/settings list shows the ids).`;
+	return `${head} Run /settings ${action} ${ids.join(" ")}${flags}.`;
 }
 
 type McpChange = { name: string; enabled: boolean; inProject: boolean };
@@ -369,7 +369,7 @@ export function registerHarnessCommand(commands: Subcommands, hooks: HooksView, 
 				if (words.length)
 					return say(
 						ctx,
-						'Usage: /harness hooks [events|test <Event> ...] (test runs the hooks once on a sample event; the rest is inspection only). Switch hooks with /configuration enable|disable hook:<id> (IDs: /configuration list hook); "disableAllHooks": true in a hook file turns them all off.',
+						'Usage: /harness hooks [events|test <Event> ...] (test runs the hooks once on a sample event; the rest is inspection only). Switch hooks with /settings enable|disable hook:<id> (IDs: /settings list hook); "disableAllHooks": true in a hook file turns them all off.',
 						"warning",
 					);
 				return say(ctx, hooks.report(ctx.cwd));

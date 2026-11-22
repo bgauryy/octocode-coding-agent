@@ -11,6 +11,7 @@ import { normalizeTitle } from "../query.ts";
 import type { Memory, MemoryKind } from "../record.ts";
 import type { MemoryStore } from "../store.ts";
 import { CANDIDATE_TAG, isCandidate, isQuarantined, QUARANTINE_TAG } from "./candidate-tags.ts";
+import { isDurable, lessonWords, sameLesson } from "./durable-text.ts";
 
 /**
  * The queue of lesson candidates: the bullets of a checkpoint's "Constraints & Preferences", "Key Decisions" and "Errors
@@ -49,12 +50,18 @@ export function listCandidates(store: Pick<MemoryStore, "list">): Memory[] {
 export const pendingCandidates = (all: readonly Memory[]): Memory[] => all.filter((memory) => !isQuarantined(memory));
 
 const EMPTY = /^\(?none\)?\.?$/i;
+/** A bullet ticked as done in the checklist the summarizer sometimes writes: resolved, so no lesson. */
+const TICKED = /^[-*]\s+\[[xX]\]\s/;
 /** A ledger bullet's carried id (`[C3] `), and a lift the summarizer wrote (`Lifted [C3]: …`), which is no rule. */
 const LEDGER_ID = /^\[[CD]\d+\]\s*/;
 const LIFT = /^(?:lifted|superseded|withdrawn)\b|^\[[CD]\d+\]\s*(?:lifted|superseded|withdrawn)\b/i;
 
-/** A bullet as candidate text: one line, ledger id and bold markup gone; undefined for `(none)`, a lift or a fragment. */
+/**
+ * A bullet as candidate text: one line, ledger id and bold markup gone; undefined for `(none)`, a lift, a resolved or
+ * status line, or a fragment (`durable-text.ts`).
+ */
 function candidateText(raw: string): string | undefined {
+	if (TICKED.test(raw.trim())) return undefined;
 	const text = storedText(raw)
 		.replace(/^[-*]\s+/, "")
 		.replace(/^\[[ xX]\]\s+/, "")
@@ -66,7 +73,7 @@ function candidateText(raw: string): string | undefined {
 		.replace(/\*\*([^*]+)\*\*/g, "$1")
 		.replace(/__([^_]+)__/g, "$1")
 		.trim();
-	return plain.length < MIN_TEXT ? undefined : clipText(plain, MAX_TEXT);
+	return plain.length < MIN_TEXT || !isDurable(plain) ? undefined : clipText(plain, MAX_TEXT);
 }
 
 /** The bullets of the section headed `heading` in `summary`: a `- ` line starts one, any other line continues it. */
@@ -130,16 +137,31 @@ export function queueCandidates(
 	if (items.length === 0) return 0;
 	const queued = listCandidates(store);
 	const known = new Set(queued.map((memory) => normalizeTitle(memory.title)));
+	const words = queued.map((memory) => ({ memory, words: lessonWords(memory.title) }));
 	let added = 0;
 	for (const item of items) {
 		const key = normalizeTitle(item.text);
 		if (!key || known.has(key)) continue;
 		known.add(key);
+		const itemWords = lessonWords(item.text);
+		const same = words.find(
+			(row) => isQuarantined(row.memory) === Boolean(item.quarantine) && sameLesson(row.words, itemWords),
+		);
+		if (same) {
+			// The same lesson reworded: the existing candidate takes the newer text and evidence, not a second note.
+			try {
+				store.set({ id: same.memory.id, title: item.text, body: candidateBody(item), author: same.memory.author }, now);
+				same.words = itemWords;
+			} catch (error) {
+				if (!(error instanceof MemoryError)) throw error;
+			}
+			continue;
+		}
 		try {
-			store.set(
+			const stored = store.set(
 				{
 					title: item.text,
-					body: item.quarantine ? `${item.evidence}. Quarantined: ${item.quarantine}.` : `${item.evidence}.`,
+					body: candidateBody(item),
 					kind: item.kind,
 					scope: "project",
 					keywords: [item.quarantine ? QUARANTINE_TAG : CANDIDATE_TAG, item.origin].join(" "),
@@ -149,6 +171,7 @@ export function queueCandidates(
 				now,
 			);
 			added++;
+			words.push({ memory: stored.memory, words: itemWords });
 		} catch (error) {
 			// A secret, or a note that already holds it: nothing to queue.
 			if (!(error instanceof MemoryError)) throw error;
@@ -163,6 +186,9 @@ export function queueCandidates(
 	}
 	return added;
 }
+
+const candidateBody = (item: CandidateInput) =>
+	item.quarantine ? `${item.evidence}. Quarantined: ${item.quarantine}.` : `${item.evidence}.`;
 
 /** Removes candidates a pass considered (or the queue's bound pushed out); one already gone is skipped. */
 export function dropCandidates(store: Pick<MemoryStore, "delete">, ids: readonly number[]): void {

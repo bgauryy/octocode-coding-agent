@@ -38,19 +38,21 @@ const bash = (command: string, extra: Record<string, unknown> = {}): Step => ({
 
 /**
  * Clearing: a writing command's big result (never clearable), three read-only results of 30,000 bytes (about 10k
- * estimated tokens each: one alone stays under the 20k-token floor, two reach it), then six results of `recentBytes`.
- * The two oldest read-only results leave the newest five once the fourth small one arrives; the third old one is left
- * alone afterwards, as it alone is under the floor.
+ * estimated tokens each: one alone stays under the 20k-token floor, two reach it), then `SMALL_READS` results of
+ * `recentBytes`. A result stays while its call is within the last 10 assistant turns, so the two oldest read-only
+ * results are cleared in one wave once both have left that window; the third old one is left alone afterwards, as it
+ * alone is under the floor.
  */
+const SMALL_READS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 async function clearingRun(opts: { recentBytes: number; settings?: Record<string, unknown> }): Promise<FlowRun> {
 	const big = (tag: string) => block(tag, 75);
 	const files: Record<string, string> = { "w.txt": big("WRITE-OUT") };
 	for (const i of [1, 2, 3]) files[`b${i}.txt`] = big(`OLD-${i}`);
-	for (const i of [1, 2, 3, 4, 5, 6]) files[`s${i}.txt`] = block(`NEW-${i}`, Math.max(1, opts.recentBytes / 400));
+	for (const i of SMALL_READS) files[`s${i}.txt`] = block(`NEW-${i}`, Math.max(1, opts.recentBytes / 400));
 	const steps = [
 		bash("cat w.txt && touch w.done"),
 		...[1, 2, 3].map((i) => bash(`cat b${i}.txt`)),
-		...[1, 2, 3, 4, 5, 6].map((i) => bash(`cat s${i}.txt`)),
+		...SMALL_READS.map((i) => bash(`cat s${i}.txt`)),
 		{ text: "read them all" },
 	];
 	const gw = await gateway({ responder: sequence(steps) });
@@ -262,16 +264,28 @@ describe("context flows (scripted gateway, real bundle)", () => {
 		}, 180_000);
 	});
 
+	/** Tokens one request of the near-fill flow should reach on its 57,600 usable. */
+	const NEAR_FILL_TOKENS = 45_000;
+
 	describe("prompts that each nearly fill a small window", () => {
 		it("leave the session able to answer a short prompt after them", async (ctx) => {
 			requireBundle(ctx);
 			const gw = await gateway({ responder: sequence([]), charsPerToken: SCRIPTED_CHARS_PER_TOKEN });
 			try {
-				// Five prompts of about 60 KB (24k tokens at the agent's ratio, which the gateway counts at too) on a 64k window
-				// (57,600 usable, 9,600 reserved for the reply): each request, about 45k with the system prompt and tools, nearly
+				// Five prompts on a 64k window (57,600 usable, 9,600 reserved for the reply), each sized so its request, with the
+				// system prompt and tools, is about 45k tokens at the agent's ratio (which the gateway counts at too): it nearly
 				// fills what the reserve leaves, so the turn before a prompt is summarized for it to fit. A prompt that passes the
-				// reserve with the system prompt and tools alone (80 KB) leaves no room for a summary: that turn fails by design.
-				const big = [1, 2, 3, 4, 5].map((i) => `T${i} ${block(`BIG-${i}`, 150)}`);
+				// reserve with the system prompt and tools alone leaves no room for a summary: that turn fails by design. The
+				// prompt size follows the measured system prompt and tools of a probe request, so the margin holds as they change.
+				const probe = await runFlow(gw, { turns: ["T0 short"], files: {}, contextWindow: 64_000 });
+				expect(probe.exitCode, probe.stderr).toBe(0);
+				const first = probe.requests[0];
+				const base =
+					bytes(textOf(first.messages[0].content)) +
+					bytes(JSON.stringify((first.raw as { tools?: unknown }).tools ?? []));
+				const lines = Math.floor((NEAR_FILL_TOKENS * SCRIPTED_CHARS_PER_TOKEN - base) / 400);
+				expect(lines, "the system prompt and tools leave room for a prompt").toBeGreaterThan(20);
+				const big = [1, 2, 3, 4, 5].map((i) => `T${i} ${block(`BIG-${i}`, lines)}`);
 				const run = await runFlow(gw, { turns: [...big, "T6 short"], files: {}, contextWindow: 64_000 });
 				expect(run.exitCode, run.stderr).toBe(0);
 				const short = mainRequests(run.requests).filter((r) =>
@@ -308,14 +322,14 @@ describe("context flows (scripted gateway, real bundle)", () => {
 	});
 
 	describe("stale-result clearing", () => {
-		it("clears the old read-only results once, keeps the newest five and the writing command, then appends", async (ctx) => {
+		it("clears the old read-only results once they leave the last 10 turns, keeps the recent ones and the writing command, then appends", async (ctx) => {
 			requireBundle(ctx);
 			const run = await clearingRun({ recentBytes: 400 });
 			expect(run.exitCode, run.stderr).toBe(0);
 			const kept: Array<[number, string]> = [
 				[0, "WRITE-OUT 0 "],
 				[3, "OLD-3 0 "],
-				...[1, 2, 3, 4, 5, 6].map((i): [number, string] => [3 + i, `NEW-${i} 0 `]),
+				...SMALL_READS.map((i): [number, string] => [3 + i, `NEW-${i} 0 `]),
 			];
 			expect(clearingViolations(run, { ...CLEARED, kept }, 30_000)).toEqual([]);
 		}, 180_000);

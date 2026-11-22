@@ -195,23 +195,28 @@ describe("a linked worktree finishes", () => {
 		expect(fs.existsSync(path.join(folder, "feature.txt"))).toBe(true);
 		expect(git(box.project, "branch", "--list", "approved")).toContain("approved");
 
-		// A user's prior request needs no further dialog: typing `/worktree merge`, or the session-wide answer. Same main session.
+		// A slash command entered over RPC asks its client for consent. A later session-wide grant covers both branches.
 		await sessionIdle(main);
 		const shown = dialogs(main.run).length;
 		linkedWorktree(box, "typed", "typed.txt");
 		const granted = linkedWorktree(box, "granted", "granted.txt");
 		linkedWorktree(box, "later", "later.txt");
 		prompt(main.run, "typed", "/worktree merge typed");
+		await until(() => dialogs(main.run).length > shown, "the RPC slash command's merge dialog");
+		const typedDialog = dialogs(main.run)[shown];
+		expect(typedDialog.title).toContain("branch typed");
+		expect(fs.existsSync(path.join(box.project, "typed.txt"))).toBe(false);
+		answer(main.run, typedDialog.id, "Allow once");
 		await until(() => notices(main.run).includes("Merged typed"), "the typed merge");
-		expect(dialogs(main.run)).toHaveLength(shown);
+		expect(dialogs(main.run)).toHaveLength(shown + 1);
 		expect(fs.existsSync(path.join(box.project, "typed.txt"))).toBe(true);
 
 		const steps = script([merge("granted"), merge("later"), { text: "done" }]);
 		prompt(main.run, "merge", steps);
-		await until(() => dialogs(main.run).length > shown, "the merge dialog");
-		answer(main.run, dialogs(main.run)[shown].id, "Allow all worktree merges for this session");
+		await until(() => dialogs(main.run).length > shown + 1, "the merge dialog");
+		answer(main.run, dialogs(main.run)[shown + 1].id, "Allow all worktree merges for this session");
 		await reachedStep(endpoint, steps, 2, "both merges");
-		expect(dialogs(main.run)).toHaveLength(shown + 1);
+		expect(dialogs(main.run)).toHaveLength(shown + 2);
 		expect(fs.existsSync(path.join(box.project, "later.txt"))).toBe(true);
 		expect(fs.existsSync(path.join(granted, "granted.txt"))).toBe(true);
 		await close(main, worktree);

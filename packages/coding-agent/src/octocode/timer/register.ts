@@ -1,9 +1,10 @@
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
+import { defineTool } from "../../core/features/types/tools.ts";
 import { formatCost } from "../shared/format.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
-import { backlog, dbStamp, timers, type TimerRow } from "../../../../db/src/api.ts";
+import { backlog, dbStamp, machineSamples, timers, type TimerRow } from "../../../../db/src/api.ts";
 import { BACKLOG_CHANGE_CHANNEL, type BacklogChange, type BacklogChangeNotice } from "../shared/backlog-change.ts";
 import { backlogDeps } from "./backlog-deps.ts";
 import { peerEnd } from "./peer-end.ts";
@@ -28,7 +29,11 @@ import { wakeGateOf } from "../wake/gate.ts";
 import { renderTimerMessage } from "./render.ts";
 import { timerWorkRows } from "./work.ts";
 import { TimerScheduler } from "./scheduler.ts";
-import { timerTool } from "../native/tools/wait/tool.ts";
+import type { LiveJob } from "./job-poll.ts";
+import { timerTool } from "../native/tools/notify/tool.ts";
+
+/** The tool's name before it became `notify`; only saved sessions still carry it. */
+const LEGACY_TOOL_NAME = "wait";
 
 /** `timer.check.enabled` from the global settings; unreadable settings keep it off. */
 function checkEnabledSetting(agentDir: string = getAgentDir()): boolean {
@@ -62,6 +67,8 @@ export interface TimerOptions {
 	isSubagent?: boolean;
 	/** Where `/cron` and `/loop` register; without it neither exists (a session that owns no command line). */
 	commands?: Subcommands;
+	/** The background jobs whose end wakes this session (its own and those it joined): a `notify` polling one is refused. */
+	jobs?: (ctx: FeatureContext) => readonly LiveJob[];
 }
 
 const itemSeq = (ref: string) => {
@@ -70,7 +77,7 @@ const itemSeq = (ref: string) => {
 };
 
 /**
- * The `wait` tool and its scheduler: each session loads its own active timers from the agent database at start, fires
+ * The `notify` tool and its scheduler: each session loads its own active timers from the agent database at start, fires
  * them while it runs (a wake is a steer message: a busy session reads it at its next step, an idle one starts a turn; retried by `wake-retry.ts` like a job report),
  * and leaves them active at shutdown for a resumed session. `settle()` lets a headless run's hold wait for the next wake
  * of a timer this run set; timers from an earlier run never hold an exit.
@@ -136,6 +143,7 @@ export function registerTimers(
 			return seq === undefined ? undefined : backlog.openPrerequisites(db().db, workspace(), seq);
 		},
 		agentEnd: (name) => peerEnd(db().db, workspace(), name),
+		machine: (count) => machineSamples.recentLoads(db().db, count),
 		watchDatabase: (poke) => follower.subscribe(poke),
 		judge: (request) => judge.judge(request),
 	};
@@ -147,10 +155,10 @@ export function registerTimers(
 			const generation = approvalGeneration;
 			if (!ctx.hasUI)
 				return "check spends money on a small model and is off: set timer.check.enabled to true, or use a deterministic event.";
-			const caps = `at most ${CHECK_CAPS.perWaitChecks} judgments and $${CHECK_CAPS.perWaitUsd.toFixed(2)} per wait, $${CHECK_CAPS.perSessionUsd.toFixed(2)} per session`;
+			const caps = `at most ${CHECK_CAPS.perWaitChecks} judgments and $${CHECK_CAPS.perWaitUsd.toFixed(2)} per request, $${CHECK_CAPS.perSessionUsd.toFixed(2)} per session`;
 			const yes = await ctx.ui.confirm(
-				"Allow paid judging for waits?",
-				`A wait with check pays a cheaper model to judge its question once the event holds, ${caps}. Allow for this session?`,
+				"Allow paid judging for notifications?",
+				`A notification with check pays a cheaper model to judge its question once the event holds, ${caps}. Allow for this session?`,
 			);
 			if (generation !== approvalGeneration)
 				return "The session changed while awaiting judging approval. Nothing was set.";
@@ -212,7 +220,7 @@ export function registerTimers(
 		}
 		const failed = (error: unknown) => {
 			queuedRuns.delete(row.id);
-			warn(context, `Wait ${row.id} could not wake this session: ${errorMessage(error)}`);
+			warn(context, `Notification ${row.id} could not reach this session: ${errorMessage(error)}`);
 		};
 		try {
 			const sending = wakeGateOf(api).emit(
@@ -235,7 +243,7 @@ export function registerTimers(
 			const spent = timers.sessionSpend(db().db, sessionId);
 			current?.ui.setStatus(
 				STATUS.timers,
-				spent > 0 ? `wait judging ${formatCost({ cost: spent, unpriced: false })}` : undefined,
+				spent > 0 ? `notify judging ${formatCost({ cost: spent, unpriced: false })}` : undefined,
 				"accent",
 			);
 		} catch {
@@ -246,7 +254,7 @@ export function registerTimers(
 		try {
 			scheduler?.refresh();
 		} catch (error) {
-			warn(ctx ?? current, `Waits are unavailable: ${errorMessage(error)}`);
+			warn(ctx ?? current, `Notifications are unavailable: ${errorMessage(error)}`);
 		}
 	};
 
@@ -262,7 +270,7 @@ export function registerTimers(
 		try {
 			timers.expireOverdue(db().db, now(), sessionId);
 		} catch (error) {
-			warn(ctx, `Overdue waits were not expired: ${errorMessage(error)}`);
+			warn(ctx, `Overdue notifications were not expired: ${errorMessage(error)}`);
 		}
 		scheduler = new TimerScheduler({
 			db,
@@ -285,7 +293,7 @@ export function registerTimers(
 					);
 			},
 			changed: showTimers,
-			failed: (error) => warn(current, `A wait pass failed: ${errorMessage(error)}`),
+			failed: (error) => warn(current, `A notification pass failed: ${errorMessage(error)}`),
 		});
 		refresh(ctx);
 	});
@@ -299,31 +307,34 @@ export function registerTimers(
 	api.renderers.message(TIMER_TYPE, (message, { expanded, outputPad }, theme) =>
 		renderTimerMessage(message.details, contentText(message.content), expanded, theme, outputPad ?? 1),
 	);
-	api.tools.register(
-		timerTool({
-			db,
-			workspaceId: (ctx) => registeredWorkspace(ctx.cwd, db()).id,
-			agent: options.agent,
-			now,
-			deps,
-			implicit: () => {
-				const children = work.background();
-				const jobs = work.all().filter((row) => row.kind === "bash");
-				return [
-					...(children.length ? [`children ${children.join(", ")} (report)`] : []),
-					...(jobs.length ? [`${jobs.map((row) => row.id).join(", ")} (exit)`] : []),
-				].join("; ");
-			},
-			checkRefusal,
-			cronRefusal,
-			cronCap: () => cronSettings(options.agentDir).maxUsd,
-			sessionUsd: (ctx) => sessionUsd(ctx),
-			changed: (ctx, set) => {
-				if (set) scheduler?.hold(set.id);
-				refresh(ctx);
-			},
-		}),
-	);
+	const notify = timerTool({
+		db,
+		workspaceId: (ctx) => registeredWorkspace(ctx.cwd, db()).id,
+		agent: options.agent,
+		now,
+		deps,
+		jobs: options.jobs ?? (() => []),
+		implicit: () => {
+			const children = work.background();
+			const jobs = work.all().filter((row) => row.kind === "bash");
+			return [
+				...(children.length ? [`children ${children.join(", ")} (report)`] : []),
+				...(jobs.length ? [`${jobs.map((row) => row.id).join(", ")} (exit)`] : []),
+			].join("; ");
+		},
+		checkRefusal,
+		cronRefusal,
+		cronCap: () => cronSettings(options.agentDir).maxUsd,
+		sessionUsd: (ctx) => sessionUsd(ctx),
+		changed: (ctx, set) => {
+			if (set) scheduler?.hold(set.id);
+			refresh(ctx);
+		},
+	});
+	api.tools.register(notify);
+	// Sessions saved before the rename hold `wait` calls: their rows keep rendering with the same renderers.
+	const legacyRenderers = defineTool(notify);
+	api.renderers.tool((name, next) => (name === LEGACY_TOOL_NAME ? legacyRenderers : next()));
 	const commandHost = {
 		db,
 		workspaceId: (ctx: { cwd: string }) => registeredWorkspace(ctx.cwd, db()).id,

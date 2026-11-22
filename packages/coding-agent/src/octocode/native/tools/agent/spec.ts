@@ -18,17 +18,16 @@ export function agentToolSpec(runners: readonly string[] = [], desktop = false) 
 		label: "Agent",
 		description:
 			"Delegate a self-contained task to a fresh session without this conversation. " +
-			`Foreground returns its report; background returns its id, the report comes later. At most ${maxSubagents()} at once; more wait.`,
+			`Foreground returns its report; background its id, the report later. At most ${maxSubagents()} at once; more queue.`,
 		parameters: Type.Object({
 			skills: Type.Optional(
 				Type.Array(Type.String(), {
-					description: "Skills to load; omit: profile default; empty: none",
+					description: "Skills; omit: profile's; empty: none",
 				}),
 			),
 			mcp: Type.Optional(
 				Type.Array(Type.String(), {
-					description:
-						"Session MCP servers added to the profile's (built-in Octocode, those its tools name); omit or empty: profile's only, also on resume",
+					description: "MCP servers beyond the profile's",
 				}),
 			),
 			goal: Type.Optional(
@@ -37,23 +36,22 @@ export function agentToolSpec(runners: readonly string[] = [], desktop = false) 
 				}),
 			),
 			task: Type.String({
-				description:
-					"Required, also on resume; brief per the octocode-subagents skill. msg#<N> or report:<agent-id> appends it.",
+				description: "Brief: goal, proof of done, files. Required, also on resume",
 			}),
 			item: Type.Optional(
 				Type.String({
-					description: "An ongoing or unclaimed item (claimed here); the child updates only it.",
+					description: "Item the child updates; claimed here if unclaimed",
 				}),
 			),
 			after: Type.Optional(
 				Type.Array(Type.String(), {
 					description:
-						"With background: start after each B<n>, agent:<name>, job:bash-<n> finishes and lock:full-run is free; a failure holds it.",
+						"With background: start after each B<n>, agent:<name>, job:bash-<n> ends and lock:full-run is free",
 				}),
 			),
 			resume: Type.Optional(
 				Type.String({
-					description: "Continue a finished or stopped child of this session (needs task); a queued one starts now.",
+					description: "Continue a finished or stopped child (needs task)",
 				}),
 			),
 			profile: Type.Optional(
@@ -63,7 +61,7 @@ export function agentToolSpec(runners: readonly string[] = [], desktop = false) 
 			),
 			headless: Type.Optional(
 				Type.Boolean({
-					description: "Browser: false shows the window; default headless",
+					description: "Browser: false shows the window",
 				}),
 			),
 			apps: Type.Optional(
@@ -74,36 +72,41 @@ export function agentToolSpec(runners: readonly string[] = [], desktop = false) 
 			model: Type.Optional(
 				Type.String({
 					description:
-						"provider/id, bare id, small or medium; optional :off|minimal|low|medium|high|xhigh|max. Default: profile, else medium. ids: models",
+						"provider/id, id, small|medium|large; optional :off|minimal|low|medium|high|xhigh|max. Default: profile, else medium",
 				}),
 			),
 			resultSchema: Type.Optional(
 				// A plain object schema: `Type.Record` would add a `patternProperties` block to every request for the same meaning.
 				Type.Unsafe<Record<string, unknown>>({
 					type: "object",
-					description: "JSON Schema of the final verdict; every node needs type",
+					description: "JSON Schema of the verdict; every node needs type",
 				}),
 			),
 			background: Type.Optional(
 				Type.Boolean({
-					description: "Return at once; report later",
+					description: "Return at once",
 				}),
 			),
 			hooks: Type.Optional(StringEnum(HOOK_MODES, { description: "User hooks (default off)" })),
 			cache: Type.Optional(StringEnum(CACHE_CHOICES, { description: "History cache tier" })),
+			context: Type.Optional(
+				StringEnum(["fork"], {
+					description: "fork: copies your chat (costly)",
+				}),
+			),
 			isolate: Type.Optional(
 				Type.Boolean({
-					description: "Private worktree; coordinate merge lands it",
+					description: "Private worktree; land via coordinate merge",
 				}),
 			),
 			workingCopy: Type.Optional(
 				Type.Boolean({
-					description: "With isolate: start from the working tree",
+					description: "With isolate: copy the working tree",
 				}),
 			),
 			paths: Type.Optional(
 				Type.Array(Type.String(), {
-					description: 'Files or "dir/" reserved until the report',
+					description: 'Files or "dir/" reserved till the report',
 				}),
 			),
 			runner: runnerField(runners),

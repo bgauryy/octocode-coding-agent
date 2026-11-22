@@ -102,7 +102,7 @@ describe("Octocode home and Pi configuration fallback", () => {
 						{ id: "unconfigured" },
 					],
 				},
-				openai: { modelOverrides: { "gpt-4o": { input: ["text"], inputLimits: { images: { maxPerMessage: 2 } } } } },
+				openai: { modelOverrides: { "gpt-4o": { inputLimits: { images: { maxPerMessage: 2 } } } } },
 			},
 		});
 		write(legacy, content);
@@ -114,7 +114,7 @@ describe("Octocode home and Pi configuration fallback", () => {
 		});
 		expect(registry.find("pi-vision", "unconfigured")?.input).toEqual(["text"]);
 		expect(registry.find("openai", "gpt-4o")).toMatchObject({
-			input: ["text"],
+			input: ["text", "image"],
 			inputLimits: { images: { maxPerMessage: 2 } },
 		});
 		write(

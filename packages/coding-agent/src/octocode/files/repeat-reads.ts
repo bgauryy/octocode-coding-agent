@@ -8,29 +8,29 @@ import { shortPath } from "../../utils/display-path.ts";
 import { readerLocations, recordedLocalReads } from "../shared/local-reads.ts";
 import { bashReads, soleWholeRead } from "./bash-reads.ts";
 import { contextMessages, sessionCleared } from "./reads.ts";
+import { type HeapRange, rangeText } from "../shared/heap-index.ts";
+import { sessionHeap } from "../shared/session-heap.ts";
 
 /**
- * Whole reads of a file that has not changed since the model last read it whole, in the same context. The second one is
- * answered with a short note that points at the earlier result and asks for a range or a symbol instead; a third (the
- * model insisting), a changed file, or an earlier result that was cleared or compacted away gets the text as usual.
+ * Reads of a file (whole, or one line range a reader showed) that has not changed since the model last read the same
+ * view, in the same context. The second one is answered with a short note naming the earlier result's heap handle
+ * (`heap-index.ts`); a third (the model insisting), a changed file, another range, or an earlier result that was
+ * cleared or compacted away gets the text as usual.
  * Bash prints (`cat FILE`, `bashReads`) count as unchanged by their stat (inode, size, modification and change time), a
  * reader's credited reads (`localReads`) by their SHA-256. A reader call repeated with the same arguments is the read dedupe's (`dedupe.ts`).
  */
 
-/** The latest whole read of one file: the call whose result shows it, and the file's version then. */
-interface WholeRead {
-	id: string;
+/** One view of a file a result showed: whole or a line range, and the file's version then. */
+interface View {
+	file: string;
+	range: HeapRange;
 	version: string;
-	/** A reader's call arguments; absent for bash. */
-	input?: Record<string, unknown>;
-	/** This version was answered with the note once: the next whole read of it gets the text. */
-	noted?: boolean;
 }
 
-/** What one result read whole: each file with its version, and the one file it printed and nothing else, if any. */
+/** What one result showed: each view, and the one view that is the whole result and nothing else, if any. */
 interface ResultReads {
-	whole: Array<{ file: string; version: string }>;
-	sole?: string;
+	views: View[];
+	sole?: View;
 	reader: boolean;
 }
 
@@ -42,26 +42,29 @@ const statVersion = (file: string): string | undefined => {
 function readsOf(event: ToolResultEvent, cwd: string): ResultReads | undefined {
 	const local = recordedLocalReads(event.details);
 	if (local.length > 0) {
-		const whole = local
-			.filter((read) => read.whole)
-			.map((read) => ({ file: canonicalPath(read.file), version: `sha:${read.sha256}` }));
-		// One location named, one file read whole: the result is that file and nothing else.
+		const views = local.map((read) => ({
+			file: canonicalPath(read.file),
+			range: read.whole ? ("all" as const) : (read.lines ?? "all"),
+			version: `sha:${read.sha256}`,
+		}));
+		// One location named, one view of it: the result is that view and nothing else.
 		const located = readerLocations(event.input);
-		const one = local.length === 1 && whole.length === 1 && located.files.length === 1 && !located.unnamed;
-		return { whole, reader: true, ...(one ? { sole: whole[0].file } : {}) };
+		const one = views.length === 1 && located.files.length === 1 && !located.unnamed;
+		return { views, reader: true, ...(one ? { sole: views[0] } : {}) };
 	}
 	if (event.toolName !== "bash") return undefined;
 	const { command, background } = event.input;
 	if (typeof command !== "string" || background === true) return undefined;
 	const details = asRecord(event.details);
 	const cut = details.truncation !== undefined || details.fullOutputPath !== undefined;
-	const whole = bashReads(command, cwd, cut).flatMap((read) => {
+	const views = bashReads(command, cwd, cut).flatMap((read) => {
 		const file = canonicalPath(read.file);
 		const version = read.whole ? statVersion(file) : undefined;
-		return version ? [{ file, version }] : [];
+		return version ? [{ file, range: "all" as const, version }] : [];
 	});
-	const sole = cut ? undefined : soleWholeRead(command, cwd);
-	return { whole, reader: false, ...(sole ? { sole: canonicalPath(sole) } : {}) };
+	const soleFile = cut ? undefined : soleWholeRead(command, cwd);
+	const sole = soleFile ? views.find((view) => view.file === canonicalPath(soleFile)) : undefined;
+	return { views, reader: false, ...(sole ? { sole } : {}) };
 }
 
 /** The call whose result still shows `id`'s text in the model's context (following a note to its target), or undefined. */
@@ -90,36 +93,44 @@ export function repeatReadNotes(): (
 	event: ToolResultEvent,
 	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 ) => { content: Array<{ type: "text"; text: string }>; details: Record<string, unknown> } | undefined {
-	const sessions = new WeakMap<object, Map<string, WholeRead>>();
 	return (event, ctx) => {
 		// A call another tool made never showed the model its text; without a session there is no context to point into.
-		const owner = ctx.sessionManager as object | undefined;
-		if (event.isError || event.parentToolCallId || !owner) return undefined;
+		const heap = sessionHeap(ctx.sessionManager);
+		if (event.isError || event.parentToolCallId || !heap) return undefined;
 		const reads = readsOf(event, ctx.cwd);
-		if (!reads || reads.whole.length === 0) return undefined;
-		let latest = sessions.get(owner);
-		if (!latest) sessions.set(owner, (latest = new Map()));
-		const sole = reads.sole === undefined ? undefined : reads.whole.find((read) => read.file === reads.sole);
-		const earlier = sole && latest.get(sole.file);
+		if (!reads || reads.views.length === 0) return undefined;
+		const { index } = heap;
+		const { sole } = reads;
+		const earlier = sole && index.find(sole.file, sole.range);
 		const sameCall = reads.reader && earlier?.input !== undefined && isDeepStrictEqual(earlier.input, event.input);
 		const shown =
 			sole && earlier && earlier.version === sole.version && !earlier.noted && !sameCall
-				? shownIn(ctx, earlier.id)
+				? shownIn(ctx, earlier.callId)
 				: undefined;
 		if (sole && earlier && shown) {
 			earlier.noted = true;
+			const where = shortPath(sole.file, ctx.cwd);
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: renderPrompt("tools/file/repeat-read.md", { path: shortPath(sole.file, ctx.cwd) }),
+						text: renderPrompt("tools/file/repeat-read.md", {
+							path: sole.range === "all" ? where : `${where} lines ${rangeText(sole.range)}`,
+							handle: earlier.handle,
+						}),
 					},
 				],
 				details: { ...asRecord(event.details), unchangedOf: shown },
 			};
 		}
-		for (const { file, version } of reads.whole)
-			latest.set(file, { id: event.toolCallId, version, ...(reads.reader ? { input: event.input } : {}) });
+		for (const { file, range, version } of reads.views)
+			index.record({
+				path: file,
+				range,
+				version,
+				callId: event.toolCallId,
+				...(reads.reader ? { input: event.input } : {}),
+			});
 		return undefined;
 	};
 }

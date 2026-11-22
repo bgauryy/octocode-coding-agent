@@ -292,7 +292,7 @@
 			"prompt": "Delegate this question to a subagent with the `researcher` profile and wait for its report before you answer. Under the workspace, where is a subagent's saved conversation stored, and which function tells a new subagent which names are already taken so it does not continue another agent's conversation? Give the path pattern, the function's name and its source file.",
 			"graders": [
 				{ "type": "child", "role": "researcher" },
-				{ "type": "facts", "all": ["temp/agents[\\s\\S]{0,60}?session", "scratchNames", "scratch\\.ts"] }
+				{ "type": "facts", "all": ["\\.octa/code/temp/agents[\\s\\S]{0,60}?session", "scratchNames", "scratch\\.ts"] }
 			],
 			"evidence": [
 				{
@@ -301,7 +301,11 @@
 				},
 				{
 					"path": "packages/coding-agent/src/octocode/subagents/handoff/scratch.ts",
-					"match": "\\.octocode/agent/temp/agents"
+					"match": "workspaceStateDir\\(teamWorkspace\\(cwd, env\\), path\\.join\\(\"temp\", \"agents\"\\)\\)"
+				},
+				{
+					"path": "packages/coding-agent/src/config/workspace.ts",
+					"match": "WORKSPACE_STATE = path\\.join\\(\"\\.octa\", \"code\"\\)"
 				},
 				{
 					"path": "packages/coding-agent/src/octocode/subagents/process/session.ts",
@@ -309,10 +313,11 @@
 				}
 			],
 			"reference": {
-				"answer": "In .octocode/agent/temp/agents/<name>/session/. `scratchNames` in packages/coding-agent/src/octocode/subagents/handoff/scratch.ts lists the taken names.",
+				"answer": "In .octa/code/temp/agents/<name>/session/. `scratchNames` in packages/coding-agent/src/octocode/subagents/handoff/scratch.ts lists the taken names.",
 				"wrong": [
 					"In ~/.octocode/octocodecode/sessions. `scratchNames` in subagents/handoff/scratch.ts lists the taken names.",
-					"In .octocode/agent/temp/agents/<name>/session/; the names come from `teamWorkspace` in team/store/workspace.ts."
+					"In .octocode/agent/temp/agents/<name>/session/. `scratchNames` in subagents/handoff/scratch.ts lists the taken names.",
+					"In .octa/code/temp/agents/<name>/session/; the names come from `teamWorkspace` in team/store/workspace.ts."
 				]
 			}
 		},

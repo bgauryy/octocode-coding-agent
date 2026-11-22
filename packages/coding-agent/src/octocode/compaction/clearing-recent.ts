@@ -4,19 +4,26 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { Candidate } from "./clearing-candidates.ts";
 
 /**
- * Which old results are still in use, so clearing keeps them beyond the newest `KEEP_RECENT_RESULTS`: the call came
- * within the last `KEEP_RECENT_TURNS` assistant turns, or a message of those turns names a path the call read (in its
- * text, thinking or tool-call arguments). A count alone cleared a result a few turns after it was read when each turn
- * made one call, which forced re-reads that cost more than the clearing saved. The kept results are bounded by size
- * (`KEEP_IN_USE_TOKENS`, newest first), so a clearing that triggers still frees the rest.
+ * Which old results are still in use, so clearing keeps them beyond the newest `KEEP_RECENT_RESULTS`:
+ *
+ * - the working set: the call came within the last `KEEP_RECENT_TURNS` assistant turns. Always kept, whatever its size:
+ *   the task builds on these, a turn may make several calls, and a clearing that dropped the oldest of them (a count of
+ *   results or a token bound did, at 50-76% of the context) forced re-reads that cost more than the clearing saved. The
+ *   window is bounded by turns, and the compaction threshold bounds the context as a whole.
+ * - a mention: an older call read a path that a message of those turns names (in its text, thinking or tool-call
+ *   arguments). Kept newest first until `KEEP_IN_USE_TOKENS`; one that does not fit is cleared, the smaller ones
+ *   older than it still fit, so a clearing that triggers frees the rest.
+ *
+ * Results the working set holds back cannot be cleared: the pricing (`clearing-cost.ts`) and the floors judge only
+ * what remains, so below the compaction threshold a warm clearing runs only when the older results alone pay.
  */
 
-/** Assistant turns within which a result's call, or a mention of its path, keeps it. */
+/** The assistant turns that make up the working set; a mention of an older call's path in them keeps that call's result too. */
 export const KEEP_RECENT_TURNS = 10;
 /**
- * The most text, in tokens (by `CHARS_PER_TOKEN`), the results in use keep beyond the newest ones; older ones past it
- * are cleared as before. Equal to the warm clearing floor (`CLEAR_AT_LEAST_TOKENS`): holding back more than one warm
- * clearing frees would keep re-sending what the clearing is for.
+ * The most text, in tokens (by `CHARS_PER_TOKEN`), the older results kept for a mention hold; those past it are
+ * cleared. Equal to the warm clearing floor (`CLEAR_AT_LEAST_TOKENS`): holding back more than one warm clearing frees
+ * would keep re-sending what the clearing is for.
  */
 export const KEEP_IN_USE_TOKENS = 20_000;
 
@@ -61,8 +68,8 @@ function recentText(messages: readonly MessageRef[], start: number): string {
 }
 
 /**
- * The ids of `candidates` (oldest first) in recent use (see above), newest first until `KEEP_IN_USE_TOKENS`. One pass
- * over the messages finds where the window starts; its text is joined once, and only for candidates older than it.
+ * The ids of `candidates` (oldest first) in recent use (see above). One pass over the messages finds where the window
+ * starts; its text is joined once, and only for candidates older than it.
  */
 export function inRecentUse(
 	candidates: readonly Candidate[],
@@ -80,9 +87,7 @@ export function inRecentUse(
 	const inUse = new Set<string>();
 	let room = KEEP_IN_USE_TOKENS * CHARS_PER_TOKEN;
 	let text: string | undefined;
-	const used = (candidate: Candidate): boolean => {
-		// A result follows its call's assistant message, and an input is that message: either way the index is in the window.
-		if (candidate.index >= start) return true;
+	const mentioned = (candidate: Candidate): boolean => {
 		const keys = pathArgs(calls.get(candidate.id)).flatMap((file) => mentionKey(file) ?? []);
 		if (keys.length === 0) return false;
 		text ??= recentText(messages, start);
@@ -91,10 +96,12 @@ export function inRecentUse(
 	};
 	for (let index = candidates.length - 1; index >= 0; index--) {
 		const candidate = candidates[index];
-		if (!used(candidate)) continue;
-		if (candidate.text.length > room) break;
-		room -= candidate.text.length;
-		inUse.add(candidate.id);
+		// A result follows its call's assistant message, and an input is that message: either way the index is in the window.
+		if (candidate.index >= start) inUse.add(candidate.id);
+		else if (mentioned(candidate) && candidate.text.length <= room) {
+			room -= candidate.text.length;
+			inUse.add(candidate.id);
+		}
 	}
 	return inUse;
 }

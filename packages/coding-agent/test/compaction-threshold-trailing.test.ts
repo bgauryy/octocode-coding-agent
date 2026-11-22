@@ -43,7 +43,7 @@ describe("threshold compaction counts content after the last response", () => {
 			modelRuntime: getModelRuntime(modelRegistry),
 			resourceLoader: createTestResourceLoader(),
 		});
-		const settings = settingsManager.getCompactionSettings();
+		const settings = settingsManager.getCompactionSettings(model);
 		// 100 tokens below the threshold: only trailing content can push the context over it.
 		belowThreshold = (model.contextWindow ?? 200_000) - settings.reserveTokens - 100;
 		assistant = {

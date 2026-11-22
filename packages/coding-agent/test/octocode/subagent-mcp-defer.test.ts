@@ -43,7 +43,7 @@ describe("the in-use set a child takes from its coordinator", () => {
 		"octocode/localFetch",
 		"octocode/ghSearchCode",
 		"native/web",
-		"native/wait",
+		"native/notify",
 		"native/memory",
 		"native/archive",
 		"native/models",
@@ -55,14 +55,14 @@ describe("the in-use set a child takes from its coordinator", () => {
 			"octocode/localFetch",
 			"octocode/ghSearchCode",
 			"native/web",
-			"native/wait",
+			"native/notify",
 		]);
 	});
 
 	it("reaches the child as the set it declares by", () => {
 		const env = subagentProcessEnv(undefined, {}, { id: "c", mcpRecent: childInUseTools(parent) });
 		const handed = JSON.parse(env.OCTOCODE_MCP_RECENT_TOOLS ?? "[]") as string[];
-		expect(handed).toContain("native/wait");
+		expect(handed).toContain("native/notify");
 		expect(handed).not.toContain("native/memory");
 		expect(handed).not.toContain("native/backlogPlan");
 	});

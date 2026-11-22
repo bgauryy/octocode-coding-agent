@@ -9,7 +9,7 @@ export const splitList = (value: string | undefined): string[] => (value ?? "").
 
 /** The backlog deps of a host that has a backlog, or the refusal a wait on it answers with. */
 export function needBacklog(deps: ConditionDeps): BacklogDeps {
-	if (!deps.backlog) throw new Error("this session has no backlog to read: the wait cannot be checked.");
+	if (!deps.backlog) throw new Error("this session has no backlog to read: the request cannot be checked.");
 	return deps.backlog;
 }
 

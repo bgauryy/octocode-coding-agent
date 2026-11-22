@@ -15,11 +15,11 @@ const policy = (overrides: Partial<Parameters<typeof octocodePromptSections>[0]>
 describe("research route", () => {
 	useResearchRoles();
 
-	it("names the research server by namespace and its reader by role, with bash as the fallback", () => {
+	it("names the research server by namespace and its reader by role, with bash only after the research tool fails", () => {
 		const research = policy().research;
 		expect(research).toContain(`\`${FAKE_RESEARCH.prefix}*\``);
-		expect(research).toContain(`reader \`${RESEARCH.reader.slice(FAKE_RESEARCH.prefix.length)}\``);
-		expect(research).toContain("bash is the fallback");
+		expect(research).toContain(`read with \`${RESEARCH.reader.slice(FAKE_RESEARCH.prefix.length)}\``);
+		expect(research).toContain("not rg, grep, cat or sed, unless it refuses the path or fails");
 	});
 
 	it("names the reader only while it is declared, and bash only while the agent has a shell", () => {

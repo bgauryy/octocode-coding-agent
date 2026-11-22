@@ -130,7 +130,7 @@ describe("model purposes", () => {
 		expect(resolveTier("small", [opus, otherCheap], opus)).toBe(otherCheap);
 	});
 
-	it("fills a missing price from models.dev, and stays on the parent when its own price is unknown", () => {
+	it("fills a missing price from models.dev, and stays on the parent when nothing ranks below it", () => {
 		const catalog = indexCatalog(api, 1);
 		const unpriced = { provider: "reseller", id: "claude-small-1", contextWindow: 200_000 };
 		expect(resolveTier("small", [opus, unpriced], opus, catalog)).toBe(unpriced);
@@ -143,7 +143,8 @@ describe("model purposes", () => {
 			cost: { input: 0, output: 0 },
 		};
 		expect(resolveTier("small", [opus, local], opus, catalog)).toBeUndefined();
-		expect(resolveTier("small", [haiku], { provider: "x", id: "mystery" })).toBeUndefined();
+		// An unpriced parent is placed by a size-class guess instead (tier-guess.test.ts).
+		expect(resolveTier("medium", [haiku], { provider: "x", id: "mystery" })).toBeUndefined();
 	});
 
 	it("keeps each family to its newest release, skips deprecated and stale models, and prefers the parent lab", () => {

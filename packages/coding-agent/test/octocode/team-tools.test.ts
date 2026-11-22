@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { animationClock } from "@octocodeai/octocode-tui";
 import { reservationTargets, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { reservationPath } from "../../src/octocode/shared/home.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -58,6 +59,10 @@ const run = (
 	ctx: unknown,
 ) => tool.execute("call-1", params, undefined, undefined, ctx);
 const text = (result: { content: Array<{ text: string }> }) => result.content.map((part) => part.text).join("\n");
+
+// Reduced motion pins a running light to its first frame, ◒.
+beforeEach(() => animationClock.setReducedMotion(true));
+afterEach(() => animationClock.setReducedMotion(false));
 
 describe("team shutdown order", () => {
 	it("stops this session's subagents before leaving the team, so their last messages still reach it", async () => {
@@ -561,7 +566,7 @@ describe("AgentsView", () => {
 		}) as never;
 
 	it("shows a widget for this session's subagents only, repaints, and clears when they leave", () => {
-		vi.useFakeTimers();
+		vi.useFakeTimers({ now });
 		try {
 			const otherSession = [peer("main-9999", "working", null), peer("researcher-8888", "working", "main-9999")];
 			let members = [
@@ -594,9 +599,9 @@ describe("AgentsView", () => {
 			const widget = factory({ requestRender }, theme);
 			widget.invalidate();
 			const lines = widget.render(120).join("\n");
-			// No summary line: each agent's mark says its state (⠼ working, ⏺ idle).
-			// The elapsed time counts from `now`, taken when the suite started; the spinner frame follows the clock.
-			expect(lines).toMatch(/\n ├ ⏺ reviewer-1a2b · review the parser › localSearch foo +\d+s\n/);
+			// No summary line: each agent's mark says its state (◒ working, ⏺ idle).
+			// The elapsed time counts from `now`, taken when the suite started.
+			expect(lines).toMatch(/\n ├ ◒ reviewer-1a2b · review the parser › localSearch foo +\d+s\n/);
 			expect(lines).toMatch(/\n └ ⏺ tester-3c4d   · review the parser +\d+s$/);
 			expect(lines).not.toContain("1 working · 1 idle");
 			// Only traffic between subagents: this session's own messages are already in its transcript.

@@ -178,7 +178,7 @@ describe("the switch list", () => {
 	});
 });
 
-describe("/configuration enable harness:<id>", () => {
+describe("/settings enable harness:<id>", () => {
 	it("prints the scanned preview, then switches without a prompt", async () => {
 		const f = fixture();
 		const catalog = createConfiguration({

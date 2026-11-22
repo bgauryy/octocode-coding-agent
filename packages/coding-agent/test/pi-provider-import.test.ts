@@ -35,9 +35,9 @@ describe("explicit Pi provider import", () => {
 	it("discovers Pi models.json providers even without saved sign-ins", async () => {
 		const root = fixture();
 		const path = join(root, "models.json");
-		writeFileSync(path, JSON.stringify({ providers: { openai: { apiKey: "OPENAI_API_KEY" } } }));
+		writeFileSync(path, JSON.stringify({ providers: { "pi-gateway": { apiKey: "GATEWAY_API_KEY" } } }));
 		expect(await listPiProviderCredentials([root])).toEqual([]);
-		expect(await listPiModelProviders([root])).toEqual(new Map([["openai", path]]));
+		expect(await listPiModelProviders([root])).toEqual(new Map([["pi-gateway", path]]));
 	});
 	it("attributes each provider to the models.json that defines it, not Octocode's merged view of Pi's", async () => {
 		// The suite's empty HOME sets no override, so Pi discovery is on, as on a real machine.

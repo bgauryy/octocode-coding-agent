@@ -103,12 +103,18 @@ export function describeMembers(
 				const doing =
 					member.status === "working"
 						? (member.activity ?? "working")
-						: children > 0
-							? `waiting on ${plural(children, "agent")}`
-							: "idle";
+						: member.waitingOn
+							? `waiting on ${member.waitingOn}`
+							: children > 0
+								? `waiting on ${plural(children, "agent")}`
+								: "idle";
 				// The header shows the same fact as the detail line; the stored status stays `idle`.
 				const queued = member.activity === QUEUED_FOR_SLOT;
-				const shown = queued ? "queued" : member.status === "idle" && children > 0 ? "waiting" : member.status;
+				const shown = queued
+					? "queued"
+					: member.status === "idle" && (children > 0 || member.waitingOn)
+						? "waiting"
+						: member.status;
 				const asked = asksLabel(asks?.get(member.id));
 				const waiting = (asks?.get(member.id) ?? []).filter((ask) => !ask.answer);
 				// `lastOutputAt` is the child's last model or tool event (or a heartbeat inside a declared long call), never a stdout byte.

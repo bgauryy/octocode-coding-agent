@@ -223,6 +223,7 @@ function Shell({
 							needs
 								? {
 										count: needs.count,
+										question: needs.awaiting.kind !== "approval",
 										open: needsOpen,
 										controls: NEEDS_YOU_PANEL_ID,
 										onToggle: needsOpen ? closeNeeds : answerWaiting,

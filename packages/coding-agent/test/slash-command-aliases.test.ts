@@ -9,8 +9,8 @@ import {
 describe("Claude Code command aliases", () => {
 	it.each([
 		["/exit", "quit"],
-		["/config", "configuration"],
-		["/settings", "configuration"],
+		["/config", "settings"],
+		["/configuration", "settings"],
 		["/release-notes", "changelog"],
 		["/continue", "resume"],
 		["/doctor", "debug"],
@@ -19,12 +19,12 @@ describe("Claude Code command aliases", () => {
 		expect(parseSlashCommand(`${text} some args`)).toEqual({ name, args: "some args" });
 	});
 
-	it("runs /plugins and /hooks as /harness, and /mcp enable as /configuration", () => {
+	it("runs /plugins and /hooks as /harness, and /mcp enable as /settings", () => {
 		expect(parseSlashCommand("/plugins disable x")).toEqual({ name: "harness", args: "disable x" });
 		expect(parseSlashCommand("/hooks events")).toEqual({ name: "harness", args: "hooks events" });
 		expect(parseSlashCommand("/hooks")).toEqual({ name: "harness", args: "hooks" });
-		expect(parseSlashCommand("/mcp enable fs -l")).toEqual({ name: "configuration", args: "enable mcp:fs --local" });
-		expect(parseSlashCommand("/mcp disable fs")).toEqual({ name: "configuration", args: "disable mcp:fs" });
+		expect(parseSlashCommand("/mcp enable fs -l")).toEqual({ name: "settings", args: "enable mcp:fs --local" });
+		expect(parseSlashCommand("/mcp disable fs")).toEqual({ name: "settings", args: "disable mcp:fs" });
 		expect(parseSlashCommand("/mcp list")).toEqual({ name: "mcp", args: "list" });
 	});
 

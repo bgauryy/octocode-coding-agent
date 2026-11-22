@@ -1,5 +1,9 @@
 import { activeRates } from "@octocodeai/octocode-ai";
-import { resolveCacheRetention, resolveInstructionCacheRetention } from "@octocodeai/octocode-ai/utils/cache-policy";
+import {
+	effectiveOutputTokens,
+	resolveCacheRetention,
+	resolveInstructionCacheRetention,
+} from "@octocodeai/octocode-ai/utils/cache-policy";
 import {
 	CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS,
 	estimateInstructionPrefixTokens,
@@ -48,6 +52,9 @@ export interface CacheWarmerIdleOptions {
 	recordGaps?: boolean;
 }
 
+/** Output cap a refresh asks for; `effectiveOutputTokens` says what the adapter bills. */
+const WARM_OUTPUT_TOKENS = 1;
+
 /**
  * Keeps one prompt cache entry alive by re-sending its request with a
  * one-token output cap before the entry expires. `start` replaces any
@@ -56,7 +63,7 @@ export interface CacheWarmerIdleOptions {
 export class CacheWarmer {
 	private run?: ActiveRun;
 	private inactive: CacheWarmingStatus;
-	private readonly models: Pick<ModelRuntime, "streamSimple">;
+	private readonly models: Pick<ModelRuntime, "streamSimple"> & Partial<Pick<ModelRuntime, "getAuth">>;
 	private readonly sessionManager: Pick<SessionManager, "captureUsageWriter" | "getSessionId" | "getBranch">;
 	private readonly getMode: () => CacheWarmingMode;
 	/** Lets features override `event.action`; failures fall back to Octocode's decision. */
@@ -69,7 +76,7 @@ export class CacheWarmer {
 	private finishedAt: number | undefined;
 
 	constructor(
-		models: Pick<ModelRuntime, "streamSimple">,
+		models: Pick<ModelRuntime, "streamSimple"> & Partial<Pick<ModelRuntime, "getAuth">>,
 		sessionManager: Pick<SessionManager, "captureUsageWriter" | "getSessionId" | "getBranch">,
 		getMode: () => CacheWarmingMode,
 		decide: (event: CacheWarmingDecisionEvent) => Promise<CacheWarmingAction> = async (event) => event.action,
@@ -214,6 +221,18 @@ export class CacheWarmer {
 		run.timer = undefined;
 		if (!this.validateRun(run)) return;
 		if (this.refreshDeadlineMissed(run)) return;
+		try {
+			// The credential decides whether the one-token cap is sent at all, so price the request as it will go out.
+			run.warmOutputTokens ??= effectiveOutputTokens(
+				run.model,
+				WARM_OUTPUT_TOKENS,
+				run.options.apiKey ?? (await this.models.getAuth?.(run.model, { env: run.options.env }))?.auth.apiKey,
+			);
+		} catch {
+			if (this.run === run) this.stop("cache refresh failed");
+			return;
+		}
+		if (!this.validateRun(run)) return;
 		let decision: CacheWarmingDecision;
 		let action: CacheWarmingAction;
 		// The agent can settle while a feature is deciding. Its idle probability
@@ -254,7 +273,7 @@ export class CacheWarmer {
 			const message = await this.models
 				.streamSimple(run.model, run.context, {
 					...run.options,
-					maxTokens: 1,
+					maxTokens: WARM_OUTPUT_TOKENS,
 					maxRetries: 0,
 					signal: run.controller.signal,
 				})
@@ -339,7 +358,7 @@ export class CacheWarmer {
 		const warmCost = price(model, {
 			cacheRead: promptTokens,
 			...(rates.cacheWrite > rates.input ? { cacheWrite: input } : { input }),
-			output: 1,
+			output: run.warmOutputTokens ?? effectiveOutputTokens(model, WARM_OUTPUT_TOKENS, run.options.apiKey),
 		});
 		const missCost = Math.max(0, cacheMissCost - cacheHitCost);
 		const continuationProbability =

@@ -1,3 +1,4 @@
+import { withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -131,7 +132,7 @@ describe.runIf(posix)("foreground command that reaches the background threshold"
 		expect(result.content[0].text).toMatch(/moved to the background as bash-1/);
 		expect(sent).toHaveLength(0);
 		await until(() => sent.length === 1, 8_000);
-		const report = sent[0].message.content as string;
+		const report = withoutSourceHeader(sent[0].message.content as string);
 		expect(report).toMatch(
 			/^\[exit 3 · [23]s · [^\n]*\]\nBackground bash bash-1 failed with exit code 3: echo before; sleep 2/,
 		);
@@ -265,7 +266,9 @@ describe.runIf(posix)("background job lifecycle", () => {
 		expect(jobs.jobs.has("bash-1")).toBe(true);
 		await fire("session_shutdown", {}, ctx);
 		expect(sent).toHaveLength(1);
-		expect(sent[0].message.content).toMatch(/^\[exit 3 · [^\n]*\]\nBackground bash bash-1 failed with exit code 3/);
+		expect(withoutSourceHeader(String(sent[0].message.content))).toMatch(
+			/^\[exit 3 · [^\n]*\]\nBackground bash bash-1 failed with exit code 3/,
+		);
 		expect(sent[0].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 	});
 

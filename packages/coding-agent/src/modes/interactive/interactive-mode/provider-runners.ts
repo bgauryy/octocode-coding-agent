@@ -11,6 +11,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
 import { agentEnv } from "../../../octocode/external/runner-env.ts";
 import { runnerRoute } from "../../../octocode/external/runner-headless.ts";
+import { setRunnerEnabled as setRunnerSelection } from "../../../octocode/external/runner-selection.ts";
 import { checkRunners, isConnected, listRunners, type RunnerState } from "../../../octocode/external/runner-status.ts";
 import { RUNNERS, runnerSpec } from "../../../octocode/external/runners.ts";
 import { holdTerminalForChild } from "../../../utils/foreground-child.ts";
@@ -172,11 +173,7 @@ type RunnerPageHost = Pick<ProviderManagerHost, "session" | "ui" | "showStatus" 
 
 /** A fresh selection opts in one CLI; an explicit legacy all-runners setting keeps the other known CLIs. */
 export function setRunnerEnabled(page: RunnerPageHost, id: string, enabled: boolean): void {
-	const settings = page.session.settingsManager;
-	const selected =
-		settings.getEnabledExternalAgents() ?? (settings.getExternalAgents() ? RUNNERS.map((runner) => runner.id) : []);
-	settings.setEnabledExternalAgents(enabled ? [...selected, id] : selected.filter((runner) => runner !== id));
-	if (enabled) settings.setExternalAgents(true);
+	setRunnerSelection(page.session.settingsManager, id, enabled);
 	page.showStatus(
 		`${runnerSpec(id)?.name ?? id} ${enabled ? "enabled" : "disabled"} for agent tasks. Run /reload to apply.`,
 	);

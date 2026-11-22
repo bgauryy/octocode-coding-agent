@@ -1,3 +1,4 @@
+import { clipWithMarker } from "../../core/compaction/inline.ts";
 import { renderPrompt } from "../../core/prompt-template.ts";
 import type { BacklogTask } from "@octocodeai/octocode-contracts/backlogs";
 import { type AgentDb, backlog } from "../../../../db/src/api.ts";
@@ -33,6 +34,9 @@ interface GitNow {
 	commitsSince?: number;
 }
 
+/** The longest last request the resume brief quotes: a pasted log or file must not fill the context it restores. */
+const RESUME_REQUEST_CHARS = 4_000;
+
 export interface BriefInput {
 	/** What the session recorded before this start. */
 	previous: Pick<SessionExtra, "branch" | "head">;
@@ -56,8 +60,6 @@ export interface BriefInput {
 
 /** Ongoing items the brief lists, one line each; the rest are named by number only. */
 const MAX_ITEMS = 8;
-/** More numbers than this are counted. */
-const MAX_NAMED = 10;
 /** Open tasks the brief lists, and the characters each may take. */
 const MAX_TASKS = 8;
 const TASK_CHARS = 160;
@@ -66,7 +68,7 @@ const FIELD_CHARS = { title: 100, goal: 120, why: 160 } as const;
 
 /**
  * This session's ongoing backlog items, most important first, for the reorient brief: a header, then one line per
- * item (ref, title, goal) for the first `MAX_ITEMS` and the numbers of the rest. `backlog get` shows everything else.
+ * item (ref, title, goal) for the first `MAX_ITEMS` and the number of every other one (a claim the brief omits is a claim the session forgets). `backlog get` shows everything else.
  * Empty when the session holds none.
  */
 export function ongoingBrief(agent: AgentDb, repoKey: string, sessionId: string): string[] {
@@ -78,8 +80,7 @@ export function ongoingBrief(agent: AgentDb, repoKey: string, sessionId: string)
 		lines.push(`- B${row.seq} ${shownLine(row.title, FIELD_CHARS.title)}${goal}`);
 	}
 	const rest = rows.slice(MAX_ITEMS).map((row) => `B${row.seq}`);
-	if (rest.length > 0)
-		lines.push(`- ${rest.length} more: ${rest.slice(0, MAX_NAMED).join(", ")}${rest.length > MAX_NAMED ? ", …" : ""}`);
+	if (rest.length > 0) lines.push(`- ${rest.length} more: ${rest.join(", ")}`);
 	return lines;
 }
 
@@ -228,7 +229,12 @@ export function resumeBrief(agent: AgentDb, input: BriefInput): string | undefin
 	const away = now - input.lastActive;
 	if (facts.length === 0 && away <= LONG_AWAY_MS) return undefined;
 	if (input.request)
-		facts.push(renderPrompt("notices/resume/last-request.md", { newPrompt: input.newPrompt, request: input.request }));
+		facts.push(
+			renderPrompt("notices/resume/last-request.md", {
+				newPrompt: input.newPrompt,
+				request: clipWithMarker(input.request, RESUME_REQUEST_CHARS, true),
+			}),
+		);
 	if (todo + proposed > 0) facts.push(renderPrompt("notices/resume/backlog-todo.md", { todo, proposed }));
 	if (git.dirty > 0)
 		facts.push(renderPrompt("notices/resume/uncommitted.md", { count: git.dirty, several: git.dirty !== 1 }));
@@ -237,6 +243,7 @@ export function resumeBrief(agent: AgentDb, input: BriefInput): string | undefin
 		renderPrompt("notices/resume/brief.md", { tag: RESUME_TAG, away: shortDuration(away), first }),
 		...rest,
 	];
-	// The backlog part is capped (`ongoingBrief`); the request and the unanswered calls are whole, and the brief is never cut.
+	// The backlog part is capped (`ongoingBrief`) and the request clipped (the conversation keeps it whole); the unanswered
+	// calls are whole, and the brief is never cut.
 	return lines.join("\n");
 }

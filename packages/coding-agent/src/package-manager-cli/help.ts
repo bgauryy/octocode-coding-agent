@@ -24,7 +24,7 @@ export function printConfigCommandHelp(): void {
   ${CONFIG_COMMAND_USAGE}
 
 Enable, disable, set and add configuration: tools, MCP servers, harnesses, skills, prompts, themes, providers,
-sources and settings keys. The same verbs run as /configuration in a session.
+sources and settings keys. The same verbs run as /settings in a session.
 
 Verbs:
   list [kind|text]         Entries with their state, the scope that set them and when a change applies

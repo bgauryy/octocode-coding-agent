@@ -72,7 +72,7 @@ export interface AgentProfile {
 	lean?: true;
 	/** Skills the child gets when the task names none (`skills:` front matter): inlined in its role prompt, or its task when lean (`task-skills.ts`). */
 	skills?: string[];
-	/** Skills the child's prompt lists (`catalog:` front matter); the rest stay loadable by name and the prompt counts them. Absent: all are listed; empty (`catalog: []`): none. */
+	/** Skills the child's `skill` tool lists (`catalog:` front matter); the rest stay loadable by name. Absent: every bundled skill; empty (`catalog: []`): none. */
 	catalog?: string[];
 }
 

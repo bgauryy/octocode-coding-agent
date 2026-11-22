@@ -135,6 +135,7 @@ export function DaemonShell({ access }: { access: string }) {
 	const api = useMemo(() => createDaemonApi(access), [access]);
 	const harnessApi = useMemo(() => ({ list: api.harness, set: api.setHarness, preview: api.previewHarness }), [api]);
 	const securityApi = useMemo(() => ({ list: api.security, act: api.decideSecurity }), [api]);
+	const runnersApi = useMemo(() => ({ list: api.runners, act: api.actRunners }), [api]);
 	const toolsApi = useMemo(() => ({ list: api.tools, pin: api.pinTool }), [api]);
 	const route = useHashRoute();
 	const current = TABS.find((entry) => entry.name === route.name) ?? TABS[0];
@@ -219,11 +220,13 @@ export function DaemonShell({ access }: { access: string }) {
 						save={api.saveSetting}
 						saveCredential={api.saveCredential}
 						saveProvider={api.saveProvider}
+						testProviders={api.testProviders}
 						signIn={api.signIn}
 						addMcp={api.addMcp}
 						mcpAddStatus={api.mcpAddStatus}
 						harness={harnessApi}
 						security={securityApi}
+						runners={runnersApi}
 						tools={toolsApi}
 						repos={repos.status === "ready" ? repos.value.repos : undefined}
 					/>

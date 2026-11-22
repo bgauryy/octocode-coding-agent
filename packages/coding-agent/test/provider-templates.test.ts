@@ -5,6 +5,7 @@ import { getBuiltinModels, getBuiltinProviders } from "@octocodeai/octocode-ai/p
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getModelsPath } from "../src/config.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
+import type { KeychainBackend } from "../src/core/auth-storage/keychain.ts";
 import { vendorChatModels } from "../src/core/provider-composer/known-models.ts";
 import { NO_KEY } from "../src/core/models-json-keys.ts";
 import {
@@ -19,7 +20,9 @@ import {
 	templateModelEntries,
 	templateModels,
 } from "../src/core/provider-templates/models.ts";
+import { removeTemplateKey, templateKeyAccount } from "../src/core/provider-templates/key-store.ts";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "../src/core/provider-templates/templates.ts";
+import { removeCustomProvider } from "../src/modes/interactive/interactive-mode/provider-custom-edit.ts";
 import { showProviderTemplates } from "../src/modes/interactive/interactive-mode/provider-template.ts";
 import { createSandbox, type Sandbox, write } from "./discovery/fixtures.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
@@ -38,6 +41,22 @@ const builtins = {
 			? ({ id, getModels: () => getBuiltinModels(id as never) } as unknown as Provider)
 			: undefined,
 };
+
+/** A keychain that keeps entries in memory; its reference names the account, so a test can tell whose it is. */
+function fakeKeychain(options: { failStore?: boolean } = {}): KeychainBackend & { stored: Map<string, string> } {
+	const stored = new Map<string, string>();
+	return {
+		name: "fake keychain",
+		stored,
+		store: async (account, secret) => {
+			if (options.failStore) throw new Error("keychain locked");
+			stored.set(account, secret);
+		},
+		remove: async (account) => void stored.delete(account),
+		referenceFor: (account) => `!fake lookup ${account}`,
+		isOwnReference: (key, account) => key === `!fake lookup ${account}`,
+	};
+}
 
 const NEBIUS_LISTING: ListedModel[] = [
 	{
@@ -62,6 +81,8 @@ describe("provider template catalog", () => {
 		const ids = PROVIDER_TEMPLATES.map((entry) => entry.id);
 		expect(new Set(ids).size).toBe(ids.length);
 		const builtIn = new Set<string>(getBuiltinProviders());
+		// No shared default key variable: a custom host's key is its own, kept per provider.
+		expect(template("custom-openai").keyEnv).toBeUndefined();
 		for (const entry of PROVIDER_TEMPLATES) {
 			expect(builtIn.has(entry.id), entry.id).toBe(false);
 			expect(entry.id).toMatch(/^[a-z0-9][a-z0-9._-]*$/);
@@ -172,6 +193,13 @@ describe("applying a template", () => {
 		write(file, '{\n\t// mine\n\t"providers": {}\n}\n');
 		await expect(addTemplateProvider(file, "nebius", nebius({ kind: "saved" }))).rejects.toThrow(/has comments/);
 		expect(readFileSync(file, "utf8")).toContain("// mine");
+	});
+
+	test("a keychain key is only a `!` reference in the entry; a reference that is not one is refused", () => {
+		expect(nebius({ kind: "keychain", reference: "!fake lookup nebius.models" }).apiKey).toBe(
+			"!fake lookup nebius.models",
+		);
+		expect(() => nebius({ kind: "keychain", reference: "sk-live-key" })).toThrow(/keychain reference/);
 	});
 
 	test("never writes a key: a saved key goes to auth.json, others are a reference or the local marker", () => {
@@ -285,7 +313,9 @@ describe("/providers → Add from a template", () => {
 				},
 			},
 			showSelectorDialog: vi.fn(async (_title: string, options: string[]) =>
-				options.find((option) => option.startsWith(label("hyperbolic")) || option.startsWith("Save a key")),
+				options.find(
+					(option) => option.startsWith(label("hyperbolic")) || option.startsWith("Save the key as plain text"),
+				),
 			),
 			showInputDialog: vi.fn(async () => "moonshotai/Kimi-K2-Instruct, Qwen/Qwen3-Coder-480B-A35B-Instruct"),
 			showApiKeyLoginDialog: vi.fn(async () => {}),
@@ -294,7 +324,8 @@ describe("/providers → Add from a template", () => {
 			showError: vi.fn(),
 		};
 		const ctx = { host: createFakeHost(host), reopen: vi.fn() };
-		expect(await showProviderTemplates(ctx.host, ctx.reopen, [])).toBe(true);
+		// With no keychain the key can only be plain text in auth.json, and only when the user picks that.
+		expect(await showProviderTemplates(ctx.host, ctx.reopen, [], null)).toBe(true);
 		expect(host.showError).not.toHaveBeenCalled();
 		const saved = JSON.parse(readFileSync(join(sandbox.agentDir, "models.json"), "utf8"));
 		expect(saved.providers["hyperbolic-2"]).toMatchObject({
@@ -319,13 +350,14 @@ describe("/providers → Add from a template", () => {
 			showStatus: vi.fn(),
 			showError: vi.fn(),
 		};
-		expect(await showProviderTemplates(createFakeHost(host), vi.fn(), [])).toBe(false);
+		expect(await showProviderTemplates(createFakeHost(host), vi.fn(), [], null)).toBe(false);
 		expect(host.showStatus).toHaveBeenCalledWith("Cancelled; nothing was written to models.json.");
 		expect(existsSync(join(sandbox.agentDir, "models.json"))).toBe(false);
 	});
 
 	test("a gateway takes the host the user gives and a key variable the user names", async () => {
-		const answers = ["https://llm.corp.example/openai/v1/", "gpt-6.1-sol", "$CORP_LLM_KEY"];
+		// Host, model, then context window and maximum output (Enter keeps each shown default), then the key variable.
+		const answers = ["https://llm.corp.example/openai/v1/", "gpt-6.1-sol", "", "", "$CORP_LLM_KEY"];
 		const host = {
 			session: {
 				modelRuntime: {
@@ -346,7 +378,7 @@ describe("/providers → Add from a template", () => {
 			showError: vi.fn(),
 		};
 		const ctx = { host: createFakeHost(host), reopen: vi.fn() };
-		expect(await showProviderTemplates(ctx.host, ctx.reopen, [])).toBe(true);
+		expect(await showProviderTemplates(ctx.host, ctx.reopen, [], null)).toBe(true);
 		expect(host.showError).not.toHaveBeenCalled();
 		const saved = JSON.parse(readFileSync(join(sandbox.agentDir, "models.json"), "utf8"));
 		expect(saved.providers["openai-gateway"]).toEqual({
@@ -359,5 +391,189 @@ describe("/providers → Add from a template", () => {
 		expect(host.showApiKeyLoginDialog).not.toHaveBeenCalled();
 		expect(host.showStatus.mock.calls[0]?.[0]).toMatch(/Set \$CORP_LLM_KEY/);
 		expect(ctx.reopen).toHaveBeenCalledWith("openai-gateway");
+	});
+
+	test("the Custom OpenAI-compatible host template shows default limits and saves the ones the user types", async () => {
+		const answers = ["https://llm.corp.example/v1", "my-model", "200k", "8192", "$CORP_LLM_KEY"];
+		const host = {
+			session: {
+				modelRuntime: {
+					getBuiltinProvider: () => undefined,
+					getProviders: () => [],
+					getProvider: () => undefined,
+					getConfigurationDirectory: () => sandbox.agentDir,
+					refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
+				},
+			},
+			showSelectorDialog: vi.fn(async (_title: string, options: string[]) =>
+				options.find(
+					(option) => option.startsWith("Custom OpenAI-compatible host") || option.startsWith("Read an environment"),
+				),
+			),
+			showInputDialog: vi.fn(async () => answers.shift()),
+			showApiKeyLoginDialog: vi.fn(async () => {}),
+			updateAvailableProviderCount: vi.fn(),
+			showStatus: vi.fn(),
+			showError: vi.fn(),
+		};
+		const ctx = { host: createFakeHost(host), reopen: vi.fn() };
+		expect(await showProviderTemplates(ctx.host, ctx.reopen, [], null)).toBe(true);
+		expect(host.showError).not.toHaveBeenCalled();
+		const prompts = host.showInputDialog.mock.calls.map((call) => String((call as unknown[])[1]));
+		expect(prompts.some((hint) => hint.includes("128000"))).toBe(true);
+		expect(prompts.some((hint) => hint.includes("Enter keeps it"))).toBe(true);
+		const saved = JSON.parse(readFileSync(join(sandbox.agentDir, "models.json"), "utf8"));
+		const entry = saved.providers["custom-openai"];
+		expect(entry.api).toBe("openai-completions");
+		expect(entry.baseUrl).toBe("https://llm.corp.example/v1");
+		expect(entry.models).toEqual([{ id: "my-model", contextWindow: 200000, maxTokens: 8192 }]);
+	});
+});
+
+describe("template keys are kept in the keychain by default", () => {
+	const SECRET = "sk-test-secret-0123456789";
+	let sandbox: Sandbox;
+	beforeEach(() => {
+		sandbox = createSandbox();
+	});
+	afterEach(() => sandbox.cleanup());
+	const models = () => readFileSync(join(sandbox.agentDir, "models.json"), "utf8");
+
+	function hostFor(answers: string[], pick: (options: string[]) => string | undefined, secret: string | undefined) {
+		return {
+			session: {
+				modelRuntime: {
+					getBuiltinProvider: () => undefined,
+					getProviders: () =>
+						existsSync(join(sandbox.agentDir, "models.json"))
+							? Object.keys(JSON.parse(models()).providers).map((id) => ({ id }))
+							: [],
+					getProvider: () => undefined,
+					getConfigurationDirectory: () => sandbox.agentDir,
+					refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
+				},
+			},
+			showSelectorDialog: vi.fn(async (_title: string, options: string[]) => pick(options)),
+			showInputDialog: vi.fn(async () => answers.shift()),
+			showSecretDialog: vi.fn(async () => secret),
+			showApiKeyLoginDialog: vi.fn(async () => {}),
+			updateAvailableProviderCount: vi.fn(),
+			showStatus: vi.fn(),
+			showError: vi.fn(),
+		};
+	}
+	const pickCustom = (options: string[]) =>
+		options.find(
+			(option) => option.startsWith("Custom OpenAI-compatible host") || option.startsWith("Save the key in"),
+		);
+
+	test("custom-openai stores its key under its own account; models.json holds only the reference", async () => {
+		const keychain = fakeKeychain();
+		const host = hostFor(["https://llm.corp.example/v1", "my-model", "", ""], pickCustom, SECRET);
+		const reopen = vi.fn();
+		expect(await showProviderTemplates(createFakeHost(host), reopen, [], keychain)).toBe(true);
+		expect(host.showError).not.toHaveBeenCalled();
+		expect([...keychain.stored]).toEqual([[templateKeyAccount("custom-openai"), SECRET]]);
+		const entry = JSON.parse(models()).providers["custom-openai"];
+		expect(entry.apiKey).toBe(`!fake lookup ${templateKeyAccount("custom-openai")}`);
+		expect(models()).not.toContain(SECRET);
+		// No env variable question and no auth.json sign-in: the key was already saved.
+		expect(host.showInputDialog.mock.calls.map((call) => String((call as unknown[])[0])).join("\n")).not.toMatch(
+			/Environment variable/,
+		);
+		expect(host.showApiKeyLoginDialog).not.toHaveBeenCalled();
+		expect(host.showStatus.mock.calls.map((call) => String(call[0])).join("\n")).not.toContain(SECRET);
+		expect(reopen).toHaveBeenCalledWith("custom-openai");
+	});
+
+	test("two custom providers keep separate keys", async () => {
+		const keychain = fakeKeychain();
+		for (const secret of [SECRET, `${SECRET}-2`]) {
+			const host = hostFor(["https://llm.corp.example/v1", "my-model", "", ""], pickCustom, secret);
+			const reopen = vi.fn();
+			await showProviderTemplates(createFakeHost(host), reopen, [], keychain);
+		}
+		const providers = JSON.parse(models()).providers;
+		const a = providers["custom-openai"].apiKey;
+		const b = providers["custom-openai-2"].apiKey;
+		expect(a).not.toBe(b);
+		expect(keychain.stored.size).toBe(2);
+	});
+
+	test("plain text in auth.json is offered as a separate explicit choice, never the first", async () => {
+		const host = hostFor(
+			["https://llm.corp.example/v1", "my-model", "", ""],
+			(options) => options.find((option) => option.startsWith("Custom OpenAI-compatible host")),
+			undefined,
+		);
+		await showProviderTemplates(createFakeHost(host), vi.fn(), [], fakeKeychain());
+		const keyOptions = host.showSelectorDialog.mock.calls
+			.map((call) => call[1])
+			.find((options) => options.some((option) => /Save the key/.test(option)));
+		expect(keyOptions?.[0]).toMatch(/Save the key in fake keychain/);
+		expect(keyOptions?.some((option) => /plain text/.test(option))).toBe(true);
+	});
+
+	test("a keychain that refuses the key writes nothing to models.json", async () => {
+		const host = hostFor(["https://llm.corp.example/v1", "my-model", "", ""], pickCustom, SECRET);
+		expect(await showProviderTemplates(createFakeHost(host), vi.fn(), [], fakeKeychain({ failStore: true }))).toBe(
+			false,
+		);
+		expect(host.showError).toHaveBeenCalledWith(expect.stringContaining("keychain locked"));
+		expect(existsSync(join(sandbox.agentDir, "models.json"))).toBe(false);
+	});
+
+	test("cancelling the key prompt writes nothing", async () => {
+		const keychain = fakeKeychain();
+		const host = hostFor(["https://llm.corp.example/v1", "my-model", "", ""], pickCustom, undefined);
+		expect(await showProviderTemplates(createFakeHost(host), vi.fn(), [], keychain)).toBe(false);
+		expect(existsSync(join(sandbox.agentDir, "models.json"))).toBe(false);
+		expect(keychain.stored.size).toBe(0);
+	});
+
+	test("with no keychain, the user can name an environment variable; no key is typed", async () => {
+		const host = hostFor(
+			["https://llm.corp.example/v1", "my-model", "", "", "$CORP_LLM_KEY"],
+			(options) =>
+				options.find((o) => o.startsWith("Custom OpenAI-compatible host") || o.startsWith("Read an environment")),
+			undefined,
+		);
+		expect(await showProviderTemplates(createFakeHost(host), vi.fn(), [], null)).toBe(true);
+		expect(host.showSecretDialog).not.toHaveBeenCalled();
+		expect(JSON.parse(models()).providers["custom-openai"].apiKey).toBe("$CORP_LLM_KEY");
+	});
+
+	test("removing the custom provider removes its keychain entry, and only its own", async () => {
+		const keychain = fakeKeychain();
+		const file = join(sandbox.agentDir, "models.json");
+		await keychain.store(templateKeyAccount("custom-openai"), SECRET);
+		await keychain.store(templateKeyAccount("other"), "other-secret");
+		write(
+			file,
+			JSON.stringify({
+				providers: {
+					"custom-openai": {
+						baseUrl: "https://llm.corp.example/v1",
+						api: "openai-completions",
+						apiKey: keychain.referenceFor(templateKeyAccount("custom-openai")),
+						models: [{ id: "m" }],
+					},
+				},
+			}),
+		);
+		const host = {
+			session: { modelRuntime: { refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })) } },
+			showSelectorDialog: vi.fn(async (_title: string, options: string[]) => options[1]),
+			showStatus: vi.fn(),
+			showError: vi.fn(),
+			updateAvailableProviderCount: vi.fn(),
+		};
+		expect(
+			await removeCustomProvider(createFakeHost(host) as never, "custom-openai", "Custom", file, false, keychain),
+		).toBe(true);
+		expect(host.showError).not.toHaveBeenCalled();
+		expect([...keychain.stored.keys()]).toEqual([templateKeyAccount("other")]);
+		expect(JSON.parse(models()).providers).toEqual({});
+		await removeTemplateKey(keychain, "other");
 	});
 });

@@ -8,7 +8,7 @@ import { ApiClient } from "../../src/octocode/api/client.ts";
 import { EventLog } from "../../src/octocode/api/events.ts";
 import { apiDir, ensurePrivateDir, socketPath, writeRecord } from "../../src/octocode/api/registry.ts";
 import { ApiServer } from "../../src/octocode/api/server.ts";
-import { fencedParts } from "../../src/octocode/shared/fence.ts";
+import { fencedParts, withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import { spilledMessage } from "../../src/octocode/team/session/spilled-message.ts";
 import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -73,7 +73,7 @@ describe("what a receiving session says about how a message reached it", () => {
 			},
 			wait: false,
 		});
-		const lines = String(sent[0].message.content).split("\n");
+		const lines = withoutSourceHeader(String(sent[0].message.content)).split("\n");
 		const open = lines.findIndex((line) => line.startsWith("<<<untrusted-"));
 		const before = lines.slice(0, open).join("\n");
 		const after = lines.slice(open + 1).join("\n");

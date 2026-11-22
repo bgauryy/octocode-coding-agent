@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { InMemoryModelsStore } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { parseArgs } from "../src/cli/args.ts";
-import { checkProviderAuth, createAuthCheckModelRuntime, getProviderCredential } from "../src/cli/auth-check.ts";
+import {
+	checkProviderAuth,
+	createAuthCheckModelRuntime,
+	formatAuthCheck,
+	getProviderCredential,
+} from "../src/cli/auth-check.ts";
 import { parseAuthCommand } from "../src/cli/auth-command.ts";
 import { AuthStorage, ReadOnlyAuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRuntime } from "../src/core/model-runtime.ts";
@@ -29,6 +34,7 @@ describe("auth check command", () => {
 	});
 
 	afterEach(() => {
+		vi.unstubAllEnvs();
 		if (existsSync(tempDir)) rmSync(tempDir, { recursive: true });
 	});
 
@@ -39,6 +45,8 @@ describe("auth check command", () => {
 			status: "ready",
 			provider: "openai",
 			authType: "api_key",
+			source: "stored credential",
+			verified: false,
 		});
 	});
 
@@ -49,6 +57,8 @@ describe("auth check command", () => {
 			status: "ready",
 			provider: "openai",
 			authType: "api_key",
+			source: "stored credential",
+			verified: false,
 		});
 		await expect(
 			checkProviderAuth(parseArgs(["--provider", "openai", "--model", "gpt-5.5"]), runtime),
@@ -100,6 +110,74 @@ describe("auth check command", () => {
 		expect(refresh).toHaveBeenCalledOnce();
 	});
 
+	test("names an environment variable as the source", async () => {
+		vi.stubEnv("DEEPSEEK_API_KEY", "env-key");
+		const runtime = await createRuntime(AuthStorage.inMemory());
+
+		await expect(checkProviderAuth(parseArgs(["--provider", "deepseek"]), runtime)).resolves.toEqual({
+			status: "ready",
+			provider: "deepseek",
+			authType: "api_key",
+			source: "DEEPSEEK_API_KEY",
+			verified: false,
+		});
+	});
+
+	test("warns when a stored credential shadows a set environment variable", async () => {
+		vi.stubEnv("OPENAI_API_KEY", "env-key");
+		const runtime = await createRuntime(AuthStorage.inMemory({ openai: { type: "api_key", key: "stored-key" } }));
+
+		const result = await checkProviderAuth(parseArgs(["--provider", "openai"]), runtime);
+
+		expect(result).toMatchObject({ status: "ready", source: "stored credential" });
+		expect(result.warnings).toEqual([expect.stringContaining("OPENAI_API_KEY")]);
+		expect(JSON.stringify(result)).not.toContain("stored-key");
+		expect(JSON.stringify(result)).not.toContain("env-key");
+	});
+
+	test.each([
+		["MOONSHOT_API_KEY", "moonshotai-cn", "moonshotai"],
+		["QWEN_TOKEN_PLAN_API_KEY", "qwen-token-plan-individual", "qwen-token-plan"],
+	])("names the shared variable %s that makes %s ready", async (variable, provider, sibling) => {
+		vi.stubEnv(variable, "env-key");
+		const runtime = await createRuntime(AuthStorage.inMemory());
+
+		const result = await checkProviderAuth(parseArgs(["--provider", provider]), runtime);
+
+		expect(result).toMatchObject({ status: "ready", source: variable, sharedWith: [sibling] });
+		expect(formatAuthCheck(result)).toContain(`${variable} (also read by ${sibling})`);
+	});
+
+	test("a keychain reference that cannot be read is not ready, with its own reason", async () => {
+		vi.stubEnv("AWS_PROFILE", "ambient");
+		const runtime = await createRuntime(
+			AuthStorage.inMemory({ "amazon-bedrock": { type: "api_key", keychain: "!false" } }),
+		);
+
+		const result = await checkProviderAuth(parseArgs(["--provider", "amazon-bedrock"]), runtime);
+
+		expect(result).toEqual({
+			status: "not_ready",
+			provider: "amazon-bedrock",
+			reason: "keychain_unreadable",
+			verified: false,
+		});
+		expect(formatAuthCheck(result)).toContain("keychain");
+	});
+
+	test("the text names the status, the source and that nothing was verified", () => {
+		expect(
+			formatAuthCheck({
+				status: "ready",
+				provider: "openai",
+				authType: "api_key",
+				source: "stored credential",
+				verified: false,
+				warnings: ["OPENAI_API_KEY is set but ignored."],
+			}).split("\n"),
+		).toEqual(["ready", "source: stored credential", "verified: false", "warning: OPENAI_API_KEY is set but ignored."]);
+	});
+
 	test("reports an unknown provider as not ready", async () => {
 		const runtime = await createRuntime(AuthStorage.inMemory());
 
@@ -107,6 +185,7 @@ describe("auth check command", () => {
 			status: "not_ready",
 			provider: "not-installed",
 			reason: "provider_not_found",
+			verified: false,
 		});
 	});
 
@@ -128,7 +207,12 @@ describe("auth check command", () => {
 			});
 			await started.promise;
 			controller.abort();
-			await expect(checking).resolves.toEqual({ status: "invalid", provider: "openai", reason: "invalid_state" });
+			await expect(checking).resolves.toEqual({
+				status: "invalid",
+				provider: "openai",
+				reason: "invalid_state",
+				verified: false,
+			});
 		} finally {
 			apiKey.check = originalCheck;
 			runtime.dispose();
@@ -144,6 +228,7 @@ describe("auth check command", () => {
 			status: "not_ready",
 			provider: "openai",
 			reason: "credentials_not_configured",
+			verified: false,
 		});
 	});
 
@@ -156,6 +241,7 @@ describe("auth check command", () => {
 			status: "invalid",
 			provider: "openai",
 			reason: "invalid_state",
+			verified: false,
 		});
 	});
 

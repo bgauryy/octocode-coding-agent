@@ -14,7 +14,7 @@ flowchart TD
 
 | Way to choose | Example                                                                                       |
 | ------------- | --------------------------------------------------------------------------------------------- |
-| Picker        | `/configuration` → **Interface and session** → **Theme**                                      |
+| Picker        | `/settings` → **Interface and session** → **Theme**                                      |
 | Setting       | `{ "theme": "octocode-dark" }` or `{ "theme": "octocode-light/octocode-dark" }` (light first) |
 | One run       | `octocode --use-theme octocode-light` (`--no-themes` skips theme discovery)                   |
 
@@ -55,7 +55,7 @@ On a terminal that names itself 16-color (`TERM=linux`, `ansi`, `vt100`, `xterm-
 
 ## Choose a theme
 
-Open `/configuration`, choose **Interface and session** and select **Theme**. You can use one theme for every terminal appearance or choose separate themes for light and dark terminals.
+Open `/settings`, choose **Interface and session** and select **Theme**. You can use one theme for every terminal appearance or choose separate themes for light and dark terminals.
 
 The selection is saved as the `theme` setting:
 
@@ -91,7 +91,7 @@ Create a new JSON file conforming to `schemas/theme.schema.json` in the installe
 1. Save the file as `<agent-dir>/themes/my-theme.json`. The agent directory defaults to `~/.octocode/octocodecode/`; see [configuration](configuration.md#agent-directory).
 2. Set its `name` to `my-theme`.
 3. Change values in `vars` and `colors`.
-4. Select `my-theme` through `/configuration` (**Interface and session**).
+4. Select `my-theme` through `/settings` (**Interface and session**).
 
 Use the theme name as the filename. Octocode hot-reloads the active user theme only from `<agent-dir>/themes/<name>.json`. Run `/reload` after adding or changing a theme from any other source.
 

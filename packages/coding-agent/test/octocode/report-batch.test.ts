@@ -1,3 +1,4 @@
+import { withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReportQueue } from "../../src/octocode/subagents/handoff.ts";
 import { heldReports, ReportGroups } from "../../src/octocode/subagents/report-groups.ts";
@@ -42,7 +43,8 @@ function queueWith(reporting: Step) {
 	return { f, queue, at };
 }
 
-const contents = (f: ReturnType<typeof fakeHost>) => f.sent.map(({ message }) => (message as Report).content);
+const contents = (f: ReturnType<typeof fakeHost>) =>
+	f.sent.map(({ message }) => withoutSourceHeader((message as Report).content));
 const wakes = (f: ReturnType<typeof fakeHost>) =>
 	f.sent.map(({ options }) => (options as { triggerTurn: boolean }).triggerTurn);
 

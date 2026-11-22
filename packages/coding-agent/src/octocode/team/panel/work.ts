@@ -23,6 +23,7 @@ const TEXT_MIN = 8;
 const TYPE: Record<WorkKind, { label: string; color: Color; mark: keyof Marks }> = {
 	agent: { label: ENTITY.subagent, color: "accent", mark: "live" },
 	bash: { label: "bash", color: "accent", mark: "live" },
+	job: { label: "job", color: "accent", mark: "live" },
 	timer: { label: "wait", color: "warning", mark: "waiting" },
 	external: { label: "ext", color: "accent", mark: "live" },
 };

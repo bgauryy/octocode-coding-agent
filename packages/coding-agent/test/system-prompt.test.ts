@@ -2,65 +2,25 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import type { Skill } from "../src/core/skills.ts";
-import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
 import {
 	buildSystemPrompt,
 	buildSystemPromptSections,
 	currentEnvironment,
 	linkedWorktreeFact,
 } from "../src/core/system-prompt.ts";
-import { RESEARCH, useResearchRoles } from "./octocode/fake-research-roles.ts";
-
-const testSkill: Skill = {
-	name: "test-skill",
-	description: "A test skill.",
-	filePath: "/skills/test-skill/SKILL.md",
-	baseDir: "/skills/test-skill",
-	sourceInfo: createSyntheticSourceInfo("/skills/test-skill/SKILL.md", { source: "test" }),
-	disableModelInvocation: false,
-};
 
 describe("buildSystemPrompt", () => {
 	test("an empty custom section removes the default section of that name", () => {
-		const base = { cwd: "/tmp", selectedTools: ["bash"], contextFiles: [], skills: [] };
+		const base = { cwd: "/tmp", selectedTools: ["bash"], contextFiles: [] };
 		expect(buildSystemPrompt(base)).toContain("<docs>");
 		const trimmed = buildSystemPrompt({ ...base, sections: { docs: "" } });
 		expect(trimmed).not.toContain("<docs>");
 		expect(trimmed).toContain("<rules>");
 	});
 
-	describe("with an MCP server declaring reader and search roles", () => {
-		useResearchRoles();
-
-		test("loads skills through a reader-role tool without read or bash", () => {
-			const prompt = buildSystemPrompt({
-				cwd: "/tmp",
-				selectedTools: [RESEARCH.reader],
-				contextFiles: [],
-				skills: [testSkill],
-			});
-			expect(prompt).toContain("/skills/test-skill/SKILL.md");
-		});
-
-		test("a tool without a reader role does not load skills", () => {
-			const prompt = buildSystemPrompt({
-				cwd: "/tmp",
-				selectedTools: [RESEARCH.other],
-				contextFiles: [],
-				skills: [testSkill],
-			});
-			expect(prompt).not.toContain("<available_skills>");
-		});
-
-		test("keeps skills without advertising a hidden reader-role tool", () => {
-			const reader = RESEARCH.reader;
-			const input = { cwd: "/tmp", selectedTools: [reader], hiddenTools: [reader], skills: [testSkill] };
-			const indirect = buildSystemPrompt(input);
-			expect(indirect).toContain("/skills/test-skill/SKILL.md");
-			const shell = buildSystemPrompt({ ...input, selectedTools: [reader, "bash"] });
-			expect(shell).toContain("/skills/test-skill/SKILL.md");
-		});
+	test("carries no skills section: the skill tool lists them", () => {
+		const prompt = buildSystemPrompt({ cwd: "/tmp", selectedTools: ["bash", "skill"], contextFiles: [] });
+		expect(prompt).not.toMatch(/<skills>|<available_skills>/);
 	});
 
 	describe("empty tools", () => {
@@ -68,7 +28,6 @@ describe("buildSystemPrompt", () => {
 			const prompt = buildSystemPrompt({
 				selectedTools: [],
 				contextFiles: [],
-				skills: [],
 				cwd: process.cwd(),
 			});
 
@@ -83,7 +42,6 @@ describe("buildSystemPrompt", () => {
 				cwd: "/tmp",
 				selectedTools: [],
 				contextFiles: [],
-				skills: [],
 			});
 
 			expect(customPrompt.startsWith("You are Exact.\n\n<cwd>")).toBe(true);
@@ -99,7 +57,6 @@ describe("buildSystemPrompt", () => {
 				appendSystemPrompt: "Additional instructions.",
 				contextFiles: [{ path: "/tmp/AGENTS.md", content: "Project instructions." }],
 				selectedTools: [],
-				skills: [],
 				cwd: "/tmp",
 			});
 
@@ -114,7 +71,6 @@ describe("buildSystemPrompt", () => {
 			const prompt = buildSystemPrompt({
 				toolSnippets: { bash: "Execute bash commands" },
 				contextFiles: [],
-				skills: [],
 				cwd: process.cwd(),
 			});
 
@@ -130,7 +86,6 @@ describe("buildSystemPrompt", () => {
 					dynamic_tool: "Run dynamic test behavior",
 				},
 				contextFiles: [],
-				skills: [],
 				cwd: process.cwd(),
 			});
 
@@ -141,7 +96,6 @@ describe("buildSystemPrompt", () => {
 			const prompt = buildSystemPrompt({
 				selectedTools: ["read", "dynamic_tool"],
 				contextFiles: [],
-				skills: [],
 				cwd: process.cwd(),
 			});
 
@@ -155,7 +109,6 @@ describe("buildSystemPrompt", () => {
 				selectedTools: ["read", "dynamic_tool"],
 				promptGuidelines: ["Use dynamic_tool for project summaries."],
 				contextFiles: [],
-				skills: [],
 				cwd: process.cwd(),
 			});
 
@@ -167,41 +120,10 @@ describe("buildSystemPrompt", () => {
 				selectedTools: ["read", "dynamic_tool"],
 				promptGuidelines: ["Use dynamic_tool for summaries.", "  Use dynamic_tool for summaries.  ", "   "],
 				contextFiles: [],
-				skills: [],
 				cwd: process.cwd(),
 			});
 
 			expect(prompt.match(/- Use dynamic_tool for summaries\./g)).toHaveLength(1);
-		});
-	});
-
-	describe("skills", () => {
-		test.each([
-			{ name: "default prompt", customPrompt: undefined },
-			{ name: "custom prompt", customPrompt: "Custom system prompt" },
-		])("includes skills with only bash in the $name", ({ customPrompt }) => {
-			const prompt = buildSystemPrompt({
-				customPrompt,
-				selectedTools: ["bash"],
-				contextFiles: [],
-				skills: [testSkill],
-				cwd: process.cwd(),
-			});
-
-			expect(prompt).toContain("<skills>");
-			expect(prompt).toContain("<available_skills>");
-			expect(prompt).toContain('<skill name="test-skill" location=');
-		});
-
-		test("omits skills without read or bash", () => {
-			const prompt = buildSystemPrompt({
-				selectedTools: ["write"],
-				contextFiles: [],
-				skills: [testSkill],
-				cwd: process.cwd(),
-			});
-
-			expect(prompt).not.toContain("<available_skills>");
 		});
 	});
 
@@ -213,7 +135,6 @@ describe("buildSystemPrompt", () => {
 				toolSnippets: { read: "Read files", bash: "Run commands", run: "Run a task" },
 				toolGuidelines: { read: ["Use read for files."], run: ["Prefer run."] },
 				contextFiles: [],
-				skills: [testSkill],
 				cwd: process.cwd(),
 			});
 
@@ -326,7 +247,7 @@ describe("environment section", () => {
 	});
 
 	test("is the last default section when given, and absent otherwise", () => {
-		const base = { cwd: "/tmp", selectedTools: ["bash"], contextFiles: [], skills: [] };
+		const base = { cwd: "/tmp", selectedTools: ["bash"], contextFiles: [] };
 		expect(Object.keys(buildSystemPromptSections(base))).not.toContain("environment");
 		const sections = buildSystemPromptSections({ ...base, environment: "Date: 2026-10-28" });
 		expect(Object.keys(sections).slice(-3)).toEqual(["environment", "environment:date", "environment:/"]);
@@ -341,7 +262,6 @@ describe("base sections", () => {
 		cwd: "/tmp",
 		selectedTools: ["bash"],
 		contextFiles: [{ path: "/tmp/AGENTS.md", content: "Project rules." }],
-		skills: [],
 		appendSystemPrompt: "Addendum.",
 		environment: "Date: 2026-10-28",
 		sections: { octocode: "Policy." },

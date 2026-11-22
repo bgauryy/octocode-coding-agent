@@ -48,16 +48,18 @@ A board edit on either page is recorded the same way (you, on the web, under the
 
 A session's page has a Settings view for that session and its repository, on the daemon and on the fallback server alike. The daemon's own Settings tab (no session) lists every repository. Choose a workspace at the bottom to see its trust and its own settings. Writes work from the page `/web` opened, not from a [published link](remote.md).
 
-| Panel                | Shows                                                                                                                           | Change it here                                     |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Provider sources     | Octocode and Pi, on or off                                                                                                      | Pi on or off ([providers](providers.md))           |
-| Provider credentials | Where each provider's key comes from, never its value                                                                           | Set or clear a key, sign in, turn a provider off   |
-| Settings             | Default provider and model, with the file that sets them                                                                        | Global or workspace value                          |
-| Harness              | The `/harness` switches: harnesses, MCP servers, skills, hooks, plugins and extensions                                          | Turn each on or off, globally or for the workspace |
-| Security             | Every hook, MCP server and skill from outside Octocode, with its state, rating, findings and what changed since you approved it | Approve, deny or forget, as `/security` does       |
-| Tools                | How much of each native and MCP tool a session sends to the model, and what decided it                                          | Pin a tool, globally or for the workspace          |
+| Panel                | Shows                                                                                                                           | Change it here                                                                                                                                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider sources     | Octocode and Pi, on or off                                                                                                      | Pi on or off ([providers](providers.md))                                                                                                                                                                             |
+| Provider credentials | Where each provider's key comes from, never its value; the base URL each provider uses and where it comes from                  | Set or clear a key (with an optional host, and region where the provider has them), sign in, turn a provider off; for a custom provider in Octocode's `models.json`: edit its host, edit a model's limits, remove it |
+| Settings             | Default provider and model, with the file that sets them                                                                        | Global or workspace value                                                                                                                                                                                            |
+| Harness              | The `/harness` switches: harnesses, MCP servers, skills, hooks, plugins and extensions                                          | Turn each on or off, globally or for the workspace                                                                                                                                                                   |
+| Security             | Every hook, MCP server and skill from outside Octocode, with its state, rating, findings and what changed since you approved it | Approve, deny or forget, as `/security` does                                                                                                                                                                         |
+| Tools                | How much of each native and MCP tool a session sends to the model, and what decided it                                          | Pin a tool, globally or for the workspace                                                                                                                                                                            |
 
-The Harness panel writes the same settings and MCP files as `/configuration enable|disable` and never changes Claude Code, Codex or Cursor files. Filter by name or path; a row that is always on has no switch. A running session applies a switch on `/reload` (MCP servers in the next session); the panel shows what each switch did. Only the page opened from the terminal sees the panel: a published link cannot read or change it, because its rows name your files.
+A key set here asks for the same optional host as the terminal sign-in (OpenAI, Anthropic and Amazon Bedrock, which also asks for a region and, for a host whose name does not tell, the API). The host must be https, or http for localhost, with no user, password, query or fragment. Replacing only the key keeps the saved host; **Clear** removes key and host together. Key and host are saved as one credential: in the OS keychain with only a reference in `auth.json`, or in `auth.json` after you confirm plain text when there is no keychain. Edit host, Edit limits and Remove on a custom provider change Octocode's `models.json` as the terminal's provider page does; Remove also deletes the provider's saved key from the keychain. A `models.json` with comments is left unchanged and the page shows the reason.
+
+The Harness panel writes the same settings and MCP files as `/settings enable|disable` and never changes Claude Code, Codex or Cursor files. Filter by name or path; a row that is always on has no switch. A running session applies a switch on `/reload` (MCP servers in the next session); the panel shows what each switch did. Only the page opened from the terminal sees the panel: a published link cannot read or change it, because its rows name your files.
 
 The Security panel lists what `/security` lists and records decisions through the same guard, so a decision made here holds in the terminal and the reverse. Approving or denying asks for a confirmation of the content shown. Like the Harness panel, only the page opened from the terminal sees it.
 
@@ -80,6 +82,10 @@ Like the Harness panel, only the page opened from the terminal reads or changes 
 - Requests time out after 15 seconds. A timeout does not prove a write failed: check the item or activity before retrying. Retries keep their request id, so an accepted request is not repeated.
 
 Earlier conversation and session updates show up to 100 cards at a time. **Older loaded** and **Newer loaded** move through the records already fetched; **Load earlier** fetches another page from the session. **Search loaded history** searches those fetched records, including pages currently out of view. Clear the search to return to your previous page.
+
+In an interactive session, open **Commands** to search the same slash commands, aliases, extensions and skills as the terminal. Select a command, enter its arguments and choose **Run**. For example, run `/settings` to open its configuration picker. Use the dialog controls to select or cancel. Commands operate on the attached terminal session. Host actions such as copying use that machine’s clipboard. The local launch link grants access to Commands.
+
+A **Pending question** button appears in the session header when the agent asks for input. Open it from any tab, or answer directly on **Activity**.
 
 Other views: **Profiler** ([below](#profiler)), **Settings** ([below](#settings-page)) and **Audit** ([below](#audit-and-comments)). The header holds the repository, the tabs, what needs you, connection state, the command palette (`Ctrl+K` or `⌘K`), **New item**, and a **⋯** menu with theme, notifications, terminal and board statistics. The window title names the view and is prefixed by the number of items waiting for you.
 
@@ -152,8 +158,8 @@ Every change to an item is recorded with its actor (an agent session or you) and
 
 ### Exports
 
-| Command           | Writes                                                                         |
-| ----------------- | ------------------------------------------------------------------------------ |
+| Command           | Writes                                                                          |
+| ----------------- | ------------------------------------------------------------------------------- |
 | `/backlog html`   | Read-only offline snapshot `.octocode/agent/backlog.html` (no docs or diagrams) |
 | `/backlog export` | Markdown snapshot `.octocode/agent/backlog.md`                                  |
 

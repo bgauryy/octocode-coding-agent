@@ -33,6 +33,7 @@ Octocode starts with a bundled catalog; cached catalog data works offline. `OCTO
 | Context budget   | `/context` shows usage; `/context size` or `/context 32k` sets a budget; `/context reset` restores catalog capacity                                                     |
 
 - Provider headings name the access method, such as `openai · subscription` or `ollama · local`. A check marks the current model; **default** marks the startup preference. The header identifies whether that preference comes from global, workspace or run settings.
+- Untick models you never use on a provider's page in `/providers` (**Choose models**) or on the web provider page: they disappear from `/model`, `Ctrl+P` and subagent routing, and a provider you have not touched shows all its models. See [providers](providers.md).
 - A model switch keeps your last chosen level (from `/effort` or `--thinking`), lowered to what the new model supports; switching back restores it. A level in `modelThinkingLevels` or the `--models` pattern wins; before you choose one, `defaultThinkingLevel` applies.
 - Context budgets apply to the selected physical model in this session, cannot exceed its catalog capacity, have a minimum of 8,192 tokens (or the full capacity of smaller models), need an idle session and are not saved.
 - The compact picker shows context, output limits, image/reasoning support and billing. **Ctrl+D** toggles full identifiers, names, catalog prices and cache lifetimes; **PgUp/PgDn** scroll those details. A time-limited price (`cost.until` with `cost.after`) shows today's rates. For subscription routes, catalog API prices are reference estimates. Account terms, retention, long-context tiers, service tiers, credits and regional premiums can change totals.
@@ -75,7 +76,7 @@ flowchart LR
     B -- yes --> D[Pick model ids]
     C --> D
     D --> E{Key}
-    E -- save it --> F[API-key sign-in: stored in auth.json]
+    E -- save it --> F["Stored in the OS keychain (or auth.json, if you choose)"]
     E -- environment --> G["apiKey: $NAME"]
     E -- local, none --> H[no key]
     F --> I["/model"]
@@ -100,16 +101,16 @@ flowchart LR
 
 Providers Octocode builds in (OpenRouter, Together, Fireworks, Groq, Cerebras, DeepSeek, Hugging Face and others) have no template: sign in to them with **Add a provider**.
 
-| Choice          | What is written                                                                                                                                                              |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Provider id     | The template id (`nebius`); when that id is taken by a provider or a saved credential, the next free one (`nebius-2`). An id already in `models.json` is never replaced      |
-| Models          | All offered ids, one picked from the list, or ids you type as the server names them                                                                                          |
-| Vendor model id | Only `{ "id": ... }`: it starts from Octocode's model when the file loads (context window, output limit, thinking, image input, prices), without direct-host cache lifetimes |
-| Listed model id | The host's context window, thinking, image input and input/output price from [models.dev](https://models.dev); an id the listing lacks keeps the plain defaults              |
-| Save a key      | No `apiKey`: the provider's API-key sign-in opens next and stores the key in `auth.json` under the provider id                                                               |
-| Environment     | `"apiKey": "$NAME"` with the variable the vendor documents or one you name; set it where you start Octocode                                                                  |
-| No key (local)  | `"apiKey": "no-key"`, a marker the server ignores; choose a key instead when the server was started with one                                                                 |
-| Request fields  | OpenAI-compatible servers get `max_tokens` and no OpenAI-only `store` field or `developer` role, which their documentation does not list                                     |
+| Choice          | What is written                                                                                                                                                                                                                                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider id     | The template id (`nebius`); when that id is taken by a provider or a saved credential, the next free one (`nebius-2`). An id already in `models.json` is never replaced                                                                                                                                          |
+| Models          | All offered ids, one picked from the list, or ids you type as the server names them                                                                                                                                                                                                                              |
+| Vendor model id | Only `{ "id": ... }`: it starts from Octocode's model when the file loads (context window, output limit, thinking, image input, prices), without direct-host cache lifetimes                                                                                                                                     |
+| Listed model id | The host's context window, thinking, image input and input/output price from [models.dev](https://models.dev); an id the listing lacks keeps the plain defaults                                                                                                                                                  |
+| Save a key      | `"apiKey": "!…"`, a reference to a keychain entry named for this provider (its own entry, never shared between providers); the key goes in the OS keychain. Only if you choose it, the key is stored as plain text in `auth.json` instead. Without a keychain the template asks for an environment variable name |
+| Environment     | `"apiKey": "$NAME"` with the variable the vendor documents or one you name; set it where you start Octocode                                                                                                                                                                                                      |
+| No key (local)  | `"apiKey": "no-key"`, a marker the server ignores; choose a key instead when the server was started with one                                                                                                                                                                                                     |
+| Request fields  | OpenAI-compatible servers get `max_tokens` and no OpenAI-only `store` field or `developer` role, which their documentation does not list                                                                                                                                                                         |
 
 The file is written atomically with private permissions (owner read and write only). A `models.json` with `//` comments is left unchanged, since a rewrite would drop them: the error shows the entry to paste. The models.dev listing is read from Octocode's cached copy (refreshed at most once a day; `OCTOCODE_MODELS_DEV=0` turns it off) and may not list every model a host serves. Edit the entry in `models.json` afterwards to change anything; opening `/model` reloads it.
 
@@ -132,12 +133,12 @@ Use the global `models.json` when an endpoint speaks an API Octocode supports.
 
 The dummy key makes the model available; Ollama ignores it. `apiKey` and header values accept `$NAME` or `${NAME}` (environment), a literal, or a leading `!command` (run at request time, not cached); `$$` and `$!` give a literal `$` and `!`. Opening `/model` reloads the file.
 
-| Goal                                      | Use                                                                                                                                         |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Add or replace a model                    | A `models` entry (same id on that provider layers over it; a known vendor id starts from that model)                                        |
-| Change metadata of an existing model      | `modelOverrides` (unknown ids are ignored)                                                                                                  |
-| Route a built-in provider through a proxy | Only `baseUrl`; models and authentication stay unchanged: `{ "providers": { "anthropic": { "baseUrl": "https://proxy.example.com/v1" } } }` |
-| Describe verified request differences     | `compat` (never enable it just because an endpoint claims OpenAI or Anthropic compatibility)                                                |
+| Goal                                      | Use                                                                                                                                                                 |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add a model to a custom provider          | A `models` entry on your own provider id (a known vendor id starts from that model)                                                                                 |
+| Tune an official provider's model         | `modelOverrides` on the official id, limited to `compat`, `contextWindow`, `maxTokens` and `inputLimits` (unknown ids are ignored)                                  |
+| Use another host for an official provider | `/providers`, then the provider, then sign in: the optional host is saved with the key. For a fully custom host, use the **Custom OpenAI-compatible host** template |
+| Describe verified request differences     | `compat` (never enable it just because an endpoint claims OpenAI or Anthropic compatibility)                                                                        |
 
 For editor validation, point `$schema` at `schemas/models.schema.json` in the installed package. User code extensions cannot register providers; use `models.json`.
 

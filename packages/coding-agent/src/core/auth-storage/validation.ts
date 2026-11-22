@@ -10,7 +10,19 @@ export function invalidEntryReason(credential: unknown): string | undefined {
 				value.env !== null &&
 				!Array.isArray(value.env) &&
 				Object.values(value.env).every((entry) => typeof entry === "string"));
-		return validKey && validEnv ? undefined : "an api_key entry needs a string key and string env values";
+		const endpoint = value.endpoint as Record<string, unknown> | undefined;
+		const validEndpoint =
+			endpoint === undefined ||
+			(typeof endpoint === "object" &&
+				endpoint !== null &&
+				typeof endpoint.baseUrl === "string" &&
+				(endpoint.region === undefined || typeof endpoint.region === "string") &&
+				(endpoint.api === undefined || typeof endpoint.api === "string"));
+		const validReference = value.keychain === undefined || typeof value.keychain === "string";
+		if (!validKey || !validEnv) return "an api_key entry needs a string key and string env values";
+		return validEndpoint && validReference
+			? undefined
+			: "an api_key entry has an invalid endpoint or keychain reference";
 	}
 	if (value.type === "oauth") {
 		const valid =

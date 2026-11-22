@@ -1,62 +1,22 @@
 import { clipText } from "@octocodeai/octocode-common/clip";
+import {
+	HOOK_LIFECYCLE_EVENTS,
+	type HookLifecycleTopic,
+	hookTopic,
+	isLifecycleTopic,
+} from "../events/hook-lifecycle.ts";
+import type { PayloadEvent, Topic, TopicPayload } from "../events/topics.ts";
 /**
- * The closed list of events that can wake a session: one entry per kind with its payload type, how the session hears of it,
- * its dedupe key and its row label. A wake source names its kind here; the `wait` tool parses `event` against this list.
- * Adding an event is one payload type and one `CATALOG` entry.
+ * How each event that can wake a session reads: one entry per topic (`events/topics.ts` owns the topic list and payload
+ * types) with how the session hears of it, its dedupe key and its row label. A wake source names its kind here; the
+ * `wait` tool parses `event` against this list. Adding an event is one payload type in `events/topics.ts` and one
+ * `CATALOG` entry.
  */
 
-/** The payload of each kind. */
-interface EventPayloads {
-	"agent.report": {
-		agent: string;
-		role: string;
-		outcome: string;
-		item?: string;
-		reportId: string;
-		reportPath?: string;
-	};
-	"agent.ended": { agent: string; reason: string; detail?: string };
-	"agent.message": { from: string; id: number; replyRequired: boolean; interrupt: boolean };
-	"job.exit": {
-		job: string;
-		exit: number | null;
-		durationMs: number;
-		startedAt: number;
-		log?: string;
-		stopped?: boolean;
-	};
-	"item.state": { ref: string; state: string };
-	"item.ready": { ref: string; prerequisites: string[] };
-	/** A change to a watched item, epic or path (`wait on item.changed`): `change` is a `ChangeKind`, `by` its actor. */
-	"item.changed": { ref: string; change: string; by: string };
-	/** A peer's work on `ref` landed: `how` names which of its signals held (done, closed, released, reservation, gone). */
-	"peer.landed": { ref: string; how: string };
-	/** A peer's change to an item related to one this session holds or waits on (`backlog/peer-notify.ts`); `id` is its audit row. */
-	"item.peer": { ref: string; change: string; by: string; relation: string; id: number };
-	"path.unlocked": { path: string };
-	/**
-	 * A monitor rule that tripped for this session (`monitor/attention/rules.ts`): a machine threshold its processes tripped,
-	 * a stuck job, an idle child (`idle-agent`, whose `subject` is the child), held items nothing works on (`idle-items`, whose `subject` is the refs joined by `,`), or a delegated item with no progress (`stalled-item`, whose `subject` is the item).
-	 */
-	"monitor.alert": { rule: string; value: number; threshold: number; at: number; subject?: string };
-	"check.result": {
-		timerId: number;
-		command?: string;
-		question?: string;
-		exit: number | null;
-		output: string;
-		costUsd?: number;
-	};
-	"time.due": { timerId: number; run: number; maxRuns?: number; note: string };
-	"hook.feedback": { hook: string; event: string; text: string; seq: number };
-	"wake.retry": { attempt: number; error: string };
-	"peer.notice": { text: string; seq: number };
-}
-
-export type AgentEventKind = keyof EventPayloads;
+export type AgentEventKind = Topic;
 
 /** One event as a source emits it. */
-export type AgentEvent<K extends AgentEventKind = AgentEventKind> = { [P in K]: { kind: P } & EventPayloads[P] }[K];
+export type AgentEvent<K extends AgentEventKind = AgentEventKind> = PayloadEvent<K>;
 
 /**
  * `implicit`: the session hears of it without asking (its own children, jobs, mail, planned items); `explicit`: only
@@ -69,15 +29,29 @@ interface Entry<K extends AgentEventKind> {
 	/** Whether it starts a turn: always, never, or by a flag the source decides (a message, a job's stop reason). */
 	wakes: "yes" | "sometimes";
 	/** What the row says of it, in a few words. */
-	label(payload: EventPayloads[K]): string;
+	label(payload: TopicPayload<K>): string;
 	/** Equal keys are the same event: delivered once. */
-	key(payload: EventPayloads[K]): string;
+	key(payload: TopicPayload<K>): string;
 }
 
 /** The refs of an `idle-items` alert, from its `subject`. */
 const idleRefs = (subject: string | undefined): string[] => (subject ? subject.split(",") : []);
 
+/** A hook run is logged, never delivered to the model: it is implicit and wakes nobody on its own. */
+const LIFECYCLE_ENTRIES = Object.fromEntries(
+	HOOK_LIFECYCLE_EVENTS.map((event) => [
+		hookTopic(event),
+		{
+			listener: "implicit",
+			wakes: "sometimes",
+			label: () => `hook ${event}`,
+			key: (p: { token: number }) => `hook:${event}:${p.token}`,
+		},
+	]),
+) as unknown as { [K in HookLifecycleTopic]: Entry<K> };
+
 export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
+	...LIFECYCLE_ENTRIES,
 	"agent.report": {
 		listener: "implicit",
 		wakes: "yes",
@@ -139,6 +113,12 @@ export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 		label: (p) => `${p.path} unlocked`,
 		key: (p) => `unlocked:${p.path}`,
 	},
+	"machine.load": {
+		listener: "explicit",
+		wakes: "yes",
+		label: (p) => `load ${p.perCore} per core`,
+		key: (p) => `machine:${p.timerId}`,
+	},
 	"monitor.alert": {
 		listener: "implicit",
 		wakes: "yes",
@@ -162,7 +142,7 @@ export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 	"time.due": {
 		listener: "explicit",
 		wakes: "yes",
-		label: (p) => `wait ${p.timerId} · ${clipText(p.note, 60)}`,
+		label: (p) => `notify ${p.timerId} · ${clipText(p.note, 60)}`,
 		key: (p) => `time:${p.timerId}:${p.run}`,
 	},
 	"hook.feedback": {
@@ -183,17 +163,33 @@ export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 		label: (p) => `peer: ${clipText(p.text, 60)}`,
 		key: (p) => `peer:${p.seq}`,
 	},
+	"ticket.resolved": {
+		listener: "implicit",
+		wakes: "sometimes",
+		label: (p) => `ticket ${p.ticket} resolved by ${clipText(p.target, 24)} (${p.on})`,
+		key: (p) => `ticket:${p.ticket}`,
+	},
+	"ticket.rejected": {
+		listener: "implicit",
+		wakes: "sometimes",
+		label: (p) => `ticket ${p.ticket ?? "request"} to ${clipText(p.target, 24)} rejected: ${p.reason}`,
+		key: (p) => `ticket-rejected:${p.ticket ?? `${p.requester}:${p.target}`}:${p.reason}`,
+	},
 };
 
 export const EVENT_KINDS = Object.keys(CATALOG) as AgentEventKind[];
 
+/** The kinds a user or an agent can name: a hook run is the loop's own record. */
+const NAMED_KINDS = EVENT_KINDS.filter((kind) => !isLifecycleTopic(kind));
+
 /** The kinds a `wait` can listen for: the ones that need the agent to ask. */
-export const EXPLICIT_EVENTS = EVENT_KINDS.filter((kind) => CATALOG[kind].listener === "explicit");
+export const EXPLICIT_EVENTS: AgentEventKind[] = EVENT_KINDS.filter((kind) => CATALOG[kind].listener === "explicit");
 
 /** The kind `value` names, or an error naming the choices. */
 export function parseEventKind(value: unknown): AgentEventKind {
-	if (typeof value === "string" && Object.hasOwn(CATALOG, value)) return value as AgentEventKind;
-	throw new Error(`No event ${JSON.stringify(value)}: the choices are ${EVENT_KINDS.join(", ")}.`);
+	if (typeof value === "string" && Object.hasOwn(CATALOG, value) && !isLifecycleTopic(value))
+		return value as AgentEventKind;
+	throw new Error(`No event ${JSON.stringify(value)}: the choices are ${NAMED_KINDS.join(", ")}.`);
 }
 
 /** The one-line row text and dedupe key of an event. */

@@ -1,6 +1,7 @@
+import { CommandsView } from "./CommandsView.tsx";
 import type { LiveExtension } from "../extension.ts";
 import { takeAccess } from "../../access.ts";
-import { DocIcon, HistoryIcon, PulseIcon, ResearchIcon, SparkIcon } from "../ui/icons.tsx";
+import { DocIcon, HistoryIcon, PulseIcon, ResearchIcon, SparkIcon, TerminalIcon } from "../ui/icons.tsx";
 import { ActivityView } from "./ActivityView.tsx";
 import { AuditView } from "./AuditView.tsx";
 import { DocsView } from "./DocsView.tsx";
@@ -28,6 +29,7 @@ export const live: LiveExtension | null = {
 		{ name: "activity", label: "Activity", Icon: PulseIcon, Component: ActivityView },
 		{ name: "profiler", label: "Profiler", Icon: SparkIcon, Component: ProfilerView },
 		{ name: "audit", label: "Audit", Icon: HistoryIcon, Component: AuditView },
+		{ name: "commands", label: "Commands", Icon: TerminalIcon, Component: CommandsView },
 		{ name: "settings", label: "Settings", Icon: SparkIcon, Component: SettingsView },
 	],
 	Provider: LiveProvider,

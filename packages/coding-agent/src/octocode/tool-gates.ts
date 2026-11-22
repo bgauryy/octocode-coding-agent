@@ -48,13 +48,13 @@ export interface ToolGatesOptions {
 }
 
 /**
- * A `wait` call with a command (`on` `check.result`, with or without a `check` question) is decided as the `bash` call that command is: git
+ * A `notify` call with a command (`on` `check.result`, with or without a `check` question) is decided as the `bash` call that command is: git
  * state, reservations, PreToolUse hooks (as `Bash`), the mode, source rules, a read-only role, the provenance tripwire and the
  * user's answer apply when it is set (`timer/conditions/command.ts` rechecks plan mode and the role each time it runs). Any
  * other wait call has no effect class.
  */
 function timerOperation<T extends { toolName: string; input: Record<string, unknown> }>(event: T): T {
-	if (event.toolName !== "wait") return event;
+	if (event.toolName !== "notify") return event;
 	const command = untilCommand(event.input);
 	return command ? { ...event, toolName: "bash", input: { command } } : event;
 }
@@ -265,6 +265,7 @@ export function registerToolGates(
 		await sourcePolicy.refresh(ctx);
 		return userBashGate({
 			permission,
+			clientPermission: permissionStep,
 			preToolUse: async (call, ctx) => planning?.gate(call) ?? hooks.preToolUse(call, ctx),
 		})(event, ctx);
 	});

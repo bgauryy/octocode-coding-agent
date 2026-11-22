@@ -96,10 +96,11 @@ const CASES: Record<string, Case> = {
 	context: { check: says(/Total context: 0 of [\d,]+ tokens/) },
 	diff: { check: says(/Repository diff[\s\S]*No staged changes/) },
 	status: { check: says(/Session Info[\s\S]*File:/) },
-	// The dialog lists each configured server with its source and state: the Octocode server is connected with its tools.
+	// The dialog lists each configured server with its source and state: the Octocode server is connected with its tools; the browser, on demand in the main session, is off in this suite
+	// (setup-env.ts), like the other bundled servers.
 	mcp: {
 		check: asks(
-			/MCP servers[\s\S]*› browser\s+direct · default\s+not selected[\s\S]*octocode\s+direct · default\s+connected · \d+ tools/,
+			/MCP servers[\s\S]*› octocode\s+direct · default\s+connected · \d+ tools[\s\S]*browser\s+onDemand · default\s+disabled/,
 		),
 	},
 	// On by default, in the harness's isolated home: its socket and discovery record are the observable outcome.
@@ -158,7 +159,10 @@ const CASES: Record<string, Case> = {
 	},
 	// Terminal commands that open a picker or menu.
 	help: { check: asks(/\/btw\s+Ask a side question without tools/) },
-	configuration: { check: asks(/Interface and session/) },
+	// The panel lists the live-applying interface page first, then each configurable setting with its value.
+	settings: {
+		check: asks(/Configuration[\s\S]*Interface and session \(applies now\)\s+open[\s\S]*harness:agents\s+on/),
+	},
 	model: { check: asks(/Choose a model for this chat/) },
 	effort: { check: asks(/Thinking level/) },
 	modelsettings: { check: asks(/Model settings/) },

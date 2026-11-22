@@ -9,7 +9,7 @@ import { tmp } from "./helpers.ts";
 /** A second whole read of an unchanged file, its first still in context, gets a note instead of the text once. */
 
 const CONTENT = "export const value = 1;\n".repeat(200);
-const NOTE = /^\[Not shown again: src\/a\.ts is unchanged since your earlier whole read/;
+const NOTE = /^\[Not shown again: src\/a\.ts is unchanged since your earlier read \(file:[a-f0-9]{12}\)/;
 
 /** A session whose context grows with each result the handler lets through (or the note it put in its place). */
 function session() {
@@ -143,5 +143,44 @@ describe("a repeated whole read of an unchanged file", () => {
 		expect(other.details).toMatchObject({ unchangedOf: same.id, localReads: [read] });
 		// A bash print of the same file is compared by its own measure, so it never stands for the reader's read.
 		expect((await s.bash("cat src/a.ts")).text).toBe(CONTENT);
+	});
+
+	it("keys a reader's range read on the range: the same range is noted naming its handle, another range or a changed file gets the text", async () => {
+		const s = session();
+		const range = (lines: [number, number], sha = "b".repeat(64)) => ({
+			file: s.file,
+			sha256: sha,
+			size: CONTENT.length,
+			whole: false,
+			lines,
+		});
+		const read = (lines: [number, number], extra: Record<string, unknown> = {}, sha?: string) =>
+			s.call("localFetch", { queries: [{ path: "src/a.ts", ...extra }] }, { localReads: [range(lines, sha)] });
+		const first = await read([3, 9]);
+		const again = await read([3, 9], { responseChars: 9000 });
+		expect(again.text).toMatch(
+			/^\[Not shown again: src\/a\.ts lines 3-9 is unchanged since your earlier read \(file:b{12}@3-9\)/,
+		);
+		expect(again.details).toMatchObject({ unchangedOf: first.id });
+		expect((await read([4, 9])).text).toBe(CONTENT);
+		expect((await read([4, 9], { responseChars: 9000 }, "c".repeat(64))).text).toBe(CONTENT);
+	});
+
+	it("gives a range's text again once its earlier result was cleared or compacted away", async () => {
+		const s = session();
+		const reader = (extra = {}) =>
+			s.call(
+				"localFetch",
+				{ queries: [{ path: "src/a.ts", ...extra }] },
+				{
+					localReads: [{ file: s.file, sha256: "d".repeat(64), size: 9, whole: false, lines: [1, 5] }],
+				},
+			);
+		const first = await reader();
+		s.clear(first.id);
+		expect((await reader({ n: 1 })).text).toBe(CONTENT);
+		await reader({ n: 2 });
+		s.compact();
+		expect((await reader({ n: 3 })).text).toBe(CONTENT);
 	});
 });

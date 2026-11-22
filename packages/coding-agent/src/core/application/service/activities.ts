@@ -46,13 +46,16 @@ export class ApplicationActivities {
 			text: input.text.slice(0, 4000),
 			...(input.failed ? { outcome: "failed" as const } : {}),
 		};
-		if (input.text.length > 4000 && input.data === undefined)
-			activity.full = this.assets.put(input.text, "text/plain", "utf8", undefined, slot);
 		if (input.data !== undefined) {
 			const data = cloneDisplay(input.data);
 			const json = JSON.stringify(data);
 			if (json.length > 4000) activity.full = this.assets.put(json, "application/json", "utf8", undefined, slot);
 			else activity.data = data;
+		}
+		if (input.text.length > 4000) {
+			const text = this.assets.put(input.text, "text/plain", "utf8", undefined, activity.full ? undefined : slot);
+			if (activity.full) activity.fullText = text;
+			else activity.full = text;
 		}
 		this.entries.set(activity.id, activity);
 		return cloneDisplay(activity);

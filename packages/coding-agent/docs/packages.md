@@ -80,7 +80,7 @@ The object form in settings narrows what loads from a package; it cannot expose 
 | `!pattern`       | Exclude glob matches               |
 | `+path`, `-path` | Include or exclude one exact path  |
 
-To switch discovered resources and built-in features, use `octocode configuration` or `/configuration` ([changing configuration](configuration.md#changing-configuration)).
+To switch discovered resources and built-in features, use `octocode configuration` or `/settings` ([changing configuration](configuration.md#changing-configuration)).
 
 ## Scope and identity
 

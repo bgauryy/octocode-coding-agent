@@ -101,13 +101,15 @@ export type AcpUiRequest =
 				rejectOnce: string;
 			};
 	  }
-	| { id: string; method: "confirm" | "input" | "editor"; title: string }
+	| { id: string; method: "confirm"; title: string; message?: string }
+	| { id: string; method: "input" | "editor"; title: string }
 	/** A batch of typed questions (the worker runs with `--rpc-ask`); answered with `replies`, one per question id. */
 	| { id: string; method: "ask"; questions: Question[]; approval?: boolean };
 
 /** The answer to an `AcpUiRequest`: a chosen value, the replies to an `ask`, or a cancellation. */
 export type AcpUiResponse = { type: "extension_ui_response"; id: string } & (
 	| { value: string }
+	| { confirmed: boolean }
 	| { replies: Reply[] }
 	| { cancelled: true }
 );

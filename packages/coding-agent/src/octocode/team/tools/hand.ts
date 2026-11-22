@@ -1,4 +1,5 @@
 import type { FeatureContext } from "../../../core/features/index.ts";
+import type { CallbackSpec } from "../model.ts";
 
 /** A `sendMessage` call's fields, `item` aside. */
 export interface SendParams {
@@ -7,6 +8,7 @@ export interface SendParams {
 	attach?: string;
 	forward?: number;
 	replyRequired?: boolean;
+	callback?: CallbackSpec;
 	wake?: boolean;
 	replyTo?: number;
 	interrupt?: boolean;

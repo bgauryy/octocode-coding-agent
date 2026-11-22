@@ -21,7 +21,7 @@ export function SessionActivityContent({
 	const data = current ? current.value : activity.data;
 	return (
 		<>
-			<ExpandedText text={text} full={json ? undefined : full} loadAsset={loadAsset} plain />
+			<ExpandedText text={text} full={activity.fullText ?? (json ? undefined : full)} loadAsset={loadAsset} plain />
 			{data !== undefined && <JsonDetails label="Details" value={data} />}
 			{json && full && !current && (
 				<Button

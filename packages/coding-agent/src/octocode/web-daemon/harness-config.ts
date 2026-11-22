@@ -1,8 +1,8 @@
 /**
  * The Harness panel of the configuration page. Rows and switches come from the configuration catalog that
- * `/configuration` and `octocode configuration` use, so the page, the terminal and the CLI list the same ids and write
+ * `/settings` and `octocode configuration` use, so the page, the terminal and the CLI list the same ids and write
  * the same files: settings `toggles` for harnesses, skills, hooks, plugins and extensions, `mcp.json` for MCP servers.
- * Other tools' files are never written. Running sessions apply a switch as `/configuration` says (`appliesWhen`).
+ * Other tools' files are never written. Running sessions apply a switch as `/settings` says (`appliesWhen`).
  */
 
 import {

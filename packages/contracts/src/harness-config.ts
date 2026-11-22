@@ -2,12 +2,12 @@ import { Type, type Static } from "typebox";
 import { StringEnum } from "./schema.ts";
 
 /**
- * The Harness panel of the configuration page: the switches `/harness` and `/configuration` show, one row per harness,
+ * The Harness panel of the configuration page: the switches `/harness` and `/settings` show, one row per harness,
  * MCP server, skill, hook, plugin and extension. Rows carry ids that may hold file paths, so only the launch capability
  * reads them (`DAEMON_ROUTES.configHarness` is under `/api/admin/`).
  */
 
-/** The `/configuration` id kinds the panel lists, in display order. */
+/** The `/settings` id kinds the panel lists, in display order. */
 export const HARNESS_ROW_KINDS = [
 	"harness",
 	"mcp",
@@ -32,7 +32,7 @@ export const HarnessIdSchema = Type.String({ minLength: 1, maxLength: 2048, patt
 
 export const HarnessRowSchema = Type.Object(
 	{
-		/** The `/configuration` id (`harness:claude`, `mcp:docs`, `skill:<path>`). */
+		/** The `/settings` id (`harness:claude`, `mcp:docs`, `skill:<path>`). */
 		id: HarnessIdSchema,
 		kind: HarnessRowKindSchema,
 		label: Type.String({ maxLength: 512 }),
@@ -54,7 +54,7 @@ export const HarnessListSchema = Type.Object(
 		rows: Type.Array(HarnessRowSchema, { maxItems: 5000 }),
 		/** Present when a workspace was chosen: whether its own switches apply (a trusted folder). */
 		workspace: Type.Optional(Type.Object({ trusted: Type.Boolean() }, { additionalProperties: false })),
-		/** What the last switch did, in the words `/configuration` prints. */
+		/** What the last switch did, in the words `/settings` prints. */
 		message: Type.Optional(Type.String({ maxLength: 500 })),
 	},
 	{ additionalProperties: false },

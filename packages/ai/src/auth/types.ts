@@ -18,6 +18,23 @@ export interface ApiKeyCredential {
 	type: "api_key";
 	key?: string;
 	env?: ProviderEnv;
+	/** A custom host for an official provider, saved with its key; see `ApiKeyEndpoint`. */
+	endpoint?: ApiKeyEndpoint;
+	/** A `!command` reference to the system keychain record that holds this credential's key and endpoint. */
+	keychain?: string;
+}
+
+/**
+ * Where requests of an official provider go instead of its default host. It is part of the credential so the host
+ * and the key it belongs to are stored, replaced and removed together.
+ */
+export interface ApiKeyEndpoint {
+	/** An https URL, or http for a loopback host. */
+	baseUrl: string;
+	/** The provider's region for this host, when it has regions. */
+	region?: string;
+	/** The request API this host speaks, saved only when the host name does not tell. */
+	api?: string;
 }
 
 /** OAuth token data returned by extension compatibility flows. */
@@ -131,7 +148,13 @@ export type AuthType = "api_key" | "oauth";
  * callback wins.
  */
 export type AuthPrompt = { signal?: AbortSignal } & (
-	| { type: "text"; message: string; placeholder?: string }
+	| {
+			type: "text";
+			message: string;
+			placeholder?: string;
+			/** The answer is saved with the key (a custom host, a region), so it is stored where the key is. */
+			storedWithKey?: boolean;
+	  }
 	| { type: "secret"; message: string; placeholder?: string }
 	| { type: "select"; message: string; options: readonly { id: string; label: string; description?: string }[] }
 	| { type: "manual_code"; message: string; placeholder?: string }
@@ -171,6 +194,18 @@ export interface AuthInteraction {
 /** Normalized interaction passed to provider login implementations. */
 export type ProviderAuthInteraction = AuthInteraction & { signal: AbortSignal };
 
+/** What a key's custom host takes besides the URL, and how it is checked (see `ApiKeyAuth.host`). */
+export interface ApiKeyHostOption {
+	/** An example host, shown as the placeholder. */
+	example: string;
+	/** The host takes an optional region. */
+	region?: boolean;
+	/** The APIs a host may speak when its name does not tell; the answer is then required. */
+	apis?: readonly { id: string; label: string }[];
+	/** Turns the answers into the endpoint to save: normalized, or an error that never carries the URL. Undefined: no host. */
+	endpoint(answers: { host: string; region?: string; api?: string }): ApiKeyEndpoint | undefined;
+}
+
 /** What a provider said about a key; a forbidden check endpoint does not prove the key cannot make model requests. */
 export type ApiKeyVerdict = "valid" | "rejected" | "forbidden" | "unreachable" | "unchecked";
 
@@ -190,6 +225,12 @@ export interface ApiKeyAuth {
 	 * it. `unchecked` means this kind of key has no such call. Absent = keys are saved without a check.
 	 */
 	verify?(input: { key: string; signal: AbortSignal }): Promise<ApiKeyVerdict>;
+
+	/**
+	 * The provider's API accepts a base URL (a proxy or gateway): a key can be saved with a custom host. The terminal
+	 * login and the web page both ask through this, so the host is validated in one place.
+	 */
+	host?: ApiKeyHostOption;
 
 	/** Interactive setup (prompt for key/provider env). Absent = ambient-only. */
 	login?(interaction: ProviderAuthInteraction): Promise<ApiKeyCredential>;

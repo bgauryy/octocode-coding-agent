@@ -91,6 +91,9 @@ function callSummary(args: Record<string, unknown> | undefined): string {
 	return [text(args?.op) ?? "list", clip(detail, 100)].filter(Boolean).join(" ");
 }
 
+/** The ids a batch of delete replies names (`Deleted M3 (…) …`), in order. */
+const deletedIds = (replies: string[]) => replies.map((text) => /^Deleted (\S+)/.exec(text)?.[1] ?? "?").join(", ");
+
 /**
  * The `memory` tool: durable notes of this workspace (`store.ts`). The main session searches, reads, saves and deletes;
  * a subagent only reads, so its schema leaves out `set`, `delete` and the fields only a save takes. Reads run side by
@@ -200,7 +203,13 @@ export function createMemoryTool(
 						items,
 						(entry, index) => entry.id ?? (entry.title ? `"${clip(entry.title, 60)}"` : `items[${index}]`),
 						(entry) => writeOne({ ...entry, op }, toolCallId, store, ctx, signal),
-						{ operation: op, verb: op === "set" ? "Saved" : "Deleted", signal },
+						{
+							operation: op,
+							verb: op === "set" ? "Saved" : "Deleted",
+							signal,
+							// A deleted note's body is gone from the reply: the count and ids settle a batch of deletes.
+							...(op === "delete" ? { condense: deletedIds } : {}),
+						},
 					);
 				}
 				case "get": {

@@ -3,6 +3,7 @@ import {
 	ConfigSnapshotSchema,
 	HarnessListSchema,
 	HarnessPreviewSchema,
+	RunnerListSchema,
 	SecurityListSchema,
 	ToolExposureListSchema,
 } from "@octocodeai/octocode-contracts/config";
@@ -17,7 +18,9 @@ import { runtimeSignIn, SignInManager } from "./credential-signin.ts";
 import { refusalAuditor, writeConfigCredential } from "./credential-write.ts";
 import { listHarness, switchHarness } from "./harness-config.ts";
 import { previewHarness } from "./harness-preview.ts";
+import { runProviderTest } from "./provider-test-route.ts";
 import { writeConfigProvider } from "./provider-write.ts";
+import { actRunners, listRunnerRows } from "./runner-config.ts";
 import { listToolExposure, pinTool, type NativeToolsLive } from "./tool-exposure.ts";
 
 function checkedHarness<T>(list: T): T {
@@ -30,6 +33,11 @@ const securityModule = () => import("./security-config.ts");
 
 function checkedSecurity<T>(list: T): T {
 	if (!Value.Check(SecurityListSchema, list)) throw new Error("The security list is invalid.");
+	return list;
+}
+
+function checkedRunners<T>(list: T): T {
+	if (!Value.Check(RunnerListSchema, list)) throw new Error("The external agent list is invalid.");
 	return list;
 }
 
@@ -77,6 +85,7 @@ export function createConfigRoutes(options: ConfigFactoryOptions): {
 		writeCredential: (command) =>
 			writeConfigCredential(command, { agentDir: getAgentDir(), env, actor: actor(), audit }),
 		writeProvider: (command) => writeConfigProvider(command, { agentDir: getAgentDir(), env, actor: actor(), audit }),
+		testProviders: (command) => runProviderTest(command, { agentDir: getAgentDir(), env }),
 		signIn: (command) => signIns.handle(command),
 		harness: async (repo) => checkedHarness(await listHarness({ agentDir: getAgentDir(), cwd: repo?.root })),
 		previewHarness: async (id, repo) => {
@@ -96,6 +105,9 @@ export function createConfigRoutes(options: ConfigFactoryOptions): {
 					await securityModule()
 				).actSecurity(command.id, command.action, { agentDir: getAgentDir(), cwd: repo?.root, guard: { env } }),
 			),
+		runners: async () => checkedRunners(listRunnerRows({ agentDir: getAgentDir(), env })),
+		writeRunners: async (command) =>
+			checkedRunners(await actRunners(command, { agentDir: getAgentDir(), env, actor: actor(), audit })),
 		// A session's own answer (`live`) wins over this process's: the daemon has no tools of its own.
 		tools: async (repo, live) =>
 			checkedTools(await listToolExposure({ agentDir: getAgentDir(), cwd: repo?.root, native, ...live })),

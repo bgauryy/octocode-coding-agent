@@ -27,6 +27,11 @@ export interface RunnerSpec {
 	cli: string;
 	/** The ACP adapter that runs the turns, and the npm package or formula that installs it. */
 	adapter: { command: string; args: readonly string[]; install: string };
+	/**
+	 * True: no ACP adapter is used, so detection never looks for one and a task runs headless only (`headless/`). The
+	 * `adapter` entry then names the CLI's own ACP command for display, never to start.
+	 */
+	headlessOnly?: true;
 	/** The CLI version whose status and login commands were checked; an older one still runs, and its row says so. */
 	tested: string;
 	/** The CLI's own status command and how to read it; absent: an ACP session check decides. */
@@ -94,6 +99,18 @@ function readOpencodeStatus(output: string): RunnerAuth | undefined {
 	return connected ? { signedIn: true, method: "opencode auth" } : { signedIn: false };
 }
 
+/**
+ * `cursor-agent status`: the docs say it shows whether you are authenticated, the account and the endpoint, and name
+ * "Not authenticated" as the signed-out error (https://cursor.com/docs/cli/reference/authentication). The exact
+ * wording of the signed-in line is not documented, so only the two documented states are read; anything else is
+ * unconfirmed and the run checks again.
+ */
+function readCursorStatus(output: string): RunnerAuth | undefined {
+	if (/not (authenticated|logged in)/i.test(output)) return { signedIn: false };
+	if (/logged in|authenticated/i.test(output)) return { signedIn: true, method: "Cursor account" };
+	return undefined;
+}
+
 const configDir = (env: NodeJS.ProcessEnv, name: string, fallback: string) => env[name]?.trim() || fallback;
 
 export const RUNNERS: readonly RunnerSpec[] = [
@@ -146,6 +163,21 @@ export const RUNNERS: readonly RunnerSpec[] = [
 		login: [],
 		signInFiles: (env, home) => [path.join(configDir(env, "GEMINI_CLI_HOME", home), ".gemini", "oauth_creds.json")],
 		keep: ["GEMINI_CLI_CUSTOM_HEADERS"],
+	},
+	{
+		id: "cursor",
+		name: "Cursor CLI",
+		cli: "cursor-agent",
+		// `agent` is its other binary name, but another tool may own that name on PATH: only `cursor-agent` is run.
+		adapter: { command: "cursor-agent", args: ["acp"], install: "curl https://cursor.com/install -fsS | bash" },
+		headlessOnly: true,
+		// The version of Cursor's installer on 2026-11-21 (`2026.11.19-f005e9d`); no CLI was installed to run `--help`.
+		tested: "2026.11.19",
+		status: { args: ["status"], read: readCursorStatus },
+		login: ["login"],
+		// The docs name no credential file; a sign-out shows at the next run, which is refused as signed out.
+		signInFiles: () => [],
+		keep: ["CURSOR_API_KEY"],
 	},
 ];
 

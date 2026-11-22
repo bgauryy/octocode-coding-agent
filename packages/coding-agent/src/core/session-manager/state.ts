@@ -33,6 +33,8 @@ export interface SessionState {
 	labelsById: Map<string, string>;
 	labelTimestampsById: Map<string, string>;
 	leafId: string | null;
+	/** Where this session's mirror problems are reported; without one they go to the process-wide handler, then stderr. */
+	notice?: (message: string) => void;
 }
 
 /** What a failed write knew: the file's size before it and, inside an append, the line and entry it was writing. */

@@ -144,14 +144,19 @@ function handleMouseEvent(host: AltScreenPointerHost, raw: SgrMouseEvent): void 
 function routeWheel(host: AltScreenPointerHost, event: WheelEvent, delta: number): void {
 	let remaining = delta;
 	const seen = new Set<ScrollView>();
+	const scroll = (view: ScrollView) => {
+		const before = view.scrollTop;
+		remaining = view.scrollBy(remaining);
+		if (view.scrollTop !== before) host.selection.wheelScrolled(view, event.x, event.y);
+	};
 	const currentLayout = host.getCurrentLayout();
 	for (const scrollView of currentLayout ? getScrollViewsAt(currentLayout, event.x, event.y) : []) {
 		seen.add(scrollView);
-		remaining = scrollView.scrollBy(remaining);
+		scroll(scrollView);
 		if (remaining === 0 || scrollView.overscroll === "contain") break;
 	}
 	const primary = host.getPrimaryScrollView();
-	if (remaining !== 0 && !seen.has(primary)) primary.scrollBy(remaining);
+	if (remaining !== 0 && !seen.has(primary)) scroll(primary);
 	host.scrollbar.updateScrollbarHover(event.x, event.y);
 	host.requestRender();
 }

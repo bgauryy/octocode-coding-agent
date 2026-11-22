@@ -426,7 +426,7 @@
           ]
         }
       },
-      "description": "Pins a deferrable native tool (web, archive, models, backlogPlan; memory and wait under \"usage\" only): \"direct\" always declares its full schema, \"deferred\" declares its description and top-level fields (types, the few values a field allows, required fields) only. Unpinned, the tool is deferred under mcpExposure \"recent\" until this working directory calls it, and always under \"usage\"; it is direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema. Where the model adds tools after the cached prompt and the agent has the `mcp` tool, an unpinned archive or models (and memory in a subagent) that would be deferred is on demand instead, unless the \"usage\" promotion snapshot names it: listed in the prompt, declared after its first call or a read with the `mcp` tool."
+      "description": "Pins a deferrable native tool (web, archive, models, backlogPlan, configuration; memory and wait under \"usage\" only): \"direct\" always declares its full schema, \"deferred\" declares its description and top-level fields (types, the few values a field allows, required fields) only. Unpinned, the tool is deferred under mcpExposure \"recent\" until this working directory calls it, and always under \"usage\"; it is direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema. Where the model adds tools after the cached prompt and the agent has the `mcp` tool, an unpinned archive or models (and memory in a subagent) that would be deferred is on demand instead, unless the \"usage\" promotion snapshot names it: listed in the prompt, declared after its first call or a read with the `mcp` tool."
     },
     "research": {
       "type": "object",
@@ -613,7 +613,7 @@
           "type": "boolean"
         }
       },
-      "description": "Harness, plugin and hook switches by ID, as `/configuration` writes them: `harness:<vendor>` (`agents`, `mcp-json`, `pi`, `claude`, `codex`, `cursor`; `true` or `false` overrides the vendor's default, see [commands](commands.md)), `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<source>` or `hook:<id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository."
+      "description": "Harness, plugin and hook switches by ID, as `/settings` writes them: `harness:<vendor>` (`agents`, `mcp-json`, `pi`, `claude`, `codex`, `cursor`; `true` or `false` overrides the vendor's default, see [commands](commands.md)), `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<source>` or `hook:<id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository."
     },
     "packages": {
       "type": "array",
@@ -918,6 +918,18 @@
         "type": "string"
       },
       "description": "Provider ids turned off in /providers. Their models leave the model selector, cycling and subagent routing; saved credentials stay. Global only."
+    },
+    "hiddenModels": {
+      "type": "object",
+      "patternProperties": {
+        "^.*$": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Per provider, the model ids hidden by unticking them on its /providers page or the web provider page. Hidden models leave the model selector, cycling and subagent routing; a provider with no entry shows all its models. Global only."
     },
     "providerSources": {
       "type": "object",
@@ -1238,7 +1250,7 @@
           "properties": {
             "enabled": {
               "type": "boolean",
-              "description": "Let a wait's check call a cheaper model to judge a condition after its event holds. It spends money, so it is off until you turn it on here or answer the first-use question; caps: 5 judgments and $0.05 per wait, $0.25 per session. Read from the global settings file; a project file cannot turn it on.",
+              "description": "Let a notify request's check call a cheaper model to judge a condition after its event holds. It spends money, so it is off until you turn it on here or answer the first-use question; caps: 5 judgments and $0.05 per request, $0.25 per session. Read from the global settings file; a project file cannot turn it on.",
               "default": false
             }
           },
@@ -1335,12 +1347,43 @@
       },
       "additionalProperties": false
     },
+    "runtime": {
+      "type": "object",
+      "properties": {
+        "eventLoop": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "old"
+            },
+            {
+              "type": "string",
+              "const": "shadow"
+            },
+            {
+              "type": "string",
+              "const": "new"
+            }
+          ],
+          "description": "Which scheduler starts turns from background events. `old` (default): the wake gate, unchanged. `shadow`: the event loop runs beside the gate, decides which events would wake the session and in what order, acts on nothing, and records each difference from the gate as a problem (`/status`). `new`: the loop delivers the events it has taken over (a background `bash` job's exit, a child's report or end, and team mail, with the `runtime.eventWindowSeconds` window) and the gate the rest, which behave as in `shadow`. Reports and mail the loop has queued survive a restart or resume and are delivered once. Read at session start.",
+          "default": "old"
+        },
+        "eventWindowSeconds": {
+          "type": "number",
+          "description": "Seconds the event loop waits after a background event wakes an idle session, so events that arrive together become one message and one turn. User input is never held. Applies to the events the loop delivers (`runtime.eventLoop: new`: a background job's exit, a child's report or end, team mail); the wake gate keeps `subagents.wakeHoldSeconds` for the rest.",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 10
+        }
+      },
+      "additionalProperties": false
+    },
     "memory": {
       "type": "object",
       "properties": {
         "file": {
           "type": "boolean",
-          "description": "Load the global MEMORY.md (in the Octocode home) and the repository's .octocode/MEMORY.md into the system prompt at session start. Off: neither is read or written.",
+          "description": "Load the global MEMORY.md (in the Octocode home) and the repository's .octocode/agent/MEMORY.md into the system prompt at session start. Off: neither is read or written.",
           "default": true
         },
         "autoUpdate": {
@@ -1459,7 +1502,7 @@
         "days": {
           "type": "integer",
           "minimum": 0,
-          "description": "Days Octocode keeps output, bash logs, subagent scratch, session data, `<workspace>/.octocode/tmp` entries and database history after their last write. 0 keeps them forever. `OCTOCODE_CLEANUP_DAYS` overrides it.",
+          "description": "Days Octocode keeps output, bash logs, subagent scratch, session data, `<workspace>/.octocode/agent/tmp` entries and database history after their last write. 0 keeps them forever. `OCTOCODE_CLEANUP_DAYS` overrides it.",
           "default": 30
         },
         "sessionDays": {
@@ -1478,6 +1521,30 @@
       "description": "How long cleanup keeps data; one global policy for every project, so a project settings file cannot set it.",
       "additionalProperties": false
     },
+    "backlog": {
+      "type": "object",
+      "properties": {
+        "qa": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "important"
+            },
+            {
+              "type": "string",
+              "const": "all"
+            },
+            {
+              "type": "string",
+              "const": "off"
+            }
+          ],
+          "description": "Which items a small reviewer model checks before `backlog done` completes them. `important`: p0 and p1 features and bugs. `all`: every item except epics. `off`: none. A reviewer that finds a defect returns the item to ongoing, or to the backlog when evidence is missing, with its findings noted; without a priced small model the item completes with a note. Each review costs a small-model run.",
+          "default": "important"
+        }
+      },
+      "additionalProperties": false
+    },
     "subagents": {
       "type": "object",
       "properties": {
@@ -1491,9 +1558,13 @@
             "medium": {
               "type": "string",
               "minLength": 1
+            },
+            "large": {
+              "type": "string",
+              "minLength": 1
             }
           },
-          "description": "Model for the `small` and `medium` subagent purposes, each `provider/model` with an optional `:level` thinking suffix, e.g. { \"small\": \"openai/gpt-5-mini:low\" }. Used by every profile or task that names the purpose, before the automatic choice; a call's own `model` still wins. A model that is not available, cannot run a task or sits on a provider that refused its credential is skipped for the automatic choice, and the route says why. Read from the global settings file; a project file cannot set it.",
+          "description": "Model for the `small`, `medium` and `large` subagent purposes, each `provider/model` with an optional `:level` thinking suffix, e.g. { \"small\": \"openai/gpt-5-mini:low\" }. Used by every profile or task that names the purpose, before the automatic choice; a call's own `model` still wins. A model that is not available, cannot run a task or sits on a provider that refused its credential is skipped for the automatic choice, and the route says why. Read from the global settings file; a project file cannot set it.",
           "additionalProperties": false
         },
         "maxChildren": {
@@ -1515,27 +1586,13 @@
           "type": "number",
           "minimum": 0,
           "maximum": 10,
-          "description": "Seconds an idle session holds a wake (a child's report, a job's exit, mail) so wakes arriving close together share one turn. The first wake opens the window; everything arriving in it is delivered together when it ends. 0 delivers each wake at once. Costs up to this much latency per wake.",
+          "description": "Seconds an idle session holds a wake (a child's report, a job's exit, mail) so wakes arriving close together share one turn. The first wake opens the window; everything arriving in it is delivered together when it ends. 0 delivers each wake at once. Costs up to this much latency per wake. Deprecated: with `runtime.eventLoop: \"new\"` it no longer applies to a background job's exit, a child's report or end, or team mail (`runtime.eventWindowSeconds` does), and it is removed when the last event kind moves to the loop.",
           "default": 0
         },
         "peerOverlapWake": {
           "type": "boolean",
           "description": "Wake the holder of an ongoing item, or of a reservation, when another agent claims an item (or edits its paths) that overlaps its paths, once per pair. Off: the holder hears of it with its next turn instead.",
           "default": true
-        },
-        "skillCatalog": {
-          "anyOf": [
-            {
-              "type": "string",
-              "const": "all"
-            },
-            {
-              "type": "string",
-              "const": "role"
-            }
-          ],
-          "description": "Which skills a subagent started without named skills can load. all: this session's whole skill catalog. role: only its role's skills, so the child prompt drops the catalog; skills the task names are always listed.",
-          "default": "all"
         }
       },
       "description": "Limits on the subagents a session starts, and how they are checked on.",

@@ -21,12 +21,22 @@ function DaemonStatus(): ReactNode {
  * unknown (`undefined`), a repository page is read-only and a session page keeps its controls. The flag hides controls
  * only; the daemon still refuses a write the token does not allow.
  */
-export function daemonLive(live: LiveExtension, scope: NonNullable<PageScope>, writable?: boolean): LiveExtension {
+export function daemonLive(
+	live: LiveExtension,
+	scope: NonNullable<PageScope>,
+	writable?: boolean,
+	terminalCommands = false,
+): LiveExtension {
 	const readOnly = writable === undefined ? scope.kind === "repo" : !writable;
 	return {
 		...live,
 		ConnectionStatus: DaemonStatus,
 		...(readOnly ? { readOnly: true } : {}),
-		...(scope.kind === "repo" ? { views: live.views.filter((view) => REPO_VIEWS.has(view.name)) } : {}),
+		views:
+			scope.kind === "repo"
+				? live.views.filter((view) => REPO_VIEWS.has(view.name))
+				: terminalCommands
+					? live.views
+					: live.views.filter((view) => view.name !== "commands"),
 	};
 }

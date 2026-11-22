@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import { adoptSkillResourceSnapshot, type SkillResourceSnapshot } from "../../core/skill-resource-snapshot.ts";
 import { renderPrompt } from "../../core/prompt-template.ts";
-import { formatSkillsForPrompt } from "../../core/skills.ts";
 import type { SlashCommandInfo } from "../../core/slash-commands.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { stripFrontmatter } from "../../utils/frontmatter.ts";
@@ -9,16 +8,13 @@ import type { Run } from "./claim.ts";
 import { type AgentProfile, profileTools } from "./profiles.ts";
 
 /**
- * Where a child's skills come from. `names` absent: it inherits this session's catalog, listed in its prompt, and its
- * profile's skills (`roleSkills`) are inlined in its role section (`withRoleSkills`), so a role never narrows what the
- * child can load. Otherwise the named skills (the task's `skills`, or a lean profile's) ride in its task (`inTask`):
- * listed for its `skill` tool, or inlined whole for a lean child, which has no skill tool (`inline`). A lean child gets
- * none unless some are named. With `roleOnly` (`subagents.skillCatalog: "role"`) a non-lean child without named skills is
- * handled as if its role's skills were named: it lists those, not the session catalog.
+ * Where a child's skills come from. Every child with a `skill` tool inherits this session's whole skill list through
+ * that tool's description, so the declaration is the parent's whatever the task names. `names` are the skills the task
+ * (or a lean profile) asks for: they ride in its task text, to load first (or inlined whole for a lean child, which has
+ * no skill tool: `inline`). The profile's own skills (`roleSkills`) are inlined in its role section (`withRoleSkills`).
  */
 export interface TaskSkillPlan {
 	names?: string[];
-	inTask: boolean;
 	inline: boolean;
 	roleSkills?: string[];
 }
@@ -27,16 +23,15 @@ export function taskSkillPlan(
 	profile: AgentProfile | undefined,
 	requested: string[] | undefined,
 	commands?: readonly SlashCommandInfo[],
-	roleOnly = false,
 ): TaskSkillPlan {
 	const inline = profile?.lean === true;
 	// A role's skills are defaults: one this session cannot load (not installed, skills off) is left out rather than
 	// failing the start. Skills the task names are the caller's choice and still fail when unknown.
 	const loadable = commands && new Set(commands.filter((c) => c.source === "skill").map((c) => c.name));
 	const fromRole = loadable ? profile?.skills?.filter((name) => loadable.has(name)) : profile?.skills;
-	const names = requested ?? (inline || roleOnly ? (fromRole ?? []) : undefined);
-	if (names !== undefined) return { names, inTask: true, inline };
-	return fromRole?.length ? { inTask: false, inline, roleSkills: fromRole } : { inTask: false, inline };
+	const names = requested ?? (inline ? (fromRole ?? []) : undefined);
+	if (names !== undefined) return { names, inline };
+	return fromRole?.length ? { inline, roleSkills: fromRole } : { inline };
 }
 
 type SnapshotSkill = ReturnType<typeof adoptSkillResourceSnapshot>["skills"][number];
@@ -69,21 +64,16 @@ export function withRoleSkills<T extends AgentProfile | undefined>(
 }
 
 /**
- * The task text for the snapshot's visible skills: the `<available_skills>` list the `skill` tool loads from, or each
- * SKILL.md inlined for a lean child. Empty when there are none.
+ * The task text for the skills the task names (`snapshot` holds only those): which to load first with the `skill` tool,
+ * or each SKILL.md inlined for a lean child. Empty when there are none.
  */
 export function taskSkillText(snapshot: SkillResourceSnapshot, inline: boolean): string {
 	// Lean children must read the same captured file and reference root as a normal child adopting this snapshot.
 	const skills = adoptSkillResourceSnapshot(snapshot).skills.filter((skill) => !skill.disableModelInvocation);
 	if (skills.length === 0) return "";
-	if (!inline)
-		return renderPrompt("subagent/task-skills.md", {
-			catalog: formatSkillsForPrompt(skills, "skill"),
-			blocks: "",
-		});
 	return renderPrompt("subagent/task-skills.md", {
-		catalog: "",
-		blocks: skills.map(inlineSkillBlock).join("\n\n"),
+		names: inline ? "" : skills.map((skill) => skill.name).join(", "),
+		blocks: inline ? skills.map(inlineSkillBlock).join("\n\n") : "",
 	});
 }
 
@@ -96,23 +86,18 @@ export interface PrefixVariant {
 }
 
 /**
- * The prompt prefix a child shares with its siblings, for the stagger and the cache group: profile, model, whether its
- * prompt lists the inherited catalog, and the variant (tools, mode, servers). Skills that ride in the task leave the
- * prefix unchanged. The variant is hashed, so the key names no tool or server.
+ * The prompt prefix a child shares with its siblings, for the stagger and the cache group: profile, model and the
+ * variant (tools, mode, servers). Skills never change it: every sibling declares the parent's skill list. The variant is
+ * hashed, so the key names no tool or server.
  */
-export function prefixKey(
-	role: string | undefined,
-	model: string | undefined,
-	plan: TaskSkillPlan,
-	variant: PrefixVariant = {},
-): string {
+export function prefixKey(role: string | undefined, model: string | undefined, variant: PrefixVariant = {}): string {
 	const fixed = [
 		variant.tools ?? "",
 		variant.lean === true,
 		variant.readOnly === true,
 		[...(variant.mcpServers ?? [])].sort(),
 	];
-	return [role, model, plan.inTask ? "task-skills" : "catalog", sha256(JSON.stringify(fixed)).slice(0, 16)].join("\0");
+	return [role, model, sha256(JSON.stringify(fixed)).slice(0, 16)].join("\0");
 }
 
 /**
@@ -131,8 +116,8 @@ export function childPromptCacheKey(prefix: string): string {
  * that fixes the child's prompt prefix goes in, so children that cannot share an entry do not share a group; children
  * of other parent sessions with the same prefix share it.
  */
-export function childCacheGroup(run: Run, plan: TaskSkillPlan): string {
-	const prefix = prefixKey(run.identity.role, run.route.model ?? run.route.parent, plan, {
+export function childCacheGroup(run: Run): string {
+	const prefix = prefixKey(run.identity.role, run.route.model ?? run.route.parent, {
 		tools: profileTools(run.profile),
 		lean: run.profile?.lean,
 		readOnly: run.profile?.readOnly,

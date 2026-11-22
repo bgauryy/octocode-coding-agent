@@ -73,6 +73,11 @@ export class SessionManager extends SessionReader implements SessionManagerApi {
 		persistence.initializeSession(this.state, sessionFile, newSessionOptions, preloadedFileEntries, loadedFile);
 	}
 
+	/** Reports this session's database-mirror problems to `handler` instead of the process-wide handler or stderr. */
+	setNoticeHandler(handler: ((message: string) => void) | undefined): void {
+		this.state.notice = handler;
+	}
+
 	setSessionFile(sessionFile: string): void {
 		persistence.setSessionFile(this.state, sessionFile);
 	}

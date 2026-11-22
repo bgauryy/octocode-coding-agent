@@ -14,7 +14,7 @@ export interface InstalledAcpAgent {
  * not mean signed in or working.
  */
 export function installedAcpAgents(env: NodeJS.ProcessEnv = process.env): InstalledAcpAgent[] {
-	return RUNNERS.flatMap((runner) => {
+	return RUNNERS.filter((runner) => !runner.headlessOnly).flatMap((runner) => {
 		const path = findOnPath(runner.adapter.command, env);
 		return path ? [{ vendor: runner.id, command: runner.adapter.command, args: [...runner.adapter.args], path }] : [];
 	});

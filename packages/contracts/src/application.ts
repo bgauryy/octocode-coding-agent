@@ -7,6 +7,8 @@ import {
 	type ApplicationAssetInput,
 	type ApplicationAssetPayload,
 } from "./content.ts";
+import { ApplicationActivitySchema, type ApplicationActivity } from "./application-activity.ts";
+export { ApplicationActivitySchema, type ApplicationActivity } from "./application-activity.ts";
 import { AwaitingSchema } from "./application-awaiting.ts";
 import { ApplicationPhaseSchema, SessionStatusEventSchema, SessionStatusSchema } from "./application-phase.ts";
 import { ReplySchema } from "./question.ts";
@@ -168,20 +170,6 @@ export const ApplicationErrorSchema = Type.Object({
 	message: Type.String({ maxLength: 1000 }),
 });
 export type ApplicationError = Static<typeof ApplicationErrorSchema>;
-/** Portable session notices. Persisted entries and live-only notifications have distinct provenance. */
-export const ApplicationActivitySchema = Type.Object({
-	id: Type.String(),
-	kind: Type.String(),
-	at: Type.Number(),
-	text: Type.String({ maxLength: 4000 }),
-	source: Type.Union([Type.Literal("session"), Type.Literal("live")]),
-	entryId: Type.Optional(Type.String()),
-	data: Type.Optional(Type.Unknown()),
-	full: Type.Optional(ApplicationAssetSchema),
-	/** Set when the activity reports a failure; absent otherwise, so older clients still read it as neutral. */
-	outcome: Type.Optional(Type.Literal("failed")),
-});
-export type ApplicationActivity = Static<typeof ApplicationActivitySchema>;
 const activityState = {
 	activities: Type.Optional(Type.Array(ApplicationActivitySchema)),
 	activityBefore: Type.Optional(Type.String()),

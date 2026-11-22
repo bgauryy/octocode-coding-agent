@@ -9,6 +9,7 @@ import { ApplicationServiceError } from "./delivery.ts";
 import type { ApplicationReceiptStore } from "./types.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { ImageContent } from "@octocodeai/octocode-ai";
+import { withInputOrigin } from "../../input-origin.ts";
 import type { ApplicationAssets } from "../assets.ts";
 import type { ApplicationSession } from "../session-port.ts";
 import { assertImageInputSupported, assertImageCounts } from "@octocodeai/octocode-ai/utils/image-input";
@@ -91,7 +92,8 @@ export function dispatchCommand(dispatch: CommandDispatch): void {
 		if (!dispatch.isCurrent()) throw new Error("Session changed before dispatch");
 		if (command.action === "abort" && command.runId !== dispatch.runId())
 			throw new Error("Run changed before dispatch");
-		return dispatch.invoke();
+		// The web client is not the terminal: sensitive actions it triggers confirm in its own dialog.
+		return withInputOrigin("web", () => dispatch.invoke());
 	});
 	// The outcome is saved before it is published; that save waits for another process's write lock without blocking.
 	Promise.resolve(work)

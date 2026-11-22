@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it } from "vitest";
 import { getSkillCommands } from "../src/core/skill-commands.ts";
-import { formatSkillsForPrompt, loadSkillsFromDir } from "../src/core/skills.ts";
+import { loadSkillsFromDir } from "../src/core/skills.ts";
+import { SkillListing } from "../src/core/skills/listing.ts";
 import { createTestResourceLoader } from "./utilities.ts";
 import { createHarness, getMessageText, type Harness } from "./suite/harness.ts";
 
@@ -27,7 +28,7 @@ it("keeps a model-only skill discoverable to the model but out of user commands"
 	const loaded = backgroundSkill();
 	expect(loaded.diagnostics).toEqual([]);
 	expect(getSkillCommands(loaded.skills)).toEqual([]);
-	expect(formatSkillsForPrompt(loaded.skills)).toContain("Background conventions");
+	expect(SkillListing.fromSkills(loaded.skills).render()).toContain("Background conventions");
 });
 it("does not bypass user-invocable through a qualified skill command", async () => {
 	const loader = createTestResourceLoader();

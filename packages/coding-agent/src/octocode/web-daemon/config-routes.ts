@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { handleMcpAddRequest } from "./mcp-add.ts";
+import { handleProviderTest } from "./provider-test-route.ts";
 import { Value } from "typebox/value";
 import {
 	type McpAddCommand,
@@ -10,14 +11,18 @@ import {
 	ConfigSettingCommandSchema,
 	HarnessIdSchema,
 	HarnessSwitchCommandSchema,
+	RunnerCommandSchema,
 	SecurityActionCommandSchema,
 	SignInCommandSchema,
 	SignInStateSchema,
 	ToolPinCommandSchema,
+	type ProviderTestReport,
+	type ProviderTestCommand,
 	type ConfigCredentialCommand,
 	type ConfigProviderCommand,
 	type ConfigSettingCommand,
 	type HarnessSwitchCommand,
+	type RunnerCommand,
 	type SecurityActionCommand,
 	type SignInCommand,
 	type SignInState,
@@ -46,6 +51,8 @@ export interface ConfigRoutes {
 	writeCredential?: (command: ConfigCredentialCommand) => Promise<void>;
 	/** Turns one provider or the Pi source on or off; throws `ConfigWriteError` for a refusal. */
 	writeProvider?: (command: ConfigProviderCommand) => Promise<void>;
+	/** Tests one connected provider, or all of them; spends only on this request. Throws `ConfigWriteError` for a refusal. */
+	testProviders?: (command: ProviderTestCommand) => Promise<ProviderTestReport>;
 	/** Runs one validated sign-in command (start, status, answer, cancel); throws `ConfigWriteError` for a refusal. */
 	signIn?: (command: SignInCommand) => Promise<SignInState>;
 	/** Lists the Harness panel's switches for the workspace; the caller validates its shape. */
@@ -58,6 +65,10 @@ export interface ConfigRoutes {
 	security?: (repo: Repo) => Promise<unknown>;
 	/** Approves, denies or forgets one reviewed item and returns the fresh list; throws `ConfigWriteError` for a refusal. */
 	writeSecurity?: (command: SecurityActionCommand, repo: Repo) => Promise<unknown>;
+	/** Lists the External agents panel's runners; the caller validates its shape. */
+	runners?: () => Promise<unknown>;
+	/** Checks, enables, disables or pauses external agents and returns the fresh list; throws `ConfigWriteError` for a refusal. */
+	writeRunners?: (command: RunnerCommand) => Promise<unknown>;
 	/**
 	 * Lists the Tools panel's rows (each tool's exposure state and pin) for the workspace; the caller validates its shape.
 	 * `live` is what the running session declares, when the page belongs to one.
@@ -196,6 +207,18 @@ const TOOLS_PANEL = (routes: ConfigRoutes): AdminPanel<ToolPinCommand> => ({
 	},
 });
 
+const RUNNERS_PANEL = (routes: ConfigRoutes): AdminPanel<RunnerCommand & { repoId?: undefined }> => ({
+	list: routes.runners,
+	write: routes.writeRunners,
+	isCommand: (body): body is RunnerCommand & { repoId?: undefined } => Value.Check(RunnerCommandSchema, body),
+	words: {
+		list: "This daemon cannot list external agents.",
+		write: "This daemon cannot change external agents.",
+		invalid: "Invalid external agent change",
+		failed: "The external agent change could not be saved.",
+	},
+});
+
 const SECURITY_PANEL = (routes: ConfigRoutes): AdminPanel<SecurityActionCommand> => ({
 	list: routes.security,
 	write: routes.writeSecurity,
@@ -308,8 +331,16 @@ export async function handleConfigRequest(
 		await handlePanel(req, url, access, routes.catalog, SECURITY_PANEL(routes), reply);
 		return true;
 	}
+	if (url.pathname === DAEMON_ROUTES.configRunners) {
+		await handlePanel(req, url, access, routes.catalog, RUNNERS_PANEL(routes), reply);
+		return true;
+	}
 	if (url.pathname === DAEMON_ROUTES.configTools) {
 		await handlePanel(req, url, access, routes.catalog, TOOLS_PANEL(routes), reply);
+		return true;
+	}
+	if (url.pathname === DAEMON_ROUTES.configProviderTest) {
+		await handleProviderTest(req, canWrite(access), routes.testProviders, reply);
 		return true;
 	}
 	const isCredentialRoute =

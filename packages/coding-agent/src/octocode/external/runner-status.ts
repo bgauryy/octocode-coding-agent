@@ -55,7 +55,7 @@ const mtime = (file: string): number => {
  */
 function stamp(spec: RunnerSpec, env: NodeJS.ProcessEnv): { cli?: string; adapter?: string; key: string } {
 	const cli = findOnPath(spec.cli, env);
-	const adapter = findOnPath(spec.adapter.command, env);
+	const adapter = spec.headlessOnly ? undefined : findOnPath(spec.adapter.command, env);
 	const files = spec.signInFiles(env, runnerHome(env));
 	return {
 		cli,

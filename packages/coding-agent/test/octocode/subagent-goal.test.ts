@@ -1,3 +1,4 @@
+import { withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -124,7 +125,7 @@ describe("the agent tool's goal", () => {
 		const id = started.details.id as string;
 		expect(started.content[0].text).toContain(`Started ${id} (reviewer) in the background`);
 		await vi.waitFor(() => expect(s.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
-		expect(s.sent[0].message.content).toMatch(
+		expect(withoutSourceHeader(String(s.sent[0].message.content))).toMatch(
 			new RegExp(`^Background subagent ${id} \\(reviewer: ${GOAL}\\) finished \\(`),
 		);
 		expect(s.sent[0].message.details).toMatchObject({ id, goal: GOAL, profile: "reviewer" });

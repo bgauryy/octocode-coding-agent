@@ -42,10 +42,10 @@ describe.each([60, 100])("long command lists at %i columns", (width) => {
 		for (const row of rowsAt(text, width)) expect(visibleWidth(row)).toBeLessThanOrEqual(width);
 	});
 
-	it("/configuration list stops at the row limit, names the filter and fits", async () => {
-		const outcome = await runConfigWords(configuration(sandbox), ["list"], "/configuration", { listRows: 8 });
+	it("/settings list stops at the row limit, names the filter and fits", async () => {
+		const outcome = await runConfigWords(configuration(sandbox), ["list"], "/settings", { listRows: 8 });
 		const text = outcome.lines.join("\n");
-		expect(text).toMatch(/… \d+ more entries\. Filter: \/configuration list <kind>\|<text>/);
+		expect(text).toMatch(/… \d+ more entries\. Filter: \/settings list <kind>\|<text>/);
 		expect(outcome.lines.filter((line) => /^ {2}\S/.test(line))).toHaveLength(8);
 		for (const row of rowsAt(text, width)) expect(visibleWidth(row)).toBeLessThanOrEqual(width);
 	});

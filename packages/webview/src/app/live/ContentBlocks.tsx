@@ -9,9 +9,9 @@ import { memo, useEffect, useState } from "react";
 import { safeWebLink } from "../../link.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { toolState } from "@octocodeai/octocode-projections";
-import { Button } from "../ui/primitives.tsx";
+import { TextFold } from "../ui/LongText.tsx";
 import { StateMark } from "../ui/StateMark.tsx";
-import { type AssetLoader, AssetExpansionButton, useAssetExpansion } from "./asset-expansion.tsx";
+import { type AssetLoader, AssetExpansionButton, useAssetExpansion, useAssetRead } from "./asset-expansion.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { ToolDisplayView } from "./ToolDisplayView.tsx";
 import { RawToolData, ToolReason } from "./ToolRawData.tsx";
@@ -23,6 +23,7 @@ interface ContentProps {
 	tools?: readonly ApplicationTool[];
 	loadAsset: AssetLoader;
 	plain?: boolean;
+	streaming?: boolean;
 	/** Rewrites a text block's Markdown for display (backlog IDs with titles); the content itself is unchanged. */
 	decorate?: (markdown: string) => string;
 	ancestors?: readonly string[];
@@ -34,6 +35,7 @@ export const ContentBlocks = memo(function ContentBlocks({
 	tools = [],
 	loadAsset,
 	plain,
+	streaming,
 	decorate,
 	ancestors = [],
 }: ContentProps) {
@@ -49,6 +51,7 @@ export const ContentBlocks = memo(function ContentBlocks({
 									full={block.full}
 									loadAsset={loadAsset}
 									plain={plain}
+									streaming={streaming}
 									decorate={decorate}
 								/>
 								<Citations annotations={block.annotations} />
@@ -114,42 +117,44 @@ export function ExpandedText({
 	full,
 	loadAsset,
 	plain,
+	streaming,
 	decorate,
 }: {
 	text: string;
 	full?: ApplicationAsset;
 	loadAsset: AssetLoader;
 	plain?: boolean;
+	streaming?: boolean;
 	decorate?: (markdown: string) => string;
 }) {
-	const [expanded, setExpanded] = useState<{ id: string; text: string }>();
-	const fullKey = full && `${full.id}:${full.revision ?? ""}`;
-	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState("");
-	const value = full && expanded && expanded.id === fullKey ? expanded.text : text;
+	const read = useAssetRead<string>(full);
+	const value = read.loaded?.value ?? text;
+	const body = plain ? <pre className="text output">{value}</pre> : <Markdown text={value} decorate={decorate} />;
 	return (
 		<>
-			{value && (plain ? <pre className="text output">{value}</pre> : <Markdown text={value} decorate={decorate} />)}
-			{full && expanded?.id !== fullKey && (
-				<Button
-					size="sm"
-					loading={loading}
-					onClick={async () => {
-						setLoading(true);
-						setError("");
-						try {
-							setExpanded({ id: fullKey!, text: await (await loadAsset(full.id)).text() });
-						} catch (cause) {
-							setError(errorMessage(cause));
-						} finally {
-							setLoading(false);
-						}
-					}}
-				>
-					Load full content
-				</Button>
-			)}
-			{error && <p role="alert">{error}</p>}
+			{value &&
+				(streaming ? (
+					body
+				) : (
+					<TextFold
+						key={read.loaded?.key ?? "preview"}
+						text={value}
+						label={plain ? "Output" : "Message"}
+						initiallyOpen={!!read.loaded}
+					>
+						{body}
+					</TextFold>
+				))}
+			<AssetExpansionButton
+				label="Load full content"
+				expansion={{
+					available: !!full,
+					value: read.loaded?.value,
+					loading: read.loading,
+					error: read.error,
+					load: () => read.run(async (asset) => (await loadAsset(asset.id)).text()),
+				}}
+			/>
 		</>
 	);
 }
@@ -358,7 +363,7 @@ export function ToolContent({
 					ancestors={path}
 				/>
 			) : (
-				tool?.text && <pre className="text output">{tool.text}</pre>
+				tool?.text && <ExpandedText text={tool.text} loadAsset={loadAsset} plain />
 			)}
 			<ToolPurposes structuredContent={resultPurposeData(tool)} shown={reason} />
 			<RawToolData tool={tool} args={args} />

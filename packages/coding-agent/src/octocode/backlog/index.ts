@@ -10,6 +10,7 @@ import { registerBacklogDigest } from "./digest.ts";
 import { type BacklogOptions, type OpenBacklogWeb, openBacklog } from "./context.ts";
 import type { CompletionGate } from "./completion-gate.ts";
 import type { Holdings } from "./done-guard.ts";
+import type { QaReviewer } from "./qa-gate.ts";
 import { countsText } from "./format.ts";
 import { sessionProgressText } from "./progress.ts";
 import { refreshItemTitles } from "./title-lookup.ts";
@@ -31,6 +32,8 @@ interface RegisterBacklogOptions extends BacklogOptions {
 	completing?: CompletionGate;
 	/** What this session still runs, so `done` waits for it (`done-guard.ts`); without it `done` checks only the hooks. */
 	holdings?: Holdings;
+	/** Reviews an important item before `done` completes it (`qa-gate.ts`); only a session that may move items to the backlog gets one. */
+	review?: QaReviewer;
 	/** How the peer notifier wakes this session; without it no peer wake is sent. */
 	wakes?: PeerWakes;
 }

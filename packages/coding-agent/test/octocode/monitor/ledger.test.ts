@@ -1,11 +1,20 @@
-import { describe, expect, it } from "vitest";
-import type { MachineSample } from "../../../../db/src/api.ts";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { AgentDb, MachineSample } from "../../../../db/src/api.ts";
+import { openAgentDb } from "../../../src/storage/database.ts";
+import { tmp } from "../helpers.ts";
 import { attend } from "../../../src/octocode/monitor/attention/attend.ts";
 import { ATTENTION_RULES } from "../../../src/octocode/monitor/attention/rules.ts";
 import { type Attention, monitorLedgerOf } from "../../../src/octocode/monitor/ledger.ts";
 import { registerMonitor } from "../../../src/octocode/monitor/register.ts";
 import type { MachineSamplerOptions } from "../../../src/octocode/monitor/sampler.ts";
 import { StuckJobWatch } from "../../../src/octocode/monitor/stuck-jobs.ts";
+
+let agent: AgentDb;
+beforeEach(() => {
+	agent = openAgentDb(path.join(tmp(), "machine.db"));
+});
+afterEach(() => agent.close());
 
 const sample = (at: number, load1: number): MachineSample => ({
 	at,
@@ -32,7 +41,7 @@ function monitored(sendMessage: (message: unknown, options: unknown) => unknown 
 	registerMonitor(api as never, {
 		isSubagent: false,
 		jobs: () => [],
-		db: () => ({}) as never,
+		db: () => agent.db,
 		title: () => "octocode-agent-main-mine",
 		watch: new StuckJobWatch({ logSize: () => 0, groupCpu: async () => new Map() }),
 		start: (options) => {

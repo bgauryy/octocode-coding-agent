@@ -49,14 +49,20 @@ describe("children of different bundled roles", () => {
 		for (const role of roles) contexts.push(await captureChild(role ?? "general", role));
 		const [general, ...others] = contexts;
 		// Not vacuous: the read-only roles differ from each other and from the writable ones after the boundary; the
-		// general child and the implementer are both writable with the same policy, so they share it.
-		expect(new Set(contexts.map((context) => instructionBlocks(context).session)).size).toBe(roles.length - 1);
+		// implementer carries its own role body, so even it and the general child differ there.
+		expect(new Set(contexts.map((context) => instructionBlocks(context).session)).size).toBe(roles.length);
 		expect(general.tools.length).toBeGreaterThan(5);
 		expect(instructionBlocks(general).base.length).toBeGreaterThan(2_000);
 		for (const other of others) {
 			// Every role declares the MCP tools the same way (deferred until used), the implementer included, so all roles
-			// send one byte-identical tool array and share its cache.
-			expect({ role: other.role, tools: toolsText(other) }).toEqual({ role: other.role, tools: toolsText(general) });
+			// send one byte-identical tool array and share its cache, up to the `skill` tool: it lists the role's own
+			// skills, so it is declared last and only its text differs.
+			const sharedTools = (context: AgentContext) => toolsText({ ...context, tools: context.tools.slice(0, -1) });
+			for (const context of [general, other]) expect(context.tools.at(-1)?.name, context.role).toBe("skill");
+			expect({ role: other.role, tools: sharedTools(other) }).toEqual({
+				role: other.role,
+				tools: sharedTools(general),
+			});
 			expect(instructionBlocks(general).base).toContain("<mcps>");
 			expect({ role: other.role, base: instructionBlocks(other).base }).toEqual({
 				role: other.role,

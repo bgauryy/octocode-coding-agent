@@ -4,6 +4,7 @@ import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { EntryRenderer } from "../../../core/features/types.ts";
 import type { CustomEntry } from "../../../core/session-manager.ts";
 import { theme } from "../../../theme/theme.ts";
+import { LongResponse } from "./long-response.ts";
 import { surfaceFill } from "../../../theme/bands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -79,7 +80,7 @@ export class CustomEntryComponent extends Container {
 
 		this.customComponent = component;
 		this.addChild(new Spacer(1));
-		this.addChild(component);
+		this.addChild(new LongResponse(component, this._expanded, (expanded) => this.setExpanded(expanded)));
 	}
 }
 

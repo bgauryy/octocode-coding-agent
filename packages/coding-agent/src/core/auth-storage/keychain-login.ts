@@ -4,10 +4,18 @@
  * OAuth credential passed through `KeychainWrite` goes to the keychain as one blob (`keychain-oauth.ts`).
  */
 
-import type { AuthPrompt, Credential } from "@octocodeai/octocode-ai";
+import type { ApiKeyCredential, AuthPrompt, Credential } from "@octocodeai/octocode-ai";
 import { clearConfigValueCache, resolveConfigValue } from "../config-value.ts";
 import type { CredentialWriteTransform } from "../runtime-credentials.ts";
 import { KeychainCommandError, type KeychainBackend, KeychainSecretTooLargeError } from "./keychain.ts";
+import {
+	endpointAccount,
+	endpointBlob,
+	endpointReference,
+	endpointStub,
+	envHoldsSecret,
+	hasKeychainRecord,
+} from "./keychain-endpoint.ts";
 import { oauthAccount, oauthBlob, oauthReference, oauthStub } from "./keychain-oauth.ts";
 
 export type KeychainChoice = "keychain" | "file";
@@ -65,6 +73,7 @@ export class KeychainWrite {
 			}
 			return oauthStub(credential, this.keychain.referenceFor(this.account));
 		}
+		if (credential.type === "api_key" && hasKeychainRecord(credential)) return this.saveEndpoint(credential, previous);
 		if (credential.type !== "api_key" || credential.key === undefined) return credential;
 		this.account = this.provider;
 		const earlierKey = previous?.type === "api_key" ? previous.key : undefined;
@@ -75,6 +84,16 @@ export class KeychainWrite {
 				: undefined;
 		await this.store(credential.key);
 		return { ...credential, key: this.keychain.referenceFor(this.provider) };
+	}
+
+	/** A key with a custom host or a secret environment value: it all goes to the keychain as one record; auth.json keeps a stub. */
+	private async saveEndpoint(credential: ApiKeyCredential, previous?: Credential): Promise<Credential> {
+		this.account = endpointAccount(this.provider);
+		const earlier = endpointReference(previous);
+		this.hadEntry = !!earlier && this.keychain.isOwnReference(earlier, this.account);
+		this.earlierSecret = this.hadEntry && earlier ? resolveConfigValue(earlier) : undefined;
+		await this.store(endpointBlob(credential));
+		return endpointStub(this.keychain.referenceFor(this.account));
 	}
 
 	/** Writes `secret` to the keychain account of this save. */
@@ -144,9 +163,11 @@ export class KeychainLoginSession {
 	wrapPrompt(prompt: (prompt: AuthPrompt) => Promise<string>): (prompt: AuthPrompt) => Promise<string> {
 		return async (request) => {
 			const answer = await prompt(request);
-			if (request.type === "secret" && !this.asked && answer.trim() !== "") {
+			// A custom host typed with the key is stored where the key is, so it asks the question too.
+			const storedWithKey = request.type === "secret" || (request.type === "text" && request.storedWithKey);
+			if (storedWithKey && !this.asked && answer.trim() !== "") {
 				this.asked = true;
-				this.secret = answer;
+				if (request.type === "secret") this.secret = answer;
 				this.choice = await this.askStorage();
 			}
 			return answer;
@@ -154,19 +175,42 @@ export class KeychainLoginSession {
 	}
 
 	/**
-	 * Stores the typed key, or an account sign-in, in the keychain and swaps it for a reference (an OAuth sign-in too large
-	 * for the keychain stays in auth.json); any other credential passes through.
+	 * Stores the typed key (or the typed secret held in an environment value), or an account sign-in, in the keychain and
+	 * swaps it for a reference (an OAuth sign-in too large for the keychain stays in auth.json); any other credential
+	 * passes through.
 	 */
 	readonly transformCredential: CredentialWriteTransform = Object.assign(
 		async (credential: Credential, previous?: Credential): Promise<Credential> => {
 			const { secret } = this;
 			if (this.choice !== "keychain") return credential;
 			if (credential.type === "oauth") return this.forSignIn ? this.write.save(credential, previous) : credential;
-			if (secret === undefined || credential.type !== "api_key") return credential;
+			if (credential.type !== "api_key") return credential;
+			if (credential.endpoint !== undefined) return this.write.save(credential, previous);
+			if (secret === undefined) return credential;
 			const key = credential.key;
-			if (key === undefined || (key !== secret && key !== secret.trim())) return credential;
+			const typedKey = key !== undefined && (key === secret || key === secret.trim());
+			if (!typedKey && !envHoldsSecret(credential, secret)) return credential;
 			return this.write.save(credential, previous);
 		},
 		{ rollback: () => this.write.rollback() },
 	);
+}
+
+/**
+ * With no system keychain, a credential saved with a custom host goes to auth.json only after the user agrees: the
+ * first non-empty answer stored with the key asks, and a refusal ends the login before anything is saved.
+ */
+export function confirmPlaintextHost(
+	prompt: (prompt: AuthPrompt) => Promise<string>,
+	confirm: () => Promise<boolean>,
+): (prompt: AuthPrompt) => Promise<string> {
+	let asked = false;
+	return async (request) => {
+		const answer = await prompt(request);
+		if (request.type === "text" && request.storedWithKey && !asked && answer.trim() !== "") {
+			asked = true;
+			if (!(await confirm())) throw new Error("Login cancelled");
+		}
+		return answer;
+	};
 }

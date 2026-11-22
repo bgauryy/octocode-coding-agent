@@ -47,8 +47,10 @@ function manager() {
 		},
 	};
 	let disabled: string[] = [];
+	let hiddenModels: Record<string, string[]> = {};
 	let configDir: string | undefined = "/home/test/.octocode";
 	const runtime = {
+		getReloadError: () => undefined,
 		getConfigurationDirectory: () => configDir,
 		setDisabledProviders: vi.fn((ids: string[]) => {
 			disabled = ids;
@@ -80,6 +82,10 @@ function manager() {
 			settingsManager: {
 				getProviderSources: () => ({}),
 				getDisabledProviders: () => disabled,
+				getHiddenModels: () => hiddenModels,
+				setHiddenModels: vi.fn((hidden: Record<string, string[]>) => {
+					hiddenModels = hidden;
+				}),
 				getExternalAgents: () => true,
 				getEnabledExternalAgents: (): string[] | undefined => undefined,
 				setDisabledProviders: vi.fn((ids: string[]) => {
@@ -405,23 +411,23 @@ describe("provider setup flow", () => {
 		await run;
 	});
 
-	it("Test credential runs the check for this provider and shows a pass", async () => {
+	it("Test runs the check for this provider and shows a pass", async () => {
 		const { host, value } = manager();
 		providerHealth.noteCheck("openai"); // a stale answer must not outlive the new check
 		answers.error = undefined;
 		const run = showProviderManager(host, "openai", { sourceEnvironment: sourceEnvironment() });
-		choose(await pageAt(value, 0), "Test credential");
+		choose(await pageAt(value, 0), "Test —");
 		await closeList(value, 1);
 		await run;
 		expect(value.showStatus).toHaveBeenCalledWith(expect.stringContaining("OpenAI: ✓ credential worked"));
 		expect(value.showError).not.toHaveBeenCalled();
 	});
 
-	it("Test credential shows a failure with the key redacted", async () => {
+	it("Test shows a failure with the key redacted", async () => {
 		const { host, value } = manager();
 		answers.error = "401 invalid x-api-key sk-ant-api03-secretsecretsecretsecret";
 		const run = showProviderManager(host, "openai", { sourceEnvironment: sourceEnvironment() });
-		choose(await pageAt(value, 0), "Test credential");
+		choose(await pageAt(value, 0), "Test —");
 		await closeList(value, 1);
 		await run;
 		const shown = String(value.showError.mock.calls.at(-1)?.[0]);
@@ -446,9 +452,13 @@ describe("provider setup flow", () => {
 		}
 		const actions = rows(page)
 			.map((line) => line.trim())
-			.filter((line) => /Choose a model|Sign in|API key$|Remove|Disable/.test(line) && !/Status|Models/.test(line));
+			.filter(
+				(line) =>
+					/Choose a model|Choose models|Sign in|API key$|Remove|Disable/.test(line) && !/Status|Models/.test(line),
+			);
 		expect(actions.map((line) => line.replace(/^\s*[›▸]?\s*/, "").trim())).toEqual([
 			"Choose a model for this chat",
+			"Choose models — tick which of this provider's models /model, Ctrl+P and subagents may use",
 			"Sign in — OpenAI account",
 			"Replace API key",
 			"Remove saved credential",
@@ -457,6 +467,26 @@ describe("provider setup flow", () => {
 		choose(page, "Replace API key");
 		await run;
 		expect(value.showApiKeyLoginDialog).toHaveBeenCalledWith("openai", "OpenAI", expect.any(Function));
+	});
+
+	it("saves the models a user unticks on a provider's page and applies them to the session", async () => {
+		const { host, value, runtime } = manager();
+		runtime.getModels = () => [
+			{ id: "one", name: "One", provider: "openai" },
+			{ id: "two", name: "Two", provider: "openai" },
+		];
+		const run = showProviderManager(host, "openai", { sourceEnvironment: sourceEnvironment() });
+		choose(await pageAt(value, 0), "Choose models");
+		const list = await pageAt(value, 1);
+		expect(textOf(list)).toContain("OpenAI — choose models");
+		list.handleInput(ENTER);
+		list.handleInput("\x13");
+		await vi.waitFor(() => expect(value.session.settingsManager.setHiddenModels).toHaveBeenCalled());
+		const saved = value.session.settingsManager.setHiddenModels.mock.calls[0][0];
+		expect(Object.values(saved)[0]).toHaveLength(1);
+		list.handleInput(ESC);
+		await closeList(value, 2);
+		await run;
 	});
 
 	it("disables a provider, warns when the chat runs on it, and offers enabling afterwards", async () => {

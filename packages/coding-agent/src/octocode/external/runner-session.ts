@@ -5,7 +5,8 @@ import type { AcpBackend, AcpConnectInput, AcpPermission, AcpTurnUpdate } from "
 import { authRequiredIn } from "../../../../acp/src/client/auth.ts";
 import { clip } from "../shared/text.ts";
 import { connectAcp } from "./acp-host.ts";
-import { HEADLESS_ARGS, headlessReady, HeadlessSignedOut, headlessTurn } from "./runner-headless.ts";
+import { headlessReady, HeadlessSignedOut, headlessTurn } from "./runner-headless.ts";
+import { headlessRoute } from "./headless/routes.ts";
 import {
 	cachedRunners,
 	checkRunners,
@@ -30,6 +31,10 @@ export interface RunnerTurnInput {
 	communication?: RunnerCommunication;
 	cwd: string;
 	text: string;
+	/** The caller is a read-only role (`runner-child.ts`): a route that cannot keep a task from writing refuses it. */
+	readOnly?: boolean;
+	/** The CLI's own session id an earlier turn of this task reported (`RunnerReply.sessionId`): only a headless route resumes. */
+	resume?: string;
 	signal: AbortSignal;
 	onActivity(line: string): void;
 	onStart?(pid: number): void;
@@ -63,10 +68,12 @@ export function launchOf(runner: string, states: readonly RunnerState[] = cached
 			`${runner} sign-in could not be confirmed${state.error ? `: ${redactSecrets(state.error)}` : ""}. Check /providers (External agents), then retry.`,
 		);
 	const billing = state.auth?.billing;
-	const command = findOnPath(spec.adapter.command);
+	const command = spec.headlessOnly ? undefined : findOnPath(spec.adapter.command);
 	if (command) return { command, args: adapterArgs(spec, billing), billing };
-	const cli = headlessReady({ ...state, adapter: false }) ? findOnPath(spec.cli) : undefined;
-	if (cli) return { command: cli, args: [...HEADLESS_ARGS], billing, route: "headless" };
+	const route = headlessRoute(runner);
+	const cli = route && headlessReady({ ...state, adapter: false }) ? findOnPath(spec.cli) : undefined;
+	if (cli && route) return { command: cli, args: [...route.args], billing, route: "headless" };
+	if (spec.headlessOnly) throw new Error(`${spec.name} has no headless route a task may run through.`);
 	throw new Error(`${spec.name}'s ACP adapter is not installed: ${spec.adapter.install}.`);
 }
 
@@ -124,6 +131,10 @@ export async function runnerTurn(input: RunnerTurnInput, deps: RunnerTurnDeps) {
 				signal,
 				awake,
 			});
+		if (input.resume !== undefined)
+			throw new Error(
+				`${input.runner} runs through its ACP adapter, which does not resume a task's session; only a headless route does.`,
+			);
 		backend = await deps.connect(
 			{
 				command: launch.command,

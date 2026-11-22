@@ -12,6 +12,7 @@ import {
 	writeSkillsStore,
 } from "../../src/octocode/context-optimization/skills-store.ts";
 import { contextOptimizationDirs } from "../../src/octocode/shared/home.ts";
+import { SkillCatalog } from "../../src/octocode/skill/catalog.ts";
 import { asSetup } from "./fake-host.ts";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
@@ -33,17 +34,20 @@ describe("the skills store a session records", () => {
 		fs.mkdirSync(cwd);
 		const userDir = contextOptimizationDirs(cwd, agentDir).user;
 		const handlers = new Map<string, Handler>();
-		registerSkillDescriptions(asSetup({ on: (event: string, handler: Handler) => handlers.set(event, handler) }), {
-			isSubagent: false,
-			agentDir: () => agentDir,
-		});
 		const file = path.join(root, "skills", "a", "SKILL.md");
 		const skills = [{ name: "a", description: "A source", filePath: file, baseDir: path.dirname(file) } as Skill];
-		const fsync = vi.spyOn(fs, "fsyncSync");
-		await handlers.get("before_agent_start")?.(
-			{ systemPromptOptions: { skills } },
-			{ cwd, hasUI: false, ui: { notify: () => {} } },
+		const snapshot = {
+			version: 1,
+			explicitSkills: [],
+			resources: skills.map((skill) => ({ skill, canonicalPath: skill.filePath, visible: true })),
+		};
+		registerSkillDescriptions(
+			asSetup({ on: (event: string, handler: Handler) => handlers.set(event, handler) }),
+			new SkillCatalog(() => snapshot as never),
+			{ isSubagent: false, agentDir: () => agentDir },
 		);
+		const fsync = vi.spyOn(fs, "fsyncSync");
+		await handlers.get("before_agent_start")?.({}, { cwd, hasUI: false, ui: { notify: () => {} } });
 		expect(Object.keys(readSkillsStore(userDir).skills)).toEqual(["a"]);
 		expect(fsync).toHaveBeenCalledTimes(1);
 

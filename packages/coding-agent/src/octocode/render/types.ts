@@ -12,16 +12,10 @@ export interface ToolRow {
 	unsubscribe?: () => void;
 	/** The elapsed text the last tick asked a frame for: a tick that would draw the same text asks for none. */
 	tickedText?: string;
-	/** When the row first drew as waiting: its mark pulses from here for `WAIT_PULSE_MS`, then holds still. */
-	waitedAt?: number;
 	/** `checks 1.2s · queued 3s`: the time the call waited before it ran (see `timingOf`). */
 	waits?: string;
 	/** The call was interrupted (Esc, a kill, a requested stop), not failed: drawn `◼` in the warning colour. */
 	stopped?: boolean;
-	/** When the row first drew running: a finish after it visibly spun is news and flashes once (see `rowMark`). */
-	spunAt?: number;
-	/** When the row first drew as finished: the flash of its `✓` counts from here. */
-	settledAt?: number;
 	/** The state the row's animation subscription paints, and how to end it (see `rowMark`). */
 	marking?: string;
 	unmark?: () => void;

@@ -195,7 +195,7 @@ describe("defaultTools setting", () => {
 			try {
 				await session.bindFeatures({});
 				// `agent` brings its companion `timer` (docs/native-features.md, companionTools).
-				const companions = tools.includes("agent") ? ["wait"] : [];
+				const companions = tools.includes("agent") ? ["notify"] : [];
 				expect(session.getActiveToolNames().sort()).toEqual([...tools, ...companions].sort());
 			} finally {
 				await session.featureHost.emit({ type: "session_shutdown", reason: "quit" });

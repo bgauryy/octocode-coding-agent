@@ -29,7 +29,7 @@ export interface Need {
 	message?: Traffic;
 	/** How many questions wait. */
 	count: number;
-	/** When the wait began (`needsYou`): the waiting mark breathes from here for `WAIT_PULSE_MS`, then holds still. */
+	/** When the wait began (`needsYou`): when the wait began. */
 	since?: number;
 }
 
@@ -83,7 +83,7 @@ export function panelState({ member, doneAt, end, need }: PanelEntry, now: numbe
 /** When a row's mark began to move: its finish (which `panelState` shows first), else the start of its wait. */
 export const markSince = ({ doneAt, need }: PanelEntry): number | undefined => doneAt ?? need?.since;
 
-/** The mark in front of an agent's row, painted for `now` (the state light: breathing while it works, a glow just after it finished at `since`). */
+/** The mark in front of an agent's row, painted for `now` (the state light: a spinner while it works, a steady ⏺ in its state's colour after). */
 export const panelMark = (theme: Theme, state: PanelState, now: number, since?: number): string =>
 	stateMark(theme, state.state, {
 		now,

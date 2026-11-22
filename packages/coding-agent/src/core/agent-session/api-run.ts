@@ -140,7 +140,7 @@ export interface AgentSessionPromptingApi {
 	releaseQueuedInput(id: string, text?: string): ReleasedQueuedInput;
 
 	/** Abort the current operation; internal cancellation and replacement do not emit interruption hooks. */
-	abort(reason?: "interrupted" | "replacement" | "shutdown" | "internal"): Promise<void>;
+	abort(reason?: "interrupted" | "peer" | "replacement" | "shutdown" | "internal"): Promise<void>;
 
 	waitForIdle(): Promise<void>;
 

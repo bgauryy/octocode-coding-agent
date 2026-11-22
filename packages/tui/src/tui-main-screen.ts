@@ -153,7 +153,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		const overlays = this.hasOverlayEntries
 			? (lines: string[]) => this.compositeOverlays(lines, width, height)
 			: undefined;
-		const frame = this.finisher.finish(source, this.getShowHardwareCursor(), width, height, overlays);
+		const frame = this.finisher.finish(source, this.getShowHardwareCursor(), width, height, overlays, next.prepared);
 		const cursorPos = frame.cursor;
 		const newLines = frame.lines;
 		// Every pass below starts at the first row that can differ from the rows on the terminal: those above it are the

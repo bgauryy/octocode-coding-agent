@@ -120,6 +120,10 @@ export const PROMPTS: Record<string, { fire: string; nearMiss: string }> = {
 		fire: "Create a new Agent Skill with a SKILL.md and improve its trigger description.",
 		nearMiss: "What are your strongest skills as a coding assistant?",
 	},
+	"octocode-visual-browsing": {
+		fire: "Open our staging site in a browser, click through the checkout flow and screenshot each step.",
+		nearMiss: "What is a web browser? One sentence.",
+	},
 	"octocode-test-plan": {
 		fire: "Write a runnable test plan for this pull request: setup, actions, expected results and pass rules.",
 		nearMiss: "Write a unit test for add(a, b).",

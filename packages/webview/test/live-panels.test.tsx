@@ -121,7 +121,7 @@ describe("LongText", () => {
 		expect(within(details).getByText(`output: 20 lines, ${text.length} characters`)).toBeInTheDocument();
 	});
 
-	it("uses the rich renderer and opens long text when one is provided, but plain stays literal", () => {
+	it("opens rich text on demand and keeps plain output literal", async () => {
 		const Rich = ({ text }: { text: string }) => <article aria-label="rich">{text.toUpperCase()}</article>;
 		const long = "x".repeat(800);
 		const { container, rerender } = render(
@@ -129,8 +129,10 @@ describe("LongText", () => {
 				<LongText text={long} label="message" />
 			</RichTextContext.Provider>,
 		);
-		expect(screen.getByRole("article", { name: "rich" })).toHaveTextContent("X".repeat(800));
-		expect(container.querySelector("details")?.open).toBe(true);
+		expect(container.querySelector("details")?.open).toBe(false);
+		expect(container.querySelector("article")).toBeNull();
+		await userEvent.click(screen.getByText(/message: 1 line/));
+		expect(await screen.findByRole("article", { name: "rich" })).toHaveTextContent("X".repeat(800));
 		rerender(
 			<RichTextContext.Provider value={Rich}>
 				<LongText text="tool output" label="output" plain />

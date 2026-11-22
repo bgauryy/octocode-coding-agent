@@ -42,39 +42,17 @@ export const ANTHROPIC_WORKSPACE_ID_ENV = "ANTHROPIC_WORKSPACE_ID";
  */
 export const ANTHROPIC_API_KEY_ENV_ORDER = [ANTHROPIC_API_KEY_ENV, ANTHROPIC_OAUTH_TOKEN_ENV] as const;
 
-let cachedVertexAdcCredentialsExists: boolean | null = null;
-
+/**
+ * Whether Application Default Credentials exist on disk. A stat per call, not a process-lifetime cache: a
+ * `gcloud auth application-default login` after the first check must be seen without a restart. Before the Node
+ * modules have loaded (an async import race at startup) or in a browser, the answer is false.
+ */
 function hasVertexAdcCredentials(env?: ProviderEnv): boolean {
-	const explicitCredentialsPath = env?.GOOGLE_APPLICATION_CREDENTIALS;
-	if (explicitCredentialsPath) {
-		return _existsSync ? _existsSync(explicitCredentialsPath) : false;
-	}
-
-	if (cachedVertexAdcCredentialsExists === null) {
-		// If node modules haven't loaded yet (async import race at startup),
-		// return false WITHOUT caching so the next call retries once they're ready.
-		// Only cache false permanently in a browser environment where fs is never available.
-		if (!_existsSync || !_homedir || !_join) {
-			const isNode = typeof process !== "undefined" && (process.versions?.node || process.versions?.bun);
-			if (!isNode) {
-				// Definitively in a browser — safe to cache false permanently
-				cachedVertexAdcCredentialsExists = false;
-			}
-			return false;
-		}
-
-		// Check GOOGLE_APPLICATION_CREDENTIALS env var first (standard way)
-		const gacPath = getProviderEnvValue("GOOGLE_APPLICATION_CREDENTIALS", env);
-		if (gacPath) {
-			cachedVertexAdcCredentialsExists = _existsSync(gacPath);
-		} else {
-			// Fall back to default ADC path (lazy evaluation)
-			cachedVertexAdcCredentialsExists = _existsSync(
-				_join(_homedir(), ".config", "gcloud", "application_default_credentials.json"),
-			);
-		}
-	}
-	return cachedVertexAdcCredentialsExists;
+	if (!_existsSync) return false;
+	const explicitCredentialsPath = getProviderEnvValue("GOOGLE_APPLICATION_CREDENTIALS", env);
+	if (explicitCredentialsPath) return _existsSync(explicitCredentialsPath);
+	if (!_homedir || !_join) return false;
+	return _existsSync(_join(_homedir(), ".config", "gcloud", "application_default_credentials.json"));
 }
 
 function getApiKeyEnvVars(provider: string): readonly string[] | undefined {

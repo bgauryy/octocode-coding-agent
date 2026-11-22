@@ -56,6 +56,22 @@ export interface PurgeOptions {
 	 * parent is purged loses its edge, since the edge references the parent's row.
 	 */
 	keepSessions?: readonly string[];
+	/**
+	 * Tells whether the process recorded for a session (`pid`, `pid_started`) still runs. Sessions it accepts are kept
+	 * like `keepSessions`: the check runs when the purge starts, so a session another process opened after the caller
+	 * planned the purge keeps its rows.
+	 */
+	isLive?: (pid: number, pidStarted: string | null) => boolean;
+}
+
+/** `keepSessions` plus the sessions whose recorded process runs now. */
+function keptSessions(db: DatabaseSync, options: PurgeOptions): string[] {
+	const keep = new Set(options.keepSessions);
+	const { isLive } = options;
+	if (isLive)
+		for (const row of db.prepare("SELECT id, pid, pid_started FROM sessions WHERE pid IS NOT NULL").all())
+			if (isLive(Number(row.pid), row.pid_started === null ? null : String(row.pid_started))) keep.add(String(row.id));
+	return [...keep];
 }
 
 const KEPT = "(SELECT value FROM json_each(?2))";
@@ -75,6 +91,9 @@ const WORKSPACE: readonly Statement[] = [
 	["timers", `DELETE FROM timers WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
 	["jobs", `DELETE FROM jobs WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
 	["memories", "DELETE FROM memories WHERE workspace_id = ?1"],
+	["tickets", `DELETE FROM tickets WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
+	["event_subscriptions", `DELETE FROM event_subscriptions WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
+	["event_log", `DELETE FROM event_log WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
 	["agent_events", `DELETE FROM agent_events WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
 	["messages", "DELETE FROM messages WHERE workspace_id = ?1"],
 	["leases", "DELETE FROM leases WHERE workspace_id = ?1"],
@@ -112,7 +131,7 @@ export function workspace(
 	workspaceId: string,
 	options: PurgeOptions = {},
 ): PurgeCounts {
-	const keep = [...(options.keepSessions ?? [])];
+	const keep = keptSessions(db, options);
 	const kept = JSON.stringify(keep);
 	const ids = () => sessionsOf(db, workspaceId).filter((id) => !keep.includes(id));
 	// The mirror first (its lock is always taken before the coordination file's), then the coordination rows.
@@ -151,6 +170,9 @@ const ALL: readonly Statement[] = [
 	["messages", "DELETE FROM messages"],
 	["leases", "DELETE FROM leases"],
 	["edits", "DELETE FROM edits"],
+	["tickets", `DELETE FROM tickets WHERE ${outside("session_id")}`],
+	["event_subscriptions", `DELETE FROM event_subscriptions WHERE ${outside("session_id")}`],
+	["event_log", `DELETE FROM event_log WHERE ${outside("session_id")}`],
 	["agent_events", `DELETE FROM agent_events WHERE ${outside("session_id")}`],
 	["agents", `DELETE FROM agents WHERE ${outside("session_id")} AND ${outside("lifecycle_session_id")}`],
 	["agent_runs", `DELETE FROM agent_runs WHERE ${outside("session_id")}`],
@@ -179,7 +201,7 @@ const ALL: readonly Statement[] = [
  * they reference. Run `maintenance.vacuum` on each file after it to give the space back.
  */
 export function all(db: DatabaseSync, mirror: DatabaseSync, options: PurgeOptions = {}): PurgeCounts {
-	const keep = [...(options.keepSessions ?? [])];
+	const keep = keptSessions(db, options);
 	const counts: PurgeCounts = inTransaction(mirror, () => {
 		const removed = transcripts.keepOnly(mirror, keep);
 		return {

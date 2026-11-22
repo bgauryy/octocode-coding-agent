@@ -1,45 +1,23 @@
-import { displayText, textResultDisplay } from "../../../render/display.ts";
-import { renderPrompt } from "../../../../core/prompt-template.ts";
 import { Type } from "typebox";
+import { renderPrompt } from "../../../../core/prompt-template.ts";
 import type { FeatureSetup } from "../../../../core/features/index.ts";
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { envFlag, SKILLS_IN_TASK_ENV } from "@octocodeai/octocode-common/env";
+import { displayText, textResultDisplay } from "../../../render/display.ts";
 import { resultBlock, resultText } from "../../../render/tool.ts";
-import { parseSkillBlock } from "../../../../core/agent-session/prompt-expansion.ts";
-import { shortPath } from "../../../../utils/display-path.ts";
-import { oneLine } from "../../../shared/text.ts";
 import { timedTool, timingOf } from "../../../render/rows.ts";
+import { oneLine } from "../../../shared/text.ts";
 import { textResult } from "../../../shared/util.ts";
-import { type CatalogSkill, SkillCatalog, closeNames } from "../../../skill/catalog.ts";
-import { loadSkill, type SkillDetails } from "../../../skill/load.ts";
-import { skillHeader, skillInstructions, skillLoadSummary } from "../../../skill/render.ts";
-
-/** Names listed when nothing is close to the requested one. */
-const LISTED_NAMES = 20;
-
-/** `skill:name`, `/skill:name` and `/name` name the same skill as `name`: the forms users type. */
-const bareName = (value: string): string => value.trim().replace(/^\/?(?:skill:)?/, "");
-
-function unknownSkill(name: string, available: readonly CatalogSkill[]): Error {
-	const names = available.map((entry) => entry.skill.name);
-	if (names.length === 0)
-		return new Error(`Unknown skill "${name}": this session has no skill a model can load. Continue without one.`);
-	const close = closeNames(name, names);
-	return new Error(
-		close.length > 0
-			? `Unknown skill "${name}". Close matches: ${close.join(", ")}.`
-			: `Unknown skill "${name}". Available: ${names.slice(0, LISTED_NAMES).join(", ")}${names.length > LISTED_NAMES ? `, and ${names.length - LISTED_NAMES} more` : ""}.`,
-	);
-}
+import { SkillBatch, requestedSkills } from "../../../skill/batch.ts";
+import { batchDisplay, batchHeader, batchResult } from "../../../skill/batch-render.ts";
+import { SkillCatalog } from "../../../skill/catalog.ts";
 
 /**
- * The `skill` tool: how a model loads a skill the session lists in `<available_skills>`. It reads only the instruction
- * file of a skill the session loaded and the user did not reserve (`disable-model-invocation`): a name outside that
- * catalog is refused, so the tool is no way to read another path. The result is the `/skill:name` block, with the
- * skill's directory so references in it resolve. With no loadable skill the tool's declaration stays out of requests.
+ * The `skill` tool: the one place skills are explained and listed. Its description, built from the skills this session
+ * has now, says what a skill is, when to load one and where its outputs go, then lists every skill a model may load
+ * (`SkillListing`). A call loads several at once; it serves only skills in that list, so the tool is no way to read
+ * another path, and an entry it refuses never costs the others. With no loadable skill the declaration stays out of requests.
  */
-export function registerSkillTool(api: FeatureSetup): SkillCatalog {
-	const catalog = new SkillCatalog(() => api.resources.getSkillResourceSnapshot());
+export function registerSkillTool(api: FeatureSetup, existing?: SkillCatalog): SkillCatalog {
+	const catalog = existing ?? new SkillCatalog(() => api.resources.getSkillResourceSnapshot());
 	api.bus.on("session_start", async () => {
 		catalog.refresh();
 	});
@@ -48,92 +26,37 @@ export function registerSkillTool(api: FeatureSetup): SkillCatalog {
 			name: "skill",
 			roleVariant: true,
 			label: "Skill",
-			// The skills section owns the trigger; the snippet only points to it and this text says what the tool does.
 			promptSnippet: renderPrompt("tools/skill/snippet.md"),
-			description:
-				"Load and follow a listed skill by name. Returns its SKILL.md and directory; resolve relative paths against that directory.",
+			description: renderPrompt("tools/skill/description.md", { listing: "(no skills are enabled)" }),
 			parameters: Type.Object({
-				name: Type.String({ description: "Listed skill name" }),
+				names: Type.Optional(Type.Array(Type.String())),
+				name: Type.Optional(Type.String()),
 			}),
-			// The declaration is worth its tokens only when a model can load a skill. A child whose skills ride in its task
-			// keeps it even without any: siblings with and without skills then send the same tool list and share its cache.
-			prepareLoadout: () =>
-				catalog.invocable().length === 0 && !envFlag(process.env, SKILLS_IN_TASK_ENV)
+			prepareLoadout() {
+				const listing = catalog.listing();
+				return listing.isEmpty
 					? { hiddenDeclarations: ["skill"] }
-					: undefined,
+					: { descriptions: { skill: renderPrompt("tools/skill/description.md", { listing: listing.render() }) } };
+			},
 			async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 				signal?.throwIfAborted();
-				const requested = bareName(params.name ?? "");
-				if (!requested) throw new Error("skill needs the name of a listed skill.");
-				const all = catalog.refresh({ allowStale: false });
-				const entry =
-					all.find((candidate) => candidate.skill.name === requested) ??
-					all.find((candidate) => candidate.skill.name.toLowerCase() === requested.toLowerCase());
-				if (!entry)
-					throw unknownSkill(
-						requested,
-						all.filter((candidate) => !candidate.skill.disableModelInvocation),
-					);
-				const { skill } = entry;
-				if (skill.disableModelInvocation)
-					throw new Error(
-						`Skill "${skill.name}" is reserved for the user (disable-model-invocation); do not load it. Ask the user to run /skill:${skill.name} if it is needed.`,
-					);
-				let loaded: ReturnType<typeof loadSkill>;
-				try {
-					loaded = loadSkill(entry, ctx.sessionManager.getSessionId(), ctx.cwd);
-				} catch (error) {
-					throw new Error(`Skill "${skill.name}" could not be read: ${errorMessage(error)}`, { cause: error });
-				}
-				return textResult(loaded.block, loaded.details);
+				const requests = requestedSkills(params);
+				if (requests.length === 0) throw new Error("skill needs the names of listed skills.");
+				const batch = SkillBatch.run(catalog, requests, { id: ctx.sessionManager.getSessionId(), cwd: ctx.cwd });
+				// Nothing loaded: the call fails, naming every refusal.
+				if (batch.loaded.length === 0) throw new Error(batch.text);
+				return textResult(batch.text, batch.details);
 			},
 			display(input) {
-				const name = typeof input.args?.name === "string" ? bareName(input.args.name) : "";
-				const head = { title: name ? `Skill: ${name}` : "Skill", kind: "read" as const, blocks: [] };
+				const head = { title: batchDisplay(input.args, undefined, "").title, kind: "read" as const, blocks: [] };
 				if (!input.result || input.status !== "completed") return textResultDisplay(head, input);
-				const text = displayText(input.result);
-				const details = input.result.details as Partial<SkillDetails> | undefined;
-				const instructions = skillInstructions(parseSkillBlock(text)?.content ?? text);
-				const lines = details?.lines ?? instructions.split("\n").length;
-				return {
-					...head,
-					outcome: { text: skillLoadSummary({ ...details, lines }), tone: "muted" },
-					blocks: [
-						...(details?.description
-							? [{ type: "text" as const, text: details.description, tone: "muted" as const }]
-							: []),
-						...(details?.location
-							? [{ type: "path" as const, text: `file: ${details.location}`, label: "file", path: details.location }]
-							: []),
-						{ type: "markdown" as const, text: instructions },
-					],
-				};
+				return { ...head, ...batchDisplay(input.args, input.result.details, displayText(input.result)) };
 			},
-			renderCall(args, theme, context) {
-				const name = typeof args?.name === "string" ? bareName(args.name) : "";
-				return skillHeader(theme, context, name);
-			},
+			renderCall: (args, theme, context) => batchHeader(theme, context, args),
 			renderResult(result, _options, theme, context) {
-				const text = resultText(result);
-				// A validation failure lists what was wrong on the lines after its first: keep them all.
-				if (context.isError) return resultBlock(theme, context, { summary: oneLine(text), body: "" });
-				const details = result.details as Partial<SkillDetails> | undefined;
-				// The row shows the instructions: the `<skill>` wrapper and its path preamble are for the model.
-				const instructions = skillInstructions(parseSkillBlock(text)?.content ?? text);
-				const lines = details?.lines ?? instructions.split("\n").length;
-				// The collapsed row stays short enough for its expand hint; the expanded body opens with what the skill is for
-				// and where its file is, then its instructions.
-				const preface = [details?.description, details?.location ? shortPath(details.location) : undefined]
-					.filter(Boolean)
-					.map((line) => `${line}\n\n`)
-					.join("");
-				return resultBlock(theme, context, {
-					summary: skillLoadSummary({ ...details, lines }),
-					summaryColor: "customMessageText",
-					body: `${preface}${instructions}`,
-					max: 0,
-					...timingOf(result.details),
-				});
+				// A failure lists what was wrong on the lines after its first: keep them all.
+				if (context.isError) return resultBlock(theme, context, { summary: oneLine(resultText(result)), body: "" });
+				return batchResult(resultText(result), result.details, theme, context, timingOf(result.details));
 			},
 		}),
 	);

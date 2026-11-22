@@ -21,17 +21,22 @@ export function DaemonScopedApp({
 	scope: NonNullable<PageScope>;
 	access: string;
 } & Pick<ComponentProps<typeof App>, "backlog">) {
-	const [writable, setWritable] = useState(false);
+	const [rights, setRights] = useState({ writable: false, terminalCommands: false });
 	useEffect(() => {
 		const controller = new AbortController();
 		createDaemonApi(access)
 			.access(controller.signal)
 			.then(
-				(value) => !controller.signal.aborted && setWritable(value),
+				(value) =>
+					!controller.signal.aborted &&
+					setRights({ writable: value.writable, terminalCommands: value.terminalCommands === true }),
 				() => undefined,
 			);
 		return () => controller.abort();
 	}, [access]);
-	const scoped = useMemo(() => daemonLive(live, scope, writable), [live, scope, writable]);
+	const scoped = useMemo(
+		() => daemonLive(live, scope, rights.writable, rights.terminalCommands),
+		[live, scope, rights],
+	);
 	return <App backlog={backlog} live={scoped} access={access} />;
 }

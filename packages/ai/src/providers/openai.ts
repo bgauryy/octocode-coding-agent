@@ -23,6 +23,7 @@ export function openaiProvider(): Provider<"openai-responses"> {
 				"https://platform.openai.com/api-keys",
 				({ key, signal }) =>
 					verifyByRequest("https://api.openai.com/v1/models", { Authorization: `Bearer ${key}` }, signal),
+				"https://llm.example.com/v1",
 			),
 			oauth: lazyOAuth({
 				name: "OpenAI (ChatGPT subscription)",

@@ -64,7 +64,7 @@ function killTimer(work: RunningWork, id: string, ctx: CommandContext): void {
 			.map((row) => row.id);
 		return say(
 			ctx,
-			`No cron or wait ${id} in this session. ${ids.length ? `Running: ${ids.join(", ")}.` : "None is running."}`,
+			`No cron or notification ${id} in this session. ${ids.length ? `Running: ${ids.join(", ")}.` : "None is running."}`,
 			"warning",
 		);
 	}

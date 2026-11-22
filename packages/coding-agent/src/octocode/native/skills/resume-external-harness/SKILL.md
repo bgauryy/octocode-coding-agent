@@ -1,6 +1,6 @@
 ---
 name: resume-external-harness
-description: "Use to find, read or resume Claude Code, Codex or Cursor work from this repository or its worktrees, dangling ones too; not Octocode sessions. Returns timing, location, a digest and the resume command, or continues here."
+description: "Use to find, read or resume Claude Code, Codex or Cursor work from this repository or its worktrees, dangling ones too; not Octocode sessions."
 ---
 
 # Resume External Harness

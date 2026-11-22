@@ -71,7 +71,16 @@ export function visibleTool(tool: McpTool): McpTool {
 	return visibleSchemaText(tool) as McpTool;
 }
 
-/** Server instructions with their characters made visible. */
+/**
+ * Longest server instructions text kept: it rides in every request's prompt, so a buggy or hostile server must not fill
+ * it (the transport alone allows 16 MiB). Generous for real servers, whose instructions run a few thousand characters.
+ */
+export const MAX_INSTRUCTIONS_CHARS = 32_000;
+
+/** Server instructions with their characters made visible, cut at `MAX_INSTRUCTIONS_CHARS` with a note saying so. */
 export function visibleInstructions(instructions: string | undefined): string | undefined {
-	return instructions === undefined ? undefined : shownText(instructions);
+	if (instructions === undefined) return undefined;
+	const shown = shownText(instructions);
+	if (shown.length <= MAX_INSTRUCTIONS_CHARS) return shown;
+	return `${shown.slice(0, MAX_INSTRUCTIONS_CHARS)}\n[Server instructions cut: ${shown.length - MAX_INSTRUCTIONS_CHARS} more characters not shown.]`;
 }

@@ -107,10 +107,19 @@ export async function appendWrite(
 }
 
 /** The head line and one line per entry. When every entry was refused nothing changed: that is an error result, not a success. */
-export function batchSummary(verb: string, rows: readonly EntryOutcome[]): BatchResult {
+export function batchSummary(
+	verb: string,
+	rows: readonly EntryOutcome[],
+	condense?: (applied: string[]) => string,
+): BatchResult {
 	const applied = rows.filter((row) => row.ok).length;
-	const head = `${verb} ${applied} of ${rows.length}${applied < rows.length ? `; ${rows.length - applied} refused` : ""}.`;
-	const text = [head, ...rows.map((row) => row.text)].join("\n");
+	const failed = applied < rows.length ? `; ${rows.length - applied} refused` : "";
+	// `condense` turns the applied rows' texts into one tail after the count, so a long batch does not echo every entry.
+	const head =
+		condense && applied > 0
+			? `${verb} ${applied} of ${rows.length}: ${condense(rows.filter((row) => row.ok).map((row) => row.text))}${failed}.`
+			: `${verb} ${applied} of ${rows.length}${failed}.`;
+	const text = [head, ...rows.filter((row) => !condense || !row.ok).map((row) => row.text)].join("\n");
 	if (rows.length > 0 && applied === 0) throw new Error(text);
 	return textResult(text);
 }
@@ -124,10 +133,10 @@ export async function batchEntries<T>(
 	entries: readonly T[],
 	label: (entry: T, index: number) => string,
 	one: (entry: T) => EntryResult | Promise<EntryResult>,
-	options: { operation: string; verb: string; signal?: AbortSignal },
+	options: { operation: string; verb: string; signal?: AbortSignal; condense?: (applied: string[]) => string },
 ): Promise<BatchResult> {
 	const rows: EntryOutcome[] = [];
 	for (const [index, entry] of entries.entries())
 		await appendWrite(rows, options.operation, entries.length, label(entry, index), () => one(entry), options.signal);
-	return batchSummary(options.verb, rows);
+	return batchSummary(options.verb, rows, options.condense);
 }

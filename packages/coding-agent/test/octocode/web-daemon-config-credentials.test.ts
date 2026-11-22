@@ -195,7 +195,16 @@ describe("POST /api/admin/config/credentials", () => {
 	it("clears an OAuth sign-in through the runtime logout: the provider revokes it and no refresh token stays", async () => {
 		fs.writeFileSync(
 			authFile(),
-			JSON.stringify({ openai: { type: "oauth", access: "acc", refresh: "REFRESH-1", expires: 1, clientId: "app_x" } }),
+			JSON.stringify({
+				openai: {
+					type: "oauth",
+					access: "acc",
+					refresh: "REFRESH-1",
+					expires: 1,
+					clientId: "oaiapp_x",
+					subject: "user-1",
+				},
+			}),
 		);
 		const { server, call } = await daemon(fakeKeychain());
 		const cleared = await call(server.token, { action: "clear", provider: "openai" });
@@ -207,7 +216,16 @@ describe("POST /api/admin/config/credentials", () => {
 	it("says so when the provider could not confirm revocation, though the sign-in is gone locally", async () => {
 		fs.writeFileSync(
 			authFile(),
-			JSON.stringify({ openai: { type: "oauth", access: "acc", refresh: "REFRESH-2", expires: 1, clientId: "app_x" } }),
+			JSON.stringify({
+				openai: {
+					type: "oauth",
+					access: "acc",
+					refresh: "REFRESH-2",
+					expires: 1,
+					clientId: "oaiapp_x",
+					subject: "user-1",
+				},
+			}),
 		);
 		providerAnswer = 400;
 		const { server, call } = await daemon(fakeKeychain());

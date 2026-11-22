@@ -102,7 +102,14 @@ describe("the writer's checkpoints", () => {
 		const writer = new DbWriter(locations);
 		writers.push(writer);
 		const title = (id: string) =>
-			writer.post({ kind: "session-title", id, title: PAD, source: "user", fileMtime: null });
+			writer.post({
+				kind: "session-title",
+				id,
+				title: PAD,
+				source: "user",
+				fileMtime: null,
+				owner: { cwd: "/", file: "/f" },
+			});
 		const catalog = (id: string) =>
 			writer.post({
 				kind: "session-catalog",

@@ -135,7 +135,7 @@ describe("the skill list", () => {
 			resources: { skillPaths: [skills] },
 		});
 		await s.run("first", [say("one")]);
-		return getCurrentSystemMessage(s.contexts[0].messages)?.sections?.skills ?? "";
+		return getCurrentTools(s.contexts[0].messages).find((tool) => tool.name === "skill")?.description ?? "";
 	}
 
 	it("does not depend on the order the skill folders were written", async () => {

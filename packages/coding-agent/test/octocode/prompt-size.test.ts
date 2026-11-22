@@ -10,7 +10,7 @@ import { tmp } from "./helpers.ts";
 import { SYSTEM_PROMPT_SECTIONS } from "../../src/core/system-prompt-spec.ts";
 import { captureAll, captureMain, type AgentContext } from "./agent-context/capture.ts";
 import { isMcpTool } from "./agent-context/analyze.ts";
-import { type Layers, measureLayers, measureLoads } from "./agent-context/layers.ts";
+import { type Layers, measureLayers, measureLoads, skillListingBytes } from "./agent-context/layers.ts";
 import { systemText } from "./agent-context/render.ts";
 import { MEMORY_SECTION } from "../../src/octocode/memory/file/section.ts";
 import { MEMORY_FILE_MAX_BYTES, MEMORY_SECTIONS } from "../../src/octocode/memory/file/format.ts";
@@ -187,7 +187,7 @@ const MCP_SKILLS_GENERAL = 30_800;
 const MCP_SKILLS_FILTERED = 29_600;
 /**
  * The browser child: the browser server's tools and the Octocode MCP tools (every specialist but lean gets the research
- * server), beside its local tools (bash, file, web, mcp, wait, agent, skill), and an empty skill catalog: measured
+ * server), beside its local tools (bash, file, web, mcp, notify, agent, skill), and an empty skill catalog: measured
  * MCP 32,020 + skills 261.
  */
 const MCP_SKILLS_BROWSER = 33_900;
@@ -401,16 +401,12 @@ describe("first request with no usage data", () => {
 	}, 600_000);
 	const named = (name: string) => contexts.find((context) => context.name === name)!;
 	const bytes = (value: string) => Buffer.byteLength(value);
-	/** Bytes of every declared MCP tool plus the system prompt's skill catalogs (own and bundled Octocode skills). */
+	/** Bytes of every declared MCP tool plus the skill listing in the `skill` tool's description. */
 	const mcpAndSkills = (context: AgentContext) => {
-		const text = systemText(context);
-		const catalogs = [...text.matchAll(/<(?:octocode_)?skills>[\s\S]*?<\/(?:octocode_)?skills>/g)].map(([block]) =>
-			bytes(block),
-		);
 		const mcp = context.tools
 			.filter((tool) => isMcpTool(tool.name))
 			.reduce((sum, tool) => sum + bytes(tool.name + tool.description + JSON.stringify(tool.parameters)), 0);
-		return { mcp, skills: catalogs.reduce((sum, size) => sum + size, 0) };
+		return { mcp, skills: skillListingBytes(context) };
 	};
 
 	// Each ceiling is at most 5% over its measured reading; a role with a smaller catalog gets a lower one. A lean
@@ -427,10 +423,9 @@ describe("first request with no usage data", () => {
 	it.each(Object.keys(CEILINGS))("%s stays under its MCP plus skills ceiling", (name) => {
 		const { mcp, skills } = mcpAndSkills(named(name));
 		console.log(`${name}: mcp ${mcp}, skills ${skills}`);
-		if (name !== "lean") {
-			expect(mcp).toBeGreaterThan(0);
-			expect(skills).toBeGreaterThan(0);
-		}
+		if (name !== "lean") expect(mcp).toBeGreaterThan(0);
+		// The browser child's empty catalog leaves its `skill` tool out.
+		if (name !== "lean" && name !== "browser") expect(skills).toBeGreaterThan(0);
 		expect(mcp + skills, `MCP declarations ${mcp} + skills catalog ${skills}`).toBeLessThanOrEqual(CEILINGS[name]);
 	});
 
@@ -463,15 +458,17 @@ describe("first request with no usage data", () => {
 		).toEqual(["web"]);
 	});
 
-	it("lists no skills to the browser child, whose catalog is empty", () => {
-		const text = systemText(named("browser"));
-		expect(text).not.toContain("<skill ");
-		// The rest stay loadable by name, and the prompt says how many there are.
-		expect(text).toMatch(/\b\d+ more skills are not listed here/);
+	it("lists each child only its role's skills, and none to the browser child", () => {
+		const listing = (name: string) => named(name).tools.find((tool) => tool.name === "skill")?.description;
+		expect(listing("browser")).toBeUndefined();
+		expect(listing("researcher")).toContain("octocode-github-research");
+		expect(listing("researcher")).not.toContain("octocode-test-plan");
+		expect(listing("implementer")).toContain("octocode-test-plan");
+		expect(systemText(named("researcher"))).not.toMatch(/<skills>|<available_skills>/);
 	});
 
 	// Every role declares the shared core; what it does not use stays on demand (listed in `<tools>`, declared when used).
-	const CORE = ["bash", "file", "mcp", "wait", "agent", "skill"];
+	const CORE = ["bash", "file", "mcp", "notify", "agent", "skill"];
 	const ON_DEMAND = ["archive", "models", "browser", "graphQuery", "graphBuild"];
 	it.each(["general", "implementer", "researcher", "reviewer"])(
 		"%s declares its core tools and leaves the rest on demand",

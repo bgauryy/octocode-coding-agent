@@ -13,14 +13,15 @@ import {
 	type AttachRecord,
 	type AttachToolStates,
 } from "@octocodeai/octocode-contracts/daemon";
-import type {
-	ApplicationCommand,
-	ApplicationConnection,
-	ApplicationCursor,
-	ApplicationFrame,
-	ApplicationHistory,
-	ApplicationPort,
-	ApplicationReceipt,
+import {
+	APPLICATION_PROTOCOL_VERSION,
+	type ApplicationCommand,
+	type ApplicationConnection,
+	type ApplicationCursor,
+	type ApplicationFrame,
+	type ApplicationHistory,
+	type ApplicationPort,
+	type ApplicationReceipt,
 } from "@octocodeai/octocode-contracts";
 import type { ChromeTrace } from "../profiler/trace.ts";
 import type {
@@ -85,7 +86,13 @@ class FrameStream implements ApplicationConnection {
 	resync(reason: "overflow" | "session-changed"): void {
 		if (this.ended) return;
 		this.queue.push({
-			frame: { protocolVersion: 1, cursor: this.cursor, at: Date.now(), type: "resync", reason },
+			frame: {
+				protocolVersion: APPLICATION_PROTOCOL_VERSION,
+				cursor: this.cursor,
+				at: Date.now(),
+				type: "resync",
+				reason,
+			},
 			bytes: 0,
 		});
 		this.end();

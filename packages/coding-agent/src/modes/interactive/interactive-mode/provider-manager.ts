@@ -4,6 +4,7 @@ import type { ProviderSourceEnvironment } from "../../../core/provider-sources/t
 import { buildProviderSnapshot, type ProviderSnapshot } from "../../../core/provider-view/snapshot.ts";
 import type { PageSection } from "../../../theme/manage-page.ts";
 import { type BadgeState } from "../../../theme/page-kit.ts";
+import { testAllProviders } from "./provider-test.ts";
 import { isProviderDisabled, setProviderEnabled } from "./provider-actions.ts";
 import { showProviderDetail } from "./provider-detail.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
@@ -25,6 +26,7 @@ const SIGN_IN_ROW = "signin";
 const TEMPLATE_ROW = "template";
 const EXTERNAL_ROW = "external";
 const ADVANCED_ROW = "advanced";
+const TEST_ALL_ROW = "test-all";
 
 export interface ProviderManagerOptions {
 	/** Where to look for sources and detected tools; tests point it at a temporary home. */
@@ -130,6 +132,16 @@ export async function showProviderManager(
 				],
 			},
 			{
+				heading: "Test",
+				rows: [
+					{
+						id: TEST_ALL_ROW,
+						name: "Test all",
+						detail: "one small request per connected provider, and each external agent's own status check",
+					},
+				],
+			},
+			{
 				heading: "Advanced",
 				rows: [
 					{
@@ -140,9 +152,13 @@ export async function showProviderManager(
 				],
 			},
 		];
+		const reloadError = runtime.getReloadError();
 		const choice = await showPage(host, {
 			title: "AI providers",
 			notes: [
+				...(reloadError
+					? [`Changes to models.json or auth.json were not applied; the previous providers stay loaded. ${reloadError}`]
+					: []),
 				"Ready means configured, not verified. Open a provider to test access.",
 				"Providers run in Octocode's harness; external agents are vendor CLIs that run their own. Enable each agent for tasks.",
 			],
@@ -167,6 +183,8 @@ export async function showProviderManager(
 				const picked = await host.showSelectorDialog("Add an external agent CLI", labels);
 				const entry = picked ? entries[labels.indexOf(picked)] : undefined;
 				if (entry) result = await openRunner(entry.id);
+			} else if (choice.id === TEST_ALL_ROW) {
+				await testAllProviders(host);
 			} else if (choice.id === ADVANCED_ROW)
 				result = await showSourcesPage(ctx, snapshot.saved, options.sourceEnvironment);
 			else if (kind === "provider") {

@@ -218,6 +218,7 @@ const SUBPATHS: Record<string, string[]> = {
 		"octocodeAgentAvailable",
 		"parseSkillListing",
 		"runOctocodeAgent",
+		"skillToolDescription",
 	],
 };
 

@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 const run = (line: string, live?: Parameters<typeof configuration>[1]) =>
-	runConfigWords(configuration(sandbox, live), splitConfigWords(line), "/configuration");
+	runConfigWords(configuration(sandbox, live), splitConfigWords(line), "/settings");
 
 /** A project hook file with one hook that denies when it fails. */
 function writeGateHook(): void {
@@ -77,10 +77,10 @@ describe("gate hooks and locked rows", () => {
 			/gate/.test(`${entry.detail ?? ""}${entry.label}`),
 		);
 		expect(gate, "a gate hook is listed").toBeDefined();
-		const refused = await runConfigWords(catalog, ["disable", gate!.id], "/configuration");
+		const refused = await runConfigWords(catalog, ["disable", gate!.id], "/settings");
 		expect(refused.ok).toBe(false);
 		expect(refused.lines.join("\n")).toContain("--force");
-		const forced = await runConfigWords(catalog, ["disable", gate!.id, "--force"], "/configuration");
+		const forced = await runConfigWords(catalog, ["disable", gate!.id, "--force"], "/settings");
 		expect(forced.ok).toBe(true);
 		expect(readJson(globalSettingsFile(sandbox))?.toggles?.[gate!.id]).toBe(false);
 	});

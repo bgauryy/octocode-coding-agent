@@ -2,6 +2,7 @@ import type { FeatureSetup } from "../core/features/index.ts";
 import { registerBacklog } from "./backlog/index.ts";
 import type { CompletionGate } from "./backlog/completion-gate.ts";
 import type { Holdings } from "./backlog/done-guard.ts";
+import type { QaReviewer } from "./backlog/qa-gate.ts";
 import { BACKLOG_PEER_TYPE, type PeerWake } from "./backlog/peer-notify.ts";
 import type { PeerWakes } from "./backlog/peers.ts";
 import type { Subcommands } from "./shared/commands.ts";
@@ -59,9 +60,11 @@ export function composeBacklog(
 		completing: CompletionGate;
 		/** The backlog item each running child works on, by child name. */
 		serving: () => Map<string, string>;
+		/** The QA reviewer of `done` (`backlog.qa`); read at each call because the agent tool registers later. */
+		review: QaReviewer;
 	},
 ): void {
-	const { commands, isSubagent, team, stop, completing, serving } = options;
+	const { commands, isSubagent, team, stop, completing, serving, review } = options;
 	const workspace = isSubagent
 		? undefined
 		: new WorkspaceRuntime(api, {
@@ -81,6 +84,8 @@ export function composeBacklog(
 				.map((member) => ({ agent: member.id, paths: member.locks ?? [] })),
 		completing,
 		holdings: holdingsOf(api, team, isSubagent, serving),
+		// A subagent may not move an item back to the backlog, so only the main session reviews.
+		...(isSubagent ? {} : { review }),
 		wakes: peerWakes(api),
 		openWeb: (ctx, backlog, changed) => startTrustedWorkspaceWeb(backlog, changed, workspace?.bind(ctx, backlog)),
 	});

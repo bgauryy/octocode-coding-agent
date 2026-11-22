@@ -57,7 +57,7 @@ export const bypassMergeLine = (mode: PermissionMode): string =>
 /** What a mode means, in one sentence: the model note and `/permissions` say it. */
 export function modeSummary(mode: PermissionMode): string {
 	if (mode === "bypass")
-		return `nothing asks, not even what full still asks about (browser cookies, worktree merges, source-policy asks, wide memory saves, reads of other tools' credential stores), and no session-API turn ceiling applies; started with --dangerously-skip-permissions. Every call is recorded (/permissions log). Invariants and hook denies still refuse. ${bypassMergeLine(mode)}`;
+		return `nothing asks, not even what full still asks about (browser cookies, worktree merges, source-policy asks, wide memory saves, reads of other tools' credential stores), except that an agent's configuration change still asks in every mode; no session-API turn ceiling applies; started with --dangerously-skip-permissions. Every call is recorded (/permissions log). Invariants and hook denies still refuse. ${bypassMergeLine(mode)}`;
 	if (mode === "full") return renderPrompt("notices/permission-full.md");
 	return `it asks before ${asksIn(mode).join(", ")}; hook asks, provenance hits, credential-store reads and profile permissions also ask.`;
 }

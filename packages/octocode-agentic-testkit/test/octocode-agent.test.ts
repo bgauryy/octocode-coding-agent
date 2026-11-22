@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	octocodeAgentAvailable,
 	parseSkillListing,
+	skillToolDescription,
 	runOctocodeAgent,
 	type OctocodeAgentRun,
 } from "../src/adapters/octocode-agent/index.ts";
@@ -81,7 +82,7 @@ describe("octocode-agent via gateway", () => {
 	it("the trigger matrix has a fire and a near-miss prompt for every skill the bundle lists", async (ctx) => {
 		if (!octocodeAgentAvailable()) return ctx.skip(SKIP);
 		const { gw } = await drive([{ text: "ok" }], "hi");
-		const listed = parseSkillListing(String(gw.trace.requests[0].messages[0].content)).map((s) => s.name);
+		const listed = parseSkillListing(skillToolDescription(gw.trace.requests[0].raw)).map((s) => s.name);
 		expect(listed.length).toBeGreaterThan(0);
 		expect(listed.filter((name) => !PROMPTS[name])).toEqual([]);
 	});

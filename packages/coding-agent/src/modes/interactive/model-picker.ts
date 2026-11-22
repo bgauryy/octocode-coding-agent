@@ -75,7 +75,7 @@ export function showModelSelector(host: ModelPickerHost, initialSearchInput?: st
 					persist
 						? `Saved ${scope} default: ${model.provider}/${model.id}${
 								projectWins
-									? `. This project's default (${settingsManager.getDefaultProvider()}/${settingsManager.getDefaultModel()}) wins here; change it with "This project" or /configuration set --local.`
+									? `. This project's default (${settingsManager.getDefaultProvider()}/${settingsManager.getDefaultModel()}) wins here; change it with "This project" or /settings set --local.`
 									: overridden
 										? ". Workspace or run settings take precedence here."
 										: ""

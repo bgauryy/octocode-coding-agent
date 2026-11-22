@@ -1,3 +1,4 @@
+import { isUnreadableKeychainStub } from "../auth/endpoint.ts";
 import { ModelsError, refreshStoredOAuthCredential, resolveProviderAuth } from "../auth/resolve.ts";
 import type {
 	AuthCheck,
@@ -58,6 +59,8 @@ export async function checkProviderAuth(
 	}
 	const apiKey = provider.auth.apiKey;
 	if (!apiKey) return undefined;
+	// A reference to a keychain record that could not be read is not a credential; requests fail with the reason.
+	if (isUnreadableKeychainStub(credential)) return undefined;
 	if (apiKey.check) {
 		try {
 			return await apiKey.check({
@@ -134,7 +137,8 @@ export async function loginProvider(
 		{ ...options, previousCredential },
 	);
 	const credential = await raceWithAbortSignal(loginOperation, signal);
-	if (type === "api_key" && credential.type === "api_key" && credential.key) {
+	// A key saved with a custom host is not the official host's key: that host must never receive it.
+	if (type === "api_key" && credential.type === "api_key" && credential.key && !credential.endpoint) {
 		await verifyLoginKey(provider.name, provider.auth.apiKey, credential.key, interaction, signal);
 	}
 	let mutationStarted = false;

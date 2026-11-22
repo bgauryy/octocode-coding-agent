@@ -1,3 +1,5 @@
+import { pruneIfUnlocked } from "./store/patient.ts";
+import { TicketHandle } from "./store/ticket-handle.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import {
 	type AgentDb,
@@ -6,7 +8,6 @@ import {
 	agents,
 	dbStamp,
 	deliveries,
-	isBusy,
 	leases,
 } from "../../../../db/src/api.ts";
 import { openAgentDb, sharedAgentDb } from "../../storage/database.ts";
@@ -90,6 +91,7 @@ export class TeamStore {
 
 		this.db = agent.db;
 		this.edits = new EditLog(agent.db, leaseWorkspace.id);
+		this.callbacks = new TicketHandle(agent, leaseWorkspace.id);
 		this.refs = new MessageRefs(
 			agent.db,
 			this.team,
@@ -104,7 +106,7 @@ export class TeamStore {
 		const agent = openAgentDb(file, env);
 		try {
 			const store = new TeamStore(agent, cwd, env, true);
-			store.housekeep();
+			pruneIfUnlocked(store, () => store.prune());
 			return store;
 		} catch (error) {
 			agent.close();
@@ -115,7 +117,7 @@ export class TeamStore {
 	/** The team over the process's one agent database connection (`sharedAgentDb`), which sessions, memory and backlog use too. */
 	static shared(cwd: string, env: NodeJS.ProcessEnv = process.env): TeamStore {
 		const store = new TeamStore(sharedAgentDb(env), cwd, env, false);
-		store.housekeep();
+		pruneIfUnlocked(store, () => store.prune());
 		return store;
 	}
 
@@ -139,15 +141,6 @@ export class TeamStore {
 		}
 	}
 
-	/** The prune when a store opens: it never makes the open fail or wait; while the write lock is held elsewhere the next heartbeat's prune does it. */
-	private housekeep(): void {
-		try {
-			this.quick(() => this.prune());
-		} catch (error) {
-			if (!isBusy(error)) throw error;
-		}
-	}
-
 	private prune(now = Date.now()): void {
 		if (now - this.prunedAt < PRUNE_INTERVAL_MS) return;
 		this.refs.prune(now);
@@ -159,6 +152,9 @@ export class TeamStore {
 	}
 
 	lifecycle: agentEvents.LifecycleContext | undefined;
+
+	/** The callback tickets of this team's workspace (`events/tickets.ts`), opened and settled as the session that joined. */
+	readonly callbacks: TicketHandle;
 
 	/**
 	 * Heartbeat: refreshes the member row and runs the periodic prune (at most once a minute). The row is matched by id,
@@ -182,7 +178,7 @@ export class TeamStore {
 
 	/** Leave: the agent and its reservations go; its unread messages become dead letters. With `owner`, nothing is removed when the row names another process. */
 	remove(id: string, now = Date.now(), owner?: ProcessIdentity, reason?: agentEvents.EndReason): boolean {
-		return this.agent.transaction(() => retireOwned(this.db, id, now, owner, reason));
+		return this.agent.transaction(() => this.callbacks.afterLeave(retireOwned(this.db, id, now, owner, reason), id));
 	}
 
 	/**
@@ -199,7 +195,9 @@ export class TeamStore {
 
 	/** Retires `id` if its row still names `judged` (or is already gone, leaving leases of a member with no row to clean). */
 	private reap(id: string, judged: ProcessIdentity | undefined, now: number): boolean {
-		return this.agent.transaction(() => reapMember(this.db, id, judged, now, this.lifecycle?.sessionId));
+		return this.agent.transaction(() =>
+			this.callbacks.afterLeave(reapMember(this.db, id, judged, now, this.lifecycle?.sessionId), id),
+		);
 	}
 
 	/**

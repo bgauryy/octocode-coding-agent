@@ -287,6 +287,15 @@ export function cacheClock(session: BranchSource): {
 	return { replyAt, useAt: replyAt === undefined || !Number.isFinite(usedAt) ? undefined : usedAt, warms, gaps };
 }
 
+/**
+ * Whether a request beside the run would find no usable cache entry: the session has no cache lifetime (retention `none`,
+ * or a provider without one), or the entry it would read has expired. Paying for a speculative request is only worth it
+ * when it can read the cache; unlike `cacheCold`, an unknown lifetime counts as unusable.
+ */
+export function cacheUnusable(session: BranchSource, ttlMs: number | undefined, now = Date.now()): boolean {
+	return ttlMs === undefined || cacheCold(session, ttlMs, now);
+}
+
 /** Whether the entry a request would read has expired: it was last used longer ago than `ttlMs`. False when either is unknown. */
 export function cacheCold(session: BranchSource, ttlMs: number | undefined, now = Date.now()): boolean {
 	if (ttlMs === undefined) return false;

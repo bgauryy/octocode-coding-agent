@@ -32,14 +32,15 @@ const member = (id: string, extra: Partial<Member> = {}): Member => ({
 	...extra,
 });
 /** What the session was told about peers: `<agent> ended: <reason>` lines, with whether each woke an idle agent. */
+const body = (entry: (typeof host.sent)[number]) => String(entry.message.content).replace(/^\[src [^\n]*\n/, "");
 const told = () =>
 	host.sent
-		.filter((entry) => /ended: /.test(String(entry.message.content)))
-		.map((entry) => [String(entry.message.content), entry.options.triggerTurn] as const);
+		.filter((entry) => /ended: /.test(body(entry)))
+		.map((entry) => [body(entry), entry.options.triggerTurn] as const);
 /** Dead-letter notices about `who` (`Message #N to <who> …`), with whether each woke an idle agent. */
 const deadLetters = (who: string) =>
 	host.sent
-		.filter((entry) => new RegExp(`^Message #\\d+ to ${who} `).test(String(entry.message.content)))
+		.filter((entry) => new RegExp(`^Message #\\d+ to ${who} `).test(body(entry)))
 		.map((entry) => entry.options.triggerTurn);
 const sentId = (result: Awaited<ReturnType<Team["send"]>>): number => {
 	if ("error" in result) throw new Error(result.error);

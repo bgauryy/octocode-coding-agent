@@ -8,7 +8,7 @@ import type {
 } from "../../core/features/index.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { archiveSearch, LIBRARY_FILE } from "../history/archive.ts";
-import { fencedParts } from "../shared/fence.ts";
+import { fencedParts, withoutSourceHeader } from "../shared/fence.ts";
 import { presentAgentReport } from "./presentation.ts";
 import { formatSpend, formatTokens, formatTokenUsage, toolCallCount } from "../shared/format.ts";
 import { shortPath } from "../../utils/display-path.ts";
@@ -355,7 +355,8 @@ function reportBlock(
 export const renderAgentMessage: MessageRenderer = (message, { expanded, outputPad }, theme) => {
 	const details = (message.details ?? {}) as Partial<ResultDetails>;
 	const presentation = presentAgentReport(message.content, details);
-	const footer = fencedParts(contentText(message.content).split("\n").slice(1).join("\n"))?.footer ?? "";
+	const footer =
+		fencedParts(withoutSourceHeader(contentText(message.content)).split("\n").slice(1).join("\n"))?.footer ?? "";
 	// The model reads the head of a long report; the user reads all of it from the saved version.
 	const report = withItemTitlesIn(fullReportText(details) ?? presentation.body, footer, itemTitle);
 	const stopped = details.status === "stopped";

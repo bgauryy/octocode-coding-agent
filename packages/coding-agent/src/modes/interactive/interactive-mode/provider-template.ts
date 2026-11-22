@@ -1,8 +1,13 @@
 import { join } from "node:path";
+import {
+	DEFAULT_CONTEXT_WINDOW,
+	DEFAULT_MAX_OUTPUT as DEFAULT_MAX_TOKENS,
+} from "@octocodeai/octocode-contracts/config";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import type { CredentialInfo } from "@octocodeai/octocode-ai";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { vendorChatModels } from "../../../core/provider-composer/known-models.ts";
+import { detectKeychain, type KeychainBackend } from "../../../core/auth-storage/keychain.ts";
 import {
 	addTemplateProvider,
 	freeProviderId,
@@ -17,6 +22,7 @@ import {
 	templateModelEntries,
 	templateModels,
 } from "../../../core/provider-templates/models.ts";
+import { removeTemplateKey, saveTemplateKey } from "../../../core/provider-templates/key-store.ts";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "../../../core/provider-templates/templates.ts";
 import { type Catalog, loadCatalog, modelsDevEnabled } from "../../../octocode/subagents/catalog.ts";
 import type { ModelsJsonModel } from "../../../core/model-config.ts";
@@ -31,6 +37,7 @@ type TemplateHost = Pick<
 	| "showSelectorDialog"
 	| "showInputDialog"
 	| "showApiKeyLoginDialog"
+	| "showSecretDialog"
 	| "showStatus"
 	| "showError"
 	| "updateAvailableProviderCount"
@@ -91,11 +98,27 @@ async function chooseModels(ui: TemplateHost, template: ProviderTemplate, offere
 	return ids?.length ? ids : undefined;
 }
 
-/** Where the key comes from. Undefined when the user cancels. */
-async function chooseKey(ui: TemplateHost, template: ProviderTemplate): Promise<TemplateKey | undefined> {
-	const options = new Map<string, TemplateKey>();
+/** The user's pick; a keychain key is typed after the provider id is known, since its entry is named by the id. */
+type KeyChoice = TemplateKey | { kind: "new-keychain" };
+
+/**
+ * Where the key comes from. With a keychain the default is a per-provider keychain entry that models.json only
+ * references; plain text in auth.json is a separate, explicit choice. Undefined when the user cancels.
+ */
+async function chooseKey(
+	ui: TemplateHost,
+	template: ProviderTemplate,
+	keychain: KeychainBackend | null,
+): Promise<KeyChoice | undefined> {
+	const options = new Map<string, KeyChoice>();
 	if (template.key === "optional") options.set("No key — the server runs without one", { kind: "none" });
-	options.set("Save a key in Octocode (asked next)", { kind: "saved" });
+	if (keychain) options.set(`Save the key in ${keychain.name} (recommended; asked next)`, { kind: "new-keychain" });
+	options.set(
+		keychain
+			? "Save the key as plain text in auth.json (owner-only permissions; asked next)"
+			: "Save the key as plain text in auth.json (no system keychain found; asked next)",
+		{ kind: "saved" },
+	);
 	if (template.keyEnv) {
 		const set = process.env[template.keyEnv] ? " (set now)" : "";
 		options.set(`Read $${template.keyEnv} from the environment${set}`, { kind: "env", name: template.keyEnv });
@@ -104,14 +127,25 @@ async function chooseKey(ui: TemplateHost, template: ProviderTemplate): Promise<
 	const labels = [...options.keys(), named];
 	const picked = await ui.showSelectorDialog(`Key for ${template.name}`, labels);
 	if (picked !== named) return picked ? options.get(picked) : undefined;
-	const name = (await ui.showInputDialog("Environment variable that holds the key", "GATEWAY_API_KEY"))?.trim();
+	const name = (await ui.showInputDialog("Environment variable that holds the key", "MY_PROVIDER_API_KEY"))?.trim();
 	return name ? { kind: "env", name: name.replace(/^\$/, "") } : undefined;
 }
 
-async function chooseTokenLimit(ui: TemplateHost, title: string, maximum?: number): Promise<number | undefined> {
+/** What Octocode assumes for a model whose limits nobody told it (the same as the loader's own defaults). */
+
+async function chooseTokenLimit(
+	ui: TemplateHost,
+	title: string,
+	maximum?: number,
+	fallback?: number,
+): Promise<number | undefined> {
 	for (;;) {
-		const answer = await ui.showInputDialog(title, "Tokens, for example 8192 or 8k");
+		const answer = await ui.showInputDialog(
+			title,
+			fallback === undefined ? "Tokens, for example 8192 or 8k" : `${fallback} (Enter keeps it; or type 8192, 8k)`,
+		);
 		if (answer === undefined) return undefined;
+		if (fallback !== undefined && !answer.trim()) return fallback;
 		const tokens = parseContextSize(answer);
 		if (tokens !== undefined && (maximum === undefined || tokens <= maximum)) return tokens;
 		ui.showError(
@@ -122,27 +156,55 @@ async function chooseTokenLimit(ui: TemplateHost, title: string, maximum?: numbe
 	}
 }
 
-async function chooseLocalLimits(ui: TemplateHost, models: ModelsJsonModel[]): Promise<ModelsJsonModel[] | undefined> {
+/**
+ * The context window and maximum output of each chosen model. A local server has no default (it must match the
+ * loaded setting); a gateway or custom host shows the known model's limits, or Octocode's defaults, and Enter keeps them.
+ */
+async function chooseLimits(
+	ui: TemplateHost,
+	models: ModelsJsonModel[],
+	offered: readonly TemplateModel[],
+	withDefaults: boolean,
+): Promise<ModelsJsonModel[] | undefined> {
 	const configured: ModelsJsonModel[] = [];
 	for (const model of models) {
-		const contextWindow = await chooseTokenLimit(ui, `${model.id}: context window (match the loaded server setting)`);
+		const known = offered.find((candidate) => candidate.id === model.id);
+		const contextDefault = withDefaults
+			? (model.contextWindow ?? known?.contextWindow ?? DEFAULT_CONTEXT_WINDOW)
+			: undefined;
+		const contextWindow = await chooseTokenLimit(
+			ui,
+			`${model.id}: context window${withDefaults ? "" : " (match the loaded server setting)"}`,
+			undefined,
+			contextDefault,
+		);
 		if (contextWindow === undefined) return undefined;
-		const maxTokens = await chooseTokenLimit(ui, `${model.id}: maximum output tokens`, contextWindow);
+		const outputDefault = withDefaults
+			? Math.min(model.maxTokens ?? known?.maxTokens ?? DEFAULT_MAX_TOKENS, contextWindow)
+			: undefined;
+		const maxTokens = await chooseTokenLimit(ui, `${model.id}: maximum output tokens`, contextWindow, outputDefault);
 		if (maxTokens === undefined) return undefined;
-		configured.push({ ...model, contextWindow, maxTokens });
+		// A value kept at its shown default is not written: the model keeps following its catalog entry.
+		configured.push({
+			...model,
+			...(contextWindow === contextDefault ? {} : { contextWindow }),
+			...(maxTokens === outputDefault ? {} : { maxTokens }),
+		});
 	}
 	return configured;
 }
 
 /**
  * `/providers` → `Add from a template`: pick a template, give the host when it has none, pick model ids and where the
- * key comes from. The entry is added to the global models.json (never with a key in it); a saved key goes to auth.json
- * through the provider's own API-key sign-in. Returns true when the flow moved on to another page.
+ * key comes from. The entry is added to the global models.json, never with a key in it: a key goes to the system
+ * keychain (models.json holds its `!` reference), or, only when chosen, to auth.json through the provider's own
+ * API-key sign-in. Returns true when the flow moved on to another page.
  */
 export async function showProviderTemplates(
 	ui: TemplateHost,
 	reopen: (providerId: string) => void,
 	saved: readonly CredentialInfo[],
+	keychain: KeychainBackend | null = detectKeychain(process.platform) ?? null,
 ): Promise<boolean> {
 	const runtime = ui.session.modelRuntime;
 	const labels = PROVIDER_TEMPLATES.map(templateLabel);
@@ -171,16 +233,17 @@ export async function showProviderTemplates(
 		vendorModels: (api) => vendorChatModels({ get: (id) => runtime.getBuiltinProvider(id) }, api),
 		listed: catalogListing(catalog),
 	};
-	const ids = await chooseModels(ui, template, templateModels(template, sources));
+	const offered = templateModels(template, sources);
+	const ids = await chooseModels(ui, template, offered);
 	if (!ids) return cancelled();
 	let models = templateModelEntries(template, ids, sources);
-	if (template.kind === "local") {
-		const configured = await chooseLocalLimits(ui, models);
+	if (template.kind === "local" || template.kind === "gateway" || template.kind === "custom") {
+		const configured = await chooseLimits(ui, models, offered, template.kind !== "local");
 		if (!configured) return cancelled();
 		models = configured;
 	}
-	const key = await chooseKey(ui, template);
-	if (!key) return cancelled();
+	const choice = await chooseKey(ui, template, keychain);
+	if (!choice) return cancelled();
 	const directory = runtime.getConfigurationDirectory();
 	if (!directory) {
 		ui.showError("This session has no Octocode configuration folder, so there is no models.json to add to.");
@@ -188,12 +251,40 @@ export async function showProviderTemplates(
 	}
 	const taken = new Set([...runtime.getProviders().map((provider) => provider.id), ...saved.map((s) => s.providerId)]);
 	const id = freeProviderId(template.id, taken);
+	let key: TemplateKey;
+	if (choice.kind === "new-keychain") {
+		if (!keychain) return cancelled();
+		const secret = await ui.showSecretDialog(
+			template.name,
+			`Enter the API key for ${template.name}. It is saved in ${keychain.name}; models.json only references it.`,
+		);
+		if (!secret) return cancelled();
+		try {
+			key = { kind: "keychain", reference: await saveTemplateKey(keychain, id, secret) };
+		} catch (error) {
+			ui.showError(`${errorMessage(error)} Nothing was written to models.json.`);
+			return false;
+		}
+	} else {
+		key = choice;
+	}
 	try {
 		await addTemplateProvider(
 			join(directory, "models.json"),
 			id,
 			templateProviderEntry(template, { host: serverHost, key, models }),
 		);
+	} catch (error) {
+		ui.showError(errorMessage(error));
+		// The key was stored for an entry that was not written: take it back so no orphan stays in the keychain.
+		if (key.kind === "keychain" && keychain) {
+			await removeTemplateKey(keychain, id).catch((removeError: unknown) =>
+				ui.showError(`Could not remove the key saved for ${id} from ${keychain.name}: ${errorMessage(removeError)}`),
+			);
+		}
+		return false;
+	}
+	try {
 		await runtime.refresh({ allowNetwork: false });
 		ui.updateAvailableProviderCount();
 	} catch (error) {

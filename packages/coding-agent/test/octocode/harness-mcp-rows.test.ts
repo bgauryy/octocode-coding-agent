@@ -29,7 +29,7 @@ const globalFile = () => path.join(sandbox.home, ".octocode", "mcp.json");
 const projectFile = () => projectMcpConfigPath(sandbox.cwd);
 const readJson = (file: string) => JSON.parse(fs.readFileSync(file, "utf8"));
 
-describe("one row formatter for /mcp list, /harness and /configuration list mcp", () => {
+describe("one row formatter for /mcp list, /harness and /settings list mcp", () => {
 	it("shows the same facts on the three surfaces for global, project, override, disabled and unconnected servers", async () => {
 		trustFolder(sandbox.cwd);
 		write(

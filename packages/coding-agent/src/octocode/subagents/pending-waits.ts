@@ -30,7 +30,7 @@ function startsWait(event: Record<string, unknown>): boolean {
 	const args = isRecord(event.args) ? event.args : {};
 	return (
 		(event.toolName === "bash" && args.background === true) ||
-		(event.toolName === "wait" && (args.op === "set" || args.op === "on")) ||
+		(event.toolName === "notify" && (args.op === "set" || args.op === "on")) ||
 		(event.toolName === "agent" && args.type === "message" && args.replyRequired === true)
 	);
 }
@@ -94,7 +94,7 @@ function answers(wait: ReplyWait, incoming: Record<string, unknown>): boolean {
  */
 export function noteWaits(state: WaitState, inputEvent: Record<string, unknown>): void {
 	let event = inputEvent;
-	if (event.type === "tool_execution_start" && (event.toolName === "wait" || isReplyRequest(event)))
+	if (event.type === "tool_execution_start" && (event.toolName === "notify" || isReplyRequest(event)))
 		state.waitInputs.set(event.toolCallId, event.args);
 	else if (event.type === "tool_execution_end" && state.waitInputs.has(event.toolCallId)) {
 		const args = state.waitInputs.get(event.toolCallId);
@@ -112,7 +112,7 @@ export function noteWaits(state: WaitState, inputEvent: Record<string, unknown>)
 				else state.replies[index] = replyOf(event);
 			}
 		} else finishStart(state, event);
-	} else if (event.type === "tool_execution_end" && event.toolName === "wait" && event.isError !== true) {
+	} else if (event.type === "tool_execution_end" && event.toolName === "notify" && event.isError !== true) {
 		const args = isRecord(event.args) ? event.args : {};
 		if (args.op === "off")
 			state.workWaits = state.workWaits.filter(

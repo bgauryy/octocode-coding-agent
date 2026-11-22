@@ -1,6 +1,7 @@
 import type { ProfileTranscriptEntry, TranscriptRef } from "@octocodeai/octocode-contracts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { useEffect, useState } from "react";
+import { TextFold } from "../../ui/LongText.tsx";
 import { useLive } from "../session.tsx";
 
 /** Thinking up to this long shows inline; longer thinking stays behind a toggle. */
@@ -28,7 +29,11 @@ function Entry({ item, near }: { item: ProfileTranscriptEntry; near: boolean }) 
 				{item.tools?.length ? ` \u00B7 called ${item.tools.join(", ")}` : ""}
 			</p>
 			{item.thinking ? <Thinking text={item.thinking} /> : null}
-			{item.text ? <pre className="pf-tr-text">{item.text}</pre> : null}
+			{item.text ? (
+				<TextFold text={item.text} label="Message">
+					<pre className="pf-tr-text">{item.text}</pre>
+				</TextFold>
+			) : null}
 			{item.truncated ? <p className="muted">Cut at the size the page holds.</p> : null}
 		</li>
 	);

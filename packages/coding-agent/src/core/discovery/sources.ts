@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { basename, dirname, join, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import ignore from "ignore";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { envFlag, EXTRA_SKILLS_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
@@ -34,6 +34,17 @@ export const productRoots = (input: DiscoverInput, product: Product): ConfigRoot
 
 /** Whether project items are listed at all: a trusted folder, or `includeUntrusted` for display. */
 export const listsProject = (input: DiscoverInput): boolean => input.projectTrusted || !!input.includeUntrusted;
+
+/**
+ * Whether `dir` lies inside the folder a trust grant is on (`contextRoot`), the same boundary project instructions load
+ * under. Without a grant folder, or when it is not an ancestor of `cwd`, nothing is excluded.
+ */
+export function withinTrust(input: DiscoverInput, dir: string): boolean {
+	if (input.contextRoot === undefined) return true;
+	const root = resolve(input.contextRoot);
+	const inside = (path: string) => path === root || path.startsWith(`${root}${sep}`);
+	return !inside(resolve(input.cwd)) || inside(resolve(dir));
+}
 
 /**
  * Skills in `dirs`, all from `root`. `skipSynced` drops a Claude folder's `synced/` subtree (claude.ai skills that need

@@ -7,6 +7,8 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { ImageContent, TextContent } from "@octocodeai/octocode-ai/compat";
 import { assertImageInputSupported } from "@octocodeai/octocode-ai/utils/image-input";
+import { withoutSourceHeader } from "@octocodeai/octocode-common/text";
+import { adoptDeliveredOrigins, inputOrigin, type InputOrigin as ClientOrigin } from "../input-origin.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { InputOrigin } from "../session-manager/types.ts";
 import type { SessionInternals } from "./host.ts";
@@ -19,6 +21,8 @@ interface QueuedEntry {
 	mode: "steer" | "followUp";
 	text: string;
 	message: Extract<AgentMessage, { role: "user" }>;
+	/** The client the message was sent from: delivery runs the work it triggers under this origin. */
+	client: ClientOrigin;
 	/** Out of the agent's queue while the user edits it; the entry keeps its place here. */
 	held?: true;
 }
@@ -113,12 +117,18 @@ export class SessionInputQueue {
 		});
 	}
 
-	/** Delivery of `message` begins: it leaves the queue and can no longer be edited. */
-	consumeQueuedUserMessage(message: AgentMessage): void {
+	/** Delivery of `message` begins: it leaves the queue and can no longer be edited. Returns the client it was sent from. */
+	consumeQueuedUserMessage(message: AgentMessage): ClientOrigin | undefined {
 		const index = this._queued.findIndex((entry) => entry.message === message);
-		if (index === -1) return;
-		this._queued.splice(index, 1);
+		if (index === -1) return undefined;
+		const [entry] = this._queued.splice(index, 1);
 		this._emitQueueUpdate();
+		return entry.client;
+	}
+
+	/** Selected messages enter the running run: the work they trigger runs under the origin they were sent from. */
+	deliverSelected(messages: readonly AgentMessage[]): void {
+		adoptDeliveredOrigins(messages.flatMap((message) => this.consumeQueuedUserMessage(message) ?? []));
 	}
 
 	/**
@@ -253,7 +263,9 @@ export class SessionInputQueue {
 		};
 		if (input) this._pendingUserInputs.set(message, input);
 		this._origins.set(message, mode === "steer" ? "steer" : "follow-up");
-		this._queued.push({ id: `q${this._nextQueuedId++}`, mode, text, message });
+		// The queue shows and returns what the user typed, without the source header the model reads.
+		const id = `q${this._nextQueuedId++}`;
+		this._queued.push({ id, mode, text: withoutSourceHeader(text), message, client: inputOrigin() });
 		if (mode === "steer") this.host.session.agent.steer(message);
 		else this.host.session.agent.followUp(message);
 		this._emitQueueUpdate();
@@ -355,10 +367,6 @@ export class SessionInputQueue {
 		this.host.refreshContext();
 	}
 
-	/**
-	 * Append custom messages queued while the agent was running.
-	 * Called once the current turn's tool results are in agent state and session history.
-	 */
 	/**
 	 * Flushes during a run: a message that cannot be written yet stays queued for the next write and is reported, because
 	 * the run itself is fine and a lock another process holds for a moment must not end it.

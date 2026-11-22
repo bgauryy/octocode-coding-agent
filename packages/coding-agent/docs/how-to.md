@@ -45,19 +45,19 @@ A session whose last record was cut off (a crash or a power loss mid-write) resu
 
 | Scope             | Do                                                                                |
 | ----------------- | --------------------------------------------------------------------------------- |
-| Everywhere        | `/configuration disable tool:backlog` (or `enable`)                               |
+| Everywhere        | `/settings disable tool:backlog` (or `enable`)                               |
 | This project      | add `--local` (needs a trusted folder)                                            |
 | One run           | `octocode --disable tool:backlog`, `--enable <id>`, `--set key=value`             |
-| Browse and toggle | `/configuration` with no argument; Space toggles, Tab switches global and project |
+| Browse and toggle | `/settings` with no argument; Space toggles, Tab switches global and project |
 
-`/configuration list <kind>` shows the ids (`tool:`, `mcp:`, `skill:`, `hook:`, `harness:`, ...). Details: [configuration](configuration.md#changing-configuration).
+`/settings list <kind>` shows the ids (`tool:`, `mcp:`, `skill:`, `hook:`, `harness:`, ...). Details: [configuration](configuration.md#changing-configuration).
 
 ## Add an MCP server for this project only
 
 1. `octocode mcp add --local docs -- npx -y some-mcp-server` (or `--url <url>` for a remote server) writes `.octocode/mcp.json`; `-l` is short for `--local`.
 2. In a running session, `/reload`; the folder is already trusted, so project hooks, MCP servers, agents and skills load.
 3. Check: `/mcp list` in the session or `octocode mcp list` in a shell shows each server's state; `/mcp tools docs` lists its tools.
-4. To switch it off later: `/configuration disable mcp:docs --local`.
+4. To switch it off later: `/settings disable mcp:docs --local`.
 
 Details: [Add an MCP server](mcp.md#add-a-server), [MCP precedence](configuration.md#precedence), [project trust](permissions.md#project-trust).
 
@@ -158,7 +158,7 @@ Details: [backlog view](web-workspace.md#backlog-board), [web controls](web-work
 
 ## Load a skill, and write your own
 
-- `/harness list skills` lists discovered skills and where each came from; `/configuration enable|disable skill:<name>` switches one (`/configuration list skill` shows the ids). Run one by typing `/<name>` (`/skill:<name>` on a name clash). The agent loads one itself when its description fits the task.
+- `/harness list skills` lists discovered skills and where each came from; `/settings enable|disable skill:<name>` switches one (`/settings list skill` shows the ids). Run one by typing `/<name>` (`/skill:<name>` on a name clash). The agent loads one itself when its description fits the task.
 - To write one, create `<name>/SKILL.md` with `name` and `description` front matter, then the instructions, in `.octocode/skills/` (this project) or `~/.octocode/octocodecode/skills/` (all projects), then `/reload`. The description should say what the skill does and when to use it.
 
 Details: [create a skill](skills.md#create-a-skill), [find and control skills](skills.md#find-and-control-skills), [skill locations](configuration.md#where-each-configuration-belongs).

@@ -9,6 +9,7 @@ import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { asSetup } from "./fake-host.ts";
 import { adoptSkillResourceSnapshot, captureSkillResourceSnapshot } from "../../src/core/skill-resource-snapshot.ts";
 import { loadSkills } from "../../src/core/skills.ts";
+import { SkillCatalog } from "../../src/octocode/skill/catalog.ts";
 import { bundledSkillDirs, registerSkills } from "../../src/octocode/skills.ts";
 import { nativeFeatureSet } from "../helpers/native-features.ts";
 
@@ -43,6 +44,7 @@ describe("skills the application ships", () => {
 			asSetup({
 				on: (_event: string, listener: typeof handler) => (handler = listener),
 			}),
+			new SkillCatalog(() => captureSkillResourceSnapshot(loader.getSkills())),
 		);
 		const { skillPaths } = (await handler?.(
 			{ type: "resources_discover", cwd: path.join(root, "project"), reason: "startup" },

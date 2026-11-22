@@ -1,3 +1,4 @@
+import { savedHandle } from "../../src/octocode/shared/heap-index.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -621,7 +622,7 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 			spilled.forEach(({ item }) => {
 				const file = (item.messages[1] as any).details.fullOutputPath as string;
 				// The placeholder names Octocode's own spill file; no second copy is written.
-				expect(byId.get(item.id)).toContain(`Full output: ${shortPath(file)}.`);
+				expect(byId.get(item.id)).toContain(`Full output: ${shortPath(file)} (${savedHandle(file)}).`);
 			});
 			const saved = (s.entries[0].data as { results: Array<{ id: string; saved: string }> }).results
 				.filter((result) => spilled.some(({ item }) => item.id === result.id))
@@ -670,19 +671,25 @@ describe("keeping results still in use", () => {
 		expect(old.every(cleared)).toBe(true);
 	});
 
-	it("keeps results in use only up to their size bound: past it the oldest of them are cleared", async () => {
+	it("keeps every result of the last turns however large, and results named since only up to their size bound", async () => {
 		const large = 30_000;
-		const items = reads(SESSION, large);
-		const s = setup(session(items));
-		await s.start(T0 + 100 + HOUR + 1_000);
-		expect(s.entries).toHaveLength(1);
-		const out = resultTexts(await s.context());
+		const workingSet = KEEP_RECENT_TURNS - 1;
 		const fits = Math.floor((KEEP_IN_USE_TOKENS * CHARS_PER_TOKEN) / large);
-		const inWindow = KEEP_RECENT_TURNS - 1 - KEEP_RECENT_RESULTS;
-		// The window holds more than the bound: only the newest that fit stay beside the newest five.
-		expect(fits).toBeLessThan(inWindow);
-		const kept = KEEP_RECENT_RESULTS + fits;
-		expect(out.slice(-kept).every((text) => text.length === large)).toBe(true);
-		expect(out.slice(0, SESSION - kept).every(cleared)).toBe(true);
+		const old = SESSION - workingSet;
+		// The window holds far more than the bound, and it stays whole.
+		expect(workingSet * large).toBeGreaterThan(KEEP_IN_USE_TOKENS * CHARS_PER_TOKEN);
+		expect(fits).toBeLessThan(old);
+		const plain = setup(session(reads(SESSION, large)));
+		await plain.start(T0 + 100 + HOUR + 1_000);
+		const out = resultTexts(await plain.context());
+		expect(out.slice(-workingSet).every((text) => text.length === large)).toBe(true);
+		expect(out.slice(0, old).every(cleared)).toBe(true);
+		// The older results a recent message names stay too, the newest first, until the bound is full.
+		const named = setup(session(reads(SESSION, large), names(0, old).join(" and ")));
+		await named.start(T0 + 100 + HOUR + 1_000);
+		const after = resultTexts(await named.context());
+		expect(after.slice(-workingSet).every((text) => text.length === large)).toBe(true);
+		expect(after.slice(old - fits, old).every((text) => text.length === large)).toBe(true);
+		expect(after.slice(0, old - fits).every(cleared)).toBe(true);
 	});
 });

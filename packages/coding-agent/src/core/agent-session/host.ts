@@ -18,7 +18,8 @@ import type { SettingsManager } from "../settings-manager.ts";
 import { createRunOutcome, type RunOutcome } from "./run-outcome.ts";
 import type { AgentSessionEvent, ModelMutationOptions, PromptOptions } from "./types.ts";
 
-export type AbortReason = "interrupted" | "replacement" | "shutdown" | "internal";
+/** `peer`: another agent's interrupt mail; it stops the run like `interrupted` but, in the loop's `new` mode, never a compaction. */
+export type AbortReason = "interrupted" | "peer" | "replacement" | "shutdown" | "internal";
 
 /** Flags of the current agent run, shared by the collaborators that start, interrupt and settle it. */
 export interface SessionRunState {

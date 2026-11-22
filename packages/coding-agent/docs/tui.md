@@ -50,6 +50,8 @@ Typing or dismissing completion cancels its pending lookup, so a stalled lookup 
 
 Scrolling away from the end keeps your reading position while output arrives. The jump-to-latest row reports how many rendered rows are below the viewport; it is not a count of unread messages. Search covers the loaded transcript as drawn: a word the terminal width breaks across two rows still matches, but text inside a collapsed block is not searched until you expand it, and a search without matches says so when the transcript has one. On a resumed long session, load earlier entries to search their rendered text. `/links all` searches assistant text in the current session context without rendering hidden history; compacted-away text requires the archive.
 
+System notifications appear as separate messages in the transcript. Expand a wake event to see its topic, source, destination and recorded data. Older sessions show the summary they recorded.
+
 ## References and copying
 
 `/links [query]` opens a searchable reference picker for the last answer. `/links message [query]` first chooses an answer, newest first; `/links all [query]` searches the session. Enter chooses a reference and then an action; Escape cancels. Full destinations remain available to inspect or copy even when the picker clips a long label.
@@ -64,7 +66,7 @@ Scrolling away from the end keeps your reading position while output arrives. Th
 
 References retain their session directory, including worktree paths. `src/a.ts:12:3` keeps line 12 and column 3. In fullscreen, activation routes through Octocode; in regular mode, the terminal's native link handler controls clicks, so use `/links` for exact editor handoff. No mouse, OSC 8, VS Code or GUI is required for the picker or copy commands. If a clipboard writer fails, Octocode reports it and the source remains in the transcript. Remote OSC 52 clipboard delivery cannot be acknowledged by the application.
 
-`/copy` keeps the original full-answer copy. Add `message` for plain text, `markdown` for source, `references` for text with full destinations, `code` for literal fenced code (choose a block when several exist), or `location` for a file location. These copies use source content, so line wrapping, folding, borders and code labels do not enter the copied value. Mouse selection copying remains available.
+`/copy` keeps the original full-answer copy. Add `message` for plain text, `markdown` for source, `references` for text with full destinations, `code` for literal fenced code (choose a block when several exist), or `location` for a file location. These copies use source content, so line wrapping, folding, borders and code labels do not enter the copied value. In fullscreen, hold the left mouse button and use the wheel to extend a selection beyond the visible rows. Releasing the button copies the selected text when `fullscreenCopyOnSelect` is enabled.
 
 ## Editor and VS Code workflows
 

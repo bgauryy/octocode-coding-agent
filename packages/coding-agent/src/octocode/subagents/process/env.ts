@@ -20,7 +20,6 @@ import {
 	READ_ONLY_ENV,
 	LEAN_ENV,
 	MEMORY_AUTO_ENV,
-	SKILLS_IN_TASK_ENV,
 	SKILL_CATALOG_ENV,
 	MCP_SESSION_SERVERS_FILE_ENV,
 	PARENT_SESSION_ENV,
@@ -32,6 +31,7 @@ import {
 	PERMISSION_RELAY_ENV,
 	SUBAGENT_ENV,
 	SKILL_SNAPSHOT_FILE_ENV,
+	PARENT_HEAP_FILE_ENV,
 	AGENT_SCRATCH_ENV,
 	TEAM_WORKSPACE_ENV,
 } from "@octocodeai/octocode-common/env";
@@ -111,6 +111,8 @@ export function childCachePreferences(
 export interface Identity {
 	resultContract?: ResultContract;
 	skillResources?: SkillResourceSnapshot;
+	/** The parent session's heap handles when it started the child (`HeapIndex.entries`), handed over read-only as a file. */
+	heapHandles?: ReadonlyArray<{ handle: string; path: string }>;
 	/** MCP servers the parent's `mcp` tool added this session (the user confirmed them): the child registers them, and nothing is written to `mcp.json`. */
 	mcpServers?: Readonly<Record<string, McpServerConfig>>;
 	/** Servers the parent stopped for this session only: the child leaves them out unless its tool selection names them. */
@@ -130,8 +132,6 @@ export interface Identity {
 	staggers?: boolean;
 	/** Shared cache group; transport sessions remain unique to each child. */
 	promptCacheKey?: string;
-	/** The parent chose its skills: they ride in its task and its prompt lists none (`SKILLS_IN_TASK_ENV`). */
-	skillsInTask?: boolean;
 	id: string;
 	/** Stable conversation ID, independent of the agent display name and individual run IDs. */
 	sessionId?: string;
@@ -191,6 +191,7 @@ export function subagentProcessEnv(
 	rolePromptFile?: string,
 	skillSnapshotFile?: string,
 	mcpServersFile?: string,
+	parentHeapFile?: string,
 ): NodeJS.ProcessEnv {
 	const inherited = { ...base };
 	const hooks = identity?.hooks ?? childHookMode(profile?.hooks);
@@ -216,13 +217,13 @@ export function subagentProcessEnv(
 		...(profile?.readOnly ? { [READ_ONLY_ENV]: "1" } : {}),
 		// A lean child's prompt is its role and task only: no memory notes are injected either.
 		...(profile?.lean ? { [LEAN_ENV]: "1", [MEMORY_AUTO_ENV]: "0" } : {}),
-		// An empty catalog (`catalog: []`) still reaches the child, as an empty value: its prompt lists none of the skills.
+		// An empty catalog (`catalog: []`) still reaches the child, as an empty value: its `skill` tool lists none.
 		...(catalog ? { [SKILL_CATALOG_ENV]: catalog.join(",") } : {}),
-		...(identity?.skillsInTask ? { [SKILLS_IN_TASK_ENV]: "1" } : {}),
 		[SUBAGENT_ENV]: "1",
 		[NESTING_ENV]: String(nestingOf(base) + 1),
 		...(rolePromptFile ? { [ROLE_PROMPT_FILE_ENV]: rolePromptFile } : {}),
 		...(skillSnapshotFile ? { [SKILL_SNAPSHOT_FILE_ENV]: skillSnapshotFile } : {}),
+		...(parentHeapFile ? { [PARENT_HEAP_FILE_ENV]: parentHeapFile } : {}),
 		...(mcpServersFile ? { [MCP_SESSION_SERVERS_FILE_ENV]: mcpServersFile } : {}),
 		...(identity ? { [AGENT_ID_ENV]: identity.id } : {}),
 		...(identity?.runId ? { [AGENT_RUN_ID_ENV]: identity.runId } : {}),

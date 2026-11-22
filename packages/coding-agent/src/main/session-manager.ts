@@ -8,6 +8,7 @@ import type { Args } from "../cli/args.ts";
 import { selectSession } from "../cli/session-picker.ts";
 import { showStartupSelector } from "../cli/startup-ui.ts";
 import { assertValidSessionId, SessionManager } from "../core/session-manager.ts";
+import { findMostRecentForCwd } from "../core/session-manager/storage.ts";
 import { listSessionHeaders, type SessionHeaderInfo } from "../core/session-manager/header-listing.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
 import { sessionFileRunningPid } from "../octocode/shared/session-liveness.ts";
@@ -337,9 +338,10 @@ export async function createSessionManager(
 	}
 
 	if (parsed.continue) {
-		const recent = await SessionManager.continueRecentAsync(cwd, sessionDir);
-		await confirmSessionNotRunning(recent.getSessionFile(), parsed, settingsManager);
-		return recent;
+		// Liveness is judged before opening: opening can write the transcript mirror of a session another process holds.
+		const recentFile = findMostRecentForCwd(cwd, sessionDir);
+		if (recentFile) await confirmSessionNotRunning(recentFile, parsed, settingsManager);
+		return SessionManager.continueRecentAsync(cwd, sessionDir);
 	}
 
 	if (parsed.sessionId) {

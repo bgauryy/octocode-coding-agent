@@ -36,8 +36,17 @@ export interface RunEnd {
 	reportPath?: string | undefined;
 }
 
+/**
+ * `finishRun`, then the parent's own record of the end reaches the prerequisite gate: it releases or holds the children queued
+ * behind the run and lets a later `after: agent:<id>` name it.
+ */
+export function endRun(runs: Pick<AgentRuns, "team" | "chain">, id: string, end: RunEnd): void {
+	finishRun(runs, id, end);
+	runs.chain?.gate.noteEnd(id, { reason: end.reason, outcome: end.outcome });
+}
+
 /** The parent's word on the run: its outcome and report, and its end when no agent row is left to retire (the child never joined). */
-export function finishRun(runs: Pick<AgentRuns, "team">, id: string, end: RunEnd): void {
+function finishRun(runs: Pick<AgentRuns, "team">, id: string, end: RunEnd): void {
 	runs.team.audit.finish(id, {
 		endReason: end.reason,
 		...(end.error ? { endDetail: firstLine(end.error) } : {}),

@@ -15,6 +15,7 @@ import { minimatch } from "minimatch";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
 import { defaultModelPerProvider, ownProviderDefault } from "./model-resolver/default-models.ts";
 import { buildFallbackModel, resolveModelReference, splitThinkingSuffix } from "./model-resolver/reference.ts";
+import { didYouMean, nearestModelIds } from "./model-resolver/suggestions.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 
 export { defaultModelPerProvider } from "./model-resolver/default-models.ts";
@@ -243,7 +244,7 @@ export function resolveCliModel(options: {
 	return {
 		model: requestedThinking && requestedThinking !== "off" ? { ...fallbackModel, reasoning: true } : fallbackModel,
 		thinkingLevel: fallbackThinking,
-		warning: `Model "${modelId}" not found for provider "${target.provider}". Using custom model id.`,
+		warning: `Model "${modelId}" not found for provider "${target.provider}". Using custom model id.${didYouMean(nearestModelIds(modelId, target.providerModels))}`,
 		error: undefined,
 	};
 }

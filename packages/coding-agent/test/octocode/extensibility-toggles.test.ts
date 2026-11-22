@@ -195,7 +195,7 @@ describe("switchItem", () => {
 	});
 });
 
-/** The catalog `/configuration` runs on, over the fixture's own settings files. */
+/** The catalog `/settings` runs on, over the fixture's own settings files. */
 function catalogFor(f: ReturnType<typeof fixture>, live?: ConfigLiveHooks) {
 	return createConfiguration({
 		cwd: f.cwd,
@@ -247,11 +247,11 @@ describe("/harness", () => {
 		// The retired verb names the line that replaces it; a bare name resolves through the catalog when it is unique.
 		await command.handler("disable hooks:claude", ctx);
 		expect(ctx.ui.notes.at(-1)).toMatchObject({ type: "warning" });
-		expect(ctx.ui.notes.at(-1)!.message).toContain("/configuration disable hooks:claude");
+		expect(ctx.ui.notes.at(-1)!.message).toContain("/settings disable hooks:claude");
 		await command.handler("enable claude --local", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toContain("/configuration enable harness:claude --local");
+		expect(ctx.ui.notes.at(-1)!.message).toContain("/settings enable harness:claude --local");
 		await command.handler("disable no-such-name", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toMatch(/"no-such-name" needs an id[\s\S]*\/configuration list <name>/);
+		expect(ctx.ui.notes.at(-1)!.message).toMatch(/"no-such-name" needs an id[\s\S]*\/settings list <name>/);
 	});
 
 	it("lists one section, filters by text, and reports hooks and config through subcommands", async () => {

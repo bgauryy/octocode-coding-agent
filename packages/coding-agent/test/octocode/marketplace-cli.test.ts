@@ -154,7 +154,8 @@ describe("octocode marketplace and plugin", () => {
 		expect(run.code, run.stderr).toBe(0);
 		const request = JSON.stringify(server.requests[0]);
 		expect(request).toContain("MARKETPLACE_GREETING_V1");
-		expect(request).toContain("fixture:hello");
+		// The skill tool lists a skill as `path: description`, the plugin's cached file included.
+		expect(request).toContain(`fixture/${sha}/skills/hello/SKILL.md: Says hello from the marketplace fixture.`);
 		expect(existsSync(marker())).toBe(true);
 
 		const listed = await octocode("plugin", "list");

@@ -132,6 +132,25 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 			answers(call("bash", { type: "powershell", command: "Get-Item ." }), "only available on Windows"),
 		],
 	},
+	// Reads come from the same catalog `/settings` shows; a print run has no dialog to ask in, so every write is refused
+	// before it touches a file.
+	configuration: {
+		ok: [
+			answers(call("configuration", { op: "list", id: "harness:agents" }), /^harness:agents\t(on|off)\t/m),
+			answers(call("configuration", { op: "get", id: "harness:agents" }), /"id": "harness:agents"/),
+			answers(call("configuration", { op: "get", id: "no-such:entry" }), "No entry no-such:entry."),
+		],
+		fail: [
+			{
+				step: call("configuration", { op: "disable", id: "harness:agents", scope: "workspace" }),
+				check(result, box) {
+					expect(result).toMatch(/need the user's approval and this session has no dialog to ask in/);
+					expect(fs.existsSync(path.join(box.project, ".octocode", "agent", "settings.json"))).toBe(false);
+				},
+			},
+			answers(call("configuration", { op: "set", scope: "global" }), "set needs id."),
+		],
+	},
 	file: {
 		ok: [
 			answers(call("file", { queries: [{ type: "write", path: "w.txt", content: "first\n" }] }), "OK write w.txt"),
@@ -178,8 +197,12 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 	},
 	mcp: {
 		ok: [
-			answers(call("mcp", { intent: "list" }), /octocode: connected · \d+ tools/, "browser: not selected"),
-			answers(call("mcp", { intent: "tools", server: "octocode", tool: "lspSearch" }), "lspSearch", '"required"'),
+			answers(call("mcp", { intent: "list" }), /octocode: connected · \d+ tools/, /browser: connected · \d+ tools/),
+			answers(
+				call("mcp", { intent: "tools", server: "octocode", tool: "lspSearch" }),
+				"lspSearch",
+				/Input schema:[\s\S]*"queries"[\s\S]*"operation"/,
+			),
 		],
 		fail: [
 			answers(call("mcp", { intent: "tools", server: "no-such" }), 'No MCP server "no-such"', "Servers: octocode"),
@@ -241,22 +264,22 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 			answers(call("backlog", { op: "update", id: "B1", state: "done" }), 'backlog has no op "update": use op "done".'),
 		],
 	},
-	wait: {
+	notify: {
 		// Far enough ahead that it never wakes this run; the cancel ends it before the session does.
 		ok: [
 			answers(
-				call("wait", { op: "set", after: 3600, note: "timer-marker" }),
+				call("notify", { op: "set", after: 3600, note: "timer-marker" }),
 				/^Set 1 · once · next wake in 3600s · timer-marker/,
 			),
-			answers(call("wait", { op: "list" }), /^1 · once · next wake in \d+s · timer-marker$/),
-			answers(call("wait", { op: "off", id: 1 }), /^Cancelled 1 · once · cancelled/),
-			answers(call("wait", { op: "list" }), "No active waits."),
+			answers(call("notify", { op: "list" }), /^1 · once · next wake in \d+s · timer-marker$/),
+			answers(call("notify", { op: "off", id: 1 }), /^Cancelled 1 · once · cancelled/),
+			answers(call("notify", { op: "list" }), "No active notifications."),
 			// As clearTimeout: cancelling a timer that already ended is a no-op, not an error.
-			answers(call("wait", { op: "off", id: 1 }), /^Wait 1 already ended, nothing to turn off/),
+			answers(call("notify", { op: "off", id: 1 }), /^Notification 1 already ended, nothing to turn off/),
 		],
 		fail: [
-			answers(call("wait", { op: "set", after: 60 }), "set needs a note"),
-			answers(call("wait", { op: "off", id: 99 }), "No wait 99 in this session. No wait is active."),
+			answers(call("notify", { op: "set", after: 60 }), "set needs a note"),
+			answers(call("notify", { op: "off", id: 99 }), "No notification 99 in this session. Nothing is active."),
 		],
 	},
 	archive: {
@@ -316,6 +339,11 @@ const NATIVE: Record<string, { ok: Case[]; fail: Case[] }> = {
 			),
 		],
 		fail: [answers(call("askUser", { questions: [] }), "Ask at least one question")],
+	},
+	render: {
+		// Headless has no screen: a status or table is refused too, since nobody sees it.
+		ok: [answers(call("render", { type: "confirm", title: "Go?" }), "render needs the user's screen")],
+		fail: [answers(call("render", { type: "form", title: "x" }), "render needs the user's screen")],
 	},
 	skill: {
 		ok: [

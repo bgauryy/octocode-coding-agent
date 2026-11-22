@@ -90,7 +90,8 @@ export const changedSpec: ConditionSpec<Changed> = {
 			return {
 				met: true,
 				exit: null,
-				output: "The audit history after this wait began was pruned: reread the board, changes may have been missed.",
+				output:
+					"The audit history after this request began was pruned: reread the board, changes may have been missed.",
 			};
 		const scope = {
 			refs: splitList(condition.ref),

@@ -17,16 +17,24 @@ export function questionView(q: Question): AskView {
 }
 
 /**
- * How the web workspace and RPC clients answer a lone single-choice or free-text question (the broker's first answer
- * wins and closes the terminal card). A batch or a multi-select stays terminal-only: one answer cannot fill its tabs. A
- * choice that names no option of the question is not an answer.
+ * How the web workspace and RPC clients answer the terminal card (the broker's first answer wins and closes it). A lone
+ * single-choice or free-text question is answered by a choice or text; a batch or a multi-select by one reply per
+ * question, checked against the questions. A choice that names no option of the question is not an answer.
  */
 export function remoteAnswer(
 	questions: readonly Question[],
 	hold?: () => void,
 ): { remote: RemoteAnswer<Reply[]> } | undefined {
 	const [q] = questions;
-	if (!q || questions.length !== 1 || (q.type !== "text" && q.type !== "choice")) return undefined;
+	if (!q) return undefined;
+	if (questions.length !== 1 || (q.type !== "text" && q.type !== "choice"))
+		return {
+			remote: {
+				title: `${questions.length > 1 ? `${questions.length} questions: ` : ""}${q.question}`,
+				questions,
+				...(hold ? { hold } : {}),
+			},
+		};
 	const options = q.options ?? [];
 	const view = questionView(q);
 	return {

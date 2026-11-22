@@ -33,6 +33,8 @@ export interface WorktreeOutputs {
 	copied: string[];
 	/** Paths where the checkout held a newer file, so the child's version was saved beside it. */
 	conflicts: string[];
+	/** Ignored paths outside `.octocode/agent/` (an ignored folder as one entry) that were not copied and vanish with the worktree; absent when none. */
+	dropped?: string[];
 }
 
 export interface WorktreeResult {

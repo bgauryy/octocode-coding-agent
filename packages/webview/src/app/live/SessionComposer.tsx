@@ -240,7 +240,7 @@ function SessionComposerForSession() {
 				) : (
 					<>
 						Messages go to the terminal session that opened this page: <code>{session.sessionId}</code>. Replies appear
-						in Activity below. {answerNote(answerable)}
+						in Activity below. <span>{answerNote(answerable)}</span>
 					</>
 				)}
 			</p>

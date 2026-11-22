@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { GLYPH } from "@octocodeai/octocode-tui";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { KEY, startUi, type UiHarness } from "./e2e-ui-flows/ui.ts";
@@ -34,8 +35,18 @@ const slash = async (line: string) => {
 const openKeyPrompt = async () => {
 	await slash("/providers openrouter");
 	await t!.until(shows("Add API key"), "provider menu");
-	t!.press(KEY.down);
-	await new Promise((resolve) => setTimeout(resolve, 300));
+	const selected = async () =>
+		(await t!.text())
+			.split("\n")
+			.find((line) => line.trimStart().startsWith(GLYPH.cursor + " "))
+			?.trim();
+	await t!.until(async () => {
+		const row = await selected();
+		if (!row) return false;
+		if (row.includes("Add API key")) return true;
+		t!.press(KEY.down);
+		return false;
+	}, "Add API key selected");
 	t!.press(KEY.enter);
 	await t!.until(shows("Enter OpenRouter API key"), "key prompt");
 };
@@ -52,14 +63,11 @@ describe("/providers API key", () => {
 		await t.until(shows("> ***************"), "masked input");
 		expect(await t.text()).not.toContain("sk-test-key-123");
 		t.press(KEY.enter);
-		// With a system keychain the dialog asks where to store the key; without one it stores in auth.json directly.
-		await t.until(
-			async () => (await shows("Where should this API key")()) || saved().openrouter !== undefined,
-			"store",
-		);
-		if (await shows("Where should this API key")()) {
+		const storage = shows("Where should this API key be stored?");
+		await t.until(async () => (await storage()) || saved().openrouter !== undefined, "file save or storage choice");
+		if (await storage()) {
 			t.press(KEY.down);
-			await new Promise((resolve) => setTimeout(resolve, 300));
+			await t.until(shows(/› 2\. Local auth\.json file/), "local file selected");
 			t.press(KEY.enter);
 		}
 		await t.until(() => saved().openrouter !== undefined, "credential persisted");
@@ -95,6 +103,13 @@ describe("/providers API key", () => {
 			{ prompt: async () => "sk-removed-key", notify: () => {} },
 			{ getDeviceId: () => "test", agentName: "test" },
 		);
+		const storage = shows("Where should this API key be stored?");
+		await t.until(async () => (await storage()) || saved().openrouter !== undefined, "file save or storage choice");
+		if (await storage()) {
+			t.press(KEY.down);
+			await t.until(shows(/› 2\. Local auth\.json file/), "local file selected");
+			t.press(KEY.enter);
+		}
 		await t.until(() => saved().openrouter !== undefined, "credential persisted");
 		expect(openrouterModels().length).toBeGreaterThan(0);
 		await slash("/logout");

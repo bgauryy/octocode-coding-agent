@@ -20,7 +20,7 @@ The system prompt and tool declarations each agent receives with its first model
 | `{{MCP_TOOLS}}` | The `mcp__<server>__<tool>` declarations (description and schema) of the enabled MCP servers. | `packages/mcp/src/tool-definition.ts`; the servers come from the user's MCP configuration |
 | `{{CWD}}` | The absolute path of the working directory. | `src/core/system-prompt.ts` |
 | `{{PROJECT_CONTEXT}}` | The `<project_context>` block: the AGENTS.md / CLAUDE.md files of the working directory and its ancestors. | `src/octocode/native/prompts/system/project-context.md`, files loaded by `src/core/resource-loader.ts` |
-| `{{SKILLS_LIST}}` | The `<available_skills>` block: the skills this agent may load (bundled, user and project skills). | `src/core/skills.ts` and `src/octocode/native/prompts/system/skills-intro.md` |
+| `{{SKILLS_LIST}}` | The `path: description` lines at the end of the `skill` tool's description: the skills this agent may load (bundled, user and project skills). | `src/octocode/native/tools/skill/description.md` and `src/core/skills/listing.ts` |
 | `{{HARNESSES}}` | The `<harnesses>` block: which other agents' hooks, MCP servers and memory files are on or off. | `src/octocode/` harness switch (`/harness`) |
 | `{{ENVIRONMENT}}` | The `<environment>` block: platform, shell and today's date. | `src/octocode/native/prompts/system/environment.md` |
 | `{{HOST_PROBE}}` | The two `Host:` / `Host notes:` lines of the bash description: the probed OS, tools on PATH and platform notes. | `src/octocode/files/bash/cli-guide.ts` |

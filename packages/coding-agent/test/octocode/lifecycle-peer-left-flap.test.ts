@@ -1,3 +1,4 @@
+import { withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -30,7 +31,8 @@ const member = (id: string, pid: number, joinedAt: number): Member => ({
 	unpriced: false,
 });
 /** The `<agent> ended: <reason>` lines the session was told. */
-const told = () => host.sent.map((entry) => String(entry.message.content)).filter((text) => /ended: /.test(text));
+const told = () =>
+	host.sent.map((entry) => withoutSourceHeader(String(entry.message.content))).filter((text) => /ended: /.test(text));
 
 function startTeam(): void {
 	host = fakeHost();

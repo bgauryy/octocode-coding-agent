@@ -98,7 +98,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	},
 	{ name: "help", description: "Find a command, or show one's usage", argumentHint: "[command|search]" },
 	{
-		name: "configuration",
+		name: "settings",
 		description: "View and change settings",
 		argumentHint: "[list|get|enable|disable|set|unset|add|remove] [--local]",
 		argumentValues: ["list", "get", "enable", "disable", "set", "unset", "add", "remove"],
@@ -237,7 +237,7 @@ export const SLASH_MENU_ORDER: readonly string[] = [
 	"memory",
 	"archive",
 	"permissions",
-	"configuration",
+	"settings",
 	"modelsettings",
 	"harness",
 	"mcp",
@@ -267,8 +267,8 @@ export const SLASH_MENU_ORDER: readonly string[] = [
  */
 export const COMMAND_ALIASES: ReadonlyMap<string, string> = new Map([
 	["exit", "quit"],
-	["config", "configuration"],
-	["settings", "configuration"],
+	["config", "settings"],
+	["configuration", "settings"],
 	["release-notes", "changelog"],
 	["feedback", "bug"],
 	["login", "providers"],
@@ -319,7 +319,7 @@ const FEATURE_COMMANDS: ReadonlyMap<string, string> = new Map([["mcp", "mcp"]]);
 /** The built-in feature that owns slash command `name`, if one does. */
 export const featureOfCommand = (name: string): string | undefined => FEATURE_COMMANDS.get(name);
 
-/** `/mcp enable|disable <server>` as the `/configuration` line that replaced it; the old `-l` flag becomes `--local`. */
+/** `/mcp enable|disable <server>` as the `/settings` line that replaced it; the old `-l` flag becomes `--local`. */
 function movedMcpSwitch(args: string): string | undefined {
 	const [action, server, ...flags] = args.trim().split(/\s+/);
 	if ((action !== "enable" && action !== "disable") || !server) return undefined;
@@ -333,7 +333,7 @@ export function parseSlashCommand(text: string): { name: string; args: string } 
 	if (!match) return undefined;
 	const [, typed, rest = ""] = match;
 	const moved = typed === "mcp" ? movedMcpSwitch(rest) : undefined;
-	if (moved) return { name: "configuration", args: moved };
+	if (moved) return { name: "settings", args: moved };
 	const leading = ALIAS_LEADING_ARGS.get(typed);
 	return {
 		name: COMMAND_ALIASES.get(typed) ?? typed,

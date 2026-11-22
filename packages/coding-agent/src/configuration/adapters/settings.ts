@@ -47,7 +47,7 @@ async function set(op: ConfigOp, leaf: SettingLeaf, value: unknown, ctx: ConfigC
 	return applied(
 		op,
 		"reload",
-		`${saved}${ctx.live?.applySetting ? ' The "Interface and session" list in /configuration applies the settings it shows at once.' : ""}`,
+		`${saved}${ctx.live?.applySetting ? ' The "Interface and session" list in /settings applies the settings it shows at once.' : ""}`,
 	);
 }
 

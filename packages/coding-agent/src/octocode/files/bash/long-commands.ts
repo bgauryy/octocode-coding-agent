@@ -90,11 +90,11 @@ const LONG_SLEEP_SECONDS = 20;
 /**
  * Appended to the result of a foreground command that is a long `sleep` or a sleep-poll loop: the wait should be a
  * background job whose completion arrives as a message, or, for state outside the session, a timer. The command still
- * runs. `wait` says the session declares the `wait` tool, so the hint names only what the model can call.
+ * runs. `timer` says the session declares the `notify` tool, so the hint names only what the model can call.
  */
 const sleepHintText = (timer: boolean): string =>
 	`Hint: waiting by sleeping in the foreground holds the turn. Start the long command with \`background: true\` and wait for its completion message${
-		timer ? ", or set a `wait` to be woken when outside state holds," : ""
+		timer ? ", or set a `notify` request to be told when outside state holds," : ""
 	} instead of sleeping or polling.`;
 
 /** The hint when `command` sleeps 20 s or more, or polls in a loop with `sleep`; undefined otherwise. */

@@ -184,14 +184,24 @@ it("shows usage and shell details and reads complete shell output with session a
 
 it("loads full activity metadata without treating arbitrary data as a message or another asset reference", async () => {
 	const full = { id: "details", mimeType: "application/json", size: 80 };
-	const [event] = new ApplicationProjection().update({ ...snapshot, activities: [activity("usage", { full })] }, 1);
+	const fullText = { id: "notice-text", mimeType: "text/plain", size: 6000 };
+	const [event] = new ApplicationProjection().update(
+		{ ...snapshot, activities: [activity("usage", { full, fullText })] },
+		1,
+	);
 	responses = [
 		{ asset: full, encoding: "utf8", data: JSON.stringify({ cost: 0.5, totalTokens: 1200, full: "data field" }) },
+		{ asset: fullText, encoding: "utf8", data: "A long notice. ".repeat(400) + "Final line of notice" },
 	];
 	render(<ResultCard event={event} />, { wrapper: Wrapper });
 	await userEvent.click(screen.getByRole("button", { name: "Load full details" }));
 	expect(await screen.findByText(/"totalTokens": 1200/)).toHaveTextContent('"full": "data field"');
-	expect(requests).toHaveLength(1);
+	await userEvent.click(screen.getByRole("button", { name: "Load full content" }));
+	expect(await screen.findByText(/Final line of notice/)).toBeVisible();
+	expect(requests.map((request) => request.url)).toEqual([
+		"/api/application/assets/details?sessionId=s",
+		"/api/application/assets/notice-text?sessionId=s",
+	]);
 	expect(screen.queryByRole("button", { name: "Load full details" })).toBeNull();
 });
 

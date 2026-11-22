@@ -1,10 +1,12 @@
 import type { ExternalModelFilters } from "../../../shared/model-filters.ts";
 import { renderPrompt } from "../../../../core/prompt-template.ts";
 import { StringEnum } from "@octocodeai/octocode-contracts/schema";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { Type } from "typebox";
 import type { FeatureSetup, FeatureContext } from "../../../../core/features/index.ts";
 import { formatTokens } from "../../../shared/format.ts";
 import { textResult } from "../../../shared/util.ts";
+import { budgetedTool } from "../../../jobs/tool.ts";
 import type { ModelRef } from "../../../subagents/model.ts";
 import { VALID_THINKING_LEVELS } from "../../../../core/thinking-level.ts";
 import { canRunTask, registryBilling } from "../../../subagents/model.ts";
@@ -15,6 +17,7 @@ import {
 	MODEL_ABILITIES,
 	modelAbilities,
 	modelCatalog,
+	SOURCE_NOTE,
 } from "../../../subagents/models-command.ts";
 import { compactModels, providerKinds, providerRows, providerSummary } from "../../../subagents/models-summary.ts";
 import type { AgentProfile } from "../../../subagents/profiles.ts";
@@ -43,138 +46,151 @@ export function registerModelsTool(
 	getProfiles: () => Map<string, AgentProfile>,
 	listExternal: ExternalListing = async () => [],
 ): void {
-	api.tools.register({
-		name: "models",
-		roleVariant: true,
-		label: "Models",
-		promptSnippet: renderPrompt("tools/models/snippet.md"),
-		description:
-			"Session model and all connected models: price, context, abilities, thinking, cutoff, credential mark. Filters combine and add purpose/profile routes.",
-		parameters: Type.Object({
-			routes: Type.Optional(Type.Boolean({ description: "Add the routes without a filter" })),
-			provider: Type.Optional(Type.String({ description: "This provider's models, or an external vendor/runner ID" })),
-			ability: Type.Optional(StringEnum(MODEL_ABILITIES, { description: "Keep models with this ability" })),
-			query: Type.Optional(Type.String({ description: "Text in provider/id or external route identity" })),
-			check: Type.Optional(
-				Type.Boolean({
-					description: "true: test credentials by listing or small requests (may cost)",
+	api.tools.register(
+		budgetedTool(
+			{
+				name: "models",
+				roleVariant: true,
+				label: "Models",
+				promptSnippet: renderPrompt("tools/models/snippet.md"),
+				description:
+					"Session and connected models: price, context, abilities, thinking, cutoff, credentials. Filters combine; routes add purpose/profile routes.",
+				parameters: Type.Object({
+					routes: Type.Optional(Type.Boolean({ description: "Add routes" })),
+					provider: Type.Optional(Type.String({ description: "Provider, or external vendor/runner ID" })),
+					ability: Type.Optional(StringEnum(MODEL_ABILITIES, { description: "Ability" })),
+					query: Type.Optional(Type.String({ description: "Text in provider/id or route" })),
+					check: Type.Optional(
+						Type.Boolean({
+							description: "true: test credentials (may cost)",
+						}),
+					),
+					scope: Type.Optional(
+						StringEnum(["connected", "catalog"] as const, {
+							description: "connected (default); catalog: also unconnected",
+						}),
+					),
 				}),
-			),
-			scope: Type.Optional(
-				StringEnum(["connected", "catalog"] as const, {
-					description: "connected (default); catalog adds unconnected models",
-				}),
-			),
-		}),
-		async execute(_id, params, signal, _onUpdate, ctx) {
-			signal?.throwIfAborted();
-			const { catalog, source } = await modelCatalog();
-			const query = params.query?.trim().toLowerCase();
-			const provider = params.provider?.trim().toLowerCase();
-			const named = (model: ModelRef) =>
-				(!query || `${model.provider}/${model.id}`.toLowerCase().includes(query)) &&
-				(!provider || model.provider.toLowerCase() === provider);
-			const matches = (model: ModelRef) =>
-				named(model) && (!params.ability || modelAbilities(model, catalog).includes(params.ability));
-			const all = ctx.modelRegistry.getAvailable();
-			const shown = all.filter(matches);
-			const kinds = providerKinds(ctx.modelRegistry, all);
-			const unconnected = params.scope === "catalog" ? catalogOnly(ctx.modelRegistry, all).filter(matches) : [];
-			const filtered = query || provider || params.ability;
-			const outside = await externalSection(listExternal, ctx, signal, { query, provider, ability: params.ability });
-			if (filtered && shown.length === 0 && unconnected.length === 0 && outside.length === 0)
-				return textResult(
-					[
-						sessionHeader(ctx),
-						providerRows(ctx.modelRegistry, all, kinds),
-						`No model matches the filters; ${all.length} without them.`,
-					].join("\n\n"),
-				);
-			if (params.check)
-				await checkProviders(ctx.modelRegistry, checkCandidates(shown, ctx.model), providerHealth, signal);
-			const footer = `Pass one as \`model\` ("provider/id") when you start a task; append ${thinkingLevels()} to set its thinking.`;
+				async execute(_id, params, signal, _onUpdate, ctx) {
+					signal?.throwIfAborted();
+					const { catalog, source } = await modelCatalog();
+					const query = params.query?.trim().toLowerCase();
+					const provider = params.provider?.trim().toLowerCase();
+					const named = (model: ModelRef) =>
+						(!query || `${model.provider}/${model.id}`.toLowerCase().includes(query)) &&
+						(!provider || model.provider.toLowerCase() === provider);
+					const matches = (model: ModelRef) =>
+						named(model) && (!params.ability || modelAbilities(model, catalog).includes(params.ability));
+					const all = ctx.modelRegistry
+						.getAvailable()
+						.map((model) => ({ ...model, origin: ctx.modelRegistry.getModelOrigin(model) }));
+					const shown = all.filter(matches);
+					const kinds = providerKinds(ctx.modelRegistry, all);
+					const unconnected = params.scope === "catalog" ? catalogOnly(ctx.modelRegistry, all).filter(matches) : [];
+					const filtered = query || provider || params.ability;
+					const outside = await externalSection(listExternal, ctx, signal, {
+						query,
+						provider,
+						ability: params.ability,
+					});
+					if (filtered && shown.length === 0 && unconnected.length === 0 && outside.length === 0)
+						return textResult(
+							[
+								sessionHeader(ctx),
+								providerRows(ctx.modelRegistry, all, kinds),
+								`No model matches the filters; ${all.length} without them.`,
+							].join("\n\n"),
+						);
+					if (params.check)
+						await checkProviders(ctx.modelRegistry, checkCandidates(shown, ctx.model), providerHealth, signal);
+					const footer = `${SOURCE_NOTE}\nPass one as \`model\` ("provider/id") when you start a task; append ${thinkingLevels()} to set its thinking.`;
 
-			if (!filtered)
-				return textResult(
-					[
-						sessionHeader(ctx),
-						compactModels(all, catalog),
-						...(params.routes
-							? [
-									describeRoutes(
-										all,
-										ctx.model,
-										getProfiles(),
-										catalog,
-										undefined,
-										undefined,
-										registryBilling(ctx.modelRegistry),
-									),
-								]
-							: []),
-						...outside,
-						...catalogRows(unconnected),
-						source,
-					].join("\n\n"),
-				);
-			const credentials = source;
-			// Broad query and ability filters get a provider summary; a provider or short filter lists models.
-			if (!provider && shown.length > LISTING_ROWS) {
-				const kept = filtered ? shown : undefined;
-				return textResult(
-					[
-						sessionHeader(ctx),
-						providerSummary(ctx.modelRegistry, all, catalog, kept, kinds),
-						...(kept
-							? [`${kept.length} models match; too many to list. Set \`provider\` to list one provider's models.`]
-							: []),
-						describeRoutes(
-							all,
-							ctx.model,
-							getProfiles(),
-							catalog,
-							undefined,
-							undefined,
-							registryBilling(ctx.modelRegistry),
-						),
-						...outside,
-						...(kept ? [] : ["Set `provider` to list one provider's models."]),
-						credentials,
-						...catalogRows(unconnected),
-						footer,
-					].join("\n\n"),
-				);
-			}
-			// Credential status is on the provider rows; the model headings carry none so it is said once.
-			const listing = describeModels(
-				all,
-				ctx.model,
-				getProfiles(),
-				catalog,
-				undefined,
-				(model) => matches(model) && canRunTask(model, catalog),
-				undefined,
-				undefined,
-				registryBilling(ctx.modelRegistry),
-			);
-			const unrunnable = describeUnrunnable(shown, ctx.model, catalog);
-			return textResult(
-				[
-					sessionHeader(ctx),
-					providerRows(ctx.modelRegistry, all, kinds),
-					listing,
-					...outside,
-					...(unrunnable ? [unrunnable] : []),
-					credentials,
-					...catalogRows(unconnected),
-					footer,
-				].join("\n\n"),
-			);
-		},
-	});
+					if (!filtered)
+						return textResult(
+							[
+								sessionHeader(ctx),
+								`${compactModels(all, catalog)}\n${SOURCE_NOTE}`,
+								...(params.routes
+									? [
+											describeRoutes(
+												all,
+												ctx.model,
+												getProfiles(),
+												catalog,
+												undefined,
+												undefined,
+												registryBilling(ctx.modelRegistry),
+											),
+										]
+									: []),
+								...outside,
+								...catalogRows(unconnected),
+								source,
+							].join("\n\n"),
+						);
+					const credentials = source;
+					// Broad query and ability filters get a provider summary; a provider or short filter lists models.
+					if (!provider && shown.length > LISTING_ROWS) {
+						const kept = filtered ? shown : undefined;
+						return textResult(
+							[
+								sessionHeader(ctx),
+								providerSummary(ctx.modelRegistry, all, catalog, kept, kinds),
+								...(kept
+									? [`${kept.length} models match; too many to list. Set \`provider\` to list one provider's models.`]
+									: []),
+								describeRoutes(
+									all,
+									ctx.model,
+									getProfiles(),
+									catalog,
+									undefined,
+									undefined,
+									registryBilling(ctx.modelRegistry),
+								),
+								...outside,
+								...(kept ? [] : ["Set `provider` to list one provider's models."]),
+								credentials,
+								...catalogRows(unconnected),
+								footer,
+							].join("\n\n"),
+						);
+					}
+					// Credential status is on the provider rows; the model headings carry none so it is said once.
+					const listing = describeModels(
+						all,
+						ctx.model,
+						getProfiles(),
+						catalog,
+						undefined,
+						(model) => matches(model) && canRunTask(model, catalog),
+						undefined,
+						undefined,
+						registryBilling(ctx.modelRegistry),
+					);
+					const unrunnable = describeUnrunnable(shown, ctx.model, catalog);
+					return textResult(
+						[
+							sessionHeader(ctx),
+							providerRows(ctx.modelRegistry, all, kinds),
+							listing,
+							...outside,
+							...(unrunnable ? [unrunnable] : []),
+							credentials,
+							...catalogRows(unconnected),
+							footer,
+						].join("\n\n"),
+					);
+				},
+			},
+			(params) =>
+				[params.provider, params.query, params.ability, params.check ? "check" : ""].filter(Boolean).join(" ") ||
+				"list",
+		),
+	);
 }
 
-/** Connected runners and external agents, when the setting enables them; a listing that fails adds nothing. */
+/** Connected runners and external agents, when the setting enables them; a listing that fails says so in one line. */
 async function externalSection(
 	list: ExternalListing,
 	ctx: FeatureContext,
@@ -183,8 +199,9 @@ async function externalSection(
 ): Promise<string[]> {
 	try {
 		return (await list(ctx, signal, filters)).filter((block) => block.trim());
-	} catch {
-		return [];
+	} catch (error) {
+		if (signal?.aborted) throw error;
+		return [`Runners and external agents: listing failed (${errorMessage(error)}).`];
 	}
 }
 

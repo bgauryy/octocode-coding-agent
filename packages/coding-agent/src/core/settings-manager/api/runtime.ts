@@ -38,6 +38,8 @@ export interface RuntimeSettingsApi {
 	getRetryFallbackCooldownMs(): number;
 	getToolExecutionEarlyStart(): boolean;
 	getHttpIdleTimeoutMs(): number;
+	/** `runtime.eventLoop`: the scheduler mode. `new` also compacts at 95% of the limit and keeps peer interrupts off a compaction. */
+	getEventLoopMode(): "old" | "shadow" | "new";
 	setHttpIdleTimeoutMs(timeoutMs: number): void;
 
 	/** Read from global settings only because warming costs money. */

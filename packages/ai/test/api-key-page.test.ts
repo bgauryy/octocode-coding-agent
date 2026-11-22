@@ -9,7 +9,7 @@ describe("API-key sign-in key pages", () => {
 		["OpenAI", openaiProvider, "https://platform.openai.com/api-keys"],
 		["OpenCode Zen", opencodeProvider, "https://opencode.ai/console"],
 		["OpenCode Go", opencodeGoProvider, "https://opencode.ai/console"],
-	])("%s opens the page that issues keys before asking for one", async (_name, provider, url) => {
+	])("%s opens the page that issues keys before asking for one", async (name, provider, url) => {
 		const order: string[] = [];
 		const events: AuthEvent[] = [];
 		expect(provider().auth.apiKey?.keyPage).toBe(url);
@@ -21,10 +21,10 @@ describe("API-key sign-in key pages", () => {
 			},
 			prompt: async (prompt: AuthPrompt) => {
 				order.push(prompt.type);
-				return "sk-test";
+				return prompt.type === "secret" ? "sk-test" : "";
 			},
 		});
-		expect(order).toEqual(["auth_url", "secret"]);
+		expect(order).toEqual(name === "OpenAI" ? ["auth_url", "secret", "text"] : ["auth_url", "secret"]);
 		expect(events[0]).toMatchObject({ type: "auth_url", url });
 		expect(credential).toEqual({ type: "api_key", key: "sk-test" });
 	});

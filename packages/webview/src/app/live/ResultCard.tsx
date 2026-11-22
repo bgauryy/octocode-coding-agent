@@ -75,7 +75,9 @@ const ResultCardContent = memo(function ResultCardContent({ event, compact }: { 
 			<h3>{card.title}</h3>
 			{card.goal && <p className="muted">{card.goal}</p>}
 			{event.type === "application.error" ? (
-				<p role="alert">{card.body}</p>
+				<div role="alert">
+					<LongText text={card.body} label="Error" plain />
+				</div>
 			) : event.activity ? (
 				<SessionActivityContent activity={event.activity} text={card.body} loadAsset={loadAsset} />
 			) : mail ? (
@@ -83,6 +85,7 @@ const ResultCardContent = memo(function ResultCardContent({ event, compact }: { 
 			) : message?.content ? (
 				<ContentBlocks
 					content={message.content}
+					streaming={streaming}
 					tools={event.tools}
 					loadAsset={loadAsset}
 					decorate={message.role === "assistant" ? withTitles : undefined}
@@ -99,7 +102,11 @@ const ResultCardContent = memo(function ResultCardContent({ event, compact }: { 
 				card.body && <LongText text={card.body} label="output" plain={!card.markdown} />
 			)}
 			<AssetExpansionButton expansion={expansion} label="Load full message" />
-			{message?.errorMessage && <p role="alert">{message.errorMessage}</p>}
+			{message?.errorMessage && (
+				<div role="alert">
+					<LongText text={message.errorMessage} label="Error" plain />
+				</div>
+			)}
 			{message && (
 				<div className="message-metadata">
 					{message.model && <span>{[message.provider, message.model].filter(Boolean).join(" / ")}</span>}

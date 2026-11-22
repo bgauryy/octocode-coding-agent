@@ -163,7 +163,8 @@ export async function recordTitle(
 	source: string | undefined,
 ): Promise<void> {
 	const file = session.getSessionFile();
-	if (file) await index.titleLater(session.getSessionId(), name, source, mtimeOf(file));
+	if (file)
+		await index.titleLater(session.getSessionId(), name, source, mtimeOf(file), { cwd: session.getCwd(), file });
 }
 
 /** The `.jsonl` files a scope lists, with their modification times; unreadable folders list nothing. */

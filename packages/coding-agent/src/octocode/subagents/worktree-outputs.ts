@@ -9,8 +9,12 @@ import type { Worktree, WorktreeOutputs } from "./worktree-base.ts";
 export const OUTPUT_LIMITS = { fileBytes: 1024 * 1024, totalBytes: 8 * 1024 * 1024, files: 100 } as const;
 
 const FOLDER = AGENT_DIR.split(path.sep).join("/");
+const OUTPUT_ROOT = path.posix.dirname(FOLDER);
 /** Listed from the worktree's root: the agent folder, less its runtime state (`EXCLUDE_WORKSPACE_STATE`: ids, transcripts, `tmp`) and any `node_modules`. */
 const PATHSPEC = [`:(top)${FOLDER}`, ...EXCLUDE_WORKSPACE_STATE, ":(top,glob,exclude)**/node_modules/**"];
+
+/** Ignored paths shown in a report before `+N more`. */
+const DROPPED_SHOWN = 20;
 
 type Rescued = Pick<Worktree, "agentId" | "repo" | "path">;
 
@@ -66,11 +70,35 @@ export async function copyIgnoredOutputs(worktree: Rescued): Promise<WorktreeOut
 		const kind = await place(source, stat, target, besidePath(target, worktree.agentId));
 		if (kind !== "same") (kind === "conflict" ? outputs.conflicts : outputs.copied).push(file);
 	}
+	const dropped = await droppedIgnored(worktree.path);
+	if (dropped.length > 0) outputs.dropped = dropped;
 	if (left.length > 0)
 		throw new Error(
 			`Ignored files under ${FOLDER}/ were not copied to the checkout (over ${OUTPUT_LIMITS.fileBytes / 1024} KiB each, ${OUTPUT_LIMITS.totalBytes / (1024 * 1024)} MiB or ${OUTPUT_LIMITS.files} files in all): ${left.join(", ")}`,
 		);
 	return outputs;
+}
+
+/**
+ * Ignored files the worktree holds outside the agent folder: they are not copied (an ignored `.env` or a build folder
+ * is not for the checkout), so the report names them. An ignored folder is one entry; `node_modules` is the dependency link.
+ */
+async function droppedIgnored(worktreePath: string): Promise<string[]> {
+	const list = async (...extra: string[]): Promise<string[]> =>
+		(
+			await git(worktreePath, ["ls-files", "-z", "--others", "--ignored", "--exclude-standard", ...extra], {
+				raw: true,
+			})
+		)
+			.split("\0")
+			.filter((entry) => entry && path.posix.basename(entry.replace(/\/$/, "")) !== "node_modules");
+	const agentExcluded = `:(top,exclude)${FOLDER}`;
+	const [folders, inFolder] = await Promise.all([
+		list("--directory", "--", ":(top)", agentExcluded),
+		list("--", `:(top)${OUTPUT_ROOT}`, agentExcluded),
+	]);
+	// A checkout that ignores its whole `.octocode/` shows it as one folder, whose agent files were handled above.
+	return [...folders.filter((entry) => entry !== `${OUTPUT_ROOT}/`), ...inFolder];
 }
 
 async function place(
@@ -109,5 +137,8 @@ export function outputsReport(agentId: string, outputs: WorktreeOutputs | undefi
 	const conflicts = outputs.conflicts.length
 		? `\nNot overwritten, because this checkout holds a newer version (the child's is saved beside it as <file>.${agentId}): ${outputs.conflicts.join(", ")}.`
 		: "";
-	return copied + conflicts;
+	const dropped = outputs.dropped?.length
+		? `\nNot copied, and gone with the isolated worktree (git-ignored files outside .octocode/agent): ${outputs.dropped.slice(0, DROPPED_SHOWN).join(", ")}${outputs.dropped.length > DROPPED_SHOWN ? `, +${outputs.dropped.length - DROPPED_SHOWN} more` : ""}.`
+		: "";
+	return copied + conflicts + dropped;
 }

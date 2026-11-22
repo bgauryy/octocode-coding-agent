@@ -5,7 +5,7 @@ import { runInput, sandboxFor, type AdapterContext, type AgentAdapter } from "..
 import { runProcess, writeFiles, type ProcessRun } from "../../process.ts";
 import type { SandboxOptions } from "../../sandbox.ts";
 
-export { parseSkillListing } from "./skill-listing.ts";
+export { parseSkillListing, skillToolDescription } from "./skill-listing.ts";
 
 /** Environment variable holding the path of the built CLI bundle. */
 const BUNDLE_ENV = "TESTKIT_OCTOCODE_AGENT_BUNDLE";

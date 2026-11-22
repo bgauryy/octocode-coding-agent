@@ -9,6 +9,7 @@ import { reportDir } from "./process/session.ts";
 import { ReportTracker } from "./report.ts";
 import type { RunnerBilling, RunnerReply, Runners } from "./runner-port.ts";
 import type { Team } from "../team/session.ts";
+import { readOnlyRole } from "../permission/read-only-role.ts";
 import { renderPrompt } from "../../core/prompt-template.ts";
 
 /** ACP stop reasons as a report reads them: a cut-off turn is incomplete, a refusal failed, a cancelled turn aborted. */
@@ -50,6 +51,8 @@ export interface RunnerChildInput {
 	onSpawn?: (pid: number) => void;
 	ctx: FeatureContext;
 	team?: Team;
+	/** The CLI's own session id an earlier task of this runner reported (`runnerSession` of its outcome): this turn continues it. */
+	resume?: string;
 }
 
 /**
@@ -60,7 +63,7 @@ export interface RunnerChildInput {
 export async function runRunnerChild(
 	runners: Runners,
 	input: RunnerChildInput,
-): Promise<SubagentOutcome & { billing?: RunnerBilling }> {
+): Promise<SubagentOutcome & { billing?: RunnerBilling; runnerSession?: string }> {
 	if (input.signal?.aborted) throw new Error("Subagent cancelled");
 	const { identity } = input;
 	const report = new ReportTracker(identity.scratch ?? reportDir(identity.id), identity.resultContract);
@@ -97,6 +100,9 @@ export async function runRunnerChild(
 				runnerTask(input.task, input.cwd) +
 				(bridge ? `\n\n${renderPrompt("tools/agent/runner-mail.md", { id: identity.id })}` : ""),
 			...(bridge ? { communication: bridge.communication } : {}),
+			// A read-only role's task may not change files: the route decides how it keeps that promise or refuses.
+			...(readOnlyRole() ? { readOnly: true } : {}),
+			...(input.resume ? { resume: input.resume } : {}),
 			signal: input.signal ?? new AbortController().signal,
 			onActivity: (line) => progress({ activity: line }),
 			...(input.onSpawn ? { onStart: input.onSpawn } : {}),
@@ -112,6 +118,7 @@ export async function runRunnerChild(
 			text: result.text,
 			usage,
 			billing: reply.billing,
+			...(reply.sessionId ? { runnerSession: reply.sessionId } : {}),
 			...(result.outcome ? { outcome: result.outcome, outcomeSource: result.outcomeSource } : {}),
 			...(result.error ? { error: result.error } : {}),
 			...(result.structured ? { structured: result.structured } : {}),

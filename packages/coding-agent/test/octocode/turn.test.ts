@@ -3,6 +3,7 @@ import { ROLE_PROMPT_FILE_ENV, writeRolePrompt } from "../../src/octocode/native
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "../../src/core/system-prompt.ts";
+import type { SkillCatalog } from "../../src/octocode/skill/catalog.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost } from "./fake-host.ts";
 import { RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
@@ -234,30 +235,34 @@ describe("the lean main policy", () => {
 	const request = async (current: ReturnType<typeof model>, settings: Record<string, unknown> = {}) => {
 		const fake = fakeHost(settings);
 		for (const name of TOOLS) fake.tools.set(name, { name });
-		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
+		const withhold = vi.fn();
+		registerTurnSetup(fake.api, {
+			isSubagent: false,
+			profiles: () => new Map(),
+			skillCatalog: { withhold } as unknown as SkillCatalog,
+		});
 		const options = {
 			sections: {} as Record<string, string>,
 			baseSections: {} as Record<string, string>,
 			selectedTools: TOOLS,
-			skills: [{ name: "octocode-research", description: "Research code." }] as unknown[],
 		};
 		const ctx = ctxFor(current);
 		await fake.emit("before_agent_start", { systemPromptOptions: options }, ctx);
 		const first = { ...options.sections };
 		await fake.emit("tool_call", { toolName: "agent", input: { type: "run", task: "look" } }, ctx);
 		await fake.emit("turn_prompt", { systemPromptOptions: options }, ctx);
-		return { first, after: options.sections, skills: options.skills };
+		return { first, after: options.sections, withheld: withhold.mock.calls.at(-1)?.[0] };
 	};
 	const filled = (sections: Record<string, string>) =>
 		Object.keys(sections).filter((name) => sections[name].trim() !== "");
 
 	it("is chosen for a 32k-window model: the lean rules for the user's session, no delegation, children or skill list", async () => {
-		const { first, after, skills } = await request(model("tiny-32k", 32_768));
+		const { first, after, withheld } = await request(model("tiny-32k", 32_768));
 		expect(filled(first)).toEqual(["lean"]);
 		expect(first.lean).toContain("Work on the user's request yourself");
 		expect(first.lean).not.toMatch(/You are a subagent|coordinator|reserved for you/);
 		expect(after.children ?? "").toBe("");
-		expect(skills).toEqual([]);
+		expect(withheld, "the skill tool lists no skills").toBe(true);
 	});
 
 	it("is chosen for the model subagents.models.small names, whatever its window", async () => {
@@ -269,7 +274,7 @@ describe("the lean main policy", () => {
 		const full = await request(model("big", 400_000));
 		expect(filled(full.first)).toContain("delegation");
 		expect(full.first.lean ?? "").toBe("");
-		expect(full.skills).toHaveLength(1);
+		expect(full.withheld).toBe(false);
 		const off = await request(model("tiny-32k", 32_768), { leanPrompt: "off" });
 		expect(filled(off.first)).toContain("delegation");
 		const on = await request(model("big", 400_000), { leanPrompt: "on" });

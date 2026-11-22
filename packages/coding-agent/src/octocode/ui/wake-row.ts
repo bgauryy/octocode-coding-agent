@@ -1,26 +1,19 @@
 import {
 	type Component,
 	MouseRegion,
+	Text,
 	renderChanged,
 	trackRenderChanges,
 	truncateToWidth,
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
+import { WAKE_TYPE, readWakeLines, type WakeLine } from "../../core/wake-entry.ts";
 import type { FeatureSetup } from "../../core/features/index.ts";
-import { WAKE_TYPE, type WakeLine } from "../wake/gate.ts";
+
+export const wakeLines = readWakeLines;
 
 const MARK = "\u26A1 woke";
-
-/** The events of an `octocode-wake` entry; entries from elsewhere or damaged ones yield none. */
-export function wakeLines(data: unknown): WakeLine[] {
-	if (!isRecord(data) || !Array.isArray(data.events)) return [];
-	return data.events.flatMap((each): WakeLine[] =>
-		isRecord(each) && typeof each.kind === "string" && typeof each.label === "string"
-			? [{ kind: each.kind, label: each.label.replace(/\s+/g, " ").trim() }]
-			: [],
-	);
-}
 
 /** `⚡ woke · report jolly-reef done (B526) · job bash-5 exit 0 · +1 more`, as many events as the width holds. */
 export function collapsedWakeRow(lines: readonly WakeLine[], width: number): string {
@@ -33,10 +26,11 @@ export function collapsedWakeRow(lines: readonly WakeLine[], width: number): str
 	return truncateToWidth(`${MARK} \u00B7 ${lines[0]?.label ?? ""}${more}`, width, "\u2026");
 }
 
-/** One dim row per woken batch; expanded, one line per event. Never part of the model's context. */
+/** One summary per woken batch, with the route and payload on expansion. Never part of the model's context. */
 class WakeRow implements Component {
 	private readonly lines: readonly WakeLine[];
 	private expanded: boolean;
+	private detailText?: Text;
 	private readonly dim: (text: string) => string;
 
 	constructor(lines: readonly WakeLine[], expanded: boolean, dim: (text: string) => string) {
@@ -57,14 +51,23 @@ class WakeRow implements Component {
 
 	render(width: number): string[] {
 		const room = Math.max(1, width - 2);
-		const rows = this.expanded
-			? [MARK, ...this.lines.map((line) => `  ${line.label}`)].map((row) => truncateToWidth(row, room, "\u2026"))
-			: [collapsedWakeRow(this.lines, room)];
-		return rows.map((row) => ` ${this.dim(row)}`);
+		if (this.expanded) {
+			if (!this.detailText) {
+				const details = this.lines.flatMap((line) => [
+					...(line.from ? [this.dim(`${line.kind} · ${line.from} → this session`)] : []),
+					line.label,
+					...(line.data ? [sanitizeTerminalText(JSON.stringify(line.data, null, 2))] : []),
+				]);
+				this.detailText = new Text([this.dim(MARK), ...details].join("\n"), 1, 0);
+			}
+			return this.detailText.render(width);
+		}
+		return [`${width > 2 ? " " : ""}${this.dim(collapsedWakeRow(this.lines, room))}`];
 	}
 
 	/** A theme change repaints the row in the new colors. */
 	invalidate(): void {
+		this.detailText = undefined;
 		renderChanged(this);
 	}
 }
@@ -84,6 +87,6 @@ function wakeRowComponent(lines: readonly WakeLine[], expanded: boolean, dim: (t
 export function registerWakeRow(api: FeatureSetup): void {
 	api.renderers.entry(WAKE_TYPE, (entry, options, theme) => {
 		const lines = wakeLines(entry.data);
-		return lines.length > 0 ? wakeRowComponent(lines, options.expanded, (text) => theme.fg("dim", text)) : undefined;
+		return lines.length > 0 ? wakeRowComponent(lines, options.expanded, (text) => theme.fg("muted", text)) : undefined;
 	});
 }

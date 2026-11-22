@@ -56,6 +56,8 @@ export interface Member {
 	 * `reply`: a question that waits for an answer). Absent for a member that does not wait; older snapshots omit it.
 	 */
 	waiting?: "approval" | "reply";
+	/** Set by the process running this subagent: what an idle child waits on that it started itself (its notify, a job, a reply it asked for). Absent while it works or waits on nothing. */
+	waitingOn?: string;
 	/** Set by the host that ran the subagent once its run ended: how it ended. Absent while it runs and in older snapshots. */
 	outcome?: "done" | "partial" | "blocked" | "failed" | "stopped";
 	/** One line on how the run ended (`outcome`). */

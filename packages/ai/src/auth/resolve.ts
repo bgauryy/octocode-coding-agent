@@ -1,4 +1,5 @@
 import type { ProviderEnv } from "../types.ts";
+import { isUnreadableKeychainStub, KEYCHAIN_UNREADABLE_MESSAGE, normalizeEndpointHost } from "./endpoint.ts";
 import { isActiveCredential } from "./helpers.ts";
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
 import { ModelsError } from "../utils/models-error.ts";
@@ -174,8 +175,7 @@ export async function refreshStoredOAuthCredential(
  * Providers throw plain errors, so this reads the message and its causes. Network, timeout, abort, 429 and 5xx
  * failures match nothing and stay retryable.
  */
-const TERMINAL_GRANT_ERROR =
-	/\binvalid_grant\b|Kimi Code token refresh unauthorized \(status (?:401|403)\)/;
+const TERMINAL_GRANT_ERROR = /\binvalid_grant\b|Kimi Code token refresh unauthorized \(status (?:401|403)\)/;
 
 function isTerminalGrantError(error: unknown): boolean {
 	let current = error;
@@ -244,7 +244,13 @@ async function resolveApiKey(
 	signal: AbortSignal,
 ): Promise<AuthResult | undefined> {
 	try {
-		return await apiKey.resolve({ ctx: authContext, credential, signal });
+		if (isUnreadableKeychainStub(credential)) throw new ModelsError("auth", KEYCHAIN_UNREADABLE_MESSAGE);
+		const resolved = await apiKey.resolve({ ctx: authContext, credential, signal });
+		// A custom host saved with the credential redirects every request of this provider to it.
+		const saved = credential?.endpoint?.baseUrl;
+		return resolved && saved
+			? { ...resolved, auth: { ...resolved.auth, baseUrl: normalizeEndpointHost(saved) } }
+			: resolved;
 	} catch (error) {
 		throw new ModelsError("auth", `API key auth failed for provider ${providerId}`, { cause: error });
 	}

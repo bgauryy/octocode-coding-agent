@@ -1,7 +1,8 @@
 import { configuredSubagentModels } from "./configured-models.ts";
 import type { AgentEnd } from "../team/panel/state.ts";
 import { randomUUID } from "node:crypto";
-import os from "node:os";
+import { maxSubagents, MAX_SUBAGENTS_ENV } from "./concurrency.ts";
+export { machineSubagents, maxSubagents, MAX_SUBAGENTS_ENV } from "./concurrency.ts";
 import { getEnvApiKey } from "@octocodeai/octocode-ai/compat";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import type { ReportStatus } from "../native/prompts/report.ts";
@@ -15,6 +16,7 @@ import { childHookMode, type HookMode } from "../shared/hook-mode.ts";
 import { routeThinking } from "../render/route-thinking.ts";
 import { maxRequests } from "./budget.ts";
 import type { Team } from "../team/session.ts";
+import { sessionHeap } from "../shared/session-heap.ts";
 import { joinTeamNow, type RunTeamJoin } from "./team-join.ts";
 import { currentCatalog } from "./catalog.ts";
 import type { Background } from "./command.ts";
@@ -25,6 +27,7 @@ import {
 	registryBilling,
 	routedModel,
 	routeModel,
+	routeSource,
 	SUBAGENT_DEFAULT_TIER,
 	subagentThinking,
 	supportedThinking,
@@ -40,27 +43,6 @@ import type { GraphWake } from "./graph-wake.ts";
 import type { HandedItems } from "./handed-items.ts";
 
 /** Starting a subagent: who it is (name, role, goal), its slot under the limit, and the task text it receives. */
-
-export const MAX_SUBAGENTS_ENV = "OCTOCODE_MAX_SUBAGENTS";
-const MOST_DEFAULT_SUBAGENTS = 6;
-const GIB = 1024 ** 3;
-
-/**
- * The default for a machine: at most 6, one per CPU, and one per GiB of memory (a child and its MCP pair peak near
- * 450 MB, so that stays within about half the machine).
- */
-export const machineSubagents = (cores: number, totalMemory: number): number =>
-	Math.max(1, Math.min(MOST_DEFAULT_SUBAGENTS, cores, Math.floor(totalMemory / GIB)));
-
-/** Read once: the limit is in a tool description, which must not change during a session. */
-let thisMachine: number | undefined;
-const thisMachineSubagents = (): number => (thisMachine ??= machineSubagents(os.availableParallelism(), os.totalmem()));
-
-/** How many subagents may run at once: `OCTOCODE_MAX_SUBAGENTS` (a positive integer), else what this machine suits. A call past it waits for a slot. */
-export function maxSubagents(env: NodeJS.ProcessEnv = process.env, fallback: number = thisMachineSubagents()): number {
-	const value = envInt(env, MAX_SUBAGENTS_ENV, fallback);
-	return value >= 1 ? value : fallback;
-}
 
 const SUBAGENT_LINGER_ENV = "OCTOCODE_SUBAGENT_LINGER_SECONDS";
 
@@ -304,7 +286,7 @@ export function planRun(
 				? `default: ${SUBAGENT_DEFAULT_TIER}`
 				: undefined;
 	// A purpose says whether the user's setting chose its model or the automatic choice did, and why a set one was skipped.
-	const source = route.setting ? `setting ${route.setting}` : route.skipped ? `automatic; ${route.skipped}` : "";
+	const source = routeSource(route);
 	const via = [asked, source, clamped].filter(Boolean).join("; ") || undefined;
 	return { profile, route: { ...route, ...(via ? { via } : {}), ...(parent ? { parent } : {}) } };
 }
@@ -344,6 +326,8 @@ export function claimRun(
 		...(parentId ? { parentId } : {}),
 	};
 	// A profile's `hooks: false` forbids them; else the task's choice, the mode this child started with, the profile's.
+	// The handles the parent holds now: the child may cite or resolve them, read-only (`ParentHeap`).
+	identity.heapHandles = sessionHeap(ctx.sessionManager)?.index.entries();
 	identity.hooks = childHookMode(profile?.hooks, params.hooks, resumed?.hooks);
 	if (params.apps?.length) identity.desktopApps = params.apps;
 	// Resolved for the model the child runs on: its provider and model cache settings apply, not the parent's.

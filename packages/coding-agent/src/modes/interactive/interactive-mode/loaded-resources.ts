@@ -16,7 +16,7 @@ import { warningsBesideListing } from "../../../core/resource-loader/feature-loa
 import type { Skill } from "../../../core/skills.ts";
 import {
 	skillListingBudgetWarning,
-	skillListingOf,
+	skillListingChars,
 	skillListingBudgetChars,
 } from "../../../core/skills/listing-budget.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
@@ -130,7 +130,7 @@ export function showLoadedResources(
 		const prompt = host.session.systemPrompt ?? "";
 		const viewSpecs = viewRows(view, (path) => host.formatDisplayPath(path), {
 			context: { chars: projectContextOf(prompt)?.length ?? 0, budget },
-			skill: { chars: skillListingOf(prompt)?.length ?? 0, budget },
+			skill: { chars: skillListingChars(skillsResult.skills), budget },
 		});
 		const viewRow = (id: string) => viewSpecs.filter((row) => row.id === id).map((row) => row.spec);
 		const rows: LoadedRowSpec[] = [...viewRow("context"), ...viewRow("skill")];
@@ -152,7 +152,7 @@ export function showLoadedResources(
 			details: () => models.map((m) => `  ${m.provider}/${m.id}`).join("\n"),
 		});
 		rows.push(...viewRow("keybinding").map((spec) => withCommand({ ...spec, label: "Keys" }, "/keys")));
-		rows.push(...viewRow("setting").map((spec) => withCommand(spec, "/configuration")));
+		rows.push(...viewRow("setting").map((spec) => withCommand(spec, "/settings")));
 		if (features.length > 0) {
 			const groups = host.buildScopeGroups(features);
 			const extList = () =>
@@ -268,13 +268,10 @@ export function showLoadedResources(
 			skillsResult.diagnostics,
 			keybindingProblems(),
 		);
-		// Measured on the listing the model receives; it is never shortened, so the user is told instead.
+		// Measured on the listing the `skill` tool's description carries; it is never shortened, so the user is told instead.
 		const { systemPrompt, model, resourceLoader } = host.session;
 		const contextWindow = model?.contextWindow;
-		const listing = skillListingOf(systemPrompt);
-		const overBudget = listing
-			? skillListingBudgetWarning({ skills: skillsResult.skills, listing, contextWindow, model })
-			: undefined;
+		const overBudget = skillListingBudgetWarning({ skills: skillsResult.skills, contextWindow, model });
 		const contextOver = contextFilesBudgetWarning({
 			systemPrompt,
 			files: resourceLoader.getAgentsFiles().agentsFiles,
@@ -360,7 +357,7 @@ function loadedContextView(host: LoadedResourcesHost, skills: readonly Skill[]):
 	});
 }
 
-/** Appends the command that changes a row's files (`· /configuration`) to its collapsed text. */
+/** Appends the command that changes a row's files (`· /settings`) to its collapsed text. */
 function withCommand(spec: LoadedRowSpec, command: string): LoadedRowSpec {
 	const hint = theme.fg("dim", `${SEPARATOR}${command}`);
 	const cells = spec.cells;

@@ -35,7 +35,7 @@ function shown(entry: ConfigEntry, scope: SelectorScope): string {
 }
 
 /**
- * `/configuration` with no arguments: every catalog entry grouped by kind (the list is sorted by kind, ids start with it).
+ * `/settings` with no arguments: every catalog entry grouped by kind (the list is sorted by kind, ids start with it).
  * Enter or Space toggles or cycles a value, or opens an input for a number, text or JSON; Tab switches between global and
  * project scope; typing filters.
  */

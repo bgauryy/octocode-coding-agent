@@ -1,6 +1,6 @@
 import { join, resolve } from "node:path";
 import { dirsToRepoOrFsRoot } from "../../../utils/repo-dirs.ts";
-import { listsProject, skillItemsIn } from "../sources.ts";
+import { listsProject, skillItemsIn, withinTrust } from "../sources.ts";
 import type { ConfigItem, DiscoverInput } from "../types.ts";
 import { mcpSource } from "./mcp-items.ts";
 import { vendorDefaultOn } from "./switch.ts";
@@ -14,6 +14,7 @@ function skills(input: DiscoverInput): ConfigItem[] {
 	const user = join(input.home, ".agents", "skills");
 	const project = listsProject(input)
 		? dirsToRepoOrFsRoot(input.cwd)
+				.filter((dir) => withinTrust(input, dir))
 				.map((dir) => join(dir, ".agents", "skills"))
 				.filter((dir) => resolve(dir) !== resolve(user))
 		: [];

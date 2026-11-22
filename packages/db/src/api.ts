@@ -12,6 +12,9 @@
  */
 export * as workspaces from "./queries/workspaces.ts";
 export * as agentEvents from "./queries/agent-events.ts";
+export * as events from "./queries/events.ts";
+export * as eventSubscriptions from "./queries/event-subscriptions.ts";
+export * as tickets from "./queries/tickets.ts";
 export * as compactions from "./queries/compactions.ts";
 export * as agents from "./queries/agents.ts";
 export * as agentRuns from "./queries/agent-runs.ts";
@@ -97,11 +100,14 @@ export type { MemoryFilter, MemoryScope, ScopeFilter } from "./queries/memories.
 export type { SessionLinks } from "./queries/session-links.ts";
 export type { CatalogEntry, CatalogRow, EraseCounts, SessionExtra } from "./queries/sessions.ts";
 export type { OwnedChild, ProcessSample } from "./queries/process-samples.ts";
-export type { MachineProcess, MachineSample, SamplerLease } from "./queries/machine-samples.ts";
+export type { MachineAlertRow, MachineProcess, MachineSample, SamplerLease } from "./queries/machine-samples.ts";
 export type { PurgeCounts } from "./queries/purge.ts";
 export type { MaintenanceResult } from "./queries/maintenance.ts";
 export type { ExpireCounts } from "./queries/expire.ts";
 export type { JobRow, JobState, NewJob } from "./queries/jobs.ts";
+export type { Appended, EventRow, NewEvent, ReadOptions } from "./queries/events.ts";
+export type { Deliver, NewSubscription, SubscriptionRow } from "./queries/event-subscriptions.ts";
+export type { NewTicket, TicketOutcome, TicketRow, TicketState } from "./queries/tickets.ts";
 export type { NewTimer, TimerConditionKind, TimerKind, TimerResult, TimerRow, TimerStatus } from "./queries/timers.ts";
 export type { ConfigAuditEntry } from "./queries/config-audits.ts";
 export type { ShellHistoryRow } from "./queries/shell-history.ts";

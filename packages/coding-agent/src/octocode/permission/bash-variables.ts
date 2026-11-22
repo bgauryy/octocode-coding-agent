@@ -17,7 +17,7 @@ import type { Node } from "web-tree-sitter";
 const PLAIN_VALUE = /^[A-Za-z0-9_./+:,@%=-]+$/;
 const NAME = /^[A-Za-z_]\w*$/;
 /** Builtins that can set any variable from input, text the line does not show, or another file. */
-const SETS_VARIABLES = new Set([
+export const SETS_VARIABLES = new Set([
 	"read",
 	"getopts",
 	"mapfile",
@@ -86,6 +86,9 @@ export function literalVariables(root: Node, word: (node: Node) => string | unde
 		const value = valueNode ? word(valueNode) : undefined;
 		if (value !== undefined && PLAIN_VALUE.test(value)) found.set(name, { value, end: assignment.endIndex });
 	}
+	// Each bash call starts from the agent's own environment: `$HOME` is the home folder unless the line sets it. It is
+	// kept as its `~` spelling, which every path check reads as the home folder and every display shows.
+	if (!assignments.has("HOME") && !blocked.has("HOME")) found.set("HOME", { value: "~", end: 0 });
 	return found;
 }
 

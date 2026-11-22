@@ -21,10 +21,15 @@ export const ROLE_VARIANT_ORDER = [
 	"memory",
 	"askUser",
 	"agent",
-	"skill",
 	"models",
 	"compact",
 ];
+
+/**
+ * Role-variant tools declared after every other tool, whose description changes while the session runs (the skill
+ * catalog, on `/reload`): a change invalidates the provider cache from this tool on, so nothing else follows it.
+ */
+export const TAIL_TOOLS = ["skill"];
 
 /**
  * The first role-variant tool of a declared tool list (`orderToolNames` order), or undefined when it has none or starts

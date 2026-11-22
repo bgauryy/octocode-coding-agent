@@ -12,11 +12,13 @@ const reserve = (contextWindow: number, level: ModelThinkingLevel, model: object
 	builtInCompactionSettings({ contextWindow, ...model }, { level }).reserveTokens;
 
 describe("thinking-sized compaction reserve", () => {
-	// The rule these rows pin: reserve = max(today, min(budget + 8192 + 4096, window / 6)).
+	// The rule these rows pin: reserve = max(today, min(max(budget + 8192 + 4096, summary room), window / 6)), where the
+	// summary room (24,576) applies only to windows whose sixth can hold an inline summary.
 	it.each([
-		[200_000, "off", 16_384],
-		[200_000, "low", 16_384],
-		[200_000, "medium", 20_480],
+		[200_000, "off", 24_576],
+		[200_000, "low", 24_576],
+		[130_000, "off", 21_666],
+		[200_000, "medium", 24_576],
 		[200_000, "high", 28_672],
 		[128_000, "high", 21_333],
 		[1_000_000, "high", 28_672],
@@ -28,7 +30,7 @@ describe("thinking-sized compaction reserve", () => {
 
 	it("keeps today's policy when no thinking setup is given or the window is unknown", () => {
 		const model = { contextWindow: 200_000 };
-		expect(builtInCompactionSettings(model).reserveTokens).toBe(16_384);
+		expect(builtInCompactionSettings(model).reserveTokens).toBe(24_576);
 		expect(builtInCompactionSettings(model, undefined).keepRecentTokens).toBe(20_000);
 		for (const contextWindow of [undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY * -1])
 			expect(builtInCompactionSettings({ contextWindow }, { level: "high" })).toEqual({
@@ -68,7 +70,7 @@ describe("thinking-sized compaction reserve", () => {
 		);
 		// A budget for another level does not affect this one.
 		expect(builtInCompactionSettings({ contextWindow: 1_000_000 }, { level: "low", budgets }).reserveTokens).toBe(
-			16_384,
+			24_576,
 		);
 		expect(thinkingBudgetTokens({}, { level: "high", budgets: { high: Number.NaN } })).toBe(0);
 	});
@@ -89,12 +91,12 @@ describe("thinking-sized compaction reserve", () => {
 	it("is what the session's settings manager reports, with its custom budgets", () => {
 		const manager = SettingsManager.inMemory({ thinkingBudgets: { high: 24_000 } });
 		const model = { provider: "p", id: "m", contextWindow: 1_000_000 };
-		expect(manager.getCompactionSettings(model).reserveTokens).toBe(16_384);
+		expect(manager.getCompactionSettings(model).reserveTokens).toBe(24_576);
 		expect(manager.getCompactionReserveTokens(model, "high")).toBe(24_000 + 8192 + 4096);
 		expect(manager.getCompactionSettings(model, "high").keepRecentTokens).toBe(
 			manager.getCompactionKeepRecentTokens(model),
 		);
-		expect(reserveTokensFor(model, { level: "medium" })).toBe(20_480);
+		expect(reserveTokensFor(model, { level: "medium" })).toBe(24_576);
 	});
 
 	// The request's output ceiling is `window - context - 4096`; at the trigger point it must still hold the thinking
@@ -122,7 +124,7 @@ describe("thinking-sized compaction reserve", () => {
 	});
 
 	it("shows why the old reserve was too small: 200k at high left less than the budget", () => {
-		const today = builtInCompactionSettings({ contextWindow: 200_000 }).reserveTokens;
+		const today = 16_384;
 		expect(today - 4096).toBeLessThan(thinkingBudgetTokens({}, { level: "high" }));
 	});
 });

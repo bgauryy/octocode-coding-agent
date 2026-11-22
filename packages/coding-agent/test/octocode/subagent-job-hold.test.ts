@@ -7,6 +7,7 @@ import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { foregroundPlan } from "../../src/octocode/files/bash/auto.ts";
 import { registerNativeSessionLifecycle } from "../../src/octocode/session-lifecycle.ts";
+import { registerWake } from "../../src/octocode/wake/register.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { ReportTracker } from "../../src/octocode/subagents/report.ts";
 import { createHarness, getMessageText, type Harness } from "../suite/harness.ts";
@@ -14,6 +15,8 @@ import { tmp } from "./helpers.ts";
 import { testFeatures } from "../helpers/features.ts";
 
 const posix = process.platform !== "win32";
+/** `OCTOCODE_TEST_EVENT_LOOP=new` runs these with the wake gate and the live event loop installed, as a session is. */
+const eventLoop = process.env.OCTOCODE_TEST_EVENT_LOOP as "shadow" | "new" | undefined;
 
 /** A subagent session (RPC child) with the real bash tool and the native run-end hold. */
 async function child({ isSubagent = true, ...options }: { jobHoldMs?: number; isSubagent?: boolean } = {}) {
@@ -21,8 +24,10 @@ async function child({ isSubagent = true, ...options }: { jobHoldMs?: number; is
 	const jobs = new BashJobs(tmp());
 	const harness = await createHarness({
 		sessionManager: SessionManager.create(root, path.join(root, "sessions")),
+		...(eventLoop ? { settings: { runtime: { eventLoop } } } : {}),
 		features: testFeatures([
 			(api) => {
+				if (eventLoop) registerWake(api);
 				registerBashTool(api, new Subcommands(), jobs, () => ({ backgroundAfterSeconds: 0 }));
 				registerNativeSessionLifecycle(api, {
 					isSubagent,
@@ -72,6 +77,30 @@ describe.runIf(posix)("a subagent whose own background job is still running when
 		expect(last).toContain("job-finished-marker");
 		expect(last).not.toMatch(/stopped[^\n]*run end/i);
 		expect(session.jobs.running()).toHaveLength(0);
+	});
+
+	it("gives a job that ends while the child's answer is still being written one more turn", async () => {
+		vi.stubEnv(SUBAGENT_ENV, "1");
+		const session = await child();
+		open.push(session);
+		let last = "";
+		session.harness.setResponses([
+			fauxAssistantMessage(
+				[fauxToolCall("bash", { command: "sleep 1; echo late-job-marker", background: true, reason: "build" })],
+				{ stopReason: "toolUse" },
+			),
+			async () => {
+				await new Promise((resolve) => setTimeout(resolve, 2_000));
+				return fauxAssistantMessage("Waiting for the build message.");
+			},
+			(context) => {
+				last = requestText(context);
+				return fauxAssistantMessage("done. The build printed late-job-marker.");
+			},
+		]);
+		await session.harness.session.prompt("build and report");
+		expect(session.harness.faux.state.callCount).toBe(3);
+		expect(last).toContain("late-job-marker");
 	});
 
 	it("delivers a job that ends mid-run at the child's next step", async () => {
@@ -179,13 +208,13 @@ describe.runIf(posix)("a subagent's own waits around its report (B744)", () => {
 		}
 	});
 	const setWait = (after: number) =>
-		fauxAssistantMessage([fauxToolCall("wait", { op: "set", after, note: "check the build", reason: "build" })], {
+		fauxAssistantMessage([fauxToolCall("notify", { op: "set", after, note: "check the build", reason: "build" })], {
 			stopReason: "toolUse",
 		});
 	const listWaits = async (session: { harness: Harness }) => {
 		let listed = "";
 		session.harness.setResponses([
-			fauxAssistantMessage([fauxToolCall("wait", { op: "list", all: true, reason: "check" })], {
+			fauxAssistantMessage([fauxToolCall("notify", { op: "list", all: true, reason: "check" })], {
 				stopReason: "toolUse",
 			}),
 			(context) => {

@@ -138,7 +138,7 @@ describe("agent rows", () => {
 		expect(agentState({ status: "background" })).toBe("done");
 	});
 
-	it("shows the success light while a foreground agent works, and the warning light while its child asks the user", () => {
+	it("shows the spinner while a foreground agent works, and the warning light while its child asks the user", () => {
 		animationClock.setReducedMotion(true);
 		const call = (context: unknown) => first(renderAgentCall(args, tagged, context as never));
 		const working = row({ isPartial: true, executionStarted: true });
@@ -148,7 +148,7 @@ describe("agent rows", () => {
 			tagged,
 			working,
 		);
-		expect(call(working)).toContain("<success>⏺");
+		expect(call(working)).toContain("<accent>◒");
 		const asking = row({ isPartial: true, executionStarted: true });
 		renderAgentResult(
 			{ content, details: details({ status: "running", waiting: true }) },

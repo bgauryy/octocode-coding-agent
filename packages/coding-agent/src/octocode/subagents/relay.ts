@@ -66,6 +66,8 @@ export interface RelayHost {
 	exposure?: ((id: string, exposed: boolean) => void) | undefined;
 	/** Child `id` began or stopped waiting for the user's answer, so listings can say why it does nothing. */
 	awaitingApproval?: ((id: string, waiting: boolean) => void) | undefined;
+	/** Child `id` idles on `text` it started itself (its notify, a job, a reply it asked for), or no longer does (`undefined`). */
+	idleWait?: ((id: string, text: string | undefined) => void) | undefined;
 	/** Child `id` wrote output at `at`, so listings can say how long it has been quiet. */
 	output?: ((id: string, at: number) => void) | undefined;
 	/** Tells this session's model something about a child (`graph.tell`): a wake when it is idle, read after its turn when busy. */

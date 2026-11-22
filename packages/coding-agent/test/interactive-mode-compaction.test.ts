@@ -1,6 +1,7 @@
 import type { Usage } from "@octocodeai/octocode-ai";
 import { Container } from "@octocodeai/octocode-tui";
 import { describe, expect, test, vi } from "vitest";
+import { inputOrigin, withInputOrigin } from "../src/core/input-origin.ts";
 import type { SessionEntry } from "../src/core/session-manager.ts";
 import * as agentEvents from "../src/modes/interactive/interactive-mode/agent-events.ts";
 import {
@@ -387,4 +388,36 @@ test("does not restore a queued prompt after acceptance if the run later fails",
 	};
 	await queueInteractiveMessage(createFakeHost(ui), "original", "followUp");
 	expect(draft).toBe("newer draft");
+});
+
+describe("the terminal's own queued input carries the terminal origin", () => {
+	const editor = { addToHistory: vi.fn(), setText: vi.fn(), getText: () => "" };
+	const host = (session: object) =>
+		createFakeHost({ editor, session, showError: vi.fn(), ui: { requestRender: vi.fn() } });
+
+	test("a steer or follow-up queued while a web command is in progress", async () => {
+		const seen: string[] = [];
+		const session = { prompt: async () => void seen.push(inputOrigin()) };
+		await withInputOrigin("web", async () => {
+			await queueInteractiveMessage(host(session), "steer me", "steer");
+			await queueInteractiveMessage(host(session), "then this", "followUp");
+		});
+		expect(seen).toEqual(["terminal", "terminal"]);
+	});
+
+	test("messages held for compaction, when they are delivered", async () => {
+		const seen: string[] = [];
+		const record = async () => void seen.push(inputOrigin());
+		const fake = {
+			uiStore: heldStore([
+				{ text: "a", mode: "steer" as const },
+				{ text: "b", mode: "followUp" as const },
+			]),
+			session: { clearQueue: vi.fn(), prompt: record, steer: record, followUp: record },
+			isFeatureCommand: () => false,
+			showError: vi.fn(),
+		};
+		await withInputOrigin("web", () => flushCompactionQueue(createFakeHost(fake), { willRetry: true }));
+		expect(seen).toEqual(["terminal", "terminal"]);
+	});
 });

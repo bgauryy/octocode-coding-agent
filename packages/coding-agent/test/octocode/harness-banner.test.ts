@@ -11,7 +11,8 @@ import type { ConfigItem, ConfigKind, Provenance } from "../../src/core/discover
 import { configDiscovery, discoveryInput } from "../../src/core/discovery/service.ts";
 import { LoadedRow, loadedColumns } from "../../src/modes/interactive/interactive-mode/loaded-row.ts";
 import { describeIgnoredKeys } from "../../src/core/settings-manager/ignored-keys.ts";
-import { formatSkillsForPrompt, type Skill } from "../../src/core/skills.ts";
+import type { Skill } from "../../src/core/skills.ts";
+import { SkillListing } from "../../src/core/skills/listing.ts";
 import { harnessRow, startupWarnings } from "../../src/modes/interactive/interactive-mode/discovery-rows.ts";
 import { formatHarnessesForPrompt } from "../../src/core/discovery/vendors/prompt.ts";
 import type { HarnessStatus } from "../../src/core/discovery/vendors/types.ts";
@@ -240,9 +241,9 @@ describe("startup banner from the context view", () => {
 
 	it("condenses a settings file's ignored keys into one line", () => {
 		expect(describeIgnoredKeys(["thinkingBudgets.xhigh", "compaction"])).toBe(
-			"2 ignored keys (thinkingBudgets.xhigh, compaction): /configuration unset thinkingBudgets.xhigh compaction",
+			"2 ignored keys (thinkingBudgets.xhigh, compaction): /settings unset thinkingBudgets.xhigh compaction",
 		);
-		expect(describeIgnoredKeys(["typo"], "project")).toBe("1 ignored key (typo): /configuration unset typo --local");
+		expect(describeIgnoredKeys(["typo"], "project")).toBe("1 ignored key (typo): /settings unset typo --local");
 		expect(describeIgnoredKeys([])).toBeUndefined();
 	});
 });
@@ -340,20 +341,14 @@ describe("harnesses", () => {
 	});
 });
 
-describe("skills in the agent's prompt", () => {
-	it("lists fixture skills by name for the skill tool and by path for a reader", () => {
+describe("skills in the skill tool's description", () => {
+	it("lists a fixture skill by the path the tool loads it from", () => {
 		const skill = {
 			name: "demo",
 			description: "Demo skill.",
 			filePath: "/skills/demo/SKILL.md",
 			baseDir: "/skills/demo",
 		} as Skill;
-		const prompt = formatSkillsForPrompt([skill], "skill");
-
-		// The skill tool loads by name and returns the folder, so the listing carries no path.
-		expect(prompt).toContain('  <skill name="demo">Demo skill.</skill>');
-		expect(prompt).not.toContain("/skills/demo/SKILL.md");
-		// A file reader still gets the file it loads.
-		expect(formatSkillsForPrompt([skill], "bash")).toContain('<skill name="demo" location="/skills/demo/SKILL.md">');
+		expect(SkillListing.fromSkills([skill]).render()).toContain("/skills/demo/SKILL.md: Demo skill.");
 	});
 });

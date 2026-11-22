@@ -11,6 +11,7 @@ import type { CompactionResult } from "../compaction/index.ts";
 import type { ManualCompactionOptions } from "../compaction/manual-options.ts";
 import type { CustomMessage } from "../messages.ts";
 import { abortSessionDispatches, trackSessionDispatch } from "./dispatch.ts";
+import type { AbortReason } from "./host.ts";
 import { prompt, queueUserInput, sendCustomMessage, splitUserContent } from "./prompting.ts";
 import { AgentSessionState } from "./session-state.ts";
 import type {
@@ -100,7 +101,7 @@ export abstract class AgentSessionControl extends AgentSessionState {
 	releaseQueuedInput(id: string, text?: string): ReleasedQueuedInput {
 		return this._c.inputs.release(id, text);
 	}
-	async abort(reason: "interrupted" | "replacement" | "shutdown" | "internal" = "interrupted"): Promise<void> {
+	async abort(reason: AbortReason = "interrupted"): Promise<void> {
 		abortSessionDispatches(this);
 		await this._c.runLoop.abort(reason);
 	}

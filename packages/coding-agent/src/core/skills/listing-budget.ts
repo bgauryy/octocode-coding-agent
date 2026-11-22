@@ -1,6 +1,7 @@
 import { charsPerToken } from "@octocodeai/octocode-ai/utils/estimate";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import type { Skill } from "./identity.ts";
+import { SkillListing } from "./listing.ts";
 
 /** Context window assumed when the model's is unknown, in tokens. */
 const DEFAULT_LISTING_CONTEXT_WINDOW = 200_000;
@@ -16,25 +17,23 @@ export function skillListingBudgetChars(contextWindow?: number, model?: { id: st
 	return Math.floor(window * charsPerToken(model) * LISTING_BUDGET_SHARE);
 }
 
-/** The `<available_skills>` block of a rendered system prompt: the listing the model reads. Undefined without one. */
-export function skillListingOf(systemPrompt: string): string | undefined {
-	return /^<available_skills>$[\s\S]*?^<\/available_skills>$/m.exec(systemPrompt)?.[0];
+/** The characters the `skill` tool's description spends on these skills: the listing a model reads, as the tool renders it. */
+export function skillListingChars(skills: readonly Skill[]): number {
+	return SkillListing.fromSkills(skills).render().length;
 }
 
 /**
- * A warning when the rendered skill `listing` is over budget, else undefined. The listing is never shortened: this only
- * tells the user, through the resource-diagnostic channel, so the prompt is the same with or without it.
+ * A warning when the skill listing of `skills` is over budget, else undefined. The listing is never shortened: this only
+ * tells the user, through the resource-diagnostic channel, so the tool's description is the same with or without it.
  */
 export function skillListingBudgetWarning(input: {
 	skills: readonly Skill[];
-	/** The text `formatSkillsForPrompt` rendered for these skills. */
-	listing: string;
 	contextWindow?: number;
 	/** The session's model, for its characters per token. */
 	model?: { id: string };
 }): ResourceDiagnostic | undefined {
 	const budget = skillListingBudgetChars(input.contextWindow, input.model);
-	const chars = input.listing.length;
+	const chars = skillListingChars(input.skills);
 	if (chars <= budget) return undefined;
 	return {
 		type: "warning",

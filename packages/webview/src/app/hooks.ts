@@ -8,6 +8,7 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
+import { useNow } from "./live/profiler/use-now.ts";
 import { hashFor, type Params, parseHash, type Route } from "./model/route.ts";
 
 function subscribeHash(onChange: () => void): () => void {
@@ -70,14 +71,14 @@ export function useHotkeys(hotkeys: readonly Hotkey[], enabled = true): void {
 }
 
 type CopyState = "idle" | "copied" | "failed";
-export function useCopy(text: string): [CopyState, () => Promise<void>] {
+export function useCopy(text: string | (() => string)): [CopyState, () => Promise<void>] {
 	const [state, setState] = useState<CopyState>("idle");
 	const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 	useEffect(() => () => clearTimeout(timer.current), []);
 	const copy = useCallback(async () => {
 		clearTimeout(timer.current);
 		try {
-			await navigator.clipboard.writeText(text);
+			await navigator.clipboard.writeText(typeof text === "string" ? text : text());
 			setState("copied");
 			timer.current = setTimeout(() => setState("idle"), 2000);
 		} catch {
@@ -204,15 +205,15 @@ export function useModal(
 	}, [container, focusKey]);
 }
 
-/** Milliseconds since `since`, ticking once a second while `active`. */
+/**
+ * Milliseconds since `since` (a host timestamp), ticking once a second while `active` on the shared host-skewed clock,
+ * and frozen at the last tick once it is not.
+ */
 export function useElapsed(since: number, active: boolean): number {
-	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => {
-		if (!active) return;
-		const timer = setInterval(() => setNow(Date.now()), 1000);
-		return () => clearInterval(timer);
-	}, [active]);
-	return Math.max(0, now - since);
+	const now = useNow();
+	const [last, setLast] = useState(now);
+	if (active && last !== now) setLast(now);
+	return Math.max(0, (active ? now : last) - since);
 }
 
 const BOTTOM_SLACK = 32;

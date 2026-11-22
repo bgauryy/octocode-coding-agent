@@ -22,7 +22,7 @@ const switchMoved = (action: string, name: string): string =>
 
 /** `/mcp enable|disable` moved to the one configuration command. */
 const enableMoved = (action: string, name: string, extra: readonly string[]): string =>
-	`/mcp ${action} moved to /configuration: run /configuration ${action} mcp:${name || "<server>"}${extra.some((word) => word === "--local" || word === "-l") ? " --local" : ""}`;
+	`/mcp ${action} moved to /settings: run /settings ${action} mcp:${name || "<server>"}${extra.some((word) => word === "--local" || word === "-l") ? " --local" : ""}`;
 
 const MCP_USAGE = `Usage: /mcp [list|config|add], /mcp tools [server] [tool], /mcp login|logout [server], /mcp reconnect [server|all], ${CATALOG_USAGE}`;
 

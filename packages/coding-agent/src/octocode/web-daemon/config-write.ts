@@ -6,6 +6,8 @@
  */
 
 import type { ConfigSettingCommand } from "@octocodeai/octocode-contracts/config";
+import { join } from "node:path";
+import { closestIds } from "../../configuration/result.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
 import { resolveFolderTrust } from "../trust/resolve.ts";
 
@@ -19,6 +21,41 @@ export class ConfigWriteError extends Error {
 		this.name = "ConfigWriteError";
 		this.status = status;
 		this.code = code;
+	}
+}
+
+/** Refuses a provider or model the runtime does not know, naming the closest known ones. Reads, never writes. */
+async function assertKnownModel(agentDir: string, provider: string, model: string): Promise<void> {
+	const { ModelRuntime } = await import("../../core/model-runtime.ts");
+	const runtime = await ModelRuntime.create({
+		authPath: join(agentDir, "auth.json"),
+		modelsPath: join(agentDir, "models.json"),
+		allowModelNetwork: false,
+		readOnlyCredentials: true,
+	});
+	try {
+		const known = runtime.getModels();
+		if (known.some((entry) => entry.provider === provider && entry.id === model)) return;
+		const providers = [...new Set(known.map((entry) => entry.provider))];
+		if (!providers.includes(provider)) {
+			const near = closestIds(provider, providers);
+			throw new ConfigWriteError(
+				400,
+				`Unknown provider "${provider}".${near.length > 0 ? ` Closest: ${near.join(", ")}.` : ""} Hosts and custom providers are defined in models.json.`,
+				"unknown-provider",
+			);
+		}
+		const near = closestIds(
+			model,
+			known.filter((entry) => entry.provider === provider).map((entry) => entry.id),
+		);
+		throw new ConfigWriteError(
+			400,
+			`Unknown model "${model}" for ${provider}.${near.length > 0 ? ` Closest: ${near.join(", ")}.` : ""}`,
+			"unknown-model",
+		);
+	} finally {
+		runtime.dispose();
 	}
 }
 
@@ -55,10 +92,11 @@ export async function writeConfigSetting(command: ConfigSettingCommand, options:
 	if (command.key === "modelDefault") {
 		if (command.value && (!command.value.provider.trim() || !command.value.model.trim()))
 			throw new ConfigWriteError(400, "Choose both a provider and a model.");
-		manager.setDefaultSelectionPair(
-			scope,
-			command.value ? { provider: command.value.provider.trim(), model: command.value.model.trim() } : undefined,
-		);
+		const pair = command.value
+			? { provider: command.value.provider.trim(), model: command.value.model.trim() }
+			: undefined;
+		if (pair) await assertKnownModel(options.agentDir, pair.provider, pair.model);
+		manager.setDefaultSelectionPair(scope, pair);
 	} else manager.setDefaultSelection(scope, command.key, command.value ?? undefined);
 	await manager.flush();
 	if (manager.drainErrors().length > 0)

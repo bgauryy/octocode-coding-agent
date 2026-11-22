@@ -4,6 +4,8 @@ import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import type { FeatureContext, FeatureSetup } from "../../../core/features/index.ts";
 import { renderPrompt } from "../../../core/prompt-template.ts";
 import { notify } from "../../shared/commands.ts";
+import { isFolderTrusted } from "../../trust/port.ts";
+import { repoKey, workspaceGit } from "../../../utils/git-repository.ts";
 import { loadableLines, type MemoryLine, memoryLineKey, parseMemoryFile, serializeMemoryFile } from "./format.ts";
 import { trackedByGit } from "./paths.ts";
 import {
@@ -50,6 +52,16 @@ async function loadMemoryFile(ref: MemoryFileRef, env: NodeJS.ProcessEnv = proce
 		],
 		tracked: trackedByGit(ref),
 	};
+}
+
+/**
+ * Why the workspace file may not be read, when it may not: a linked worktree shares the main checkout's file, and that
+ * checkout is another folder the user may never have trusted.
+ */
+function untrustedWorkspaceFile(ref: MemoryFileRef, cwd: string): string | undefined {
+	if (ref.scope !== "workspace" || !workspaceGit(cwd) || ref.root === repoKey(cwd).root || isFolderTrusted(ref.root))
+		return undefined;
+	return `${homeTilde(ref.path)} is in ${homeTilde(ref.root)}, which is not trusted, so it is not loaded into the prompt`;
 }
 
 /** The files a session reads: main both, a subagent per `memory.subagents`, a lean subagent none. */
@@ -100,10 +112,11 @@ export function registerMemorySection(
 
 	const take = async (ctx: FeatureContext): Promise<Snapshot> => {
 		const scopes = memoryFileScopes({ isSubagent: options.isSubagent, lean }, memorySettings(api.settings.get()));
+		const refs = scopes.map((scope) => (scope === "global" ? globalMemoryFile(env) : workspaceMemoryFile(ctx.cwd)));
+		const withheld = refs.flatMap((ref) => untrustedWorkspaceFile(ref, ctx.cwd) ?? []);
+		if (withheld.length > 0 && ctx.hasUI && !options.isSubagent) notify(ctx.ui, withheld[0], "warning");
 		const files = await Promise.all(
-			scopes.map((scope) =>
-				loadMemoryFile(scope === "global" ? globalMemoryFile(env) : workspaceMemoryFile(ctx.cwd), env),
-			),
+			refs.filter((ref) => !untrustedWorkspaceFile(ref, ctx.cwd)).map((ref) => loadMemoryFile(ref, env)),
 		);
 		return { session: ctx.sessionManager.getSessionId(), text: renderMemorySection(files), files };
 	};

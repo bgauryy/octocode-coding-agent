@@ -39,3 +39,12 @@ export async function patiently<T>(store: QuickRunner, work: () => T, signal?: A
 		});
 	}
 }
+
+/** Prune when the store opens. A busy database defers the work to the next heartbeat. */
+export function pruneIfUnlocked(store: QuickRunner, prune: () => void): void {
+	try {
+		store.quick(prune);
+	} catch (error) {
+		if (!isBusy(error)) throw error;
+	}
+}

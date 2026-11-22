@@ -28,6 +28,7 @@ export interface TemplateModel {
 	id: string;
 	name?: string;
 	contextWindow?: number;
+	maxTokens?: number;
 	/** `vendor`: inherits the built-in model when models.json loads; `catalog`: metadata written into the entry. */
 	source: "vendor" | "catalog";
 }
@@ -42,6 +43,7 @@ export function templateModels(template: ProviderTemplate, sources: TemplateMode
 			id: model.id,
 			name: model.name,
 			contextWindow: model.contextWindow,
+			maxTokens: model.maxTokens,
 			source: "vendor",
 		}),
 	);

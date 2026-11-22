@@ -37,6 +37,7 @@ export class FrameRows {
 		width: number,
 		height: number,
 		shared: { from: RowSource | undefined; rows: number },
+		prepared?: ReadonlyMap<string, string>,
 	): { lines: string[]; cursor: { row: number; col: number } | null; unchanged: number } {
 		const last = this.input;
 		const same = last !== undefined && showHardwareCursor === this.showHardwareCursor && width === this.width;
@@ -60,6 +61,10 @@ export class FrameRows {
 					lines[row] = this.output[row];
 					const col = this.marks.get(row);
 					if (col !== undefined) marks.set(row, col);
+					continue;
+				}
+				if (!line.includes("\x1b_octo:")) {
+					lines[row] = prepared?.get(line) ?? this.finish(line, width);
 					continue;
 				}
 				const [resolved] = resolveFakeCursors([line], showHardwareCursor);

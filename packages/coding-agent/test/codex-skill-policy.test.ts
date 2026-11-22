@@ -2,7 +2,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { loadSkillsFromDir, formatSkillsForPrompt } from "../src/core/skills.ts";
+import { loadSkillsFromDir } from "../src/core/skills.ts";
+import { SkillListing } from "../src/core/skills/listing.ts";
 const roots: string[] = [];
 afterEach(() => {
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -20,7 +21,7 @@ it("keeps explicitly invocable skills out of the implicit catalog", () => {
 	expect(result.skills).toHaveLength(1);
 	expect(result.skills[0].disableModelInvocation).toBe(true);
 	expect(result.skills[0].userInvocable).not.toBe(false);
-	expect(formatSkillsForPrompt(result.skills)).not.toContain("sample");
+	expect(SkillListing.fromSkills(result.skills).render()).not.toContain("Test skill");
 });
 it("excludes product-restricted skills without assuming a vendor identity", () => {
 	const result = load("policy: {products: [CODEX]}", "codex");

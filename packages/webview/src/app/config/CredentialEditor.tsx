@@ -3,6 +3,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { type SubmitEvent, useId, useState } from "react";
 import { RequestError } from "../../request.ts";
 import { Button } from "../ui/primitives.tsx";
+import { HostFields, NO_HOST, hostFields, type HostAnswers } from "./HostFields.tsx";
 
 export type SaveCredential = (command: ConfigCredentialCommand) => Promise<void>;
 
@@ -28,6 +29,8 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 	const [open, setOpen] = useState(false);
 	const [key, setKey] = useState("");
 	const [plaintext, setPlaintext] = useState(false);
+	const [hostAnswers, setHostAnswers] = useState<HostAnswers>(NO_HOST);
+	const hostQuestion = row.auth?.keyAuth?.host;
 	const [busy, setBusy] = useState<"save" | "clear" | undefined>();
 	const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | undefined>();
 	/** The host could not check the key (provider unreachable): the user may save it unchecked. */
@@ -42,6 +45,7 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 			await save(command);
 			setKey("");
 			setPlaintext(false);
+			setHostAnswers(NO_HOST);
 			setMessage({
 				tone: "ok",
 				text:
@@ -63,6 +67,7 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 		action: "set",
 		provider: row.provider,
 		key: key.trim(),
+		...(hostQuestion ? hostFields(hostAnswers) : {}),
 		...(keychainAvailable ? {} : { acknowledgePlaintext: true }),
 		...(acknowledgeUnverified ? { acknowledgeUnverified: true } : {}),
 	});
@@ -114,6 +119,7 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 				onClick={() => {
 					setOpen(false);
 					setKey("");
+					setHostAnswers(NO_HOST);
 					setPlaintext(false);
 					setMessage(undefined);
 					setUnverified(false);
@@ -121,6 +127,9 @@ export function CredentialEditor({ row, save, keychainAvailable }: CredentialEdi
 			>
 				Cancel
 			</Button>
+			{hostQuestion && (
+				<HostFields title={title} question={hostQuestion} value={hostAnswers} onChange={setHostAnswers} />
+			)}
 			{keychainAvailable ? (
 				<p className="muted">The key goes to the OS keychain. It is not shown again.</p>
 			) : (

@@ -13,6 +13,8 @@ flowchart LR
 
 Left beats right: a run flag beats the project, the project beats global, global beats Pi.
 
+In a live session, open `/web` and choose **Commands → /settings** to use the running terminal’s configuration picker or enter a settings command. [Web workspace](web-workspace.md)
+
 Two settings choose editors. Both are global or trusted-project settings, like any other.
 
 | Setting           | Used by                                                                                                                                   | Default                                                            |
@@ -46,7 +48,7 @@ Do not change global defaults for every delegated task. Prefer run flags, and ke
 
 Octocode configuration and the [Pi fallback](#pi-configuration-fallback) are available by default. Each native child can use a different enabled `provider/model`; it inherits the configuration sources, rather than being limited to the coordinator’s provider. A credential supplied only with `--api-key` is not forwarded to children: configure the provider in the shared user configuration instead.
 
-Installed [external runners](native-features.md#external-runners), including OpenCode, require opt-in. Open `/providers` → **External agents**, select a CLI and choose **Enable this CLI for agent tasks**, then `/reload`. Discovery starts no CLI processes; opening a runner's page or using it checks its own sign-in. Vendor CLIs keep their own configuration and credentials.
+Installed [external runners](native-features.md#external-runners), including OpenCode, require opt-in. Open `/providers` → **External agents**, select a CLI and choose **Enable this CLI for agent tasks**, then `/reload`. Discovery starts no CLI processes; opening a runner's page or using it checks its own sign-in. Vendor CLIs keep their own configuration and credentials. A runner without its ACP adapter runs headless through its CLI where [a route exists](native-features.md#external-runners), and a Cursor task writes only in its own worktree.
 
 | Global setting                                                         | Meaning                                                    |
 | ---------------------------------------------------------------------- | ---------------------------------------------------------- |
@@ -73,27 +75,27 @@ An explicit `OCTOCODE_HOME` or `OCTOCODE_CODING_AGENT_DIR` also turns off the [P
 
 Workspace files are relative to the session's working directory; agent profiles and hooks use the repository root, also when you start in a subdirectory. Workspace files need a trusted folder.
 
-| Configure                 | Global                                                                 | Workspace                                           | Inspect or apply                                                      |
-| ------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------- |
-| Settings, default model   | `settings.json`                                                        | `.octocode/settings.json`                           | `/configuration`; `/reload` after file edits                          |
-| MCP servers, exposure     | `~/.octocode/mcp.json`                                                 | `.octocode/mcp.json`                                | `/mcp config`; [MCP](mcp.md)                                          |
-| Providers, model defs     | `models.json`                                                          | none; select a model in workspace settings          | `/model` reloads definitions; `/modelsettings`                        |
-| Provider sign-in, keys    | `auth.json`                                                            | none                                                | `/providers`, `/logout`                                               |
-| MCP OAuth tokens          | `mcp-auth.json`                                                        | none                                                | `/mcp login\|logout <server>`                                         |
-| Derived context files     | `context-optimization/` (project ones under `projects/<repo>-<hash>/`) | none in the repository                              | Rewritten on change; `octocode context`                               |
-| Skills                    | `skills/<name>/SKILL.md`, `~/.agents/skills/`                          | `.octocode/skills/`, `.agents/skills/`              | `/harness list skills`; [skills](skills.md)                           |
-| Prompt templates          | `prompts/*.md`                                                         | `.octocode/prompts/*.md`                            | [prompt templates](prompt-templates.md)                               |
-| Themes                    | `themes/*.json`                                                        | `.octocode/themes/*.json`                           | `/configuration` → Interface and session → Theme; [themes](themes.md) |
-| Keyboard shortcuts        | `keybindings.json`                                                     | none                                                | `/keys`, `/reload`; [keybindings](keybindings.md)                     |
-| System prompt             | `SYSTEM.md`, `APPEND_SYSTEM.md`                                        | `.octocode/SYSTEM.md`, `.octocode/APPEND_SYSTEM.md` | `/reload`; the workspace file wins                                    |
-| Project instructions      | `AGENTS.md` in the agent directory                                     | `AGENTS.md` in the project and its ancestors        | [instructions](prompts.md)                                            |
-| Agent profiles            | `agents/*.md`                                                          | `.octocode/agents/*.md` at the repository root      | `/agents`, `/reload`                                                  |
-| Hooks                     | `hooks.json` in the runtime home                                       | `.octocode/hooks.json` at the repository root       | `/harness hooks`; [hooks](hooks.md)                                   |
-| Plugins                   | `plugins` in `settings.json`                                           | `plugins` in `.octocode/settings.json`              | `/harness`; [plugins](plugins.md)                                     |
-| Plugin marketplaces       | `marketplaces` in `settings.json` (global only)                        | not read                                            | `octocode marketplace add`                                            |
-| GitHub sign-in (research) | The Octocode CLI's own store                                           | none                                                | `/octocode auth login\|status\|logout`                                |
+| Configure                 | Global                                                                 | Workspace                                           | Inspect or apply                                                 |
+| ------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------- |
+| Settings, default model   | `settings.json`                                                        | `.octocode/settings.json`                           | `/settings`; `/reload` after file edits                          |
+| MCP servers, exposure     | `~/.octocode/mcp.json`                                                 | `.octocode/mcp.json`                                | `/mcp config`; [MCP](mcp.md)                                     |
+| Providers, model defs     | `models.json`                                                          | none; select a model in workspace settings          | `/model` reloads definitions; `/modelsettings`                   |
+| Provider sign-in, keys    | `auth.json`                                                            | none                                                | `/providers`, `/logout`                                          |
+| MCP OAuth tokens          | `mcp-auth.json`                                                        | none                                                | `/mcp login\|logout <server>`                                    |
+| Derived context files     | `context-optimization/` (project ones under `projects/<repo>-<hash>/`) | none in the repository                              | Rewritten on change; `octocode context`                          |
+| Skills                    | `skills/<name>/SKILL.md`, `~/.agents/skills/`                          | `.octocode/skills/`, `.agents/skills/`              | `/harness list skills`; [skills](skills.md)                      |
+| Prompt templates          | `prompts/*.md`                                                         | `.octocode/prompts/*.md`                            | [prompt templates](prompt-templates.md)                          |
+| Themes                    | `themes/*.json`                                                        | `.octocode/themes/*.json`                           | `/settings` → Interface and session → Theme; [themes](themes.md) |
+| Keyboard shortcuts        | `keybindings.json`                                                     | none                                                | `/keys`, `/reload`; [keybindings](keybindings.md)                |
+| System prompt             | `SYSTEM.md`, `APPEND_SYSTEM.md`                                        | `.octocode/SYSTEM.md`, `.octocode/APPEND_SYSTEM.md` | `/reload`; the workspace file wins                               |
+| Project instructions      | `AGENTS.md` in the agent directory                                     | `AGENTS.md` in the project and its ancestors        | [instructions](prompts.md)                                       |
+| Agent profiles            | `agents/*.md`                                                          | `.octocode/agents/*.md` at the repository root      | `/agents`, `/reload`                                             |
+| Hooks                     | `hooks.json` in the runtime home                                       | `.octocode/hooks.json` at the repository root       | `/harness hooks`; [hooks](hooks.md)                              |
+| Plugins                   | `plugins` in `settings.json`                                           | `plugins` in `.octocode/settings.json`              | `/harness`; [plugins](plugins.md)                                |
+| Plugin marketplaces       | `marketplaces` in `settings.json` (global only)                        | not read                                            | `octocode marketplace add`                                       |
+| GitHub sign-in (research) | The Octocode CLI's own store                                           | none                                                | `/octocode auth login\|status\|logout`                           |
 
-Your MCP servers and skills serve the main session. A subagent runs only Octocode's built-in servers for its role plus the servers its profile's `tools:` or its task's `mcp` list names ([MCP](mcp.md#assign-servers-to-agents)), and lists only its role's skills; it loads any other skill by name ([child skill catalog](#child-skill-catalog)).
+Your MCP servers and skills serve the main session. A subagent runs only Octocode's built-in servers for its role plus the servers its profile's `tools:` or its task's `mcp` list names ([MCP](mcp.md#assign-servers-to-agents)), and lists only its role's skills; it loads any other skill by name ([child skill catalog](skills.md#child-skill-inheritance)).
 
 ## Precedence
 
@@ -111,27 +113,27 @@ Your MCP servers and skills serve the main session. A subagent runs only Octocod
 
 ## Changing configuration
 
-Provider visibility switches are global. An invalid `disabledProviders` value is reported as a settings-load error; an edit does not replace the currently loaded switches until the file is valid.
+Provider visibility switches (`disabledProviders`, `hiddenModels`) are global. An invalid `disabledProviders` value is reported as a settings-load error; an edit does not replace the currently loaded switches until the file is valid.
 
-`defaultProvider` and `defaultModel` choose the starting model for new sessions. Saving or clearing them through configuration reports **next session**; `/reload` does not replace the current chat's model. Use `/model` to switch it. The model picker's **Ctrl+S** action (or **D** while the filter is empty) selects the model and saves the paired default together, after the write is acknowledged. In a trusted project it asks whether to save globally or for this project only (the same project settings file as `/configuration set --local`); in an untrusted project it saves globally. The picker header shows the startup default and whether it comes from global settings, the project or a run override. A trusted project default takes precedence over a global one, so a global save in such a project says that the project default wins.
+`defaultProvider` and `defaultModel` choose the starting model for new sessions. Saving or clearing them through configuration reports **next session**; `/reload` does not replace the current chat's model. Use `/model` to switch it. The model picker's **Ctrl+S** action (or **D** while the filter is empty) selects the model and saves the paired default together, after the write is acknowledged. In a trusted project it asks whether to save globally or for this project only (the same project settings file as `/settings set --local`); in an untrusted project it saves globally. The picker header shows the startup default and whether it comes from global settings, the project or a run override. A trusted project default takes precedence over a global one, so a global save in such a project says that the project default wins.
 
 The web Settings page saves or clears the startup provider and model as one pair in the chosen global or trusted workspace file. Its source badges show the effective precedence; changing the pair keeps the current chat's model.
 
-`/configuration` in a session and `octocode configuration` in a shell are one mechanism over one catalog: tools, MCP servers, harnesses, plugins, hooks, skills, extensions, prompts, themes, providers, sources and every settings key.
+`/settings` in a session and `octocode configuration` in a shell are one mechanism over one catalog: tools, MCP servers, harnesses, plugins, hooks, skills, extensions, prompts, themes, providers, sources and every settings key. `/configuration` and `/config` open the same panel. The agent changes configuration through its `configuration` tool, which asks you before every change in every permission mode ([native features](native-features.md#the-configuration-tool)).
 
 ```text
-/configuration [list|get|enable|disable|set|unset|add mcp|remove] [--local] [--force]
+/settings [list|get|enable|disable|set|unset|add mcp|remove] [--local] [--force]
 octocode configuration ... [--local] [--trust] [--json]
 ```
 
 Ids are `kind:name` (`tool:`, `mcp:`, `harness:`, `plugin:`, `hook:`, `skill:`, `prompt:`, `theme:`, `provider:`, `source:`) or a bare settings key such as `retry.maxRetries`.
 
-| Verb                                | Does                                                                   | Example                                                     |
-| ----------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `list [kind\|text]`, `get <id>`     | Show entries and their state                                           | `/configuration list mcp`                                   |
-| `enable\|disable <id>...`           | Switch entries                                                         | `/configuration disable tool:backlog`                       |
-| `set <key> <value>`, `unset <key>`  | Change or reset a settings key                                         | `/configuration set retry.maxRetries 4`                     |
-| `add mcp <name> ...`, `remove <id>` | Add an MCP server (arguments of `octocode mcp add`) or remove an entry | `/configuration add mcp docs --url https://example.com/mcp` |
+| Verb                                | Does                                                                   | Example                                                |
+| ----------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------ |
+| `list [kind\|text]`, `get <id>`     | Show entries and their state                                           | `/settings list mcp`                                   |
+| `enable\|disable <id>...`           | Switch entries                                                         | `/settings disable tool:backlog`                       |
+| `set <key> <value>`, `unset <key>`  | Change or reset a settings key                                         | `/settings set retry.maxRetries 4`                     |
+| `add mcp <name> ...`, `remove <id>` | Add an MCP server (arguments of `octocode mcp add`) or remove an entry | `/settings add mcp docs --url https://example.com/mcp` |
 
 Without a verb a terminal opens a selector; otherwise the CLI lists. `--json` prints JSON; a refused change prints its reason with suggested ids and exits 1. Retired, each printing a hint: `/settings`, `/config`, `octocode config`, `/mcp enable|disable|assign|exposure`, `/harness enable|disable`, `octocode mcp enable|disable`.
 
@@ -143,7 +145,7 @@ Without a verb a terminal opens a selector; otherwise the CLI lists. `--json` pr
 
 Each result says when it applies: now (MCP switches, live settings), after `/reload`, or in the next session. Run flags are repeatable, apply before tools and resources load, survive `/reload` and are never written: `octocode --disable tool:backlog --set retry.maxRetries=4`. A refused id or key prints the reason and exits 1; `mcp:` ids have no run form (use `--no-mcp`). `--tools` and `--exclude-tools` still choose tools for one run. Features register no CLI flags, so unknown flags such as `--extension` fail at startup.
 
-MCP is always on and has no switch; start with `--no-mcp` to run without it. A leftover `extensions` key in a settings file is ignored with one warning; remove it. Octocode is the default MCP server: `/configuration disable mcp:octocode` turns it off and `enable` brings it back (`OCTOCODE_MCP=0` also turns it off, unless configuration overrides it).
+MCP is always on and has no switch; start with `--no-mcp` to run without it. A leftover `extensions` key in a settings file is ignored with one warning; remove it. Octocode is the default MCP server: `/settings disable mcp:octocode` turns it off and `enable` brings it back (`OCTOCODE_MCP=0` also turns it off, unless configuration overrides it).
 
 ### Harnesses
 
@@ -167,7 +169,7 @@ A harness is one source of configuration. `/harness` opens on an **Overview** ta
 
 Changing section, scope, selection or filter clears an armed disable confirmation. Loading and failures appear in the selector, which remains cancellable.
 
-**Turning on a source.** Switching a source such as Claude Code, Codex or Cursor on first shows **Turn on `<source>`?** with every skill, MCP server and hook it would bring, each scanned by the [security review](#security-review) (static: nothing runs), worst rating first. Enter switches the source on; Esc writes nothing. The items stay off until you approve them in `/security`. `/configuration enable harness:<id>` prints the same list and then switches.
+**Turning on a source.** Switching a source such as Claude Code, Codex or Cursor on first shows **Turn on `<source>`?** with every skill, MCP server and hook it would bring, each scanned by the [security review](#security-review) (static: nothing runs), worst rating first. Enter switches the source on; Esc writes nothing. The items stay off until you approve them in `/security`. `/settings enable harness:<id>` prints the same list and then switches.
 
 **MCP servers.** In the **MCPs** section Space switches a server on or off. Enter or → on a server opens its tools:
 
@@ -189,13 +191,14 @@ Changing section, scope, selection or filter clears an armed disable confirmatio
 | `codex`    | Codex skills, MCP, hooks, plugins       | off       |
 | `cursor`   | Cursor skills, MCP                      | off       |
 
-Switch one with `/configuration enable|disable harness:<id> [--local]` (writes `toggles["harness:<id>"]`, removed when it equals the default), or on the Harness panel of the [web Settings page](web-workspace.md#settings-page).
+Switch one with `/settings enable|disable harness:<id> [--local]` (writes `toggles["harness:<id>"]`, removed when it equals the default), or on the Harness panel of the [web Settings page](web-workspace.md#settings-page).
 
 - A project key reaches only that harness's project items, so a committed file cannot enable your global Claude Code content.
 - MCP servers connect or disconnect at once, also in running subagents; skills, hooks and prompts apply after `/reload`.
 - A plugin listed in `plugins` is your explicit choice and loads whatever its harness switch says.
 - `harness:claude:memory` (off, global only, trusted folders only) adds Claude Code's auto memory for this repository (`~/.claude/projects/<repository>/memory/MEMORY.md`, first 200 lines or 25 KB; when the file is longer, the note says so and names the file) as notes; `AGENTS.md` and Octocode memories win; the file is never written.
 - Project instructions come from `AGENTS.override.md`, else `AGENTS.md`, in each folder; a folder with neither uses its `CLAUDE.md`, whatever `harness:claude` says. All three follow the same trust rules.
+- Project hooks and skills from other harnesses follow the same boundary: they load only from the folder a trust grant is on down to the working folder, so a grant on a subfolder of a repository does not read the repository root's `.octocode`, `.claude`, `.codex`, `.cursor` or `.agents` files. A linked worktree reads the main checkout's `MEMORY.md` only when that checkout is trusted.
 
 The startup screen and read-only `/harness config` show each kind with its count and sources (`octocode global`, `pi project`, `plugin <name>`, `builtin`, `command line`, `settings path`), shadowed copies with their winner, project items in an untrusted folder as "folder not trusted", and Pi code that is not run as "Not loaded". `ctrl+o` expands paths. The view refreshes on `/reload` or a new session; items of a switched-off harness are neither counted nor warned about.
 
@@ -212,12 +215,12 @@ A session declares each tool to the model in one of four states. The state is fi
 
 What decides the state, first match wins:
 
-| Tools                                     | Decided by                                                                                                   |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| An MCP tool                               | Its `toolExposure` entry in `mcp.json` (a pin), then its server's `exposure`, then the `mcpExposure` setting |
-| `web`, `archive`, `models`, `backlogPlan` | Its `nativeToolExposure` entry in `settings.json` (a pin: `direct` or `deferred`), then `mcpExposure`        |
-| `memory`, `wait`                          | Its `nativeToolExposure` pin, then `mcpExposure` under `"usage"`; `direct` under every other value           |
-| Every other native tool                   | Always `direct`                                                                                              |
+| Tools                                                      | Decided by                                                                                                   |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| An MCP tool                                                | Its `toolExposure` entry in `mcp.json` (a pin), then its server's `exposure`, then the `mcpExposure` setting |
+| `web`, `archive`, `models`, `backlogPlan`, `configuration` | Its `nativeToolExposure` entry in `settings.json` (a pin: `direct` or `deferred`), then `mcpExposure`        |
+| `memory`, `notify`                                         | Its `nativeToolExposure` pin, then `mcpExposure` under `"usage"`; `direct` under every other value           |
+| Every other native tool                                    | Always `direct`                                                                                              |
 
 `mcpExposure` is `"usage"` by default: a tool without a pin is `deferred`, however often sessions use it. Use only decides whether a tool that would be `onDemand` is declared `deferred` from the start instead: the promotion snapshot names the tools that at least 10% of the last 7 days' sessions of the same role used, with 20 or more such sessions, kept while their declarations fit `mcpPromotedBytes` (default 8192 bytes per role: main or subagent). A tool with fewer sessions keeps its default, so a new install gets the same tools as a warm one. The snapshot is computed once per UTC day and installed version. `"recent"` instead declares a tool in full while this working directory called it in the last 24 hours. A resumed session in the same folder keeps the MCP and native tool states it started with ([MCP reference](mcp-reference.md#exposure-and-results)). A pin beats that rule. `"direct"` declares every tool without a pin in full, as earlier versions did.
 
@@ -275,7 +278,7 @@ flowchart TD
 | `/trust remove <number\|path>`                                                                      | Revoke                                             |
 | `octocode trust list [--json]`, `add [path] [--scope ...] [--yes]`, `remove <number\|path> [--yes]` | Same without a session; `--yes` skips confirmation |
 
-Project resources need trust, except `AGENTS.md`-style instruction files, which load as text. Octocode hook files always load; Claude Code and Codex hook files load once that harness is on (`/configuration enable harness:claude`), each under its own profile; `disableAllHooks: true` in a loaded hook file turns them all off; [Claude permission rules](permissions.md#claude-permission-rules) always apply. See [hooks](hooks.md).
+Project resources need trust, except `AGENTS.md`-style instruction files, which load as text. Octocode hook files always load; Claude Code and Codex hook files load once that harness is on (`/settings enable harness:claude`), each under its own profile; `disableAllHooks: true` in a loaded hook file turns them all off; [Claude permission rules](permissions.md#claude-permission-rules) always apply. See [hooks](hooks.md).
 
 ## Security review
 
@@ -324,7 +327,7 @@ For providers, `models.json` and `auth.json` are also read, read only, from Pi's
 
 | Item                    | Behavior                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `models.json`           | Providers missing from Octocode come from Pi; an Octocode provider replaces the whole Pi provider                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `models.json`           | Providers missing from Octocode come from Pi (a Pi entry with an official provider id is skipped with a warning); an Octocode provider replaces the whole Pi provider                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `settings.json`         | Inherited lowest first: Pi global, trusted `<project>/.pi/settings.json`, Octocode global, trusted `.octocode/settings.json`. Not inherited: resource keys (`packages`, `extensions`, `skills`, `prompts`, `themes`) and per-install keys (`sessionDir`, `deviceId`, `trackingId`, `enableAnalytics`, `defaultProjectTrust`); a project `.pi/settings.json` cannot set `remote.autoStart`. Pi settings are read-only: a save writes only Octocode's values. A Pi file that does not parse is a startup warning                                                                       |
 | `mcp.json`              | Inherited under the [MCP order](#precedence); control changes save native overrides                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Credentials             | A provider with no Octocode credential and no `apiKey` in Octocode's `models.json` uses Pi's `auth.json` entry, read only. Secret-command keys, entries Octocode does not recognize and account sign-ins Octocode cannot use (Pi's Claude Pro/Max) are skipped; an unreadable file or entry is a startup warning naming the file. Login, logout and refresh write Octocode's file only. `/providers pi` copies a credential after confirmation ([providers](providers.md#use-pi-configuration)). Sessions, trust decisions, device identity and telemetry consent are never imported |
@@ -344,7 +347,7 @@ A Pi item in an untrusted folder shadows nothing. The first start that finds Pi 
 
 ## Terminal images
 
-Inline images are on when the terminal supports them; `/configuration` (**Interface and session**) exposes **Show images** and **Image width**. Model image input is separate: [models](models.md#describe-model-input-and-caching).
+Inline images are on when the terminal supports them; `/settings` (**Interface and session**) exposes **Show images** and **Image width**. Model image input is separate: [models](models.md#describe-model-input-and-caching).
 
 ```json
 { "terminal": { "showImages": true, "images": "auto", "imageWidthCells": 60 } }
@@ -384,7 +387,7 @@ A non-empty `NO_COLOR` or `OCTOCODE_NO_COLOR`, the `--no-color` flag (it sets `O
 
 `terminal.latencyFence` is `true`, `false` or `"auto"` (default, on): the renderer probes the terminal's display lag and holds streaming frames while it is behind. `OCTOCODE_LATENCY_FENCE=0` or `1` overrides the setting; `/debug terminal` shows whether the fence is on and what it measured.
 
-`terminal.reduceMotion` is `true`, `false` or `"auto"` (default): spinners stay on their first frame and the shimmer is plain; elapsed times and retry countdowns still tick. `"auto"` is still when stdout is not a terminal, when `CI` is set, or when `OCTOCODE_REDUCE_MOTION`, `REDUCE_MOTION` or `NO_MOTION` is `1` or `true`; an explicit value wins. A running mark is a still `◌`. `/configuration` exposes **Reduce motion** and applies it at once.
+`terminal.reduceMotion` is `true`, `false` or `"auto"` (default): spinners stay on their first frame and the shimmer is plain; elapsed times and retry countdowns still tick. `"auto"` is still when stdout is not a terminal, when `CI` is set, or when `OCTOCODE_REDUCE_MOTION`, `REDUCE_MOTION` or `NO_MOTION` is `1` or `true`; an explicit value wins. A running mark is a still `◌`. `/settings` exposes **Reduce motion** and applies it at once.
 
 ```json
 { "terminal": { "reduceMotion": "auto" } }
@@ -392,7 +395,7 @@ A non-empty `NO_COLOR` or `OCTOCODE_NO_COLOR`, the `--no-color` flag (it sets `O
 
 ## Emoji marks
 
-Notices carry a tone mark beside their state mark, and the terminal title starts with a mark for the session. By default these are width-safe glyphs the theme colors: `≋` calm, `▲` caution, `◆` problem, and `◈` in the title. `terminal.emojiMarks: true` brings back the emoji (🐚 🦀 🦈 and 🦑); emoji width varies by terminal, so rows can misalign. `/configuration` has an "Emoji marks" toggle that applies at once; the setting is also read at startup and on a settings reload.
+Notices carry a tone mark beside their state mark, and the terminal title starts with a mark for the session. By default these are width-safe glyphs the theme colors: `≋` calm, `▲` caution, `◆` problem, and `◈` in the title. `terminal.emojiMarks: true` brings back the emoji (🐚 🦀 🦈 and 🦑); emoji width varies by terminal, so rows can misalign. `/settings` has an "Emoji marks" toggle that applies at once; the setting is also read at startup and on a settings reload.
 
 ```json
 { "terminal": { "emojiMarks": false } }
@@ -516,7 +519,7 @@ flowchart LR
 | Skipped entries | No credentials, a failure within `retry.fallbackCooldownMs` (default 15 minutes; `0` retries a failed model at once) (for a refused credential, any model of that provider), or a context window that cannot hold the conversation plus the room kept free for compaction (compacting first would run on the model that just failed) |
 | Billing         | The notice says when the switch moves from a subscription plan to per-token billing, or back: `billed per token instead of by plan`                                                                                                                                                                                                  |
 | Virtual models  | A usage limit goes to the router once per failing model, so it can pick another model; the selection stays virtual and the list is not used. Other failures end the turn                                                                                                                                                             |
-| Subagents       | A subagent whose model a purpose (`small`, `medium`) chose gets its own list instead: up to two models the same purpose resolves to on other providers, skipping refused ones. A subagent given a named model uses your list. New routes avoid a provider that reported a usage limit or refused its credential                      |
+| Subagents       | A subagent whose model a purpose (`small`, `medium`, `large`) chose gets its own list instead: up to two models the same purpose resolves to on other providers, skipping refused ones. A subagent given a named model uses your list. New routes avoid a provider that reported a usage limit or refused its credential             |
 | Rate limits     | A plain `429` is not a usage limit: it is retried on the same model as above                                                                                                                                                                                                                                                         |
 
 Compaction and branch summaries use the same policy; Esc stops a wait. After a subagent fails on a rate limit, the parent holds new subagent starts for 5 seconds, doubling to 30 for each further failure, and resets after a quiet minute.
@@ -529,20 +532,20 @@ Compaction and branch summaries use the same policy; Esc stops a wait. After a s
 
 Automatic compaction is always on; `/compact` runs the same flow by hand. No setting, CLI flag or RPC command changes it, and legacy `compaction` settings are ignored.
 
-| Part               | Rule                                                                                                                                                                                                                                                      |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Kept               | Up to 20,000 recent tokens (a quarter of smaller windows)                                                                                                                                                                                                 |
-| Reserve            | The larger of 16,384 tokens (an eighth of smaller windows) and the thinking budget plus 12,288, capped at a sixth of the window. A 200,000-token window compacts at 183,616 tokens with thinking off, 171,328 at `high`                                   |
-| Per request        | One per request; a compaction before a prompt leaves room for it. After one since the last reply, it runs again only if the context plus 12,288 tokens for the reply is past the window. One you cancel is not retried for that request                   |
-| Failures           | Automatic compaction stops after three in a row; a successful manual one resets the count; cancelling is not a failure                                                                                                                                    |
-| Summary cache      | Reuses the session transcript and cache preferences when the summary model is the session's and it is not an overflow. A cold cache, a physical-model switch since the last reply or an instruction or tool update sends it with `cacheRetention: "none"` |
-| Standalone summary | After a downshift, overflow or failed cache-sharing: no cache markers or routing id (OpenCode keeps its required `x-opencode-session` header)                                                                                                             |
-| Old tool results   | Cleared when the cache is rewritten anyway or when re-sending them costs more than one cache rewrite, only when enough space is recovered, and only after saving a readable copy ([rule](native-features.md#clearing-old-tool-results))                   |
-| Transcript         | Every original entry stays on disk; compaction also saves searchable Markdown archives for the `archive` tool                                                                                                                                             |
-| Summary output     | A standalone summary (compaction, split-turn prefix, branch summary) may write up to 32,768 tokens, or the model's own limit when lower; one that reaches it fails and saves nothing. The cache-shared summary keeps its cap of 80% of the reserve        |
-| Summary thinking   | A standalone summary thinks at the session's level up to `low` (`off` and `minimal` stay). The cache-shared summary keeps the session's level, since changing it would discard the cached messages                                                        |
-| Progress           | The status line shows how long the summary has been written and about how many tokens arrived, updated once a second                                                                                                                                      |
-| Silent summary     | An attempt that receives nothing for `httpIdleTimeoutMs` (default 5 minutes; `0` disables) is cancelled and retried by the `retry` policy; a summary that keeps arriving is never cut off. The same limit ends a silent model stream as a retryable error |
+| Part               | Rule                                                                                                                                                                                                                                                                                                                 |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kept               | Up to 20,000 recent tokens (a quarter of smaller windows)                                                                                                                                                                                                                                                            |
+| Reserve            | The larger of 24,576 tokens (room to write the summary inside the cached request) and the thinking budget plus 12,288, capped at a sixth of the window; a window whose sixth is under 20,485 keeps an eighth, at most 16,384. A 200,000-token window compacts at 175,424 tokens with thinking off, 171,328 at `high` |
+| Per request        | One per request; a compaction before a prompt leaves room for it. After one since the last reply, it runs again only if the context plus 12,288 tokens for the reply is past the window. One you cancel is not retried for that request                                                                              |
+| Failures           | Automatic compaction stops after three in a row; a successful manual one resets the count; cancelling is not a failure                                                                                                                                                                                               |
+| Summary cache      | Reuses the session transcript and cache preferences when the summary model is the session's and it is not an overflow. A cold cache, a physical-model switch since the last reply or an instruction or tool update sends it with `cacheRetention: "none"`                                                            |
+| Standalone summary | After a downshift, overflow or failed cache-sharing: no cache markers or routing id (OpenCode keeps its required `x-opencode-session` header)                                                                                                                                                                        |
+| Old tool results   | Cleared when the cache is rewritten anyway or when re-sending them costs more than one cache rewrite, only when enough space is recovered, and only after saving a readable copy ([rule](native-features.md#clearing-old-tool-results))                                                                              |
+| Transcript         | Every original entry stays on disk; compaction also saves searchable Markdown archives for the `archive` tool                                                                                                                                                                                                        |
+| Summary output     | A standalone summary (compaction, split-turn prefix, branch summary) may write up to 32,768 tokens, or the model's own limit when lower; one that reaches it fails and saves nothing. The cache-shared summary keeps its cap of 80% of the reserve                                                                   |
+| Summary thinking   | A standalone summary thinks at the session's level up to `low` (`off` and `minimal` stay). The cache-shared summary keeps the session's level, since changing it would discard the cached messages                                                                                                                   |
+| Progress           | The status line shows how long the summary has been written and about how many tokens arrived, updated once a second                                                                                                                                                                                                 |
+| Silent summary     | An attempt that receives nothing for `httpIdleTimeoutMs` (default 5 minutes; `0` disables) is cancelled and retried by the `retry` policy; a summary that keeps arriving is never cut off. The same limit ends a silent model stream as a retryable error                                                            |
 
 ## Prompt cache warming
 
@@ -660,6 +663,8 @@ When the sandbox cannot start (another platform, a missing program, user namespa
 
 A child's report, a background job's exit or team mail starts a turn of an idle session at once. Reports and exits that arrive seconds apart each cost a turn that re-reads the whole prompt. `subagents.wakeHoldSeconds` (default `0`, off; at most `10`) makes an idle session hold a wake: the first one opens the window, and everything that arrives before it closes is delivered together and starts one turn.
 
+The setting is deprecated: the event loop (below) replaces it one kind of event at a time and the setting goes when the last one moves. With `runtime.eventLoop: "new"` a background job's exit, a child's report or end and team mail no longer follow it (the loop's own window, `runtime.eventWindowSeconds`, applies); every other wake still does.
+
 ```json
 { "subagents": { "wakeHoldSeconds": 2 } }
 ```
@@ -668,13 +673,39 @@ A wake costs up to that many seconds of latency, so leave it off unless several 
 
 Every woken batch also leaves one dim row in the transcript, `⚡ woke · report jolly-reef done (B526) · job bash-5 exit 0 · 4s`; expand it for one line per event. The row is not sent to the model. An idle-item nudge (an ongoing item you hold that nothing works on) is skipped when the run that just ended wrote that item (a note, completion, claim, close or step, or a delegation to it) or when a running background `bash` job names it with its `item`; the turn line counts the skipped nudges (`1 nudge dropped`). Being woken about an item does not skip it, and a skipped item is named after a later run that left it alone. Events with the same key in one batch show as one line.
 
-## Child skill catalog
+## Event loop switch
 
-A subagent started without named skills lists its role's catalog (a role's `catalog:`; a role without one lists every skill Octocode ships). Your own workspace and global skills are listed to the main session only; a task's `skills` list gives them to a child, and with `subagents.skillCatalog` at its default `"all"` a child still loads any skill by name. Set to `"role"`, it lists only its role's skills and the skills the task names; the built-in roles name none, so their children list no catalog and the prompt is smaller. Children of a lean role are unchanged. A role skill this session cannot load is left out. Applies to children started after the change.
+`runtime.eventLoop` chooses the scheduler that decides when background events (child reports, job exits, team mail, timers) start a turn. It is read when a session starts.
+
+| Value           | Behavior                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `old` (default) | The wake gate alone, exactly as before. Nothing else runs.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `shadow`        | The event loop runs beside the gate and acts on nothing. It decides which events would wake the session, in what order and in which batches, and when the session ends each difference from what the gate did is recorded as a problem in `/status`.                                                                                                                                                                                                                                                                                                  |
+| `new`           | The loop delivers the events it has taken over, and the gate delivers the rest. Today the loop delivers a background `bash` job's exit (a job started by the session or one it joined), a child's report, a child's end and team mail: each reaches the session through the loop's window, queued behind a compaction and delivered after it. Reports and mail the loop has queued are kept in the session's event log: after a restart or resume they are delivered once, with the source header they had. Every other event behaves as in `shadow`. |
 
 ```json
-{ "subagents": { "skillCatalog": "role" } }
+{ "runtime": { "eventLoop": "shadow", "eventWindowSeconds": 2 } }
 ```
+
+`runtime.eventWindowSeconds` (default `2`, `0` to `10`) is the window the loop holds after a background event wakes an idle session: everything that arrives before it closes is one message and one turn. Typed input is never held. In `new` the window applies to the events the loop delivers (job exits, reports, child ends, team mail); the gate keeps `subagents.wakeHoldSeconds` for the rest. A job exit that wakes nothing (a job you stopped, or one a running turn already waits on) is recorded at once and is not held. Merging wakes that arrive together into one turn is the intended difference and is not reported.
+
+## Backlog QA review
+
+When an agent marks an important item done, a small reviewer model checks the work first: it gets the item's goal, the completion summary, the verification, the reported files and their diff, and runs read-only with the `octocode-code-review` skill. It needs a connected small model with known pricing; with none, the item completes with a note saying the review was skipped, and a review that cannot start or answers off its format is skipped the same way. The `backlog.qa` setting chooses the items:
+
+| Value                 | Reviewed before `done`                                                       |
+| --------------------- | ---------------------------------------------------------------------------- |
+| `important` (default) | p0 and p1 features and bugs; never research items, epics, or p2 and p3 items |
+| `all`                 | every item except epics                                                      |
+| `off`                 | none                                                                         |
+
+| Verdict                 | Result                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Ready                   | The item completes, with the verdict, model and cost noted on it.                                             |
+| Changes required        | The item stays ongoing with the findings noted, and the call that asked for `done` is refused with them.      |
+| Verification incomplete | The item returns to the backlog, its claim released and the findings noted, until the missing checks are run. |
+
+Each review is a small-model run; its cost is in the note and counts toward the session's spend. Subagents do not run reviews: the session that coordinates them does, when it completes the item. Headless and print runs review the same way, since the gate sits in the `backlog` tool, not in the interface.
 
 ## Related-agent pings
 
@@ -690,7 +721,9 @@ An agent hears of backlog changes to items related to the ones it holds or waits
 
 Once a minute one Octocode process on the machine samples the 1-minute load, available memory, swap, GPU use and the busiest processes, and keeps the samples for 24 hours. Every other session reads those samples instead of measuring again, and when the sampling process exits, another one takes over. A threshold alerts after it holds for `samples` samples in a row, then stays quiet for `cooldownMinutes`.
 
-The session whose processes weigh most (CPU for load, memory for swap and memory) is woken with the reading and the busiest processes. Other sessions get a short note at their next turn, and every session shows the tripped readings in the footer until they clear. The sampling session also sends one desktop notification through the `Notification` hook, with `notification_type` `monitor_alert`. A background `bash` job that writes no output and uses almost no CPU for `stuckJobMinutes` wakes the session that started it, once per silence.
+Only the sampling session decides whether a threshold tripped; it files the alert with its culprits, and the other sessions read it. The session whose processes weigh most (CPU for load, memory for swap and memory) is woken with the reading and the busiest processes. A process counts for a session only when that session or one of its descendants started it; an editor or terminal host above the session (VS Code helpers, for example) is another process, and when such a process weighs more than the session's own, no session is blamed. Other root sessions get a short note at their next turn, and every root session shows the tripped readings in the footer until they clear. A subagent runs no rules and hears an alert only when it owns the culprit. The sampling session also sends one desktop notification through the `Notification` hook, with `notification_type` `monitor_alert`. A background `bash` job that writes no output and uses almost no CPU for `stuckJobMinutes` wakes the session that started it, once per silence.
+
+To be told when the load drops, an agent calls `notify` with `event: machine.load` and `filter: { perCoreBelow: 2, for: 3 }` (or `perCoreAbove`); it fires once, from the stored samples, with no command running. A full test suite or `yarn run check` waits before it takes the host's run lock while the load per core is above `OCTOCODE_RUN_LOCK_LOAD` (default `2`, `0` never waits), for at most `OCTOCODE_RUN_LOCK_LOAD_WAIT` seconds (default `300`), prints one line when it defers and one when it starts, and then runs.
 
 | Setting                          | Default            | Range                                                                             |
 | -------------------------------- | ------------------ | --------------------------------------------------------------------------------- |
@@ -757,7 +790,7 @@ Background spend with `autoUpdate` `"auto"` and `reflection` on, in a session wi
 
 ## Scheduled tasks
 
-`wait` with `cron`, and the `/loop` command, run a prompt on a schedule (see [Scheduled tasks](native-features.md#scheduled-tasks)). Each run is a model turn with nobody attending, so two global settings guard it. A project settings file cannot change either.
+`notify` with `cron`, and the `/loop` command, run a prompt on a schedule (see [Scheduled tasks](native-features.md#scheduled-tasks)). Each run is a model turn with nobody attending, so two global settings guard it. A project settings file cannot change either.
 
 | Setting                       | Default | Effect                                                                                                                                                                                |
 | ----------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

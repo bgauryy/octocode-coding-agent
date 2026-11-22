@@ -816,7 +816,7 @@ describe("/memory", () => {
 		});
 		await command.handler("auto", ctx);
 		expect(ctx.ui.notes.at(-1)!.message).toContain(
-			"Automatic recall is main. Change it with /configuration set memory.recall",
+			"Automatic recall is main. Change it with /settings set memory.recall",
 		);
 		vi.stubEnv("OCTOCODE_MEMORY_AUTO", "off");
 		await command.handler("auto", ctx);

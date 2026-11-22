@@ -12,6 +12,7 @@ import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 export interface ChildResourceFiles {
 	skillSnapshotFile?: string;
 	mcpServersFile?: string;
+	parentHeapFile?: string;
 }
 
 /** Store a result contract and prepare the skill/MCP handoffs before spawning the child. */
@@ -46,6 +47,17 @@ export function prepareChildResourceFiles(identity: Identity): ChildResourceFile
 				fs.closeSync(fd);
 			}
 		}
+		if (identity.heapHandles?.length) {
+			const directory = privateDir(identity.scratch ?? reportDir(identity.id) ?? sessionOutputDir("output"));
+			const file = path.join(directory, `heap-${randomBytes(16).toString("hex")}.json`);
+			const fd = fs.openSync(file, "wx", PRIVATE_FILE_MODE);
+			files.parentHeapFile = file;
+			try {
+				fs.writeFileSync(fd, JSON.stringify(identity.heapHandles));
+			} finally {
+				fs.closeSync(fd);
+			}
+		}
 		const mcpServers = serializeMcpSessionServers(
 			identity.mcpServers ?? {},
 			identity.mcpStopped,
@@ -74,7 +86,7 @@ export function prepareChildResourceFiles(identity: Identity): ChildResourceFile
 
 /** Remove temporary handoffs without hiding the child's original failure or report. */
 export function removeChildResourceFiles(files: ChildResourceFiles): void {
-	for (const file of [files.skillSnapshotFile, files.mcpServersFile]) {
+	for (const file of [files.skillSnapshotFile, files.mcpServersFile, files.parentHeapFile]) {
 		if (!file) continue;
 		try {
 			fs.rmSync(file, { force: true });

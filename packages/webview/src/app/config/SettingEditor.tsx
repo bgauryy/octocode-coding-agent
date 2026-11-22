@@ -11,13 +11,15 @@ interface SettingEditorProps {
 	save: SaveSetting;
 	/** The workspace the page is showing, when one is selected; its settings file is a target only while trusted. */
 	workspace?: { id: string; trusted: boolean };
+	/** Where models.json lives, named in the hint for custom hosts and providers. */
+	modelsPath?: string;
 }
 
 /**
  * Changes one allow-listed setting in the global or the workspace file. The host decides: it refuses an untrusted
  * workspace and an invalid file, and the page shows its reason. Values are not secrets, so they stay in the field.
  */
-export function SettingEditor({ setting, provider, save, workspace }: SettingEditorProps) {
+export function SettingEditor({ setting, provider, save, workspace, modelsPath }: SettingEditorProps) {
 	const id = useId();
 	const [value, setValue] = useState(typeof setting.value === "string" ? setting.value : "");
 	const [providerValue, setProviderValue] = useState(typeof provider?.value === "string" ? provider.value : "");
@@ -128,6 +130,20 @@ export function SettingEditor({ setting, provider, save, workspace }: SettingEdi
 			<Button size="sm" loading={busy === "clear"} disabled={!!busy} onClick={() => void apply(null)}>
 				Clear
 			</Button>
+			{paired && (
+				<p className="muted">
+					Hosts and custom providers are defined in models.json
+					{modelsPath ? (
+						<>
+							{" "}
+							(<code>{modelsPath}</code>)
+						</>
+					) : (
+						""
+					)}
+					.
+				</p>
+			)}
 			{message && (
 				<p
 					className={message.tone === "error" ? "callout tone-danger" : "muted"}

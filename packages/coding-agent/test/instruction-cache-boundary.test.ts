@@ -20,10 +20,7 @@ describe("instruction cache boundary", () => {
 		expect(findInstructionCacheBoundary(system({ ...base, addendum: "a", project_context: "pc", cwd: "c" }))).toBe(
 			"addendum",
 		);
-		expect(findInstructionCacheBoundary(system({ ...base, project_context: "pc", skills: "s", cwd: "c" }))).toBe(
-			"project_context",
-		);
-		expect(findInstructionCacheBoundary(system({ ...base, skills: "s", cwd: "c" }))).toBe("skills");
+		expect(findInstructionCacheBoundary(system({ ...base, project_context: "pc", cwd: "c" }))).toBe("project_context");
 		expect(findInstructionCacheBoundary(system({ ...base, cwd: "c", octocode: "o" }))).toBe("cwd");
 		expect(findInstructionCacheBoundary(system({ ...base, environment: "e", octocode: "o" }))).toBe("environment");
 	});
@@ -47,7 +44,6 @@ describe("instruction cache boundary", () => {
 				cwd,
 				selectedTools: ["bash"],
 				contextFiles: [],
-				skills: [],
 				environment: `Date: ${date}`,
 				baseSections: { mcps: "docs file" },
 				sections: { octocode: "Policy." },
@@ -71,7 +67,6 @@ describe("instruction cache boundary", () => {
 				cwd,
 				selectedTools: ["bash"],
 				contextFiles: [{ path: "/work/AGENTS.md", content: "Project rules." }],
-				skills: [],
 				environment: `Date: ${date}`,
 				baseSections: { mcps: "docs file" },
 				sections: { work: "Policy.", ...(status ? { mcp_status: status } : {}) },
@@ -165,7 +160,7 @@ describe("instruction cache boundary", () => {
 			{ role: "user", content: "hi", timestamp: 1 },
 		];
 		const roleVariantTools = new Set(["archive", "memory", "agent", "skill"]);
-		const tools = ["bash", "file", "web", "mcp", "wait", "mcp__octocode__localSearch", "archive", "memory", "agent"];
+		const tools = ["bash", "file", "web", "mcp", "notify", "mcp__octocode__localSearch", "archive", "memory", "agent"];
 		expect(instructionCacheBoundaryOption(withTools(tools), { roleVariantTools }).toolCacheBoundary).toBe("archive");
 		expect(
 			instructionCacheBoundaryOption(withTools(["bash", "agent", "skill"]), { roleVariantTools }).toolCacheBoundary,

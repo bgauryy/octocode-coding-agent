@@ -2,28 +2,28 @@ import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import type { ExternalUsage } from "@octocodeai/octocode-contracts/external";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
-import { clip } from "../shared/text.ts";
-import { adoptTree, KILL_GRACE_MS, prepareTree, stopTree } from "../shared/process.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { adoptTree, KILL_GRACE_MS, prepareTree, reapWithParent, stopTree } from "../shared/process.ts";
 import { pollDescendants } from "../shared/descendant-poller.ts";
 import { agentEnv } from "./runner-env.ts";
 import type { RunnerBilling } from "./runners.ts";
-import { CLAUDE_ISOLATION_ARGS } from "./runner-isolation.ts";
 import { checkRunnerCommunication, type RunnerCommunication, withCommunicationConfig } from "./runner-communication.ts";
+import { HEADLESS_ARGS } from "./headless/claude.ts";
+import { headlessRoute } from "./headless/routes.ts";
+import { isSessionId } from "./headless/common.ts";
+import { type HeadlessReply, HeadlessSignedOut, type HeadlessRoute, type ResumeArgs } from "./headless/types.ts";
+
+export { HEADLESS_ARGS, type HeadlessReply, HeadlessSignedOut };
 
 /**
- * Alternative D of the subscriptions RFC: when Claude Code is installed and signed in but its ACP adapter
- * (`claude-agent-acp`) is not, a task runs in `claude -p` instead and its JSON event stream is read as the ACP turn
- * would be. Every flag below is in `claude --help` of Claude Code 2.1.325 (checked 2026-11-15).
+ * A task runs in the vendor's own CLI, headless, when the runner has no ACP adapter to connect: the route table
+ * (`headless/routes.ts`) holds each CLI's argv, permission mapping and event parser, and this file owns the process:
+ * environment, process group, descendants, cancellation and the idle timer.
  */
 
-/** The `/providers` runner row's word for this route. */
+/** The `/providers` runner row's word for the Claude Code route. */
 export const HEADLESS_ROUTE = "headless (adapter missing)";
-
-/** The runners with a headless route: only Claude Code's CLI was checked for one. */
-const HEADLESS_RUNNERS = new Set(["claude-code"]);
 
 /** The parts of a runner's checked state the route depends on (structural, so `runner-status.ts` can import this file). */
 interface RouteState {
@@ -33,47 +33,22 @@ interface RouteState {
 	auth?: { signedIn: boolean };
 }
 
-/** Whether `state` runs headless: its CLI is installed and signed in, its adapter is missing, and it has the route. */
+/** Whether `state` runs headless: its CLI is installed and signed in, its adapter is missing, and it has an enabled route. */
 export const headlessReady = (state: RouteState): boolean => headlessAvailable(state) && state.auth?.signedIn === true;
 
-/** Whether the installed CLI has a supported headless route, before its sign-in is checked. */
+/** Whether the installed CLI has an enabled headless route, before its sign-in is checked. */
 export const headlessAvailable = (state: RouteState): boolean =>
-	HEADLESS_RUNNERS.has(state.id) && state.cli && !state.adapter;
+	headlessRoute(state.id)?.enabled === true && state.cli && !state.adapter;
 
 /** The route a runner's row names when it is not the ACP adapter; undefined for the adapter route or none. */
 export const runnerRoute = (state: RouteState): string | undefined =>
-	headlessReady(state) ? HEADLESS_ROUTE : undefined;
-
-/**
- * The fixed part of the command: `-p` prints and exits (no prompt argument: the task comes on stdin, so its length and
- * any secret in it never reach argv), and `--output-format stream-json` streams one JSON event per line, which needs
- * `--verbose` with `-p`. Streaming input delivers the task without ending the process's input channel.
- */
-export const HEADLESS_ARGS: readonly string[] = [
-	"-p",
-	"--input-format",
-	"stream-json",
-	"--output-format",
-	"stream-json",
-	"--verbose",
-	...CLAUDE_ISOLATION_ARGS,
-];
-
-/**
- * Permissions, since headless mode sends no ACP permission request Octocode could answer. `--permission-prompts none`
- * denies whatever would prompt; the mode decides the rest. In its own worktree a task gets `acceptEdits`: Claude Code
- * accepts file edits inside its working directory only, so edits outside it, and every command or fetch its user's
- * own allow rules do not cover, are denied. A task in the session's own folder gets `manual`: nothing is accepted
- * that would ask, so it cannot change the user's checkout. Never `bypassPermissions` or `--dangerously-skip-permissions`.
- */
-function headlessPermissionArgs(isolated: boolean): string[] {
-	return ["--permission-mode", isolated ? "acceptEdits" : "manual", "--permission-prompts", "none"];
-}
+	headlessReady(state) ? headlessRoute(state.id)?.label : undefined;
 
 /** What a headless turn needs; `awake` restarts the caller's idle timer on every event. */
-interface HeadlessTurnInput {
+export interface HeadlessTurnInput {
 	runner: string;
 	command: string;
+	/** The route's fixed arguments (`launchOf` takes them from the table). */
 	args: readonly string[];
 	billing?: RunnerBilling;
 	model?: string;
@@ -82,183 +57,104 @@ interface HeadlessTurnInput {
 	/** The session's own folder: a task elsewhere runs in its worktree. */
 	sessionCwd: string;
 	text: string;
+	/** The caller is a read-only role: the task may not change files, so a route that cannot promise that refuses it. */
+	readOnly?: boolean;
+	/** The CLI's own session id an earlier turn reported: this turn continues that session. */
+	resume?: string;
 	signal: AbortSignal;
 	onActivity(line: string): void;
 	onStart?(pid: number): void;
 	awake(): void;
 }
 
-export interface HeadlessReply {
-	text: string;
-	stopReason?: string;
-	usage?: ExternalUsage;
-	cost?: number;
-	billing?: RunnerBilling;
-}
-
-/** A failure Claude Code reports as its sign-in: the caller drops the cached check, as for ACP `auth_required`. */
-export class HeadlessSignedOut extends Error {}
-
-const SIGNED_OUT = /not logged in|please run \/login|invalid api key|oauth token (has )?expired|authentication_error/i;
 /** The most of stderr kept for a failure message: the tail says why it exited. */
 const STDERR_TAIL = 8 * 1024;
-/** The input fields that name what a Claude Code tool acts on, in the order a row line prefers them. */
-const TARGET_FIELDS = ["file_path", "notebook_path", "command", "pattern", "path", "url", "query", "description"];
-/** Claude Code's result subtypes as ACP stop reasons (`runner-child.ts` reads those). */
-const RESULT_STOPS: Record<string, string> = {
-	error_max_turns: "max_turn_requests",
-	error_max_budget_usd: "max_tokens",
-};
-const API_STOPS = new Set(["end_turn", "max_tokens", "refusal"]);
-
-const num = (value: unknown): number | undefined =>
-	typeof value === "number" && Number.isFinite(value) ? value : undefined;
-
-/** A tool call as one short row line, like an ACP `tool_call` title: the tool and what it acts on. */
-function toolLine(block: Record<string, unknown>, roots: readonly string[]): string {
-	const name = typeof block.name === "string" && block.name ? block.name : "tool";
-	const input = isRecord(block.input) ? block.input : {};
-	const field = TARGET_FIELDS.find((key) => typeof input[key] === "string" && input[key]);
-	let target = field ? String(input[field]) : "";
-	const root = path.isAbsolute(target) ? roots.find((each) => target.startsWith(`${each}${path.sep}`)) : undefined;
-	if (root) target = path.relative(root, target);
-	return `→ ${clip(redactSecrets(target ? `${name} ${target}` : name), 120)}`;
-}
-
-/** Claude Code's `usage` (Anthropic field names) as the totals an ACP turn reports. */
-function usageOf(value: unknown): ExternalUsage | undefined {
-	if (!isRecord(value)) return undefined;
-	const inputTokens = num(value.input_tokens);
-	const outputTokens = num(value.output_tokens);
-	if (inputTokens === undefined || outputTokens === undefined) return undefined;
-	const cachedReadTokens = num(value.cache_read_input_tokens);
-	const cachedWriteTokens = num(value.cache_creation_input_tokens);
-	return {
-		inputTokens,
-		outputTokens,
-		...(cachedReadTokens ? { cachedReadTokens } : {}),
-		...(cachedWriteTokens ? { cachedWriteTokens } : {}),
-		totalTokens: inputTokens + outputTokens + (cachedReadTokens ?? 0) + (cachedWriteTokens ?? 0),
-	};
-}
-
-/** The text blocks of an assistant event: the answer when the result event carries none. */
-const textOf = (content: unknown[]): string =>
-	content
-		.filter((block) => isRecord(block) && block.type === "text" && typeof block.text === "string")
-		.map((block) => (block as { text: string }).text)
-		.join("");
-
-/** Reads the event stream: tool calls go to the row, the last assistant text and the result event are kept. */
-class StreamReader {
-	lastText = "";
-	result: Record<string, unknown> | undefined;
-	/** The task folder as given and as the CLI sees it (symlinks resolved): its paths show relative to it. */
-	private readonly roots: string[];
-	private readonly input: HeadlessTurnInput;
-	constructor(input: HeadlessTurnInput) {
-		this.input = input;
-		this.roots = [path.resolve(input.cwd)];
-		try {
-			this.roots.push(realpathSync(input.cwd));
-		} catch {
-			// A folder that cannot be resolved shows its paths in full.
-		}
-	}
-
-	line(raw: string): void {
-		this.input.awake();
-		let event: unknown;
-		try {
-			event = JSON.parse(raw);
-		} catch {
-			return; // A line that is not an event (a warning) is not part of the answer.
-		}
-		if (!isRecord(event)) return;
-		if (event.type === "result") {
-			this.result = event;
-			const denials = Array.isArray(event.permission_denials) ? event.permission_denials : [];
-			for (const denial of denials)
-				if (isRecord(denial) && typeof denial.tool_name === "string")
-					this.input.onActivity(`✗ denied ${clip(redactSecrets(denial.tool_name), 60)}`);
-			return;
-		}
-		if (event.type !== "assistant" || !isRecord(event.message) || !Array.isArray(event.message.content)) return;
-		const content = event.message.content;
-		const text = textOf(content);
-		if (text) this.lastText = text;
-		for (const block of content)
-			if (isRecord(block) && block.type === "tool_use") this.input.onActivity(toolLine(block, this.roots));
-	}
-
-	/** The turn's reply from the result event; a failed run throws, a signed-out one as `HeadlessSignedOut`. */
-	reply(code: number | null, stderr: string): HeadlessReply {
-		const result = this.result;
-		const billing = this.input.billing;
-		if (!result) {
-			const why = redactSecrets(stderr.trim()) || `exit code ${code}`;
-			if (SIGNED_OUT.test(why)) throw new HeadlessSignedOut(why);
-			throw new Error(`${this.input.runner} (headless) ended without a result: ${why}`);
-		}
-		const text = typeof result.result === "string" && result.result ? result.result : this.lastText;
-		const subtype = typeof result.subtype === "string" ? result.subtype : "";
-		const stop =
-			RESULT_STOPS[subtype] ??
-			(typeof result.stop_reason === "string" && API_STOPS.has(result.stop_reason) ? result.stop_reason : "end_turn");
-		const failed = result.is_error === true || (subtype !== "success" && !(subtype in RESULT_STOPS));
-		if (failed) {
-			const errors = Array.isArray(result.errors) ? result.errors.filter((each) => typeof each === "string") : [];
-			const why = redactSecrets([text, ...errors, stderr.trim()].filter(Boolean).join("\n")) || subtype || "error";
-			if (SIGNED_OUT.test(why)) throw new HeadlessSignedOut(why);
-			throw new Error(`${this.input.runner} (headless) failed: ${why}`);
-		}
-		const usage = usageOf(result.usage);
-		const cost = num(result.total_cost_usd);
-		return {
-			text,
-			stopReason: stop,
-			...(usage ? { usage } : {}),
-			...(cost !== undefined ? { cost } : {}),
-			billing,
-		};
-	}
-}
 
 const abortError = (signal: AbortSignal): Error =>
 	signal.reason instanceof Error ? signal.reason : new Error("Runner turn cancelled");
 
+/** The route's arguments for continuing the session `sessionId`, or the refusal: an unchecked id never reaches argv. */
+function resumeOf(route: HeadlessRoute, sessionId: string): ResumeArgs {
+	if (!isSessionId(sessionId))
+		throw new Error(`${route.id} cannot resume "${redactSecrets(sessionId)}": not a session id.`);
+	const resume = route.resume(sessionId);
+	if ("refuse" in resume) throw new Error(`${route.id} cannot resume its session: ${resume.refuse}`);
+	return resume;
+}
+
+/** The route a task may run through, or why it may not: a disabled route, or a scope the route refuses. */
+export function resolveHeadless(
+	input: Pick<HeadlessTurnInput, "runner" | "cwd" | "sessionCwd" | "model" | "readOnly" | "resume">,
+): {
+	route: HeadlessRoute;
+	args: string[];
+	/** The arguments that end the argv: a resumed session's subcommand. */
+	trailing: string[];
+	env: Record<string, string>;
+} {
+	const route = headlessRoute(input.runner);
+	if (!route?.enabled) throw new Error(`${input.runner} has no headless route a task may run through.`);
+	const isolated = path.resolve(input.cwd) !== path.resolve(input.sessionCwd);
+	const permission = route.permission({ isolated, readOnly: input.readOnly === true });
+	if ("refuse" in permission) throw new Error(`${input.runner} cannot run this task headless: ${permission.refuse}`);
+	const resume = input.resume === undefined ? undefined : resumeOf(route, input.resume);
+	return {
+		route,
+		args: [...permission.args, ...(input.model ? route.model(input.model) : []), ...(resume?.args ?? [])],
+		trailing: resume?.trailing ?? [],
+		env: { ...route.env, ...permission.env },
+	};
+}
+
 /**
- * One task's turn in `claude -p`: started in the task's folder with the cleaned environment (`agentEnv`), as the leader
- * of its own process group. Its descendants are polled from spawn to close (`pollDescendants`); input stays open until
- * the result's reading, then EOF. Cleanup stops the remaining group and every descendant seen. A helper that detaches
+ * One task's turn in a vendor CLI: started in the task's folder with the cleaned environment (`agentEnv`), as the
+ * leader of its own process group. Its descendants are polled from spawn to close (`pollDescendants`); a held-open input
+ * ends after the result's reading. Cleanup stops the remaining group and every descendant seen. A helper that detaches
  * (`setsid`) between two readings is not owned; this is cooperative, not OS containment.
  */
 export async function headlessTurn(input: HeadlessTurnInput): Promise<HeadlessReply> {
 	input.signal.throwIfAborted();
 	checkRunnerCommunication(input.runner, input.communication);
-	return withCommunicationConfig(input.communication, (args) =>
-		runHeadlessTurn({ ...input, args: [...input.args, ...args] }),
+	const resolved = resolveHeadless(input);
+	if (input.communication && !resolved.route.communication)
+		throw new Error(`${input.runner} has no verified communication bridge in its headless route.`);
+	return withCommunicationConfig(input.communication, (extra) =>
+		runHeadlessTurn(input, resolved, [...input.args, ...extra, ...resolved.args, ...resolved.trailing]),
 	);
 }
 
-async function runHeadlessTurn(input: HeadlessTurnInput): Promise<HeadlessReply> {
+async function runHeadlessTurn(
+	input: HeadlessTurnInput,
+	{ route, env }: ReturnType<typeof resolveHeadless>,
+	args: string[],
+): Promise<HeadlessReply> {
 	if (input.signal.aborted) throw abortError(input.signal);
-	const args = [
-		...input.args,
-		...headlessPermissionArgs(path.resolve(input.cwd) !== path.resolve(input.sessionCwd)),
-		...(input.model ? ["--model", input.model] : []),
-	];
+	// The task text rides on stdin where the CLI reads it there, so its length and any secret in it never reach argv.
+	const argv = route.task === "argv" ? [...args, "--", input.text] : args;
 	await prepareTree();
 	if (input.signal.aborted) throw abortError(input.signal);
-	const child = spawn(input.command, args, {
+	const child = spawn(input.command, argv, {
 		cwd: input.cwd,
-		env: agentEnv(input.runner),
+		env: { ...agentEnv(input.runner), ...env },
 		stdio: ["pipe", "pipe", "pipe"],
 		detached: process.platform !== "win32",
 		windowsHide: true,
 	});
 	adoptTree(child.pid);
-	const reader = new StreamReader(input);
+	reapWithParent(child.pid);
+	// The task folder as given and as the CLI sees it (symlinks resolved): its paths show relative to it.
+	const roots = [path.resolve(input.cwd)];
+	try {
+		roots.push(realpathSync(input.cwd));
+	} catch {
+		// A folder that cannot be resolved shows its paths in full.
+	}
+	const parser = route.parser({
+		runner: input.runner,
+		billing: input.billing,
+		roots,
+		onActivity: (line) => input.onActivity(line),
+	});
 	let stderr = "";
 	const descendants = pollDescendants(child.pid);
 	let closing: Promise<void> | undefined;
@@ -273,20 +169,31 @@ async function runHeadlessTurn(input: HeadlessTurnInput): Promise<HeadlessReply>
 			});
 			child.on("error", reject);
 			child.stdin.on("error", () => undefined); // An early exit closes stdin; its exit code says why.
-			child.stdin.write(`${JSON.stringify({ type: "user", message: { role: "user", content: input.text } })}\n`);
+			if (route.task === "json")
+				child.stdin.write(`${JSON.stringify({ type: "user", message: { role: "user", content: input.text } })}\n`);
+			else if (route.task === "text") child.stdin.end(input.text);
+			else child.stdin.end();
 			child.stderr.on("data", (chunk: Buffer) => {
 				stderr = (stderr + chunk.toString("utf8")).slice(-STDERR_TAIL);
 			});
 			const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
-			lines.on("line", (line) => {
-				reader.line(line);
-				if (!reader.result || closing) return;
+			lines.on("line", (raw) => {
+				input.awake();
+				let event: unknown;
+				try {
+					event = JSON.parse(raw);
+				} catch {
+					return; // A line that is not an event (a warning) is not part of the answer.
+				}
+				if (!isRecord(event)) return;
+				parser.line(event);
+				if (!parser.done || closing) return;
 				// One more reading before the input closes, so the CLI's helpers are known when it exits.
 				closing = descendants.snapshot().then(() => void child.stdin.end());
 			});
 			child.once("close", (code) => {
 				try {
-					resolve(reader.reply(code, stderr));
+					resolve(parser.reply(code, stderr));
 				} catch (error) {
 					reject(error);
 				}

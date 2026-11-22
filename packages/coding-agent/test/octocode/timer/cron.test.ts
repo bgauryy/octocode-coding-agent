@@ -309,7 +309,7 @@ async function session(
 	};
 	await host.fire("session_start", { reason: "startup" }, ctx);
 	open.push(() => host.fire("session_shutdown", {}, ctx));
-	const tool = host.tools.get("wait");
+	const tool = host.tools.get("notify");
 	const set = (args: object) =>
 		tool.execute("c", { op: "set", note: "check the build", ...args }, undefined, undefined, ctx);
 	return { host, ctx, commands, set, tool, entries, state };

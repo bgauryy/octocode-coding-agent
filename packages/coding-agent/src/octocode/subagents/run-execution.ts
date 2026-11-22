@@ -10,9 +10,11 @@ import type { AgentRuns, Run } from "./claim.ts";
 import type { BackgroundRun } from "./command.ts";
 import { withStopFacts } from "./budget.ts";
 import { hintEnd, hintOnStop, stopReason } from "./end-hint.ts";
+import { type HandOver, SPENT, untilBudget } from "./foreground-budget.ts";
 import { pendingReportsDir, type Report, savePendingReport } from "./handoff/pending.ts";
 import { parentGoneReportId } from "./handoff/parent-gone.ts";
-import type { AwaitedReply, LingerWindow } from "./linger.ts";
+import type { LingerWindow } from "./linger.ts";
+import { awaitedReply, closeAnswered, readMailFirst } from "./report-steps.ts";
 import { providerHealth, spentNothing } from "./provider-health.ts";
 import type { runSubagent } from "./process.ts";
 import { USER_STOP } from "./process/outcome.ts";
@@ -28,10 +30,11 @@ import {
 } from "./report-text.ts";
 import { unavailableResult } from "./result-schema.ts";
 import type { RunDetails } from "./run-types.ts";
-import { beginRun, finishRun, type RunEnd } from "./run-audit.ts";
+import { beginRun, endRun, type RunEnd } from "./run-audit.ts";
+import { typedResultFailure } from "./typed-result.ts";
 import { stopFacts } from "./stop-facts.ts";
 import { evidenceNotes } from "./evidence.ts";
-import { reportFacts, runFooter, withShot } from "./tracking.ts";
+import { type AgentUpdate, reportFacts, runFooter, withShot } from "./tracking.ts";
 
 type Outcome = Awaited<ReturnType<typeof runSubagent>>;
 
@@ -42,37 +45,6 @@ const evidenceFor = (details: RunDetails, text: string): string[] =>
 /** ` · cite as report:<id>`: how a later task or external prompt passes this report on without retyping it. */
 const citable = (id: string): string => ` · cite as ${reportRef(id)}`;
 
-/** Whom the run's unanswered asks wait on: its parent (`asks`) first, else its peers (the team's record); it lingers while they wait. */
-function awaitedReply(runs: AgentRuns, id: string, details: RunDetails): AwaitedReply | undefined {
-	if (details.asks?.some((ask) => !ask.answer)) return "parent";
-	// An unreadable team database counts no peer asks (`Team.unansweredPeerAsks`), leaving the parent's record to decide.
-	return runs.team.unansweredPeerAsks(id) > 0 ? "peer" : undefined;
-}
-
-/**
- * The report answers whatever the parent asked this child and it read: they stop counting as unanswered. Housekeeping on
- * the way to the report, so a failure here costs at most a stale notice and never the report.
- */
-async function closeAnswered(runs: AgentRuns, id: string): Promise<void> {
-	try {
-		await runs.team.closeQuestionsTo(id);
-	} catch {
-		// The questions stay open; the report is delivered either way.
-	}
-}
-
-/**
- * What the child sent before it finished goes to the parent's model before its report: the mail tick may be up to a second
- * away, and a parent that ends with the report (a headless run) would never read it. Fails open like `closeAnswered`.
- */
-function readMailFirst(runs: AgentRuns): void {
-	try {
-		runs.team.deliverMail();
-	} catch {
-		// The next tick delivers it.
-	}
-}
-
 /** A background child settled: its report is in flight until its run ends, and its siblings' reports wait for it. */
 export function reportInFlight(runs: AgentRuns, id: string): void {
 	runs.groups.settled(id);
@@ -81,6 +53,7 @@ export function reportInFlight(runs: AgentRuns, id: string): void {
 /**
  * Runs the subagent in the background; its report (or why it stopped) arrives as a message, and then it gives its slot
  * back. `finish` gets the outcome when there is a report, so the parent's own notes on it (its backlog item) ride in the footer.
+ * `adopted`: the controller of a foreground run that is handed over; its audit row and stop hint already exist.
  */
 export function startBackground(
 	runs: AgentRuns,
@@ -88,9 +61,10 @@ export function startBackground(
 	details: RunDetails,
 	task: string,
 	launch: (signal: AbortSignal) => Promise<Outcome>,
-	finish: (outcome?: Outcome, lingers?: boolean) => Promise<string>,
+	finish: (outcome?: Outcome, lingers?: boolean, stopped?: boolean) => Promise<string>,
 	sessionId: string,
 	linger?: LingerWindow,
+	adopted?: AbortController,
 ): void {
 	const { background, read } = runs;
 	const { identity } = run;
@@ -106,11 +80,13 @@ export function startBackground(
 						...(details.runId ? { reportId: parentGoneReportId(identity.id, details.runId) } : {}),
 					}),
 	};
-	const controller = new AbortController();
+	const controller = adopted ?? new AbortController();
 	const entry: BackgroundRun = { controller, done: Promise.resolve() };
 	background.set(identity.id, entry);
-	hintOnStop(runs, identity.id, entry);
-	beginRun(runs, run);
+	if (!adopted) {
+		hintOnStop(runs, identity.id, entry);
+		beginRun(runs, run);
+	}
 	runs.changed();
 	read.track(identity.id, identity.scratch);
 	// The parent may have many runs going: every report names the agent, its role and its goal.
@@ -146,7 +122,7 @@ export function startBackground(
 				outcomeSource: source,
 				reportPath: outcome.reportArtifact?.path,
 			};
-			const typedFailure = identity.resultContract && (reported !== "done" || outcome.structured?.status !== "valid");
+			const typedFailure = typedResultFailure(identity.resultContract, reported, outcome.structured);
 			const stats = [
 				formatDuration(Date.now() - details.startedAt),
 				toolCallCount(details.toolCalls),
@@ -187,7 +163,7 @@ export function startBackground(
 			readMailFirst(runs);
 			reports.add({
 				content: reportMessage(head, body, [
-					...(typedFailure ? [`Result schema validation: ${outcome.structured?.error?.code ?? "unavailable"}.`] : []),
+					...(typedFailure ? [typedFailure] : []),
 					// A failure's `next` names the route; a success's header does.
 					next,
 					...runFooter(details, Boolean(outcome.error)),
@@ -210,7 +186,11 @@ export function startBackground(
 			});
 		} catch (error) {
 			if (identity.resultContract) details.structured = unavailableResult(identity.resultContract);
-			const note = await finish(undefined, entry.stoppedBy === PERMISSION_STOP && (linger?.stays() ?? false));
+			const note = await finish(
+				undefined,
+				entry.stoppedBy === PERMISSION_STOP && (linger?.stays() ?? false),
+				Boolean(entry.stoppedBy) || controller.signal.aborted,
+			);
 			read.consume(identity.id);
 			const by = entry.stoppedBy;
 			if (!by) hintEnd(runs, identity.id, "failed");
@@ -249,9 +229,7 @@ export function startBackground(
 			runs.groups.leave(identity.id);
 			runs.reports.reportingChanged();
 			if (audit) {
-				finishRun(runs, identity.id, audit);
-				// The parent's own record of how it ended releases or holds the children queued behind it.
-				runs.chain?.gate.noteEnd(identity.id, { reason: audit.reason, outcome: audit.outcome });
+				endRun(runs, identity.id, audit);
 			}
 			if (end) runs.ended?.(identity.id, end);
 			runs.changed();
@@ -280,20 +258,26 @@ export function startBackground(
 }
 
 /**
- * Runs the subagent and waits for its report; the child's model usage counts toward this session's totals. `stopping`
- * redraws the row the moment a stop begins: the child, and an isolated run's worktree, still take a moment to close.
+ * Runs the subagent and waits for its report; the child's model usage counts toward this session's totals. A stop
+ * redraws the call's row (`onUpdate`) the moment it begins: the child, and an isolated run's worktree, still take a moment
+ * to close. With `handOver`, a run that outlasts the budget continues as a background run and the call returns its id.
  */
 export async function runForeground(
 	runs: AgentRuns,
 	run: Run,
 	details: RunDetails,
 	launch: (signal: AbortSignal) => Promise<Outcome>,
-	finish: (outcome?: Outcome) => Promise<string>,
+	finish: (outcome?: Outcome, lingers?: boolean, stopped?: boolean) => Promise<string>,
 	warning: string,
 	signal: AbortSignal | undefined,
-	stopping: () => void,
+	onUpdate: AgentUpdate | undefined,
+	handOver?: HandOver,
 ) {
 	const { identity } = run;
+	const stopping = () => {
+		details.stopping = true;
+		onUpdate?.({ content: [{ type: "text", text: "stopping…" }], details: { ...details } });
+	};
 	// Its own controller, so `/agents kill` can stop this run without aborting the parent's turn. Esc is the user's stop.
 	const controller = new AbortController();
 	const entry: BackgroundRun = { controller, done: Promise.resolve() };
@@ -305,17 +289,26 @@ export async function runForeground(
 	hintOnStop(runs, identity.id, entry);
 	beginRun(runs, run);
 	let outcome: Outcome;
+	let handedOver = false;
 	const exited = () => runs.team.approvals.noteExited(identity.id);
 	try {
-		outcome = withStopFacts(await launch(controller.signal).finally(exited), details, runs.team);
+		const running = launch(controller.signal).finally(exited);
+		const first = handOver ? await untilBudget(running, handOver.afterMs) : await running;
+		// An abort that raced the budget is the call's end, not a hand-over.
+		if (first === SPENT && handOver && !controller.signal.aborted) {
+			handedOver = true;
+			controller.signal.removeEventListener("abort", stopping);
+			return handOver.takeOver(running, controller);
+		}
+		outcome = withStopFacts(first === SPENT ? await running : first, details, runs.team);
 		providerHealth.noteRun(run.route.model, outcome.error, spentNothing(outcome.usage));
 		if (outcome.error) hintEnd(runs, identity.id, "failed");
 	} catch (error) {
 		// An Esc aborts the controller without `stoppedBy`: that stop already left its hint.
 		if (!entry.stoppedBy && !controller.signal.aborted) hintEnd(runs, identity.id, "failed");
-		const note = `${entry.stoppedBy === PERMISSION_STOP ? stopFacts(details, runs.team) : ""}${await finish()}${entry.stoppedBy ? "" : foregroundExtras(details, true)}`;
+		const note = `${entry.stoppedBy === PERMISSION_STOP ? stopFacts(details, runs.team) : ""}${await finish(undefined, false, Boolean(entry.stoppedBy) || controller.signal.aborted)}${entry.stoppedBy ? "" : foregroundExtras(details, true)}`;
 		const reason = entry.stoppedBy ? stoppedError(identity.id, entry.stoppedBy) : error;
-		finishRun(runs, identity.id, {
+		endRun(runs, identity.id, {
 			reason: entry.stoppedBy || controller.signal.aborted ? stopReason(entry.stoppedBy) : "failed",
 			error: entry.stoppedBy ? undefined : errorMessage(error),
 			outcome: entry.stoppedBy ? undefined : "failed",
@@ -332,14 +325,17 @@ export async function runForeground(
 	} finally {
 		signal?.removeEventListener("abort", abort);
 		runs.foreground.delete(identity.id);
-		runs.groups.leave(identity.id);
-		runs.reports.reportingChanged();
+		// A handed-over child is still running: the background run leaves its group when it ends.
+		if (!handedOver) {
+			runs.groups.leave(identity.id);
+			runs.reports.reportingChanged();
+		}
 	}
 	const note = `${await finish(outcome)}${warning}${foregroundExtras(details, Boolean(outcome.error))}`;
 	if (!outcome.error) await closeAnswered(runs, identity.id);
 	if (outcome.structured) details.structured = outcome.structured;
 	if (outcome.reportArtifact) details.reportArtifact = outcome.reportArtifact;
-	finishRun(runs, identity.id, {
+	endRun(runs, identity.id, {
 		reason: outcome.error ? "failed" : "completed",
 		error: outcome.error,
 		outcome: outcome.error ? "failed" : outcome.outcome,
@@ -366,7 +362,7 @@ export async function runForeground(
 	if (reported) details.outcome = reported;
 	if (outcome.outcomeSource) details.outcomeSource = outcome.outcomeSource;
 	const heading = reported ? `Subagent ${identity.id} reported ${reported}` : "";
-	const typedFailure = identity.resultContract && (reported !== "done" || outcome.structured?.status !== "valid");
+	const typedFailure = typedResultFailure(identity.resultContract, reported, outcome.structured);
 	return {
 		...(typedFailure ? { isError: true } : {}),
 		content: [
@@ -375,11 +371,7 @@ export async function runForeground(
 				text: reportMessage(
 					`${heading || `Subagent ${identity.id} finished`}${routeSuffix(ranOn(run.route, details.ran))}${citable(identity.id)}`,
 					withShot(details, outcome.text || "(subagent returned no text)"),
-					[
-						typedFailure ? `Result schema validation: ${outcome.structured?.error?.code ?? "unavailable"}.` : "",
-						...evidenceFor(details, outcome.text),
-						note,
-					],
+					[typedFailure ?? "", ...evidenceFor(details, outcome.text), note],
 				),
 			},
 		],

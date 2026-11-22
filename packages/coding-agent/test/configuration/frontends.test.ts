@@ -19,9 +19,9 @@ afterEach(() => {
 });
 
 const run = (line: string, options?: { trusted?: boolean }) =>
-	runConfigWords(configuration(sandbox, options), splitConfigWords(line), "/configuration");
+	runConfigWords(configuration(sandbox, options), splitConfigWords(line), "/settings");
 
-describe("/configuration text verbs", () => {
+describe("/settings text verbs", () => {
 	it("lists by kind and text, gets one entry and reads values per scope", async () => {
 		const listed = await run("list tool");
 		expect(listed.ok).toBe(true);
@@ -32,12 +32,12 @@ describe("/configuration text verbs", () => {
 	});
 
 	it("pages a long list for the terminal and keeps the full list for a script", async () => {
-		const paged = await runConfigWords(configuration(sandbox), ["list"], "/configuration", { listRows: 5 });
+		const paged = await runConfigWords(configuration(sandbox), ["list"], "/settings", { listRows: 5 });
 		const text = paged.lines.join("\n");
-		expect(text).toMatch(/… \d+ more entries\. Filter: \/configuration list <kind>\|<text>/);
+		expect(text).toMatch(/… \d+ more entries\. Filter: \/settings list <kind>\|<text>/);
 		expect(paged.lines.filter((line) => /^ {2}\S/.test(line))).toHaveLength(5);
-		const filtered = await runConfigWords(configuration(sandbox), ["list", "tool"], "/configuration", { listRows: 2 });
-		expect(filtered.lines.join("\n")).toContain("Narrow it: /configuration list <kind> <text>");
+		const filtered = await runConfigWords(configuration(sandbox), ["list", "tool"], "/settings", { listRows: 2 });
+		expect(filtered.lines.join("\n")).toContain("Narrow it: /settings list <kind> <text>");
 		expect((paged.json as unknown[]).length).toBeGreaterThan(5);
 		expect((await run("list")).lines.join("\n")).not.toContain("more entries");
 	});

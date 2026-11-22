@@ -80,27 +80,27 @@ async function finished(each: Session, steps: string) {
 }
 
 describe("git merge in the main checkout, on the default branch, in full mode", () => {
-	it("a typed `!git merge` is consent and asks nothing; an agent merge asks over RPC, naming the command and the branch; once asks again, for this session does not, and shares the tool's grant", async () => {
+	it("RPC shell and agent merges ask before landing and share the session grant", async () => {
 		const box = sandbox(endpoint);
 		const branch = git(box.project, "branch", "--show-current");
 		for (const each of ["one", "two", "three"]) branchWithCommit(box, each);
 		branchWithCommit(box, "feature");
 		const started = await session(box);
 
-		// A user's own `!git merge` is consent: it runs, asks nothing, and the audit says it was typed.
-		// RPC's `bash` is the terminal's `!`: the `user_bash` path.
+		// RPC shell input must wait for its own approval before modifying the protected checkout.
 		started.run.process.stdin?.write(
 			`${JSON.stringify({ id: "typed", type: "bash", command: "git merge --no-edit feature" })}\n`,
 		);
-		await until(() => /"id":"typed"/.test(started.run.stdout()), "the typed merge");
-		expect(fs.existsSync(path.join(box.project, "feature.txt"))).toBe(true);
-		expect(dialogs(started.run)).toHaveLength(0);
+		const requested = await askedFor(started, 1);
+		expect(requested.permission.action).toBe("worktree.merge");
+		expect(fs.existsSync(path.join(box.project, "feature.txt"))).toBe(false);
+		answer(started.run, requested.id, ONCE);
+		await until(() => fs.existsSync(path.join(box.project, "feature.txt")), "the approved RPC merge");
 		prompt(started.run, "typed-log", "/permissions log");
-		await until(() => /shell allowed \(typed\)/.test(notices(started.run)), "the audit's typed entry");
-		expect(notices(started.run)).not.toContain("worktree.merge");
+		await until(() => /worktree\.merge allowed \(user\)/.test(notices(started.run)), "the RPC approval in the audit");
 
 		const first = runs(started, "git merge --no-ff --no-edit one");
-		const dialog = await askedFor(started, 1);
+		const dialog = await askedFor(started, 2);
 		expect(dialog.permission.action).toBe("worktree.merge");
 		expect(dialog.title).toContain("git merge --no-ff --no-edit one");
 		expect(dialog.title).toContain(`Land commits on ${branch} in the main checkout?`);
@@ -113,7 +113,7 @@ describe("git merge in the main checkout, on the default branch, in full mode", 
 
 		// "Once" held for one call.
 		const second = runs(started, "git merge --no-ff --no-edit two");
-		const again = await askedFor(started, 2);
+		const again = await askedFor(started, 3);
 		expect(fs.existsSync(path.join(box.project, "two.txt"))).toBe(false);
 		answer(started.run, again.id, ALL);
 		await finished(started, second);
@@ -129,21 +129,22 @@ describe("git merge in the main checkout, on the default branch, in full mode", 
 		await finished(started, tool);
 		expect(resultsOf(endpoint, tool)).toContain("Merged tool-branch");
 		expect(fs.existsSync(path.join(worktree, "feature.txt"))).toBe(true);
-		expect(dialogs(started.run)).toHaveLength(2);
+		expect(dialogs(started.run)).toHaveLength(3);
 
 		// `/permissions` shows and revokes it, and the audit has each decision.
 		prompt(started.run, "grants", "/permissions grants");
 		await until(() => notices(started.run).includes("worktree.merge: all worktree merges"), "the grant listed");
 		prompt(started.run, "log", "/permissions log");
-		await until(() => /worktree\.merge allowed \(user\)/.test(notices(started.run)), "the once answer in the audit");
+		await until(() => /"id":"log","type":"response"/.test(started.run.stdout()), "the permission log response");
+		expect(notices(started.run)).toMatch(/worktree\.merge allowed \(user\)/);
 		expect(notices(started.run)).toMatch(/worktree\.merge allowed \(grant\)/);
 		prompt(started.run, "clear", "/permissions grants clear");
 		await until(() => /"id":"clear"/.test(started.run.stdout()), "the grants cleared");
 		branchWithCommit(box, "four");
 		const fourth = runs(started, "git merge --no-ff --no-edit four");
-		await askedFor(started, 3);
+		await askedFor(started, 4);
 		expect(fs.existsSync(path.join(box.project, "four.txt"))).toBe(false);
-		answer(started.run, dialogs(started.run)[2].id, "Deny");
+		answer(started.run, dialogs(started.run)[3].id, "Deny");
 		await finished(started, fourth);
 		expect(fs.existsSync(path.join(box.project, "four.txt"))).toBe(false);
 		expect(resultsOf(endpoint, fourth)).toContain(

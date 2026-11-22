@@ -328,7 +328,7 @@ describe("builtin providers", () => {
 
 	it("runs provider-owned Bedrock bearer token and AWS profile login flows", async () => {
 		const auth = amazonBedrockProvider().auth.apiKey!;
-		const bearerAnswers = ["bearer-token", "bedrock-token"];
+		const bearerAnswers = ["bearer-token", "bedrock-token", ""];
 		expect(
 			await auth.login?.({
 				signal: neverAbortedSignal,
@@ -337,7 +337,7 @@ describe("builtin providers", () => {
 			}),
 		).toEqual({ type: "api_key", key: "bedrock-token" });
 
-		const profileAnswers = ["aws-profile", "work"];
+		const profileAnswers = ["aws-profile", "work", ""];
 		const events: AuthEvent[] = [];
 		expect(
 			await auth.login?.({

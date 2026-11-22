@@ -5,9 +5,11 @@ import type { AgentRuns, Run } from "./claim.ts";
 import type { RunDetails } from "./run-types.ts";
 import type { FeatureContext } from "../../core/features/index.ts";
 import { routeSummary } from "./model.ts";
+import { REF_PREFIX } from "./worktree-base.ts";
+import { worktreeName } from "../worktree-paths/member-worktree.ts";
 import { openBacklog } from "../backlog/context.ts";
 import { startedNotice } from "../backlog/graph-notice.ts";
-import { type AfterHost, openPrerequisites } from "./chain.ts";
+import { type AfterHost, checkPrerequisites } from "./chain.ts";
 import { type ItemLink, itemLink } from "./item-link.ts";
 import { handoffLines, queueChild } from "./queued-start.ts";
 import { type Prerequisite, prerequisiteName } from "./prerequisites.ts";
@@ -24,7 +26,7 @@ export function chainPlan(
 	params: { item?: string | undefined; after?: string[] | undefined; background?: boolean | undefined },
 	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 	resuming: boolean,
-): { linked: ItemLink | undefined; after: Prerequisite[] } {
+): { linked: ItemLink | undefined; after: Prerequisite[]; handoff: Prerequisite[] } {
 	const queuing =
 		params.background === true && settings.subagents?.queuedStarts !== false && !resuming && runs.chain !== undefined;
 	if (params.after?.length && !queuing)
@@ -33,7 +35,7 @@ export function chainPlan(
 		);
 	const linked = itemLink(ctx, params.item, { queue: queuing, queued: () => runs.chain?.items() ?? new Set() });
 	// A call with no item and no `after` has nothing to wait for: the board is not opened for it.
-	if (!queuing || !runs.chain || (!linked && !params.after?.length)) return { linked, after: [] };
+	if (!queuing || !runs.chain || (!linked && !params.after?.length)) return { linked, after: [], handoff: [] };
 	const backlog = openBacklog(ctx, { isSubagent: false });
 	const host: AfterHost = {
 		item: (ref) => {
@@ -44,16 +46,22 @@ export function chainPlan(
 		},
 		liveChild: (id) => runs.running.has(id) || runs.background.has(id),
 	};
-	return { linked, after: openPrerequisites(host, runs.chain, params.after ?? [], linked?.ref, linked?.waitsOn ?? []) };
+	const { open, named } = checkPrerequisites(host, runs.chain, params.after ?? [], linked?.ref, linked?.waitsOn ?? []);
+	return { linked, after: open, handoff: named };
 }
 
-/** The `Referenced content` a started child gets for the prerequisites it waited for; a report that cannot be read is left out. */
-async function chainHandoff(
+/**
+ * The `Referenced content` a started child gets for the prerequisites it named, those that ended before the call as
+ * well as those it waited for; a report that cannot be read is left out.
+ */
+export async function chainHandoff(
 	runs: Pick<AgentRuns, "team">,
 	after: readonly Prerequisite[],
 	ctx: Pick<FeatureContext, "cwd" | "sessionManager">,
 	artifactAccess: "local" | "none",
 ): Promise<string> {
+	// Nothing named: the board stays closed (opening it schedules the daily history pass and its writer).
+	if (after.length === 0) return "";
 	const { reports, text } = handoffLines(after, openBacklog(ctx, { isSubagent: false }));
 	let block = "";
 	for (const report of reports) {
@@ -103,8 +111,16 @@ export function queueRun(
 		goal,
 		item,
 		after,
+		handoff,
 		details,
-	}: { goal: string; item: string | undefined; after: readonly Prerequisite[]; details: RunDetails },
+	}: {
+		goal: string;
+		item: string | undefined;
+		after: readonly Prerequisite[];
+		/** Every prerequisite the call named, the met ones too: the child gets what each left (`chainHandoff`). */
+		handoff: readonly Prerequisite[];
+		details: RunDetails;
+	},
 	/** Why the permission policy of the moment no longer allows the start; undefined when it does (`spawnStillAllowed`). */
 	refusal: () => Promise<string | undefined>,
 	prepare: (signal: AbortSignal) => Promise<void>,
@@ -132,7 +148,7 @@ export function queueRun(
 			await queued.wait(signal);
 			return {
 				note: `\n\nStarted after ${names.join(", ")}.`,
-				referenced: await chainHandoff(runs, after, ctx, access),
+				referenced: await chainHandoff(runs, handoff, ctx, access),
 			};
 		},
 		started: () => {
@@ -176,4 +192,13 @@ export function queuedText(
 		? "it holds no paths yet: it waits for the children holding them, then for a slot"
 		: `${runs.running.size - 1} subagents are ahead of it or running, and it starts when a slot frees`;
 	return `Queued ${run.identity.id} (${run.identity.role}) in the background: ${wait}. Its report arrives as a message. Runs on ${routeSummary(run.route)}.${notes}`;
+}
+
+/** What the call's result says about a background child that started at once. */
+export function startedText(run: Run, worktree: { path: string } | undefined, warning: string): string {
+	const id = run.identity.id;
+	const own = worktree
+		? ` Works in its own worktree ${worktreeName(worktree.path)}, removed when it ends; its result lands on ${REF_PREFIX}${id}.`
+		: "";
+	return `Started ${id} (${run.identity.role}) in the background; its report arrives as a message. Runs on ${routeSummary(run.route)}.${own}${warning}`;
 }

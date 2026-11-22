@@ -1,3 +1,4 @@
+import { savedHandle } from "../../src/octocode/shared/heap-index.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -49,6 +50,8 @@ const result = (id: string, text: string) => ({
 const trimmed = (label: string, mark: string) =>
 	capOutputToFile(`${mark}\n${"line of output\n".repeat(6_000)}`, { label });
 const fileOf = (note: string) => /Full output: (\S+);/.exec(note)![1];
+/** A line of the summary's list: the path and its handle. */
+const listed = (file: string) => `${file} ${savedHandle(file)}`;
 
 /** `writeSummary` over a preparation holding `messages`, on a model that answers with `## Goal`. */
 function summarize(
@@ -120,7 +123,7 @@ describe("saved results carried into the compaction summary", () => {
 			expect(summary.split(file)).toHaveLength(2);
 		}
 		const block = /<saved-results>\n([\s\S]*?)\n<\/saved-results>/.exec(summary)![1];
-		expect(block.split("\n").slice(1)).toEqual(files);
+		expect(block.split("\n").slice(1)).toEqual(files.map(listed));
 		expect(out!.compaction!.details).toMatchObject({
 			[SAVED_RESULTS_DETAILS]: files.map((file) => path.resolve(file)),
 		});
@@ -132,7 +135,7 @@ describe("saved results carried into the compaction summary", () => {
 		const note = trimmed("bash-standalone", "STANDALONE");
 		const out = await summarize([result("a", note)], { standalone: true });
 		expect(out!.compaction!.summary).toContain(
-			`<saved-results>\nTool results and subagent conversations this summary leaves out are saved whole in these files; read or search them:\n${fileOf(note)}\n</saved-results>`,
+			`<saved-results>\nTool results and subagent conversations this summary leaves out are saved whole in these files; read or search them:\n${listed(fileOf(note))}\n</saved-results>`,
 		);
 		expect(out!.compaction!.details).toMatchObject({ [SAVED_RESULTS_DETAILS]: [path.resolve(fileOf(note))] });
 	});
@@ -145,7 +148,7 @@ describe("saved results carried into the compaction summary", () => {
 		const out = await summarize([result("old", "whole cleared text"), result("other", "nothing saved")], { branch });
 		const file = copy.split(" (sha256")[0];
 		expect(out!.compaction!.summary).toContain(
-			`<saved-results>\nTool results and subagent conversations this summary leaves out are saved whole in these files; read or search them:\n${file}\n</saved-results>`,
+			`<saved-results>\nTool results and subagent conversations this summary leaves out are saved whole in these files; read or search them:\n${listed(file)}\n</saved-results>`,
 		);
 		expect(out!.compaction!.summary).not.toContain("sha256");
 	});
@@ -180,7 +183,7 @@ describe("saved results carried into the compaction summary", () => {
 			previousSummary: firstOut.summary,
 		}))!.compaction!;
 		const lines = /<saved-results>\n([\s\S]*?)\n<\/saved-results>/.exec(secondOut.summary)![1].split("\n").slice(1);
-		expect(lines).toEqual([fileOf(earlier), fileOf(later)]);
+		expect(lines).toEqual([listed(fileOf(earlier)), listed(fileOf(later))]);
 		expect(secondOut.details).toMatchObject({
 			[SAVED_RESULTS_DETAILS]: [path.resolve(fileOf(earlier)), path.resolve(fileOf(later))],
 		});
@@ -202,7 +205,7 @@ describe("saved results carried into the compaction summary", () => {
 		expect(block).toMatch(/^\n\n<saved-results count="80">\n/);
 		const list = /listed one per line in (\S+);/.exec(block)![1];
 		expect(path.dirname(path.resolve(list))).toBe(sessionOutputDir("output"));
-		expect(fs.readFileSync(path.resolve(list), "utf8").trimEnd().split("\n")).toEqual(files);
+		expect(fs.readFileSync(path.resolve(list), "utf8").trimEnd().split("\n")).toEqual(files.map(listed));
 		// The pointer block is stripped from a summary like the inline one.
 		expect(withoutSavedResults(`## Goal\nx${block}`)).toBe("## Goal\nx");
 	});
@@ -222,7 +225,7 @@ describe("saved results carried into the compaction summary", () => {
 	it("lists a short list inline and nothing for none", () => {
 		expect(savedResultsBlock([])).toBe("");
 		const file = path.join(sessionOutputDir("output"), "bash-1.txt");
-		expect(savedResultsBlock([file])).toContain(`\n${file}\n</saved-results>`);
+		expect(savedResultsBlock([file])).toContain(`\n${listed(file)}\n</saved-results>`);
 	});
 
 	it("removes only the block code appended: the last one, and only at the end of the body", () => {
@@ -274,7 +277,7 @@ describe("saved results carried into the compaction summary", () => {
 		expect(carriedSavedResults(branch as never)).toEqual([path.resolve(fileOf(earlier))]);
 		const next = (await summarize([result("b", "nothing saved")], { branch, previousSummary: "## Goal\ndefault" }))!
 			.compaction!;
-		expect(next.summary).toContain(`\n${fileOf(earlier)}\n</saved-results>`);
+		expect(next.summary).toContain(`\n${listed(fileOf(earlier))}\n</saved-results>`);
 		expect(next.details).toMatchObject({ [SAVED_RESULTS_DETAILS]: [path.resolve(fileOf(earlier))] });
 		// The newest compaction that carries paths wins; none carries none.
 		expect(

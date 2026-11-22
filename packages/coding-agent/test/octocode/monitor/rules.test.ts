@@ -55,6 +55,24 @@ describe("machine rules", () => {
 		expect(causeOf(sample(0, { processes: [] }), "gpu")).toEqual({ owner: null, culprits: [] });
 	});
 
+	it("never blames a session for an editor or terminal host above it, nor for less memory than another program holds", () => {
+		const helper = { pid: 10, ppid: 1, command: "Code Helper (Plugin)", cpu: 5, rss: 1.5 * GiB, owner: null };
+		const session = {
+			pid: 11,
+			ppid: 10,
+			command: "octocode-agent-main-aaaa",
+			cpu: 2,
+			rss: 0.5 * GiB,
+			owner: "octocode-agent-main-aaaa",
+		};
+		const child = { pid: 12, ppid: 11, command: "vitest", cpu: 1, rss: 0.6 * GiB, owner: "octocode-agent-main-aaaa" };
+		const swap = causeOf(sample(0, { processes: [session, child, helper] }), "swap");
+		expect(swap.owner).toBeNull();
+		expect(swap.culprits[0].command).toBe("Code Helper (Plugin)");
+		const alone = causeOf(sample(0, { processes: [session, child] }), "swap");
+		expect(alone.owner).toBe("octocode-agent-main-aaaa");
+	});
+
 	it("alerts after the streak, not again within the cooldown, and resets the streak when it clears", () => {
 		const rules = new MachineRules(() => t);
 		const hot = (at: number) => rules.observe(sample(at, { load1: 24 }));

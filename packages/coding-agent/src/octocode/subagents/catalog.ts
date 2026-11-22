@@ -34,8 +34,15 @@ interface CatalogModel {
 	reasoning?: boolean;
 	input?: string[];
 	context?: number;
-	cost?: { input: number; output: number };
+	/** Maximum output tokens per response. */
+	output?: number;
+	/** Cache prices ride along with a listed input/output price (per million tokens). */
+	cost?: { input: number; output: number; cacheRead?: number; cacheWrite?: number };
+	/** How reasoning is set (an effort list, a token budget, or a toggle), as models.dev lists it. */
+	reasoningOptions?: ReasoningOption[];
 }
+
+type ReasoningOption = NonNullable<ModelsDevModel["reasoning_options"]>[number];
 
 /**
  * The index: bare `id` to the model as its lab lists it (else the first provider listing it), plus `provider/id` only
@@ -51,8 +58,8 @@ export interface Catalog {
 const str = (value: unknown) => (typeof value === "string" && value.trim() !== "" ? value : undefined);
 
 /** `{ [key]: value }`, or nothing when the value is missing, so an absent field is not written. */
-function field<K extends keyof CatalogModel>(key: K, value: CatalogModel[K] | undefined): Partial<CatalogModel> {
-	return value === undefined ? {} : { [key]: value };
+function field<K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } {
+	return value === undefined ? {} : ({ [key]: value } as { [P in K]?: V });
 }
 
 function entry(raw: Partial<ModelsDevModel>): CatalogModel {
@@ -64,9 +71,18 @@ function entry(raw: Partial<ModelsDevModel>): CatalogModel {
 			: undefined;
 	const price =
 		cost && finiteNumber(cost.input) !== undefined && finiteNumber(cost.output) !== undefined
-			? { input: finiteNumber(cost.input)!, output: finiteNumber(cost.output)! }
+			? {
+					input: finiteNumber(cost.input)!,
+					output: finiteNumber(cost.output)!,
+					...field("cacheRead", finiteNumber(cost.cache_read)),
+					...field("cacheWrite", finiteNumber(cost.cache_write)),
+				}
 			: undefined;
 	const context = finiteNumber(limit.context);
+	const output = finiteNumber(limit.output);
+	const options = Array.isArray(raw.reasoning_options)
+		? raw.reasoning_options.filter((option) => isRecord(option) && typeof option.type === "string")
+		: [];
 	const canonical = str(raw.canonical_model_id);
 	return {
 		...field("description", str(raw.description)),
@@ -79,7 +95,9 @@ function entry(raw: Partial<ModelsDevModel>): CatalogModel {
 		...(typeof raw.reasoning === "boolean" ? { reasoning: raw.reasoning } : {}),
 		...field("input", input),
 		...field("context", context === 0 ? undefined : context),
+		...field("output", output === 0 ? undefined : output),
 		...field("cost", price),
+		...(options.length > 0 ? { reasoningOptions: options } : {}),
 	};
 }
 
@@ -127,16 +145,17 @@ export function catalogFile(env: NodeJS.ProcessEnv = process.env): string {
 	return path.join(globalPaths(env).agentState, "models-dev.json");
 }
 
-/** The last parsed index by file, kept while the file's mtime is unchanged (an `agent` call reads it every time). */
-const parsedCache = new Map<string, { mtimeMs: number; catalog: Catalog | undefined }>();
+/** The last parsed index by file, kept while the file's inode, size and mtime are unchanged (an `agent` call reads it every time). */
+const parsedCache = new Map<string, { stamp: string; catalog: Catalog | undefined }>();
 
 /** The saved index, fresh or stale, or undefined when there is none or it cannot be read. */
 
 export function readCatalog(file = catalogFile()): Catalog | undefined {
 	try {
-		const { mtimeMs } = fs.statSync(file);
+		const { mtimeMs, size, ino } = fs.statSync(file);
+		const stamp = `${ino}:${size}:${mtimeMs}`;
 		const cached = parsedCache.get(file);
-		if (cached?.mtimeMs === mtimeMs) return cached.catalog;
+		if (cached?.stamp === stamp) return cached.catalog;
 		const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as unknown;
 		const catalog =
 			isRecord(parsed) &&
@@ -145,17 +164,18 @@ export function readCatalog(file = catalogFile()): Catalog | undefined {
 			Array.isArray(parsed.providers)
 				? (parsed as unknown as Catalog)
 				: undefined;
-		parsedCache.set(file, { mtimeMs, catalog });
+		parsedCache.set(file, { stamp, catalog });
 		return catalog;
 	} catch {
 		return undefined;
 	}
 }
 
-let refreshing: Promise<Catalog | undefined> | undefined;
-/** After a failed fetch (offline, blocked), no new attempt for this long. */
+/** The fetch in flight per index file: callers of one file share it, and another file never takes its result. */
+const refreshing = new Map<string, Promise<Catalog | undefined>>();
+/** After a failed fetch (offline, blocked), no new attempt for this long, per index file. */
 const RETRY_AFTER_MS = HOUR_MS;
-let failedAt: number | undefined;
+const failedAt = new Map<string, number>();
 
 /**
  * The index, refreshed from models.dev when missing or older than `CATALOG_TTL_MS` (one request at a time per
@@ -168,15 +188,21 @@ export async function loadCatalog(
 	const now = options.now ?? Date.now();
 	const saved = readCatalog(file);
 	if (saved && now - saved.fetchedAt < CATALOG_TTL_MS) return saved;
-	if (failedAt !== undefined && now - failedAt < RETRY_AFTER_MS) return saved;
-	refreshing ??= (async () => {
+	const failed = failedAt.get(file);
+	if (failed !== undefined && now - failed < RETRY_AFTER_MS) return saved;
+	const running = refreshing.get(file);
+	if (running) return running;
+	const started = (async () => {
 		try {
 			const providers: ProviderMap = await Models.make({ fetch: options.fetchImpl }).providers({
 				signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
 			});
 			const catalog = indexCatalog(providers, now);
 			if (Object.keys(catalog.models).length === 0) throw new Error("empty catalog");
-			failedAt = undefined;
+			failedAt.delete(file);
+			// Another process may have saved a newer index while this request ran; an older answer must not replace it.
+			const current = readCatalog(file);
+			if (current && current.fetchedAt > catalog.fetchedAt) return current;
 			try {
 				privateDir(path.dirname(file));
 				await atomicWriteFile(file, JSON.stringify(catalog), undefined, { mode: 0o600 });
@@ -185,13 +211,14 @@ export async function loadCatalog(
 			}
 			return catalog;
 		} catch {
-			failedAt = now;
+			failedAt.set(file, now);
 			return saved;
 		} finally {
-			refreshing = undefined;
+			refreshing.delete(file);
 		}
 	})();
-	return refreshing;
+	refreshing.set(file, started);
+	return started;
 }
 
 /** `OCTOCODE_MODELS_DEV=0` keeps models.dev off: no request, and only Octocode's metadata routes subagent models. */

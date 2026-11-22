@@ -2,6 +2,7 @@ import { DEFAULT_MAX_RETRY_DELAY_MS, DEFAULT_OFFLINE_INTERVAL_MS } from "@octoco
 import { RETENTION_DEFAULTS } from "../storage/retention.ts";
 import { RESULT_DEFAULT_BYTES } from "../utils/output-budget.ts";
 import { MONITOR_DEFAULTS } from "./settings-schema/monitor.ts";
+import { RUNTIME_DEFAULTS } from "./settings-schema/runtime.ts";
 
 /** `sandbox.mode`: never, in every permission mode but `bypass`, or always. */
 export type SandboxMode = "off" | "auto" | "on";
@@ -60,12 +61,13 @@ export const SETTINGS_DEFAULTS = {
 		longCommandPatterns: [] as string[],
 	},
 	sandbox: { mode: "off" as SandboxMode, allowUnsandboxed: true },
+	backlog: { qa: "important" as "important" | "all" | "off" },
 	subagents: {
 		wakeHoldSeconds: 0,
 		peerOverlapWake: true,
-		skillCatalog: "all" as "all" | "role",
 	},
 	monitor: MONITOR_DEFAULTS,
+	runtime: RUNTIME_DEFAULTS,
 	externalAgents: false,
 	sessionApi: true,
 	sessionApiTurnPermission: "session",

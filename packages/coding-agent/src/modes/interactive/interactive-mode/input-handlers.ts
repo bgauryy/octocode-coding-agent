@@ -238,3 +238,19 @@ async function handleOpenExternalEditor(host: InputHandlersHost): Promise<void> 
 		host.ui.requestRender(true);
 	}
 }
+
+export async function getUserInput(
+	host: Pick<InteractiveModeHost, "pendingUserInputs" | "onInputCallback">,
+): Promise<string> {
+	const queuedInput = host.pendingUserInputs.shift();
+	if (queuedInput !== undefined) {
+		return queuedInput;
+	}
+
+	return new Promise((resolve) => {
+		host.onInputCallback = (text: string) => {
+			host.onInputCallback = undefined;
+			resolve(text);
+		};
+	});
+}

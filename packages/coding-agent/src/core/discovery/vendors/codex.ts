@@ -1,7 +1,7 @@
 import path from "node:path";
 import { repoKey } from "../../../utils/git-repository.ts";
 import { codexConfigDir } from "../../../utils/host-config.ts";
-import { externalSkillsEnabled, hookFileItems, listsProject, skillItemsIn } from "../sources.ts";
+import { externalSkillsEnabled, hookFileItems, listsProject, skillItemsIn, withinTrust } from "../sources.ts";
 import type { ConfigItem, DiscoverInput } from "../types.ts";
 import { mcpSource } from "./mcp-items.ts";
 import { vendorDefaultOn } from "./switch.ts";
@@ -30,7 +30,8 @@ function skills(input: DiscoverInput): ConfigItem[] {
 /** `$CODEX_HOME/hooks.json` and `config.toml`, then the workspace's `.codex/hooks.json` and `config.toml`. */
 function hooks(input: DiscoverInput): ConfigItem[] {
 	const dir = codexHomeFor(input.home, input.env ?? process.env).dir;
-	const project = ["hooks.json", "config.toml"].map((name) => path.join(repoKey(input.cwd).root, ".codex", name));
+	const root = repoKey(input.cwd).root;
+	const project = ["hooks.json", "config.toml"].map((name) => path.join(root, ".codex", name));
 	return [
 		...(dir
 			? hookFileItems(
@@ -40,7 +41,7 @@ function hooks(input: DiscoverInput): ConfigItem[] {
 					input,
 				)
 			: []),
-		...(listsProject(input) ? hookFileItems(project, "codex", "project", input) : []),
+		...(listsProject(input) && withinTrust(input, root) ? hookFileItems(project, "codex", "project", input) : []),
 	];
 }
 

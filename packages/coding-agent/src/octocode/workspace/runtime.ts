@@ -22,6 +22,7 @@ import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { WorkspaceEvent, WorkspaceReceipt } from "@octocodeai/octocode-contracts/workspace";
 import { AGENT_RESULT_TYPE } from "../shared/messages.ts";
 import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
+import { withInputOrigin } from "../../core/input-origin.ts";
 import { contentText } from "../shared/util.ts";
 import { toolHint } from "../../utils/tool-hint.ts";
 import { agentBase, createProfiler, endedRuns, memberTranscript, sessionTranscript } from "../profiler/index.ts";
@@ -350,15 +351,17 @@ export class WorkspaceRuntime {
 								command.action === "delegate"
 									? delegatePrompt(claimed, backlog.store)
 									: doItPrompt(claimed, backlog.store);
-							if (application)
-								this.observeDelivery(
-									application.invoke("sendUserMessage", prompt, { deliverAs: "followUp" }),
-									commands,
-									existing.receipt,
-									sessionId,
-									signal,
-								);
-							else this.api.session.sendUserMessage(prompt, { deliverAs: "followUp" });
+							withInputOrigin("web", () => {
+								if (application)
+									this.observeDelivery(
+										application.invoke("sendUserMessage", prompt, { deliverAs: "followUp" }),
+										commands,
+										existing.receipt,
+										sessionId,
+										signal,
+									);
+								else this.api.session.sendUserMessage(prompt, { deliverAs: "followUp" });
+							});
 						});
 						message =
 							command.action === "delegate"

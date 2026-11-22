@@ -35,6 +35,8 @@ export const DAEMON_ROUTES = {
 	configCredentials: "/api/admin/config/credentials",
 	/** Launch capability only: POST one `ConfigProviderCommand` (provider or Pi source on/off); the reply is the fresh `ConfigSnapshot`. */
 	configProviders: "/api/admin/config/providers",
+	/** Launch capability only: POST one `ProviderTestCommand` (one provider, or none for all); the reply is a `ProviderTestReport`. Spends on press only. */
+	configProviderTest: "/api/admin/config/providers/test",
 	/** Launch capability only: POST one `SignInCommand` (start, status, answer, cancel of a host-run OAuth sign-in); the reply is a `SignInState`. */
 	configSignin: "/api/admin/config/signin",
 	/** Launch capability only: GET the `HarnessList` (`?repoId=`), POST one `HarnessSwitchCommand`; the reply is the fresh `HarnessList`. */
@@ -47,6 +49,8 @@ export const DAEMON_ROUTES = {
 	configTools: "/api/admin/config/tools",
 	/** Launch capability only: GET the `SecurityList` (`?repoId=`), POST one `SecurityActionCommand` (approve, deny, forget); the reply is the fresh `SecurityList`. */
 	configSecurity: "/api/admin/config/security",
+	/** Launch capability only: GET the `RunnerList` of external agents, POST one `RunnerCommand` (check, enable, pause); the reply is the fresh `RunnerList`. */
+	configRunners: "/api/admin/config/runners",
 	sessions: "/api/sessions",
 	repos: "/api/repos",
 	drain: "/api/admin/drain",
@@ -135,3 +139,5 @@ export type WorkspaceServerEvent =
 	| { type: "snapshot"; data: Snapshot }
 	| { type: "workspace"; data: WorkspaceSnapshot }
 	| { type: "profiler"; data: ProfileUpdate };
+
+export * from "./terminal-command.ts";

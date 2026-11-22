@@ -11,6 +11,7 @@ import type { MessageEnvelope } from "./shared/messages.ts";
 import type { Team } from "./team/session.ts";
 import { openBacklog } from "./backlog/context.ts";
 import { notify } from "./shared/commands.ts";
+import { hasUserAuthority } from "../core/input-origin.ts";
 import { type BranchMerged, mergeWorktreeBranch } from "./worktrees/merge.ts";
 
 /**
@@ -98,7 +99,7 @@ export function messagePolicy({
 		});
 		if (!checked.allowed) throw new Error(checked.message);
 	};
-	return {
+	const policy = {
 		/** An outbound message to a teammate or an outside agent. */
 		beforeMessage: async (message: MessageEnvelope, ctx: FeatureContext, signal?: AbortSignal) => {
 			notWhilePlanning("Agent message dispatch is");
@@ -193,9 +194,12 @@ export function messagePolicy({
 			return result;
 		},
 		/** `/worktree merge <branch>`: consent by typing, so it runs after the readiness check, and the audit still says so. */
-		typedMerge: (branch: string, ctx: FeatureContext) => {
+		typedMerge: async (branch: string, ctx: FeatureContext) => {
+			// Typing is consent only at the terminal; an ACP or web client approves the merge in its own dialog.
+			if (!hasUserAuthority()) return policy.mergeBranch(branch, ctx);
 			permission.typed(`/worktree merge ${branch}`, ctx.cwd);
 			return mergeWorktreeBranch(ctx.cwd, branch, readiness(ctx));
 		},
 	};
+	return policy;
 }

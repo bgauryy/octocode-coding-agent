@@ -187,7 +187,7 @@ describe("child leases when the session ends", () => {
 			team.start(ctx);
 			team.join();
 			expect(team.childLeases.conflicts(["a.ts"])).not.toEqual([]);
-			team.childLeases.release("kid-one");
+			await team.childLeases.release("kid-one");
 			expect(held()).toEqual([]);
 		} finally {
 			team.stop();

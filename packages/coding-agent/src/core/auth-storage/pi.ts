@@ -65,8 +65,8 @@ export async function listPiModelProviders(dirs?: string[]): Promise<Map<string,
 				.filter((item) => item.provenance.product === "pi")
 				.map((item) => item.provenance.path);
 	for (const path of files) {
-		const config = await ModelConfig.loadFile(path);
-		if (config.getError()) throw new Error(`Could not load Pi model definitions from ${path}. Check models.json.`);
+		const config = await ModelConfig.loadFile(path, { fallback: true });
+		if (config.isUnreadable()) throw new Error(`Could not load Pi model definitions from ${path}. Check models.json.`);
 		for (const id of config.getProviderIds()) if (!providers.has(id)) providers.set(id, path);
 	}
 	return providers;

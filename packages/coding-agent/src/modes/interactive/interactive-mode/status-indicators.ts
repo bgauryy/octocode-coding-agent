@@ -3,14 +3,16 @@
  * label, feature footer status, and the transient status lines in the chat.
  */
 
-import { Spacer, ThemedText, hyperlink } from "@octocodeai/octocode-tui";
+import { type Component, Spacer, ThemedText, hyperlink } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { WorkingIndicatorOptions } from "../../../core/features/index.ts";
 import type { StatusTone } from "../../../core/footer-data-provider.ts";
 import type { ToolStatus } from "../../../utils/tools-manager.ts";
 import { type StatusIndicator, WorkingStatusIndicator } from "../components/status-indicator.ts";
+import { LongResponse } from "../components/long-response.ts";
 import { styleNotice } from "../../../theme/notice.ts";
 import { theme } from "../../../theme/theme.ts";
+import { webCommandContext } from "./web-command-context.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import type { StatusLink, StatusText } from "./types.ts";
@@ -133,7 +135,7 @@ export function showManagedToolStatus(host: StatusIndicatorsHost, status: ToolSt
 }
 
 /** The message each status line shows; the coalesced last line updates its entry in place. */
-const statusLineMessages = new WeakMap<ThemedText, { message: string }>();
+const statusLineMessages = new WeakMap<Component, { message: string; owner?: symbol }>();
 
 /** A link drawn as OSC 8 only when it is an http(s) URL without controls or spaces; otherwise its label as text. */
 function statusLink(link: StatusLink): string {
@@ -163,8 +165,16 @@ export function showStatus(host: StatusIndicatorsHost, status: StatusText): void
 	const last = children.length > 0 ? children[children.length - 1] : undefined;
 	const secondLast = children.length > 1 ? children[children.length - 2] : undefined;
 
+	const owner = webCommandContext.getStore()?.owner;
 	const lastLine = host.lastStatusText && statusLineMessages.get(host.lastStatusText);
-	if (last && secondLast && last === host.lastStatusText && secondLast === host.lastStatusSpacer && lastLine) {
+	if (
+		last &&
+		secondLast &&
+		last === host.lastStatusText &&
+		secondLast === host.lastStatusSpacer &&
+		lastLine &&
+		lastLine.owner === owner
+	) {
 		lastLine.message = message;
 		host.lastStatusText.invalidate();
 		host.ui.requestRender();
@@ -173,8 +183,8 @@ export function showStatus(host: StatusIndicatorsHost, status: StatusText): void
 
 	const spacer = new Spacer(1);
 	// Each line reads its own message, so a later status or an invalidation never rewrites an earlier line.
-	const line = { message };
-	const text = new ThemedText(() => styleNotice(line.message), 1, 0);
+	const line = { message, owner };
+	const text = new LongResponse(new ThemedText(() => styleNotice(line.message), 1, 0), false);
 	statusLineMessages.set(text, line);
 	host.chatContainer.addChild(spacer);
 	host.chatContainer.addChild(text);

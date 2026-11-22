@@ -10,14 +10,14 @@ import type { Runners } from "./runner-port.ts";
 import type { Team } from "../team/session.ts";
 
 /** Task fields that belong to an Octocode child: a runner has its own tools, skills and session, so they do not apply. */
-const NATIVE_ONLY = ["skills", "mcp", "profile", "resume", "headless"] as const;
+const NATIVE_ONLY = ["skills", "mcp", "profile", "headless"] as const;
 
 /** The `runner` field of a task, declared when an installed runnable CLI is available in this session. */
 export const runnerField = (ids: readonly string[]) =>
 	Type.Optional(
 		StringEnum(ids, {
 			description:
-				"Installed vendor CLI with its own model/sign-in (checked when used; plan or metered key). No skills, mcp, profile, resume or headless.",
+				"Installed vendor CLI with its own model/sign-in (checked when used; plan or metered key). No skills, mcp, profile or headless; resume continues its own CLI session where the vendor supports it.",
 		}),
 	);
 
@@ -35,6 +35,23 @@ export function runnerPlan(params: Record<string, unknown>, runners: Runners | u
 	if (native.length) throw new Error(`A runner task does not take ${native.join(", ")}.`);
 	const model = typeof params.model === "string" && params.model.trim() ? params.model.trim() : undefined;
 	return { profile: undefined, route: { model: model ? `${runner}/${model}` : runner, via: `runner ${runner}` } };
+}
+
+/**
+ * The runner of a `task` call: the one it names, or for a resume the one the child ran in. A resume names no other:
+ * the session it continues lives in that CLI.
+ */
+export function runnerOf(named: unknown, resumed: { id: string; runner?: string } | undefined): string | undefined {
+	const was = resumed?.runner;
+	if (named === undefined || named === null) return was;
+	if (typeof named !== "string") throw new Error(`runner must be a string, got ${typeof named}.`);
+	if (resumed && was !== named)
+		throw new Error(
+			was
+				? `${resumed.id} ran in ${was}; resume it without runner, or with runner ${was}.`
+				: `${resumed.id} is an Octocode child, not a ${named} task: resume it without runner.`,
+		);
+	return named;
 }
 
 /** The part of the session's permission state a child's runner task asks: the spawn class, relayed to its parent. */

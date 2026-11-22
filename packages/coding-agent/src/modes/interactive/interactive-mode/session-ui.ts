@@ -2,9 +2,10 @@
  * The UI context handed to features, and feature notifications and errors.
  */
 
-import { ThemedText } from "@octocodeai/octocode-tui";
+import { Spacer } from "@octocodeai/octocode-tui";
 import type { SessionUI } from "../../../core/features/index.ts";
 import { getThemeByName, Theme, theme } from "../../../theme/theme.ts";
+import { noticeLine } from "./display.ts";
 import { askInTerminal } from "./ask-dialog.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { pickSession } from "./session-picker.ts";
@@ -23,6 +24,7 @@ type SessionUIHost = Pick<
 	| "editorChangeListeners"
 	| "editorComponentFactory"
 	| "keybindings"
+	| "outputPad"
 	| "restoreQueuedMessagesToEditor"
 	| "session"
 	| "sessionManager"
@@ -112,7 +114,11 @@ function showNotify(host: SessionUIHost, message: string, type?: "info" | "warni
 	} else if (type === "warning") {
 		host.showWarning(message);
 	} else {
-		host.showStatus(message);
+		host.chatContainer.addChild(new Spacer(1));
+		host.chatContainer.addChild(
+			noticeLine("info", message, host.outputPad, host.uiStore.getState().view.toolsExpanded),
+		);
+		host.ui.requestRender();
 	}
 }
 
@@ -120,15 +126,7 @@ function showNotify(host: SessionUIHost, message: string, type?: "info" | "warni
  * Show a feature error in the UI.
  */
 export function showFeatureError(host: SessionUIHost, source: string, error: string, stack?: string): void {
-	const errorMsg = `Feature "${source}" error: ${error}`;
-	const errorText = new ThemedText(() => theme.fg("error", errorMsg), 1, 0);
-	host.chatContainer.addChild(errorText);
-	if (stack) {
-		const stackLines = stack.split("\n").slice(1); // Skip first line (duplicates error message)
-		if (stackLines.length > 0) {
-			const renderStack = () => stackLines.map((line) => theme.fg("dim", `  ${line.trim()}`)).join("\n");
-			host.chatContainer.addChild(new ThemedText(renderStack, 1, 0));
-		}
-	}
-	host.ui.requestRender();
+	const detail = stack?.split("\n").slice(1).join("\n");
+	const message = [`Feature "${source}" error: ${error}`, detail].filter(Boolean).join("\n");
+	host.showError(message);
 }

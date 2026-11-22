@@ -121,10 +121,19 @@ describe("fallback auth.json", () => {
 
 describe("credential precedence across Octocode and Pi", () => {
 	it("prefers the apiKey in Octocode's own models.json over a key in Pi's auth.json", async () => {
-		write(join(agentDir, "models.json"), { providers: { cerebras: { apiKey: "own-models-key" } } });
-		write(join(home, ".pi", "agent", "auth.json"), { cerebras: { type: "api_key", key: "pi-key" } });
+		write(join(agentDir, "models.json"), {
+			providers: {
+				"own-gateway": {
+					baseUrl: "https://gateway.example.test/v1",
+					api: "openai-completions",
+					apiKey: "own-models-key",
+					models: [{ id: "m" }],
+				},
+			},
+		});
+		write(join(home, ".pi", "agent", "auth.json"), { "own-gateway": { type: "api_key", key: "pi-key" } });
 		const runtime = await createRuntime();
-		expect((await runtime.getAuth("cerebras"))?.auth.apiKey).toBe("own-models-key");
+		expect((await runtime.getAuth("own-gateway"))?.auth.apiKey).toBe("own-models-key");
 	});
 
 	it("still prefers Octocode's own auth.json over its own models.json apiKey", async () => {

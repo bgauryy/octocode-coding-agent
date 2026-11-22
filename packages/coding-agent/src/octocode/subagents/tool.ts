@@ -49,11 +49,16 @@ import { CHILD_EXPOSURE_EVENT, type ChildExposure } from "../permission/provenan
 import { PERMISSION_STOP } from "./report-text.ts";
 import { startBackground } from "./run-execution.ts";
 import { messageResumer } from "./message-resume.ts";
-import { spawnAgent, type SpawnEnv } from "./spawn.ts";
+import { spawnAgent } from "./spawn.ts";
+import type { SpawnEnv } from "./spawn-env.ts";
 import { recordRun, runDetails, tracker } from "./tracking.ts";
+import type { QaReviewer } from "../backlog/qa-gate.ts";
+import { qaReviewer } from "./qa-review.ts";
 
 /** What the rest of the feature may do with the subagents this session started. */
 export interface AgentControl {
+	/** Reviews an item's completion on the small tier before `done` writes it (`backlog.qa`). */
+	review: QaReviewer;
 	/** Stops a background subagent this session started; the refusal text when there is none by that id. */
 	stop(id: string, by: string): string | undefined;
 	/** Resolves once every background subagent has finished and sent its report. */
@@ -85,9 +90,8 @@ export interface AgentControl {
 
 /** A note to the model that starts no turn, so its send settles at once: awaited, a failure reaches the bus's error report. */
 const NOTE_SEND = { triggerTurn: false, deliverAs: "followUp" } as const;
-/** How long shutdown waits for stopped background subagents: past the SIGTERM grace, after which they are killed. */
+/** Shutdown's wait for stopped background subagents: past the SIGTERM grace, after which they are killed. */
 const SHUTDOWN_WAIT_MS = SUBAGENT_STOP_GRACE_MS + 1_000;
-
 /** What the `agent` tool needs from the session that composes it. */
 interface AgentToolOptions {
 	/** The session's agent profiles, read at each call. */
@@ -269,6 +273,7 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 		awaitingApproval: (id, waiting) => team.awaitingApproval(id, waiting),
 		tell: (notice) => runs.graph?.tell(notice),
 		output: (id, at) => team.approvals.noteOutput(id, at),
+		idleWait: (id, text) => team.approvals.noteIdleWait(id, text),
 		budgets,
 		...(ctx.hasUI ? { ui: ctx.ui } : {}),
 	});
@@ -380,6 +385,7 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 		nextReport: () =>
 			Promise.race([...background.values()].map((entry) => entry.done)).then(() => runs.reports.flush()),
 		merge: (id, ctx, signal) => mergeChild(team, permission, id, ctx, signal),
+		review: qaReviewer(spawnEnv),
 		budgets,
 		queued: () => runs.chain?.rows() ?? [],
 		background: () => background.size,

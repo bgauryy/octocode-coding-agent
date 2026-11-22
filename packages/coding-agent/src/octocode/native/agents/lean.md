@@ -1,6 +1,6 @@
 ---
 name: lean
-description: Use for a small task bash, files and the web can finish; no research tools, MCP or skill catalog; name its skills in the task's `skills` field.
+description: Use for a small task bash, files and the web can finish; no research tools or MCP; name its skills in `skills`.
 lean: true
 tools: bash,file,web,agent
 model: small:low

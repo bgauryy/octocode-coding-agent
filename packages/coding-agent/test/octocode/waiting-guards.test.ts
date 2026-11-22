@@ -11,7 +11,7 @@ import { ReportTracker } from "../../src/octocode/subagents/report.ts";
 import { CheckIn, checkInConfig } from "../../src/octocode/monitor/attention/check-in.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import type { ConditionDeps } from "../../src/octocode/timer/conditions/types.ts";
-import { timerTool } from "../../src/octocode/native/tools/wait/tool.ts";
+import { timerTool } from "../../src/octocode/native/tools/notify/tool.ts";
 import { tmp } from "./helpers.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 
@@ -162,7 +162,7 @@ describe("a waiting-only final text of a child with pending work", () => {
 		const { report, state } = run([
 			userTurn,
 			reply("Done: findings below."),
-			start("wait", { op: "set", after: 60 }),
+			start("notify", { op: "set", after: 60 }),
 			userTurn,
 			reply("waiting for the timer"),
 		]);
@@ -198,7 +198,7 @@ describe("a waiting-only final text of a child with pending work", () => {
 		const more = run([
 			userTurn,
 			reply("Done: one."),
-			start("wait", { op: "set", after: 5 }),
+			start("notify", { op: "set", after: 5 }),
 			userTurn,
 			reply("Waiting on the timer.\nFound a defect in x.ts, fix below."),
 		]);
@@ -207,10 +207,15 @@ describe("a waiting-only final text of a child with pending work", () => {
 
 	it("counts a wake message as the end of one wait and a failed call as none", () => {
 		const { state } = run([
-			start("wait", { op: "set", after: 5 }),
-			{ type: "tool_execution_end", toolName: "wait", args: { op: "set" }, isError: true },
-			start("wait", { op: "set", after: 5 }),
-			{ type: "tool_execution_end", toolName: "wait", args: { op: "set" }, result: { details: { timer: { id: 1 } } } },
+			start("notify", { op: "set", after: 5 }),
+			{ type: "tool_execution_end", toolName: "notify", args: { op: "set" }, isError: true },
+			start("notify", { op: "set", after: 5 }),
+			{
+				type: "tool_execution_end",
+				toolName: "notify",
+				args: { op: "set" },
+				result: { details: { timer: { id: 1 } } },
+			},
 			{
 				type: "message_end",
 				message: {
@@ -329,7 +334,7 @@ describe("a waiting-only final text of a child with pending work", () => {
 		const { report } = run([
 			userTurn,
 			reply("Done: all green."),
-			start("wait", { op: "set", after: 60 }),
+			start("notify", { op: "set", after: 60 }),
 			userTurn,
 			reply("Waiting for the timer.\n- Still waiting on the build job\nStatus: idle until it fires"),
 			userTurn,

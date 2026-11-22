@@ -45,3 +45,10 @@ export function cutText(
 
 const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
 const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;
+
+const SOURCE_HEADER_LINE = /^\[src [^\n]*\n/;
+
+/** `text` without the leading source header line the event loop writes: a row shows the message, the model reads the header. */
+export function withoutSourceHeader(text: string): string {
+	return text.replace(SOURCE_HEADER_LINE, "");
+}

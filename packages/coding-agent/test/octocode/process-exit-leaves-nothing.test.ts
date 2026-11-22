@@ -64,7 +64,13 @@ describe.runIf(process.platform !== "win32")("a run that ends while it holds bac
 
 		run.process.kill(signal);
 		expect((await run.exited).code).toBe(code);
-		await until(() => !alive(command) && !alive(job), "the child's command and the job to stop", 15_000);
+		await until(
+			() => !alive(command) && !alive(job),
+			"the child's command and the job to stop",
+			15_000,
+			() =>
+				`child command ${command}: ${alive(command)}, background job ${job}: ${alive(job)}, sandbox PIDs: ${box.survivors().join(", ")}`,
+		);
 		await until(() => box.survivors().length === 0, "every process of the run to stop", 15_000);
 	});
 });

@@ -341,7 +341,7 @@ export function renderInventory(
 	if (full && inventory.notes.length) lines.push("", "Diagnostics:", ...inventory.notes.map((note) => `  ${note}`));
 	lines.push(
 		"",
-		"/harness in the terminal switches these rows; elsewhere /configuration enable|disable <kind:name>... [--local] (/configuration list shows its ids) · MCP switches apply now; /reload applies the rest",
+		"/harness in the terminal switches these rows; elsewhere /settings enable|disable <kind:name>... [--local] (/settings list shows its ids) · MCP switches apply now; /reload applies the rest",
 	);
 	return lines.join("\n");
 }

@@ -5,8 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SlashCommandInfo } from "../../src/core/slash-commands.ts";
 import { captureSkillResourceSnapshot } from "../../src/core/skill-resource-snapshot.ts";
 import { loadSkillsFromDir } from "../../src/core/skills.ts";
-import { withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
-import { registerSkillTool } from "../../src/octocode/native/tools/skill/tool.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { loadProfiles, parseProfile, profileReach, profileTools } from "../../src/octocode/subagents/profiles.ts";
@@ -71,10 +69,8 @@ describe("lean profiles", () => {
 			OCTOCODE_LEAN: "1",
 			OCTOCODE_MEMORY_AUTO: "0",
 		});
-		const specialist = subagentProcessEnv(undefined, { OCTOCODE_LEAN: "1", OCTOCODE_SKILLS_IN_TASK: "1" }, { id: "c" });
+		const specialist = subagentProcessEnv(undefined, { OCTOCODE_LEAN: "1" }, { id: "c" });
 		expect(specialist.OCTOCODE_LEAN).toBeUndefined();
-		expect(specialist.OCTOCODE_SKILLS_IN_TASK).toBeUndefined();
-		expect(subagentProcessEnv(undefined, {}, { id: "c", skillsInTask: true }).OCTOCODE_SKILLS_IN_TASK).toBe("1");
 	});
 
 	it("get a short subagent prompt instead of the full policy; the report contract rides in the task", async () => {
@@ -86,7 +82,6 @@ describe("lean profiles", () => {
 				sections: {} as Record<string, string>,
 				baseSections: {} as Record<string, string>,
 				selectedTools: ["bash", "file"],
-				skills: skills(),
 				contextFiles: [],
 				cwd: "/repo",
 			},
@@ -94,7 +89,6 @@ describe("lean profiles", () => {
 		await fake.emit("before_agent_start", event, {});
 		const text = Object.values(allSections(event)).join("\n");
 		expect(Object.keys(event.systemPromptOptions.sections)).toContain("lean");
-		expect(event.systemPromptOptions.skills).toEqual([]);
 		expect(text.length).toBeLessThan(1500);
 	});
 });
@@ -111,15 +105,15 @@ describe("per-task skills", () => {
 	const specialist = parseProfile("researcher", "---\nskills: alpha\n---\n");
 	const lean = parseProfile("lean", "---\nlean: true\n---\n");
 
-	it("ride in the task whenever they are chosen, and inherit the catalog in the prompt otherwise", () => {
-		expect(taskSkillPlan(undefined, undefined)).toEqual({ inTask: false, inline: false });
-		expect(taskSkillPlan(undefined, [])).toEqual({ names: [], inTask: true, inline: false });
-		expect(taskSkillPlan(undefined, ["beta"])).toEqual({ names: ["beta"], inTask: true, inline: false });
-		// A role's skills never narrow the catalog: the child inherits it and its role section holds the role's skills.
-		expect(taskSkillPlan(specialist, undefined)).toEqual({ inTask: false, inline: false, roleSkills: ["alpha"] });
-		expect(taskSkillPlan(specialist, ["beta"])).toEqual({ names: ["beta"], inTask: true, inline: false });
-		expect(taskSkillPlan(lean, undefined)).toEqual({ names: [], inTask: true, inline: true });
-		expect(taskSkillPlan(lean, ["alpha"])).toEqual({ names: ["alpha"], inTask: true, inline: true });
+	it("ride in the task whenever they are chosen, and inherit the parent's skill list otherwise", () => {
+		expect(taskSkillPlan(undefined, undefined)).toEqual({ inline: false });
+		expect(taskSkillPlan(undefined, [])).toEqual({ names: [], inline: false });
+		expect(taskSkillPlan(undefined, ["beta"])).toEqual({ names: ["beta"], inline: false });
+		// A role's skills never narrow the list: the child inherits it and its role section holds the role's skills.
+		expect(taskSkillPlan(specialist, undefined)).toEqual({ inline: false, roleSkills: ["alpha"] });
+		expect(taskSkillPlan(specialist, ["beta"])).toEqual({ names: ["beta"], inline: false });
+		expect(taskSkillPlan(lean, undefined)).toEqual({ names: [], inline: true });
+		expect(taskSkillPlan(lean, ["alpha"])).toEqual({ names: ["alpha"], inline: true });
 	});
 
 	it("inline a role's skills in its role prompt, the same for every sibling, while it keeps the whole catalog", () => {
@@ -148,9 +142,8 @@ describe("per-task skills", () => {
 			);
 			const role = parseProfile("two", "---\nskills: [beta, alpha, hidden, missing]\n---\nRole body");
 			const plan = taskSkillPlan(role, undefined);
-			// No `names`: the child inherits the catalog instead of a narrowed list.
+			// No `names`: the child inherits the parent's skill list instead of a narrowed one.
 			expect(plan.names).toBeUndefined();
-			expect(plan.inTask).toBe(false);
 			const prompt = withRoleSkills(role, plan.roleSkills, snapshot).prompt;
 			expect(prompt.startsWith("Role body\n\n# Your role's skills\n")).toBe(true);
 			expect(prompt.indexOf("Beta body")).toBeGreaterThan(-1);
@@ -206,48 +199,19 @@ describe("per-task skills", () => {
 			source: "prompt",
 			sourceInfo: { path: "/p/alpha.md" },
 		} as unknown as SlashCommandInfo;
-		expect(taskSkillPlan(specialist, undefined, [skill("alpha")])).toEqual({
-			inTask: false,
-			inline: false,
-			roleSkills: ["alpha"],
-		});
-		expect(taskSkillPlan(specialist, undefined, [prompt])).toEqual({ inTask: false, inline: false });
-		expect(taskSkillPlan(specialist, ["beta"], [])).toEqual({ names: ["beta"], inTask: true, inline: false });
+		expect(taskSkillPlan(specialist, undefined, [skill("alpha")])).toEqual({ inline: false, roleSkills: ["alpha"] });
+		expect(taskSkillPlan(specialist, undefined, [prompt])).toEqual({ inline: false });
+		expect(taskSkillPlan(specialist, ["beta"], [])).toEqual({ names: ["beta"], inline: false });
 	});
 
-	it("list only the role's skills and the named ones when the catalog setting is role, else keep the whole catalog", () => {
+	it("name the skills a task asks for and leave the list to the skill tool", () => {
 		const skill = (name: string) =>
 			({ name, source: "skill", sourceInfo: { path: `/s/${name}/SKILL.md` } }) as unknown as SlashCommandInfo;
 		const commands = [skill("alpha"), skill("beta")];
-		// Off (the default): unchanged, the child inherits the session catalog and the role's skills are inlined.
-		expect(taskSkillPlan(specialist, undefined, commands, false)).toEqual(
-			taskSkillPlan(specialist, undefined, commands),
-		);
-		expect(taskSkillPlan(specialist, undefined, commands, false)).toEqual({
-			inTask: false,
-			inline: false,
-			roleSkills: ["alpha"],
-		});
-		// On: no catalog; the role's skills ride in the task, a skill the session cannot load is left out.
-		expect(taskSkillPlan(specialist, undefined, commands, true)).toEqual({
-			names: ["alpha"],
-			inTask: true,
-			inline: false,
-		});
-		expect(taskSkillPlan(specialist, undefined, [skill("beta")], true)).toEqual({
-			names: [],
-			inTask: true,
-			inline: false,
-		});
-		expect(taskSkillPlan(undefined, undefined, commands, true)).toEqual({ names: [], inTask: true, inline: false });
-		// Task-named skills win either way; a lean child is unchanged.
-		expect(taskSkillPlan(specialist, ["beta"], commands, true)).toEqual({
-			names: ["beta"],
-			inTask: true,
-			inline: false,
-		});
-		expect(taskSkillPlan(lean, undefined, commands, true)).toEqual(taskSkillPlan(lean, undefined, commands));
-		// The snapshot for those names lists exactly them.
+		// No named skills: the child inherits the parent's list, whatever its role names.
+		expect(taskSkillPlan(specialist, undefined, commands)).toEqual({ inline: false, roleSkills: ["alpha"] });
+		expect(taskSkillPlan(specialist, ["beta"], commands)).toEqual({ names: ["beta"], inline: false });
+		// The text for the named skills says which to load first, not the whole list.
 		const loaded = skills();
 		const real = loaded.skills.map(
 			(s) => ({ name: s.name, source: "skill", sourceInfo: s.sourceInfo }) as unknown as SlashCommandInfo,
@@ -255,12 +219,13 @@ describe("per-task skills", () => {
 		const text = taskSkillText(captureSkillResourceSnapshot(loaded, ["alpha"], real), false);
 		expect(text).toContain("alpha");
 		expect(text).not.toContain("beta");
+		expect(text).not.toContain("<available_skills>");
 	});
 
-	it("are listed for the skill tool, or inlined whole for a lean child", () => {
+	it("are named for the skill tool to load first, or inlined whole for a lean child", () => {
 		const snapshot = captureSkillResourceSnapshot(skills());
 		const listed = taskSkillText(snapshot, false);
-		expect(listed).toContain("<available_skills>");
+		expect(listed).toContain("Load these skills with the `skill` tool");
 		expect(listed).toContain("alpha");
 		expect(listed).not.toContain("BODY_alpha");
 		const inlined = taskSkillText(snapshot, true);
@@ -271,16 +236,11 @@ describe("per-task skills", () => {
 	});
 
 	it("leave siblings of one profile and model on one cache prefix whatever skills they get", () => {
-		expect(prefixKey("researcher", "m", { names: ["a"], inTask: true, inline: false })).toBe(
-			prefixKey("researcher", "m", { names: ["b"], inTask: true, inline: false }),
-		);
-		expect(prefixKey("researcher", "m", { inTask: false, inline: false })).not.toBe(
-			prefixKey("researcher", "m", { names: [], inTask: true, inline: false }),
-		);
+		expect(prefixKey("researcher", "m")).toBe(prefixKey("researcher", "m", {}));
+		expect(prefixKey("researcher", "m")).not.toBe(prefixKey("coder", "m"));
 	});
 
-	it("drop the prompt's skills section in the child and keep the skill tool declared without skills", async () => {
-		vi.stubEnv("OCTOCODE_SKILLS_IN_TASK", "1");
+	it("keep the child's system prompt free of skills", async () => {
 		const fake = fakeHost();
 		registerTurnSetup(fake.api, { isSubagent: true, profiles: () => new Map() });
 		const event = {
@@ -288,22 +248,12 @@ describe("per-task skills", () => {
 				sections: {} as Record<string, string>,
 				baseSections: {} as Record<string, string>,
 				selectedTools: ["bash", "file", "skill"],
-				skills: skills(),
 				contextFiles: [],
 				cwd: "/repo",
 			},
 		};
 		await fake.emit("before_agent_start", event, {});
-		expect(event.systemPromptOptions.skills).toEqual([]);
 		expect(Object.keys(event.systemPromptOptions.sections)).toContain("work");
-
-		const skillHost = fakeHost();
-		(skillHost.api.resources as { getSkillResourceSnapshot: () => unknown }).getSkillResourceSnapshot = () => ({
-			version: 1,
-			resources: [],
-			explicitSkills: [],
-		});
-		registerSkillTool(withNativePermissionOwners(skillHost.api));
-		expect(skillHost.tools.get("skill").prepareLoadout({})).toBeUndefined();
+		expect(event.systemPromptOptions).not.toHaveProperty("skills");
 	});
 });

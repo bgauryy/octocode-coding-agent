@@ -4,6 +4,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { AGENT_DIR } from "../../src/storage/agent-layout.ts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openAgentDb } from "../../src/storage/database.ts";
 import { WORKSPACE_ROUTES } from "@octocodeai/octocode-contracts/protocol";
@@ -140,9 +141,9 @@ describe("per-session board over loopback", () => {
 		fs.writeFileSync(path.join(outside, "leak", "secret.md"), "# Outside the workspace\n");
 		const url = await board((root) => {
 			fs.mkdirSync(path.join(root, ".octocode"));
-			fs.mkdirSync(path.join(root, ".octocode", "octocode-research", "real"), { recursive: true });
-			fs.writeFileSync(path.join(root, ".octocode", "octocode-research", "real", "notes.md"), "# Inside\n");
-			fs.symlinkSync(outside, path.join(root, ".octocode", "octocode-rfc-generator"));
+			fs.mkdirSync(path.join(root, AGENT_DIR, "octocode-research", "real"), { recursive: true });
+			fs.writeFileSync(path.join(root, AGENT_DIR, "octocode-research", "real", "notes.md"), "# Inside\n");
+			fs.symlinkSync(outside, path.join(root, AGENT_DIR, "octocode-rfc-generator"));
 		});
 		const index = (await (await authorized(url, "/api/reports")).json()) as { reports: Array<{ id: string }> };
 		expect(index.reports.map((report) => report.id)).toEqual(["real"]);

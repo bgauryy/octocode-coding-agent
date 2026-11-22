@@ -229,9 +229,9 @@ describe("unified MCP slash management", () => {
 				{ updateConfig },
 			);
 			expect(harness.session.getCallableToolNames()).toContain("mcp__fixture__echo");
-			// `/mcp enable|disable` moved to /configuration, which switches through this same MCP switch.
+			// `/mcp enable|disable` moved to /settings, which switches through this same MCP switch.
 			await harness.session.prompt("/mcp disable fixture --local");
-			expect(notifications.at(-1)).toContain("/configuration disable mcp:fixture --local");
+			expect(notifications.at(-1)).toContain("/settings disable mcp:fixture --local");
 			const mcpSwitch = getMcpSwitch(state.api.channels)!;
 			expect((await mcpSwitch({ name: "fixture", enabled: false, inProject: true })).message).toContain(
 				"requires a trusted project",

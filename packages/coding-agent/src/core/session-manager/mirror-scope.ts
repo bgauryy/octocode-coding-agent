@@ -12,32 +12,30 @@ import type { SessionState } from "./state.ts";
  * `.octocode/agent/tmp/` scratch folder) belongs to a test, a benchmark or a copy, so it stays out of the transcripts
  * database that session search, `/resume` by id and usage profiles read. An active session folder is indexed wherever
  * it is: the session directory a caller chose (`--session-dir`, not merely the folder of a file opened by path), the
- * workspace's own state folder (its sessions and its subagents' sessions) and the Octocode home.
+ * workspace's own state folder (its sessions and its subagents' sessions, but not its `tmp/`, which lies inside it) and
+ * the Octocode home.
  */
 export function mirrorsSessionFile(
 	file: string,
 	state: Pick<SessionState, "cwd" | "sessionDir" | "sessionDirFromFile">,
 ): boolean {
-	if (!isScratch(file)) return true;
-	const chosen = state.sessionDir && !state.sessionDirFromFile ? [state.sessionDir] : [];
-	const active = [...chosen, workspaceStateDir(state.cwd), getAgentDir()].map((dir) => canonicalPath(dir));
-	return active.some((dir) => isUnderPath(file, dir));
+	const agentTmp = inAgentTmp(file);
+	if (!agentTmp && !temporaryRoots().some((root) => isUnderPath(file, root))) return true;
+	if (state.sessionDir && !state.sessionDirFromFile && isUnderPath(file, canonicalPath(state.sessionDir))) return true;
+	if (agentTmp) return false;
+	return [workspaceStateDir(state.cwd), getAgentDir()].some((dir) => isUnderPath(file, canonicalPath(dir)));
 }
 
 const [OCTOCODE_FOLDER, AGENT_FOLDER] = AGENT_DIR.split(path.sep);
 
-/** `file` (canonical) is in a temporary folder or a `.octocode/agent/tmp/` scratch folder. */
-function isScratch(file: string): boolean {
-	if (
-		file
-			.split(path.sep)
-			.some(
-				(part, at, parts) =>
-					part === OCTOCODE_FOLDER && parts[at + 1] === AGENT_FOLDER && parts[at + 2] === AGENT_FOLDERS.tmp,
-			)
-	)
-		return true;
-	return temporaryRoots().some((root) => isUnderPath(file, root));
+/** `file` (canonical) is in a `.octocode/agent/tmp/` scratch folder. */
+function inAgentTmp(file: string): boolean {
+	return file
+		.split(path.sep)
+		.some(
+			(part, at, parts) =>
+				part === OCTOCODE_FOLDER && parts[at + 1] === AGENT_FOLDER && parts[at + 2] === AGENT_FOLDERS.tmp,
+		);
 }
 
 let roots: { tmpdir: string; roots: string[] } | undefined;

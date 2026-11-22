@@ -43,8 +43,9 @@ export const PLACEHOLDERS: Array<{ name: string; stands: string; renderedBy: str
 	},
 	{
 		name: "SKILLS_LIST",
-		stands: "The `<available_skills>` block: the skills this agent may load (bundled, user and project skills).",
-		renderedBy: "`src/core/skills.ts` and `src/octocode/native/prompts/system/skills-intro.md`",
+		stands:
+			"The `path: description` lines at the end of the `skill` tool's description: the skills this agent may load (bundled, user and project skills).",
+		renderedBy: "`src/octocode/native/tools/skill/description.md` and `src/core/skills/listing.ts`",
 	},
 	{
 		name: "HARNESSES",
@@ -82,10 +83,6 @@ export function templatedSystem(context: AgentContext): string {
 	text = swapBlock(text, "mcps", "MCP_SERVERS");
 	text = swapBlock(text, "cwd", "CWD");
 	text = swapBlock(text, "project_context", "PROJECT_CONTEXT");
-	text = text.replace(
-		/^<available_skills>\n[\s\S]*?\n<\/available_skills>$/m,
-		block("available_skills", "{{SKILLS_LIST}}"),
-	);
 	text = swapBlock(text, "harnesses", "HARNESSES");
 	text = swapBlock(text, "environment", "ENVIRONMENT");
 	return text;
@@ -94,7 +91,9 @@ export function templatedSystem(context: AgentContext): string {
 const compactSchema = (tool: CapturedTool): string => JSON.stringify(tool.parameters);
 
 function templatedDescription(tool: CapturedTool): string {
-	return tool.description.replace(/^Host: .*\n^Host notes: .*$/m, "{{HOST_PROBE}}");
+	return tool.description
+		.replace(/^Host: .*\n^Host notes: .*$/m, "{{HOST_PROBE}}")
+		.replace(/^(Skills, as `path: description`:\n)[\s\S]*$/m, "$1{{SKILLS_LIST}}");
 }
 
 /** A code fence longer than any backtick run in `text`. */

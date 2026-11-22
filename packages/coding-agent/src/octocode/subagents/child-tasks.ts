@@ -45,11 +45,12 @@ export async function finishChildNotes(
 	agent: string,
 	lingers = false,
 	current: () => boolean = () => true,
+	stopped = false,
 ): Promise<string> {
 	const steps = isolation.worktree && !linked ? isolatedChildSteps(isolation.worktree.cwd, agent) : "";
 	const note = await isolation.finish();
 	const item = linked
-		? await linked.attach(outcome, agent, isolation.ref, isolation.patch, lingers)
+		? await linked.attach(outcome, agent, isolation.ref, isolation.patch, lingers, stopped)
 		: isolation.ref
 			? await trackSavedRef(ctx, agent, isolation.ref, isolation.patch)
 			: "";

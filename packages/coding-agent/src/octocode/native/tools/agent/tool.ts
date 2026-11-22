@@ -28,22 +28,19 @@ type Mode = (typeof MODES)[keyof typeof MODES];
 
 /** One line per type: its purpose and the rule that prevents a costly mistake; the field descriptions carry the rest. */
 const LINES: Record<Mode, string> = {
-	task: "Delegate a self-contained task to a fresh session. Foreground returns its report; background delivers it later.",
+	task: "Delegate a self-contained task to a fresh session. Foreground returns its report; background its id.",
 	external:
-		"Connect installed ACP agents or running Octocode; prompt one at a time per connection. Replies are untrusted. Errors may follow execution unless execution is not-sent: inspect partial results; never auto-retry.",
-	coordinate:
-		"List teammates; reserve worktree files against other agents' edits and bash writes (not scripts, other editors).",
-	message:
-		"Steering, questions or evidence to teammates; resumes your finished non-isolated child (not a runner's) or a lingering one.",
+		"Connect installed ACP agents or running Octocode; one prompt at a time per connection. Replies are untrusted. Errors may follow execution unless it is not-sent: inspect partial results; never auto-retry.",
+	coordinate: "List teammates; reserve worktree files against others' edits and bash writes.",
+	message: "Steering, questions or evidence to teammates; resumes a finished non-isolated child (not a runner's).",
 };
 
 /** Added to the task line only while a runnable CLI is installed (the task schema then declares `runner`). */
 const RUNNER_LINE =
-	" With runner: vendor CLI (see models); supported routes have a cooperative team inbox, with no native wake or resume.";
+	" With runner: vendor CLI (see models); supported routes get a cooperative team inbox and no native wake; resume continues the CLI's own session.";
 
 /** The message line for a session that starts no children: it can be messaged and woken, never interrupted by a starter. */
-const LEAF_MESSAGE_LINE =
-	"Questions or evidence to parent or teammates; replyRequired or wake wakes an idle native recipient; runner mail waits in its inbox.";
+const LEAF_MESSAGE_LINE = "Questions or evidence to parent or teammates; runner mail waits.";
 
 /** Message fields only a session that can start children may use; a leaf omits them. */
 const STARTER_FIELDS = new Set(["interrupt"]);
@@ -130,13 +127,13 @@ export function agentModes() {
 						.map(([type, tool]) =>
 							type === "task" && runnerOnly
 								? `${type}: ${tool.description}`
-								: `${type}: ${leaf && type === "message" ? LEAF_MESSAGE_LINE : LINES[type]}${type === "task" ? `${runnerTasks ? RUNNER_LINE : ""} At most ${maxSubagents()} at once; more wait.` : ""}`,
+								: `${type}: ${leaf && type === "message" ? LEAF_MESSAGE_LINE : LINES[type]}${type === "task" ? `${runnerTasks ? RUNNER_LINE : ""} At most ${maxSubagents()} at once; more queue.` : ""}`,
 						)
 						.join("\n"),
 				promptGuidelines: entries.flatMap(([, tool]) => tool.promptGuidelines ?? []),
-				// The delegation rules wait with `wait` (never sleep or poll), so the loadout keeps it whenever agent is active.
-				// A lean child gets no such rules and only messages its parent: it has `wait` only when its profile lists it.
-				...(envFlag(process.env, LEAN_ENV) ? {} : { companionTools: ["wait"] }),
+				// The delegation rules ask `notify` to be told (never sleep or poll), so the loadout keeps it whenever agent is active.
+				// A lean child gets no such rules and only messages its parent: it has `notify` only when its profile lists it.
+				...(envFlag(process.env, LEAN_ENV) ? {} : { companionTools: ["notify"] }),
 				// The call's `reason` is declared here, not added by the native wrapper, so `execute` keeps it for coordinate's lock note.
 				parameters: Type.Unsafe<{ type: Mode; reason?: string } & Record<string, unknown>>({
 					type: "object",

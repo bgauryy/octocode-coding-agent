@@ -31,13 +31,21 @@ const NATIVE_PERMISSION_OWNERS = new Map([
 	],
 	["agent", "Agent modes: task/profile and external-process checks; session coordination and messages"],
 	["models", "Session state only: lists model and provider state; check sends one small request per provider"],
+	[
+		"configuration",
+		"Configuration tool: reads settings; every change asks the user in every mode, bypass included, and is refused without a dialog (audited); the main session only",
+	],
 	["askUser", "Session UI only: collects the user's answers"],
+	[
+		"render",
+		"Session UI only: draws a status or table, collects the user's answers; changes nothing and never replaces a tool's permission",
+	],
 	["backlog", "Session workspace state only: backlog records and comments"],
 	["backlogPlan", "Session workspace state only: backlog records (add, edit) and their listing"],
 	["compact", "Compaction policy: queues the session's own compaction for the end of the run; no workspace effect"],
 	["skill", "Skill tool: reads the SKILL.md of a skill loaded into this session; no other path"],
 	[
-		"wait",
+		"notify",
 		"gate/classify: an until-command (alone or as a check's trigger) is checked as a bash call when set (tool-gates), and against plan mode and a read-only role when it runs; the other until kinds only read this workspace's rows and reservations, and until.check is read-only but spends money only after its own first-use ask; otherwise this session's own timers",
 	],
 ]);

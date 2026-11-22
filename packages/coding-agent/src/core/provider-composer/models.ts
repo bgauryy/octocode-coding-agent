@@ -1,5 +1,6 @@
 import { type AnyModel, type Api, isModelType, type Model, type Provider } from "@octocodeai/octocode-ai";
 import { withCacheEndpoint } from "@octocodeai/octocode-ai/utils/cache-capabilities";
+import { inferThinkingLevelMap } from "@octocodeai/octocode-ai/utils/thinking-level-rules";
 import type { ModelsJsonModel, ModelsJsonModelOverride, ModelsJsonProvider } from "../model-config.ts";
 import type { KnownModelLookup } from "./known-models.ts";
 import type { ProviderConfigInput, ProviderModelConfig } from "./types.ts";
@@ -140,14 +141,25 @@ function modelFromJson(
 	// The same model's metadata seen through this entry's host: a direct provider's endpoint-bound claims (long cache
 	// retention, explicit cache mode, cache lifetimes) do not carry to another host. Only a model of the same API qualifies.
 	const known = knownBase && knownBase.api === api ? withCacheEndpoint(knownBase, baseUrl) : undefined;
+	const reasoning = definition.reasoning ?? known?.reasoning ?? false;
+	const compat = mergeCompat(mergeCompat(known?.compat, providerConfig.compat), definition.compat);
+	// A model with no effort map of its own or a known twin's gets the one the built-in catalog's rules give its id,
+	// unless a known twin exists: on its own API the catalog already applied the rules, and on another API the
+	// effort vocabulary is API-specific and must not cross.
+	const thinkingLevelMap =
+		definition.thinkingLevelMap ??
+		known?.thinkingLevelMap ??
+		(knownBase
+			? undefined
+			: inferThinkingLevelMap({ id: definition.id, provider: providerId, api, reasoning, compat }));
 	return {
 		id: definition.id,
 		name: definition.name ?? known?.name ?? definition.id,
 		api: api,
 		provider: providerId,
 		baseUrl,
-		reasoning: definition.reasoning ?? known?.reasoning ?? false,
-		thinkingLevelMap: definition.thinkingLevelMap ?? known?.thinkingLevelMap,
+		reasoning,
+		thinkingLevelMap,
 		input: definition.input ?? known?.input ?? ["text"],
 		inputLimits: mergeInputLimits(known?.inputLimits, definition.inputLimits),
 		cost: definition.cost ?? known?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -157,7 +169,7 @@ function modelFromJson(
 		samplingParams: definition.samplingParams ?? known?.samplingParams,
 		samplingParamsByThinkingLevel: definition.samplingParamsByThinkingLevel ?? known?.samplingParamsByThinkingLevel,
 		headers: undefined,
-		compat: mergeCompat(mergeCompat(known?.compat, providerConfig.compat), definition.compat),
+		compat,
 	};
 }
 

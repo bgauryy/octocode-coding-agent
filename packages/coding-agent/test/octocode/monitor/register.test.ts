@@ -1,8 +1,17 @@
-import { describe, expect, it } from "vitest";
-import type { MachineSample } from "../../../../db/src/api.ts";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { type AgentDb, type MachineSample } from "../../../../db/src/api.ts";
+import { openAgentDb } from "../../../src/storage/database.ts";
+import { tmp } from "../helpers.ts";
 import type { MachineSamplerOptions } from "../../../src/octocode/monitor/sampler.ts";
 import { registerMonitor, statusText } from "../../../src/octocode/monitor/register.ts";
 import { StuckJobWatch } from "../../../src/octocode/monitor/stuck-jobs.ts";
+
+let agent: AgentDb;
+beforeEach(() => {
+	agent = openAgentDb(path.join(tmp(), "machine.db"));
+});
+afterEach(() => agent.close());
 
 const hot = (at: number): MachineSample => ({
 	at,
@@ -41,7 +50,7 @@ function setup(title: string, isSubagent = false, settings: Record<string, unkno
 		isSubagent,
 		jobs: () => [],
 		notify: (notice) => notices.push(notice.title),
-		db: () => ({}) as never,
+		db: () => agent.db,
 		title: () => title,
 		watch: new StuckJobWatch({ logSize: () => 0, groupCpu: async () => new Map() }),
 		start: (options) => {
@@ -54,7 +63,7 @@ function setup(title: string, isSubagent = false, settings: Record<string, unkno
 }
 
 describe("monitor delivery", () => {
-	it("wakes the session that owns the cause, and notifies the user from the sampling session", () => {
+	it("wakes the session that owns the cause, and notifies the user from the publisher", () => {
 		const mine = setup("octocode-agent-main-mine");
 		mine.sampler()?.onSample(hot(60_000), true);
 		expect(mine.sent).toHaveLength(1);
@@ -65,8 +74,10 @@ describe("monitor delivery", () => {
 		expect(mine.notices).toEqual(["Octocode: Load 4 per CPU"]);
 	});
 
-	it("leaves other sessions a hidden note and a footer mark, without waking or notifying", () => {
+	it("leaves another root session the publisher's note and a footer mark, without waking or notifying", () => {
+		const publisher = setup("octocode-agent-main-mine");
 		const other = setup("octocode-agent-main-other");
+		publisher.sampler()?.onSample(hot(60_000), true);
 		other.sampler()?.onSample(hot(60_000), false);
 		expect(other.sent).toHaveLength(1);
 		expect(other.sent[0].options.triggerTurn).toBe(false);
@@ -74,6 +85,40 @@ describe("monitor delivery", () => {
 		expect(other.sent[0].message.content).toContain("Another process causes it (octocode-agent-main-mine)");
 		expect(other.status).toEqual(["load 4"]);
 		expect(other.notices).toEqual([]);
+	});
+
+	it("gives a child no note unless it owns a culprit, and never runs the rules in it", () => {
+		const publisher = setup("octocode-agent-main-mine");
+		const bystander = setup("octocode-agent-implementer-x", true);
+		const owner = setup("octocode-agent-implementer-y", true);
+		const rooted = (title: string) => ({ ...hot(60_000), processes: [{ ...hot(0).processes[0], owner: title }] });
+		publisher.sampler()?.onSample(rooted("octocode-agent-implementer-y"), true);
+		bystander.sampler()?.onSample(rooted("octocode-agent-implementer-y"), false);
+		owner.sampler()?.onSample(rooted("octocode-agent-implementer-y"), false);
+		expect(bystander.sent).toEqual([]);
+		expect(bystander.status).toEqual([]);
+		expect(owner.sent).toHaveLength(1);
+		expect(owner.sent[0].options.triggerTurn).toBe(true);
+		expect(publisher.sent[0].options.triggerTurn).toBe(false);
+	});
+
+	it("publishes a tripped threshold once, whichever session reads it", () => {
+		const publisher = setup("octocode-agent-main-mine");
+		const other = setup("octocode-agent-main-other");
+		for (const at of [60_000, 120_000]) {
+			publisher.sampler()?.onSample(hot(at), true);
+			other.sampler()?.onSample(hot(at), false);
+		}
+		expect(publisher.sent).toHaveLength(1);
+		expect(other.sent).toHaveLength(1);
+		expect(agent.db.prepare("SELECT COUNT(*) AS n FROM machine_alerts").get()).toEqual({ n: 1 });
+	});
+
+	it("a session that is not the publisher files nothing", () => {
+		const other = setup("octocode-agent-main-other");
+		other.sampler()?.onSample(hot(60_000), false);
+		expect(agent.db.prepare("SELECT COUNT(*) AS n FROM machine_alerts").get()).toEqual({ n: 0 });
+		expect(other.sent).toEqual([]);
 	});
 
 	it("has subagents read samples without taking them, and starts nothing when turned off", () => {

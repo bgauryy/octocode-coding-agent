@@ -5,7 +5,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { FeatureContext } from "../../core/features/index.ts";
 import type { SmallCallResult } from "../shared/small-model.ts";
 import { currentCatalog } from "./catalog.ts";
-import { resolveTier } from "./model.ts";
+import { resolveTierChoice } from "./model.ts";
 
 export type CompleteSmall = (
 	model: Model<Api>,
@@ -23,10 +23,19 @@ export interface SmallCallOptions {
 	complete?: CompleteSmall;
 }
 
+/**
+ * The `small` purpose's model by price alone. A size-class guess (the session model has no price) is not "cheaper": these
+ * background calls spend without being asked, so with nothing known to be cheaper they make no call.
+ */
+function pricedSmall(ctx: FeatureContext, available: ReturnType<FeatureContext["modelRegistry"]["getAvailable"]>) {
+	const { model, guessed } = resolveTierChoice("small", available, ctx.model, currentCatalog());
+	return guessed ? undefined : model;
+}
+
 /** The `provider/id` the `small` purpose resolves to for this session, or undefined: no cheaper model, so a call would fail. */
 export function smallModelLabel(ctx: FeatureContext): string | undefined {
 	if (!ctx.model) return undefined;
-	const chosen = resolveTier("small", ctx.modelRegistry.getAvailable(), ctx.model, currentCatalog());
+	const chosen = pricedSmall(ctx, ctx.modelRegistry.getAvailable());
 	return chosen ? `${chosen.provider}/${chosen.id}` : undefined;
 }
 
@@ -40,7 +49,7 @@ export async function callSmallModel(ctx: FeatureContext, options: SmallCallOpti
 	try {
 		if (!ctx.model) return { error: "no model is selected" };
 		const available = ctx.modelRegistry.getAvailable();
-		const chosen = resolveTier("small", available, ctx.model, currentCatalog());
+		const chosen = pricedSmall(ctx, available);
 		const session = ctx.model;
 		const model =
 			(chosen && available.find((each) => each.provider === chosen.provider && each.id === chosen.id)) ??

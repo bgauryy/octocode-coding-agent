@@ -1,6 +1,6 @@
 ---
 name: octocode-maintenance
-description: "Use when the user asks for maintenance or a health sweep (dependencies, dead code, stale docs, lint drift, flaky tests, Octocode retention, worktrees, caches, MCP, memories, backlog); fixes or files findings. Not for one failure or edit."
+description: "Use when the user asks for maintenance or a health sweep (dependencies, dead code, stale docs, lint drift, flaky tests, retention, worktrees, caches, MCP, memories, backlog); fixes or files findings. Not for one failure or edit."
 metadata:
   audience: coordinator
 ---

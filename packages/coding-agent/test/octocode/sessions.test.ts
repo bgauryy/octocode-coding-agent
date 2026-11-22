@@ -520,7 +520,24 @@ describe("resume brief", () => {
 		expect(text).toContain("1 to do, 3 proposed");
 	});
 
-	it("adds the last request of the saved session as context, whole", async () => {
+	it("clips a very long last request in the brief, keeping both ends", async () => {
+		const request = `HEAD ${"x".repeat(20_000)} TAIL`;
+		const entries: Entry[] = [
+			{ type: "message", id: "u1", timestamp: ago(3 * HOUR), message: { role: "user", content: request } },
+		];
+		const host = setup({ id: "sess-long", entries });
+		await host.start("resume");
+		const result = (await host.fire("before_agent_start", { type: "before_agent_start", prompt: "go" }, host.ctx)) as {
+			message: { content: string };
+		};
+		const content = result.message.content;
+		expect(content.length).toBeLessThan(5_000);
+		expect(content).toContain("HEAD ");
+		expect(content).toContain(" TAIL");
+		expect(content).toMatch(/characters omitted/);
+	});
+
+	it("adds the last request of the saved session as context, whole up to its cap", async () => {
 		const entries: Entry[] = [
 			{
 				type: "message",

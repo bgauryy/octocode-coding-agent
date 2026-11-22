@@ -1,3 +1,4 @@
+import { TerminalCommandRequestSchema } from "./terminal-command.ts";
 import { Type, type Static } from "typebox";
 import { ApplicationCommandSchema, ApplicationCursorSchema } from "./application.ts";
 import { WorkspaceCommandSchema } from "./protocol.ts";
@@ -57,9 +58,7 @@ export const DaemonStatusSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
-/** `GET /api/access`: whether the presented token may change the board (launch and control tokens may, a view token may not). */
-export const DaemonAccessSchema = Type.Object({ writable: Type.Boolean() }, { additionalProperties: false });
-export type DaemonAccess = Static<typeof DaemonAccessSchema>;
+export { DaemonAccessSchema, type DaemonAccess } from "./daemon-access.ts";
 
 /** `<octocode home>/web/attach/<sessionId>.json` (owner-only): where a live session accepts the daemon, and its capability. */
 export const AttachRecordSchema = Type.Object(
@@ -179,6 +178,7 @@ export const AttachRequestSchema = Type.Union([
 	}),
 	/** What the running session declares of each tool (`AttachToolStates`), for the Settings → Tools panel of its page. */
 	Type.Object({ ...requestId, method: Type.Literal("session.tools") }),
+	Type.Object({ ...requestId, method: Type.Literal("session.commands"), params: TerminalCommandRequestSchema }),
 	/** The daemon changed this session's board: the session repaints what it shows of it (the terminal footer counts). */
 	Type.Object({ ...requestId, method: Type.Literal("backlog.changed") }),
 ]);

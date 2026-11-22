@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import * as importedModule1 from "vitest";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { animationClock } from "@octocodeai/octocode-tui";
 import { AGENT_APPLICATION_ID, AgentDbError } from "../../../db/src/schema.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { LEASE_MS } from "../../src/octocode/team/store/limits.ts";
@@ -10,6 +11,10 @@ import { pathKey } from "../../src/octocode/team/store/workspace.ts";
 import { reservationPath } from "../../src/octocode/shared/home.ts";
 import { PERMISSION_NONCE_FILE_ENV, takeNonce, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 import { nonceFile } from "./nonce-file.ts";
+
+// Reduced motion pins a running light to its first frame, ◒.
+beforeEach(() => animationClock.setReducedMotion(true));
+afterEach(() => animationClock.setReducedMotion(false));
 import * as importedModule4 from "../../src/octocode/native/tools/file/tool.ts";
 import { formatDuration, memberStats } from "../../src/octocode/shared/format.ts";
 import * as importedModule3 from "../../src/octocode/shared/messages.ts";
@@ -328,7 +333,7 @@ describe("agents view", () => {
 		expect(lines).toHaveLength(3);
 		expect(lines[0]).toMatch(/^ 🦑 main-aaaaaa ⏺ · main +1m39s$/);
 		expect(lines[1]).toMatch(/^ └ ⏺ a-0001 +· a-0001 +10s$/);
-		expect(lines[2]).toMatch(/^ {3}└ ⏺ b-0002 +· b-0002 +· › → localSearch foo +1m$/);
+		expect(lines[2]).toMatch(/^ {3}└ ◒ b-0002 +· b-0002 +· › → localSearch foo +1m$/);
 		expect(
 			widgetLines(
 				[

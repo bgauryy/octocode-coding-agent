@@ -1,4 +1,5 @@
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
+import type { HiddenModels } from "../../provider-models.ts";
 import type { ProviderSourceOverrides, ToggleableSourceId } from "../../provider-sources/types.ts";
 import type { ThinkingBudgetsSettings, TransportSetting } from "../../settings-schema.ts";
 import type { DefaultModelSelectionOptions } from "../model-default.ts";
@@ -43,6 +44,9 @@ export interface ModelSettingsApi {
 	getEnabledModels(): string[] | undefined;
 	getDisabledProviders(): string[];
 	setDisabledProviders(providerIds: readonly string[]): void;
+	/** Model ids hidden per provider (global only); a provider with no entry shows all. */
+	getHiddenModels(): Record<string, string[]>;
+	setHiddenModels(hidden: HiddenModels): void;
 	/** The user's changes from the provider source defaults (global only). */
 	getProviderSources(): ProviderSourceOverrides;
 	/** Turn a source on or off; a value equal to its default removes the override. */

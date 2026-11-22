@@ -98,7 +98,7 @@ export function loopCommand(host: CronCommandHost): Subcommand {
 			if (timers.activeCount(db, session) >= MAX_ACTIVE)
 				return say(
 					ctx,
-					`This session already has ${MAX_ACTIVE} active waits, the most it may hold: delete one first.`,
+					`This session already has ${MAX_ACTIVE} active notifications, the most it may hold: delete one first.`,
 					"warning",
 				);
 			const schedule = loopSchedule(Number(match[1]), match[2] as "m" | "h" | "d");

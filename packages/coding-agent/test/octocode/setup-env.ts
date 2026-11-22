@@ -45,6 +45,10 @@ process.env.OCTOCODE_MCP = "0";
 process.env.OCTOCODE_MCP_FREELLAMA = "0";
 // Nor Cua Driver (the `desktop` server), enabled wherever `cua-driver` is on PATH: a test never drives a developer's desktop.
 process.env.OCTOCODE_MCP_DESKTOP = "0";
+// Nor the browser server, a default that the main session selects on demand: a test's `<mcps>` section and server count hold
+// only the servers it configures. Real-process cases (`e2e-real-process-harness.ts`) build their own environment, so the
+// browser tests there keep the server.
+process.env.OCTOCODE_MCP_BROWSER = "0";
 // Every process a test starts boots the CLI from TypeScript source, about 2 s of CPU each with nothing cached. Node's compile
 // cache (keyed by file content and Node version, so a changed file is never served stale) halves that, and the folder sits
 // beside the per-run temporary directory so later runs start warm too. Processes read it from the environment they are given.

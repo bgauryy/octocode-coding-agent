@@ -168,6 +168,10 @@
 			"types": "./dist/utils/retry.d.ts",
 			"import": "./dist/utils/retry.js"
 		},
+		"./utils/thinking-level-rules": {
+			"types": "./dist/utils/thinking-level-rules.d.ts",
+			"import": "./dist/utils/thinking-level-rules.js"
+		},
 		"./utils/tool-loading": {
 			"types": "./dist/utils/tool-loading.d.ts",
 			"import": "./dist/utils/tool-loading.js"

@@ -31,9 +31,21 @@ export function thinkingBudgetTokens(model: CompactionModel | undefined, thinkin
 }
 
 /**
+ * The reserve that keeps the summary request inside the session's cached request just past the threshold: the room the
+ * provider leaves for output there (`reserve - CONTEXT_CLAMP_TOKENS - 1`) holds an inline summary (`inlineSummaryTokens`:
+ * 80% of the reserve). With less, that request fails its room check and the whole conversation is sent again outside
+ * the cache. The target leaves slack for the context to pass the threshold by a few thousand tokens.
+ */
+const SUMMARY_ROOM_RESERVE_TOKENS = CONTEXT_CLAMP_TOKENS * 6;
+/** The least reserve that still holds an inline summary just past the threshold; a window whose sixth is below it cannot. */
+const SUMMARY_ROOM_MIN_RESERVE_TOKENS = CONTEXT_CLAMP_TOKENS * 5 + 5;
+
+/**
  * Compaction thresholds for `model`. The reserve is a fixed fraction of the window (at most the default). When the
  * caller names the session's thinking setup it is raised so a request near the threshold keeps its thinking budget
- * plus answer room, up to a sixth of the window, and never lowered. Without `thinking` the fraction stands.
+ * plus answer room, up to a sixth of the window, and never lowered. Either way, a window large enough to allow it gets
+ * at least {@link SUMMARY_ROOM_RESERVE_TOKENS} (within a sixth of the window), so the summary is written in-cache at
+ * the threshold; a smaller one keeps its fraction.
  */
 export function builtInCompactionSettings(model?: CompactionModel, thinking?: CompactionThinking) {
 	const defaults = SETTINGS_DEFAULTS.compaction;
@@ -41,9 +53,12 @@ export function builtInCompactionSettings(model?: CompactionModel, thinking?: Co
 	if (window === undefined || !Number.isFinite(window) || window <= 0) return { ...defaults };
 	const base = Math.min(defaults.reserveTokens, Math.max(1, Math.floor(window / 8)));
 	const need = thinkingBudgetTokens(model, thinking) + ANSWER_ROOM_TOKENS + CONTEXT_CLAMP_TOKENS;
+	const sixth = Math.floor(window / 6);
+	const summaryRoom = sixth >= SUMMARY_ROOM_MIN_RESERVE_TOKENS ? SUMMARY_ROOM_RESERVE_TOKENS : 0;
+	const wanted = thinking ? Math.max(need, summaryRoom) : summaryRoom;
 	return {
 		enabled: true,
-		reserveTokens: thinking ? Math.max(base, Math.min(need, Math.floor(window / 6))) : base,
+		reserveTokens: Math.max(base, Math.min(wanted, sixth)),
 		keepRecentTokens: Math.min(defaults.keepRecentTokens, Math.max(1, Math.floor(window / 4))),
 	};
 }

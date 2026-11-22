@@ -104,6 +104,10 @@ export abstract class ModelCatalog {
 		return this.withoutPausedPlans(await this.availability.getAvailable(providerId, options));
 	}
 
+	setHiddenModels(hidden: Readonly<Record<string, readonly string[]>>): void {
+		this.availability.setHiddenModels(hidden);
+	}
+
 	setDisabledProviders(providerIds: readonly string[]): void {
 		this.availability.setDisabledProviders(providerIds);
 	}
@@ -222,6 +226,11 @@ export abstract class ModelCatalog {
 			subscription: this.isUsingSubscription(providerId),
 			oauth: this.isUsingOAuth(providerId),
 		};
+	}
+
+	/** True when the user unticked the model on its provider's page. */
+	isModelHidden(model: { provider: string; id: string }): boolean {
+		return this.availability.isModelHidden(model);
 	}
 
 	isProviderDisabled(providerId: string): boolean {

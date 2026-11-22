@@ -37,7 +37,8 @@ line(main, { type: "session", id: "main" });
 line(main, { type: "message", message: { role: "user", content: flag("-p") } });
 
 for (const child of scenario.children ?? []) {
-	const dir = join(".octocode", "agent", "temp", "agents", child.name, "session");
+	const state = scenario.baseline ? join(".octa", "code") : join(".octocode", "agent");
+	const dir = join(state, "temp", "agents", child.name, "session");
 	mkdirSync(dir, { recursive: true });
 	const file = join(dir, "child.jsonl");
 	line(file, {

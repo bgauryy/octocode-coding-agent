@@ -55,20 +55,22 @@ beforeEach(() => {
 });
 
 it("maps report paths to the tab that lists their kind", () => {
-	expect(reportLinkDestination(".octocode/octocode-rfc-generator/2026-10-25-webview-voice-engine/RFC.md")).toEqual({
+	expect(
+		reportLinkDestination(".octocode/agent/octocode-rfc-generator/2026-10-25-webview-voice-engine/RFC.md"),
+	).toEqual({
 		tab: "rfc",
 		kind: "rfc",
 		id: "2026-10-25-webview-voice-engine",
 		file: "RFC.md",
 	});
-	expect(reportLinkHref("/repo/.octocode/octocode-research/prompt-callers/brief.md")).toBe(
+	expect(reportLinkHref("/repo/.octocode/agent/octocode-research/prompt-callers/brief.md")).toBe(
 		"#research?id=prompt-callers&kind=research&file=brief.md",
 	);
-	expect(reportLinkHref("./.octocode/octocode-brainstorming/dessa-angles/")).toBe(
+	expect(reportLinkHref("./.octocode/agent/octocode-brainstorming/dessa-angles/")).toBe(
 		"#research?id=dessa-angles&kind=brainstorm",
 	);
 	expect(reportLinkHref("src/app/App.tsx")).toBeUndefined();
-	expect(reportLinkHref(".octocode/other-folder/demo/RFC.md")).toBeUndefined();
+	expect(reportLinkHref(".octocode/agent/other-folder/demo/RFC.md")).toBeUndefined();
 	expect(tabReports(payload, "rfc").map((report) => report.id)).toEqual([rfc.id]);
 	expect(tabReports(payload, "research").map((report) => report.id)).toEqual([brief.id, brainstorm.id]);
 });
@@ -147,7 +149,7 @@ it("links each listed report to the same kind its click opens, so a copied link 
 });
 
 it("renders item links to reports as links only when a resolver is provided", () => {
-	const reportPath = ".octocode/octocode-rfc-generator/2026-10-25-webview-voice-engine/RFC.md";
+	const reportPath = ".octocode/agent/octocode-rfc-generator/2026-10-25-webview-voice-engine/RFC.md";
 	const item: SnapshotItem = snapshotItem("B1", {
 		links: [
 			{ relation: "derived_from", target: { resource: "files", repositoryKey: "repo", path: reportPath } },

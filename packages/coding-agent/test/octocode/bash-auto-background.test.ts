@@ -1,3 +1,4 @@
+import { withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
@@ -225,20 +226,20 @@ describe("the sleep hint", () => {
 	);
 
 	it("names the timer tool as well, only when the session declares it", () => {
-		expect(sleepHint("sleep 60", true)).toContain("or set a `wait` to be woken when outside state holds");
+		expect(sleepHint("sleep 60", true)).toContain("or set a `notify` request to be told when outside state holds");
 		expect(sleepHint("sleep 60", true)).toContain("background: true");
-		expect(sleepHint("sleep 60")).not.toContain("`wait`");
+		expect(sleepHint("sleep 60")).not.toContain("`notify`");
 		expect(sleepHint("sleep 1", true)).toBeUndefined();
 	});
 
 	it.runIf(posix)("names the timer in the result of the real tool when timer is an active tool", async () => {
 		const { api, tools } = fakeHost();
-		api.tools.getActive = () => ["bash", "wait"];
+		api.tools.getActive = () => ["bash", "notify"];
 		registerBashTool(api, new Subcommands(), new BashJobs(tmp()), () => ({ backgroundAfterSeconds: 0 }));
 		const result = await tools
 			.get("bash")
 			.execute("t", { command: "false && sleep 25; echo ran" }, undefined, undefined, fakeCtx({ cwd: tmp() }));
-		expect(JSON.stringify(result.content)).toContain("or set a `wait` to be woken");
+		expect(JSON.stringify(result.content)).toContain("or set a `notify` request to be told");
 	});
 
 	it.runIf(posix)(
@@ -272,7 +273,7 @@ describe.runIf(posix)("a foreground command past the threshold", () => {
 		expect(result.details).toMatchObject({ job: "bash-1", log: job.log, moved: true });
 		expect(sent).toHaveLength(0);
 		await until(() => sent.length === 1);
-		expect(sent[0].message.content).toMatch(
+		expect(withoutSourceHeader(String(sent[0].message.content))).toMatch(
 			/^\[exit 0 · [34]s · log: [^\n]*\]\nBackground bash bash-1 finished: [^\n]*\n[\s\S]*before\nafter$/,
 		);
 		expect(sent[0].options).toEqual({ triggerTurn: true, deliverAs: "followUp", together: true });

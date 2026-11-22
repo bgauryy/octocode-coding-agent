@@ -20,6 +20,10 @@ interface RunnerTurn {
 	cwd: string;
 	/** The whole message the runner receives: the task and its report contract. */
 	text: string;
+	/** The caller is a read-only role: the task may not change files, so a route that cannot promise that refuses it. */
+	readOnly?: boolean;
+	/** The CLI's own session id an earlier turn reported (`RunnerReply.sessionId`): this turn continues that session. */
+	resume?: string;
 	signal: AbortSignal;
 	/** A short line per tool call or plan the runner streams, for the child's row. */
 	onActivity(line: string): void;
@@ -39,6 +43,8 @@ export interface RunnerReply {
 	cost?: number;
 	/** Absent when the runner's sign-in probe did not establish who pays. */
 	billing?: RunnerBilling;
+	/** The CLI's own id of the session the turn ran in, when it reported one: a later task passes it as `resume`. */
+	sessionId?: string;
 }
 
 /** The installed runners available in this session, fixed at tool declaration; a turn checks sign-in before launch. */

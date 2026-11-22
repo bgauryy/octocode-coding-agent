@@ -932,7 +932,7 @@ __metadata:
     "@octocodeai/octocode-tui": "npm:1.3.0"
     "@octocodeai/octocode-tui-ink": "npm:1.3.0"
     "@octocodeai/octocode-webview": "npm:1.3.0"
-    "@opencode-ai/models": "npm:0.0.135"
+    "@opencode-ai/models": "npm:0.0.142"
     "@silvia-odwyer/photon-node": "npm:0.3.4"
     "@types/cross-spawn": "npm:6.0.6"
     "@types/hosted-git-info": "npm:3.0.5"
@@ -1226,15 +1226,15 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@opencode-ai/models@npm:0.0.135":
-  version: 0.0.135
-  resolution: "@opencode-ai/models@npm:0.0.135"
+"@opencode-ai/models@npm:0.0.142":
+  version: 0.0.142
+  resolution: "@opencode-ai/models@npm:0.0.142"
   peerDependencies:
     effect: 4.0.0-beta.83
   peerDependenciesMeta:
     effect:
       optional: true
-  checksum: 10c0/1e2fa811e606b5d0f3dd383cd65d16840087e9a5c808e1ad8c232b5e169fe6ee310ff176eff212a3c7b30dd7258d5a9415cf6a5f4d8805366b6beadcaf49b5b4
+  checksum: 10c0/6c828d026f3f865444ac4861c5c1910ec84ec0567b86f7bdbd1d6eeb272829b0c8ae484e3485f4d8367632cb083eac35cb231057b6f265a5b9c86fe51c00170b
   languageName: node
   linkType: hard
 

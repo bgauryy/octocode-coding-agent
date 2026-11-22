@@ -1,6 +1,6 @@
 ---
 name: octocode-visual-browsing
-description: "Use before any task that operates a browser, a web page or a desktop app, including on the user's behalf: which lane (browser MCP, Cua desktop agent, no UI), the see-solve-act-verify loop, reading pixels with clasify. Cua is for native apps and OS windows, never page content. Captchas and bot checks: report blocked, never solve."
+description: "Use before any task that operates a browser, a web page or a desktop app: which lane (browser MCP, Cua desktop agent, no UI), the see-solve-act-verify loop. Cua is for native apps, never page content. Captchas and bot checks: report blocked, never solve."
 ---
 
 # Operate a browser or the desktop

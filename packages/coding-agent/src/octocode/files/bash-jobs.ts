@@ -43,9 +43,17 @@ const DRAIN_MS = 1_000;
 /** How often a job whose shell exited checks whether children it left in its group are still running, in ms. */
 const GROUP_POLL_MS = 250;
 
+/** A running job of another session this session joined; `done` resolves once its end was reported here. */
+export type JoinedJob = Pick<BashJob, "command" | "pid" | "log" | "startedAt"> & { id: string; done: Promise<unknown> };
+
+/** What a run-end hold waits on: an own job or a joined one. */
+export type HeldJob = JoinedJob;
+
 /** Background shell jobs of one session: each runs in its own process group with output going to a log file. */
 export class BashJobs {
 	readonly jobs = new Map<string, BashJob>();
+	/** Running jobs of other sessions this session joined, whose end it hears of; keyed by session and job. */
+	readonly joined = new Map<string, JoinedJob>();
 	private next = 0;
 
 	private readonly dir?: string;
@@ -297,6 +305,11 @@ export class BashJobs {
 		job.stopped ??= reason;
 		killTree(job.pid);
 		return true;
+	}
+
+	/** Every job whose end this session waits for: its own running jobs and the running jobs of other sessions it joined. */
+	held(): HeldJob[] {
+		return [...this.running(), ...this.joined.values()];
 	}
 
 	/** Jobs whose process group still runs (an exited job only waits for its last output). */

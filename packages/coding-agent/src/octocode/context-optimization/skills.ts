@@ -1,5 +1,5 @@
 /**
- * The skills listing an agent reads, after optimization: each skill's description is replaced by the rewrite stored
+ * The skills listing an agent reads (the `skill` tool's description), after optimization: each skill's description is replaced by the rewrite stored
  * for its current source (`skills-store.ts`). Skills inside the session's repository are stored in the project's
  * folder, all others in the user folder (`contextOptimizationDirs`); a lookup reads the project's store first. A root
  * session records the skills it discovers whenever they change (startup, `/reload`, a changed `skills` setting);
@@ -11,6 +11,7 @@
 import path from "node:path";
 import { getNativeSkillsDir } from "../../config.ts";
 import type { FeatureSetup } from "../../core/features/index.ts";
+import type { SkillCatalog } from "../skill/catalog.ts";
 import type { Skill } from "../../core/skills.ts";
 import { contextOptimizationDirs, inContextProject } from "../shared/home.ts";
 import { isWithin } from "@octocodeai/octocode-common/paths";
@@ -45,15 +46,16 @@ async function record(dir: string, sources: readonly SkillSource[]): Promise<Ski
 
 export function registerSkillDescriptions(
 	api: FeatureSetup,
+	catalog: SkillCatalog,
 	options: { isSubagent: boolean; agentDir?: () => string },
 ): void {
 	let frozen: { key: string; stores: SkillsStore[] } | undefined;
 	api.bus.on("session_start", async () => {
 		frozen = undefined;
 	});
-	api.bus.on("before_agent_start", async (event, ctx) => {
-		const skills = event.systemPromptOptions.skills;
-		if (!skills?.length) return undefined;
+	api.bus.on("before_agent_start", async (_event, ctx) => {
+		const skills = catalog.refresh().map((entry) => entry.skill);
+		if (skills.length === 0) return undefined;
 		const dirs = contextOptimizationDirs(ctx.cwd, options.agentDir?.());
 		const sources = skills.filter(listed).map((skill) => ({
 			name: skill.name,
@@ -80,11 +82,14 @@ export function registerSkillDescriptions(
 			frozen = { key, stores };
 		}
 		const { stores } = frozen;
-		event.systemPromptOptions.skills = skills.map((skill) => {
-			if (!listed(skill)) return skill;
-			const description = effectiveDescription(stores, skill.name, skill.description.trim());
-			return description === skill.description ? skill : { ...skill, description };
-		});
+		// The `skill` tool's description lists these; it reads them when the run's tool loadout is prepared, just after.
+		catalog.describeAs(
+			new Map(
+				skills
+					.filter(listed)
+					.map((skill) => [skill.name, effectiveDescription(stores, skill.name, skill.description.trim())]),
+			),
+		);
 		return undefined;
 	});
 }

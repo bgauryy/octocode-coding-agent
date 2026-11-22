@@ -1,5 +1,6 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
+import { stripTerminalSequences } from "../src/utils.ts";
 import { createHarness, firstScreenDifference } from "./b65-harness.ts";
 
 /** The press frame must not measure the rest of a long transcript that is still laid out virtually. */
@@ -22,6 +23,38 @@ function coldSelection(rows: number, virtualize: boolean) {
 }
 
 describe("a mouse press while the transcript is still laid out virtually", () => {
+	it("copies the painted cells after background measurements move the visible rows", async () => {
+		const h = createHarness({ rows: 2000, virtualize: true, markdown: true });
+		try {
+			h.frame();
+			const top = h.transcript.scrollTop;
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.ok(h.transcript.scrollTop > top, "a measuring slice moved the content coordinates");
+			const expected = stripTerminalSequences(h.screen()[2]).slice(4, 25);
+			h.terminal.sendInput("\x1b[<0;5;3M");
+			h.terminal.sendInput("\x1b[<32;25;3M");
+			const copied = (h.tui as unknown as SelectionInternals).selection.getActiveSelectionText();
+			assert.equal(copied?.length, expected.length);
+			assert.equal(copied, expected);
+		} finally {
+			h.stop();
+		}
+	});
+
+	it("copies a visible selection without settling the rest of a cold document", () => {
+		const h = createHarness({ rows: 1000, virtualize: true, markdown: true });
+		try {
+			h.frame();
+			h.input("press", "\x1b[<0;5;3M");
+			h.input("drag", "\x1b[<32;20;4M");
+			const text = (h.tui as unknown as SelectionInternals).selection.getActiveSelectionText();
+			assert.ok(text?.includes("answer"));
+			assert.equal(h.frame("after copy").path, "virtual");
+		} finally {
+			h.stop();
+		}
+	});
+
 	for (const rows of [1000, 10000]) {
 		it(`${rows} Markdown rows: paints within ${PRESS_FRAME_MS} ms and selects the exact path's text`, () => {
 			const cold = coldSelection(rows, true);

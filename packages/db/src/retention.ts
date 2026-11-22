@@ -1,6 +1,9 @@
 import type { AgentDb } from "./db.ts";
 import * as agentEvents from "./queries/agent-events.ts";
 import * as agentRuns from "./queries/agent-runs.ts";
+import * as eventSubscriptions from "./queries/event-subscriptions.ts";
+import * as tickets from "./queries/tickets.ts";
+import * as events from "./queries/events.ts";
 import * as history from "./queries/history.ts";
 import * as jobs from "./queries/jobs.ts";
 import * as timers from "./queries/timers.ts";
@@ -101,6 +104,17 @@ export function archiveHistory(
 					result.deleted += purged;
 					if (purged < BATCH) break;
 				}
+			// The durable event log likewise, in batches; a subscriber whose offset fell behind the window sees `oldestSeq` pass it.
+			if (Number.isFinite(keepMs)) {
+				for (;;) {
+					assertActive();
+					const purged = agentDb.transaction(() => events.purgeBefore(db, now - keepMs, BATCH));
+					result.deleted += purged;
+					if (purged < BATCH) break;
+				}
+				result.deleted += agentDb.transaction(() => eventSubscriptions.purgeBefore(db, now - keepMs));
+				result.deleted += agentDb.transaction(() => tickets.purgeBefore(db, now - keepMs));
+			}
 			// Timers likewise: ended ones, and active ones left overdue and untouched for the whole window.
 			if (Number.isFinite(keepMs)) result.deleted += agentDb.transaction(() => timers.purgeBefore(db, now - keepMs));
 			// Job rows likewise: ended ones, and ones whose session never recorded an end.

@@ -17,6 +17,7 @@ export function SettingsPanel({ access, repo }: { access: string; repo: string }
 	const api = useMemo(() => createDaemonApi(access, (route) => scopedRoute(route)), [access]);
 	const harness = useMemo(() => ({ list: api.harness, set: api.setHarness, preview: api.previewHarness }), [api]);
 	const security = useMemo(() => ({ list: api.security, act: api.decideSecurity }), [api]);
+	const runners = useMemo(() => ({ list: api.runners, act: api.actRunners }), [api]);
 	const tools = useMemo(() => ({ list: api.tools, pin: api.pinTool }), [api]);
 	const repos = useMemo(() => [{ id: SESSION_REPO_ID, name: repo }], [repo]);
 	return (
@@ -25,11 +26,13 @@ export function SettingsPanel({ access, repo }: { access: string; repo: string }
 			save={api.saveSetting}
 			saveCredential={api.saveCredential}
 			saveProvider={api.saveProvider}
+			testProviders={api.testProviders}
 			signIn={api.signIn}
 			addMcp={api.addMcp}
 			mcpAddStatus={api.mcpAddStatus}
 			harness={harness}
 			security={security}
+			runners={runners}
 			tools={tools}
 			repos={repos}
 		/>

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import type { ViewDefinition } from "../extension.ts";
 import type { BacklogIndex } from "../model/backlog.ts";
 import { hashFor, type Params } from "../model/route.ts";
@@ -31,7 +31,7 @@ export function AppHeader({
 	badges: Record<string, number>;
 	status?: ReactNode;
 	/** Something waits on the user: the pill opens or focuses the dialog from any view. */
-	needsYou?: { count: number; open: boolean; controls: string; onToggle: () => void };
+	needsYou?: { question: boolean; count: number; open: boolean; controls: string; onToggle: () => void };
 	/** Primary actions that stay in the row (New item). */
 	actions?: ReactNode;
 	/** Settings inside the menu popover (theme, notifications, terminal). */
@@ -60,7 +60,7 @@ export function AppHeader({
 						onClick={needsYou.onToggle}
 					>
 						<StateMark state="waiting" size={12} />
-						{needsYou.count} needs you
+						{needsYou.question ? "Pending question" : `${needsYou.count} needs you`}
 					</button>
 				)}
 				{status}
@@ -69,6 +69,7 @@ export function AppHeader({
 					className="palette-trigger"
 					onClick={onOpenPalette}
 					aria-keyshortcuts="Meta+K Control+K"
+					aria-label="Search or jump to…"
 					title="Search or jump to…"
 				>
 					<SearchIcon />
@@ -95,8 +96,18 @@ function Tabs({
 	saved: Record<string, Params>;
 	badges: Record<string, number>;
 }) {
+	const nav = useRef<HTMLElement>(null);
+	useEffect(() => {
+		const tabs = nav.current;
+		const active = tabs?.querySelector("[aria-current=page]");
+		if (!tabs || !active || tabs.scrollWidth <= tabs.clientWidth) return;
+		const tab = active.getBoundingClientRect();
+		const viewport = tabs.getBoundingClientRect();
+		if (tab.left < viewport.left) tabs.scrollLeft += tab.left - viewport.left;
+		else if (tab.right > viewport.right) tabs.scrollLeft += tab.right - viewport.right;
+	}, [current]);
 	return (
-		<nav className="tabs" aria-label="Views">
+		<nav ref={nav} className="tabs" aria-label="Views">
 			{views.map(({ name, label, Icon }) => (
 				<a
 					key={name}

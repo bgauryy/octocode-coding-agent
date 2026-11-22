@@ -29,7 +29,19 @@ function pidIsAlive(pid: number): boolean {
 	}
 }
 
-const ownerIsAlive = (dir: string): boolean => pidIsAlive(Number(readFileSync(join(dir, OWNER_FILE), "utf8")));
+/** An existing directory can still be acquiring its owner marker in another runner. */
+function staleRun(parent: string, name: string): boolean {
+	const dir = join(parent, name);
+	let raw: string;
+	try {
+		raw = readFileSync(join(dir, OWNER_FILE), "utf8");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		return !existsSync(dir);
+	}
+	const pid = Number(raw);
+	return Number.isSafeInteger(pid) && pid > 0 && !pidIsAlive(pid);
+}
 
 /** The private tmux servers of the e2e suites: `-L <prefix>-<pid of the test process>[-<n>]`. */
 const E2E_TMUX_SOCKET = /^(?:octo-e2e|octo-reach)-(\d+)(?:-\d+)?$/;
@@ -68,13 +80,9 @@ export function sweepStaleRunDirs(parent: string): void {
 	for (const name of readdirSync(parent)) {
 		if (!name.startsWith(PREFIX)) continue;
 		const dir = join(parent, name);
-		if (!ownerIsAlive(dir)) rmSync(dir, { recursive: true, force: true });
+		if (staleRun(parent, name)) rmSync(dir, { recursive: true, force: true });
 	}
 }
-
-/** Whether run folder `name` under `parent` belongs to no live run: its owner is gone, or the folder already is. */
-const staleRun = (parent: string, name: string): boolean =>
-	!existsSync(join(parent, name)) || !ownerIsAlive(join(parent, name));
 
 /**
  * Orphaned processes (re-parented to pid 1) whose command line or environment names a folder of a run that is no longer

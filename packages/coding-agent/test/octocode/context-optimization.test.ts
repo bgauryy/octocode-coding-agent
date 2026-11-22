@@ -8,7 +8,6 @@ import { getNativeSkillsDir } from "../../src/config.ts";
 import type { FeatureSetup } from "../../src/core/features/index.ts";
 import type { Skill } from "../../src/core/skills.ts";
 import { skillListingBudgetChars } from "../../src/core/skills/listing-budget.ts";
-import { buildSystemPrompt } from "../../src/core/system-prompt.ts";
 import { runContextCommand } from "../../src/octocode/context-optimization/command.ts";
 import { registerSkillDescriptions } from "../../src/octocode/context-optimization/skills.ts";
 import {
@@ -21,6 +20,7 @@ import {
 	writeSkillsStore,
 } from "../../src/octocode/context-optimization/skills-store.ts";
 import { contextOptimizationDirs } from "../../src/octocode/shared/home.ts";
+import { SkillCatalog } from "../../src/octocode/skill/catalog.ts";
 
 const skill = (name: string, description: string, filePath: string, extra: Partial<Skill> = {}): Skill =>
 	({
@@ -125,28 +125,42 @@ describe("context optimization", () => {
 		type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
 		const userSkill = () => skill("global", "Global source", path.join(root, "home-skills", "global", "SKILL.md"));
 		const projectSkill = () => skill("local", "Local source", path.join(project, ".octocode", "skills", "local.md"));
+		// The catalog the `skill` tool reads: its listing carries the descriptions the hook chose.
+		const catalogOf = (current: () => Skill[]) =>
+			new SkillCatalog(
+				() =>
+					({
+						version: 1,
+						explicitSkills: [],
+						resources: current().map((skill) => ({ skill, canonicalPath: skill.filePath, visible: true })),
+					}) as never,
+			);
 		const register = (isSubagent: boolean, cwd = project) => {
 			const handlers = new Map<string, Handler>();
+			let current: Skill[] = [];
+			const catalog = catalogOf(() => current);
 			registerSkillDescriptions(
 				{ bus: { on: (event: string, handler: Handler) => handlers.set(event, handler) } } as unknown as FeatureSetup,
+				catalog,
 				{ isSubagent, agentDir: () => agentDir },
 			);
 			const notices: string[] = [];
 			const ctx = { cwd, hasUI: true, ui: { notify: (text: string) => notices.push(text) } };
 			const prompt = async (skills: Skill[]) => {
-				const event = { systemPromptOptions: { skills } };
-				await handlers.get("before_agent_start")?.(event, ctx);
-				return event.systemPromptOptions.skills.map((entry) => entry.description);
+				current = skills;
+				catalog.refresh({ allowStale: false });
+				await handlers.get("before_agent_start")?.({}, ctx);
+				return catalog.listing().entries.map((entry) => entry.description);
 			};
 			const start = () => handlers.get("session_start")?.({ type: "session_start", reason: "reload" }, ctx);
-			return { prompt, start, notices };
+			return { prompt, start, notices, listing: () => catalog.listing() };
 		};
 
 		it("records each skill in its scope, once, and shows rewrites from the next start", async () => {
 			const main = register(false);
 			const hidden = skill("hidden", "H", "/h/SKILL.md", { disableModelInvocation: true });
 			const skills = [userSkill(), projectSkill(), hidden];
-			expect(await main.prompt(skills)).toEqual(["Global source", "Local source", "H"]);
+			expect(await main.prompt(skills)).toEqual(["Global source", "Local source"]);
 			// Contract: a skill's own description is never flagged for rewriting (user decision, 2026-11-04).
 			expect(main.notices).toEqual([]);
 			expect(Object.keys(readSkillsStore(userDir).skills)).toEqual(["global"]);
@@ -154,10 +168,10 @@ describe("context optimization", () => {
 
 			writeSkillsStore(userDir, applySkillOverrides(readSkillsStore(userDir), { global: "Global short" }));
 			writeSkillsStore(projectDir, applySkillOverrides(readSkillsStore(projectDir), { local: "Local short" }));
-			// The running session keeps the text it started with, so its cached prompt does not change.
-			expect(await main.prompt(skills)).toEqual(["Global source", "Local source", "H"]);
+			// The running session keeps the text it started with, so its cached tool declaration does not change.
+			expect(await main.prompt(skills)).toEqual(["Global source", "Local source"]);
 			await main.start();
-			expect(await main.prompt(skills)).toEqual(["Global short", "Local short", "H"]);
+			expect(await main.prompt(skills)).toEqual(["Global short", "Local short"]);
 			expect(main.notices).toEqual([]);
 		});
 
@@ -181,26 +195,17 @@ describe("context optimization", () => {
 			expect(readSkillsStore(projectDir).skills.local?.description).toBe("Local short");
 		});
 
-		it("puts the optimized descriptions into the system prompt agents receive", async () => {
+		it("puts the optimized descriptions into the listing the skill tool declares", async () => {
 			const main = register(false);
 			await main.prompt([userSkill(), projectSkill()]);
 			writeSkillsStore(projectDir, applySkillOverrides(readSkillsStore(projectDir), { local: "Load for local work." }));
 			await main.start();
-			const event = { systemPromptOptions: { skills: [userSkill(), projectSkill()] } };
-			const handlers = new Map<string, Handler>();
-			registerSkillDescriptions(
-				{ bus: { on: (name: string, handler: Handler) => handlers.set(name, handler) } } as unknown as FeatureSetup,
-				{ isSubagent: true, agentDir: () => agentDir },
-			);
-			await handlers.get("before_agent_start")?.(event, { cwd: project, hasUI: false, ui: {} });
-			const prompt = buildSystemPrompt({
-				cwd: project,
-				selectedTools: ["skill"],
-				skills: event.systemPromptOptions.skills,
-			});
-			expect(prompt).toContain('">Load for local work.</skill>');
-			expect(prompt).toContain('">Global source</skill>');
-			expect(prompt).not.toContain("Local source");
+			const child = register(true);
+			await child.prompt([userSkill(), projectSkill()]);
+			const text = child.listing().render();
+			expect(text).toContain(`${projectSkill().filePath}: Load for local work.`);
+			expect(text).toContain(`${userSkill().filePath}: Global source`);
+			expect(text).not.toContain("Local source");
 		});
 
 		it("lets a subagent read both stores without writing them", async () => {

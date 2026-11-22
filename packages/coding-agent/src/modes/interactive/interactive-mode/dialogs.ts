@@ -1,3 +1,4 @@
+import { captureCommandDialog } from "./web-command-context.ts";
 /**
  * Dialogs features open in place of the editor: selectors, confirmations, text input, the multi-line editor and
  * custom components, plus the missing-cwd prompt that uses the same selector.
@@ -89,6 +90,7 @@ export function showSelectorDialog(
 		host.editorContainer.clear();
 		host.editorContainer.addChild(host.selectorDialog);
 		host.ui.setFocus(host.selectorDialog);
+		captureCommandDialog(host.ui, host.selectorDialog);
 		// Feature dialogs share the editor slot: opening one replaces the status of a displaced one.
 		host.programStatus.setBlocked("feature-dialog", blocked);
 		host.ui.requestRender();
@@ -170,6 +172,7 @@ export function showInputDialog(
 		host.editorContainer.clear();
 		host.editorContainer.addChild(host.inputDialog);
 		host.ui.setFocus(host.inputDialog);
+		captureCommandDialog(host.ui, host.inputDialog);
 		host.programStatus.setBlocked("feature-dialog", { kind: "question", message: title });
 		host.ui.requestRender();
 	});
@@ -220,6 +223,7 @@ export function showEditorDialog(
 		host.editorContainer.clear();
 		host.editorContainer.addChild(host.editorDialog);
 		host.ui.setFocus(host.editorDialog);
+		captureCommandDialog(host.ui, host.editorDialog);
 		host.programStatus.setBlocked("feature-dialog", { kind: "question", message: title });
 		host.ui.requestRender();
 	});
@@ -305,6 +309,7 @@ export async function showCustomDialog<T>(
 					return;
 				}
 				component = c;
+				captureCommandDialog(host.ui, component);
 				if (isOverlay) {
 					// Resolve overlay options - can be static or dynamic function
 					const resolveOptions = (): OverlayOptions | undefined => {

@@ -14,6 +14,7 @@ import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { MessageRenderer } from "../../../core/features/types.ts";
 import type { CustomMessage } from "../../../core/messages.ts";
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
+import { LongResponse } from "./long-response.ts";
 import { surfaceFill } from "../../../theme/bands.ts";
 
 /**
@@ -94,7 +95,7 @@ export class CustomMessageComponent extends Container {
 					this.customComponent = component;
 					// One blank row above, as on the default rendering.
 					this.addChild(new Spacer(1));
-					this.addChild(component);
+					this.addChild(new LongResponse(component, this._expanded, (expanded) => this.setExpanded(expanded)));
 					return;
 				}
 			} catch {
@@ -104,7 +105,7 @@ export class CustomMessageComponent extends Container {
 
 		// Default rendering: one blank row above the box, none below, so stacked blocks keep one blank row between them.
 		this.addChild(new Spacer(1));
-		this.addChild(this.box);
+		this.addChild(new LongResponse(this.box, this._expanded, (expanded) => this.setExpanded(expanded)));
 		this.box.clear();
 		this.box.setPaddingX(this.outputPad);
 

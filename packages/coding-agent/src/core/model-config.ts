@@ -23,6 +23,7 @@ import { urlCredentialProblem } from "@octocodeai/octocode-common/url-credential
 import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { modelsJsonWarnings, type ModelsJsonFieldNames } from "./model-config/warnings.ts";
+import { officialEntryProblem } from "./model-config/builtin-guard.ts";
 
 const SamplingParamsSchema = Type.Record(Type.String(), Type.Unknown());
 const SamplingParamsByThinkingLevelSchema = Type.Object(
@@ -198,17 +199,20 @@ export class ModelConfig {
 	private readonly error: string | undefined;
 	private readonly warnings: readonly string[];
 	private readonly files: ReadonlyMap<string, string>;
+	private readonly refusals: readonly string[];
 
 	private constructor(
 		providers: ReadonlyMap<string, ModelsJsonProvider>,
 		error?: string,
 		warnings: readonly string[] = [],
 		files: ReadonlyMap<string, string> = new Map(),
+		refusals: readonly string[] = [],
 	) {
 		this.providers = providers;
 		this.error = error;
 		this.warnings = warnings;
 		this.files = files;
+		this.refusals = refusals;
 	}
 
 	static async load(modelsJsonPath: string | undefined): Promise<ModelConfig> {
@@ -230,12 +234,14 @@ export class ModelConfig {
 		const files = new Map<string, string>();
 		const errors: string[] = [];
 		const warnings: string[] = [];
+		const refusals: string[] = [];
 		// Files load concurrently; merging walks them in precedence order, so the first definition still wins and
-		// errors and warnings keep file order.
-		const configs = await Promise.all(paths.map((file) => ModelConfig.loadFile(file)));
+		// errors and warnings keep file order. Pi's files are never ours to fix: an official id there is a warning.
+		const configs = await Promise.all(paths.map((file, index) => ModelConfig.loadFile(file, { fallback: index > 0 })));
 		for (const config of configs) {
 			if (config.error) errors.push(config.error);
 			warnings.push(...config.warnings);
+			refusals.push(...config.refusals);
 			for (const [id, provider] of config.providers) {
 				if (providers.has(id)) continue;
 				providers.set(id, provider);
@@ -243,11 +249,15 @@ export class ModelConfig {
 				if (file) files.set(id, file);
 			}
 		}
-		return new ModelConfig(providers, errors.length ? errors.join("\n\n") : undefined, warnings, files);
+		return new ModelConfig(providers, errors.length ? errors.join("\n\n") : undefined, warnings, files, refusals);
 	}
 
-	/** One file alone: unlike `load`, Octocode's own file is not merged with Pi's, so its providers are its own. */
-	static async loadFile(modelsJsonPath: string): Promise<ModelConfig> {
+	/**
+	 * One file alone: unlike `load`, Octocode's own file is not merged with Pi's, so its providers are its own.
+	 * An entry with an official provider's id is refused (`getError` says why, the rest of the file loads); with
+	 * `fallback` (a Pi file) it is skipped with a warning instead.
+	 */
+	static async loadFile(modelsJsonPath: string, options?: { fallback?: boolean }): Promise<ModelConfig> {
 		const path = normalizePath(modelsJsonPath);
 		let content: string;
 		try {
@@ -282,14 +292,23 @@ export class ModelConfig {
 		}
 
 		const providers = new Map<string, ModelsJsonProvider>();
+		const refusals: string[] = [];
 		for (const [providerId, provider] of Object.entries(parsed.providers)) {
+			const problem = officialEntryProblem(providerId, provider, path);
+			if (problem) {
+				refusals.push(problem);
+				continue;
+			}
 			providers.set(providerId, deepFreeze(structuredClone(provider)));
 		}
+		const warnings = modelsJsonWarnings(parsed, path, FIELD_NAMES);
+		if (options?.fallback) warnings.push(...refusals.map((problem) => `${problem} Pi's file is left as it is.`));
 		return new ModelConfig(
 			providers,
 			undefined,
-			modelsJsonWarnings(parsed, path, FIELD_NAMES),
+			warnings,
 			new Map([...providers.keys()].map((id) => [id, path])),
+			options?.fallback ? [] : refusals,
 		);
 	}
 
@@ -306,8 +325,15 @@ export class ModelConfig {
 		return [...this.providers.keys()];
 	}
 
+	/** What the files could not load: unreadable or invalid files, then refused official-provider entries. */
 	getError(): string | undefined {
-		return this.error;
+		const messages = [...(this.error ? [this.error] : []), ...this.refusals];
+		return messages.length > 0 ? messages.join("\n\n") : undefined;
+	}
+
+	/** Whether a file could not be read or parsed at all; refused entries leave the rest of their file loaded. */
+	isUnreadable(): boolean {
+		return this.error !== undefined;
 	}
 
 	/**

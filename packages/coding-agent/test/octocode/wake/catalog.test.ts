@@ -6,16 +6,29 @@ import {
 	describeEvent,
 	parseEventKind,
 } from "../../../src/octocode/wake/catalog.ts";
+import { HOOK_LIFECYCLE_EVENTS, hookTopic } from "../../../src/octocode/events/hook-lifecycle.ts";
 
 describe("the agent event catalog", () => {
 	it("gives every kind a label and a dedupe key, and lists the closed set", () => {
-		expect(EVENT_KINDS).toHaveLength(16);
+		const lifecycle = HOOK_LIFECYCLE_EVENTS.map(hookTopic);
+		expect(EVENT_KINDS).toHaveLength(19 + lifecycle.length);
+		expect(EVENT_KINDS).toEqual(expect.arrayContaining(lifecycle));
+		expect(EVENT_KINDS).toEqual(expect.arrayContaining(["ticket.resolved", "ticket.rejected"]));
 		for (const kind of EVENT_KINDS) {
 			expect(typeof CATALOG[kind].label).toBe("function");
 			expect(typeof CATALOG[kind].key).toBe("function");
 		}
 		expect([...EXPLICIT_EVENTS].sort()).toEqual(
-			["agent.ended", "check.result", "item.changed", "item.state", "path.unlocked", "peer.landed", "time.due"].sort(),
+			[
+				"agent.ended",
+				"check.result",
+				"item.changed",
+				"item.state",
+				"machine.load",
+				"path.unlocked",
+				"peer.landed",
+				"time.due",
+			].sort(),
 		);
 	});
 
@@ -46,5 +59,7 @@ describe("the agent event catalog", () => {
 	it("refuses an unknown kind, naming the choices", () => {
 		expect(parseEventKind("item.state")).toBe("item.state");
 		expect(() => parseEventKind("nope")).toThrow(/No event "nope": the choices are agent\.report/);
+		// A hook run is the loop's own record: no wait can name it.
+		expect(() => parseEventKind(hookTopic(HOOK_LIFECYCLE_EVENTS[0]))).toThrow(/No event/);
 	});
 });

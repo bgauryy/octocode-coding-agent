@@ -1,6 +1,6 @@
 ---
 name: octocode-critical-thinking
-description: "Use to stress-test a consequential, costly or hard-to-reverse decision, plan, design, diagnosis or claim resting on unchecked assumptions, with mental models scaled to the stakes."
+description: "Use to stress-test a costly or hard-to-reverse decision, plan, design, diagnosis or claim resting on unchecked assumptions."
 ---
 
 # Octocode Critical Thinking

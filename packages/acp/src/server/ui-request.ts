@@ -4,6 +4,8 @@ import { askClient } from "./ask.ts";
 import { reportFailure } from "./failure.ts";
 import { askPermission } from "./permission.ts";
 
+const CONFIRM_OPTIONS = { approve: "Approve", decline: "Decline" } as const;
+
 /** What answering one worker dialog needs from the session that received it. */
 export interface UiRequestScope {
 	client: AgentContext;
@@ -24,7 +26,8 @@ export interface UiRequestScope {
 
 /**
  * Answers one dialog the worker raised: a batch of questions through `ask.ts`, a permission `select` through
- * `permission.ts`; any other dialog is cancelled. The host forwards only dialogs; a UI notification (status, widget,
+ * `permission.ts`, a `confirm` through the same permission request (approve or decline: a sensitive action needs the
+ * client's own answer, never the terminal's); any other dialog is cancelled. The host forwards only dialogs; a UI notification (status, widget,
  * title) has no one to answer it and is dropped.
  */
 export async function answerUiRequest(request: AcpUiRequest, scope: UiRequestScope): Promise<void> {
@@ -44,20 +47,32 @@ export async function answerUiRequest(request: AcpUiRequest, scope: UiRequestSco
 		await scope.respond({ type: "extension_ui_response", id: request.id, replies });
 		return;
 	}
-	const value =
-		request.method === "select"
-			? await askPermission(
-					{
-						client: scope.client,
-						sessionId: scope.sessionId,
-						signal: scope.signal,
-						output: scope.output,
-						current: scope.current,
-						onCancelled,
-					},
-					request,
-				)
-			: undefined;
+	const env = {
+		client: scope.client,
+		sessionId: scope.sessionId,
+		signal: scope.signal,
+		output: scope.output,
+		current: scope.current,
+		onCancelled,
+	};
+	if (request.method === "confirm") {
+		const { approve, decline } = CONFIRM_OPTIONS;
+		const choice = await askPermission(env, {
+			id: request.id,
+			method: "select",
+			title: request.title,
+			options: [approve, decline],
+			permission: { targets: [request.message ?? request.title], allowOnce: approve, rejectOnce: decline },
+		});
+		// No answer (dismissed, aborted, failed) is a cancellation, which the worker's confirm reads as a refusal.
+		await scope.respond(
+			choice === undefined
+				? { type: "extension_ui_response", id: request.id, cancelled: true }
+				: { type: "extension_ui_response", id: request.id, confirmed: choice === approve },
+		);
+		return;
+	}
+	const value = request.method === "select" ? await askPermission(env, request) : undefined;
 	await scope.respond({
 		type: "extension_ui_response",
 		id: request.id,

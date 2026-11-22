@@ -26,7 +26,7 @@ flowchart LR
 
 | Page                                                      | Read it to                                                                      |
 | --------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| [Configuration](configuration.md)                         | Find each file, its precedence and trust; switch anything with `/configuration` |
+| [Configuration](configuration.md)                         | Find each file, its precedence and trust; switch anything with `/settings` |
 | [Settings reference](settings.md)                         | Look up every setting and its default                                           |
 | [Environment variables](environment-variables.md)         | Set behaviour from the environment                                              |
 | [Providers](providers.md)                                 | Connect an AI provider                                                          |

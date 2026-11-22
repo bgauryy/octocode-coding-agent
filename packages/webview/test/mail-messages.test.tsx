@@ -1,7 +1,8 @@
 /** @vitest-environment jsdom */
 import type { ReactNode } from "react";
 import type { ApplicationMessage, ApplicationSnapshot } from "@octocodeai/octocode-contracts";
-import { render } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
+import { render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createBacklogStore } from "../src/app/extension.ts";
 import { ApplicationProjection } from "@octocodeai/octocode-projections";
@@ -77,4 +78,15 @@ it("folds a long body and falls back to the model's text without a batch", () =>
 	expect(long.querySelector("details summary")?.textContent).toContain("2 more lines");
 	expect(long.querySelector(".mail-header")?.textContent).toContain("FYI");
 	expect(show({ details: { other: 1 } }).textContent).toContain("notice for the model");
+});
+
+it("bounds a one-line mail preview and preserves the full body when opened", async () => {
+	const text = "x".repeat(10000);
+	const view = show({ details: { messages: [{ from: "ink", to: "main", text }] } });
+	const fold = view.querySelector<HTMLDetailsElement>(".mail-message details")!;
+	expect(fold.open).toBe(false);
+	expect(fold.querySelector("summary")?.textContent?.length).toBeLessThan(100);
+	expect(fold.querySelector(".mail-body")).toBeNull();
+	await userEvent.click(fold.querySelector("summary")!);
+	await waitFor(() => expect(fold.querySelector(".mail-body")?.textContent).toContain(text));
 });

@@ -1,10 +1,12 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResourceDiagnostic } from "../src/core/diagnostics.ts";
 import { getNativeSkillsDir } from "../src/config.ts";
-import { formatSkillsForPrompt, loadSkills, loadSkillsFromDir, type Skill } from "../src/core/skills.ts";
+import { loadSkills, loadSkillsFromDir, type Skill } from "../src/core/skills.ts";
+import { SkillListing } from "../src/core/skills/listing.ts";
+import { SKILL_SUMMARY_CHARS } from "../src/core/skills/summary.ts";
 import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
 
 const fixturesDir = resolve(__dirname, "fixtures/skills");
@@ -288,70 +290,53 @@ describe("skills", () => {
 		});
 	});
 
-	describe("formatSkillsForPrompt", () => {
-		it("should return empty string for no skills", () => {
-			const result = formatSkillsForPrompt([]);
-			expect(result).toBe("");
+	describe("SkillListing", () => {
+		const entry = (name: string, filePath: string, extra: Partial<Parameters<typeof createTestSkill>[0]> = {}) =>
+			createTestSkill({
+				name,
+				description: `${name} work.`,
+				filePath,
+				baseDir: dirname(filePath),
+				...extra,
+			});
+
+		it("is empty for no skills, and when every skill is the user's alone", () => {
+			expect(SkillListing.fromSkills([]).isEmpty).toBe(true);
+			expect(SkillListing.fromSkills([]).render()).toBe("");
+			const hidden = entry("hidden", "/p/hidden/SKILL.md", { disableModelInvocation: true });
+			expect(SkillListing.fromSkills([hidden]).isEmpty).toBe(true);
 		});
 
-		it("should format skills as XML", () => {
-			const skills: Skill[] = [
-				createTestSkill({
-					name: "test-skill",
-					description: "A test skill.",
-					filePath: "/path/to/skill/SKILL.md",
-					baseDir: "/path/to/skill",
-				}),
-			];
-
-			const result = formatSkillsForPrompt(skills);
-
-			expect(result).toContain("<available_skills>");
-			expect(result).toContain("</available_skills>");
-			// One line per skill: name, the file a file reader loads, and the description as written.
-			expect(result).toContain('  <skill name="test-skill" location="/path/to/skill/SKILL.md">A test skill.</skill>');
+		it("lists a skill as its file and its description as written", () => {
+			const skill = entry("test-skill", "/path/to/skill/SKILL.md", { description: 'A <test> & "skill".' });
+			expect(SkillListing.fromSkills([skill]).render()).toContain('/path/to/skill/SKILL.md: A <test> & "skill".');
 		});
 
-		it("leaves the file path out when the skill tool loads skills by name", () => {
-			const skills: Skill[] = [
-				createTestSkill({
-					name: "test-skill",
-					description: "A test skill.",
-					filePath: "/path/to/skill/SKILL.md",
-					baseDir: "/path/to/skill",
-				}),
-			];
-
-			const result = formatSkillsForPrompt(skills, "skill");
-
-			// The skill tool loads by name and returns the folder, so the entry carries no path.
-			expect(result).toContain('  <skill name="test-skill">A test skill.</skill>');
-			expect(result).not.toContain("/path/to/skill/SKILL.md");
+		it("leaves out the skills only the user may run", () => {
+			const listing = SkillListing.fromSkills([
+				entry("visible", "/p/visible/SKILL.md"),
+				entry("hidden", "/p/hidden/SKILL.md", { disableModelInvocation: true }),
+			]);
+			expect(listing.entries.map((item) => item.name)).toEqual(["visible"]);
+			expect(listing.render()).not.toContain("hidden");
 		});
 
-		it("groups core, Octocode collection, workspace and global skills, in that order, each with name and description", () => {
-			const skill = (name: string, dir: string, source?: string, scope?: "user" | "project") =>
-				createTestSkill({
-					name,
-					description: `${name} work.`,
-					filePath: join(dir, name, "SKILL.md"),
-					baseDir: join(dir, name),
-					source,
-					scope,
-				});
-			const result = formatSkillsForPrompt(
-				[
-					skill("mine", "/home/u/.agents/skills", "auto", "user"),
-					skill("repo-release", "/repo/.octocode/skills", "auto", "project"),
-					skill("octocode-roast", "/opt/octocode/skills", "builtin", "user"),
-					skill("octocode-debugging", getNativeSkillsDir()),
-				],
-				"skill",
-			);
-			const catalog = result.slice(result.indexOf("<available_skills>"));
-			const tags = catalog.split("\n").filter((line) => !line.startsWith("  <skill "));
-			expect(tags).toEqual([
-				"<available_skills>",
+		it("groups core, Octocode collection, workspace and global skills, in that order", () => {
+			const listing = SkillListing.fromSkills([
+				entry("mine", "/home/u/.agents/skills/mine/SKILL.md", { source: "auto", scope: "user" }),
+				entry("repo-release", "/repo/.octocode/skills/repo-release/SKILL.md", { source: "auto", scope: "project" }),
+				entry("octocode-roast", "/opt/octocode/skills/octocode-roast/SKILL.md", { source: "builtin", scope: "user" }),
+				entry("octocode-debugging", join(getNativeSkillsDir(), "octocode-debugging", "SKILL.md")),
+			]);
+			expect(listing.groups.map((group) => group.category)).toEqual(["core", "octocode", "workspace", "global"]);
+			expect(listing.groups.map((group) => group.entries.map((item) => item.name))).toEqual([
+				["octocode-debugging"],
+				["octocode-roast"],
+				["repo-release"],
+				["mine"],
+			]);
+			const text = listing.render();
+			expect(text.split("\n").filter((line) => line.startsWith("<"))).toEqual([
 				"<core_skills>",
 				"</core_skills>",
 				"<octocode_skills>",
@@ -360,117 +345,41 @@ describe("skills", () => {
 				"</workspace_skills>",
 				"<global_skills>",
 				"</global_skills>",
-				"</available_skills>",
 			]);
-			const order = ["octocode-debugging", "octocode-roast", "repo-release", "mine"].map((name) =>
-				catalog.indexOf(`<skill name="${name}">`),
-			);
-			expect(order).toEqual([...order].sort((a, b) => a - b));
-			expect(catalog).toContain('<workspace_skills>\n  <skill name="repo-release">repo-release work.</skill>');
 			// An empty group is left out.
-			expect(formatSkillsForPrompt([skill("mine", "/home/u/.agents/skills")], "skill")).not.toMatch(
+			expect(SkillListing.fromSkills([entry("mine", "/home/u/.agents/skills/mine/SKILL.md")]).render()).not.toMatch(
 				/<core_skills>|<workspace_skills>/,
 			);
 		});
 
-		it("should escape XML special characters", () => {
-			const skills: Skill[] = [
-				createTestSkill({
-					name: "test-skill",
-					description: 'A skill with <special> & "characters".',
-					filePath: "/path/to/skill/SKILL.md",
-					baseDir: "/path/to/skill",
-				}),
-			];
-
-			const result = formatSkillsForPrompt(skills);
-
-			expect(result).toContain("&lt;special&gt;");
-			expect(result).toContain("&amp;");
-			expect(result).toContain("&quot;characters&quot;");
+		it("states a bundled group's shared folder once and lists its skills relative to it; the full path and the name still load", () => {
+			const one = join(getNativeSkillsDir(), "octocode-debugging", "SKILL.md");
+			const two = join(getNativeSkillsDir(), "octocode-memory", "SKILL.md");
+			const listing = SkillListing.fromSkills([
+				entry("octocode-debugging", one, { description: "Debug." }),
+				entry("octocode-memory", two, { description: "Remember." }),
+				entry("mine", "/home/u/.agents/skills/mine/SKILL.md", { description: "Mine." }),
+				entry("theirs", "/home/u/.agents/skills/theirs/SKILL.md", { description: "Theirs." }),
+			]);
+			const text = listing.render();
+			expect(text).toContain(`<core_skills>\nroot: ${getNativeSkillsDir()}\n`);
+			expect(text).toContain("octocode-debugging/SKILL.md: Debug.");
+			expect(text).not.toContain(`${one}:`);
+			// Workspace and global skills keep their full paths.
+			expect(text).toContain("/home/u/.agents/skills/mine/SKILL.md: Mine.");
+			expect(text).not.toContain("root: /home");
+			for (const reference of ["octocode-debugging/SKILL.md", one, "octocode-debugging"])
+				expect(listing.find(reference)?.name).toBe("octocode-debugging");
 		});
 
-		it("should format multiple skills", () => {
-			const skills: Skill[] = [
-				createTestSkill({
-					name: "skill-one",
-					description: "First skill.",
-					filePath: "/path/one/SKILL.md",
-					baseDir: "/path/one",
-				}),
-				createTestSkill({
-					name: "skill-two",
-					description: "Second skill.",
-					filePath: "/path/two/SKILL.md",
-					baseDir: "/path/two",
-				}),
-			];
-
-			const result = formatSkillsForPrompt(skills);
-
-			expect(result).toContain('<skill name="skill-one" location="/path/one/SKILL.md">First skill.</skill>');
-			expect(result).toContain('<skill name="skill-two" location="/path/two/SKILL.md">Second skill.</skill>');
-			expect((result.match(/<skill /g) ?? []).length).toBe(2);
-		});
-
-		it("should exclude skills with disableModelInvocation from prompt", () => {
-			const skills: Skill[] = [
-				createTestSkill({
-					name: "visible-skill",
-					description: "A visible skill.",
-					filePath: "/path/visible/SKILL.md",
-					baseDir: "/path/visible",
-				}),
-				createTestSkill({
-					name: "hidden-skill",
-					description: "A hidden skill.",
-					filePath: "/path/hidden/SKILL.md",
-					baseDir: "/path/hidden",
-					disableModelInvocation: true,
-				}),
-			];
-
-			const result = formatSkillsForPrompt(skills);
-
-			expect(result).toContain('<skill name="visible-skill"');
-			expect(result).not.toContain("hidden-skill");
-			expect((result.match(/<skill /g) ?? []).length).toBe(1);
-		});
-
-		it("should return empty string when all skills have disableModelInvocation", () => {
-			const skills: Skill[] = [
-				createTestSkill({
-					name: "hidden-skill",
-					description: "A hidden skill.",
-					filePath: "/path/hidden/SKILL.md",
-					baseDir: "/path/hidden",
-					disableModelInvocation: true,
-				}),
-			];
-
-			const result = formatSkillsForPrompt(skills);
-			expect(result).toBe("");
-		});
-
-		describe("full catalog", () => {
-			const many = (count: number, description = "d".repeat(200)) =>
-				Array.from({ length: count }, (_, index) =>
-					createTestSkill({
-						name: `skill-${index}`,
-						description,
-						filePath: `/s/skill-${index}/SKILL.md`,
-						baseDir: `/s/skill-${index}`,
-					}),
-				);
-
-			it("lists every skill with its full description, however many", () => {
-				const result = formatSkillsForPrompt(many(500, "d".repeat(2000)), "bash");
-				expect((result.match(/<skill /g) ?? []).length).toBe(500);
-				expect(result).toContain(
-					`<skill name="skill-499" location="/s/skill-499/SKILL.md">${"d".repeat(2000)}</skill>`,
-				);
-				expect(result).not.toMatch(/outside the XML list|without a description|…/);
-			});
+		it("lists every skill with a bounded summary of its description, however many", () => {
+			const skills = Array.from({ length: 500 }, (_, index) =>
+				entry(`skill-${index}`, `/s/skill-${index}/SKILL.md`, { description: "d".repeat(2000) }),
+			);
+			const listing = SkillListing.fromSkills(skills);
+			expect(listing.entries).toHaveLength(500);
+			expect(listing.render()).toContain(`/s/skill-499/SKILL.md: ${"d".repeat(SKILL_SUMMARY_CHARS)}`);
+			expect(listing.render()).not.toMatch(/…/);
 		});
 	});
 

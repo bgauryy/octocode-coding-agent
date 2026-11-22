@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import * as importedModule1 from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import { INTERNAL_MESSAGE_TYPE, USER_SENDER } from "../../src/octocode/shared/messages.ts";
 import { LEASE_IDLE_MS } from "../../src/octocode/team/held.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
@@ -335,7 +336,10 @@ describe("delivery acknowledgement", () => {
 		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1), { timeout: 3_000 });
 		b.team.leave(); // killed before Octocode drained its steering queue
 		await vi.waitFor(
-			() => expect(a.sent.some((entry) => String(entry.message.content).startsWith(`Message #${id} to `))).toBe(true),
+			() =>
+				expect(
+					a.sent.some((entry) => withoutSourceHeader(String(entry.message.content)).startsWith(`Message #${id} to `)),
+				).toBe(true),
 			{ timeout: 8_000 },
 		);
 	}, 10_000);
@@ -495,7 +499,9 @@ describe("dead letters", () => {
 		await vi.waitFor(
 			() =>
 				expect(
-					a.sent.some((entry) => String(entry.message.content).startsWith(`Message #${id} to ${b.team.id ?? ""}`)),
+					a.sent.some((entry) =>
+						withoutSourceHeader(String(entry.message.content)).startsWith(`Message #${id} to ${b.team.id ?? ""}`),
+					),
 				).toBe(true),
 			{ timeout: 8_000 },
 		);
@@ -641,7 +647,9 @@ describe("headless subagent exit", () => {
 		await vi.waitFor(
 			() =>
 				expect(
-					parent.sent.some((entry) => String(entry.message.content).startsWith(`Message #${id} to general-333333`)),
+					parent.sent.some((entry) =>
+						withoutSourceHeader(String(entry.message.content)).startsWith(`Message #${id} to general-333333`),
+					),
 				).toBe(true),
 			{ timeout: 8_000 },
 		);

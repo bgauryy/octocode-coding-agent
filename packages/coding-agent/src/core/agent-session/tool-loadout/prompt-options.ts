@@ -25,7 +25,6 @@ export function buildBaseSystemPromptOptions(
 		cwd: host.cwd,
 		// Every harness, on or off, for the prompt's harness line (cached per discovery pass and toggles).
 		harnesses: sessionHarnesses({ cwd: host.cwd, settings: host.session.settingsManager }),
-		skills: resourceLoader.getSkills().skills,
 		contextFiles: resourceLoader.getAgentsFiles().agentsFiles,
 		customPrompt: resourceLoader.getSystemPrompt(),
 		appendSystemPrompt: loaderAppendSystemPrompt.length > 0 ? loaderAppendSystemPrompt.join("\n\n") : "",

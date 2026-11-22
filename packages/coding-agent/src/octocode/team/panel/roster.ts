@@ -3,6 +3,49 @@ import { memberWorktree } from "../../worktree-paths/member-worktree.ts";
 import { FINISHED_MS, type Finished } from "./compact.ts";
 import { type Need, type PanelEntry, panelState } from "./state.ts";
 
+/** Lower is more urgent: what waits for the user, then failures, then working, idle, and the rest that finished. */
+function rank(entry: PanelEntry, now: number): number {
+	switch (panelState(entry, now).label) {
+		case "needs you":
+		case "asks parent":
+		case "blocked":
+			return 0;
+		case "failed":
+			return 1;
+		case "working":
+			return 2;
+		case "idle":
+			return 3;
+		default:
+			return 4;
+	}
+}
+
+/**
+ * The rows a panel too short for every agent keeps: the `limit` most urgent branches (an agent that needs the user, or
+ * has a child that does, first), shown in the tree's own order so no row moves. A parent is never less urgent than
+ * its children and precedes them, so a kept child always keeps its parent.
+ */
+export function keepRows(tree: PanelEntry[], limit: number, now: number): PanelEntry[] {
+	if (tree.length <= limit) return tree;
+	const urgency = tree.map((entry) => rank(entry, now));
+	// Preorder with depths: fold each row's urgency into its ancestors, the open rows of shallower depth.
+	const branch = [...urgency];
+	const stack: number[] = [];
+	for (let i = 0; i < tree.length; i++) {
+		while (stack.length > tree[i].depth) stack.pop();
+		stack.push(i);
+		for (const ancestor of stack) branch[ancestor] = Math.min(branch[ancestor], urgency[i]);
+	}
+	const keep = new Set(
+		tree
+			.map((_, index) => index)
+			.sort((a, b) => branch[a] - branch[b] || a - b)
+			.slice(0, limit),
+	);
+	return tree.filter((_, index) => keep.has(index));
+}
+
 /** An agent whose heartbeat (every 5 s) stopped this long ago is killed or hung: it leaves the panel. */
 const UNRESPONSIVE_MS = 15_000;
 
@@ -34,33 +77,14 @@ export function descendants(members: Member[], selfId: string | undefined): Memb
 	return result.sort((a, b) => a.pass - b.pass || a.index - b.index).map((entry) => entry.member);
 }
 
-/** Lower sorts first: what waits for the user, then failures, then working, idle, and the rest that finished. */
-function rank(entry: PanelEntry, now: number): number {
-	switch (panelState(entry, now).label) {
-		case "needs you":
-		case "asks parent":
-		case "blocked":
-			return 0;
-		case "failed":
-			return 1;
-		case "working":
-			return 2;
-		case "idle":
-			return 3;
-		default:
-			return 4;
-	}
-}
-
 /**
- * Parents before their children, each with its depth under this session. Siblings sort by the most urgent row in their
- * branch, so an agent that needs the user (or one of its children does) comes first, then failures, working, idle and
- * finished ones.
+ * Parents before their children, each with its depth under this session. Siblings keep the order they started in: a
+ * row never moves when an agent changes state, waits, finishes or lingers, so the eye can follow it. The marks and the
+ * header count say which agent needs attention.
  */
 function treeOrder(
 	members: Member[],
 	selfId: string,
-	now: number,
 	extras: (member: Member) => Omit<PanelEntry, "member" | "depth">,
 ): PanelEntry[] {
 	const children = new Map<string, Member[]>();
@@ -79,17 +103,10 @@ function treeOrder(
 		for (const child of [...(children.get(member.id) ?? [])].reverse())
 			pending.push({ member: child, depth: depth + 1 });
 	}
-	const urgency = new Map([...entries].map(([id, entry]) => [id, rank(entry, now)]));
-	// Children were discovered after parents. Folding backwards gives each branch its most urgent descendant.
-	for (const entry of [...entries.values()].reverse()) {
-		const parent = entry.member.parentId;
-		if (parent && parent !== selfId && urgency.has(parent))
-			urgency.set(parent, Math.min(urgency.get(parent)!, urgency.get(entry.member.id)!));
-	}
 	const ordered = (parent: string): Member[] =>
 		(children.get(parent) ?? [])
 			.filter((member) => entries.get(member.id)?.member === member)
-			.sort((a, b) => urgency.get(a.id)! - urgency.get(b.id)! || a.joinedAt - b.joinedAt);
+			.sort((a, b) => a.joinedAt - b.joinedAt);
 	const out: PanelEntry[] = [];
 	const visited = new Set([selfId]);
 	const stack = ordered(selfId).reverse();
@@ -166,5 +183,5 @@ export function roster(
 			...(folder ? { isolated: { folder } } : {}),
 		};
 	};
-	return { others, tree: selfId ? treeOrder(others, selfId, now, extras) : [], doneAt };
+	return { others, tree: selfId ? treeOrder(others, selfId, extras) : [], doneAt };
 }

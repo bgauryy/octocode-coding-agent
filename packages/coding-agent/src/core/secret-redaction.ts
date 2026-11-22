@@ -10,6 +10,9 @@ import { redactSecrets, registerSecretValue } from "@octocodeai/octocode-common/
 /** Header and environment names that carry a credential; other values (content types, account ids) stay readable in errors. */
 const SECRET_NAME = /auth|key|token|secret|password|passwd|cookie|credential|session/iu;
 
+/** Whether a header or environment variable of this name holds a credential. */
+export const isSecretName = (name: string): boolean => SECRET_NAME.test(name);
+
 /**
  * Makes provider error text (session history, `output.errorMessage`, OAuth and image errors) pass through `redactSecrets`.
  * Called where every `ModelRuntime` loads, so interactive, print, RPC, SDK and subagent-child sessions all share it.
@@ -30,7 +33,7 @@ export function registerResolvedSecret(value: string | undefined): void {
 /** Registers the entries of `values` whose name says they hold a credential. */
 export function registerNamedSecrets(values: Readonly<Record<string, unknown>> | undefined): void {
 	for (const [name, value] of Object.entries(values ?? {})) {
-		if (typeof value === "string" && SECRET_NAME.test(name)) registerResolvedSecret(value);
+		if (typeof value === "string" && isSecretName(name)) registerResolvedSecret(value);
 	}
 }
 

@@ -10,12 +10,20 @@ import { stopRowTimers } from "./render/rows.ts";
 import { interactive } from "./shared/interactive.ts";
 import { contentText, MINUTE_MS, settleWithin } from "./shared/util.ts";
 import { reportStatus } from "./subagents/report-outcome.ts";
+import { JOB_TYPE } from "./shared/messages.ts";
 import { holdFailedRun } from "./held-failure.ts";
 import { registerWakeRetry } from "./wake-retry.ts";
 import { callSmallModel, smallModelLabel } from "./subagents/small-call.ts";
+import { asyncJobsFor } from "./jobs/registry.ts";
 import { registerTimers } from "./timer/register.ts";
 import { CHILD_JOB_HOLD_MS, holdForOwnJobs, JOB_HOLD_TYPE } from "./files/bash/child-hold.ts";
-import type { BashJob } from "./files/bash-jobs/types.ts";
+import type { HeldJob } from "./files/bash-jobs.ts";
+
+/** A job report recorded after the child's last answer: the answer was written before the child could read it. */
+const unreadJobReport = (context: readonly { role: string; customType?: string }[]) => {
+	const answered = context.findLastIndex((message) => message.role === "assistant");
+	return context.slice(answered + 1).some((message) => message.role === "custom" && message.customType === JOB_TYPE);
+};
 
 export function registerNativeSessionLifecycle(
 	api: FeatureSetup,
@@ -35,7 +43,7 @@ export function registerNativeSessionLifecycle(
 ): void {
 	const { isSubagent, team, permission, jobs, agents, external, api: externalApi } = options;
 	/** A subagent's jobs it was already told outlasted the hold: answering again leaves them to be stopped. */
-	const warnedJobs = new WeakSet<BashJob>();
+	const warnedJobs = new WeakSet<HeldJob>();
 	registerWakeRetry(api, isSubagent);
 	// Every session, children included, owns its timers; a headless run's hold below waits for the next wake.
 	const timers = registerTimers(api, {
@@ -43,6 +51,15 @@ export function registerNativeSessionLifecycle(
 		agent: () => team.id,
 		small: { call: callSmallModel, label: smallModelLabel },
 		isSubagent,
+		jobs: (ctx) => [
+			...asyncJobsFor(ctx.sessionManager)
+				.running()
+				.map(({ id }) => ({ id })),
+			...[...jobs.jobs.values()]
+				.filter((job) => !job.exited)
+				.map(({ id, pid, log, command }) => ({ id, pid, log, command })),
+			...jobs.joined.values(),
+		],
 		...(options.commands ? { commands: options.commands } : {}),
 	});
 	/** Whether this run already held for a report after a failure (`held-failure.ts`). */
@@ -91,6 +108,9 @@ export function registerNativeSessionLifecycle(
 				const holds = await holdForOwnJobs(jobs, warnedJobs, notify, stop, holdMs, reported);
 				await Promise.all(notes);
 				if (holds) return { continue: true };
+				// A job that ended during the answer's own model call was reported behind the answer (a child's job
+				// reports start no turn): unless the answer is a report, the child reads it in one more turn.
+				if (!reported && unreadJobReport(event.context.contextMessages)) return { continue: true };
 				// The report ends the child's work: a wait it set would only wake it for a turn nobody reads.
 				if (reported) timers.endOwn();
 			} finally {

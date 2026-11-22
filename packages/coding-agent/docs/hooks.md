@@ -50,7 +50,7 @@ Hooks are on in every main session; no flag switches them. Each file is read wit
 
    The script reads the event JSON on stdin. Exit 2 with a reason on stderr denies the call. Add `"failClosed": true` to deny when the script crashes or times out; otherwise such failures let the call through.
 
-2. Run `/reload` (a project file needs a trusted folder: `/trust` it first if it is not; user-level files need no trust) and check `/harness hooks`: each loaded command with its source file, profile, timing (runs, failed runs such as a timeout, crash or `mcp_tool` call to a missing server, average, maximum) and diagnostics. `/harness hooks events` lists events and handler types. Both only inspect; switch hooks with `/configuration enable|disable hook:<id>` (`/configuration list hook` shows IDs). The startup Hooks row counts files that define at least one hook.
+2. Run `/reload` (a project file needs a trusted folder: `/trust` it first if it is not; user-level files need no trust) and check `/harness hooks`: each loaded command with its source file, profile, timing (runs, failed runs such as a timeout, crash or `mcp_tool` call to a missing server, average, maximum) and diagnostics. `/harness hooks events` lists events and handler types. Both only inspect; switch hooks with `/settings enable|disable hook:<id>` (`/settings list hook` shows IDs). The startup Hooks row counts files that define at least one hook.
 
 ### Editor schema and test runs
 
@@ -61,7 +61,7 @@ Hooks are on in every main session; no flag switches them. Each file is read wit
 
 A tool event takes the tool name and its input as JSON: `/harness hooks test PreToolUse bash {"command":"rm -rf x"}`. Other events take the matcher value (for example `startup`) and extra input fields as JSON. The command prints which hooks ran and what they answered (block, ask, context, input rewrite, error). The hooks really run, so a hook with side effects has them; the agent never sees the result, and an event with no matching hook says so.
 
-Hooks you configured for Claude Code or Codex load from their usual files once that harness is on ([Discovery](#discovery)). To turn every hook off set `"disableAllHooks": true` in any loaded hook file. To turn off one host, file or hook without editing it, use `/configuration` ([plugins](plugins.md#inspect-and-switch)). The [Claude permission rules](permissions.md#claude-permission-rules) from the same settings files always apply.
+Hooks you configured for Claude Code or Codex load from their usual files once that harness is on ([Discovery](#discovery)). To turn every hook off set `"disableAllHooks": true` in any loaded hook file. To turn off one host, file or hook without editing it, use `/settings` ([plugins](plugins.md#inspect-and-switch)). The [Claude permission rules](permissions.md#claude-permission-rules) from the same settings files always apply.
 
 An agent sees which hooks may act on its calls in the `hooks` section of its prompt: one line per event and tool matcher, never a command, URL or prompt, and absent without a hook. A subagent runs none of your hooks unless its profile or the coordinator's task turns them on ([hooks in subagents](#hooks-in-subagents)).
 
@@ -203,7 +203,7 @@ Source-profile PreToolUse `updatedInput` replaces Bash and generic tool argument
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Bash   | Claude timeout in milliseconds maps to native seconds, `run_in_background` to `background`; advisory `description` is kept; a nonempty replacement drops omitted options; negative timeouts are rejected. Codex `tool_input` is only `command`; a rewrite changes that string and keeps native timeout and background options. |
 | `file` | Claude Write, Edit and MultiEdit projections reverse into native queries and the whole batch is validated; `replace_all` maps to `edits[].replaceAll`. Codex patch rewrites use [canonical patch mode](native-features.md#canonical-patch-mode).                                                                               |
-| `wait` | A wait on `check.result` reaches PreToolUse as the `bash` call its command runs (`Bash` matcher; deny or ask apply, a rewrite is refused). A wait without one keeps its own name.                                                                                                                                              |
+| `notify` | A wait on `check.result` reaches PreToolUse as the `bash` call its command runs (`Bash` matcher; deny or ask apply, a rewrite is refused). A wait without one keeps its own name.                                                                                                                                              |
 
 Host timeout defaults and background lifetime stay native.
 
@@ -379,7 +379,7 @@ What each answer does in the `decisions` mode:
 | A hook with `async` or `asyncRewake`                                                                           | Not started: a background hook decides nothing                                                                                                 | Runs    |
 | Every other event (`Stop`, `SubagentStop`, `SessionStart`, `PostToolUse`, `Notification`, message hooks, etc.) | Does not run                                                                                                                                   | Runs    |
 
-A `PermissionRequest` hook runs only when a call needs an approval, as in the main session: a call the subagent's permission mode or its spawn approval already allows asks nothing, so use a `PreToolUse` hook for a rule that must hold on every call. The `off` and `decisions` modes add no `hooks` section to the subagent's prompt; a refusal names the hook's reason. `"disableAllHooks": true` and the `/configuration` switches turn these hooks off in subagents as they do in the main session.
+A `PermissionRequest` hook runs only when a call needs an approval, as in the main session: a call the subagent's permission mode or its spawn approval already allows asks nothing, so use a `PreToolUse` hook for a rule that must hold on every call. The `off` and `decisions` modes add no `hooks` section to the subagent's prompt; a refusal names the hook's reason. `"disableAllHooks": true` and the `/settings` switches turn these hooks off in subagents as they do in the main session.
 
 ### Child agents
 

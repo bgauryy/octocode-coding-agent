@@ -153,7 +153,7 @@ describe("orderToolNames", () => {
 		).toEqual(["bash", "read", "mcp__a__x", "mcp__a__y", "mcp__b__x"]);
 	});
 
-	it("declares role-invariant tools first and role-variant tools last, whatever order they arrive in", () => {
+	it("declares role-invariant tools first and role-variant tools last, with skill at the very end, whatever order they arrive in", () => {
 		const invariant = ["bash", "file", "web", "mcp"];
 		const variant = ["backlog", "backlogPlan", "archive", "memory", "askUser", "agent", "skill", "models", "compact"];
 		const octocode = research;
@@ -166,7 +166,8 @@ describe("orderToolNames", () => {
 				...invariant,
 				...octocode,
 				"mcp__a__x",
-				...variant,
+				...variant.filter((name) => name !== "skill"),
+				"skill",
 			]);
 	});
 

@@ -124,7 +124,7 @@ const SECRET_ASSIGNMENT_NAME = "(?:password|passwd|secret(?:[_-](?:access[_-])?k
 const SECRET_ASSIGNMENT = `(?<![A-Za-z0-9])${SECRET_ASSIGNMENT_NAME}["']?\\s*`;
 const PRIVATE_KEY_BLOCK = /-----BEGIN ([A-Z ]*PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)/;
 const PRIVATE_KEY_BLOCKS = new RegExp(PRIVATE_KEY_BLOCK.source, "g");
-const SECRET_PATTERNS: Array<[RegExp, string]> = [
+const SECRET_PATTERNS: Array<[RegExp, string, RegExp?]> = [
 	[PRIVATE_KEY_BLOCK, "a private key"],
 	[/\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/, "an AWS access key id"],
 	[/\bghp_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{30,}|\bgh[ousr]_[A-Za-z0-9]{30,}/, "a GitHub token"],
@@ -148,12 +148,14 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
 	[
 		new RegExp(`${SECRET_ASSIGNMENT}[:=]\\s*['"]?(?=[^\\s'"(){}<>,;$]{0,255}\\d)[^\\s'"(){}<>,;$]{8,}`, "i"),
 		"a password or key assignment",
+		/\d/,
 	],
 	[/\bBearer\s+[A-Za-z0-9._~+/-]{20,}/, "a bearer token"],
 ];
 
 /** Each pattern once, with its global twin for replacing: built at load, not on every call. */
-const SECRETS = SECRET_PATTERNS.map(([pattern, what]) => ({
+const SECRETS = SECRET_PATTERNS.map(([pattern, what, requires]) => ({
+	requires,
 	pattern,
 	what,
 	all: new RegExp(pattern.source, `${pattern.flags}g`),
@@ -223,7 +225,10 @@ export function unfinishedPrivateKey(text: string): string | undefined {
 export function redactSecretFragments(fragments: readonly string[]): string[] {
 	const text = fragments.join("");
 	const registered = registeredValuePattern();
-	const ranges = [...SECRETS.map(({ all }) => all), ...(registered ? [registered] : [])]
+	const ranges = [
+		...SECRETS.filter(({ requires }) => !requires || requires.test(text)).map(({ all }) => all),
+		...(registered ? [registered] : []),
+	]
 		.flatMap((all) =>
 			Array.from(text.matchAll(all), (match) => ({ start: match.index, end: match.index + match[0].length })),
 		)
@@ -256,7 +261,7 @@ export function redactSecretFragments(fragments: readonly string[]): string[] {
 
 /** Why `text` must not be stored (it looks like it holds a credential), or undefined when it looks clean. */
 export function secretProblem(text: string): string | undefined {
-	const hit = SECRETS.find(({ pattern }) => pattern.test(text));
+	const hit = SECRETS.find(({ pattern, requires }) => (!requires || requires.test(text)) && pattern.test(text));
 	return hit
 		? `it looks like it contains ${hit.what}; never store secrets — refer to where the secret lives instead`
 		: undefined;
@@ -285,7 +290,10 @@ export function storedSecret(
 export function redactSecrets(text: string): string {
 	const registered = registeredValuePattern();
 	const exact = registered ? text.replace(registered, "[redacted]") : text;
-	return SECRETS.reduce((out, { all }) => out.replace(all, "[redacted]"), exact);
+	return SECRETS.reduce(
+		(out, { all, requires }) => (requires && !requires.test(out) ? out : out.replace(all, "[redacted]")),
+		exact,
+	);
 }
 
 /** Apply the same credential policy to JSON evidence without changing its field names or shape. */

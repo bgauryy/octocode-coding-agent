@@ -38,8 +38,3 @@ export function isBundledSkill(skill: Parameters<typeof skillCategory>[0]): bool
 	const category = skillCategory(skill);
 	return category === "core" || category === "octocode";
 }
-
-/** The skills in category order, keeping their order within a category. */
-export function sortByCategory<T>(items: readonly T[], category: (item: T) => SkillCategory): T[] {
-	return SKILL_CATEGORIES.flatMap((wanted) => items.filter((item) => category(item) === wanted));
-}

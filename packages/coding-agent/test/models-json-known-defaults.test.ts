@@ -166,8 +166,10 @@ describe("models.json entries that name a known model", () => {
 		}
 	});
 
-	test("an entry on a built-in provider layers over the built-in model of that id", async () => {
-		const registry = await registryFor({ anthropic: { models: [{ id: "claude-opus-5-5", contextWindow: 500000 }] } });
+	test("a modelOverrides entry on an official provider layers limits over the built-in model", async () => {
+		const registry = await registryFor({
+			anthropic: { modelOverrides: { "claude-opus-5-5": { contextWindow: 500000 } } },
+		});
 		const model = registry.find("anthropic", "claude-opus-5-5")!;
 		const known = builtin("anthropic", "claude-opus-5-5");
 		expect(model.contextWindow).toBe(500000);

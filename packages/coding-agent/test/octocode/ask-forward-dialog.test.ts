@@ -14,7 +14,8 @@ it("keeps the child's verbatim question above the parent's in the remote dialog 
 		},
 	]);
 	const remote = remoteAnswer(questions)?.remote;
-	expect(remote?.title).toBe(question);
-	expect(remote?.ask?.question).toBe(question);
-	expect(remote?.ask?.body).toBeUndefined();
+	if (!remote || !("ask" in remote)) throw new Error("a lone question is answered by choice or text");
+	expect(remote.title).toBe(question);
+	expect(remote.ask?.question).toBe(question);
+	expect(remote.ask?.body).toBeUndefined();
 });

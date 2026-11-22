@@ -1,6 +1,6 @@
-import { visibleWidth } from "@octocodeai/octocode-tui";
+import { animationClock, visibleWidth } from "@octocodeai/octocode-tui";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
 import { initTheme, theme as liveTheme } from "../../src/theme/theme.ts";
 import { theme } from "./fake-host.ts";
@@ -59,6 +59,9 @@ const separators = (line: string) => {
 
 describe("agents panel rows", () => {
 	beforeAll(() => initTheme("dark"));
+	// Reduced motion pins a running light to its first frame, ◒.
+	beforeEach(() => animationClock.setReducedMotion(true));
+	afterEach(() => animationClock.setReducedMotion(false));
 
 	it("roots the tree at this session: name, mark, role and clock in the grid's columns, with no cost and no tally", () => {
 		const lines = widgetLines(team, "tidal-whale", NOW, theme, 200);
@@ -71,7 +74,7 @@ describe("agents panel rows", () => {
 	it("shows who, role, spend, goal and action on the row; model, tokens, cache, tools and locks on the open detail line", () => {
 		const lines = widgetLines(team, "tidal-whale", NOW, theme, 200);
 		expect(rowOf(lines, "inky-kraken")).toBe(
-			" ├ ⏺ inky-kraken  · researcher · Checking vision routing refusal                  › localSearch vision_route                                                         46.1k tok 74% cached · ≈$0.41 4m49s",
+			" ├ ◒ inky-kraken  · researcher · Checking vision routing refusal                  › localSearch vision_route                                                         46.1k tok 74% cached · ≈$0.41 4m49s",
 		);
 		expect(rowOf(lines, "plucky-otter")).toContain(
 			"Checking timeout handling in serve_client.rs ✉ 1 › localFetch serve_client.rs",
@@ -121,8 +124,8 @@ describe("agents panel rows", () => {
 	it("draws the tree: ├ for a child with later siblings, └ for the last, │ continuing beside a grandchild", () => {
 		const nested = [...team, agent("zesty-eel", "general", { parentId: "inky-kraken", goal: "Read routing.rs" })];
 		const lines = widgetLines(nested, "tidal-whale", NOW, theme, 200);
-		expect(rowOf(lines, "inky-kraken")).toMatch(/^ ├ ⏺ inky-kraken/);
-		expect(rowOf(lines, "zesty-eel")).toMatch(/^ │ └ ⏺ zesty-eel/);
+		expect(rowOf(lines, "inky-kraken")).toMatch(/^ ├ ◒ inky-kraken/);
+		expect(rowOf(lines, "zesty-eel")).toMatch(/^ │ └ ◒ zesty-eel/);
 		expect(rowOf(lines, "brave-squid")).toMatch(/^ └ ⏺ brave-squid/);
 		expect(lines.join("\n")).not.toContain("🐙");
 	});

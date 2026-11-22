@@ -185,6 +185,30 @@ describe("click to expand", () => {
 		expect(click(short, 2, short.render(WIDTH).length)).toBe(false);
 	});
 
+	test("a system event discloses its route and payload only when opened", () => {
+		const entry = {
+			...wakeEntry,
+			data: {
+				events: [
+					{
+						kind: "job.exit",
+						label: "Build completed",
+						from: "job build",
+						data: { exit: 0, durationMs: 1400 },
+					},
+				],
+			},
+		};
+		const row = new CustomEntryComponent(entry, wakeRenderer!);
+		const preview = row.render(30).join("\n");
+		expect(preview).toContain("Build completed");
+		expect(preview).not.toContain("durationMs");
+		row.setExpanded(true);
+		const details = stripAnsi(row.render(60).join("\n"));
+		expect(details).toContain("job.exit · job build → this session");
+		expect(details).toContain('"durationMs": 1400');
+	});
+
 	test("a wake row opens on a left click while ctrl+o state of other rows is untouched", () => {
 		const first = wakeRenderer!(wakeEntry, { expanded: false }, { fg: (_c: string, t: string) => t } as never)!;
 		const second = wakeRenderer!(wakeEntry, { expanded: false }, { fg: (_c: string, t: string) => t } as never)!;

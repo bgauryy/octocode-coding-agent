@@ -137,6 +137,8 @@ describe("nested AGENTS.md on read", () => {
 			fs.writeFileSync(path.join(root, name, "f.ts"), "f\n");
 		}
 		expect(text(await bashCat(path.join(root, "b", "f.ts")))).toContain("Brrr");
-		expect(await bashCat(path.join(root, "c", "f.ts"))).toBeUndefined();
+		const withheld = text(await bashCat(path.join(root, "c", "f.ts")));
+		expect(withheld).not.toContain("Crrr");
+		expect(withheld).toContain(path.join(root, "c", "AGENTS.md"));
 	});
 });

@@ -16,6 +16,7 @@ import { createPromptEvaluator, interpretPromptHook } from "../prompt.ts";
 import { boundMcpHookCaller } from "../mcp-gate.ts";
 import { hookPayload } from "../profiles.ts";
 import { conflictingRewrites, decisionOnly, firstRewrite, reducePermission } from "../verdicts.ts";
+import { subscribedDispatch } from "./subscribed.ts";
 import { capContext, CLAUDE_HOOK_CONTEXT_MAX, claudeJsonRun, failureOf, interpret, runHook } from "../runner.ts";
 import {
 	type Dispatch,
@@ -355,7 +356,7 @@ export function createDispatcher(
 		}
 	};
 
-	const dispatch: Dispatch = async (ctx, event, names, input, requested, protocol, hookFilter) => {
+	const direct: Dispatch = async (ctx, event, names, input, requested, protocol, hookFilter) => {
 		const signal = requested ?? ctx.signal;
 		if (paused?.()) return {};
 		const combined = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
@@ -367,6 +368,8 @@ export function createDispatcher(
 			active.delete(work);
 		}
 	};
+	// With `runtime.eventLoop: new` each run with a configured hook starts from its `hook.<Event>` subscription.
+	const dispatch = subscribedDispatch(api, session, direct);
 	return {
 		dispatch,
 		reportFailure,

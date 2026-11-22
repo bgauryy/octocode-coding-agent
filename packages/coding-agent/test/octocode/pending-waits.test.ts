@@ -29,8 +29,8 @@ function setup() {
 	const state = newChildState();
 	const apply = (event: Record<string, unknown>) => reduceEvent(state, event, limits, 100_000);
 	const timer = (id: number) => {
-		apply(start("wait", timerArgs, `timer-${id}`));
-		apply(end("wait", timerArgs, `timer-${id}`, { timer: { id, kind: "every", status: "active" } }));
+		apply(start("notify", timerArgs, `timer-${id}`));
+		apply(end("notify", timerArgs, `timer-${id}`, { timer: { id, kind: "every", status: "active" } }));
 	};
 	const message = () => {
 		apply(start("agent", messageArgs, "send-1"));
@@ -251,22 +251,22 @@ describe("a child's pending work identities", () => {
 		timer(1);
 		timer(2);
 		const cancel = { op: "off", id: 1 };
-		apply(start("wait", cancel, "cancel-failed"));
-		apply(end("wait", cancel, "cancel-failed", {}, true));
+		apply(start("notify", cancel, "cancel-failed"));
+		apply(end("notify", cancel, "cancel-failed", {}, true));
 		expect(state.waits).toBe(3);
-		apply(start("wait", cancel, "cancel-1"));
-		apply(end("wait", cancel, "cancel-1", { timer: { id: 1, status: "cancelled" } }));
+		apply(start("notify", cancel, "cancel-1"));
+		apply(end("notify", cancel, "cancel-1", { timer: { id: 1, status: "cancelled" } }));
 		expect(state.waits).toBe(2);
-		apply(start("wait", { op: "off", all: true }, "cancel-all"));
-		apply(end("wait", { op: "off", all: true }, "cancel-all", { shown: 1 }));
+		apply(start("notify", { op: "off", all: true }, "cancel-all"));
+		apply(end("notify", { op: "off", all: true }, "cancel-all", { shown: 1 }));
 		expect(state.waits).toBe(1);
 		expect(state.replies).toHaveLength(1);
 		expect(state.waitInputs.size).toBe(0);
 	});
 
-	it.each(["wait", "agent"])("drops a failed %s wait with the real argument-free RPC result", (tool) => {
+	it.each(["notify", "agent"])("drops a failed %s wait with the real argument-free RPC result", (tool) => {
 		const { state, apply } = setup();
-		const args = tool === "wait" ? timerArgs : messageArgs;
+		const args = tool === "notify" ? timerArgs : messageArgs;
 		apply(start(tool, args, "failed"));
 		expect(state.waits).toBe(1);
 		apply(end(tool, args, "failed", {}, true));
@@ -277,7 +277,7 @@ describe("a child's pending work identities", () => {
 	it("an unpaired failure or unknown notice cannot settle another call", () => {
 		const { state, apply, timer } = setup();
 		timer(1);
-		apply(end("wait", timerArgs, "never-started", {}, true));
+		apply(end("notify", timerArgs, "never-started", {}, true));
 		apply(notice(TIMER_TYPE, { status: "finished" }));
 		apply(notice(JOB_TYPE, {}));
 		expect(state.waits).toBe(1);
@@ -302,8 +302,8 @@ describe("a child's pending work identities", () => {
 		apply(notice(TIMER_TYPE, { id: 1, kind: "every", status: "active", runs: 1 }));
 		expect(state.waits).toBe(2);
 		apply(answer("The timer reminded me; nothing to add."));
-		apply(start("wait", { op: "off", id: 1 }, "cancel-1"));
-		apply(end("wait", { op: "off", id: 1 }, "cancel-1", { timer: { id: 1, status: "cancelled" } }));
+		apply(start("notify", { op: "off", id: 1 }, "cancel-1"));
+		apply(end("notify", { op: "off", id: 1 }, "cancel-1", { timer: { id: 1, status: "cancelled" } }));
 		apply(notice(TIMER_TYPE, { id: 1, kind: "every", status: "active", runs: 1 }));
 		apply(notice(TIMER_TYPE, { id: 1, kind: "every", status: "cancelled" }));
 		expect(state.waits).toBe(1);

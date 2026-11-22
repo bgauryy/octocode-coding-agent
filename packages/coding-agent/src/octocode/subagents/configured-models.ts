@@ -9,7 +9,7 @@ export type ConfiguredModels = Partial<Record<ModelTier, string>>;
 export const settingKey = (tier: ModelTier): string => `subagents.models.${tier}`;
 
 /**
- * The user's models for the `small` and `medium` purposes. Read from the global settings only, as `externalAgents` is:
+ * The user's models for the `small`, `medium` and `large` purposes. Read from the global settings only, as `externalAgents` is:
  * a project file must not choose which provider a session's children spend on. An unreadable file means none are set.
  */
 export function configuredSubagentModels(agentDir: string = getAgentDir()): ConfiguredModels {
@@ -19,7 +19,8 @@ export function configuredSubagentModels(agentDir: string = getAgentDir()): Conf
 		const pick = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : undefined);
 		const small = pick(models?.small);
 		const medium = pick(models?.medium);
-		return { ...(small ? { small } : {}), ...(medium ? { medium } : {}) };
+		const large = pick(models?.large);
+		return { ...(small ? { small } : {}), ...(medium ? { medium } : {}), ...(large ? { large } : {}) };
 	} catch {
 		return {};
 	}

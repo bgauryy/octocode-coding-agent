@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { visibleWidth } from "@octocodeai/octocode-tui";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { animationClock, visibleWidth } from "@octocodeai/octocode-tui";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { memberWorktree, worktreeLabel } from "../../src/octocode/worktree-paths/member-worktree.ts";
 import { worktreeFooterText } from "../../src/octocode/worktrees/footer.ts";
@@ -15,6 +15,9 @@ import { collapsedRows, gridRows } from "../../src/octocode/team/panel/rows.ts";
 import { detailLine } from "../../src/octocode/team/panel/grid.ts";
 import { rendered, theme } from "./fake-host.ts";
 import { GIT_TEST_ENV, makeRepo } from "./worktree-fixture.ts";
+
+// Reduced motion pins a running light to its first frame, ◒.
+beforeEach(() => animationClock.setReducedMotion(true));
 
 const ROOT = "/r";
 const member = (id: string, extra: Partial<Member> = {}): Member => ({
@@ -42,7 +45,10 @@ const linked = member("peer", {
 const sub = member("sub", { parentId: "main", cwd: "/r/packages/a" });
 
 const temp: string[] = [];
-afterEach(() => temp.splice(0).forEach((dir) => fs.rmSync(dir, { recursive: true, force: true })));
+afterEach(() => {
+	animationClock.setReducedMotion(false);
+	temp.splice(0).forEach((dir) => fs.rmSync(dir, { recursive: true, force: true }));
+});
 
 describe("memberWorktree", () => {
 	it("is empty in the main checkout, including a subfolder", () => {
@@ -142,7 +148,7 @@ describe("worktree root and compact rows", () => {
 	it("collapsed panel rows mark the worktree; the opened stats line names the folder", () => {
 		const entry = { member: isolated, depth: 0, isolated: { folder: isolated.cwd! } };
 		const [row] = collapsedRows([entry], 10, theme, 120);
-		expect(row).toMatch(/^ └ ⏺ iso-1 · general · worktree +0s$/);
+		expect(row).toMatch(/^ └ ◒ iso-1 · general · worktree +0s$/);
 		expect(visibleWidth(row)).toBe(120);
 		const { agents } = gridRows(main, "main", [entry], [], 10, theme);
 		expect(detailLine(theme, agents[0], 120)).toBe(

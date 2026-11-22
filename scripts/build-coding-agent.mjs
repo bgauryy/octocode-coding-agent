@@ -184,6 +184,13 @@ async function buildBundle() {
 			`Bundle left unexpected external imports: ${unexpected.sort((a, b) => a.localeCompare(b)).join(", ")}`,
 		);
 
+	// `@opencode-ai/models/snapshot` carries the whole model list (about 7.5 MB); the catalog reads models.dev at run time instead.
+	const snapshot = [...chunks, ...worker, ...indexWorker]
+		.flatMap((chunk) => chunk.moduleIds)
+		.filter((id) => /[\\/]@opencode-ai[\\/]models[\\/]dist[\\/]snapshot/.test(id));
+	if (snapshot.length > 0)
+		throw new Error(`The bundle compiled in the models snapshot (${snapshot[0]}); import only the package root`);
+
 	// The bundle is imported after the compile cache is enabled, so it is cached too. It uses top-level await, which
 	// require() cannot load.
 	const launcher = (run) =>

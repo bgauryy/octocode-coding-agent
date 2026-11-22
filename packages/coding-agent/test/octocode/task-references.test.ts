@@ -3,7 +3,7 @@ import path from "node:path";
 import { type CachePreferenceLayer, mergeCachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type * as NativeConfig from "../../src/config.ts";
-import { fencedParts, PARENT_FENCE_NOTE } from "../../src/octocode/shared/fence.ts";
+import { fencedParts, PARENT_FENCE_NOTE, withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import type { ReferencedMessage } from "../../src/octocode/child-sessions/references.ts";
 import { BLOCKED_LINGER_SECONDS } from "../../src/octocode/subagents/claim.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
@@ -191,7 +191,9 @@ describe("a background subagent with an unanswered replyRequired ask to a peer",
 			const started = await t.call({ task: "linger asking a peer", background: true });
 			const id = started.details.id as string;
 			await t.control.settle();
-			const report = String(t.f.sent.find((entry) => entry.message.details?.id === id)?.message.content);
+			const report = withoutSourceHeader(
+				String(t.f.sent.find((entry) => entry.message.details?.id === id)?.message.content),
+			);
 			expect(asks).toHaveBeenCalledWith(id);
 			expect(report.split("\n")[0]).toContain(`report:${id}`);
 			expect(report).toContain(`${BLOCKED_LINGER_SECONDS} s`);

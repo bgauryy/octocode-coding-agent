@@ -76,7 +76,7 @@ it("does not relax default uniqueness or context-evicted read guards", async () 
 	await f.edit();
 	expect(fs.readFileSync(f.file, "utf8")).toBe("B\nB\n");
 });
-it("retains checkpoint and cancellation semantics after an all-occurrence commit", async () => {
+it("reports an all-occurrence commit as done and keeps its checkpoint when aborted after it", async () => {
 	const f = setup();
 	const controller = new AbortController();
 	const rename = fs.promises.rename.bind(fs.promises);
@@ -86,8 +86,8 @@ it("retains checkpoint and cancellation semantics after an all-occurrence commit
 	});
 	try {
 		const result = await f.edit(true, controller.signal);
-		expect(result.isError).toBe(true);
-		expect(result.content[0].text).toMatch(/abort[\s\S]*changed/i);
+		expect(result.isError).toBeUndefined();
+		expect(result.content[0].text).not.toMatch(/abort/i);
 		expect(result.details.receipts).toHaveLength(1);
 		expect(fs.readFileSync(f.file, "utf8")).toBe("B\nB\n");
 		expect(f.checkpoints.list()).toHaveLength(1);

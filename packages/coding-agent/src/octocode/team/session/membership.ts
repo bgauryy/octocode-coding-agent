@@ -33,6 +33,7 @@ export function claimName(
 				...(sessionDir ? { dir: path.resolve(sessionDir) } : {}),
 			}
 		: undefined;
+	db.callbacks.sessionId = ctx.sessionManager.getSessionId();
 	const chosen = env[AGENT_ID_ENV];
 	const lost: string[] = [];
 	for (let attempt = 0; attempt < JOIN_ATTEMPTS; attempt += 1) {

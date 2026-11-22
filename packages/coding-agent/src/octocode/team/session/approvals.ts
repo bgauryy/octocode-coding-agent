@@ -24,11 +24,18 @@ export class WaitingApprovals {
 	private readonly waiting = new Set<string>();
 	private readonly output = new Map<string, number>();
 	private readonly queued = new Set<string>();
+	private readonly idleOn = new Map<string, string>();
 	private readonly ends = new Map<string, RunEnd>();
 
 	set(id: string, waiting: boolean): void {
 		if (waiting) this.waiting.add(id);
 		else this.waiting.delete(id);
+	}
+
+	/** Subagent `id` idles on `text` it started itself, or no longer does. */
+	noteIdleWait(id: string, text: string | undefined): void {
+		if (text === undefined) this.idleOn.delete(id);
+		else this.idleOn.set(id, text);
 	}
 
 	/** Subagent `id` wrote output at `at`. */
@@ -60,6 +67,7 @@ export class WaitingApprovals {
 	 */
 	noteExited(id: string): void {
 		this.output.delete(id);
+		this.idleOn.delete(id);
 	}
 
 	/** When subagent `id` last wrote output, if this host saw any. */
@@ -89,20 +97,29 @@ export class WaitingApprovals {
 		this.waiting.clear();
 		this.output.clear();
 		this.queued.clear();
+		this.idleOn.clear();
 	}
 
 	/** The view with each waiting member marked `waiting` (and its activity line replaced), each ended child's outcome, and each running child's last output. */
 	overlay<T extends { members: Member[] }>(view: T): T {
-		if (this.waiting.size === 0 && this.output.size === 0 && this.ends.size === 0 && this.queued.size === 0)
+		if (
+			this.waiting.size === 0 &&
+			this.output.size === 0 &&
+			this.ends.size === 0 &&
+			this.queued.size === 0 &&
+			this.idleOn.size === 0
+		)
 			return view;
 		return {
 			...view,
 			members: view.members.map((member) => {
 				const lastOutputAt = this.output.get(member.id);
 				const end = this.ends.get(member.id);
+				const waitingOn = member.status === "working" ? undefined : this.idleOn.get(member.id);
 				return {
 					...member,
 					// The listing prints the activity line; panels and the webview read `waiting`.
+					...(waitingOn === undefined ? {} : { waitingOn, activity: `waiting on ${waitingOn}` }),
 					...(this.queued.has(member.id) ? { activity: QUEUED_FOR_SLOT } : {}),
 					...(this.waiting.has(member.id) ? { activity: WAITING_APPROVAL, waiting: "approval" as const } : {}),
 					...(end ? { outcome: end.outcome, ...(end.headline ? { headline: end.headline } : {}) } : {}),

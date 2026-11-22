@@ -4,7 +4,6 @@
  * MCP readers for every read.
  */
 
-/** The shell tool, the file-change tool and the skill loader. */
+/** The shell tool and the file-change tool. */
 export const BASH_TOOL = "bash";
 export const FILE_TOOL = "file";
-export const SKILL_TOOL = "skill";

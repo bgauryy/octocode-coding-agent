@@ -1,1 +1,1 @@
-To load a skill listed in <available_skills>
+To load skills that match your work

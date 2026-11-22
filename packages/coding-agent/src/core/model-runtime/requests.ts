@@ -71,6 +71,25 @@ export type RuntimeSimpleStreamOptions = ModelsSimpleStreamOptions & {
 	roleVariantTools?: ReadonlySet<string>;
 };
 
+/**
+ * The cache options of one chat request, shared by every chat entry point so the same session settings send the same
+ * markers on each: the resolved cache policy (or `resolveCache`'s, for the physical model), then the instruction and
+ * tool cache boundaries of the transcript. Options the caller set win inside both.
+ */
+function chatCacheOptions(
+	host: ModelRequestHost,
+	model: Model<Api>,
+	messages: readonly { role: string }[],
+	options: StreamOptions | undefined,
+	resolveCache: RuntimeSimpleStreamOptions["resolveCache"],
+	roleVariantTools: ReadonlySet<string> | undefined,
+): CacheOptions & ReturnType<typeof instructionCacheBoundaryOption> {
+	return {
+		...(resolveCache?.(model) ?? host.getCachePolicy(model, options).options),
+		...instructionCacheBoundaryOption(messages, { ...options, roleVariantTools }),
+	};
+}
+
 /** Resolve a model's auth and merge the headers configured for it in models.json or by its feature. */
 export async function resolveModelAuth(
 	models: MutableModels,
@@ -167,6 +186,7 @@ export function streamChatModel<TApi extends Api>(
 	model: Model<TApi>,
 	context: Context,
 	options?: ModelsApiStreamOptions<TApi>,
+	hints?: Pick<RuntimeSimpleStreamOptions, "resolveCache" | "roleVariantTools">,
 ): AssistantMessageEventStream {
 	const transcript = normalizeContext(context);
 	return lazyStream(model, async () => {
@@ -174,8 +194,7 @@ export function streamChatModel<TApi extends Api>(
 		assertImageRequestContext(model, transcript.messages);
 		const prepared = await prepareModelRequest(host, model, {
 			...options,
-			...host.getCachePolicy(model, options).options,
-			...instructionCacheBoundaryOption(transcript.messages, options),
+			...chatCacheOptions(host, model, transcript.messages, options, hints?.resolveCache, hints?.roleVariantTools),
 		});
 		return prepared.provider.stream(prepared.model, transcript, prepared.options as ApiStreamOptions<TApi>);
 	});
@@ -214,8 +233,7 @@ export function streamSimpleChatModel(
 		const { resolveCache, roleVariantTools, ...requestOptions } = options ?? {};
 		const prepared = await prepareModelRequest(host, model, {
 			...requestOptions,
-			...(resolveCache?.(model) ?? host.getCachePolicy(model, requestOptions).options),
-			...instructionCacheBoundaryOption(transcript.messages, { ...requestOptions, roleVariantTools }),
+			...chatCacheOptions(host, model, transcript.messages, requestOptions, resolveCache, roleVariantTools),
 		});
 		return prepared.provider.streamSimple(prepared.model, transcript, prepared.options);
 	});

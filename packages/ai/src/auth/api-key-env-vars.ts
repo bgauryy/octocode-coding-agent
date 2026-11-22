@@ -58,3 +58,10 @@ export function findApiKeyEnvVars(provider: string): readonly string[] | undefin
 		? (API_KEY_ENV_VARS as Readonly<Record<string, readonly string[]>>)[provider]
 		: undefined;
 }
+
+/** The other providers that read the API-key variable `envVar`: a key set for one makes each of them look ready. */
+export function providersSharingApiKeyEnvVar(envVar: string, provider: string): string[] {
+	return Object.entries(API_KEY_ENV_VARS as Readonly<Record<string, readonly string[]>>)
+		.filter(([id, names]) => id !== provider && names.includes(envVar))
+		.map(([id]) => id);
+}

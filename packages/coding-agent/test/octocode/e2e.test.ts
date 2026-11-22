@@ -22,9 +22,7 @@ import { createReadToolDefinition } from "../fixtures/read-tool.ts";
 import { Mail } from "../../src/octocode/team/mail.ts";
 import { trustFolder } from "./helpers.ts";
 import { nativeCall } from "./e2e-calls.ts";
-import { CHARS_PER_TOKEN } from "../../../ai/src/utils/estimate.ts";
-import { KEEP_RECENT_RESULTS } from "../../src/octocode/compaction/clearing-candidates.ts";
-import { KEEP_IN_USE_TOKENS } from "../../src/octocode/compaction/clearing-recent.ts";
+import { KEEP_RECENT_TURNS } from "../../src/octocode/compaction/clearing-recent.ts";
 import { testFeatures } from "../helpers/features.ts";
 import { nativeFeatureSet } from "../helpers/native-features.ts";
 
@@ -329,10 +327,16 @@ describe("with Octocode MCP (default)", () => {
 		expect(turn.systemPrompt).toContain("\n- localSearch\n");
 		const declared = turn.toolContracts.find((tool) => tool.name === "mcp__octocode__localSearch");
 		expect(declared?.description.length).toBeGreaterThan(60);
-		expect(JSON.stringify(declared?.parameters)).toContain('"queries"');
-		expect(JSON.stringify(declared?.parameters)).toContain('"queries":{"type":"array","minItems":1,"maxItems":5,');
-		expect(JSON.stringify(declared?.parameters)).toContain('"matchString":{"type":"array"}');
-		expect(JSON.stringify(declared?.parameters)).toMatch(/"required":\[(?:"path",)?"matchString"\]/);
+		expect(declared?.parameters).toMatchObject({
+			properties: {
+				queries: {
+					type: "array",
+					minItems: 1,
+					maxItems: 5,
+					items: { required: ["matchString"], properties: { matchString: { type: "array", maxItems: 100 } } },
+				},
+			},
+		});
 		expect(JSON.stringify(declared?.parameters)).not.toContain('"description"');
 		// `<tools>` lists native tools one by one; a deferred server's purpose is stated once, in its `<mcps>` block.
 		const toolLines = /<tools>\n([^]*?)\n<\/tools>/.exec(turn.systemPrompt)?.[1].split("\n") ?? [];
@@ -679,7 +683,11 @@ describe("with another MCP server and Octocode disabled", () => {
 	});
 
 	it("clears old results at request time once the cache is cold inside a run, to saved files and without any context edit", async () => {
-		// One assistant message's tool text is bounded to `TURN_MAX_CHARS` (`turn-budget.ts`), so the 22 reads come as two messages.
+		// The working set is the calls of the last `KEEP_RECENT_TURNS` assistant turns, so the reads are spread over more turns
+		// than that, two per turn: the oldest turns fall out of the window and clear, the recent ones stay whole.
+		const turnCount = KEEP_RECENT_TURNS + 4;
+		const perTurn = 2;
+		const total = turnCount * perTurn;
 		const read = (index: number) => {
 			const file = `big-${index}.txt`;
 			fs.writeFileSync(path.join(s.cwd, file), "line of text\n".repeat(540));
@@ -688,42 +696,43 @@ describe("with another MCP server and Octocode disabled", () => {
 		const realNow = Date.now.bind(Date);
 		// The tools ran longer than the prompt-cache lifetime: the next request would rewrite the cache anyway.
 		const later = vi.spyOn(Date, "now").mockImplementation(() => realNow() + 60 * 60_000 + 1);
-		const cold = (from: number) => () =>
+		const cold = (turn: number) => () =>
 			fauxAssistantMessage(
-				Array.from({ length: 11 }, (_, offset) => read(from + offset)),
+				Array.from({ length: perTurn }, (_, offset) => read(turn * perTurn + offset)),
 				{
 					stopReason: "toolUse",
 					timestamp: realNow(),
 				},
 			);
 		const results = await s
-			.run("read a lot", [cold(0), cold(11), say("done")])
+			.run("read a lot", [...Array.from({ length: turnCount }, (_, turn) => cold(turn)), say("done")])
 			.finally(() => later.mockRestore())
-			// The session keeps earlier tests' results: this run's are the newest 22.
-			.then((turns) => turns.at(-1)!.allResults.slice(-22));
-		expect(results).toHaveLength(22);
+			// The session keeps earlier tests' results: this run's are the newest `total`.
+			.then((turns) => turns.at(-1)!.allResults.slice(-total));
+		expect(results).toHaveLength(total);
 		const cleared = results.filter((result) => result.text.startsWith("[Old tool result cleared"));
-		// The newest `KEEP_RECENT_RESULTS` stay whole. Every read came within the last `KEEP_RECENT_TURNS` (clearing-recent.ts) turns, so older
-		// ones are in use and stay whole too while they fit `KEEP_IN_USE_TOKENS`; the rest are placeholders that name the
-		// file holding their whole text.
+		// Every result called in the last `KEEP_RECENT_TURNS` assistant turns stays whole, whatever its size. No later text names
+		// the older files, so their results are placeholders that name the file holding their whole text.
 		const wholeChars = results.at(-1)!.text.length;
 		expect(wholeChars).toBeGreaterThan(7_000);
-		const keptInUse = Math.floor((KEEP_IN_USE_TOKENS * CHARS_PER_TOKEN) / wholeChars);
-		expect(cleared).toHaveLength(22 - KEEP_RECENT_RESULTS - keptInUse);
-		const whole = results.slice(-(KEEP_RECENT_RESULTS + keptInUse));
+		const windowSize = KEEP_RECENT_TURNS * perTurn;
+		expect(cleared).toHaveLength(total - windowSize);
+		expect(results.slice(0, total - windowSize)).toEqual(cleared);
+		const whole = results.slice(-windowSize);
 		expect(whole.every((result) => result.text.length === wholeChars)).toBe(true);
 		expect(whole.some((result) => result.text.startsWith("[Omitted"))).toBe(false);
 		for (const result of cleared) expect(result.text).toMatch(/Full output: \S+ \(sha256/);
 		const entries = s.session.sessionManager.getEntries();
 		expect(entries.filter((entry) => entry.type === "context_edit")).toHaveLength(0);
-		// Both requests after the reads find the cache expired, a point where clearing is free: each clears what is old by
-		// then. After the first 11 reads, those past the newest ones are all in use when they fit the in-use budget, so that
-		// request clears nothing of this run.
-		const firstClears = 11 - KEEP_RECENT_RESULTS > keptInUse;
+		// Every request after the reads finds the cache expired, a point where clearing is free: each clears what has left the
+		// window by then. Until more than `KEEP_RECENT_TURNS` turns exist the window holds every read, so those requests
+		// clear nothing of this run; each later one clears the turn that just left it.
 		const clearings = entries.filter(
 			(entry) => entry.type === "custom" && entry.customType === "octocode-cleared-results",
 		) as Array<{ data: { trigger: string } }>;
-		expect(clearings.map((entry) => entry.data.trigger)).toEqual(firstClears ? ["idle", "idle"] : ["idle"]);
+		expect(clearings.map((entry) => entry.data.trigger)).toEqual(
+			Array.from({ length: turnCount - KEEP_RECENT_TURNS }, () => "idle"),
+		);
 	});
 
 	it("reports unavailable askUser without inventing an answer or approval", async () => {

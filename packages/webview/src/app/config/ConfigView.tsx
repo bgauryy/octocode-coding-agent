@@ -15,12 +15,15 @@ import type { SaveSetting } from "./SettingEditor.tsx";
 import { SettingsPanel } from "./SettingsPanel.tsx";
 import { ConfigSkeleton } from "./ConfigSkeleton.tsx";
 import { SourcesPanel, type SetProvider } from "./ProviderControls.tsx";
+import { TemplateProviderForm } from "./TemplateProviderForm.tsx";
 import { McpPanel, type McpAddStatus } from "./McpPanel.tsx";
 import type { AddMcp } from "./McpAddForm.tsx";
 import { type HarnessApi, HarnessPanel } from "./HarnessPanel.tsx";
+import { type RunnersApi, RunnersPanel } from "./RunnersPanel.tsx";
 import { type SecurityApi, SecurityPanel } from "./SecurityPanel.tsx";
 import { type ToolsApi, ToolsPanel } from "./ToolsPanel.tsx";
 import type { SaveCredential } from "./CredentialEditor.tsx";
+import { ProviderTestProvider, TestAll, type TestProviders } from "./ProviderTest.tsx";
 import type { SignInRequest } from "./SignIn.tsx";
 import { type ConfigProviders, ProviderRow } from "./sources.tsx";
 
@@ -103,6 +106,14 @@ function Providers({
 					{snapshot.keychainAvailable ? "OS keychain available" : "No OS keychain available on this machine"}
 				</p>
 			</div>
+			<TestAll />
+			{setProvider && snapshot.providerTemplates && (
+				<TemplateProviderForm
+					templates={snapshot.providerTemplates}
+					keychainAvailable={snapshot.keychainAvailable}
+					set={setProvider}
+				/>
+			)}
 			{snapshot.credentialsError && (
 				<p className="callout tone-danger" role="alert">
 					{snapshot.credentialsError}
@@ -211,10 +222,14 @@ export interface ConfigViewProps {
 	signIn?: (command: SignInCommand) => Promise<SignInState>;
 	/** Turns a provider or the Pi source on or off and returns the fresh snapshot. Offered only when the host says the connection is `writable`. */
 	saveProvider?: (command: ConfigProviderCommand, repoId?: string) => Promise<ConfigSnapshot>;
+	/** Tests one connected provider, or all of them, only when a Test button is pressed; used only when the host says the connection is `writable`. */
+	testProviders?: TestProviders;
 	/** Lists and switches the Harness panel's rows; used only when the host says the connection is `writable`. */
 	harness?: HarnessApi;
 	/** Lists the reviewed hooks, MCP servers and skills and records one decision; used only when the host says the connection is `writable`. */
 	security?: SecurityApi;
+	/** Lists and changes the External agents (vendor CLIs); used only when the host says the connection is `writable`. */
+	runners?: RunnersApi;
 	addMcp?: AddMcp;
 	mcpAddStatus?: McpAddStatus;
 	/** Lists each tool's exposure state and pins one tool; used only when the host says the connection is `writable`. */
@@ -229,8 +244,21 @@ export interface ConfigViewProps {
  * the host; the page only shows its answer and its refusals.
  */
 export function ConfigView(props: ConfigViewProps) {
-	const { load, save, saveCredential, saveProvider, signIn, harness, security, addMcp, mcpAddStatus, tools, repos } =
-		props;
+	const {
+		load,
+		save,
+		saveCredential,
+		saveProvider,
+		testProviders,
+		signIn,
+		harness,
+		security,
+		runners,
+		addMcp,
+		mcpAddStatus,
+		tools,
+		repos,
+	} = props;
 	const [state, setState] = useState<LoadState>({ status: "loading" });
 	const [attempt, setAttempt] = useState(0);
 	const [repoId, setRepoId] = useState<string | undefined>();
@@ -316,13 +344,15 @@ export function ConfigView(props: ConfigViewProps) {
 				</Button>
 			</div>
 			<SourcesPanel sources={snapshot.sources ?? []} set={snapshot.writable ? setProvider : undefined} />
-			<Providers
-				setProvider={snapshot.writable ? setProvider : undefined}
-				snapshot={snapshot}
-				save={snapshot.writable ? saveKey : undefined}
-				signIn={snapshot.writable ? signIn : undefined}
-				onSignedIn={reload}
-			/>
+			<ProviderTestProvider test={snapshot.writable ? testProviders : undefined}>
+				<Providers
+					setProvider={snapshot.writable ? setProvider : undefined}
+					snapshot={snapshot}
+					save={snapshot.writable ? saveKey : undefined}
+					signIn={snapshot.writable ? signIn : undefined}
+					onSignedIn={reload}
+				/>
+			</ProviderTestProvider>
 			<SettingsPanel
 				snapshot={snapshot}
 				save={snapshot.writable ? saveSetting : undefined}
@@ -336,6 +366,7 @@ export function ConfigView(props: ConfigViewProps) {
 				trusted={snapshot.workspace?.trusted === true}
 			/>
 			<HarnessPanel api={snapshot.writable ? harness : undefined} repoId={repoId} reloadKey={key} />
+			<RunnersPanel api={snapshot.writable ? runners : undefined} reloadKey={key} />
 			<SecurityPanel api={snapshot.writable ? security : undefined} repoId={repoId} reloadKey={key} />
 			<ToolsPanel api={snapshot.writable ? tools : undefined} repoId={repoId} reloadKey={key} />
 			<Workspace workspace={snapshot.workspace} repos={repos} repoId={repoId} onRepo={setRepoId} />

@@ -20,7 +20,8 @@ const CEILING = {
 	none: {
 		/** Request 1: tool definitions, system prompt. Thin MCP declarations keep short enums, `maxItems` and `required`
 		 * (review CK-013, user decision): tools re-pinned at 43,626 B measured plus 5%. */
-		toolsBytes: 45_800,
+		// Our tools plus the bundled MCP tool text.
+		toolsBytes: 54_500,
 		systemBytes: 31_600,
 		/** The MCP server's tool definition, appended after the compaction, and the connect's message-borne `mcps` delta. */
 		mcpToolDeltaBytes: 250,
@@ -32,7 +33,8 @@ const CEILING = {
 	changes: {
 		/** Every bundled Octocode MCP tool is declared up front (user decision), GitHub and package tools included; richer
 		 * thin declarations (CK-013) re-pinned at 42,259 B measured plus 5%. */
-		toolsBytes: 44_400,
+		// Our tools plus the bundled MCP tool text.
+		toolsBytes: 45_900,
 		systemBytes: 33_000,
 		mcpToolDeltaBytes: 320,
 		mcpMessageDeltaBytes: 6_600,

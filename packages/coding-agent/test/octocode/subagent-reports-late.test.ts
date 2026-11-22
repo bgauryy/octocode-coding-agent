@@ -1,3 +1,4 @@
+import { withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -39,7 +40,7 @@ describe("late background reports", () => {
 		const late = () => f.sent.filter((entry) => String(entry.message.content).includes("LATE REPORT"));
 		await f.emit("session_start", {}, ctx);
 		await vi.waitFor(() => expect(late()).toHaveLength(1), { timeout: 5_000 });
-		expect(String(late()[0].message.content)).toMatch(
+		expect(withoutSourceHeader(String(late()[0].message.content))).toMatch(
 			/^\(Arrived after the session restarted\) Background subagent general-late finished/,
 		);
 		expect(fs.readdirSync(dir)).toEqual([]);

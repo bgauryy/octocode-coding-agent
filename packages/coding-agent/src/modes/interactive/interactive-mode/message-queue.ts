@@ -4,6 +4,7 @@
  */
 
 import { getApplicationPort } from "../../../core/application/index.ts";
+import { withInputOrigin } from "../../../core/input-origin.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { prependToEditorDraft } from "./helpers.ts";
@@ -42,13 +43,16 @@ export async function queueInteractiveMessage(
 	host.editor.setText("");
 	let accepted = false;
 	try {
-		await getApplicationPort(host.session).invoke("prompt", text, {
-			streamingBehavior: mode,
-			attachImagePaths: true,
-			preflightResult: featureCommandHint(host, text, () => {
-				accepted = true;
+		// The terminal's own input carries the user's authority, whatever origin the surrounding call is running under.
+		await withInputOrigin("terminal", () =>
+			getApplicationPort(host.session).invoke("prompt", text, {
+				streamingBehavior: mode,
+				attachImagePaths: true,
+				preflightResult: featureCommandHint(host, text, () => {
+					accepted = true;
+				}),
 			}),
-		});
+		);
 	} catch (error) {
 		if (!accepted) prependToEditorDraft(host.editor, text);
 		host.showError(
@@ -196,7 +200,16 @@ export async function sendCarriedMessages(host: MessageQueueHost): Promise<void>
 	await deliverHeldMessages(host, host.uiStore.getState().takeHeldMessages(true), false);
 }
 
-async function deliverHeldMessages(
+/** Messages the terminal held during compaction go out as terminal input. */
+function deliverHeldMessages(
+	host: MessageQueueHost,
+	messages: CompactionQueuedMessage[],
+	willRetry: boolean,
+): Promise<void> {
+	return withInputOrigin("terminal", () => deliverHeld(host, messages, willRetry));
+}
+
+async function deliverHeld(
 	host: MessageQueueHost,
 	messages: CompactionQueuedMessage[],
 	willRetry: boolean,

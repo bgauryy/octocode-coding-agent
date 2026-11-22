@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { assistantMsg, userMsg } from "../utilities.ts";
 
@@ -59,7 +60,8 @@ describe("a session append while another process holds the lock", () => {
 		try {
 			last = performance.now();
 			session.appendMessage(userMsg("during the hold"));
-			await new Promise((done) => setTimeout(done, 1_500));
+			// Measure until the queued append reaches disk. Later timer delays are outside the lock contention.
+			await vi.waitUntil(async () => (await readFile(file, "utf8")).includes("during the hold"), { timeout: 1_500 });
 		} finally {
 			clearInterval(timer);
 			await stop();

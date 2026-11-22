@@ -132,4 +132,72 @@ describe("ACP permission relay", () => {
 			[{ type: "extension_ui_response", id: "permission-1", cancelled: true }],
 		]);
 	});
+
+	describe("a confirm dialog (a sensitive action raised by the worker)", () => {
+		const confirm: AcpUiRequest = {
+			id: "confirm-1",
+			method: "confirm",
+			title: "Change configuration?",
+			message: "set permissions.mode to bypass",
+		};
+		it.each([
+			["allow_once", { confirmed: true }],
+			["reject_once", { confirmed: false }],
+		] as const)("asks the client through a permission request and relays %s", async (kind, answer) => {
+			const h = harness({
+				permission: async (request) => ({
+					outcome: { outcome: "selected", optionId: request.options.find((option) => option.kind === kind)!.optionId },
+				}),
+			});
+			await h.initialize();
+			const { sessionId } = await h.newSession();
+			const run = h.prompt(sessionId);
+			await expect.poll(() => h.workers[0].prompt.mock.calls.length).toBe(1);
+			h.workers[0].ask(confirm);
+			await expect.poll(() => h.workers[0].respondToExtensionUIRequest.mock.calls.length).toBe(1);
+			expect(h.requests).toHaveLength(1);
+			expect(h.requests[0].toolCall.title).toBe("Change configuration?");
+			expect(h.workers[0].respondToExtensionUIRequest).toHaveBeenCalledWith({
+				type: "extension_ui_response",
+				id: "confirm-1",
+				...answer,
+			});
+			h.workers[0].finish();
+			await run;
+		});
+
+		it.each<RequestPermissionResponse>([
+			{ outcome: { outcome: "cancelled" } },
+			{ outcome: { outcome: "selected", optionId: "not-advertised" } },
+		])("never approves when the client dismisses or sends an invalid choice: %j", async (response) => {
+			const h = harness({ permission: async () => response });
+			await h.initialize();
+			const { sessionId } = await h.newSession();
+			const run = h.prompt(sessionId);
+			await expect.poll(() => h.workers[0].prompt.mock.calls.length).toBe(1);
+			h.workers[0].ask(confirm);
+			await expect.poll(() => h.workers[0].respondToExtensionUIRequest.mock.calls.length).toBe(1);
+			expect(h.workers[0].respondToExtensionUIRequest).toHaveBeenCalledWith({
+				type: "extension_ui_response",
+				id: "confirm-1",
+				cancelled: true,
+			});
+			h.workers[0].finish();
+			await run.catch(() => undefined);
+		});
+
+		it("is cancelled, never approved, when no turn is running", async () => {
+			const h = harness({ permission: async () => ({ outcome: { outcome: "selected", optionId: "allow-once" } }) });
+			await h.initialize();
+			await h.newSession();
+			h.workers[0].ask(confirm);
+			await expect.poll(() => h.workers[0].respondToExtensionUIRequest.mock.calls.length).toBe(1);
+			expect(h.requests).toHaveLength(0);
+			expect(h.workers[0].respondToExtensionUIRequest).toHaveBeenCalledWith({
+				type: "extension_ui_response",
+				id: "confirm-1",
+				cancelled: true,
+			});
+		});
+	});
 });

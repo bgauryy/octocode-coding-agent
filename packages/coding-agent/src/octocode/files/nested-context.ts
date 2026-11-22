@@ -1,3 +1,4 @@
+import { renderPrompt } from "../../core/prompt-template.ts";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import { nestedContextFiles } from "../../core/resource-loader/context-files.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -11,7 +12,8 @@ import { clearedResults } from "./reads.ts";
  * read result under its folder, framed as the project context is, so the cached prefix never changes. Which files a
  * result read comes from the read receipts (`details.localReads`, any reader role, never a tool's name) or a plain bash
  * print (`bashReads`). Only in a trusted project; each file is cut at 64 KB as project context is, and a session
- * delivers at most `NESTED_CONTEXT_MAX_BYTES` while those results are in context. A delivered file is named in its
+ * delivers at most `NESTED_CONTEXT_MAX_BYTES` while those results are in context; a file left out for that budget is named in
+ * the result. A delivered file is named in its
  * result's `details.nestedContext`; after a compaction summarizes that result away or clearing replaces its text, the
  * next read under the folder delivers it again.
  */
@@ -72,22 +74,35 @@ export function registerNestedContext(api: FeatureSetup): void {
 		const seen = new Set([...delivered.map((item) => item.path), ...files]);
 		let budget = NESTED_CONTEXT_MAX_BYTES - delivered.reduce((sum, item) => sum + item.bytes, 0);
 		const added: Array<{ path: string; content: string; bytes: number }> = [];
+		const withheld: string[] = [];
 		for (const file of files)
 			for (const context of nestedContextFiles(file, ctx.cwd)) {
 				if (seen.has(context.path)) continue;
 				seen.add(context.path);
 				const bytes = Buffer.byteLength(context.content);
-				if (bytes > budget) continue;
+				if (bytes > budget) {
+					withheld.push(context.path);
+					continue;
+				}
 				budget -= bytes;
 				added.push({ ...context, bytes });
 			}
-		if (added.length === 0) return undefined;
+		if (added.length === 0 && withheld.length === 0) return undefined;
+		// A file left out for the budget is named, never dropped silently: the agent can read it itself.
+		const notice =
+			withheld.length > 0 ? [renderPrompt("notices/nested-context-withheld.md", { paths: withheld.join(", ") })] : [];
+		if (added.length === 0)
+			return {
+				content: [...event.content, { type: "text" as const, text: notice.join("") }],
+				details: asRecord(event.details),
+				...(event.structuredContent === undefined ? {} : { structuredContent: event.structuredContent }),
+			};
 		// The same frame as the project context in the system prompt, whose rule (a deeper file wins in its folder) applies.
 		const blocks = added.map(
 			({ path, content }) => `<project_instructions path="${path}">\n${content}\n</project_instructions>`,
 		);
 		return {
-			content: [...event.content, { type: "text" as const, text: blocks.join("\n\n") }],
+			content: [...event.content, { type: "text" as const, text: [...blocks, ...notice].join("\n\n") }],
 			details: {
 				...asRecord(event.details),
 				[NESTED_CONTEXT_DETAILS]: added.map(({ path, bytes }) => ({ path, bytes })),

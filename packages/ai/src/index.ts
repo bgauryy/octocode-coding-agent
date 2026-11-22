@@ -19,6 +19,7 @@ export type { OpenAICompletionsOptions } from "./api/openai-completions.ts";
 export type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
 export * from "./auth/context.ts";
 export * from "./auth/credential-store.ts";
+export * from "./auth/endpoint.ts";
 export * from "./auth/helpers.ts";
 export * from "./auth/types.ts";
 export type {

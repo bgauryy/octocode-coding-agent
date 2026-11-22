@@ -228,7 +228,8 @@ describe("file tool edit and write engines", () => {
 		expect(await resolvesWithin(secondWriteStarted.promise, 20)).toBe(false);
 
 		finishFirstWrite.resolve();
-		await expect(firstWrite).rejects.toThrow("Operation aborted");
+		// The write committed before it settled, so it is reported as done even though the signal aborted meanwhile.
+		await expect(firstWrite).resolves.toBeDefined();
 		await secondWrite;
 
 		const content = await readFile(filePath, "utf8");
@@ -282,7 +283,7 @@ describe("file tool edit and write engines", () => {
 		expect(await resolvesWithin(secondWriteStarted.promise, 20)).toBe(false);
 
 		finishFirstWrite.resolve();
-		await expect(firstEdit).rejects.toThrow("Operation aborted");
+		await expect(firstEdit).resolves.toBeDefined();
 		await secondEdit;
 
 		const content = await readFile(filePath, "utf8");

@@ -17,7 +17,7 @@ import { descendantRows } from "./process-descendants.ts";
 
 // The tree primitives live in utils/ so core's shell can use them too; the hosted ACP workspace reaches them through
 // this file, the one process module its host import baseline lists.
-export { adoptTree, prepareTree, signalTree } from "../../utils/process-tree.ts";
+export { adoptTree, prepareTree, reapWithParent, signalTree } from "../../utils/process-tree.ts";
 
 /** How long a stopped process tree gets after SIGTERM before SIGKILL. */
 export const KILL_GRACE_MS = 500;

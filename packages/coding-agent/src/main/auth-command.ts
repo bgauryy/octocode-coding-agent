@@ -3,6 +3,7 @@ import { parseArgs } from "../cli/args.ts";
 import {
 	type AuthCheckResult,
 	checkProviderAuth,
+	formatAuthCheck,
 	createAuthCheckModelRuntime,
 	getProviderCredential,
 } from "../cli/auth-check.ts";
@@ -88,7 +89,12 @@ export async function runAuthCommand(args: string[]): Promise<boolean> {
 					signal,
 				});
 				if (!credential) {
-					result = { status: "not_ready", provider: result.provider, reason: "credential_not_available" };
+					result = {
+						status: "not_ready",
+						provider: result.provider,
+						reason: "credential_not_available",
+						verified: false,
+					};
 				}
 			}
 		} catch {
@@ -96,11 +102,12 @@ export async function runAuthCommand(args: string[]): Promise<boolean> {
 				status: "invalid",
 				provider: requestedAuth.provider ?? requestedAuth.model!,
 				reason: "invalid_state",
+				verified: false,
 			};
 		}
 		const output = command.json
 			? JSON.stringify({ ...result, ...(credential ? { credentials: credential } : {}) })
-			: (credential ?? result.status);
+			: (credential ?? formatAuthCheck(result));
 		process.stdout.write(`${output}\n`);
 		process.exitCode = result.status === "ready" ? 0 : result.status === "not_ready" ? 1 : 2;
 	} catch (error) {

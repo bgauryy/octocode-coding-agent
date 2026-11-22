@@ -9,17 +9,16 @@
 | work | session | keep | policy | `policy/understand.md`, `policy/readonly.md` readOnly, `policy/change.md` !readOnly, `policy/finish.md` | the policy renderer |
 | research | session | keep | policy | `policy/research.md` | the policy renderer |
 | delegation | session | keep | policy | `policy/delegation.md` main agentTool | the policy renderer; the main session only |
-| children | session | keep | policy | `policy/children.md` main agentTool childStarted | the policy renderer; the main session, from its first `agent` call that starts a child or messages an agent |
 | subagent | session | keep | policy | `policy/subagent.md` !main | the policy renderer; every subagent |
 | safety | session | keep | policy | `policy/safety.md` | the policy renderer |
 | communication | session | keep | policy | `policy/communication.md` | the policy renderer |
 | lean | session | keep | lean | `lean/lean.md` | the lean renderer |
 | project_context | session | keep | - | - | system/project-context.md and the project's AGENTS.md files |
 | memory | session | keep | - | - | notices/memory-file-header.md and the global and workspace MEMORY.md files, read at session start and again after a compaction that finds them changed |
-| skills | session | keep | - | - | the skills this agent can load |
 | hooks | session | keep | - | - | sections/hooks.md and the hooks configured for this session |
 | role | session | keep | - | - | agents/<profile>.md and its skills |
 | harnesses | session | keep | - | - | system/harnesses.md and system/harness.md, for the harnesses that are on and supply something (`core/discovery/vendors/prompt.ts`); none when no harness does; the main session only |
+| children | session | keep | policy | `policy/children.md` main agentTool childStarted | the policy renderer; the main session, from its first `agent` call that starts a child or messages an agent; last of its tier, so its arrival keeps the sections before it cached |
 | cwd | volatile | keep | - | - | the working directory |
 | environment | volatile | keep | - | - | system/environment.md |
 | planning | volatile | keep | - | - | workflows/planning.md |

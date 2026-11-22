@@ -73,7 +73,7 @@ it("reads each route with the bearer header and adds repoId only when given", as
 	expect(last()).toEqual({ url: DAEMON_ROUTES.sessions, method: "GET", headers: READ, body: undefined });
 	expect(await api.repos()).toEqual({ repos: [] });
 	expect(last()).toEqual({ url: DAEMON_ROUTES.repos, method: "GET", headers: READ, body: undefined });
-	expect(await api.access()).toBe(true);
+	expect(await api.access()).toEqual({ writable: true, terminalCommands: false });
 	expect(last()).toEqual({ url: DAEMON_ROUTES.access, method: "GET", headers: READ, body: undefined });
 
 	for (const [call, route] of [

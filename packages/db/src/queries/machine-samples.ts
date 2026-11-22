@@ -43,6 +43,20 @@ export interface MachineSample {
 	processes: MachineProcess[];
 }
 
+/** A threshold the publisher decided to raise: what `MachineAlert` (`monitor/rules.ts`) holds, as stored. */
+export interface MachineAlertRow {
+	/** The order the table gave it; the cursor a reader keeps. */
+	seq: number;
+	at: number;
+	rule: string;
+	value: number;
+	threshold: number;
+	streak: number;
+	/** The Octocode process title whose processes cause it; null when none does. */
+	owner: string | null;
+	culprits: MachineProcess[];
+}
+
 /** The process that takes the samples until `expiresAt`. */
 export interface SamplerLease {
 	holder: string;
@@ -116,21 +130,66 @@ export function since(db: DatabaseSync, at: number): MachineSample[] {
 	return (rows as unknown as SampleRow[]).map(toSample);
 }
 
+/** The load and core count of the newest `count` samples, newest first; the process list is not read. */
+export function recentLoads(db: DatabaseSync, count: number): Array<{ load1: number; cores: number }> {
+	return db
+		.prepare("SELECT load1, cores FROM machine_samples ORDER BY at DESC LIMIT ?")
+		.all(count) as unknown as Array<{
+		load1: number;
+		cores: number;
+	}>;
+}
+
 /** The newest sample, if any. */
 export function latest(db: DatabaseSync): MachineSample | undefined {
 	const row = db.prepare("SELECT * FROM machine_samples ORDER BY at DESC LIMIT 1").get();
 	return row ? toSample(row as unknown as SampleRow) : undefined;
 }
 
-/** Deletes the samples taken before `at` (ms since the epoch), the retention rule; returns how many went. */
+/** Deletes the samples and alerts from before `at` (ms since the epoch), the retention rule; returns how many samples went. */
 export function pruneBefore(db: DatabaseSync, at: number): number {
+	db.prepare("DELETE FROM machine_alerts WHERE at < ?").run(at);
 	return Number(db.prepare("DELETE FROM machine_samples WHERE at < ?").run(at).changes);
+}
+
+/** Files an alert the publisher raised; returns its `seq`. */
+export function recordAlert(db: DatabaseSync, alert: Omit<MachineAlertRow, "seq">): number {
+	return Number(
+		db
+			.prepare(
+				"INSERT INTO machine_alerts (at, rule, value, threshold, streak, owner, culprits) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			)
+			.run(
+				alert.at,
+				alert.rule,
+				alert.value,
+				alert.threshold,
+				alert.streak,
+				alert.owner,
+				JSON.stringify(alert.culprits),
+			).lastInsertRowid,
+	);
+}
+
+/** The newest alert's `seq`, or 0: where a reader that starts now begins. */
+export function lastAlertSeq(db: DatabaseSync): number {
+	const row = db.prepare("SELECT MAX(seq) AS seq FROM machine_alerts").get() as { seq: number | null };
+	return row.seq ?? 0;
+}
+
+/** The alerts after `seq`, oldest first. */
+export function alertsAfter(db: DatabaseSync, seq: number): MachineAlertRow[] {
+	const rows = db.prepare("SELECT * FROM machine_alerts WHERE seq > ? ORDER BY seq").all(seq) as unknown as Array<
+		Omit<MachineAlertRow, "culprits"> & { culprits: string }
+	>;
+	return rows.map((row) => ({ ...row, culprits: parseProcesses(row.culprits) }));
 }
 
 /** All-data purge: drops every sample and the lease, without creating the optional tables; returns how many samples went. */
 export function clear(db: DatabaseSync): number {
 	if (!db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='machine_samples'").get()) return 0;
 	db.prepare("DELETE FROM machine_sampler").run();
+	db.prepare("DELETE FROM machine_alerts").run();
 	return Number(db.prepare("DELETE FROM machine_samples").run().changes);
 }
 

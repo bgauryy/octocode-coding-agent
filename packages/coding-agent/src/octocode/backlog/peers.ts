@@ -28,7 +28,7 @@ export function boardView(
 		dependents: (ref) => store.list({ dependsOn: [ref], states: [...OPEN] }).items,
 		children: (parent) => store.list({ parentId: parent, states: [...OPEN] }).items,
 		ongoing: () => store.list({ states: ["ongoing"] }).items,
-		watchers: (refs) => backlogQueries.itemWatchers(db, store.repo, refs),
+		watchers: (refs, notifiedState) => backlogQueries.itemWatchers(db, store.repo, refs, notifiedState),
 		reservations: () => reservations?.() ?? [],
 	};
 }

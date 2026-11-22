@@ -3,6 +3,7 @@ import { renderPrompt } from "../../core/prompt-template.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
 import { CLEARED_RESULTS_TYPE } from "../shared/cleared-results.ts";
+import { savedHandle } from "../shared/heap-index.ts";
 import { shownLine } from "../sessions/store.ts";
 
 /**
@@ -17,19 +18,21 @@ export const PLACEHOLDER_START = "[Old tool result cleared";
 /** What stands for a cleared result; `saved` is where `saveContentCopy` put its whole text, `digest` what it held (`resultDigest`). */
 export function clearedPlaceholder(saved: string, digest?: string): string {
 	const held = digest ? ` (${digest})` : "";
-	return `${PLACEHOLDER_START} to save context${held}. Full output: ${saved}. Read that file, or run the call again.]`;
+	return `${PLACEHOLDER_START} to save context${held}. Full output: ${saved} (${savedHandle(saved)}). Read that file, or run the call again.]`;
 }
 
 /** Files a digest names; the rest is a count. */
 const DIGEST_FILES = 3;
 /** Characters kept of each file a digest names. */
 const DIGEST_PATH_CHARS = 60;
+/** Characters kept of the first non-blank line a digest quotes when the result held no search hits. */
+export const DIGEST_LEAD_CHARS = 100;
 /** A search hit line: `path:line:` or `path:line-` (grep, rg and the local search tools print these). */
 const HIT_LINE = /^([^\s:]{1,300}):(\d+)[:-]/;
 
 /**
  * A deterministic one-line digest of a result's `text`: its line count, a shell command's exit code, and for a result of
- * the user's own workspace (`trusted`) the search hits it held by file, so the model can tell whether it needs the
+ * the user's own workspace (`trusted`) the search hits it held by file, or else its first non-blank line (capped), so the model can tell whether it needs the
  * result back before reading it. An untrusted result (web, MCP, network) gets counts only: none of its text reaches the
  * placeholder, which is not fenced.
  */
@@ -49,6 +52,9 @@ export function resultDigest(text: string, tool: string, details: unknown, trust
 			const named = [...hits.keys()].slice(0, DIGEST_FILES).map((file) => shownLine(file, DIGEST_PATH_CHARS));
 			const more = hits.size > DIGEST_FILES ? `, +${hits.size - DIGEST_FILES} more` : "";
 			parts.push(`${total} hits in ${hits.size} file${hits.size === 1 ? "" : "s"}: ${named.join(", ")}${more}`);
+		} else {
+			const lead = text.split("\n").find((line) => line.trim() !== "");
+			if (lead !== undefined) parts.push(`starts ${JSON.stringify(shownLine(lead.trim(), DIGEST_LEAD_CHARS))}`);
 		}
 	}
 	return parts.join("; ");

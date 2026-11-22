@@ -4,7 +4,7 @@
  * with that flag or a configuration entry, optional `envDefaults`, launch env values added only when the user's own
  * environment leaves that variable unset, and an optional `instructionsOnDemand`, `McpServerPreset.instructionsOnDemand`).
  * They register as `scope: "default"` entries, which a user or project entry of the same name replaces; a saved switch
- * (`/harness`, `/configuration`) is a control-only override and wins over both.
+ * (`/harness`, `/settings`) is a control-only override and wins over both.
  * Nothing server-specific lives in TypeScript.
  */
 

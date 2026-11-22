@@ -118,13 +118,14 @@ function turn(
 }
 
 describe("the headless route", () => {
-	it("is chosen only for a signed-in Claude Code whose adapter is missing, and the row names it", () => {
+	it("is chosen only for a signed-in runner with an enabled route whose adapter is missing, and the row names it", () => {
 		expect(headlessReady(signedIn(false))).toBe(true);
 		expect(runnerRoute(signedIn(false))).toBe(HEADLESS_ROUTE);
 		expect(runnerRoute(signedIn(true))).toBeUndefined();
 		expect(headlessReady({ ...signedIn(false), auth: { signedIn: false } })).toBe(false);
 		expect(headlessReady({ ...signedIn(false), cli: false })).toBe(false);
-		expect(headlessReady({ ...signedIn(false), id: "codex" })).toBe(false);
+		expect(headlessReady({ ...signedIn(false), id: "opencode" })).toBe(false);
+		expect(headlessReady({ ...signedIn(false), id: "codex" })).toBe(true);
 	});
 
 	it("launches the CLI headless without an adapter, the adapter when it is there, and refuses a signed-out runner", () => {
@@ -277,13 +278,13 @@ describe("a runner's turn headless", () => {
 });
 
 describe("a Claude Code CLI without its ACP adapter", () => {
-	it("counts as connected through the headless route, and only Claude Code has one", async () => {
+	it("counts as connected through the headless route, and a runner without an enabled route has none", async () => {
 		const { isConnected } = await import("../../src/octocode/external/runner-status.ts");
 		const { runnerRoute } = await import("../../src/octocode/external/runner-headless.ts");
 		const claude = { id: "claude-code", name: "Claude Code", cli: true, adapter: false, auth: { signedIn: true } };
 		expect(isConnected(claude)).toBe(true);
 		expect(runnerRoute(claude)).toBe("headless (adapter missing)");
 		expect(isConnected({ ...claude, auth: { signedIn: false } })).toBe(false);
-		expect(isConnected({ ...claude, id: "codex", name: "Codex CLI" })).toBe(false);
+		expect(isConnected({ ...claude, id: "opencode", name: "OpenCode CLI" })).toBe(false);
 	});
 });

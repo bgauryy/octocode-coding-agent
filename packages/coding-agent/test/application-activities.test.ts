@@ -178,6 +178,7 @@ it("stores large activity metadata and cumulative shell text behind full assets 
 	const first = (await snapshot(f.service)).activities!;
 	expect(first.every((item) => JSON.stringify(item).length < 5000)).toBe(true);
 	expect(JSON.parse(f.service.readAsset(first[0].full!.id)!.data)).toEqual({ name });
+	expect(f.service.readAsset(first[0].fullText!.id)?.data).toContain(name);
 	f.emit({ type: "bash_execution_update", id: "one", delta: "b".repeat(6000) });
 	const latest = (await snapshot(f.service)).activities!;
 	expect(latest).toHaveLength(2);
@@ -430,4 +431,24 @@ it("sends a UI notice as a live activity once within the repeat window, and forg
 	expect(activities.notice("Bad hook", "error", 10_000)).toBeDefined();
 	activities.clear();
 	expect(activities.notice("Bad hook", "error", 10_001)).toBeDefined();
+});
+
+it("keeps long notices readable and routes recorded wake events into the activity history", () => {
+	const assets = new ApplicationAssets({ memory: true });
+	const activities = new ApplicationActivities(assets, createApplicationState("s"));
+	const text = "Line of warning. ".repeat(500) + "Final detail";
+	const notice = activities.notice(text, "warning")!;
+	expect(notice.data).toEqual({ level: "warning" });
+	expect(assets.get(notice.full!.id)?.data).toBe(text);
+	const event = { kind: "job.exit", label: "Build finished", from: "job build", data: { exit: 0 } };
+	const wake = activities.entry({
+		...base,
+		id: "wake1",
+		type: "custom",
+		customType: "octocode-wake",
+		data: { events: [event], privateField: 123 },
+	});
+	expect(wake?.text).toContain("job build → this session");
+	expect(wake?.data).toEqual({ events: [event] });
+	assets.clear();
 });

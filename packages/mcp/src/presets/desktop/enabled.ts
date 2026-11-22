@@ -5,7 +5,7 @@ import { desktopAvailable, desktopPreset } from "./index.ts";
 
 /**
  * Whether the `desktop` server will run in a session started in `cwd`: Cua Driver is found (`desktopAvailable`) and the
- * user's own configuration (`mcp.json`, a switch from `/configuration disable mcp:desktop`) has not switched it off. The
+ * user's own configuration (`mcp.json`, a switch from `/settings disable mcp:desktop`) has not switched it off. The
  * `desktop` specialist and the coordinator's desktop guidance exist only then, so a server the user turned off leaves no
  * profile that would try to start it.
  */

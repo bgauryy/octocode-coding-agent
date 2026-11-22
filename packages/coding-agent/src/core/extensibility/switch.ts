@@ -9,7 +9,7 @@ import { isSwitchedOn } from "./toggles.ts";
 
 export type SwitchScope = "global" | "project";
 
-/** A whole harness (`harness:<id>`), switched from the `/harness` list or `/configuration`. */
+/** A whole harness (`harness:<id>`), switched from the `/harness` list or `/settings`. */
 export interface VendorSwitchTarget {
 	vendor: VendorId;
 	label: string;

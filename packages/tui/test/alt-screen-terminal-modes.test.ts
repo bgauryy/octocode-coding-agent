@@ -71,6 +71,8 @@ describe("alternate-screen terminal modes", () => {
 		// The scroll shows the scrollbar: hovering it highlights it, so movement is tracked while it shows.
 		await until(() => terminal.count(ANY_MOTION_ON) === 1, "movement tracking with the scrollbar shown");
 		await until(() => terminal.count(ANY_MOTION_OFF) === 1, "no movement tracking once the scrollbar hides");
+		await terminal.flush();
+		assert.strictEqual(terminal.mouseTrackingMode, "drag", "wheel and selection remain available while idle");
 		assert.strictEqual(terminal.count(ANY_MOTION_ON), 1);
 		tui.stop();
 	});

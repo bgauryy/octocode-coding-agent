@@ -11,7 +11,7 @@ export interface ProviderTemplate {
 	/** The provider id the entry is saved under (a free variant when it is taken). */
 	id: string;
 	name: string;
-	kind: "hosted" | "gateway" | "local";
+	kind: "hosted" | "gateway" | "local" | "custom";
 	api: Api;
 	/** The fixed API base URL; without it the user gives the host. */
 	baseUrl?: string;
@@ -136,6 +136,16 @@ export const PROVIDER_TEMPLATES: readonly ProviderTemplate[] = [
 		keyEnv: "LITELLM_API_KEY",
 		key: "required",
 		docs: "https://docs.litellm.ai/docs/proxy/user_keys",
+		compat: COMPATIBLE_SERVER,
+	},
+	{
+		id: "custom-openai",
+		name: "Custom OpenAI-compatible host",
+		kind: "custom",
+		api: "openai-completions",
+		hostHint: "https://llm.example.com/v1",
+		key: "required",
+		docs: "https://platform.openai.com/docs/api-reference/chat",
 		compat: COMPATIBLE_SERVER,
 	},
 	{

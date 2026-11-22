@@ -28,6 +28,7 @@ import { savedPageLead, savedPageTools } from "../../../web/leads.ts";
 import { cachedSearch } from "../../../web/search-cache.ts";
 import { plural } from "../../../shared/text.ts";
 import { timedTool, timingOf } from "../../../render/rows.ts";
+import { budgetedTool } from "../../../jobs/tool.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { cutText } from "@octocodeai/octocode-common/text";
 
@@ -184,130 +185,137 @@ export function registerWebTool(api: FeatureSetup, permission: Permission): void
 	const fetchUrl = pageFetcher();
 	const search = cachedSearch();
 	api.tools.register(
-		timedTool({
-			name: "web",
-			label: "Web",
-			promptSnippet: renderPrompt("tools/web/snippet.md"),
-			description:
-				"Give exactly one: query to search, or url to read a public http(s) page. A fetch returns static text and metadata or formatted JSON; no JavaScript runs. Image URLs (PNG, JPEG, GIF, WebP) return images, large ones resized with the saved original named; SVG returns XML. A cross-host redirect names the next URL without following it.",
-			// The snippet sends GitHub and package source to the declared search and read tools; without them the research policy
-			// routes those lookups here. These lines own only how to use a result (guidelines are static, so they cannot depend
-			// on the selected tools).
-			promptGuidelines: [],
-			parameters: Type.Object({
-				url: Type.Optional(Type.String({ description: "Page to read" })),
-				query: Type.Optional(Type.String({ description: "Search text" })),
-				maxResults: Type.Optional(Type.Integer({ description: "Search results (default 8, max 20)" })),
-				maxChars: Type.Optional(
-					Type.Integer({
-						description: `Fetch preview chars (default ${DEFAULT_FETCH_CHARS}, 1,000–${MAX_FETCH_CHARS.toLocaleString("en-US")}); longer text is saved to a file to read by line range`,
-					}),
-				),
-			}),
-			display(input) {
-				const { args } = input;
-				const details = input.result?.details as WebDetails | undefined;
-				const file = details?.kind === "fetch" || details?.kind === "image" ? details.file : undefined;
-				return textResultDisplay(
-					{
-						title: "Web",
-						...(args.url ? { summary: args.url } : args.query ? { summary: `search "${args.query}"` } : {}),
-						kind: args.url ? "fetch" : "search",
-						blocks: [],
-					},
-					input,
-					{ summary: webSummary(details), keepBody: true, spill: file ?? spillPath(displayText(input.result)) },
-				);
-			},
-			renderCall(args, theme, context) {
-				return toolHeader(theme, context, "Web", args.url ? args.url : args.query ? `search "${args.query}"` : "");
-			},
-			renderResult(result, _options, theme, context) {
-				const text = resultText(result);
-				const details = result.details as WebDetails | undefined;
-				const summary = context.isError ? text : (webSummary(details) ?? text);
-				const file = details?.kind === "fetch" || details?.kind === "image" ? details.file : undefined;
-				// Errors are one message: its first line is the summary, the rest the body.
-				const body = context.isError ? text.split("\n").slice(1).join("\n") : text;
-				return resultBlock(theme, context, {
-					summary,
-					body,
-					spill: file ?? spillPath(text),
-					...timingOf(result.details),
-				});
-			},
-			async execute(id, params, signal, _onUpdate, ctx) {
-				try {
-					signal?.throwIfAborted();
-					const url = params.url?.trim();
-					const query = params.query?.trim();
-					if (url && query) throw new Error("Provide exactly one of url or query.");
-					if (url) {
-						const max = Math.min(Math.max(Math.floor(params.maxChars ?? DEFAULT_FETCH_CHARS), 1_000), MAX_FETCH_CHARS);
-						// Page text is untrusted: terminal escapes, bidi and invisible characters become visible escapes (nothing is dropped) before the model sees it.
-						const approved = await approveFetch(permission, ctx, id, url, signal);
-						const fetched = await fetchUrl(url, signal, approved);
-						if (typeof fetched !== "string") {
-							if ("kind" in fetched)
-								return textResult<WebDetails>(visibleControls(fetched.text), {
-									kind: "notice",
-									reason: fetched.reason,
-								});
-							return await imageResult(fetched, ctx.model);
-						}
-						const text = visibleControls(fetched);
-						const lines = text.split("\n").length;
-						const size = { kind: "fetch" as const, bytes: Buffer.byteLength(text), lines };
-						if (text.length <= max) return textResult<WebDetails>(capResultText(text, "web"), size);
-						// A longer page is saved whole (read the rest from the file, no refetch); the inline part folds link lists
-						// (sidebars, tables of contents) so content comes first.
-						const file = saveFullOutput(text, "web");
-						if (file) {
-							// MCP research tools take an absolute path; without them the short form is enough to read.
-							const tools = savedPageTools(api.tools.getActive());
-							const where = tools.search.length > 0 || tools.reader ? file : shortPath(file);
-							const hint = `the whole page (${lines} lines, links included) is in ${where}: ${savedPageLead(tools)}`;
-							return textResult<WebDetails>(savedPreview(collapseLinkRuns(text), max, hint), { ...size, file });
-						}
-						// Nothing holds the rest, so nothing is folded and the note says exactly what stays out of reach.
-						return textResult<WebDetails>(
-							capResultText(capChars(text, max, unsavedHint(text.length, max)), "web"),
-							size,
-						);
-					}
-					if (!query) throw new Error(missingTargetMessage(params));
+		budgetedTool(
+			timedTool({
+				name: "web",
+				label: "Web",
+				promptSnippet: renderPrompt("tools/web/snippet.md"),
+				description:
+					"Search by query or fetch one public HTTP(S) URL. Returns static text and metadata, formatted JSON, PNG/JPEG/GIF/WebP images or SVG XML. Large images include the saved original's path. Cross-host redirects return the next URL. JavaScript stays off.",
+				// The snippet sends GitHub and package source to the declared search and read tools; without them the research policy
+				// routes those lookups here. These lines own only how to use a result (guidelines are static, so they cannot depend
+				// on the selected tools).
+				promptGuidelines: [],
+				parameters: Type.Object({
+					url: Type.Optional(Type.String({ description: "Page to read" })),
+					query: Type.Optional(Type.String({ description: "Search text" })),
+					maxResults: Type.Optional(Type.Integer({ description: "Search results (default 8, max 20)" })),
+					maxChars: Type.Optional(
+						Type.Integer({
+							description: `Fetch preview chars (default ${DEFAULT_FETCH_CHARS}, 1,000–${MAX_FETCH_CHARS.toLocaleString("en-US")}); longer text is saved to a file to read by line range`,
+						}),
+					),
+				}),
+				display(input) {
+					const { args } = input;
+					const details = input.result?.details as WebDetails | undefined;
+					const file = details?.kind === "fetch" || details?.kind === "image" ? details.file : undefined;
+					return textResultDisplay(
+						{
+							title: "Web",
+							...(args.url ? { summary: args.url } : args.query ? { summary: `search "${args.query}"` } : {}),
+							kind: args.url ? "fetch" : "search",
+							blocks: [],
+						},
+						input,
+						{ summary: webSummary(details), keepBody: true, spill: file ?? spillPath(displayText(input.result)) },
+					);
+				},
+				renderCall(args, theme, context) {
+					return toolHeader(theme, context, "Web", args.url ? args.url : args.query ? `search "${args.query}"` : "");
+				},
+				renderResult(result, _options, theme, context) {
+					const text = resultText(result);
+					const details = result.details as WebDetails | undefined;
+					const summary = context.isError ? text : (webSummary(details) ?? text);
+					const file = details?.kind === "fetch" || details?.kind === "image" ? details.file : undefined;
+					// Errors are one message: its first line is the summary, the rest the body.
+					const body = context.isError ? text.split("\n").slice(1).join("\n") : text;
+					return resultBlock(theme, context, {
+						summary,
+						body,
+						spill: file ?? spillPath(text),
+						...timingOf(result.details),
+					});
+				},
+				async execute(id, params, signal, _onUpdate, ctx) {
 					try {
-						const { provider, hits, failures } = await search(
-							query,
-							Math.min(Math.max(Math.floor(params.maxResults ?? 8), 1), 20),
-							process.env,
-							signal,
-						);
-						const details: WebDetails = { kind: "search", provider, results: hits.length };
-						// Which provider answered matters only when others failed first: results may differ in kind and quality.
-						const via = failures.length > 0 ? `\n\n(via ${provider}; skipped ${failures.join("; ")})` : "";
-						if (hits.length === 0)
+						signal?.throwIfAborted();
+						const url = params.url?.trim();
+						const query = params.query?.trim();
+						if (url && query) throw new Error("Provide exactly one of url or query.");
+						if (url) {
+							const max = Math.min(
+								Math.max(Math.floor(params.maxChars ?? DEFAULT_FETCH_CHARS), 1_000),
+								MAX_FETCH_CHARS,
+							);
+							// Page text is untrusted: terminal escapes, bidi and invisible characters become visible escapes (nothing is dropped) before the model sees it.
+							const approved = await approveFetch(permission, ctx, id, url, signal);
+							const fetched = await fetchUrl(url, signal, approved);
+							if (typeof fetched !== "string") {
+								if ("kind" in fetched)
+									return textResult<WebDetails>(visibleControls(fetched.text), {
+										kind: "notice",
+										reason: fetched.reason,
+									});
+								return await imageResult(fetched, ctx.model);
+							}
+							const text = visibleControls(fetched);
+							const lines = text.split("\n").length;
+							const size = { kind: "fetch" as const, bytes: Buffer.byteLength(text), lines };
+							if (text.length <= max) return textResult<WebDetails>(capResultText(text, "web"), size);
+							// A longer page is saved whole (read the rest from the file, no refetch); the inline part folds link lists
+							// (sidebars, tables of contents) so content comes first.
+							const file = saveFullOutput(text, "web");
+							if (file) {
+								// MCP research tools take an absolute path; without them the short form is enough to read.
+								const tools = savedPageTools(api.tools.getActive());
+								const where = tools.search.length > 0 || tools.reader ? file : shortPath(file);
+								const hint = `the whole page (${lines} lines, links included) is in ${where}: ${savedPageLead(tools)}`;
+								return textResult<WebDetails>(savedPreview(collapseLinkRuns(text), max, hint), { ...size, file });
+							}
+							// Nothing holds the rest, so nothing is folded and the note says exactly what stays out of reach.
+							return textResult<WebDetails>(
+								capResultText(capChars(text, max, unsavedHint(text.length, max)), "web"),
+								size,
+							);
+						}
+						if (!query) throw new Error(missingTargetMessage(params));
+						try {
+							const { provider, hits, failures } = await search(
+								query,
+								Math.min(Math.max(Math.floor(params.maxResults ?? 8), 1), 20),
+								process.env,
+								signal,
+							);
+							const details: WebDetails = { kind: "search", provider, results: hits.length };
+							// Which provider answered matters only when others failed first: results may differ in kind and quality.
+							const via = failures.length > 0 ? `\n\n(via ${provider}; skipped ${failures.join("; ")})` : "";
+							if (hits.length === 0)
+								return textResult(
+									visibleControls(
+										`No results (${provider}).${failures.length > 0 ? ` (skipped ${failures.join("; ")})` : ""}`,
+									),
+									details,
+								);
 							return textResult(
 								visibleControls(
-									`No results (${provider}).${failures.length > 0 ? ` (skipped ${failures.join("; ")})` : ""}`,
+									hits
+										.map((hit, index) => `${index + 1}. ${hit.title}\n   ${hit.url}\n   ${hit.snippet}`)
+										.join("\n\n") + via,
 								),
 								details,
 							);
-						return textResult(
-							visibleControls(
-								hits.map((hit, index) => `${index + 1}. ${hit.title}\n   ${hit.url}\n   ${hit.snippet}`).join("\n\n") +
-									via,
-							),
-							details,
-						);
+						} catch (error) {
+							throw new Error(`Search failed: ${errorMessage(error)}`, { cause: error });
+						}
 					} catch (error) {
-						throw new Error(`Search failed: ${errorMessage(error)}`, { cause: error });
+						// Page text, URLs and provider answers reach the model in errors too.
+						throw visibleError(error);
 					}
-				} catch (error) {
-					// Page text, URLs and provider answers reach the model in errors too.
-					throw visibleError(error);
-				}
-			},
-		}),
+				},
+			}),
+			(params) => params.url ?? `search "${params.query ?? ""}"`,
+		),
 	);
 }

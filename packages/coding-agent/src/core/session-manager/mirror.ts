@@ -176,8 +176,10 @@ export function recordFork(
 	id: string,
 	file: string,
 	source: { file: string; expectedId?: string } | { storedId: string },
+	owner?: SessionState,
 ): void {
-	const failed = (error: unknown) => notify(`Could not record the fork origin for ${id}: ${errorMessage(error)}`);
+	const failed = (error: unknown) =>
+		notify(`Could not record the fork origin for ${id}: ${errorMessage(error)}`, owner);
 	let command: TranscriptCommand;
 	try {
 		const identity = workspaceIdentity(cwd);

@@ -31,6 +31,7 @@ import {
 import { browserMcpAsked } from "../web/browser-mcp.ts";
 import { contextOptimizationDirs, sessionsRoot, sessionTempRoot } from "../shared/home.ts";
 import { resolveFolderTrust } from "../trust/resolve.ts";
+import { calls } from "./calls.ts";
 import { plugins } from "./plugins.ts";
 import { review } from "./review.ts";
 import { userResearchRoots } from "./research-roots.ts";
@@ -109,5 +110,6 @@ export function installMcpCorePorts(): void {
 		models,
 		browser,
 		review,
+		calls,
 	});
 }

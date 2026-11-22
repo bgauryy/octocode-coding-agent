@@ -16,7 +16,7 @@ import { CACHE_RETENTION_ENV } from "@octocodeai/octocode-common/env";
 import { compactionThinking, reserveTokensFor } from "../shared/tokens.ts";
 import { registerTurnBudget } from "./turn-budget.ts";
 import { ArchiveCapture, deliverArchivePointer, summaryLabel } from "./archive.ts";
-import { cacheCold, PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache.ts";
+import { cacheUnusable, PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache.ts";
 import { startEarlySummary } from "./early-summary.ts";
 import { registerPrewarmWatch } from "./prewarm-watch.ts";
 import { runningWorkOf } from "../shared/running-work.ts";
@@ -169,7 +169,8 @@ export function registerCompaction(
 	api.bus.on("session_compact_prewarm", async (event, ctx) => {
 		if (downshiftFrom || thrash.tripped()) return;
 		const ttl = promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx));
-		startEarlySummary(api, event, ctx, cacheCold(ctx.sessionManager, ttl));
+		// Without a usable cache the early request would bill the whole input beside the run, for a summary the compaction can request itself.
+		startEarlySummary(api, event, ctx, cacheUnusable(ctx.sessionManager, ttl));
 	});
 	api.bus.on("session_before_compact", async (event, ctx) => {
 		// The agent's own request (`compact` tool) arrives as a manual compaction but counts as automatic.

@@ -1,21 +1,11 @@
 import type { OpenAIResponsesCompat } from "../../types.ts";
 import type { ResponsesModel } from "../ai-sdk/responses-model.ts";
 import { azureSupportsLongCacheRetention } from "../azure-openai-config.ts";
+import { isChatGPTSignIn } from "../../utils/chatgpt-sign-in.ts";
 import { isOpenRouterModel } from "../../utils/provider-host.ts";
 import type { OpenAIResponsesOptions } from "./types.ts";
 
-/**
- * OpenAI API keys start with `sk-`; a different credential sent directly to OpenAI
- * is a Sign in with ChatGPT access token.
- */
-export function isChatGPTSignIn(model: ResponsesModel, apiKey: string | undefined): boolean {
-	return (
-		model.provider === "openai" &&
-		model.baseUrl.replace(/\/+$/, "") === "https://api.openai.com/v1" &&
-		apiKey !== undefined &&
-		!apiKey.startsWith("sk-")
-	);
-}
+export { isChatGPTSignIn };
 
 function detectSessionAffinityFormat(model: Pick<ResponsesModel, "provider" | "baseUrl">) {
 	return isOpenRouterModel(model) ? "openrouter" : "openai";

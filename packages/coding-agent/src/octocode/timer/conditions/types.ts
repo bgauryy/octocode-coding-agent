@@ -12,7 +12,8 @@ export type BaseCondition =
 	| { kind: "item"; ref: string; state: string; since?: number }
 	| { kind: "changed"; ref?: string; epic?: string; path?: string; change?: string; since?: number }
 	| { kind: "landed"; ref: string; path?: string; agent?: string; since?: number }
-	| { kind: "agent"; name: string };
+	| { kind: "agent"; name: string }
+	| { kind: "machine"; below?: number; above?: number; for: number };
 
 /** A fuzzy condition: `on` is the deterministic trigger, and the small model judges `question` only after `on` fires. */
 export type CheckCondition = { kind: "check"; question: string; on: BaseCondition };
@@ -62,6 +63,8 @@ export interface ConditionDeps {
 	blockers(ref: string): string[] | undefined;
 	/** Why the agent `name` ended (`completed`, `failed`…), or undefined while it has not. */
 	agentEnd(name: string): { reason: string; detail?: string } | undefined;
+	/** The newest `count` machine samples, newest first (`machine` waits); absent where a host reads none. */
+	machine?(count: number): readonly { load1: number; cores: number }[];
 	/** Calls `poke` whenever the shared database file changes (any process wrote); returns the unsubscribe. */
 	watchDatabase(poke: () => void): () => void;
 	/** One model judgment of a `check`, gated and capped by the host (`judge.ts`). */

@@ -1,1 +1,1 @@
-This wait was not set: a check before it (a PreToolUse hook or the reservation gate) rewrote its command, and a rewrite never reaches a wait's condition. Run the rewritten command with `bash`, or set the wait with a command that needs no rewrite.
+This notify request was not set: a check before it (a PreToolUse hook or the reservation gate) rewrote its command, and a rewrite never reaches the request's condition. Run the rewritten command with `bash`, or set the request with a command that needs no rewrite.

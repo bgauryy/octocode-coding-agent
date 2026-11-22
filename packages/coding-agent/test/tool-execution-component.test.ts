@@ -11,7 +11,7 @@ import {
 	type TuiMouseEvent,
 } from "@octocodeai/octocode-tui";
 import { Type } from "typebox";
-import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { ToolDefinition, ToolRenderers } from "../src/core/features/types.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
@@ -43,6 +43,14 @@ function createFakeTui(): TUI {
 		requestRender: () => {},
 	} as unknown as TUI;
 }
+
+beforeEach(() => {
+	// Pin the running spinner to one frame.
+	animationClock.setReducedMotion(true);
+});
+afterEach(() => {
+	animationClock.setReducedMotion(false);
+});
 
 describe("ToolExecutionComponent parity", () => {
 	beforeAll(() => {
@@ -118,7 +126,7 @@ describe("ToolExecutionComponent parity", () => {
 		const pending = new ToolExecutionComponent("mcp_x", "a", {}, {}, undefined, createFakeTui(), process.cwd());
 		expect(draw(pending)).toContain("⏺ mcp_x");
 		pending.markExecutionStarted();
-		expect(draw(pending)).toContain("⏺ mcp_x");
+		expect(draw(pending)).toContain("◒ mcp_x");
 		expect(draw(pending)).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
 		pending.updateResult({ content: [{ type: "text", text: "bad" }], isError: true });
 		expect(draw(pending)).toContain("⏺ mcp_x");
@@ -624,7 +632,7 @@ describe("ToolExecutionComponent parity", () => {
 });
 
 describe("ToolExecutionComponent running mark", () => {
-	test("a running bash row draws the ⏺ light in the success colour, never a braille frame", () => {
+	test("a running bash row draws the ◒ spinner frame, never a braille frame", () => {
 		const bash = new ToolExecutionComponent(
 			"bash",
 			"b",
@@ -636,7 +644,7 @@ describe("ToolExecutionComponent running mark", () => {
 		);
 		bash.markExecutionStarted();
 		const drawn = bash.render(120).join("\n");
-		expect(stripAnsi(drawn)).toContain("⏺");
+		expect(stripAnsi(drawn)).toContain("◒");
 		expect(stripAnsi(drawn)).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
 		bash.dispose?.();
 	});

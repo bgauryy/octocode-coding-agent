@@ -1,7 +1,6 @@
 import { formatDuration } from "../../shared/format.ts";
 import { firstLine, MINUTE_MS, settleWithin } from "../../shared/util.ts";
-import type { BashJobs } from "../bash-jobs.ts";
-import type { BashJob } from "../bash-jobs/types.ts";
+import type { BashJobs, HeldJob } from "../bash-jobs.ts";
 
 /**
  * A subagent's run ends with its answer, and its jobs are stopped with it. A child that answers while a job it started
@@ -18,7 +17,7 @@ export const CHILD_JOB_HOLD_MS = 10 * MINUTE_MS;
 export const JOB_HOLD_TYPE = "octocode-job-hold";
 
 /** The note for jobs still running after the hold. */
-function jobHoldNote(jobs: readonly BashJob[], heldMs: number, now = Date.now()): string {
+function jobHoldNote(jobs: readonly HeldJob[], heldMs: number, now = Date.now()): string {
 	const lines = jobs.map(
 		(job) =>
 			`- ${job.id} (pid ${job.pid}, running ${formatDuration(now - job.startedAt)}): ${firstLine(job.command).slice(0, 80)}; log ${job.log}`,
@@ -36,14 +35,14 @@ function jobHoldNote(jobs: readonly BashJob[], heldMs: number, now = Date.now())
  * `stop` fired, or the child was already told about every running job and `reported` (its answer names an outcome).
  */
 export async function holdForOwnJobs(
-	jobs: Pick<BashJobs, "running">,
-	warned: WeakSet<BashJob>,
+	jobs: Pick<BashJobs, "held">,
+	warned: WeakSet<HeldJob>,
 	notify: (text: string) => void,
 	stop: AbortSignal | undefined,
 	holdMs = CHILD_JOB_HOLD_MS,
 	reported = false,
 ): Promise<boolean> {
-	const running = jobs.running();
+	const running = jobs.held();
 	if (running.length === 0) return false;
 	const fresh = running.filter((job) => !warned.has(job));
 	if (fresh.length === 0 && reported) return false;

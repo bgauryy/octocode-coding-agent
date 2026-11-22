@@ -66,6 +66,7 @@ export function SettingsPanel({
 					provider={setting("defaultProvider")}
 					save={save}
 					workspace={workspace}
+					modelsPath={snapshot.modelsPath}
 				/>
 			)}
 		</section>

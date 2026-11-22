@@ -92,12 +92,14 @@ async function claudeCodeSession(env: Record<string, string>, prompts: Step[][])
 	sessions.push({ dispose: () => void backend.close().finally(() => session.dispose()) });
 	await session.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
 	await session.setModel(session.modelRuntime.getModel("claude-code", "opus")!);
+	// The adapter appends while `until` polls, so only lines ended by a newline are complete.
 	const entries = (): Entry[] =>
 		fs.existsSync(journal)
 			? fs
 					.readFileSync(journal, "utf8")
-					.trim()
 					.split("\n")
+					.slice(0, -1)
+					.filter((line) => line.trim() !== "")
 					.map((line) => JSON.parse(line) as Entry)
 			: [];
 	const messages = () => session.agent.state.messages;

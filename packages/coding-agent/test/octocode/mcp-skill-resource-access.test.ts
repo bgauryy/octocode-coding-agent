@@ -4,7 +4,7 @@ import {
 	createFauxCore,
 	fauxAssistantMessage,
 	fauxToolCall,
-	getCurrentSystemPrompt,
+	getCurrentTools,
 	type JsonObject,
 } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it, vi } from "vitest";
@@ -144,7 +144,9 @@ it.each(["native", "configured-default", "configured-explicit"] as const)(
 					expect(user).toContain("BODY_loser");
 					expect(user).not.toContain("BODY_winner");
 					expect(user).not.toContain("BODY_model-only");
-					expect(getCurrentSystemPrompt(context.messages)).toContain('<skill name="model-only"');
+					expect(getCurrentTools(context.messages).find((tool) => tool.name === "skill")?.description).toContain(
+						path.join(modelOnly, "SKILL.md"),
+					);
 					return fauxAssistantMessage(
 						[
 							fauxToolCall(reader!, {

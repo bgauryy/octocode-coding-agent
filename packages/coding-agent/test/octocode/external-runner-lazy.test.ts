@@ -48,7 +48,7 @@ describe("lazy installed runners", () => {
 	it("declares runnable installed CLIs without status commands and honors disable", () => {
 		const fx = fixture();
 		const runners = connectedRunners(true, permission);
-		expect(runners.ids).toEqual(["claude-code", "opencode"]);
+		expect(runners.ids).toEqual(["claude-code", "codex", "opencode"]);
 		expect(runners.states.every((state) => state.auth === undefined)).toBe(true);
 		expect(runnerRows(runners.states).join("\n")).toContain("sign-in checked when used");
 		expect(connectedRunners(false, permission).ids).toEqual([]);

@@ -1,5 +1,5 @@
 /**
- * The terminal selector of `octocode configuration`: the same component `/configuration` opens, in its own screen.
+ * The terminal selector of `octocode configuration`: the same component `/settings` opens, in its own screen.
  */
 
 import { ProcessTerminal, type TUI, TuiMainScreen } from "@octocodeai/octocode-tui";

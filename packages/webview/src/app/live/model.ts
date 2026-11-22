@@ -80,6 +80,7 @@ export function activityCard(event: FeedEvent): ActivityCard {
 	const structured = event.type === "agent.result";
 	const prose = event.type === "message" || event.type === "agent.progress";
 	const [firstLine, ...rest] = event.type.startsWith("tool.") ? toolHeadline(event) : event.text.split("\n");
+	const longActivityTitle = !!event.activity && firstLine.length > 160;
 	const hint = event.type.startsWith("tool.") ? hintOf(event) : "";
 	const ui = cardState(event, { failed, notRun, stopped });
 	// A notice the terminal showed (`ui.notify`): a warning reads as one.
@@ -122,11 +123,15 @@ export function activityCard(event: FeedEvent): ActivityCard {
 				: "Progress update"
 			: structured
 				? scalarText(details.summary) || "Agent result"
-				: hint
-					? `${firstLine} ${hint}`
-					: firstLine,
+				: longActivityTitle
+					? notice
+						? "System notice"
+						: "Session update"
+					: hint
+						? `${firstLine} ${hint}`
+						: firstLine,
 		goal: details.goal ? scalarText(details.goal) : undefined,
-		body: prose ? event.text : structured ? (scalarText(details.body) ?? "") : rest.join("\n"),
+		body: prose || longActivityTitle ? event.text : structured ? (scalarText(details.body) ?? "") : rest.join("\n"),
 		files: structured && Array.isArray(details.files) ? details.files.map(String) : [],
 		thoughtMs: typeof details.thoughtMs === "number" ? details.thoughtMs : undefined,
 		// A subagent's report is the agent tool's output: Markdown, like any other answer.

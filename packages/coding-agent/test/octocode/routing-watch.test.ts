@@ -204,7 +204,13 @@ describe("coordinator prompt routing", () => {
 		const ctx = {
 			hasUI: true,
 			model: opus,
-			modelRegistry: { ...meteredBilling, getProviderKind: () => "API key", getAvailable: () => available },
+			modelRegistry: {
+				...meteredBilling,
+				getProviderKind: () => "API key",
+				getAvailable: () => available,
+				getAll: () => available,
+				isModelHidden: () => false,
+			},
 		};
 		const start = async () => {
 			const event = { systemPromptOptions: { sections: {} as Record<string, string>, baseSections: {} } };
@@ -257,7 +263,13 @@ describe("coordinator prompt routing", () => {
 		const ctx = {
 			hasUI: true,
 			model: opus,
-			modelRegistry: { ...meteredBilling, getProviderKind: () => "API key", getAvailable: () => available },
+			modelRegistry: {
+				...meteredBilling,
+				getProviderKind: () => "API key",
+				getAvailable: () => available,
+				getAll: () => available,
+				isModelHidden: () => false,
+			},
 		};
 		const start = async () => {
 			const event = { systemPromptOptions: { sections: {} as Record<string, string>, baseSections: {} } };

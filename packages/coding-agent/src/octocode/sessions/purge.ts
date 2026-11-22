@@ -4,6 +4,7 @@ import { maintenance, purge, type MaintenanceResult, type PurgeCounts } from "..
 import { formatBytes } from "@octocodeai/octocode-common/bytes";
 import { type PurgeKind, type PurgePlan, type PurgeScope, planPurge, type PlanOptions } from "./purge-plan.ts";
 import type { SessionIndex } from "./store.ts";
+import { sameProcess } from "../shared/process.ts";
 import { strictlyInside } from "./sweep-fs.ts";
 
 export { planPurge };
@@ -97,10 +98,12 @@ async function applyPurge(index: SessionIndex, plan: PurgePlan): Promise<PurgeRe
 		const mirror = index.agent.mirror.db;
 		// The current session keeps every row (mirror, compaction summaries, tasks) and the workspace row it references.
 		const keepSessions = plan.current ? [plan.current] : [];
-		if (plan.scope === "all") result.rows = purge.all(db, mirror, { keepSessions });
+		// Another process that opened a session since the plan keeps it (this process's own sessions stay purgeable, as planned).
+		const isLive = (pid: number, started: string | null) => pid !== process.pid && sameProcess(pid, started);
+		if (plan.scope === "all") result.rows = purge.all(db, mirror, { keepSessions, isLive });
 		else
 			for (const workspace of plan.workspaces)
-				for (const [table, n] of Object.entries(purge.workspace(db, mirror, workspace.id, { keepSessions })))
+				for (const [table, n] of Object.entries(purge.workspace(db, mirror, workspace.id, { keepSessions, isLive })))
 					result.rows[table] = (result.rows[table] ?? 0) + n;
 		result.vacuum = vacuumBoth(index);
 	} catch (error) {

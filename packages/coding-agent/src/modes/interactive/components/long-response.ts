@@ -23,7 +23,7 @@ export class LongResponse implements Component {
 	private readonly region: MouseRegion;
 	private readonly content: Component;
 	private expanded: boolean;
-	private readonly changed: (expanded: boolean) => void;
+	private readonly changed?: (expanded: boolean) => void;
 	private readonly streaming: boolean;
 	private readonly collapsing?: () => void;
 	private folded?: { rows: string[]; width: number; hint: string; lines: string[] };
@@ -32,7 +32,7 @@ export class LongResponse implements Component {
 	constructor(
 		content: Component,
 		expanded: boolean,
-		changed: (expanded: boolean) => void,
+		changed?: (expanded: boolean) => void,
 		streaming = false,
 		collapsing?: () => void,
 	) {
@@ -41,18 +41,14 @@ export class LongResponse implements Component {
 		this.expanded = expanded;
 		this.changed = changed;
 		this.streaming = streaming;
-		this.region = new MouseRegion(content, (event) => {
-			if (!this.foldable || event.type !== "click" || event.button !== "left") return undefined;
-			this.setExpanded(!this.expanded);
-			this.changed(this.expanded);
-			return { handled: true };
-		});
+		this.region = new MouseRegion(content, (event) => this.toggle(event));
 		linkRenderChild(this, content);
 	}
 
 	setExpanded(expanded: boolean): void {
 		// Only a folding response shrinks when it collapses.
 		if (this.expanded && !expanded && this.foldable) this.collapsing?.();
+		if (this.expanded === expanded) return;
 		this.expanded = expanded;
 		renderChanged(this);
 	}
@@ -62,7 +58,15 @@ export class LongResponse implements Component {
 		renderChanged(this);
 	}
 	handleMouse(event: TuiMouseEvent) {
-		return this.region.handleMouse(event);
+		// Hidden rows have no pointer targets. Expanded rows retain the child component's controls.
+		return this.foldable && !this.expanded ? this.toggle(event) : this.region.handleMouse(event);
+	}
+
+	private toggle(event: TuiMouseEvent) {
+		if (!this.foldable || event.type !== "click" || event.button !== "left") return undefined;
+		this.setExpanded(!this.expanded);
+		this.changed?.(this.expanded);
+		return { handled: true };
 	}
 
 	render(width: number): string[] {
@@ -79,7 +83,7 @@ export class LongResponse implements Component {
 		const label = `… ${rows.length - RESPONSE_HEAD_LINES - RESPONSE_TAIL_LINES} lines hidden${hint ? ` ${hint}` : ""}`;
 		const lines = [
 			...rows.slice(0, RESPONSE_HEAD_LINES),
-			...new Text(theme.fg("dim", label), 1, 0).render(width),
+			...new Text(theme.fg("muted", label), 1, 0).render(width),
 			...rows.slice(-RESPONSE_TAIL_LINES),
 		];
 		this.folded = { rows, width, hint, lines };

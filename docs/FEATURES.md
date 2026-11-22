@@ -1,6 +1,6 @@
 # Octocode features
 
-Find a feature, then follow its link. User reference lives in the [documentation index](../packages/coding-agent/docs/index.md); this folder holds designs that cross packages; [configuration](../packages/coding-agent/docs/configuration.md) owns settings and precedence. Turn any feature on or off with [`/configuration`](../packages/coding-agent/docs/configuration.md#changing-configuration).
+Find a feature, then follow its link. User reference lives in the [documentation index](../packages/coding-agent/docs/index.md); this folder holds designs that cross packages; [configuration](../packages/coding-agent/docs/configuration.md) owns settings and precedence. Turn any feature on or off with [`/settings`](../packages/coding-agent/docs/configuration.md#changing-configuration).
 
 ```mermaid
 flowchart TD
@@ -59,7 +59,7 @@ The host owns execution, permissions and session state; terminal, browser and AC
 | Shell and jobs       | `bash`, background runs, trimmed output, verification receipts, `/jobs`                                                  | [Tool selection](../packages/coding-agent/docs/native-features.md#tool-selection-and-migration)                                                        |
 | Debugging            | A skill drives lldb, pdb and profilers through `bash`; there is no debugger tool                                         | [Debugging](EXECUTION_AND_PERMISSIONS.md#editing-and-verifying)                                                                                        |
 | Resuming other tools | A skill finds Claude Code, Codex and Cursor sessions of the repository, reads them back and reports dangling worktrees   | [Native features](../packages/coding-agent/docs/native-features.md#resuming-other-tools-sessions)                                                      |
-| MCP                  | Octocode is the default server; others are added in MCP configuration or `/configuration`; presets, per-agent assignment | [MCP](../packages/coding-agent/docs/mcp.md), [reference](../packages/coding-agent/docs/mcp-reference.md)                                               |
+| MCP                  | Octocode is the default server; others are added in MCP configuration or `/settings`; presets, per-agent assignment | [MCP](../packages/coding-agent/docs/mcp.md), [reference](../packages/coding-agent/docs/mcp-reference.md)                                               |
 | Browser              | The `browser` MCP preset and specialist; navigation and network policy stay in the host                                  | [Browser and web access](../packages/coding-agent/docs/native-features.md#browser-and-web-access)                                                      |
 | Desktop control      | Cua Driver as the `desktop` MCP preset and specialist, asked at every start; absent without `cua-driver`                 | [Desktop control](../packages/coding-agent/docs/native-features.md#desktop-control)                                                                    |
 | Web retrieval        | `web` search and fetch with address and redirect checks                                                                  | [Browser and web access](../packages/coding-agent/docs/native-features.md#browser-and-web-access)                                                      |

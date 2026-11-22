@@ -24,6 +24,9 @@ import { parsePatch } from "../../../tool-input/codex-patch/patch.ts";
 import { FILE_TOOL_EFFECT, patchChanges, validateFileInput } from "../../../tool-input/file-input.ts";
 import { askReview } from "../../../files/review.ts";
 import { bashReads } from "../../../files/bash-reads.ts";
+import { shellWrittenFiles } from "../../../files/bash-writes.ts";
+import { expiredHandleReply } from "../../../files/expired-handles.ts";
+import { sessionHeap } from "../../../shared/session-heap.ts";
 import { repeatReadNotes } from "../../../files/repeat-reads.ts";
 import { type FileGuard, returnedContent } from "../../../files/tool/guard.ts";
 import { protectedFileRefusal } from "../../../files/tool/protected-files.ts";
@@ -85,7 +88,7 @@ export function registerFileTool(
 					label: "File",
 					promptSnippet: renderPrompt("tools/file/snippet.md"),
 					description:
-						"Applies file changes; it does not read. Send queries or a Codex-style patch, never both; group a file's replacements in one query. Queries continue past failures; a patch validates everything, then stops at the first failure; neither rolls back. Read an existing file before write or delete (the declared read tool, search rows and unpiped bash prints count); an edit whose oldText matches exactly needs no read. Stale files refuse write/delete; paths outside the workspace need approval.",
+						"Changes files. Use queries or one Codex-style patch. Group each file's replacements in one query. Queries continue after errors. A patch validates all changes, then stops on error. Neither rolls back. Read before writing or deleting an existing file. Read tools, search rows and unpiped bash output count. Exact-match edits need no read. Stale writes and deletes fail. Outside paths need approval.",
 					promptGuidelines: renderPrompt("tools/file/guidelines.md").split("\n"),
 					parameters: Params,
 					prepareArguments: renameReasoning,
@@ -337,6 +340,8 @@ export function registerFileTool(
 	const repeats = repeatReadNotes();
 	api.bus.on("tool_result", async (event, ctx) => {
 		// A call another tool made may return content the script never showed the model, so only the model's own calls count as reads.
+		const expired = expiredHandleReply(event, sessionHeap(ctx.sessionManager));
+		if (expired) return { content: [{ type: "text" as const, text: expired }], details: event.details };
 		if (event.isError || event.parentToolCallId) return undefined;
 		for (const read of recordedLocalReads(event.details)) guard.record(read.file, read, !read.whole, read.lines);
 		const known = returnedContent(event.toolName, event.input, event.content, event.details);
@@ -348,9 +353,12 @@ export function registerFileTool(
 			const { command, background } = event.input;
 			const details = asRecord(event.details);
 			const cut = details.truncation !== undefined || details.fullOutputPath !== undefined;
-			if (typeof command === "string" && background !== true)
+			if (typeof command === "string" && background !== true) {
 				for (const read of bashReads(command, ctx.cwd, cut))
 					guard.record(read.file, undefined, !read.whole, read.lines);
+				// A file this command wrote is known to this session as of now; a later change by another writer shows in its stat.
+				for (const file of await shellWrittenFiles(command, ctx.cwd)) guard.record(file);
+			}
 		}
 		// Once the guard has credited the read: a repeated whole read of an unchanged file becomes a note pointing at the first.
 		return repeats(event, ctx);

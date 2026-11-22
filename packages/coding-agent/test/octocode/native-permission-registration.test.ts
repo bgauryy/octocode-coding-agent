@@ -27,6 +27,7 @@ it("user Bash calls carry explicit origin and independent opaque invocation IDs"
 	const preToolUse = vi.fn(async (_event: ToolCallEvent) => undefined);
 	const typed = vi.fn();
 	const gate = userBashGate({
+		clientPermission: vi.fn(),
 		permission: { check: vi.fn(), refused: vi.fn(), typed, sourceDecision: () => undefined },
 		preToolUse,
 	});

@@ -10,6 +10,7 @@ import {
 	PROTECTED_HOMES_ENV,
 	runProcesses,
 	staleRunOrphans,
+	sweepStaleRunDirs,
 	sweepStaleTmuxSockets,
 } from "../../../../test-isolation.ts";
 import setup from "../../../../vitest.tmp.global.ts";
@@ -23,6 +24,16 @@ const accountHome = os.userInfo().homedir;
 let savedEnv: NodeJS.ProcessEnv;
 let savedExitCode: typeof process.exitCode;
 let parent: string;
+it("preserves another runner's folder while it creates the owner marker", () => {
+	const dir = path.join(parent, "vt-starting");
+	fs.mkdirSync(dir);
+	sweepStaleRunDirs(parent);
+	expect(fs.existsSync(dir)).toBe(true);
+	fs.writeFileSync(path.join(dir, ".owner-pid"), "");
+	sweepStaleRunDirs(parent);
+	expect(fs.existsSync(dir)).toBe(true);
+});
+
 beforeEach(() => {
 	savedEnv = { ...process.env };
 	savedExitCode = process.exitCode;

@@ -131,16 +131,29 @@ export function bySessionJob(db: DatabaseSync, sessionId: string, job: string): 
 		| undefined;
 }
 
+/** The process `pid` exists (signal 0 only probes). A permission error means it exists under another user. */
+function pidExists(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === "EPERM";
+	}
+}
+
 /**
- * Retention: drops ended jobs that ended before `cutoff`, and jobs still marked running but untouched since then (their
- * session died without recording the end).
+ * Retention: drops ended jobs that ended before `cutoff`, and jobs still marked running but untouched since then whose
+ * process is gone (their session died without recording the end). A running job is not touched while it runs, so one
+ * whose process still exists stays however long it has run; a job on another host cannot be probed and is dropped by age.
  */
 export function purgeBefore(db: DatabaseSync, cutoff: number): number {
-	return Number(
-		db
-			.prepare(
-				"DELETE FROM jobs WHERE (state <> 'running' AND ended_at < ?1) OR (state = 'running' AND updated_at < ?1)",
-			)
-			.run(cutoff).changes,
-	);
+	let removed = Number(db.prepare("DELETE FROM jobs WHERE state <> 'running' AND ended_at < ?").run(cutoff).changes);
+	const stale = db.prepare("SELECT id, pid, host FROM jobs WHERE state = 'running' AND updated_at < ?").all(cutoff) as {
+		id: number;
+		pid: number;
+		host: string | null;
+	}[];
+	const remove = db.prepare("DELETE FROM jobs WHERE id = ?");
+	for (const job of stale) if (job.host !== null || !pidExists(job.pid)) removed += Number(remove.run(job.id).changes);
+	return removed;
 }

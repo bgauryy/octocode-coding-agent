@@ -1,11 +1,11 @@
-import { animationClock, GLYPH, MOTION, visibleWidth } from "@octocodeai/octocode-tui";
+import { animationClock, MOTION, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { collapsedRows } from "../../src/octocode/team/panel/rows.ts";
 import { type Moving, PanelMotion } from "../../src/octocode/team/panel/motion.ts";
 import { panelMark, panelState } from "../../src/octocode/team/panel/state.ts";
 import { AgentsView } from "../../src/octocode/team/panel.ts";
-import { markFrameMs, WAIT_PULSE_MS } from "../../src/theme/status.ts";
+import { LIGHT_SPINNER, markFrameMs } from "../../src/theme/status.ts";
 import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
 import { fakeCtx, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -42,7 +42,9 @@ describe("panel state", () => {
 		expect(panelState(gone, NOW)).toEqual({ state: "pending", label: "left" });
 	});
 
-	it("draws the state marks: the light for every state, working or not", () => {
+	const spin = LIGHT_SPINNER[Math.floor(NOW / markFrameMs("running", { light: true })) % LIGHT_SPINNER.length];
+
+	it("draws the state marks: a spinner for a working agent, the steady light for every other state", () => {
 		const team = [
 			member("main-aaaaaa"),
 			member("busy-aaaa", { parentId: "main-aaaaaa", status: "working" }),
@@ -55,7 +57,7 @@ describe("panel state", () => {
 			`${left}${" ".repeat(120 - visibleWidth(left) - visibleWidth(right))}${right}`;
 		expect(rows).toEqual([
 			edge(" 🦑 main-aaaaaa ⏺ · general", "1m"),
-			edge(` ├ ⏺ busy-aaaa    · general`, "1m"),
+			edge(` ├ ${spin} busy-aaaa    · general`, "1m"),
 			edge(" └ ⏺ rest-bbbb    · general", "1m"),
 		]);
 		const tree = [
@@ -64,13 +66,14 @@ describe("panel state", () => {
 			{ member: team[2], depth: 0, doneAt: NOW - 20_000 },
 		];
 		const compact = collapsedRows(tree, NOW, theme, 120).map((row) => row.slice(0, 5));
-		expect(compact).toEqual([` ├ ⏺ `, " ├ ⏺ ", " └ ⏺ "]);
+		expect(compact).toEqual([` ├ ${spin} `, " ├ ⏺ ", " └ ⏺ "]);
 	});
 
-	it("holds the light steady in reduced motion", () => {
+	it("holds a still spinner frame in reduced motion", () => {
 		animationClock.setReducedMotion(true);
 		const state = panelState({ member: member("a", { status: "working" }), depth: 0 }, NOW);
-		expect(panelMark(theme, state, NOW + 80)).toBe(GLYPH.light);
+		expect(panelMark(theme, state, NOW + 80)).toBe(LIGHT_SPINNER[0]);
+		expect(panelMark(theme, state, NOW + 800)).toBe(LIGHT_SPINNER[0]);
 	});
 
 	it("keeps the root row free of a tally: each agent's mark says it works, and `left` is on the ↳ line", () => {
@@ -83,8 +86,8 @@ describe("panel state", () => {
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 120, [], undefined, done);
 		expect(lines).toEqual([
 			" 🦑 main-aaaaaa ⏺ · general                                                                                           1m",
-			" ├ ⏺ a-1111       · general                                                                                           1m",
-			" ├ ⏺ b-2222       · general                                                                                           1m",
+			` ├ ${spin} a-1111       · general                                                                                           1m`,
+			` ├ ${spin} b-2222       · general                                                                                           1m`,
 			" └ ⏺ c-3333       · general                                                                                          59s",
 			"     ↳ left",
 		]);
@@ -152,14 +155,13 @@ describe("panel motion", () => {
 		expect(animationClock.isRunning()).toBe(false);
 	});
 
-	it("glows a fresh done mark at the slower glow cadence, then stops", () => {
+	it("does not subscribe for a fresh done mark: it is steady green from the first frame", () => {
 		vi.useFakeTimers();
 		const since = Date.now();
 		const motion = new PanelMotion(() => [{ state: "done", since }], vi.fn());
 		motion.sync();
-		expect(motion.active).toBe(true);
-		vi.advanceTimersByTime(MOTION.flashMs + MOTION.glowFrameMs * 2);
 		expect(motion.active).toBe(false);
+		expect(animationClock.isRunning()).toBe(false);
 	});
 
 	it("dispose ends the subscription", () => {
@@ -210,7 +212,7 @@ describe("AgentsView motion", () => {
 		view.stop(ctx);
 	});
 
-	it("breathes a waiting agent's mark for WAIT_PULSE_MS from when it began to wait, then stops requesting frames", () => {
+	it("holds a waiting agent's yellow mark still: no clock, no frames", () => {
 		vi.useFakeTimers();
 		const now = Date.now();
 		const members = [
@@ -235,11 +237,8 @@ describe("AgentsView motion", () => {
 		const factory = ctx.ui.widgets.get("octocode-agents") as (tui: unknown, theme: unknown) => unknown;
 		const requestRender = vi.fn();
 		factory({ requestRender }, theme);
-		expect(animationClock.isRunning()).toBe(true);
-		vi.advanceTimersByTime(WAIT_PULSE_MS - 1_000);
-		expect(animationClock.isRunning()).toBe(true);
-		// Past the pulse the mark holds still while the agent keeps waiting: no clock, no frames.
-		vi.advanceTimersByTime(2_000);
+		expect(animationClock.isRunning()).toBe(false);
+		vi.advanceTimersByTime(3_000);
 		expect(animationClock.isRunning()).toBe(false);
 		// Between data refreshes (each second) nothing repaints.
 		vi.advanceTimersByTime(1_000 - ((Date.now() - now) % 1_000) + 10);

@@ -100,6 +100,21 @@ describe("long response", () => {
 		response.handleMouse(click);
 		expect(states).toEqual([true, false]);
 	});
+	it("folds a long provider error and restores the complete diagnostic on expansion", () => {
+		const component = new AssistantMessageComponent();
+		component.updateMessage({
+			id: "failed-reply",
+			role: "assistant",
+			text: "",
+			complete: true,
+			stopReason: "error",
+			errorMessage: Array.from({ length: 150 }, (_, i) => `diagnostic ${i}`).join("\n"),
+		});
+		expect(component.render(60).join("\n")).not.toContain("diagnostic 75");
+		component.setExpanded(true);
+		expect(component.render(60).join("\n")).toContain("diagnostic 75");
+	});
+
 	it("folds rendered rows and restores them without changing the source", () => {
 		const content = source(RESPONSE_FOLD_THRESHOLD + 1);
 		const response = new LongResponse(content, false, () => {});

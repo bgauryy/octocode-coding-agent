@@ -1,5 +1,6 @@
 import type { AgentSessionEvent } from "../../agent-session/types.ts";
 import { compactionSummaryDisplay } from "../../messages.ts";
+import { readWakeLines, WAKE_TYPE } from "../../wake-entry.ts";
 import type { SessionEntry } from "../../session-manager.ts";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 
@@ -143,6 +144,18 @@ export function entryActivity(entry: SessionEntry): ActivityData | undefined {
 					text: note.text,
 					data: { customType: entry.customType, ...pick(note, ["ref", "change"]) },
 				};
+			if (entry.customType === WAKE_TYPE) {
+				const events = readWakeLines(entry.data);
+				if (events.length)
+					return {
+						kind: WAKE_TYPE,
+						text: [
+							"Session woke",
+							...events.map((event) => (event.from ? `${event.label} · ${event.from} → this session` : event.label)),
+						].join("\n"),
+						data: { events },
+					};
+			}
 			// A once-only session note (`core/notice-line.ts`): lifted rules, the lean prompt on, a refused subagent.
 			if (entry.customType === "octocode-notice-line" && typeof note.text === "string" && note.text.trim())
 				return {

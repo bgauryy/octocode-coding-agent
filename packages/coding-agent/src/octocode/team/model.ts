@@ -28,7 +28,19 @@ export interface Message {
 }
 
 /** How a message is sent: whether it asks for a reply, which message it answers, whether it interrupts, and whether it starts an idle recipient's turn without asking for a reply. */
+/** A promise the sender asks of its recipient, beside the message (`events/tickets.ts`); `replyRequired` is `{ on: "reply" }`. */
+export interface CallbackSpec {
+	on: "reply" | "done" | "item.state" | "job.exit" | "agent.ended";
+	/** Fields of the resolving event's payload that must equal these (`{ ref: "B1", state: "done" }`, `{ job: "task-3" }`). */
+	filter?: Record<string, string>;
+	/** The sender's own reminder, echoed back with the result. */
+	note?: string;
+	/** Minutes until the ticket is rejected as `timeout`; unset uses the default of `on`. */
+	timeoutMinutes?: number;
+}
+
 export interface SendOptions {
+	callback?: CallbackSpec;
 	replyRequired?: boolean;
 	replyTo?: number;
 	interrupt?: boolean;

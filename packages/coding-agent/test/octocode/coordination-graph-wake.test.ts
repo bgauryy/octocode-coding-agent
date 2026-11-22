@@ -1,3 +1,4 @@
+import { withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -206,7 +207,7 @@ describe("(c) a prerequisite whose owner child ended without finishing it", () =
 			s.control.stop(id, USER_SENDER);
 			await s.control.settle();
 			const report = s.sent.find((entry) => {
-				const text = String(entry.message.content);
+				const text = withoutSourceHeader(String(entry.message.content));
 				return text.startsWith(`Background subagent ${id} `) && text.includes("cancelled by the user");
 			});
 			expect(String(report?.message.content)).toContain(`B1's owner ${id} ended; B2 waits on it`);
@@ -226,7 +227,9 @@ describe("(c) when the session itself stops every child", () => {
 			const first = await s.run({ task: "abortable work", item: "B1", background: true });
 			const id = first.details.id as string;
 			await s.control.stopAll("plan mode");
-			const report = s.sent.find((entry) => String(entry.message.content).startsWith(`Background subagent ${id} `));
+			const report = s.sent.find((entry) =>
+				withoutSourceHeader(String(entry.message.content)).startsWith(`Background subagent ${id} `),
+			);
 			expect(String(report?.message.content)).toContain(`B1's owner ${id} ended`);
 			expect(report?.options.triggerTurn).toBe(false);
 		} finally {

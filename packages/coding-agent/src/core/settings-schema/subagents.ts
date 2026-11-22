@@ -12,10 +12,11 @@ export const SubagentSettingsSchema = Type.Object(
 				{
 					small: Type.Optional(Type.String({ minLength: 1 })),
 					medium: Type.Optional(Type.String({ minLength: 1 })),
+					large: Type.Optional(Type.String({ minLength: 1 })),
 				},
 				{
 					description:
-						'Model for the `small` and `medium` subagent purposes, each `provider/model` with an optional `:level` thinking suffix, e.g. { "small": "openai/gpt-5-mini:low" }. Used by every profile or task that names the purpose, before the automatic choice; a call\'s own `model` still wins. A model that is not available, cannot run a task or sits on a provider that refused its credential is skipped for the automatic choice, and the route says why. Read from the global settings file; a project file cannot set it.',
+						'Model for the `small`, `medium` and `large` subagent purposes, each `provider/model` with an optional `:level` thinking suffix, e.g. { "small": "openai/gpt-5-mini:low" }. Used by every profile or task that names the purpose, before the automatic choice; a call\'s own `model` still wins. A model that is not available, cannot run a task or sits on a provider that refused its credential is skipped for the automatic choice, and the route says why. Read from the global settings file; a project file cannot set it.',
 					additionalProperties: false,
 				},
 			),
@@ -46,7 +47,7 @@ export const SubagentSettingsSchema = Type.Object(
 				minimum: 0,
 				maximum: 10,
 				description:
-					"Seconds an idle session holds a wake (a child's report, a job's exit, mail) so wakes arriving close together share one turn. The first wake opens the window; everything arriving in it is delivered together when it ends. 0 delivers each wake at once. Costs up to this much latency per wake.",
+					"Seconds an idle session holds a wake (a child's report, a job's exit, mail) so wakes arriving close together share one turn. The first wake opens the window; everything arriving in it is delivered together when it ends. 0 delivers each wake at once. Costs up to this much latency per wake. Deprecated: with `runtime.eventLoop: \"new\"` it no longer applies to a background job's exit, a child's report or end, or team mail (`runtime.eventWindowSeconds` does), and it is removed when the last event kind moves to the loop.",
 				default: SETTINGS_DEFAULTS.subagents.wakeHoldSeconds,
 			}),
 		),
@@ -55,13 +56,6 @@ export const SubagentSettingsSchema = Type.Object(
 				description:
 					"Wake the holder of an ongoing item, or of a reservation, when another agent claims an item (or edits its paths) that overlaps its paths, once per pair. Off: the holder hears of it with its next turn instead.",
 				default: SETTINGS_DEFAULTS.subagents.peerOverlapWake,
-			}),
-		),
-		skillCatalog: Type.Optional(
-			Type.Union([Type.Literal("all"), Type.Literal("role")], {
-				description:
-					"Which skills a subagent started without named skills can load. all: this session's whole skill catalog. role: only its role's skills, so the child prompt drops the catalog; skills the task names are always listed.",
-				default: SETTINGS_DEFAULTS.subagents.skillCatalog,
 			}),
 		),
 	},

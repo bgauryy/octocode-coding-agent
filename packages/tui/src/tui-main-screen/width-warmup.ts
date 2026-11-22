@@ -1,3 +1,4 @@
+import { finishRow } from "./frame-finish.ts";
 import type { Component } from "../tui/component.ts";
 import { readChildren, rendersAsContainer } from "../tui/container-state.ts";
 import { renderIsolated } from "../tui/render-isolation.ts";
@@ -24,6 +25,7 @@ export interface FrameSize {
 	size: { width: number; height: number } | undefined;
 	/** Rows at the new width are still filling: another frame must follow. */
 	warming: boolean;
+	prepared?: ReadonlyMap<string, string>;
 }
 
 interface Level {
@@ -37,12 +39,14 @@ interface Level {
  * below plain containers, which pass their width on unchanged) at the new width for at most `SLICE_MS`, so their row
  * caches fill while frames keep the last width; the frame after the last slice lays out at the new width and mostly
  * reads caches. A tree of fewer than `MIN_LEAVES` leaves lays out at once. In a larger one a leaf that keeps no cache
- * renders twice, and one leaf is never split. Holds only a walk position: one entry per nesting level.
+ * renders twice, and one leaf is never split. The final frame reuses the finished rows, then releases the temporary map.
  */
 export class WidthWarmup {
 	/** The width of the last frame laid out; 0 before the first. */
 	private laidOutWidth = 0;
 	private target = 0;
+	private prepared?: Map<string, string>;
+	private batch?: Iterator<string>;
 	private readonly stack: Level[] = [];
 	private finishNext = false;
 
@@ -68,12 +72,15 @@ export class WidthWarmup {
 	}
 
 	private layOut(width: number, height: number, warming: boolean): FrameSize {
+		const prepared = !warming && this.target === width ? this.prepared : undefined;
 		if (!warming) {
+			this.prepared = undefined;
+			this.batch = undefined;
 			this.laidOutWidth = width;
 			this.target = 0;
 			this.stack.length = 0;
 		}
-		return { size: { width, height }, warming };
+		return { size: { width, height }, warming, prepared };
 	}
 
 	/**
@@ -87,11 +94,25 @@ export class WidthWarmup {
 			this.target = width;
 			stack.length = 0;
 			const children = readChildren(root);
-			if (children && hasLeaves(children, MIN_LEAVES)) stack.push({ children, index: 0 });
+			this.prepared = undefined;
+			this.batch = undefined;
+			if (children && hasLeaves(children, MIN_LEAVES)) {
+				this.prepared = new Map();
+				stack.push({ children, index: 0 });
+			}
 		}
-		if (stack.length === 0) return true;
+		if (stack.length === 0 && !this.batch) return true;
 		const deadline = performance.now() + SLICE_MS;
-		while (stack.length > 0) {
+		while (stack.length > 0 || this.batch) {
+			if (this.batch) {
+				const line = this.batch.next();
+				if (line.done) this.batch = undefined;
+				else if (this.prepared && !this.prepared.has(line.value)) {
+					this.prepared.set(line.value, finishRow(line.value, width));
+				}
+				if (performance.now() >= deadline) break;
+				continue;
+			}
 			const level = stack[stack.length - 1];
 			const child = level.children[level.index++];
 			if (child === undefined) {
@@ -100,7 +121,7 @@ export class WidthWarmup {
 			}
 			const nested = rendersAsContainer(child) ? readChildren(child) : undefined;
 			if (nested) stack.push({ children: nested, index: 0 });
-			else renderIsolated(child, width);
+			else this.batch = renderIsolated(child, width).values();
 			if (performance.now() >= deadline) break;
 		}
 		return false;

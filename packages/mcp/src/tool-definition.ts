@@ -6,6 +6,7 @@ import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import type { TSchema } from "typebox";
 import type { CallToolResult, Tool as McpTool } from "./client/index.ts";
 import { createOutputChecker } from "./client/output-check.ts";
+import { hostCalls } from "./host.ts";
 import type { McpContext, McpToolDefinition, McpToolNamespace, McpToolRenderers } from "./host/types.ts";
 import type { McpExposure } from "./config.ts";
 import { deferredParameters } from "./deferred-schema.ts";
@@ -182,54 +183,75 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 		display: options.presentation?.display ?? createMcpToolRenderers(label).display,
 		// An aborted call settles through its client within the connection's own timeout: wait that long, not the loop's default.
 		abortGraceMs: options.timeoutMs,
-		async execute(_toolCallId, params, signal, onUpdate, ctx) {
-			lastFailure = undefined;
-			const client = await options.getClient();
+		execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const requested = (params ?? {}) as Record<string, unknown>;
-			const call = await prepare(requested, ctx);
-			const reply = await client.callTool(tool.name, call.args, {
-				signal,
-				timeoutMs: options.timeoutMs,
-				onProgress: (progress) => {
-					const total = progress.total === undefined ? "" : `/${progress.total}`;
-					const text = visibleControls(progress.message ?? `Progress ${progress.progress}${total}`);
-					onUpdate?.({
-						content: [{ type: "text", text }],
-						details: { server, tool: tool.name },
-						progress: {
-							progress: progress.progress,
-							...(progress.total === undefined ? {} : { total: progress.total }),
-							...(progress.message ? { message: visibleControls(progress.message) } : {}),
-						},
-					});
+			const calls = hostCalls();
+			if (!calls) return callServer(requested, signal, onUpdate, ctx);
+			const summary = argumentSummary(requested);
+			return calls.run(
+				{
+					tool: options.name,
+					title: summary ? `${label} ${summary}` : label,
+					...(typeof requested.reason === "string" && requested.reason.trim() ? { reason: requested.reason } : {}),
+					signal,
+					ctx,
 				},
-			});
-			const result = call.review ? call.review(reply) : reply;
-			const converted = options.presentation
-				? await options.presentation.convertResult(result, ctx)
-				: await convertMcpResult(server, tool.name, result);
-			// The result still reaches the model; the note says its structured part broke the server's declared contract.
-			// A tool that declares an outputSchema must return structuredContent (MCP spec); leaving it out breaks that too.
-			const mismatch =
-				!outputMismatch || result.isError
-					? undefined
-					: result.structuredContent === undefined
-						? "structuredContent is missing"
-						: outputMismatch(result.structuredContent);
-			return mismatch
-				? {
-						...converted,
-						content: [
-							...converted.content,
-							{
-								type: "text",
-								text: `Note: structuredContent does not match the tool's outputSchema (${visibleControls(mismatch)}).`,
-							},
-						],
-					}
-				: converted;
+				(callSignal, foreground) =>
+					callServer(requested, callSignal, (update) => foreground() && onUpdate?.(update), ctx),
+			);
 		},
 	};
+	async function callServer(
+		requested: Record<string, unknown>,
+		signal: AbortSignal | undefined,
+		onUpdate: Parameters<McpToolDefinition<TSchema, McpToolDetails>["execute"]>[3],
+		ctx: McpContext,
+	): Promise<AgentToolResult<McpToolDetails>> {
+		lastFailure = undefined;
+		const client = await options.getClient();
+		const call = await prepare(requested, ctx);
+		const reply = await client.callTool(tool.name, call.args, {
+			signal,
+			timeoutMs: options.timeoutMs,
+			onProgress: (progress) => {
+				const total = progress.total === undefined ? "" : `/${progress.total}`;
+				const text = visibleControls(progress.message ?? `Progress ${progress.progress}${total}`);
+				onUpdate?.({
+					content: [{ type: "text", text }],
+					details: { server, tool: tool.name },
+					progress: {
+						progress: progress.progress,
+						...(progress.total === undefined ? {} : { total: progress.total }),
+						...(progress.message ? { message: visibleControls(progress.message) } : {}),
+					},
+				});
+			},
+		});
+		const result = call.review ? call.review(reply) : reply;
+		const converted = options.presentation
+			? await options.presentation.convertResult(result, ctx)
+			: await convertMcpResult(server, tool.name, result);
+		// The result still reaches the model; the note says its structured part broke the server's declared contract.
+		// A tool that declares an outputSchema must return structuredContent (MCP spec); leaving it out breaks that too.
+		const mismatch =
+			!outputMismatch || result.isError
+				? undefined
+				: result.structuredContent === undefined
+					? "structuredContent is missing"
+					: outputMismatch(result.structuredContent);
+		return mismatch
+			? {
+					...converted,
+					content: [
+						...converted.content,
+						{
+							type: "text",
+							text: `Note: structuredContent does not match the tool's outputSchema (${visibleControls(mismatch)}).`,
+						},
+					],
+				}
+			: converted;
+	}
 	return Object.assign(definition, { [PREPARE_CALL]: prepare });
 }
 

@@ -11,8 +11,7 @@ export interface Moving {
 const COARSE_SLOP_MS = 1000;
 
 /**
- * Repaints the panel on the animation clock only while one of its marks moves: a breathing light while an agent works, a glow
- * just after one finished. Once every mark is still the subscription ends, so an idle panel writes nothing; the panel's
+ * Repaints the panel on the animation clock only while one of its marks moves: a spinner while an agent works. Once every mark is still the subscription ends, so an idle panel writes nothing; the panel's
  * 1 s data refresh stays its own.
  */
 export class PanelMotion {
@@ -35,7 +34,7 @@ export class PanelMotion {
 		this.coarse = coarse;
 	}
 
-	/** Whether marks move now (a spinner or glow): the panel then repaints often enough to show seconds. False on the coarse clock and when stopped. */
+	/** Whether marks move now (a spinner): the panel then repaints often enough to show seconds. False on the coarse clock and when stopped. */
 	get precise(): boolean {
 		return this.fine;
 	}

@@ -113,8 +113,9 @@ export class SessionIndex {
 		title: string | undefined,
 		source: string | undefined,
 		fileMtime: number | null,
+		owner: { cwd: string; file: string },
 	): Promise<void> {
-		return this.writer().post({ kind: "session-title", id, ...titleRow(title, source), fileMtime });
+		return this.writer().post({ kind: "session-title", id, ...titleRow(title, source), fileMtime, owner });
 	}
 
 	/** `end` through the writer, after this session's writes still queued. */

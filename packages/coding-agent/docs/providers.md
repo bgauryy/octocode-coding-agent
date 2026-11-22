@@ -4,25 +4,27 @@
 
 `/providers` is where you sign in: `/providers <provider>` opens one provider, and **+ Add a provider** lists every sign-in (type `chatgpt`, `copilot` or `subscription` to search). `/login` was renamed `/providers`; typing it points there.
 
-| You have                                            | Do this                                                                                                                                                                                               | Models appear as                   |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| ChatGPT Plus/Pro (Codex)                            | `/providers openai` → **Sign in — OpenAI (ChatGPT subscription)**                                                                                                                                     | `openai/…`                         |
-| Claude Pro/Max                                      | Only through Claude Code: connect it as an external agent in `/providers` (**External agents**). A subscription token pasted as a key is refused ([details](#use-your-claude-subscription))           | Claude Code tasks                  |
-| Google AI Pro/Ultra                                 | Only through Gemini CLI as an external agent; for direct use add a Gemini API key with `/providers google`                                                                                            | Gemini CLI tasks, `google/…`       |
-| A Claude API key (Claude Console)                   | `/providers anthropic` → **Add API key**, or export `ANTHROPIC_API_KEY`                                                                                                                               | `anthropic/…`                      |
-| GitHub Copilot                                      | `/providers github-copilot` (device sign-in), or turn on the `COPILOT_GITHUB_TOKEN` [source](#sources)                                                                                                | `github-copilot/…`                 |
-| Grok, Kimi Code or Meta subscription                | `/providers xai`, `/providers kimi-coding` or `/providers meta` → sign in                                                                                                                             | `xai/…`, `kimi-coding/…`, `meta/…` |
-| OpenCode Zen or Go                                  | `/providers opencode` or `/providers opencode-go` → **Add API key**: the OpenCode Console opens; subscribe to Go there, copy the key, paste it ([details](#use-opencode-and-choose-a-model))          | `opencode/…`, `opencode-go/…`      |
-| An API key (Anthropic, OpenAI, OpenRouter…)         | `/providers <provider>` → **Add API key** (keychain when available; OpenAI and OpenCode open their key page first), or export the provider's variable ([below](#use-an-api-key-from-the-environment)) | `<provider>/…`                     |
-| A gateway, proxy or self-hosted endpoint            | Add `baseUrl`, `api` and `apiKey` in `models.json` ([compatible endpoint](models.md#configure-a-compatible-endpoint), [redirect a built-in provider](models.md#configure-a-compatible-endpoint))      | `<your id>/…`                      |
-| A local server (llama.cpp, Ollama, LM Studio, vLLM) | `/providers` → **Add from a template** ([local models](models.md#connect-local-models)), or `models.json`                                                                                             | `llama.cpp/…` or your id           |
-| Pi already set up                                   | Nothing: Pi's keys, the Pi sign-ins Octocode supports and Pi's `models.json` load beside Octocode's; a Pi Claude Pro/Max sign-in does not ([Use Pi configuration](#use-pi-configuration))             | the Pi provider ids                |
+| You have                                            | Do this                                                                                                                                                                                                 | Models appear as                   |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| ChatGPT Plus/Pro (Codex)                            | `/providers openai` → **Sign in — OpenAI (ChatGPT subscription)**                                                                                                                                       | `openai/…`                         |
+| Claude Pro/Max                                      | Only through Claude Code: connect it as an external agent in `/providers` (**External agents**). A subscription token pasted as a key is refused ([details](#use-your-claude-subscription))             | Claude Code tasks                  |
+| Google AI Pro/Ultra                                 | Only through Gemini CLI as an external agent; for direct use add a Gemini API key with `/providers google`                                                                                              | Gemini CLI tasks, `google/…`       |
+| A Claude API key (Claude Console)                   | `/providers anthropic` → **Add API key**, or export `ANTHROPIC_API_KEY`                                                                                                                                 | `anthropic/…`                      |
+| GitHub Copilot                                      | `/providers github-copilot` (device sign-in), or turn on the `COPILOT_GITHUB_TOKEN` [source](#sources)                                                                                                  | `github-copilot/…`                 |
+| Grok, Kimi Code or Meta subscription                | `/providers xai`, `/providers kimi-coding` or `/providers meta` → sign in                                                                                                                               | `xai/…`, `kimi-coding/…`, `meta/…` |
+| OpenCode Zen or Go                                  | `/providers opencode` or `/providers opencode-go` → **Add API key**: the OpenCode Console opens; subscribe to Go there, copy the key, paste it ([details](#use-opencode-and-choose-a-model))            | `opencode/…`, `opencode-go/…`      |
+| An API key (Anthropic, OpenAI, OpenRouter…)         | `/providers <provider>` → **Add API key** (keychain when available; OpenAI and OpenCode open their key page first), or export the provider's variable ([below](#use-an-api-key-from-the-environment))   | `<provider>/…`                     |
+| A gateway, proxy or self-hosted endpoint            | Add `baseUrl`, `api` and `apiKey` in `models.json` ([compatible endpoint](models.md#configure-a-compatible-endpoint); the **Custom OpenAI-compatible host** template adds one without editing the file) | `<your id>/…`                      |
+| A local server (llama.cpp, Ollama, LM Studio, vLLM) | `/providers` → **Add from a template** ([local models](models.md#connect-local-models)), or `models.json`                                                                                               | `llama.cpp/…` or your id           |
+| Pi already set up                                   | Nothing: Pi's keys, the Pi sign-ins Octocode supports and Pi's `models.json` load beside Octocode's; a Pi Claude Pro/Max sign-in does not ([Use Pi configuration](#use-pi-configuration))               | the Pi provider ids                |
 
 Then switch freely: `/model` picks this chat's model (`/model openai/` limits it to one provider, `Ctrl+S` saves the default), `Ctrl+P` and `Shift+Ctrl+P` cycle models, `octocode --model <provider>/<id>` starts on one, and `e` on a provider in `/providers` hides or restores it. To check a credential without starting a chat, run `octocode auth check --provider <provider>` or `/modelsettings check`.
 
 `auth check` uses the same Octocode and enabled Pi credential sources as a session. Checks have a 15-second deadline. `--no-refresh` reads credentials, including keychain references, without refreshing OAuth or writing credential files; an expired saved token can still be reported as configured. Add `--credentials` only when you intend to print the resolved secret. The credential-print commands also respect source switches. `auth print-bearer-token --min-expiry 30m` requests at least that much remaining validity; units are `ms`, `s`, `m` and `h`, in either case.
 
-`ready` from `auth check` establishes local credential readiness, not provider reachability, model access, quota or billing. **Test credential** on a provider page sends one small model request and can consume provider usage. Login's free endpoint check is narrower: HTTP 401 refuses the key; HTTP 403 saves it with a permission warning because access to model listings and model requests can differ. Custom gateway definitions do not inherit upstream key checks.
+`auth check` prints the status, then the **source** it resolved (`stored credential`, the name of an environment variable, or an ambient source such as an AWS profile) and `verified: false`: no provider request is made, so a credential is never reported as accepted. The JSON form has the same `source` and `verified` fields. When a stored credential hides an environment variable that is also set, a `warning:` line names the variable. When the source is an API-key variable that other providers read too (`MOONSHOT_API_KEY`, `CLOUDFLARE_API_KEY`, `OPENCODE_API_KEY`, `QWEN_TOKEN_PLAN_API_KEY`), the source line says which providers share it, so a sibling that looks ready is explained. A credential kept in the keychain that cannot be read (locked or removed) reports `not_ready` with reason `keychain_unreadable`; it never falls back to the environment or a default host, and requests fail with the same reason.
+
+`ready` from `auth check` establishes local credential readiness, not provider reachability, model access, quota or billing. **Test** on a provider page sends one small model request and can consume provider usage. Login's free endpoint check is narrower: HTTP 401 refuses the key; HTTP 403 saves it with a permission warning because access to model listings and model requests can differ. Custom gateway definitions do not inherit upstream key checks.
 
 To keep a model for new chats, use `/model` → **Ctrl+S**; Enter changes only the current chat. See [saved defaults and connection limits](models.md#save-a-startup-default).
 
@@ -49,7 +51,7 @@ Provider sections in `/model`, model shortcuts, the footer, `/providers` and the
 | `local`        | Every model of the provider is served from this machine (`localhost`, `127.0.0.1`, `::1`)         | None from a vendor         |
 | `API key`      | A key or token from the credential store, keychain, `models.json` or the environment              | Per token                  |
 
-When a subscription is connected, subagent routing (`small`, `medium`) prefers a capable plan-billed model over a per-token one.
+When a subscription is connected, subagent routing (`small`, `medium`, `large`) prefers a capable plan-billed model over a per-token one.
 
 GitHub Copilot identifies as the VS Code Copilot client unless `OCTOCODE_COPILOT_CLIENT_ID` names a GitHub OAuth app you registered for Octocode ([environment variables](environment-variables.md)); GitHub officially supports only OpenCode as a third-party Copilot client.
 
@@ -73,7 +75,7 @@ A plan whose vendor reserves it for its own apps can only be used as an external
 | Gemini API key or Vertex AI                     | `google`, `google-vertex`                               | Gemini CLI signed in with a key  | Billed to the key                                                                                                                                                                                                                                                                                                                                                   |
 | Kimi Code key, Grok, Z.AI, Qwen or Xiaomi plans | Their providers ([billing](#subscriptions-and-billing)) | none                             | Each vendor's plan terms apply; Kimi, for example, documents the coding agents it supports ([Kimi](https://www.kimi.com/en/help/kimi-code/third-party-agents))                                                                                                                                                                                                      |
 
-The coordinator can mix both: `agent` tasks run on any enabled provider's model (`small` and `medium` pick one, or a task names a model) and, with external agents enabled, in any selected CLI (`runner`). Octocode gives an external agent none of its MCP servers, skills or hooks; it reads team messages by fetching them from the team mailbox server Octocode gives that task. Claude Code also runs without its own settings, MCP servers and slash commands, and Gemini CLI admits only that mailbox server; Codex CLI and OpenCode still load their own configured MCP servers and skills, which Octocode cannot switch off. See [external runners](native-features.md#external-runners).
+The coordinator can mix both: `agent` tasks run on any enabled provider's model (`small`, `medium` and `large` pick one, or a task names a model) and, with external agents enabled, in any selected CLI (`runner`). Octocode gives an external agent none of its MCP servers, skills or hooks; it reads team messages by fetching them from the team mailbox server Octocode gives that task. Claude Code also runs without its own settings, MCP servers and slash commands, and Gemini CLI admits only that mailbox server; Codex CLI and OpenCode still load their own configured MCP servers and skills, which Octocode cannot switch off. See [external runners](native-features.md#external-runners).
 
 ## How sign-in works
 
@@ -104,7 +106,7 @@ For instruction and conversation retention, see [Prompt caching](prompt-caching.
 `/providers` separates managing providers from signing in. Its sections, in order:
 
 - **Needs attention**: missing provider definitions, unavailable credentials, paused plans and providers with no available models. A saved credential alone never means signed in or verified.
-- **Configured**: providers with credentials and available models, showing access method and credential source (a label or variable name, never a value). **Test credential** on the provider's page sends a small request to check access. Subscription plan keys are labeled **subscription**, including keys read from a keychain, command reference or environment; their values are never shown.
+- **Configured**: providers with credentials and available models, showing access method and credential source (a label or variable name, never a value). **Test** on the provider's page sends a small request to check access. Subscription plan keys are labeled **subscription**, including keys read from a keychain, command reference or environment; their values are never shown.
 - **Disabled**: providers you turned off, hidden from `/model`.
 - **Connect**: **+ Add a provider** opens supported subscription, account or credential setup methods; **+ Add from a template** adds a compatible endpoint. A pasted key is checked before saving: Claude subscription tokens are refused, and a key whose prefix belongs to another provider asks first, naming that provider. Successful sign-in opens `/model`; Enter changes this chat and Ctrl+S saves the global startup default.
 - **External agents**: vendor CLIs that run tasks in their own harness, with their own sign-in and tools ([harness or external agent](#octocodes-harness-or-an-external-agent)). **+ Add a provider** lists them too, labeled `external agent`; choosing one opens its page. Open a CLI, sign in if needed, choose **Enable this CLI for agent tasks**, then `/reload`. Installed CLIs are off until selected; signing in alone changes no task or model defaults.
@@ -112,7 +114,7 @@ For instruction and conversation retention, see [Prompt caching](prompt-caching.
 
 Keys: Enter opens a row, `e` enables or disables the selected provider, external CLI or source, Esc goes back, and PgUp/PgDn scroll long details. Narrow screens wrap the selected row's details and complete facts, including plan terms.
 
-A provider's page shows its status, credential source, enabled state, model count and defining `models.json`, then the actions: choose a model, sign in (again), add or replace an API key, **Test credential** (one small request to this provider; the result is shown with any error text redacted), **Sign out** or **Remove saved credential**, **Show definition file** (the path and reload instructions), and **Disable provider** / **Enable provider**. Removal and Pi import ask first: the first row of the question is always **Cancel**. A session API-key override is labeled separately and can be cleared without removing saved credentials; saving a key while that override is active reports that the override still takes priority.
+A provider's page shows its status, credential source, enabled state, model count, base URL and defining `models.json`, then the actions: choose a model, sign in (again), add or replace an API key, **Test** (one small request to this provider; the result is shown with any error text redacted), **Sign out** or **Remove saved credential**, **Show definition file** (the path and reload instructions), for a custom provider in Octocode's `models.json` **Edit host**, **Edit context window and maximum output** of a model and **Remove this custom provider**, and **Disable provider** / **Enable provider**. Removal and Pi import ask first: the first row of the question is always **Cancel**. A session API-key override is labeled separately and can be cleared without removing saved credentials; saving a key while that override is active reports that the override still takes priority.
 
 Open a CLI directly with `/providers codex` or `/providers runner:opencode`. An exact provider name opens its provider page first; the `runner:` prefix selects the CLI when names overlap. **Pause all external agent tasks** keeps your CLI selection for later. See [external-runner configuration](configuration.md#headless-and-external-agent-runs).
 
@@ -128,7 +130,7 @@ Each provider row and page shows one status, then where the credential comes fro
 
 | Status     | Meaning                                                                                                                                      |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Connected  | A usable credential is set. This is local evidence, not proof the provider accepts it; use **Test credential**.                              |
+| Connected  | A usable credential is set. This is local evidence, not proof the provider accepts it; use **Test**.                              |
 | Expired    | An account sign-in is past its expiry and has no refresh token that can renew it (or the provider refused the refresh token). Sign in again. |
 | Signed out | The account was signed out; only its registration remains.                                                                                   |
 | Not set    | No usable credential.                                                                                                                        |
@@ -157,6 +159,14 @@ Providers without a key check, and custom providers, save the key as entered.
 ## Enable or disable a provider
 
 Press `e` on a provider in `/providers`, or choose **Disable provider** on its page, to hide its models everywhere: the `/model` picker, model cycling, subagent routing, the `models` tool and `/modelsettings`. The provider moves to **Disabled**, and **Enable provider** brings it back. Disabling saves the provider id in the global [`disabledProviders`](settings.md) setting and never touches saved credentials. A session already running on the provider keeps working and shows a warning naming how to switch; project settings cannot disable providers. The running agent learns about availability changes through its routing notice; no other notification is sent.
+
+### Test and Test all
+
+**Test** on a connected provider's page (and the web provider row) sends one small request through the same path a run uses, then reads the host's own model list, which is free, and compares it with the model ids configured for that provider. Ids the host does not serve are named with the nearest served ids; for example a gateway that no longer serves `moonshotai.kimi-k3.1` shows the `zai.glm-4.x` ids it does serve. Providers with no list route (Bedrock-style catalogs, documentation-only hosts) skip the comparison. **Test all** (the Test row of `/providers`, and the button on the web page) does the same for every connected provider, a few at a time, and checks each installed external agent with its own status command instead of a model request. Nothing is tested until you press a button; each result is one line with the provider's error text, with keys redacted. A provider whose models are all hidden is skipped.
+
+### Choose models
+
+**Choose models** on a provider's page (and the same button on the web provider page) shows a checkbox list of that provider's models, with search; `Enter` toggles, the save key saves. Unticked models are hidden from `/model`, `Ctrl+P` cycling and subagent routing. A subagent purpose or profile never picks a hidden model; when a profile names one, the routing notice says it is hidden and which model runs instead. A session that already runs on a hidden model keeps working and shows a notice at its next turn. A provider with no saved choice shows every model, including models it adds later. The choice is saved per provider in the global [`hiddenModels`](settings.md) setting (provider id to hidden model ids); it is separate from the `/modelsettings` shortcut list (`enabledModels`), which only orders what `Ctrl+P` cycles through, and from **Disable provider**, which hides the whole provider. Project settings cannot hide models.
 
 ## Sources
 
@@ -209,7 +219,7 @@ OpenCode serves its free models (`big-pickle` and the `*-free` models) only to t
 | Go plan models  | A Go key on `opencode-go`             |
 | Free models     | The OpenCode CLI as an external agent |
 
-**Test credential** on a provider page always sends one small request, so it reports refusals that a model listing would not show.
+**Test** on a provider page always sends one small request, so it reports refusals that a model listing would not show.
 
 ## Use an API key from the environment
 
@@ -335,7 +345,7 @@ export AZURE_OPENAI_DEPLOYMENT_NAME_MAP=gpt-5.4=my-gpt-deployment,deepseek-v4-pr
 
 `AZURE_OPENAI_API_VERSION` overrides the API version for OpenAI models (default `v1`).
 
-Azure login also offers an Entra bearer token. Set `AZURE_OPENAI_AD_TOKEN` or select that option in `/providers`; acquire the token through Azure Identity or Azure CLI. Stored API keys take precedence. This token is short-lived and must be renewed externally; Octocode does not refresh a manually supplied Entra token. SDK users can supply `azureADTokenProvider` to the Azure Responses adapter for automatic credential acquisition. Bearer auth suppresses the SDK's ambient API-key default.
+Azure login asks for an optional **resource URL** (`https://<resource>.openai.azure.com/openai/v1`, https or localhost) after the key or token; it is saved with the credential and beats `AZURE_OPENAI_BASE_URL` and `AZURE_OPENAI_RESOURCE_NAME`. GitHub Copilot (an enterprise host) and Google Gemini (a proxy) ask for the same optional host with the same validation; an empty answer keeps the official host. Azure login also offers an Entra bearer token. Set `AZURE_OPENAI_AD_TOKEN` or select that option in `/providers`; acquire the token through Azure Identity or Azure CLI. Stored API keys take precedence. A token chosen in `/providers` goes to the system keychain when you pick it (only a reference is written to `auth.json`), is trimmed of surrounding whitespace, and is saved with the optional resource URL as one credential. This token is short-lived and must be renewed externally; Octocode does not refresh a manually supplied Entra token. SDK users can supply `azureADTokenProvider` to the Azure Responses adapter for automatic credential acquisition. Bearer auth suppresses the SDK's ambient API-key default.
 
 To use a Foundry model that Octocode does not include, add it under `azure` in [`models.json`](models.md#configure-a-compatible-endpoint) with `api: "openai-completions"`. Custom models require a `baseUrl`; `AZURE_OPENAI_BASE_URL` and `AZURE_OPENAI_RESOURCE_NAME` take priority over it when set:
 
@@ -374,6 +384,20 @@ export AWS_REGION=us-west-2
 
 Octocode also supports ECS task credentials and IRSA through the standard `AWS_CONTAINER_CREDENTIALS_*` and `AWS_WEB_IDENTITY_TOKEN_FILE` variables.
 
+A stored AWS profile (saved in `/providers`) outranks `AWS_BEARER_TOKEN_BEDROCK` in the environment, as a stored key outranks its environment variable everywhere else.
+
+The `/providers` sign-in for Bedrock offers a bearer token, an AWS profile or the credential chain, then an optional **custom endpoint host** and **region**. They are saved with the key as one credential: in the system keychain (macOS Keychain, Linux Secret Service) with only a reference in `auth.json`, or in `auth.json` (owner-only) after you choose that explicitly. Signing out removes key, host and region together. The host must be https (http only for localhost), and its name picks the API:
+
+| Host                | API                                                                                                                                                                                          |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bedrock-runtime.*` | Converse stream                                                                                                                                                                              |
+| `bedrock-mantle.*`  | OpenAI-compatible Chat Completions per model: `/openai/v1` for `openai.*` models, `/v1` for the others; Anthropic Messages under `/anthropic` for `anthropic.*` models. Needs a bearer token |
+| anything else       | Octocode asks which API the host serves                                                                                                                                                      |
+
+See [Amazon Bedrock endpoints](https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html). A provider's page shows the effective base URL and where it comes from. For a host that is not Bedrock, add the **Custom OpenAI-compatible host** template instead. Other official providers whose API takes a base URL (OpenAI, Anthropic) ask for the same optional host at sign-in.
+
+`models.json` is for custom providers only. An entry whose id is an official provider (for example `amazon-bedrock`) is refused with a message naming the file and id, and the rest of the file still loads: rename the entry (for example `bedrock-mantle`) for a custom endpoint, or set the host and key here in `/providers`. Per-model tuning, such as `compat.supportsLongCacheRetention: false` on a Bedrock model, stays in `modelOverrides` under the official id. Pi's `models.json` entries with an official id are skipped with a warning; Pi's files are never modified.
+
 ### Cloudflare AI Gateway
 
 The gateway requires a token, account ID, and gateway ID:
@@ -407,7 +431,7 @@ Use a Google Cloud API key:
 export GOOGLE_CLOUD_API_KEY=...
 ```
 
-To use Application Default Credentials, configure a project and location:
+To use Application Default Credentials, configure a project and location. The Application Default Credentials file is looked for on every check, so a `gcloud auth application-default login` made while Octocode runs is noticed without a restart:
 
 ```bash
 export GOOGLE_CLOUD_PROJECT=your-project

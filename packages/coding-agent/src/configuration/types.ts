@@ -4,7 +4,7 @@ import type { SettingsManager } from "../core/settings-manager.ts";
 /**
  * One configuration mechanism: every switchable thing (a tool, an MCP server, a harness, a skill, a provider, a settings
  * key) is an entry with an id, and the same verbs act on all of them. Adapters own the writes (they call the existing
- * writers of each owner); the catalog routes by id. Front-ends (`/configuration`, `octocode configuration`) only call the
+ * writers of each owner); the catalog routes by id. Front-ends (`/settings`, `octocode configuration`) only call the
  * catalog.
  */
 

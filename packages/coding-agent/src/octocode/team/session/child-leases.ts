@@ -128,7 +128,8 @@ export class ChildLeases {
 	/**
 	 * The run of `id` ended: its leases go, and its row while this process still holds it (the child never joined). A
 	 * child that joined left by itself, or its row waits for the sweep. A database that cannot be written now leaves
-	 * leases nobody renews, which lapse by themselves. Session end (also `/new`) releases nothing here: a child still
+	 * leases nobody renews, which lapse by themselves, and rejects here for the caller to report; in memory the run is
+	 * released either way, so waiters do not wait on the database. Session end (also `/new`) releases nothing here: a child still
 	 * closing may write its paths until its process exits, so its reservations stay until its run's end calls this. The
 	 * process's own end bounds them: its held rows lapse with it, and the exit hook kills the child's group.
 	 */
@@ -142,14 +143,10 @@ export class ChildLeases {
 		// Another process holding the write lock delays the write on a timer, never on this thread (`patiently`).
 		const done = patiently(db, () => {
 			if (!db.remove(id, Date.now(), row)) db.unlock(id);
-		})
-			.catch(() => {
-				// They lapse.
-			})
-			.finally(() => {
-				this.releasing.delete(id);
-				for (const wake of this.releaseWaiters) wake();
-			});
+		}).finally(() => {
+			this.releasing.delete(id);
+			for (const wake of this.releaseWaiters) wake();
+		});
 		this.releasing.set(id, done);
 		return done;
 	}

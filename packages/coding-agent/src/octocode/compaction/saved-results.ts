@@ -5,6 +5,7 @@ import path from "node:path";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import { AGENT_RESULT_TYPE, JOB_TYPE } from "../shared/messages.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { savedHandle } from "../shared/heap-index.ts";
 import { clearedResults } from "../files/reads.ts";
 import { shortPath } from "../../utils/display-path.ts";
 import { sessionTempRoot } from "../shared/home.ts";
@@ -187,7 +188,7 @@ export function savedResultPaths(
  */
 export function savedResultsBlock(files: readonly string[]): string {
 	if (files.length === 0) return "";
-	const lines = files.map((file) => shortPath(file));
+	const lines = files.map((file) => `${shortPath(file)} ${savedHandle(file)}`);
 	const list = lines.join("\n");
 	const spilled =
 		list.length > SAVED_RESULTS_INLINE_CHARS ? saveFullOutput(`${list}\n`, SAVED_RESULTS_LIST_LABEL) : undefined;

@@ -4,10 +4,15 @@ import { currentToolRoles, createMcpToolName, type McpServerStatus } from "../..
 import { MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common/mcp-names";
 import { untilCommand } from "../shared/until-command.ts";
 
-const reads = new Set(["askUser", "skill", "web"]);
+const reads = new Set(["askUser", "render", "skill", "web"]);
 /** The `mcp` tool's intents that report on this session's servers or bring a dead one back; its tools stay gated. Unknown intents, and `stop`, are not reads. */
 const mcpReads = new Set<unknown>(["list", "tools", "resources", "read", "restart"]);
 const mcpRead = (input: Record<string, unknown>): boolean => mcpReads.has(input.intent);
+
+/** Backlog calls that only read: `backlog` get, `backlogPlan` list and stat. Any other (or missing) op is a write. */
+const backlogReads: Record<string, readonly unknown[]> = { backlog: ["get"], backlogPlan: ["list", "stat"] };
+const backlogRead = (toolName: string, input: Record<string, unknown>): boolean =>
+	(backlogReads[toolName] ?? []).includes(input.op);
 
 /**
  * Decides whether a shell command only reads. The permission layer depends on planning, so the host injects the
@@ -37,11 +42,12 @@ export function planningRefusal(
 	if (native && event.toolName === "archive" && archiveRead(event.input)) return undefined;
 	if (native && event.toolName === "memory" && memoryRead(event.input)) return undefined;
 	if (native && reads.has(event.toolName)) return undefined;
-	// A wait changes only this session's own waits; its command must be one plan mode would run as bash.
-	if (native && event.toolName === "wait") {
+	if (native && backlogRead(event.toolName, event.input)) return undefined;
+	// notify changes only this session's own notifications; its command must be one plan mode would run as bash.
+	if (native && event.toolName === "notify") {
 		const command = untilCommand(event.input);
 		if (command === undefined || readOnlyShell({ command }, shell)) return undefined;
-		return "Plan mode blocks this command: only read-only shell commands may be checked. Use path.unlocked, or a wait without a command.";
+		return "Plan mode blocks this command: only read-only shell commands may be checked. Use path.unlocked, or a notify request without a command.";
 	}
 	if (native && event.toolName === "bash") {
 		if (readOnlyShell(event.input, shell)) return undefined;

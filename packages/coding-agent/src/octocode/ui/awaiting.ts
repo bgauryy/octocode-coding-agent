@@ -31,7 +31,7 @@ export function awaitingFor(event: {
 	const answerable =
 		event.id !== undefined &&
 		(["select", "confirm", "input"].includes(event.kind) || (event.kind === "custom" && event.options !== undefined));
-	if (event.kind === "ask" && event.questions) {
+	if (event.questions) {
 		// The typed questions carry everything (options by id, write-ins, approval roles); the older fields stay empty.
 		return {
 			kind: event.approval ? "approval" : "question",

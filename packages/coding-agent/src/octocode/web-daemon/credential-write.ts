@@ -24,6 +24,7 @@ import { ModelRuntime } from "../../core/model-runtime.ts";
 import { CredentialWriteFailure, RuntimeCredentials } from "../../core/runtime-credentials.ts";
 import type { ConfigAuditEntry } from "../../../../db/src/api.ts";
 import { classify, referenceMatchers } from "./config-status.ts";
+import { endpointOfRequest, savedHost } from "./provider-hosts.ts";
 import { ConfigWriteError } from "./config-write.ts";
 
 export interface CredentialWriteOptions {
@@ -147,6 +148,21 @@ async function verifyKey(provider: string, key: string, acknowledgeUnverified: b
 		throw new ConfigWriteError(409, UNVERIFIED_NOTICE(definition.name), "unverified");
 }
 
+/** The host the stored credential of `provider` carries (in its entry or its keychain record); undefined when none. */
+async function keptHost(provider: string, authPath: string, keychain: KeychainBackend | undefined) {
+	let entry: Credential | undefined;
+	try {
+		entry = await new ReadOnlyAuthStorage(authPath).readRaw(provider);
+	} catch {
+		throw new ConfigWriteError(
+			409,
+			"auth.json could not be read, so it was not changed. Fix it in a terminal first.",
+			"invalid-file",
+		);
+	}
+	return entry ? savedHost(provider, entry, referenceMatchers(keychain)) : undefined;
+}
+
 async function setKey(
 	command: Extract<ConfigCredentialCommand, { action: "set" }>,
 	openStorage: () => AuthStorage,
@@ -158,10 +174,15 @@ async function setKey(
 	if (!secret) throw new ConfigWriteError(400, "Enter a key.", "invalid");
 	// Anthropic allows a Claude subscription token only in Claude Code: refused here as at every other save and request.
 	if (isClaudeSubscriptionToken(secret)) throw new ConfigWriteError(400, CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL, "invalid");
+	// Checked before anything is saved or asked of the provider: a refused host leaves everything as it was.
+	const requested = endpointOfRequest(command.provider, command);
 	if (before === "oauth") throw new ConfigWriteError(409, OAUTH_NOTICE, "oauth");
 	if (!keychain && command.acknowledgePlaintext !== true)
 		throw new ConfigWriteError(409, PLAINTEXT_NOTICE, "plaintext");
-	await verifyKey(command.provider, secret, command.acknowledgeUnverified === true);
+	// Replacing only the key keeps the host saved with the old one: the request names a host only to change it.
+	const endpoint = requested ?? (await keptHost(command.provider, authPath, keychain));
+	// A key saved for another host is not the official host's key: the provider's own check would only reject it.
+	if (!endpoint) await verifyKey(command.provider, secret, command.acknowledgeUnverified === true);
 	// Opened only now: creating the storage creates auth.json, which a refused request must not do.
 	const storage = openStorage();
 	if (!keychain) restrictAuthFile(authPath);
@@ -172,6 +193,7 @@ async function setKey(
 		return {
 			type: "api_key",
 			key: secret,
+			...(endpoint ? { endpoint } : {}),
 			...(current?.type === "api_key" && current.env ? { env: current.env } : {}),
 		};
 	};

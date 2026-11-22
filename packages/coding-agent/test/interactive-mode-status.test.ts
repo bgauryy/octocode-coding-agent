@@ -724,6 +724,7 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 			"runner:codex",
 			"runner:opencode",
 			"runner:gemini",
+			"runner:cursor",
 		]);
 		expect(runnerSuggestions?.items.every((item) => item.description?.includes("external agent"))).toBe(true);
 		const runnerItem = codexSuggestions!.items.find((item) => item.value === "runner:codex")!;
@@ -967,11 +968,12 @@ describe("InteractiveMode.showLoadedResources", () => {
 		const output = renderAll(fakeThis.loadedResourcesContainer);
 		expect(output).toMatch(/^Skills\s+✓ 1/m);
 		// Names are for ctrl+o: collapsed, the section is one row with a count and where the skills came from.
-		expect(output).toMatch(/Skills\s+✓ 1\s+0\/5.0k chars.*octocode context check/);
+		// The size is the skill tool's listing line for the one skill, counted against the budget.
+		expect(output).toMatch(/Skills\s+✓ 1\s+52\/5.0k chars.*octocode context check/);
 		expect(output).not.toContain("commit");
 		expect(normalizeRenderedOutput(fakeThis.loadedResourcesContainer, 100)).toBe(
 			[
-				"Skills   ✓ 1  0/5.0k chars · octocode context check · /harness",
+				"Skills   ✓ 1  52/5.0k chars · octocode context check · /harness",
 				"Model    ⚠ 1  none selected · 0 providers · 0 models · /model · /providers",
 				"Harness  ✓ 3  on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness",
 				"✓ ready  ⚠ needs action · (ctrl+o to toggle details)",

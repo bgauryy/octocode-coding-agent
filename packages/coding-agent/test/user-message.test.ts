@@ -10,6 +10,19 @@ const BG_RESET = "\x1b[49m";
 const OSC_ZONE = /\x1b\][^\x07]*\x07/g;
 
 describe("UserMessageComponent", () => {
+	test("folds a long prompt at its rendered width and restores its middle when expanded", () => {
+		initTheme("dark");
+		const body = Array.from({ length: 150 }, (_, i) => `paragraph ${i}.`).join("\n\n");
+		const message = new UserMessageComponent(body);
+		const collapsed = message.render(40).join("\n");
+		expect(collapsed).toContain("lines hidden");
+		expect(collapsed).not.toContain("paragraph 71.");
+		message.setExpanded(true);
+		expect(message.render(40).join("\n")).toContain("paragraph 71.");
+		message.setExpanded(false);
+		expect(message.render(40).join("\n")).toBe(collapsed);
+	});
+
 	test("keeps user message height stable while moving closing OSC markers off line end", () => {
 		initTheme("dark");
 
@@ -94,5 +107,16 @@ describe("UserMessageComponent", () => {
 		const lines = new UserMessageComponent("hello", undefined, 0).render(20);
 
 		expect(stripAnsi(lines[1])).toBe("hello               ");
+	});
+
+	test("shows the typed text without the source header the model reads", () => {
+		initTheme("dark");
+
+		const text = stripAnsi(
+			new UserMessageComponent("[src terminal:terminal \u2713proven via terminal] t4\nhello").render(30).join("\n"),
+		);
+
+		expect(text).toContain("hello");
+		expect(text).not.toContain("[src");
 	});
 });

@@ -2,7 +2,7 @@ import type { UiState } from "@octocodeai/octocode-contracts";
 import { cx } from "./primitives.tsx";
 
 /**
- * The run-state shape, in the state's colour: ring (pending), turning arc (running), diamond (waiting), check (done),
+ * The run-state shape, in the state's colour: ring (pending), half-filled circle turning in four steps (running), diamond (waiting), check (done),
  * cross (failed), square (stopped). Decorative: it always sits beside text that names the state.
  */
 export function StateMark({ state, size = 14 }: { state: UiState; size?: number }) {
@@ -23,8 +23,8 @@ export function StateMark({ state, size = 14 }: { state: UiState; size?: number 
 				<circle cx="7" cy="7" r="5.25" />
 			) : state === "running" ? (
 				<>
-					<circle cx="7" cy="7" r="5.25" opacity=".25" />
-					<path className="mark-arc" d="M7 1.75A5.25 5.25 0 0 1 12.25 7" />
+					<circle cx="7" cy="7" r="5.25" />
+					<path className="mark-spinner" d="M7 1.75a5.25 5.25 0 0 0 0 10.5Z" fill="currentColor" stroke="none" />
 				</>
 			) : state === "waiting" ? (
 				<path d="M7 1.5 12.5 7 7 12.5 1.5 7Z" />

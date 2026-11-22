@@ -1,4 +1,5 @@
 import { ModelsError } from "../utils/models-error.ts";
+import { askCustomHost, endpointEnv, simpleHostOption } from "./endpoint.ts";
 import type { ApiKeyAuth, AuthInteraction, Credential, OAuthAuth } from "./types.ts";
 
 /** Signed-out account registrations are not authentication credentials. */
@@ -17,9 +18,13 @@ export function envApiKeyAuth(
 	envVars: readonly string[],
 	keyPage?: string,
 	verify?: ApiKeyAuth["verify"],
+	/** The provider's API accepts a base URL: login asks for an optional custom host, with this example. */
+	customHost?: string,
 ): ApiKeyAuth {
+	const hostOption = customHost ? simpleHostOption(customHost) : undefined;
 	return {
 		name,
+		...(hostOption ? { host: hostOption } : {}),
 		...(verify ? { verify } : {}),
 		...(keyPage ? { keyPage } : {}),
 		login: async (interaction) => {
@@ -29,12 +34,13 @@ export function envApiKeyAuth(
 			const key = (await interaction.prompt({ type: "secret", message: `Enter ${name}` })).trim();
 			interaction.signal.throwIfAborted();
 			if (!key) throw new ModelsError("auth", `No ${name} was entered. Nothing was saved.`);
-			return { type: "api_key", key };
+			const endpoint = hostOption ? await askCustomHost(interaction, name, hostOption) : undefined;
+			return { type: "api_key", key, ...(endpoint ? { endpoint } : {}) };
 		},
 		resolve: async ({ ctx, credential, signal }) => {
 			signal.throwIfAborted();
 			if (credential?.key) {
-				return { auth: { apiKey: credential.key }, env: credential.env, source: "stored credential" };
+				return { auth: { apiKey: credential.key }, env: endpointEnv(credential), source: "stored credential" };
 			}
 			for (const envVar of envVars) {
 				const value = await ctx.env(envVar);

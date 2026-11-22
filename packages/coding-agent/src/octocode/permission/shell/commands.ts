@@ -2,7 +2,9 @@ import type { Node } from "web-tree-sitter";
 import type { ParsedCommand, ParsedShell } from "../../shared/shell-commands.ts";
 import { misreadHerestring } from "../bash-herestring.ts";
 import { initializeBashSyntax, parseBash, staticWord, translatedString } from "../bash-syntax.ts";
+import { literalVariables, resolvedWord } from "../bash-variables.ts";
 import { hiddenArithmetic } from "./arithmetic.ts";
+import { unrollLoops } from "./loops.ts";
 import { programSwap, settingRisk } from "./environment.ts";
 import { gitProgram } from "./git-programs.ts";
 import { runInput } from "./input-runners.ts";
@@ -323,12 +325,20 @@ function walk(root: Node, depth: number): Collected | undefined {
 		});
 	// A bare `exec` with input redirections changes standard input for the rest of the script.
 	let inherited: Stdin | undefined;
+	const variables = literalVariables(root, staticWord);
 	for (const command of commands) {
 		const nodes = wordsOf(command);
 		const first = nodes.findIndex((node) => node.type !== "variable_assignment");
 		if (first < 0) continue;
 		const redirects = redirectsOf(command).map(redirectText);
-		const literals = nodes.map((node) => (node.type === "variable_assignment" ? undefined : literalOf(node)));
+		// Arguments read a variable the line gave a plain literal; the program name does not (`bash-variables.ts`).
+		const literals = nodes.map((node) =>
+			node.type === "variable_assignment"
+				? undefined
+				: node.type === "command_name"
+					? literalOf(node)
+					: resolvedWord(node, variables, literalOf),
+		);
 		const dropped = droppedWords(command);
 		const all = [...literals, ...dropped];
 		add(out, [...nodes.map(raw), ...dropped], all, first, redirects, stdinOf(command, stages) ?? inherited, depth);
@@ -357,6 +367,6 @@ function collect(script: string, depth: number): ParsedShell | undefined {
 /** The parsed commands of `command`; undefined when the parser is unavailable or the parse failed (errors, size, time). */
 export async function parsedShell(command: string): Promise<ParsedShell | undefined> {
 	await initializeBashSyntax().catch(() => undefined);
-	const found = collect(command, 0);
+	const found = collect(unrollLoops(command), 0);
 	return found && { commands: found.commands, functions: found.functions };
 }

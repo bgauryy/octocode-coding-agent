@@ -16,6 +16,7 @@ export * from "./api/google-vertex.lazy.ts";
 export * from "./api/mistral-conversations.lazy.ts";
 export * from "./api/openai-completions.lazy.ts";
 export * from "./api/openai-responses.lazy.ts";
+export { providersSharingApiKeyEnvVar } from "./auth/api-key-env-vars.ts";
 export * from "./env-api-keys.ts";
 export * from "./images.ts";
 export * from "./images-api-registry.ts";

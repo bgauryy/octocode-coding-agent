@@ -121,15 +121,16 @@ function jsonlFiles(dir) {
 	}
 }
 
-/** Child transcripts live in `<workspace>/.octocode/agent/temp/agents/<name>/session/*.jsonl` (`subagents/handoff/scratch.ts`). */
+/** The candidate and the pinned baseline use different workspace state roots for child transcripts. */
 function childTranscripts(workspace) {
-	return [".octocode"].flatMap((state) => {
-		const agents = join(workspace, state, "agent", "temp", "agents");
+	return [join(".octocode", "agent"), join(".octa", "code")].flatMap((state) => {
+		const agents = join(workspace, state, "temp", "agents");
 		let names;
 		try {
 			names = readdirSync(agents).sort();
-		} catch {
-			return [];
+		} catch (error) {
+			if (error.code === "ENOENT") return [];
+			throw error;
 		}
 		return names.flatMap((name) => jsonlFiles(join(agents, name, "session")).map((file) => ({ name, file })));
 	});

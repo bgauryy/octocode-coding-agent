@@ -65,8 +65,8 @@ export function applyEdit(
 			display,
 		);
 		throwIfAborted();
+		// No abort check after the write: once it commits, the change is done and must be reported as done.
 		await ops.writeFile(file, bom + applyReplacementsToOriginal(text, replacements));
-		throwIfAborted();
 		return {
 			message: `Successfully replaced ${edits.length} block(s) in ${display}.`,
 			diff: generateDiffString(baseContent, newContent).diff,
@@ -87,8 +87,8 @@ export function applyWrite(
 		throwIfAborted();
 		await ops.mkdir(dirname(file));
 		throwIfAborted();
+		// No abort check after the write: once it commits, the change is done and must be reported as done.
 		await ops.writeFile(file, content);
-		throwIfAborted();
 		return { message: `Successfully wrote to ${display}` };
 	});
 }

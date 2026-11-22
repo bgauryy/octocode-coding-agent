@@ -8,6 +8,9 @@ import { stamp } from "../model/format.ts";
 import { StateMark } from "../ui/StateMark.tsx";
 import { Badge, type BadgeTone } from "../ui/primitives.tsx";
 import { CredentialEditor, type SaveCredential } from "./CredentialEditor.tsx";
+import { BaseUrlLine, CustomProviderControls } from "./CustomProviderControls.tsx";
+import { RowTest } from "./ProviderTest.tsx";
+import { ModelChoiceControls } from "./ModelChoiceControls.tsx";
 import { ProviderSwitch, type SetProvider } from "./ProviderControls.tsx";
 import { SignInControl, type SignInRequest } from "./SignIn.tsx";
 
@@ -157,7 +160,16 @@ export function ProviderRow({
 					))}
 				</ul>
 			)}
+			{row.models && row.models.length > 0 && (
+				<p className="muted" aria-label={`Models for ${title}`}>
+					{row.models.join(", ")}
+				</p>
+			)}
+			<BaseUrlLine row={row} />
 			<ProviderSwitch row={row} set={setProvider} />
+			<RowTest row={row} />
+			{setProvider && <ModelChoiceControls row={row} set={setProvider} />}
+			{setProvider && row.customEdit && <CustomProviderControls row={row} set={setProvider} />}
 			<Methods row={row} />
 			{signIn && row.auth?.oauth && <SignInControl row={row} signIn={signIn} onSignedIn={onSignedIn ?? (() => {})} />}
 			{save && row.editable !== false && (

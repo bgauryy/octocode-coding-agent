@@ -11,16 +11,19 @@ import {
 	type ModelRef,
 	type ModelTier,
 	resolveTier,
+	resolveTierChoice,
 	taskBlocker,
 	type TierBilling,
 } from "./tier.ts";
 
 export {
 	currentPrice,
+	hasPrice,
 	isModelTier,
 	MODEL_TIERS,
 	type ModelRef,
 	resolveTier,
+	resolveTierChoice,
 	SUBAGENT_DEFAULT_TIER,
 	canRunTask,
 	taskBlocker,
@@ -88,6 +91,8 @@ export type ModelRoute =
 			refusedBy?: string;
 			setting?: string;
 			skipped?: string;
+			/** The purpose's model rests on a size-class guess (the parent has no price), not on prices. */
+			guessed?: boolean;
 			/** `provider/id[:thinking]` of the next routed models on other providers: the child's `retry.fallbackModels`. */
 			fallbackModels?: string[];
 	  }
@@ -96,6 +101,16 @@ export type ModelRoute =
 /** Why a profile's preferred model was not used: `p/m unavailable`, or `p/m: p refused its credential`. */
 export const fallbackNote = (fallback: string, refusedBy?: string): string =>
 	refusedBy ? `${fallback}: ${refusedBy} refused its credential` : `${fallback} unavailable`;
+
+/** What chose a purpose's model, for a route line: a setting, a skipped setting or a size-class guess; empty otherwise. */
+export const routeSource = (route: { setting?: string; skipped?: string; guessed?: boolean }): string =>
+	route.setting
+		? `setting ${route.setting}`
+		: route.skipped
+			? `automatic; ${route.skipped}`
+			: route.guessed
+				? "automatic; size guess, price unknown"
+				: "";
 
 /** A route without its provider: `claude-haiku-5-5:low` for `anthropic/claude-haiku-5-5:low`. */
 export const withoutProvider = (model: string | undefined): string | undefined =>
@@ -246,8 +261,8 @@ function tierRoute(
 		};
 	}
 	const note = set ? { skipped: set.skipped } : {};
-	const chosen = resolveTier(tier, usable, input.parent, input.catalog, input.billing);
-	if (chosen) return { model: `${chosen.provider}/${chosen.id}${thinking}`, ...note };
+	const { model: chosen, guessed } = resolveTierChoice(tier, usable, input.parent, input.catalog, input.billing);
+	if (chosen) return { model: `${chosen.provider}/${chosen.id}${thinking}`, ...(guessed ? { guessed } : {}), ...note };
 	const { billing, parent } = input;
 	// The parent's model is an automatic route too: a background child is not sent to a plan the vendor keeps attended.
 	if (parent && billing?.background && billing.unattended?.(parent.provider) === false)

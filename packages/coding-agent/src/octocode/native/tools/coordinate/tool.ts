@@ -203,20 +203,20 @@ function registerCoordinateTool(
 					description:
 						"list: agents, held paths; " +
 						(canStop ? "join: set your goal; leave: unregister; " : "") +
-						"lock: reserve paths (all or none); unlock: release (none: all); " +
+						"lock: reserve paths; unlock: release (none: all); " +
 						(canStop
-							? "stop: kill your background child; merge: land an isolated child's work or a linked worktree branch here (asks user); grant: more model requests for your running child; "
+							? "stop: kill your background child; merge: land an isolated child's or a linked worktree's branch (asks user); grant: more requests for your child; "
 							: "") +
-						"changes: recent agent file changes",
+						"changes: recent file changes",
 				}),
 				...(canStop
 					? {
-							id: Type.Optional(Type.String({ description: "stop, merge, grant: subagent id" })),
-							branch: Type.Optional(Type.String({ description: "merge: a linked worktree's branch, instead of id" })),
-							requests: Type.Optional(Type.Integer({ description: "grant: requests to add (positive integer)" })),
+							id: Type.Optional(Type.String({ description: "stop, merge, grant: its id" })),
+							branch: Type.Optional(Type.String({ description: "merge: a linked worktree's branch" })),
+							requests: Type.Optional(Type.Integer({ description: "grant: requests to add (positive)" })),
 						}
 					: {}),
-				...(canStop ? { goal: Type.Optional(Type.String({ description: "join: your task goal" })) } : {}),
+				...(canStop ? { goal: Type.Optional(Type.String({ description: "join: your goal" })) } : {}),
 				paths: Type.Optional(
 					Type.Array(Type.String(), {
 						description: 'lock/unlock: files or "dir/"; changes: only under these',
@@ -288,6 +288,8 @@ function registerCoordinateTool(
 						params.paths?.map((entry) =>
 							path.relative(log.workspace, resolveToolPath(ctx.cwd, entry)).split(path.sep).join("/"),
 						);
+					const outside = params.paths?.filter((_entry, at) => prefixes?.[at]?.startsWith(".."));
+					if (outside?.length) throw new Error(`changes covers this workspace only; outside it: ${outside.join(", ")}`);
 					const changes = log?.changes({ withinMs: minutes * 60_000, ...(prefixes?.length ? { prefixes } : {}) }) ?? [];
 					const text = describeChanges(
 						changes,

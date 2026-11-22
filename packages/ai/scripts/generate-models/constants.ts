@@ -1,11 +1,4 @@
-import type {
-	Api,
-	Model,
-	ModelCost,
-	ModelCostRates,
-	OpenAICompletionsCompat,
-	OpenAIResponsesCompat,
-} from "../../src/types.ts";
+import type { ModelCost, ModelCostRates, OpenAICompletionsCompat, OpenAIResponsesCompat } from "../../src/types.ts";
 
 /** Provider URLs, compat settings, thinking-level maps and model ID lists the generator applies. */
 
@@ -103,14 +96,6 @@ export const NVIDIA_NIM_UNSUPPORTED_MODELS = new Set([
 	"upstage/solar-10.7b-instruct",
 ]);
 export const ZAI_TOOL_STREAM_UNSUPPORTED_MODELS = new Set(["glm-4.5", "glm-4.5-air", "glm-4.5-flash", "glm-4.5v"]);
-export const OPENCODE_GO_GLM52_THINKING_LEVEL_MAP = {
-	off: null,
-	minimal: null,
-	low: null,
-	medium: null,
-	high: "high",
-	max: "max",
-} as const;
 export const EAGER_TOOL_INPUT_STREAMING_UNSUPPORTED_ANTHROPIC_MODELS = new Set([
 	"github-copilot:claude-haiku-4.5",
 	"github-copilot:claude-sonnet-4",
@@ -121,26 +106,7 @@ export const ANTHROPIC_ALLOWED_FALLBACK_MODELS = {
 	"claude-opus-5": ["claude-opus-4-8"],
 } satisfies Record<string, string[]>;
 
-export const DEEPSEEK_V4_THINKING_LEVEL_MAP = {
-	minimal: null,
-	low: null,
-	medium: null,
-	high: "high",
-	max: "max",
-} as const;
-export const DEEPSEEK_V4_FLASH_THINKING_LEVEL_MAP = {
-	...DEEPSEEK_V4_THINKING_LEVEL_MAP,
-	low: "low",
-} as const;
-// Azure Foundry rejects DeepSeek's own max effort.
-export const AZURE_DEEPSEEK_V4_THINKING_LEVEL_MAP = {
-	minimal: null,
-	low: "low",
-	medium: "medium",
-	high: "high",
-	xhigh: null,
-	max: null,
-} as const;
+export { DEEPSEEK_V4_FLASH_THINKING_LEVEL_MAP } from "../../src/utils/thinking-level-rules.ts";
 // Verified against Fireworks Messages raw_output.
 // Fall back to verified support when models.dev omits effort metadata; this is
 // not an allowlist. Any Fireworks Messages model advertising effort uses adaptive thinking.
@@ -206,15 +172,6 @@ export const KIMI_K3_OPENAI_COMPAT: OpenAICompletionsCompat = {
 	supportsReasoningEffort: true,
 };
 export const OPENROUTER_KIMI_K3_MODEL_IDS = new Set(["moonshotai/kimi-k3", "~moonshotai/kimi-latest"]);
-
-export const ANT_LING_RING_THINKING_LEVEL_MAP = {
-	off: null,
-	minimal: null,
-	low: null,
-	medium: null,
-	high: "high",
-	xhigh: "xhigh",
-} as const;
 
 export const BEDROCK_INFERENCE_PROFILE_ONLY_MODEL_IDS = new Set(["anthropic.claude-opus-5"]);
 /** Bedrock models AWS no longer serves. A models.dev "deprecated" mark alone does not exclude a model AWS still serves.
@@ -321,20 +278,6 @@ export const GOOGLE_TIME_LIMITED_COSTS: Record<
 	]),
 );
 
-export const OPENAI_RESPONSES_NONE_REASONING_MODELS = new Set([
-	"gpt-5.1",
-	"gpt-5.2",
-	"gpt-5.3-codex",
-	"gpt-5.4",
-	"gpt-5.4-mini",
-	"gpt-5.4-nano",
-	"gpt-5.5",
-	"gpt-5.6-sol",
-	"gpt-5.6-terra",
-	"gpt-5.6-luna",
-	"gpt-6-sol",
-	"gpt-6-luna",
-]);
 export const XAI_BUILTIN_EXCLUDED_MODEL_IDS = new Set([
 	"grok-3",
 	"grok-3-fast",
@@ -374,14 +317,3 @@ export const GITHUB_COPILOT_EXTENDED_CONTEXT_MODELS = new Set([
 	"gpt-6-luna",
 	"gpt-6-sol",
 ]);
-
-// Checked manually against the authenticated GitHub Copilot /models endpoint on 2026-06-15.
-// Keep this to narrow corrections over models.dev metadata instead of snapshotting Copilot's catalog.
-export const GITHUB_COPILOT_THINKING_LEVEL_OVERRIDES: Readonly<
-	Record<string, NonNullable<Model<Api>["thinkingLevelMap"]> | undefined>
-> = {
-	"claude-opus-4.7": { minimal: "low" },
-	"claude-opus-4.8": { minimal: "low" },
-	"claude-opus-5": { minimal: "low" },
-	"claude-sonnet-4.6": { minimal: "low", max: "max" },
-};

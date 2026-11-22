@@ -6,14 +6,20 @@ import { registerMonitorHooks, type MonitorHookOptions } from "../../src/octocod
 import type { HookSession } from "../../src/octocode/hooks/register/types.ts";
 import { ATTENTION_RULES } from "../../src/octocode/monitor/attention/rules.ts";
 import { monitorLedgerOf } from "../../src/octocode/monitor/ledger.ts";
+import { tmp } from "./helpers.ts";
 
 /**
  * A session with one MonitorAlert group, a real ledger and a dispatch that runs a hook only when the configured matcher
  * selects the rule (`commandsFor`, the dispatcher's own selection), so what it records is what a user's hook would see.
  */
-function harness(matcher: string | undefined | null, options: MonitorHookOptions = {}) {
+function harness(
+	matcher: string | undefined | null,
+	options: MonitorHookOptions = {},
+	{ mode = "old", cwd = tmp() }: { mode?: "old" | "new"; cwd?: string } = {},
+) {
 	const handlers = new Map<string, Array<(event: unknown, ctx: unknown) => unknown>>();
 	const api = {
+		settings: { get: () => ({ runtime: { eventLoop: mode } }) },
 		bus: {
 			on: (event: string, handler: (event: unknown, ctx: unknown) => unknown) =>
 				handlers.set(event, [...(handlers.get(event) ?? []), handler]),
@@ -38,13 +44,14 @@ function harness(matcher: string | undefined | null, options: MonitorHookOptions
 		},
 		{ now: () => 5000, ...options },
 	);
+	const ctx = { cwd, sessionManager: { getSessionId: () => "monitor-session" } };
 	const ledger = monitorLedgerOf(api);
 	return {
 		ledger,
 		runs,
 		failures,
-		start: () => handlers.get("session_start")!.at(-1)!({}, {}),
-		shutdown: () => Promise.all(handlers.get("session_shutdown")!.map((handler) => handler({}, {}))),
+		start: () => handlers.get("session_start")!.at(-1)!({}, ctx),
+		shutdown: () => Promise.all(handlers.get("session_shutdown")!.map((handler) => handler({}, ctx))),
 		flush: () => new Promise<void>((resolve) => setTimeout(resolve, 5)),
 	};
 }
@@ -139,5 +146,49 @@ describe("MonitorAlert hook", () => {
 		await h.flush();
 		expect(h.runs).toEqual([]);
 		expect(h.failures).toHaveLength(1);
+	});
+});
+
+describe("MonitorAlert hook as an event subscriber (runtime.eventLoop: new)", () => {
+	const alerts = (h: ReturnType<typeof harness>) => {
+		h.ledger.record({ rule: "job", value: 16, threshold: 15, subject: "job-1", at: 1234 }, true);
+		h.ledger.record({ rule: "context", value: 75, threshold: 75 }, false);
+	};
+	const expected = [
+		{
+			event: "MonitorAlert",
+			rule: "job",
+			input: { rule: "job", value: 16, threshold: 15, subject: "job-1", at: 1234, delivered: true },
+		},
+		{
+			event: "MonitorAlert",
+			rule: "context",
+			input: { rule: "context", value: 75, threshold: 75, subject: null, at: 5000, delivered: false },
+		},
+	];
+
+	it("runs the hook once per alert with the same input as in old mode", async () => {
+		const h = harness(undefined, {}, { mode: "new" });
+		await h.start();
+		alerts(h);
+		await h.flush();
+		await h.flush();
+		expect(h.runs).toEqual(expected);
+		await h.shutdown();
+	});
+
+	it("does not run an alert again after a restart of the session", async () => {
+		const cwd = tmp();
+		const first = harness(undefined, {}, { mode: "new", cwd });
+		await first.start();
+		alerts(first);
+		await first.flush();
+		await first.shutdown();
+		const second = harness(undefined, {}, { mode: "new", cwd });
+		await second.start();
+		await second.flush();
+		expect(first.runs).toEqual(expected);
+		expect(second.runs).toEqual([]);
+		await second.shutdown();
 	});
 });

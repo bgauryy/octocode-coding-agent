@@ -45,7 +45,7 @@ const GLOB_NAMES = [...AGENT_IGNORED.files].map(
 );
 
 /** Whether `name`, an entry directly in `AGENT_DIR`, is runtime state that Git ignores (case-insensitive: the folder is read so on macOS and Windows). */
-export function isIgnoredAgentEntry(name: string): boolean {
+function isIgnoredAgentEntry(name: string): boolean {
 	return (
 		AGENT_IGNORED.folders.some((folder) => folder === name.toLowerCase()) || GLOB_NAMES.some((glob) => glob.test(name))
 	);

@@ -179,7 +179,7 @@ test("the real suite's dry run covers its tasks, with catalog prices", (t) => {
 	assert.match(result.stdout, /anthropic\.json chat:claude-sonnet-5-5/);
 });
 
-test("a live run with a fake agent: isolation, grading, children and evidence", (t) => {
+function checkFakeRun(t, build) {
 	const dir = sandbox(t);
 	const tasks = [
 		{
@@ -204,6 +204,7 @@ test("a live run with a fake agent: isolation, grading, children and evidence", 
 		out,
 		{
 			answer: "done",
+			baseline: build === "baseline",
 			requests: 3,
 			costPerRequest: 0.1,
 			envDump,
@@ -252,7 +253,11 @@ test("a live run with a fake agent: isolation, grading, children and evidence", 
 	const manifest = JSON.parse(readFileSync(join(out, "run.json"), "utf8"));
 	assert.equal(manifest.status, "complete");
 	assert.equal(manifest.ref, REF);
-});
+}
+
+for (const build of ["candidate", "baseline"]) {
+	test(`a fake ${build} run checks isolation, grading, children and evidence`, (t) => checkFakeRun(t, build));
+}
 
 test("the trial workspace has no history and copied config stays in the isolated home", (t) => {
 	const dir = sandbox(t);

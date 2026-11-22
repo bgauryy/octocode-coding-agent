@@ -1,6 +1,12 @@
 import { detectMultiplexer } from "../multiplexer.ts";
 import type { Terminal } from "../terminal.ts";
-import { DISABLE_ANY_MOTION_MOUSE, DISABLE_AUTOWRAP, ENABLE_ANY_MOTION_MOUSE, ENABLE_MOUSE } from "./constants.ts";
+import {
+	DISABLE_ANY_MOTION_MOUSE,
+	DISABLE_AUTOWRAP,
+	ENABLE_BUTTON_MOTION_MOUSE,
+	ENABLE_ANY_MOTION_MOUSE,
+	ENABLE_MOUSE,
+} from "./constants.ts";
 
 /** What the alternate screen's terminal modes read from the screen. */
 export interface AltScreenTerminalModesHost {
@@ -62,7 +68,8 @@ export class AltScreenTerminalModes {
 		const next = needed && this.host.mouse && detectMultiplexer() === null;
 		if (next === this.anyMotion) return;
 		this.anyMotion = next;
-		this.host.terminal().write(next ? ENABLE_ANY_MOTION_MOUSE : DISABLE_ANY_MOTION_MOUSE);
+		// xterm treats the tracking modes as exclusive. Resetting 1003 alone also disables wheel and drag reports.
+		this.host.terminal().write(next ? ENABLE_ANY_MOTION_MOUSE : DISABLE_ANY_MOTION_MOUSE + ENABLE_BUTTON_MOTION_MOUSE);
 	}
 
 	get tracksHover(): boolean {

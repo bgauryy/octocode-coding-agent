@@ -1,12 +1,23 @@
 import { apiKeyEnvVars } from "../auth/api-key-env-vars.ts";
+import { askCustomHost, simpleHostOption } from "../auth/endpoint.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
 import type { ApiKeyAuth } from "../auth/types.ts";
 
-/** Azure v1 supports resource keys and Microsoft Entra bearer tokens. */
+const AZURE_RESOURCE_URL_EXAMPLE = "https://my-resource.openai.azure.com/openai/v1";
+
+/** Azure v1 supports resource keys and Microsoft Entra bearer tokens; both may be saved with the resource URL. */
 export function azureAuth(): ApiKeyAuth {
-	const keys = envApiKeyAuth("Azure OpenAI API key", apiKeyEnvVars("azure"));
+	const keys = envApiKeyAuth(
+		"Azure OpenAI API key",
+		apiKeyEnvVars("azure"),
+		undefined,
+		undefined,
+		AZURE_RESOURCE_URL_EXAMPLE,
+	);
+	const host = simpleHostOption(AZURE_RESOURCE_URL_EXAMPLE);
 	return {
 		name: "Azure API key or Microsoft Entra token",
+		host,
 		login: async (interaction) => {
 			const method = await interaction.prompt({
 				type: "select",
@@ -23,20 +34,30 @@ export function azureAuth(): ApiKeyAuth {
 				message:
 					"Obtain a token for https://cognitiveservices.azure.com/.default using Azure Identity or Azure CLI. Tokens expire; refresh AZURE_OPENAI_AD_TOKEN externally or use the SDK's azureADTokenProvider option.",
 			});
-			const token = await interaction.prompt({ type: "secret", message: "Enter Microsoft Entra access token" });
+			const token = (
+				await interaction.prompt({ type: "secret", message: "Enter Microsoft Entra access token" })
+			).trim();
 			interaction.signal.throwIfAborted();
-			if (!token.trim()) throw new Error("Microsoft Entra access token is empty");
-			return { type: "api_key", env: { AZURE_OPENAI_AD_TOKEN: token } };
+			if (!token) throw new Error("Microsoft Entra access token is empty");
+			const endpoint = await askCustomHost(interaction, "Azure resource", host);
+			return { type: "api_key", env: { AZURE_OPENAI_AD_TOKEN: token }, ...(endpoint ? { endpoint } : {}) };
 		},
 		resolve: async (input) => {
-			if (input.credential?.key) return keys.resolve(input);
-			const token = input.credential?.env?.AZURE_OPENAI_AD_TOKEN ?? (await input.ctx.env("AZURE_OPENAI_AD_TOKEN"));
+			// A saved resource URL beats AZURE_OPENAI_BASE_URL and the resource name in the environment.
+			const baseUrl = input.credential?.endpoint?.baseUrl;
+			const stored = baseUrl ? { ...input.credential?.env, AZURE_OPENAI_BASE_URL: baseUrl } : input.credential?.env;
+			if (input.credential?.key) {
+				const resolved = await keys.resolve(input);
+				return resolved && stored ? { ...resolved, env: stored } : resolved;
+			}
+			const storedToken = input.credential?.env?.AZURE_OPENAI_AD_TOKEN?.trim();
+			const token = storedToken || (await input.ctx.env("AZURE_OPENAI_AD_TOKEN"))?.trim();
 			input.signal.throwIfAborted();
 			if (token)
 				return {
 					auth: { headers: { Authorization: `Bearer ${token}`, "api-key": null } },
-					env: input.credential?.env,
-					source: input.credential ? "stored Entra token" : "AZURE_OPENAI_AD_TOKEN",
+					env: stored,
+					source: storedToken ? "stored Entra token" : "AZURE_OPENAI_AD_TOKEN",
 				};
 			return keys.resolve(input);
 		},

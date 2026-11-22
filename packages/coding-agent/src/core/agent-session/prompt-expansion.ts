@@ -48,7 +48,7 @@ export async function tryExecuteFeatureCommand(
 
 	let command = runner.getCommand(commandName);
 	if (!command) {
-		// A retired form the terminal resolves to a built-in (`/mcp disable x` runs `/configuration`) still reaches its
+		// A retired form the terminal resolves to a built-in (`/mcp disable x` runs `/settings`) still reaches its
 		// own handler where that built-in is not available, so the handler can say where the command moved.
 		const typed = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim());
 		const typedCommand = typed && typed[1] !== commandName ? runner.getCommand(typed[1]) : undefined;

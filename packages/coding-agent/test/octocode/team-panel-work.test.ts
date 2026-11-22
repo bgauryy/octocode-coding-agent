@@ -263,7 +263,7 @@ describe("typed counts and the footer", () => {
 		work.set("bash", [bash]);
 		work.set("timer", [timer]);
 		view.setBackground(["general-1a2b"]);
-		expect(ctx.ui.statuses.get("octocode-running")).toBe("🐙 1 agent · 1 bash · 1 wait");
+		expect(ctx.ui.statuses.get("octocode-running")).toMatch(/^🐙 1 agent · 1 bash · .+ · 1 wait$/);
 		expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 		work.set("bash", []);
 		expect(ctx.ui.statuses.get("octocode-running")).toBe("🐙 1 agent · 1 wait");
@@ -340,7 +340,7 @@ describe("typed counts and the footer", () => {
 		expect(ctx.ui.widgets.has("octocode-agents")).toBe(true);
 		// The root row names the session: the footer's own team status is gone, and the running status counts work only.
 		expect(ctx.ui.statuses.get("octocode-team")).toBeUndefined();
-		expect(ctx.ui.statuses.get("octocode-running")).toBe("1 bash");
+		expect(ctx.ui.statuses.get("octocode-running")).toMatch(/^1 bash · .+/);
 		// The tab title still counts the agents.
 		expect(work.agents()).toBe(2);
 		// The footer's Σ adds the live descendants, never this session's own row (its ledger holds those replies).

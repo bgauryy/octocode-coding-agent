@@ -287,17 +287,16 @@ describe("ModelRuntime image generation", () => {
 		const runtime = await createRuntime({
 			providers: {
 				openrouter: {
-					headers: { "X-Title": "octocode" },
 					modelOverrides: {
-						"openrouter/auto": { name: "Auto (renamed)" },
-						"google/gemini-3-pro-image": { headers: { "X-Chat-Only": "yes" } },
+						"openrouter/auto": { maxTokens: 1234 },
+						"google/gemini-3-pro-image": { contextWindow: 4321 },
 					},
 				},
 			},
 		});
 		const provider = runtime.getProvider("openrouter")!;
 		expect(provider.generateImages).toBeDefined();
-		expect(runtime.getModel("openrouter", "openrouter/auto")?.name).toBe("Auto (renamed)");
+		expect(runtime.getModel("openrouter", "openrouter/auto")?.maxTokens).toBe(1234);
 		expect(runtime.getModelsOfType("image", "openrouter").length).toBeGreaterThan(0);
 
 		// Auth is provider-scoped: the same key serves chat and image models.
@@ -307,13 +306,13 @@ describe("ModelRuntime image generation", () => {
 		const chatAuth = await runtime.getAuth(chat);
 		const imageAuth = await runtime.getAuth(image);
 		expect(imageAuth?.auth.apiKey).toBe("sk-or");
-		expect(chatAuth?.auth.headers).toMatchObject({ "X-Title": "octocode", "X-Chat-Only": "yes" });
-		expect(imageAuth?.auth.headers).toEqual({ "X-Title": "octocode" });
+		expect(chat.contextWindow).toBe(4321);
+		expect(chatAuth?.auth.apiKey).toBe("sk-or");
 	});
 
 	it("does not add image generation or classification to composed chat-only providers", async () => {
 		const runtime = await createRuntime({
-			providers: { anthropic: { headers: { "X-Title": "octocode" } } },
+			providers: { anthropic: { modelOverrides: { "claude-opus-5-5": { maxTokens: 1234 } } } },
 		});
 		const provider = runtime.getProvider("anthropic")!;
 		expect(provider.generateImages).toBeUndefined();

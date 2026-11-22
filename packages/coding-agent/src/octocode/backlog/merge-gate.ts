@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Backlog } from "./context.ts";
 import { BacklogError, type Item } from "./item.ts";
 
@@ -16,8 +17,12 @@ function unmergedRefs(backlog: Pick<Backlog, "repoRoot">, item: Item): string[] 
 		try {
 			execFileSync("git", ["-C", backlog.repoRoot, "rev-parse", "--verify", "--quiet", ref], { stdio: "ignore" });
 			return true;
-		} catch {
-			return false;
+		} catch (error) {
+			// `--verify --quiet` exits 1 for a ref that does not exist; any other failure (git missing, not a repository) says nothing about the ref.
+			if ((error as { status?: unknown }).status === 1) return false;
+			throw new BacklogError(
+				`${item.ref} cannot be completed: git could not check whether its isolated change ${ref} is still unmerged (${errorMessage(error)}). Fix git, then retry.`,
+			);
 		}
 	});
 }

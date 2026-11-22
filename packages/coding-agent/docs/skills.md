@@ -60,7 +60,7 @@ A skill without a description, or with malformed frontmatter, is not loaded. A n
 | Codex       | `$CODEX_HOME/skills/` (default `~/.codex/skills/`)                                   | off       |
 | Cursor      | `.cursor/skills/`, `~/.cursor/skills/`                                               | off       |
 
-Folders are searched recursively for `SKILL.md`. In a subdirectory of a repository the root's `.octocode/skills/` also loads. `CLAUDE_CONFIG_DIR` and `CODEX_HOME` move the Claude and Codex user folders (a missing Codex home does not fall back to another). `OCTOCODE_HOME` moves the Octocode folder. Switch a harness on with `/configuration enable harness:<name>` ([configuration](configuration.md#changing-configuration)). Other sources: `--skill <path>` (repeatable), the `skills` setting, and [packages](packages.md).
+Folders are searched recursively for `SKILL.md`. In a subdirectory of a repository the root's `.octocode/skills/` also loads. `CLAUDE_CONFIG_DIR` and `CODEX_HOME` move the Claude and Codex user folders (a missing Codex home does not fall back to another). `OCTOCODE_HOME` moves the Octocode folder. Switch a harness on with `/settings enable harness:<name>` ([configuration](configuration.md#changing-configuration)). Other sources: `--skill <path>` (repeatable), the `skills` setting, and [packages](packages.md).
 
 ### The four groups
 
@@ -99,12 +99,12 @@ In `/harness`, open **Skills** and choose **+ Add skill from a folder**. Enter t
 | -------------------------------------------------- | ----------------------------------------------------------- |
 | `/harness`                                         | Pick list; Skills is one section                            |
 | `/harness list skills`                             | Print skill rows (state, source, file) with their ids       |
-| `/configuration disable skill:<name> [--local]`    | Exclude a skill in user (or trusted project) settings       |
-| `/configuration enable skill:<name> [--local]`     | Include it again                                            |
-| `/configuration disable harness:pi`                | Switch off every Pi skill (Pi's own list is read-only here) |
+| `/settings disable skill:<name> [--local]`    | Exclude a skill in user (or trusted project) settings       |
+| `/settings enable skill:<name> [--local]`     | Include it again                                            |
+| `/settings disable harness:pi`                | Switch off every Pi skill (Pi's own list is read-only here) |
 | `--disable skill:<name>` / `--enable skill:<name>` | The same, for one run                                       |
 
-A switch applies after `/reload`. It changes Octocode settings only. Rows exist only for harnesses that are on. Two skills of one name get the id `skill:<path>` (see `/configuration list skill`), except when one is a core skill: the copy that loads keeps `skill:<name>`, so `disable skill:<name>` switches it, and a switched-on copy that does not load is listed as `shadowed` under its path id. A core skill beats the Octocode collection's copy of the same name. Core skills switch globally only; Octocode-collection skills can also switch with `--local`. A session-only skill (`--skill`) has no row.
+A switch applies after `/reload`. It changes Octocode settings only. Rows exist only for harnesses that are on. Two skills of one name get the id `skill:<path>` (see `/settings list skill`), except when one is a core skill: the copy that loads keeps `skill:<name>`, so `disable skill:<name>` switches it, and a switched-on copy that does not load is listed as `shadowed` under its path id. A core skill beats the Octocode collection's copy of the same name. Core skills switch globally only; Octocode-collection skills can also switch with `--local`. A session-only skill (`--skill`) has no row.
 
 The `skills` setting takes patterns and also filters auto-discovered skills: `"skills": ["!octocode-roast"]` drops one, `["!octocode-*"]` the collection, and a trusted project can bring one back with `["+octocode-roast/SKILL.md"]`.
 
@@ -151,19 +151,20 @@ A Codex skill may carry `agents/openai.yaml`; `policy.allow_implicit_invocation:
 ```mermaid
 sequenceDiagram
   participant S as Startup
-  participant P as System prompt
+  participant D as skill tool description
   participant M as Model
   participant T as skill tool
-  S->>P: name and description of every skill
-  M->>T: skill(name) for a matching task
-  T-->>M: SKILL.md body and its folder
+  S->>D: path and description of every skill
+  M->>T: skill(names) for the matching skills
+  T-->>M: one block per skill: SKILL.md body and its folder
   M->>M: read references, run scripts from that folder
 ```
 
-- The list shows every usable skill's name and full description. A profile without the `skill` tool also gets each `SKILL.md` path, since its agent reads the file itself. When the list exceeds 1% of the model's context window in characters (8,000 on 200,000 tokens), startup warns `Skill listing over budget`; the prompt is unchanged. Shorten descriptions with [`octocode context`](#optimized-descriptions) or switch skills off.
-- The `skill` tool returns `SKILL.md` without frontmatter, plus the folder, so relative paths resolve. It refuses unknown names (offering close matches) and `disable-model-invocation` skills. The terminal shows a load as `Skill: <name>` with its group and line count.
-- A profile can drop the tool with `excludeTools: skill`; the prompt then names a file reader instead. The tool is left out while no skill allows model invocation.
-- Compaction may summarize a loaded skill; its name stays in the prompt so the model can load it again.
+- The `skill` tool is the one place skills are explained. Its description says what a skill is (a folder with `SKILL.md`, and optional `scripts/`, `references/` and `assets/`, resolved against that folder), that every skill whose description matches the work is loaded before the work starts, and that a skill's `.octocode/<path>` output means `<workspace>/.octocode/agent/<path>`. It then lists every enabled skill as `path: description`, grouped as core, Octocode, workspace and global. The system prompt carries none of this, and every agent, subagents included, declares the same list.
+- A call takes several skills: `names`, each a listed name or listed path. It returns one block per skill: `SKILL.md` without frontmatter, plus the folder. An entry that is not listed (unknown, or `disable-model-invocation`) is refused with close matches and does not stop the others. The terminal shows `Skill(a, b)` and, collapsed, one line (`2 skills · 120 lines · 1 not loaded`); expanded, each skill's name, description, file and line count, and each refusal. The web view shows the same.
+- When the list exceeds 1% of the model's context window in characters (8,000 on 200,000 tokens), startup warns `Skill listing over budget`; the list is unchanged. Shorten descriptions with [`octocode context`](#optimized-descriptions) or switch skills off.
+- A profile can drop the tool with `excludeTools: skill`. The tool is left out while no skill allows model invocation. A task's `skills` still name which skills a child loads first.
+- Compaction may summarize a loaded skill; its name stays in the summary so the model can load it again.
 - The Octocode MCP server may read inside every loaded skill folder. Folders you add (`research.allowedPaths` in global settings, `ALLOWED_PATHS` in the environment or `~/.octocode/.env`) extend that; `ALLOWED_PATHS` in the server entry's `env` replaces it ([MCP](mcp-reference.md)).
 
 ### Optimized descriptions

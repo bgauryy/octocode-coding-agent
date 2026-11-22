@@ -107,7 +107,7 @@ function observedCodec(entries: readonly FileEntry[]): SessionCodec {
 
 /** Forget what a failed or held write left: the session's file or transcript was just replaced. */
 function clearWriteState(state: SessionState, replacing = true): void {
-	if (replacing) notifyDroppedRecords(state.unwritten.length, state.sessionFile);
+	if (replacing) notifyDroppedRecords(state.unwritten.length, state.sessionFile, state);
 	cancelHeldRetry(state);
 	state.persistenceFailure = undefined;
 	state.failedWrite = undefined;
@@ -153,7 +153,7 @@ export function startNewSession(state: SessionState, options?: NewSessionOptions
 	if (state.persist) {
 		state.sessionFile = getSessionFilePath(state.sessionDir, timestamp, state.sessionId);
 		if (options?.parentSession)
-			recordFork(state.cwd, state.sessionId, state.sessionFile, { file: options.parentSession });
+			recordFork(state.cwd, state.sessionId, state.sessionFile, { file: options.parentSession }, state);
 	}
 	return state.sessionFile;
 }
@@ -387,8 +387,8 @@ export function createBranchedSession(state: SessionState, leafId: string): stri
 			state.flushed = true;
 		}
 
-		if (previousSessionFile)
-			recordFork(state.cwd, newSessionId, newSessionFile, { file: previousSessionFile, expectedId: previousSessionId });
+		const parent = previousSessionFile && { file: previousSessionFile, expectedId: previousSessionId };
+		if (parent) recordFork(state.cwd, newSessionId, newSessionFile, parent, state);
 		return newSessionFile;
 	}
 

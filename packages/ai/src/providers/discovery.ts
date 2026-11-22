@@ -36,9 +36,16 @@ function positive(value: unknown): number | undefined {
 export async function requestVendorModels(
 	provider: Pick<Provider, "id" | "baseUrl" | "getModels" | "headers">,
 	auth: ModelAuth,
-	options: { signal?: AbortSignal; fetch?: typeof fetch; chatGPT?: boolean; baseUrl?: string } = {},
+	options: {
+		signal?: AbortSignal;
+		fetch?: typeof fetch;
+		chatGPT?: boolean;
+		baseUrl?: string;
+		/** The list route for a provider the registry does not know (a custom endpoint), in place of the registry's. */
+		source?: ModelDiscoverySource;
+	} = {},
 ): Promise<DiscoveredVendorModel[]> {
-	const source = MODEL_DISCOVERY_SOURCES[provider.id];
+	const source = options.source ?? MODEL_DISCOVERY_SOURCES[provider.id];
 	if (!source?.path) throw new Error("No documented HTTP model discovery route for this provider");
 	let base = options.baseUrl ?? auth.baseUrl ?? provider.baseUrl ?? provider.getModels()[0]?.baseUrl;
 	// OpenCode's provider root is family-dependent; its public catalog has its own route.

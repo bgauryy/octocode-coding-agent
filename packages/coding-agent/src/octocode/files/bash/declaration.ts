@@ -22,7 +22,7 @@ const BACKGROUND_OUTPUT = Type.Object({
  * `bashBackgroundAfterSeconds` and `bash.longCommandAfterSeconds` are read per call (`settingsFor`).
  */
 export function bashDescription(): string {
-	return `Run commands in the working directory. Builds, full test suites, servers and work over a minute go in background: job id, pid and log path now, a completion message later. Foreground returns combined output; it moves to background after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s by default (${SETTINGS_DEFAULTS.bash.longCommandAfterSeconds}s for test runners, builds, servers) or on a user message. A timeout does not undo effects: inspect results before rerunning.\n\n${renderCliGuide(probeCliHost())}`;
+	return `Run in the working directory. Background builds, suites, servers and work over a minute. Get job id, pid and log now, completion by message. Foreground combines output and backgrounds on user input or after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${SETTINGS_DEFAULTS.bash.longCommandAfterSeconds}s for builds, tests, servers). Inspect effects before retrying a timeout.\n\n${renderCliGuide(probeCliHost())}`;
 }
 
 /** Programmatic callers receive `structuredContent` only from tools that declare its schema. */
@@ -36,41 +36,39 @@ export function bashOutputSchema(builtin: TSchema) {
 export const bashParameters = Type.Object({
 	type: Type.Optional(
 		StringEnum(["bash", "powershell"] as const, {
-			description: "bash (default, configured shell) or powershell (Windows)",
+			description: "Default: configured shell",
 		}),
 	),
 	command: Type.String({ description: "Command in the selected syntax" }),
 	timeout: Type.Optional(
 		Type.Number({
-			description: `Seconds until it stops (foreground: default ${DEFAULT_BASH_TIMEOUT}, max ${MAX_FOREGROUND_TIMEOUT}; background: none unless set); omit: a long command moves to the background`,
+			description: `Seconds (foreground: default ${DEFAULT_BASH_TIMEOUT}, max ${MAX_FOREGROUND_TIMEOUT}; background: none unless set)`,
 		}),
 	),
 	maxOutputTokens: maxOutputTokensParameter,
 	background: Type.Optional(
 		Type.Boolean({
-			description: "true: return at once; a foreground wait over 10 min moves to the background",
+			description: "true: return at once",
 		}),
 	),
 	fresh: Type.Optional(
 		Type.Boolean({
-			description: "Background: start a new run even if an identical job (same folder and command) is running",
+			description: "Background: start anew though an identical job runs",
 		}),
 	),
 	verify: Type.Optional(
 		Type.Boolean({
-			description:
-				"Record verification for current edits (later edits make it stale); exit 0 proves only the command succeeded",
+			description: "Record verification for current edits (later edits make it stale)",
 		}),
 	),
 	sandbox: Type.Optional(
 		Type.Boolean({
-			description:
-				"false: run outside the command sandbox after it refused something the command needs; asks the user each time",
+			description: "false: run outside the sandbox after it refused; asks the user",
 		}),
 	),
 	item: Type.Optional(
 		Type.String({
-			description: "Background: your ongoing item (B<n>) this job serves; it is not idle meanwhile",
+			description: "Background: your ongoing item (B<n>) this job serves",
 		}),
 	),
 	// Declared here (last, as the native wrapper adds it) so a job keeps it as its why.

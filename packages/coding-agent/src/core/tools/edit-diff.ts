@@ -2,12 +2,8 @@
  * Shared diff computation utilities for the edit and similar tools.
  */
 
-import {
-	applyReplacements,
-	lineReplacementsPreservingUnchangedLines,
-	type MatchedEdit,
-	type TextReplacement,
-} from "./edit-diff/replacements.ts";
+import { findText } from "./edit-diff/fuzzy.ts";
+import { applyReplacements, type MatchedEdit, type TextReplacement } from "./edit-diff/replacements.ts";
 import { mismatchHint } from "./edit-mismatch.ts";
 
 export { generateDiffString, generateUnifiedPatch } from "./edit-diff/display.ts";
@@ -15,52 +11,6 @@ export { applyReplacementsToOriginal } from "./edit-diff/replacements.ts";
 
 export function normalizeToLF(text: string): string {
 	return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
-/**
- * Normalize text for fuzzy matching. Applies progressive transformations:
- * - Strip trailing whitespace from each line
- * - Normalize smart quotes to ASCII equivalents
- * - Normalize Unicode dashes/hyphens to ASCII hyphen
- * - Normalize special Unicode spaces to regular space
- */
-function normalizeForFuzzyMatch(text: string): string {
-	return (
-		text
-			.normalize("NFKC")
-			// Strip trailing whitespace per line
-			.split("\n")
-			.map((line) => line.trimEnd())
-			.join("\n")
-			// Smart single quotes → '
-			.replace(/[\u2018\u2019\u201A\u201B]/g, "'")
-			// Smart double quotes → "
-			.replace(/[\u201C\u201D\u201E\u201F]/g, '"')
-			// Various dashes/hyphens → -
-			// U+2010 hyphen, U+2011 non-breaking hyphen, U+2012 figure dash,
-			// U+2013 en-dash, U+2014 em-dash, U+2015 horizontal bar, U+2212 minus
-			.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, "-")
-			// Special spaces → regular space
-			// U+00A0 NBSP, U+2002-U+200A various spaces, U+202F narrow NBSP,
-			// U+205F medium math space, U+3000 ideographic space
-			.replace(/[\u00A0\u2002-\u200A\u202F\u205F\u3000]/g, " ")
-	);
-}
-
-interface FuzzyMatchResult {
-	/** Whether a match was found */
-	found: boolean;
-	/** The index where the match starts (in the content that should be used for replacement) */
-	index: number;
-	/** Length of the matched text */
-	matchLength: number;
-	/** Whether fuzzy matching was used (false = exact match) */
-	usedFuzzyMatch: boolean;
-	/**
-	 * The content to use for replacement operations.
-	 * When exact match: original content. When fuzzy match: normalized content.
-	 */
-	contentForReplacement: string;
 }
 
 export interface Edit {
@@ -77,52 +27,6 @@ export interface AppliedEditsResult {
 	 * into the file's own text, keeping the line endings of the lines they leave alone.
 	 */
 	replacements: TextReplacement[];
-}
-
-/**
- * Find oldText in content, trying exact match first, then fuzzy match.
- * When fuzzy matching is used, the returned contentForReplacement is the
- * fuzzy-normalized version of the content (trailing whitespace stripped,
- * Unicode quotes/dashes normalized to ASCII).
- */
-function fuzzyFindText(content: string, oldText: string): FuzzyMatchResult {
-	// Try exact match first
-	const exactIndex = content.indexOf(oldText);
-	if (exactIndex !== -1) {
-		return {
-			found: true,
-			index: exactIndex,
-			matchLength: oldText.length,
-			usedFuzzyMatch: false,
-			contentForReplacement: content,
-		};
-	}
-
-	// Try fuzzy match - work entirely in normalized space
-	const fuzzyContent = normalizeForFuzzyMatch(content);
-	const fuzzyOldText = normalizeForFuzzyMatch(oldText);
-	const fuzzyIndex = fuzzyContent.indexOf(fuzzyOldText);
-
-	if (fuzzyIndex === -1) {
-		return {
-			found: false,
-			index: -1,
-			matchLength: 0,
-			usedFuzzyMatch: false,
-			contentForReplacement: content,
-		};
-	}
-
-	// When fuzzy matching, return offsets in normalized space. Callers can use
-	// the normalized content to compute replacements, then decide how much of
-	// that normalized output should be written back.
-	return {
-		found: true,
-		index: fuzzyIndex,
-		matchLength: fuzzyOldText.length,
-		usedFuzzyMatch: true,
-		contentForReplacement: fuzzyContent,
-	};
 }
 
 function normalizeEditQuotes(text: string): string {
@@ -143,12 +47,6 @@ export function findAllEditOccurrences(content: string, oldText: string): number
 		from = index + needle.length;
 	}
 	return matches;
-}
-
-function countOccurrences(content: string, oldText: string): number {
-	const fuzzyContent = normalizeForFuzzyMatch(content);
-	const fuzzyOldText = normalizeForFuzzyMatch(oldText);
-	return fuzzyContent.split(fuzzyOldText).length - 1;
 }
 
 function getNotFoundError(path: string, editIndex: number, totalEdits: number, hint = ""): Error {
@@ -196,9 +94,9 @@ function getNoChangeError(path: string, totalEdits: number): Error {
  * then applied in reverse order so offsets remain stable. All-occurrence edits
  * retain original offsets and use exact matches or length-preserving quote fallback.
  * Mixed all-occurrence and broader fuzzy edits are refused. Without all-occurrence
- * edits, if any edit needs fuzzy matching, the operation runs in fuzzy-normalized content space and then
- * overlays those line-level changes onto the original content so unchanged line
- * blocks keep their original bytes.
+ * edits, an oldText that is not found verbatim is matched after normalization (quotes, dashes, spaces, Unicode
+ * compatibility forms, trailing whitespace) and mapped back to the original span, so every byte outside the
+ * matched spans stays as it was.
  */
 export function applyEditsToNormalizedContent(
 	normalizedContent: string,
@@ -218,10 +116,6 @@ export function applyEditsToNormalizedContent(
 	}
 
 	const hasAll = normalizedEdits.some((edit) => edit.replaceAll === true);
-	const initialMatches = normalizedEdits.map((edit) => fuzzyFindText(normalizedContent, edit.oldText));
-	const usedFuzzyMatch = !hasAll && initialMatches.some((match) => match.usedFuzzyMatch);
-	const replacementBaseContent = usedFuzzyMatch ? normalizeForFuzzyMatch(normalizedContent) : normalizedContent;
-
 	const matchedEdits: MatchedEdit[] = [];
 	for (let i = 0; i < normalizedEdits.length; i++) {
 		const edit = normalizedEdits[i];
@@ -240,20 +134,18 @@ export function applyEditsToNormalizedContent(
 		}
 		if (hasAll && !normalizedContent.includes(edit.oldText))
 			throw new Error("Unsupported mixed all-occurrence and fuzzy edits; use separate calls");
-		const matchResult = fuzzyFindText(replacementBaseContent, edit.oldText);
-		if (!matchResult.found) {
+		const found = findText(normalizedContent, edit.oldText);
+		if (!found) {
 			throw getNotFoundError(path, i, normalizedEdits.length, mismatchHint(normalizedContent, edit.oldText));
 		}
-
-		const occurrences = countOccurrences(replacementBaseContent, edit.oldText);
-		if (occurrences > 1) {
-			throw getDuplicateError(path, i, normalizedEdits.length, occurrences);
+		if (found.occurrences > 1) {
+			throw getDuplicateError(path, i, normalizedEdits.length, found.occurrences);
 		}
 
 		matchedEdits.push({
 			editIndex: i,
-			matchIndex: matchResult.index,
-			matchLength: matchResult.matchLength,
+			matchIndex: found.index,
+			matchLength: found.matchLength,
 			newText: edit.newText,
 		});
 	}
@@ -270,9 +162,7 @@ export function applyEditsToNormalizedContent(
 	}
 
 	const baseContent = normalizedContent;
-	const replacements = usedFuzzyMatch
-		? lineReplacementsPreservingUnchangedLines(normalizedContent, replacementBaseContent, matchedEdits)
-		: matchedEdits;
+	const replacements = matchedEdits;
 	const newContent = applyReplacements(baseContent, replacements);
 
 	if (baseContent === newContent) {

@@ -39,6 +39,8 @@ const git = (...args: string[]) => execFileSync("git", args, { cwd, encoding: "u
 
 interface Turn {
 	tools: string[];
+	/** The `skill` tool's description, which lists every enabled skill. */
+	skillCatalog: string;
 	context: string;
 	results: Array<{ toolName: string; isError: boolean; text: string }>;
 }
@@ -61,6 +63,7 @@ function snapshot(context: TranscriptContext): Turn {
 	}
 	return {
 		tools: getCurrentTools(context.messages).map((tool) => tool.name),
+		skillCatalog: getCurrentTools(context.messages).find((tool) => tool.name === "skill")?.description ?? "",
 		context: `${getCurrentSystemPrompt(context.messages)}\n${JSON.stringify(context.messages)}`,
 		results,
 	};
@@ -230,7 +233,9 @@ describe("Native features through the SDK", () => {
 		expect(commands.filter((name) => name === "mcp")).toHaveLength(1);
 		// Folded into /harness: one name per command.
 		for (const retired of ["plugins", "hooks", "config"]) expect(commands).not.toContain(retired);
-		expect(session.systemPrompt).toContain("demo-skill");
+		// Skills are listed in the `skill` tool's description, not in the system prompt.
+		expect(turn.skillCatalog).toContain("demo-skill");
+		expect(session.systemPrompt).not.toContain("demo-skill");
 		expect(turn.context).toContain("<delegation>");
 		// The banner is the TUI header (none over RPC), never a session entry. The only custom entry is the team name
 		// a top-level session records when it joins at start (`team/session/membership.ts` joinAtStart, design B36 O6).

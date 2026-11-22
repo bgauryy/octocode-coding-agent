@@ -3,11 +3,13 @@ import { PeerNotices, type PeerNoticeHost } from "./peer-left.ts";
 import { INTERNAL_MESSAGE_TYPE, USER_SENDER } from "../shared/messages.ts";
 import type { DeadLetter, MailDetails, Message, RecipientKind } from "./model.ts";
 import { parentProofValid, userProofValid } from "./proof.ts";
+import { mailSource, TEAM_NOTICE_SOURCE } from "./mail-source.ts";
 import { deadLetterText, messageText } from "./routing.ts";
 import { spillIntact } from "./spill.ts";
 import type { TeamStore } from "./store.ts";
+import type { Source } from "../events/source-types.ts";
 import { busy } from "./store/patient.ts";
-import type { AgentEvent } from "../wake/catalog.ts";
+import type { PayloadEvent as AgentEvent } from "../events/topics.ts";
 import { wakeGateOf } from "../wake/gate.ts";
 
 const mailEvent = (message: Message): AgentEvent => ({
@@ -93,6 +95,8 @@ export class Mail {
 			{ triggerTurn: false, deliverAs: "steer" },
 			onRejected,
 			onAccepted,
+			[],
+			[TEAM_NOTICE_SOURCE],
 		);
 	}
 
@@ -123,7 +127,7 @@ export class Mail {
 		// run; it cannot make it read the text as the user's, because that needs the signature (`verified`).
 		if (ctx && !ctx.isIdle() && batch.some((message) => message.interrupt)) {
 			try {
-				ctx.abort();
+				ctx.abort("peer");
 				const previous = this.held?.onRejected;
 				this.held = {
 					batch: [...(this.held?.batch ?? []), ...batch],
@@ -180,6 +184,9 @@ export class Mail {
 			onRejected,
 			undefined,
 			batch.filter((message) => message.wake).map(mailEvent),
+			batch.map((message) =>
+				mailSource(message, parentId, { fromUser: this.verified(message), parentSigned: this.parentSigned(message) }),
+			),
 		);
 	}
 
@@ -271,11 +278,12 @@ export class Mail {
 		onRejected?: () => void,
 		onAccepted?: () => void,
 		wakes: readonly AgentEvent[] = [],
+		sources?: readonly Source[],
 	): boolean {
 		let sending: void | Promise<void>;
 		try {
 			const message = { customType: INTERNAL_MESSAGE_TYPE, content, display: true, details };
-			sending = wakeGateOf(this.api).emit(wakes, message, options);
+			sending = wakeGateOf(this.api).emit(wakes, message, options, undefined, sources);
 		} catch {
 			return false; // The session ended or is not ready.
 		}

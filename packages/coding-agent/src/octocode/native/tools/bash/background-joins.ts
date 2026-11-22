@@ -30,6 +30,11 @@ export interface BackgroundJoins {
 	stop(): void;
 }
 
+const joinedKey = (row: Pick<JobRow, "session_id" | "job">) => `${row.session_id}\u0000${row.job}`;
+
+/** Resolvers of the joined jobs' `done`, by joined key. */
+const ends = new WeakMap<BashJobs, Map<string, () => void>>();
+
 /**
  * Background jobs as database rows and the joins they allow: an identical job (same workspace, folder and normalized
  * command) that runs with a live owner is joined instead of started again, and the joining session hears of its end like
@@ -46,7 +51,11 @@ export function backgroundJoins(
 	const watch = new JoinWatch(
 		ledger,
 		(row, how) => {
-			if (closing()) return;
+			jobs.joined.delete(joinedKey(row));
+			// Resolves once the report is queued, so a run held on this job finds it when it continues.
+			const finish = ends.get(jobs)?.get(joinedKey(row));
+			ends.get(jobs)?.delete(joinedKey(row));
+			if (closing()) return finish?.();
 			const wake = !envFlag(process.env, SUBAGENT_ENV);
 			const exit = how === "owner gone" ? null : row.exit_code;
 			const sending = wakeGateOf(api).emit(
@@ -67,10 +76,9 @@ export function backgroundJoins(
 				},
 				{ triggerTurn: wake, deliverAs: "followUp", together: true },
 			);
-			if (sending)
-				void Promise.resolve(sending).catch((error: unknown) =>
-					warn(`Joined job ${row.job} report failed: ${errorMessage(error)}`),
-				);
+			void Promise.resolve(sending)
+				.catch((error: unknown) => warn(`Joined job ${row.job} report failed: ${errorMessage(error)}`))
+				.finally(() => finish?.());
 		},
 		(error) => warn(`Watching joined jobs stopped: ${errorMessage(error)}`),
 	);
@@ -80,11 +88,34 @@ export function backgroundJoins(
 			const row = ledger.joinable(request.cwd, request.command);
 			if (!row) return undefined;
 			// A job of this session reports to it already; another session's is watched until its row ends.
-			if (!(ledger.isOwn(row) && jobs.jobs.has(row.job))) watch.watch(row);
+			if (!(ledger.isOwn(row) && jobs.jobs.has(row.job))) {
+				watch.watch(row);
+				const key = joinedKey(row);
+				if (!jobs.joined.has(key)) {
+					const done = new Promise<void>((resolve) => {
+						const map = ends.get(jobs) ?? new Map<string, () => void>();
+						map.set(key, resolve);
+						ends.set(jobs, map);
+					});
+					jobs.joined.set(key, {
+						id: row.job,
+						pid: row.pid,
+						log: row.log,
+						command: row.command,
+						startedAt: row.started_at,
+						done,
+					});
+				}
+			}
 			return row;
 		},
 		record: (job, agent) => ledger.record(job, agent),
 		end: (job, exit) => ledger.end(job, exit),
-		stop: () => watch.stop(),
+		stop: () => {
+			watch.stop();
+			for (const finish of ends.get(jobs)?.values() ?? []) finish();
+			ends.delete(jobs);
+			jobs.joined.clear();
+		},
 	};
 }

@@ -137,6 +137,22 @@ describe("a read-only child's shell", () => {
 	});
 });
 
+describe("a read-only child's backlogPlan calls", () => {
+	const refusal = (input: Record<string, unknown>, env: NodeJS.ProcessEnv = CHILD) =>
+		readOnlyRoleRefusal({ toolName: "backlogPlan", input }, repo, env);
+
+	it("may list and count items", () => {
+		expect(refusal({ op: "list", query: "docs" })).toBeUndefined();
+		expect(refusal({ op: "stat" })).toBeUndefined();
+	});
+
+	it("may not add or edit items, which a writing child may", () => {
+		expect(refusal({ op: "add", items: [{ title: "t", goal: "g", why: "w" }] })).toContain("read-only role");
+		expect(refusal({ op: "edit", items: [{ id: "B1", priority: "p0" }] })).toContain("read-only role");
+		expect(refusal({ op: "add", items: [] }, { [SUBAGENT_ENV]: "1" })).toBeUndefined();
+	});
+});
+
 describe("the board tools", () => {
 	it("stay out of every child's tool list unless its task names an item", () => {
 		for (const env of [CHILD, { [SUBAGENT_ENV]: "1" }]) {

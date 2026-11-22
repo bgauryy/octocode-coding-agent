@@ -1,5 +1,7 @@
 import { renderPrompt } from "../../../core/prompt-template.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { makeSource } from "../../events/source.ts";
+import type { Source } from "../../events/source-types.ts";
 import { formatClock } from "../../shared/format.ts";
 import { headerText } from "../../shared/fence.ts";
 import { apiDir, readInstance } from "../registry.ts";
@@ -121,6 +123,17 @@ export function externalHeader(facts: ExternalFacts, at: number): string {
 		cwd: quote(facts.cwd),
 		at: formatClock(at),
 	});
+}
+
+/** The source of an API message: the sender's name and process are its own claim, unless that instance confirmed the call on its own socket. */
+export function externalSource(facts: ExternalFacts): Source {
+	return makeSource(
+		"external",
+		facts.replyTo ?? facts.from,
+		"socket",
+		facts.verified ? "proven" : "self-reported",
+		facts.pid === undefined ? undefined : { pid: facts.pid },
+	);
 }
 
 /** What the reader can do about it, below the fence. */

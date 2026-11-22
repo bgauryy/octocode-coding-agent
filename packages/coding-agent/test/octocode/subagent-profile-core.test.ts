@@ -46,7 +46,7 @@ describe("linger front matter", () => {
 		expect(tools).toEqual(expect.arrayContaining(["mcp__browser__open", "mcp__octocode__*", "web"]));
 		expect(tools).not.toContain("browser");
 		// Core tools: commands (still read-only through the permission gate), communication and history.
-		expect(tools).toEqual(expect.arrayContaining(["bash", "agent", "wait", "file"]));
+		expect(tools).toEqual(expect.arrayContaining(["bash", "agent", "notify", "file"]));
 		expect(tools).not.toContain("task");
 	});
 });
@@ -65,7 +65,7 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"wait",
+			"notify",
 			"archive",
 			"memory",
 			"skill",
@@ -78,7 +78,7 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"wait",
+			"notify",
 			"archive",
 			"memory",
 			"skill",
@@ -92,14 +92,14 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"wait",
+			"notify",
 			"archive",
 			"memory",
 			"skill",
 			...MCP_ACCESS_TOOLS,
 			"mcp__*",
 		]);
-		expect(CORE_TOOLS).toEqual(["file", "agent", "wait", "archive", "memory"]);
+		expect(CORE_TOOLS).toEqual(["file", "agent", "notify", "archive", "memory"]);
 		expect(SHELL_TOOLS).toEqual(["bash"]);
 		expect(DEFAULT_CHILD_TOOLS).toEqual(["skill"]);
 	});
@@ -110,7 +110,7 @@ describe("core tools of a subagent profile", () => {
 			"agent*",
 			"file",
 			"bash",
-			"wait",
+			"notify",
 			"archive",
 			"memory",
 			"skill",
@@ -124,7 +124,7 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"wait",
+			"notify",
 			"archive",
 			"memory",
 			"skill",
@@ -160,8 +160,8 @@ describe("core tools of a subagent profile", () => {
 		["excludeTools: mcp__research__read_file", ["mcp__research__read_file"]],
 		['excludeTools: "agent,browser"', ["agent"]],
 		["excludeTools: archive", ["archive"]],
-		["excludeTools: wait", ["wait"]],
-		["tools: -wait", ["wait"]],
+		["excludeTools: notify", ["notify"]],
+		["tools: -notify", ["notify"]],
 		[
 			'excludeTools: "*"',
 			[...CORE_TOOLS, ...MCP_ACCESS_TOOLS, "mcp__research__read_file", "mcp__research__search_code"],
@@ -192,7 +192,7 @@ describe("core tools of a subagent profile", () => {
 			"bash",
 			"file",
 			"agent",
-			"wait",
+			"notify",
 			"archive",
 			"memory",
 			"skill",

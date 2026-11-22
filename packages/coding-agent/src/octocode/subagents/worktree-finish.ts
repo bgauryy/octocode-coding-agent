@@ -41,7 +41,7 @@ export async function finishWorktree(worktree: Finishing): Promise<WorktreeResul
 	try {
 		result = await saveChanges(worktree);
 		const outputs = await copyIgnoredOutputs(worktree);
-		if (outputs.copied.length > 0 || outputs.conflicts.length > 0) result = { ...result, outputs };
+		if (outputs.copied.length > 0 || outputs.conflicts.length > 0 || outputs.dropped) result = { ...result, outputs };
 	} catch (error) {
 		throw new Error(
 			`${errorMessage(error)}. The worktree is kept at ${worktree.path}; commit or copy its changes, then remove it with \`git worktree remove --force ${worktree.path}\`.`,

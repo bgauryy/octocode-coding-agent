@@ -5,7 +5,7 @@ import type { McpDeferRole } from "../../../../mcp/src/api.ts";
  * field replaces each, an absent one included.
  */
 
-/** The skills its prompt lists (a role's `catalog:`); the rest stay loadable by name. */
+/** The skills its `skill` tool lists (a role's `catalog:`); the rest stay loadable by name. */
 export const GENERAL_CATALOG: readonly string[] = [
 	"octocode-local-research",
 	"octocode-github-research",

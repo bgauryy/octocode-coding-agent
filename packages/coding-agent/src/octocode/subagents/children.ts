@@ -216,14 +216,22 @@ export function describeChild(child: SessionChild): string {
  * still exiting (`options.stillExiting`: two processes must never write one transcript), one that ran isolated whose
  * saved ref is gone or whose worktree path is taken, or one whose transcript is not saved. An isolated child returns
  * `worktree`: the ref and path its worktree is recreated from. A child that crashed while starting saved nothing:
- * `restart` is the task it was given, which it runs again in its recorded session folder.
+ * `restart` is the task it was given, which it runs again in its recorded session folder. A runner child
+ * (`runner`) has no transcript here: it returns `runnerSession`, the id its CLI reported.
  */
 export function resumableChild(
 	entries: readonly unknown[],
 	id: string,
 	running: ReadonlySet<string>,
 	options: ResumeOptions = {},
-): { child: SessionChild; session: ChildSession; restart?: string; worktree?: { ref: string; path: string } } {
+): {
+	child: SessionChild;
+	session: ChildSession;
+	restart?: string;
+	worktree?: { ref: string; path: string };
+	/** A runner child's own CLI session: its conversation is there, so there is no transcript to find. */
+	runnerSession?: string;
+} {
 	const children = sessionChildren(entries);
 	const child = children.find((candidate) => candidate.id === id);
 	if (!child)
@@ -237,6 +245,18 @@ export function resumableChild(
 		);
 	const worktree = child.isolated ? isolatedWorktree(id, options) : undefined;
 	const more = worktree ? { worktree } : {};
+	if (child.runner) {
+		if (!child.runnerSession)
+			throw new Error(
+				`${id} ran in ${child.runner}, which reported no session of its own to continue; start a new agent with the context it needs.`,
+			);
+		return {
+			child,
+			session: { dir: child.folder ?? "", id: child.sessionId ?? id },
+			runnerSession: child.runnerSession,
+			...more,
+		};
+	}
 	// A run that never reported recorded only its folder: Octocode named the file in it.
 	const sessionId = child.sessionId ?? id;
 	const transcript =
@@ -244,7 +264,7 @@ export function resumableChild(
 	const folder = child.folder ?? (transcript ? path.dirname(transcript) : undefined);
 	if (child.startupFailed && child.task && folder && !(transcript && fs.existsSync(transcript)))
 		return { child, session: { dir: folder, id: sessionId }, restart: child.task, ...more };
-	if (!transcript) throw new Error(`${id} has no saved transcript to continue.`);
+	if (!transcript) throw new Error(`${id} has no saved transcript to continue; start a new agent with the same brief.`);
 	if (!fs.existsSync(transcript))
 		throw new Error(
 			`${id}'s transcript ${homeTilde(transcript)} is gone; start a new agent with the context it needs.`,

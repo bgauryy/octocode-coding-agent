@@ -24,17 +24,16 @@ describe("system prompt section spec", () => {
 			"work:session:keep",
 			"research:session:keep",
 			"delegation:session:keep",
-			"children:session:keep",
 			"subagent:session:keep",
 			"safety:session:keep",
 			"communication:session:keep",
 			"lean:session:keep",
 			"project_context:session:keep",
 			"memory:session:keep",
-			"skills:session:keep",
 			"hooks:session:keep",
 			"role:session:keep",
 			"harnesses:session:keep",
+			"children:session:keep",
 			"cwd:volatile:keep",
 			"environment:volatile:keep",
 			"planning:volatile:keep",
@@ -61,23 +60,13 @@ describe("system prompt section spec", () => {
 			});
 	});
 
-	test("a custom prompt keeps tools, guidelines, MCP servers, skills and policy, and drops only docs and default lines", () => {
+	test("a custom prompt keeps tools, guidelines, MCP servers and policy, and drops only docs and default lines", () => {
 		const sections = buildSystemPromptSections({
 			customPrompt: "You are Exact.",
 			cwd: "/tmp",
 			selectedTools: ["bash", "file", "skill"],
 			toolSnippets: { bash: "Run commands", file: "Change files", skill: "Load a skill" },
 			toolGuidelines: { file: ["Prefer file over shell redirection"] },
-			skills: [
-				{
-					name: "demo",
-					description: "Demo skill",
-					filePath: "/tmp/demo/SKILL.md",
-					baseDir: "/tmp/demo",
-					source: "test",
-					disableModelInvocation: false,
-				} as never,
-			],
 			baseSections: { [MCPS_SECTION]: '<mcp name="docs" tools="mcp__docs__*">Docs</mcp>' },
 			sections: { work: "Work.", [MCP_STATUS_SECTION]: "- docs: connecting" },
 			environment: "Date: 2026-10-31",
@@ -94,7 +83,6 @@ describe("system prompt section spec", () => {
 			"mcps:docs",
 			"mcps:/",
 			"work",
-			"skills",
 			"cwd",
 			"environment",
 			"environment:date",

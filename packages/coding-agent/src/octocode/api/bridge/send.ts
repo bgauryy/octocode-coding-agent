@@ -1,6 +1,7 @@
 import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { withSource } from "../../events/source.ts";
 import { fenceUntrusted, headerText } from "../../shared/fence.ts";
 import { EXTERNAL_MESSAGE_TYPE, EXTERNAL_SENDER, type MessageEnvelope, USER_SENDER } from "../../shared/messages.ts";
 import { redactSecrets, visibleControls } from "@octocodeai/octocode-common/sanitize";
@@ -19,7 +20,15 @@ import {
 } from "../protocol.ts";
 import { preparationExpired, type SendReceipt, type SendReceipts } from "../receipts.ts";
 import { sessionApiTurnCeiling } from "../enabled.ts";
-import { admission, callerFrom, type ExternalFacts, externalFacts, externalFooter, externalHeader } from "./caller.ts";
+import {
+	admission,
+	callerFrom,
+	type ExternalFacts,
+	externalFacts,
+	externalFooter,
+	externalHeader,
+	externalSource,
+} from "./caller.ts";
 import type { AgentDirectory, ApiOperations, TurnCeiling } from "./contracts.ts";
 
 /** Senders a client may not claim: the user, the team's own API sender, and (checked per call) any live agent. */
@@ -194,12 +203,15 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			if (ceiling) host.operations.capTurn?.(ceiling);
 			if (ctx.isIdle() && !ctx.hasPendingMessages()) capped = ceiling;
 			const sending = host.api.session.sendMessage(
-				{
-					customType: EXTERNAL_MESSAGE_TYPE,
-					content: fenceUntrusted(externalHeader(external, at), text, { footer: externalFooter(external) }),
-					display: true,
-					details: { id, from, at, message, external },
-				},
+				withSource(
+					{
+						customType: EXTERNAL_MESSAGE_TYPE,
+						content: fenceUntrusted(externalHeader(external, at), text, { footer: externalFooter(external) }),
+						display: true,
+						details: { id, from, at, message, external },
+					},
+					[externalSource(external)],
+				),
 				{ triggerTurn: true, deliverAs },
 			);
 			// sendMessage may encompass the whole turn, so non-waiting callers cannot await it. An asynchronous rejection

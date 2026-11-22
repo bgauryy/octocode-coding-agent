@@ -103,8 +103,12 @@ async function reserve(team: Team, run: Run, paths: string[], signal?: AbortSign
 	run.identity.reservedPaths = result.paths;
 	const release = run.release;
 	run.release = () => {
-		// Settles on its own (a write it cannot make lapses); siblings wait on it through `released`.
-		void team.childLeases.release(run.identity.id);
+		// Siblings wait on it through `released`; a write it cannot make is reported, and the leases lapse.
+		team.childLeases.release(run.identity.id).catch((error: unknown) => {
+			team.notice(
+				`Reservations of child ${run.identity.id} could not be released (${errorMessage(error)}); they lapse on their own.`,
+			);
+		});
 		release();
 	};
 	return [];

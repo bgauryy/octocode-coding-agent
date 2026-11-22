@@ -103,6 +103,10 @@ export class VirtualTerminal implements Terminal {
 	setProgress(_active: boolean): void {}
 	setProgramStatus(): void {}
 
+	get mouseTrackingMode() {
+		return this.xterm.modes.mouseTrackingMode;
+	}
+
 	// Test-specific methods not in Terminal interface
 
 	/**

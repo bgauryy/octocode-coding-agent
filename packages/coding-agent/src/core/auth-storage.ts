@@ -24,6 +24,7 @@ import {
 	type LockFailureState,
 } from "./auth-storage/backends.ts";
 import { detectKeychain, type KeychainBackend } from "./auth-storage/keychain.ts";
+import { resolveKeychainEndpointAsync } from "./auth-storage/keychain-endpoint.ts";
 import {
 	keepInKeychain,
 	keychainEntry,
@@ -248,10 +249,12 @@ export class AuthStorage implements CredentialStore {
 		// A keychain `!command` runs in the background: the screen keeps drawing while it does.
 		if (credential?.type !== "api_key")
 			return raceWithAbortSignal(resolveKeychainOAuthAsync(credential), options?.signal);
-		if (credential.key === undefined) return credential;
+		// A key saved with a custom host is one keychain record: the stub stands for key, host and region together.
+		const full = await raceWithAbortSignal(resolveKeychainEndpointAsync(credential), options?.signal);
+		if (full?.type !== "api_key" || full.key === undefined) return full;
 		return {
-			...credential,
-			key: await raceWithAbortSignal(resolveConfigValueAsync(credential.key, credential.env), options?.signal),
+			...full,
+			key: await raceWithAbortSignal(resolveConfigValueAsync(full.key, full.env), options?.signal),
 		};
 	}
 

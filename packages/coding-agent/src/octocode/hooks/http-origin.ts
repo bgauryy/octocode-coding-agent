@@ -1,3 +1,4 @@
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { fenceUntrusted, headerText } from "../shared/fence.ts";
 import type { HookHandler, HookVerdict } from "./contracts.ts";
 
@@ -19,7 +20,7 @@ const hostOf = (url: string): string => {
 /** `verdict` with the text a remote server wrote (`additionalContext`, a continuation reason) marked as external data; any other hook's verdict unchanged. */
 export function labelHttpVerdict(hook: HookHandler, verdict: HookVerdict): HookVerdict {
 	if (hook.type !== "http" || (!verdict.context && !verdict.continueReason)) return verdict;
-	const header = `External data from HTTP hook ${headerText(hostOf(hook.url), 80)}`;
+	const header = renderPrompt("notices/hooks/http-origin.md", { host: headerText(hostOf(hook.url), 80) });
 	return {
 		...verdict,
 		...(verdict.context ? { context: fenceUntrusted(header, verdict.context) } : {}),

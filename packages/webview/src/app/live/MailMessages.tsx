@@ -1,4 +1,5 @@
 import { entityOfRole, type MailView } from "@octocodeai/octocode-contracts/team";
+import { TextFold } from "../ui/LongText.tsx";
 import { Markdown } from "./Markdown.tsx";
 
 /** Lines of a delivered message's body shown before it folds. */
@@ -30,17 +31,17 @@ function Mail({ mail }: { mail: MailView }) {
 				</strong>
 				<span className="muted"> · {meta.join(" · ")}</span>
 			</header>
-			{lines.length > PREVIEW_LINES ? (
-				<details>
-					<summary>
-						{lines.slice(0, PREVIEW_LINES).join("\n")}
-						{` … ${lines.length - PREVIEW_LINES} more ${lines.length - PREVIEW_LINES === 1 ? "line" : "lines"}`}
-					</summary>
-					{body}
-				</details>
-			) : (
-				body
-			)}
+			<TextFold
+				text={mail.text}
+				label="Message"
+				summary={
+					lines.length > PREVIEW_LINES
+						? `${lines.slice(0, PREVIEW_LINES).join("\n").slice(0, 160)} … ${lines.length - PREVIEW_LINES} more ${lines.length - PREVIEW_LINES === 1 ? "line" : "lines"}`
+						: undefined
+				}
+			>
+				{body}
+			</TextFold>
 		</section>
 	);
 }

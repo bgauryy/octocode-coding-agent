@@ -74,3 +74,5 @@ export function fencedParts(content: string): { body: string; footer: string } |
 
 /** The body of a fenced message, for drawing it without the fence lines (the whole text when it is not fenced). */
 export const fencedBody = (content: string): string => fencedParts(content)?.body ?? content;
+
+export { withoutSourceHeader } from "@octocodeai/octocode-common/text";

@@ -1,6 +1,6 @@
 import { AcpBackend, type AcpConnectInput, type AcpPermission } from "../../../../acp/src/client/client.ts";
 import type { AcpClientHost } from "../../../../acp/src/host.ts";
-import { adoptTree, KILL_GRACE_MS, prepareTree, stopTree } from "../shared/process.ts";
+import { adoptTree, KILL_GRACE_MS, prepareTree, reapWithParent, stopTree } from "../shared/process.ts";
 import { saveTimestamped } from "../shared/spill.ts";
 import { agentEnv } from "./runner-env.ts";
 import { type DescendantPoller, pollDescendants } from "../shared/descendant-poller.ts";
@@ -17,6 +17,7 @@ export const acpClientHost: AcpClientHost = {
 		prepare: prepareTree,
 		adopt: (pid) => {
 			adoptTree(pid);
+			reapWithParent(pid);
 			if (pid !== undefined && !pollers.has(pid)) pollers.set(pid, pollDescendants(pid));
 		},
 		stop: async (pid, graceful) => {

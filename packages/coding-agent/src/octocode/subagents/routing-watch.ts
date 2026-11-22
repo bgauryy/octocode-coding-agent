@@ -6,6 +6,7 @@ import { type RoutingFacts, routingFacts } from "./models-command.ts";
 import { providerHealth } from "./provider-health.ts";
 import { providerCount } from "../native/prompts/policy.ts";
 import type { AgentProfile } from "./profiles.ts";
+import { isModelTier } from "./tier.ts";
 
 /** The custom message type of the routing notice. */
 export const ROUTING_NOTICE_ID = "octocode-routing";
@@ -30,9 +31,55 @@ export function currentRouting(
 	const available = ctx.modelRegistry.getAvailable();
 	const billing = registryBilling(ctx.modelRegistry);
 	const list = [...profiles];
+	const gone = unavailablePins(ctx.modelRegistry, list, available);
 	const under = (index: Catalog | undefined) =>
-		routingFacts(available, model, list, index, undefined, undefined, billing);
+		withReplacedProfileModels(routingFacts(available, model, list, index, undefined, undefined, billing), list, gone);
 	return { facts: under(catalog), catalog, under };
+}
+
+/** Why each model a profile pins is not offered now (hidden by the user, or no longer served); empty when all are offered. */
+function unavailablePins(
+	registry: Pick<FeatureContext["modelRegistry"], "getAll" | "isModelHidden">,
+	profiles: readonly AgentProfile[],
+	available: readonly { provider: string; id: string }[],
+): Map<string, string> {
+	const pinned = new Set(
+		profiles.flatMap((profile) => {
+			const asked = profile.model?.split(":")[0];
+			return asked && !isModelTier(asked) ? [asked] : [];
+		}),
+	);
+	const gone = new Map<string, string>();
+	if (pinned.size === 0) return gone;
+	const offered = new Set(available.flatMap((model) => [model.id, `${model.provider}/${model.id}`]));
+	for (const asked of pinned) if (!offered.has(asked)) gone.set(asked, "no longer available");
+	if (gone.size === 0) return gone;
+	for (const model of registry.getAll()) {
+		for (const name of [model.id, `${model.provider}/${model.id}`]) {
+			if (gone.has(name) && registry.isModelHidden(model)) gone.set(name, "hidden in /providers");
+		}
+	}
+	return gone;
+}
+
+/**
+ * A profile whose configured model is hidden or gone (its provider was removed or disabled) runs on the model routing
+ * picks instead; its entry names both, so the agent and the user do not read the fallback as the profile's own choice.
+ */
+export function withReplacedProfileModels(
+	facts: RoutingFacts | undefined,
+	profiles: readonly AgentProfile[],
+	gone: ReadonlyMap<string, string>,
+): RoutingFacts | undefined {
+	if (!facts || gone.size === 0) return facts;
+	const notes = profiles.flatMap((profile) => {
+		const asked = profile.model?.split(":")[0];
+		const why = asked ? gone.get(asked) : undefined;
+		return asked && why && profile.name in facts.profiles
+			? [[profile.name, `${facts.profiles[profile.name]} (${asked} is gone: ${why})`] as const]
+			: [];
+	});
+	return notes.length === 0 ? facts : { ...facts, profiles: { ...facts.profiles, ...Object.fromEntries(notes) } };
 }
 
 const quote = (value: string) => (/\s/.test(value) ? value : `\`${value}\``);

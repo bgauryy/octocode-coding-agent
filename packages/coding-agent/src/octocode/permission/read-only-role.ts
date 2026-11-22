@@ -93,6 +93,9 @@ export function readOnlyRoleRefusal(
 	if (!readOnlyRole(env)) return undefined;
 	const input = (typeof event.input === "object" && event.input !== null ? event.input : {}) as Record<string, unknown>;
 	if (event.toolName === "memory" && memoryMutation(input)) return refusal("Saving shared memory");
+	// The role lists items; it reports follow-ups and its coordinator files them.
+	if (event.toolName === "backlogPlan" && input.op !== "list" && input.op !== "stat")
+		return refusal("Filing or editing backlog items");
 	if (browserMcpTool(event.toolName) !== undefined) {
 		const { control, outside } = browserEscalations(event.toolName, input, cwd);
 		const first =

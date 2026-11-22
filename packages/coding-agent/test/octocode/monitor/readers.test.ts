@@ -125,4 +125,22 @@ describe("busiest processes", () => {
 		expect(wider[2]).toMatchObject({ command: "octocode-agent-main-3cb050d2", owner: "octocode-agent-main-3cb050d2" });
 		expect(wider[0].rss).toBe(3098080 * 1024);
 	});
+
+	it("owns only what a session or its descendants started, never the editor above it", () => {
+		const rows = parseCpuTable(
+			[
+				"  900     1   2.0 100000 /Applications/Visual Studio Code.app/Contents/MacOS/Electron",
+				"  975   900   9.0 1500000 /Applications/Visual Studio Code.app/Code Helper (Plugin)",
+				"  980   900   0.1  10000 /bin/zsh",
+				"  990   980   1.0 450000 octocode-agent-main-3cb050d2",
+				"  995   990   5.0 500000 /usr/bin/node vitest",
+			].join("\n"),
+		);
+		const owners = new Map(busiest(rows, 5).map((row) => [row.pid, row.owner]));
+		expect(owners.get(975)).toBeNull();
+		expect(owners.get(900)).toBeNull();
+		expect(owners.get(980)).toBeNull();
+		expect(owners.get(990)).toBe("octocode-agent-main-3cb050d2");
+		expect(owners.get(995)).toBe("octocode-agent-main-3cb050d2");
+	});
 });

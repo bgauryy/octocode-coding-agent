@@ -39,10 +39,10 @@ export function operations(invocation: ToolInvocation): Operation[] {
 	if (invocation.toolName === "bash") return [{ name: input.type === "powershell" ? "PowerShell" : "Bash", input }];
 	// A wait's command runs as the bash call it is: the call is both `wait` and `Bash`, so a deny or ask on either
 	// name applies and an allow needs both. A wait without one is only a `wait` call.
-	const command = invocation.toolName === "wait" ? untilCommand(input) : undefined;
+	const command = invocation.toolName === "notify" ? untilCommand(input) : undefined;
 	if (command)
 		return [
-			{ name: "wait", input },
+			{ name: "notify", input },
 			{ name: "Bash", input: { command } },
 		];
 	if (invocation.toolName === "web") return [{ name: typeof input.url === "string" ? "WebFetch" : "WebSearch", input }];

@@ -74,7 +74,7 @@ describe("the watchdog's heartbeat for the row's last progress", () => {
 });
 
 describe("work that may stay quiet without being stalled", () => {
-	const base = { running: true, toolsRunning: 0, declaredUntil: 0, jobsUntil: 0 };
+	const base = { running: true, toolsRunning: 0, declaredUntil: 0, jobsUntil: 0, waits: 0, settling: false };
 
 	it("counts a running call with its own timeout, or a pending job with one, and nothing else", () => {
 		expect(insideDeclaredWork({ ...base, toolsRunning: 1, declaredUntil: 5_000 }, 1_000)).toBe(true);
@@ -91,6 +91,17 @@ describe("work that may stay quiet without being stalled", () => {
 		expect(heartbeatDue(base, 1_000, false)).toBe(false);
 		expect(heartbeatDue({ ...base, running: false, jobsUntil: 5_000 }, 1_000, true)).toBe(false);
 		expect(STALL_MS).toBe(10 * 60_000);
+	});
+
+	it("stamps progress for a child idle after its answer on a wait it started, and not for one silent mid-turn", () => {
+		const idleOnWait = { ...base, running: false, settling: true, waits: 1 };
+		expect(heartbeatDue(idleOnWait, 1_000, false)).toBe(true);
+		expect(heartbeatDue({ ...idleOnWait, running: true }, 1_000, false)).toBe(true);
+		// Nothing pending: truly silent.
+		expect(heartbeatDue({ ...idleOnWait, waits: 0 }, 1_000, false)).toBe(false);
+		// A model stream or tool that hangs with a wait pending is still silent.
+		expect(heartbeatDue({ ...idleOnWait, running: true, settling: false }, 1_000, false)).toBe(false);
+		expect(heartbeatDue({ ...idleOnWait, running: true, toolsRunning: 1 }, 1_000, false)).toBe(false);
 	});
 });
 

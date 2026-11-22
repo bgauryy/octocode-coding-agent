@@ -63,6 +63,8 @@ export interface SessionChild {
 	isolated?: true;
 	/** The vendor runner its turns ran on (`runner`): its conversation lives in that CLI, not here. */
 	runner?: string;
+	/** The runner CLI's own session id its latest turn reported: a resume continues it. */
+	runnerSession?: string;
 	/** The browser mode the call chose. */
 	headless?: boolean;
 	/** The hook mode a call named for it (`hooks`): a resume keeps it unless it names another. */
@@ -163,6 +165,8 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 			delete child.report;
 			delete child.reportArtifact;
 		} else if (files.report && !children.has(child.id)) child.report = files.report;
+		const runnerSession = text(details.runnerSession);
+		if (runnerSession) child.runnerSession = runnerSession;
 		const model = text(details.model);
 		if (model) child.model = model;
 		if (isRecord(details.startup) && details.startup.failed === true) child.startupFailed = true;
@@ -194,7 +198,8 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 		else delete child.isolated;
 		const runner = text(input.runner);
 		if (runner) child.runner = runner;
-		else delete child.runner;
+		// A resume names no runner: the child stays the runner's.
+		else if (input.resume !== id) delete child.runner;
 		if (typeof input.headless === "boolean") child.headless = input.headless;
 		if (input.hooks === "off" || input.hooks === "decisions" || input.hooks === "all") child.hooks = input.hooks;
 		const task = text(input.task);

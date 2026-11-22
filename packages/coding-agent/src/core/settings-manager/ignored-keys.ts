@@ -33,7 +33,7 @@ export function ignoredSettingsKeys(settings: object): string[] {
 }
 
 /**
- * One line for every ignored key of a file: `2 ignored keys (thinkingBudgets.xhigh, compaction): /configuration unset
+ * One line for every ignored key of a file: `2 ignored keys (thinkingBudgets.xhigh, compaction): /settings unset
  * thinkingBudgets.xhigh compaction`, or undefined when none. The command is the one-step fix; `--local` points it at
  * the project file.
  */
@@ -42,6 +42,6 @@ export function describeIgnoredKeys(
 	scope: "global" | "project" = "global",
 ): string | undefined {
 	if (keys.length === 0) return undefined;
-	const fix = `/configuration unset ${keys.join(" ")}${scope === "project" ? " --local" : ""}`;
+	const fix = `/settings unset ${keys.join(" ")}${scope === "project" ? " --local" : ""}`;
 	return `${keys.length} ignored key${keys.length === 1 ? "" : "s"} (${keys.join(", ")}): ${fix}`;
 }

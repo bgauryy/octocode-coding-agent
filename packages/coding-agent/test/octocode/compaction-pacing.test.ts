@@ -316,6 +316,8 @@ describe("built-in compaction reserve", () => {
 	it("scales the reserve with the model context window", () => {
 		expect(reserveTokensFor({ provider: "p", id: "m" })).toBe(16_384);
 		expect(reserveTokensFor({ provider: "p", id: "m", contextWindow: 32_768 })).toBe(4_096);
-		expect(reserveTokensFor({ provider: "p", id: "m", contextWindow: 200_000 })).toBe(16_384);
+		expect(reserveTokensFor({ provider: "p", id: "m", contextWindow: 200_000 })).toBe(24_576);
+		// A child's window is its budget, below the model's capacity; it still leaves summary room.
+		expect(reserveTokensFor({ provider: "p", id: "m", contextWindow: 300_000 })).toBe(24_576);
 	});
 });

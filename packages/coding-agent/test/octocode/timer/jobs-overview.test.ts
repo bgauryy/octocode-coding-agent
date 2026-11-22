@@ -70,7 +70,7 @@ describe("/jobs", () => {
 		const { host, ctx, commands, shown } = await session();
 		await commands.get("loop")!.handler("10m check the deploy", ctx);
 		await host.tools
-			.get("wait")
+			.get("notify")
 			.execute(
 				"w1",
 				{ op: "on", event: "check.result", filter: { command: "test -e ready" }, note: "ready file appeared" },
@@ -98,7 +98,7 @@ describe("/jobs", () => {
 		const { host, ctx, commands, jobs, shown, work } = await session();
 		await commands.get("loop")!.handler("10m check the deploy", ctx);
 		await host.tools
-			.get("wait")
+			.get("notify")
 			.execute(
 				"w1",
 				{ op: "on", event: "check.result", filter: { command: "test -e ready" }, note: "ready file appeared" },
@@ -120,10 +120,10 @@ describe("/jobs", () => {
 		expect(await shown()).not.toContain("Crons");
 		const missing = await kill("#99");
 		expect(missing).toMatchObject({ type: "warning" });
-		expect(missing.message).toBe(`No cron or wait #99 in this session. Running: ${wait.id}.`);
+		expect(missing.message).toBe(`No cron or notification #99 in this session. Running: ${wait.id}.`);
 		expect((await kill(wait.id)).message).toBe(`Cancelled ${wait.id}.`);
 		expect(work.all().some((row) => row.kind === "timer")).toBe(false);
-		expect((await kill(wait.id)).message).toContain("No cron or wait");
+		expect((await kill(wait.id)).message).toContain("No cron or notification");
 		expect(await shown()).not.toMatch(/Waits|Crons/);
 		ctx.ui.confirms.push(true);
 		await commands.get("jobs")!.handler("kill bash-1", ctx);

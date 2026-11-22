@@ -1,3 +1,4 @@
+import { captureCommandDialog } from "./web-command-context.ts";
 /**
  * View controls: switching between the regular and fullscreen renderers, tool-output and thinking-block expansion,
  * the editor border color, and the selector shown in place of the editor.
@@ -182,6 +183,7 @@ export function showSelector(
 	host.editorContainer.clear();
 	host.editorContainer.addChild(created.component);
 	host.ui.setFocus(created.focus);
+	captureCommandDialog(host.ui, created.component, created.focus);
 	// Last, so the frame the store write requests shows the selector.
 	host.uiStore.getState().takeSlot(token);
 }

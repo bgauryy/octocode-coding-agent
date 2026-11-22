@@ -221,6 +221,7 @@ export interface InteractiveModeMethods {
 		showDiagnosticsWhenQuiet?: boolean;
 	}): void;
 	showLoginDialog(providerId: string, providerName: string, onBack?: () => void): Promise<void>;
+	showSecretDialog(title: string, message: string): Promise<string | undefined>;
 	showManagedToolStatus(status: ToolStatus): void;
 	showModelSelector(initialSearchInput?: string): void;
 	showModelsSelector(): void;

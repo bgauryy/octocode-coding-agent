@@ -1,12 +1,18 @@
 import { getFileRevision } from "@octocodeai/octocode-common/paths";
 import { watchFileChanges } from "@octocodeai/octocode-common/watch-file";
+import { normalizeHiddenModels } from "../provider-models.ts";
 import { normalizeProviderSources } from "../provider-sources/gate.ts";
 import { tryLoadSettingsFromStorage } from "./load.ts";
 import { effectiveSettings } from "./merge.ts";
 import type { SettingsState } from "./state.ts";
 
-function toggles(settings: { disabledProviders?: string[]; providerSources?: unknown }): string {
+function toggles(settings: {
+	disabledProviders?: string[];
+	providerSources?: unknown;
+	hiddenModels?: unknown;
+}): string {
 	return JSON.stringify([
+		Object.entries(normalizeHiddenModels(settings.hiddenModels)).sort(([a], [b]) => a.localeCompare(b)),
 		[...new Set(settings.disabledProviders)].sort((a, b) => a.localeCompare(b)),
 		Object.entries(normalizeProviderSources(settings.providerSources)).sort(([a], [b]) => a.localeCompare(b)),
 	]);
@@ -21,6 +27,7 @@ function adoptProviderToggles(state: SettingsState): boolean {
 	if (load.error || toggles(load.settings) === toggles(state.globalSettings)) return false;
 	state.globalSettings.disabledProviders = load.settings.disabledProviders;
 	state.globalSettings.providerSources = load.settings.providerSources;
+	state.globalSettings.hiddenModels = load.settings.hiddenModels;
 	state.settings = effectiveSettings(state);
 	return true;
 }

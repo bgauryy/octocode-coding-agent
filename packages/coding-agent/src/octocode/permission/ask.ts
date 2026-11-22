@@ -1,3 +1,5 @@
+import { hasUserAuthority } from "../../core/input-origin.ts";
+import { confirmWidening } from "./ask/widen.ts";
 import type { FileInputReplacement } from "../tool-input/claude-file.ts";
 import type { ToolInvocation } from "../../core/features/types.ts";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
@@ -224,6 +226,9 @@ export class Permission {
 			this.paint(ctx);
 			return false;
 		}
+		// A mode change from an ACP or web client confirms in that client: a typed command there is not the user's consent.
+		if (mode !== this.#mode && !this.#narrows(mode) && !hasUserAuthority() && !(await confirmWidening(ctx, mode)))
+			return false;
 		this.setMode(mode, ctx);
 		return true;
 	}

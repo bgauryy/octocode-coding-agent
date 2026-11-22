@@ -39,8 +39,8 @@ export { KEEP_RECENT_RESULTS } from "./clearing-candidates.ts";
  *
  * Before every request, whether it starts a run or follows a tool inside one, the old results of tools whose output can
  * be fetched again, and the payloads of old `file` changes (on disk once they applied), are replaced by placeholders,
- * keeping the newest `KEEP_RECENT_RESULTS` of each (`clearing-candidates.ts`) and, within a size bound, those still in use
- * (`clearing-recent.ts`), when the rest totals at least the floor and either:
+ * keeping the newest `KEEP_RECENT_RESULTS` of each (`clearing-candidates.ts`) and those still in use (`clearing-recent.ts`:
+ * every result of the last turns, and, within a size bound, older ones whose path those turns name), when the rest totals at least the floor and either:
  *
  * - the request rewrites the cache anyway: it was last used (the last reply, or a refresh by Octocode's warmer) longer
  *   ago than its lifetime, a compaction replaced the history, the model changed, or a system update folds into the
@@ -72,7 +72,7 @@ export const CLEAR_AT_FREE_POINT_TOKENS = 4_000;
 // the same per request whatever the window holds.
 
 /** About what one placeholder costs in tokens (its saved path and digest are not known before the decision). */
-const PLACEHOLDER_TOKENS = charsToTokens(clearedPlaceholder("x".repeat(120), "x".repeat(60)).length);
+const PLACEHOLDER_TOKENS = charsToTokens(clearedPlaceholder("x".repeat(120), "x".repeat(160)).length);
 
 /** Why a clearing ran, recorded beside it: `warm` when it paid on a warm cache, anything else a rewrite that happened anyway. */
 type ClearingTrigger = "idle" | "compaction" | "model" | "prompt" | "rewrite" | "warm";

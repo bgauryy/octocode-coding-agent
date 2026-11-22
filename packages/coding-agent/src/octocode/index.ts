@@ -18,7 +18,10 @@ import { currentToolRoles } from "../../../mcp/src/api.ts";
 import { agentModes, agentOperation } from "./native/tools/agent/tool.ts";
 import { runningApiInstances } from "./api/register.ts";
 import { registerAskUser } from "./native/tools/ask-user/tool.ts";
+import { registerRender } from "./native/tools/render/tool.ts";
+import { registerConfigurationTool } from "./native/tools/configuration/tool.ts";
 import { composeBacklog } from "./compose-backlog.ts";
+import { composedLater } from "./compose-later.ts";
 import { composePolicy, type ComposedLater } from "./compose-policy.ts";
 import { registerArchiveCommand } from "./archive/command.ts";
 import { registerMessagesCommand } from "./team/messages/command.ts";
@@ -68,6 +71,7 @@ import { registerPromptOptimization } from "./prompt-optimization/register.ts";
 import { registerTerminal } from "./terminal/register.ts";
 import { registerSkillTool } from "./native/tools/skill/tool.ts";
 import { registerSkillFirstUse } from "./skill/first-use.ts";
+import { SkillCatalog } from "./skill/catalog.ts";
 import { statusCommand } from "./status-command.ts";
 import { refreshCatalog } from "./subagents/catalog.ts";
 import { maxSubagents } from "./subagents/claim.ts";
@@ -96,6 +100,7 @@ import { installOctocodeDiscovery } from "./discovery/index.ts";
 import { registerLeaveConfirmation, registerReaderRole } from "./session-guards.ts";
 import { collaborationPorts, registerExternalApi, registerTeamSessions } from "./team-surfaces.ts";
 import { registerWake } from "./wake/register.ts";
+import { registerAsyncJobs } from "./jobs/register.ts";
 import { sendPeerNotice } from "./wake/senders.ts";
 /**
  * Native features compose guarded tools, subagents, collaboration and session policy. The MCP host owns its servers.
@@ -113,19 +118,6 @@ import { sendPeerNotice } from "./wake/senders.ts";
  *   (`compaction/register`) are registered before the headless hold at the end of this function, so a continued or
  *   retried run is decided before the hold waits for background work.
  */
-/** The features composed further down, by name: reading one before it is set throws an error that names it. */
-function composedLater<T extends object>() {
-	const values: Partial<T> = {};
-	return {
-		set: <K extends keyof T>(name: K, value: T[K]): T[K] => (values[name] = value),
-		get: <K extends keyof T>(name: K): T[K] => {
-			const value = values[name];
-			if (value === undefined) throw new Error(`Octocode used ${String(name)} before composing it`);
-			return value;
-		},
-	};
-}
-
 export default function octocode(host: FeatureSetup): void {
 	const api = withNativePermissionOwners(host);
 	installOctocodeDiscovery(); // Agents, hooks, plugins and MCP servers join configuration discovery.
@@ -199,6 +191,8 @@ export default function octocode(host: FeatureSetup): void {
 		stop: (to) => agents?.stop(to, "user") ?? (agents ? undefined : "Agent controls are unavailable."),
 		completing: (info, ctx, signal) => later.get("hooks").taskCompleted(info, ctx, signal),
 		serving: () => agents?.serving() ?? new Map(),
+		review: (request, ctx, signal) =>
+			agents?.review(request, ctx, signal) ?? Promise.resolve({ skipped: "agent controls are unavailable" }),
 	});
 	registerMemory(api, {
 		commands,
@@ -256,6 +250,8 @@ export default function octocode(host: FeatureSetup): void {
 			(branch, ctx) => later.get("messaging").typedMerge(branch, ctx),
 		);
 		registerAskUser(api, (id) => team.readMessage(id, team.id ?? ""));
+		registerRender(api, { isSubagent });
+		registerConfigurationTool(api, { permission, isSubagent });
 		registerTerminal(api);
 		agents = registerAgentTool(api, {
 			profiles: () => profiles,
@@ -282,10 +278,13 @@ export default function octocode(host: FeatureSetup): void {
 		// A lean child's `agent` reaches its parent and teammates only: it starts no runner task.
 		registerChildRunnerTask(runners, permission, agentTool.collect, team);
 	}
-	registerSkills(api);
+	const skillCatalog = SkillCatalog.forSession(() => api.resources.getSkillResourceSnapshot(), isSubagent);
+	registerSkills(api, skillCatalog);
 	registerPromptOptimization(commands, api);
 	registerUi(api, isSubagent);
 	registerWake(api);
+	// Tool calls that outlast their foreground budget continue as jobs and report to this session.
+	registerAsyncJobs(api);
 	registerStallRecorder(api);
 	// What the agent does now: Octocode's working line (main session) and the team panel's activity column (every agent).
 	const activity = registerActivity(api, { workingLine: !isSubagent, onChange: (line) => team.setActivity(line) });
@@ -293,6 +292,7 @@ export default function octocode(host: FeatureSetup): void {
 	permission.onAction((event) => activity.consequential(event.action, event.what, event.warn));
 	const turn = registerTurnSetup(api, {
 		isSubagent,
+		skillCatalog,
 		profiles: () => profiles,
 	});
 	const { hooks, sourcePolicy, messaging } = composePolicy(api, {
@@ -343,7 +343,7 @@ export default function octocode(host: FeatureSetup): void {
 		agentId: () => team.id,
 		parentId: () => team.parentId,
 	});
-	registerSkillFirstUse(api, registerSkillTool(api));
+	registerSkillFirstUse(api, registerSkillTool(api, skillCatalog));
 	const runGuards = registerRunGuards(api); // after the file guard: see run-guards.ts
 	registerHarnessCommand(commands, hooks, api);
 	// Subagents have no terminal of their own: their parent's row and report carry their state. A child follows the parent's `/harness` switches instead.

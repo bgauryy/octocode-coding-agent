@@ -3,7 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { recordProcessGroup } from "@octocodeai/octocode-common/process-group-records";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as stdioOwner from "../src/client/transports/stdio-owner.ts";
 import { installMcpHost } from "../src/host.ts";
 import { installMcpServer, resetMcpInstallFailures } from "../src/install.ts";
 import { takeLaunchWarnings } from "../src/warnings.ts";
@@ -26,11 +27,11 @@ let root: string;
 let records: string;
 let savedPath: string | undefined;
 
-/** Puts an `npm` on PATH that writes its pid to `pidFile`, then sleeps. */
-function stubNpm(pidFile: string): void {
+/** Installs a sleeping npm stub in this test's PATH. */
+function stubNpm(): void {
 	const bin = path.join(root, "bin");
 	fs.mkdirSync(bin);
-	fs.writeFileSync(path.join(bin, "npm"), `#!/bin/sh\necho $$ > "${pidFile}"\nsleep 300\n`, { mode: 0o755 });
+	fs.writeFileSync(path.join(bin, "npm"), "#!/bin/sh\nsleep 300\n", { mode: 0o755 });
 	process.env.PATH = `${bin}${path.delimiter}${savedPath}`;
 }
 
@@ -50,13 +51,15 @@ afterEach(() => {
 
 describe.skipIf(process.platform === "win32")("default npm runner", () => {
 	it("kills the npm group at the deadline, removes its record and reports the failure", async () => {
-		const pidFile = path.join(root, "npm.pid");
-		stubNpm(pidFile);
+		using recorded = vi.spyOn(stdioOwner, "recordStdioGroup");
+		stubNpm();
 		const agentDir = path.join(root, "agent");
 		await expect(installMcpServer("srv", spec, { agentDir, npmTimeoutMs: 2000 })).rejects.toThrow(
 			/did not finish within/,
 		);
-		const pid = Number(fs.readFileSync(pidFile, "utf8"));
+		// The parent records the group as soon as it spawns. A deadline can fire before the shell runs its first command.
+		expect(recorded).toHaveBeenCalledTimes(1);
+		const [pid] = recorded.mock.calls[0];
 		await until(() => !alive(pid));
 		expect(fs.readdirSync(records)).toEqual([]);
 		expect(takeLaunchWarnings().join("\n")).toMatch(/left out/);
@@ -73,7 +76,7 @@ describe.skipIf(process.platform === "win32")("default npm runner", () => {
 		await new Promise((resolve) => dead.once("exit", resolve));
 		record.owner = { pid: dead.pid };
 		fs.writeFileSync(file, JSON.stringify(record));
-		stubNpm(path.join(root, "npm.pid"));
+		stubNpm();
 		await expect(
 			installMcpServer("srv", spec, { agentDir: path.join(root, "agent"), npmTimeoutMs: 300 }),
 		).rejects.toThrow();

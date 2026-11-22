@@ -97,6 +97,23 @@ describe("disabled providers", () => {
 		expect(registry.getAvailable()).toEqual([]);
 	});
 
+	it("hidden models leave every availability read, survive refreshes and return when ticked", async () => {
+		const runtime = await runtimeWithTwoProviders();
+		const registry = new ModelRegistry(runtime);
+		runtime.setHiddenModels({ alpha: ["m"], beta: ["other"] });
+		expect(ids(runtime.getAvailableSnapshot())).toEqual(["beta"]);
+		expect(ids(registry.getAvailable())).toEqual(["beta"]);
+		expect(registry.isModelHidden({ provider: "alpha", id: "m" })).toBe(true);
+		expect(await runtime.getAvailable("alpha")).toEqual([]);
+		await runtime.getAvailable();
+		await runtime.refresh({ allowNetwork: false, providers: ["alpha"] });
+		expect(ids(runtime.getAvailableSnapshot())).toEqual(["beta"]);
+		// The catalogue and credentials are untouched.
+		expect(runtime.getModels("alpha")).toHaveLength(1);
+		runtime.setHiddenModels({});
+		expect(ids(runtime.getAvailableSnapshot())).toEqual(["alpha", "beta"]);
+	});
+
 	it("persist in the global settings only", () => {
 		const settings = SettingsManager.inMemory();
 		expect(settings.getDisabledProviders()).toEqual([]);

@@ -453,7 +453,7 @@ describe("isolated subagent worktrees", () => {
 				meta,
 				JSON.stringify({
 					...JSON.parse(fs.readFileSync(meta, "utf8")),
-					owners: [{ pid: process.pid, started: "Thu Jan 1 00:00:00 1970" }],
+					owners: [{ pid: process.pid, started: "1" }],
 				}),
 			);
 			const live = await createWorktree(dir, "live-1", home);

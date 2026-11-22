@@ -12,6 +12,7 @@
 
 import { randomUUID } from "node:crypto";
 import { checkedReplies, type Question } from "@octocodeai/octocode-contracts";
+import { inputOrigin } from "../../input-origin.ts";
 import type { AskView, SessionUI, DialogOptions, UIPromptKind } from "../types.ts";
 import type { RunnerEmitEvent } from "./types.ts";
 
@@ -106,7 +107,9 @@ export class UIPromptTracker {
 			confirm: (title, message, opts) =>
 				this.tracked(
 					{ kind: "confirm", title, options: [...CONFIRM_OPTIONS], allowsText: false, ...dialogFlags(opts) },
-					(signal) => ui.confirm(title, message, { ...opts, signal }),
+					// A confirmation a web prompt triggered is the web client's to answer: the terminal draws no dialog for it.
+					(signal) =>
+						inputOrigin() === "web" ? closedOnAbort(signal, false) : ui.confirm(title, message, { ...opts, signal }),
 					opts,
 					(answer) => (answer.choice === "Yes" ? true : answer.choice === "No" ? false : REFUSED),
 				),
@@ -132,6 +135,22 @@ export class UIPromptTracker {
 					close = () => done(undefined as never);
 					return factory(tui, theme, keybindings, done);
 				};
+				if ("questions" in remote) {
+					const questions = [...remote.questions];
+					return this.tracked(
+						{
+							kind: "custom",
+							title: remote.title,
+							allowsText: false,
+							questions,
+							...(remote.hold ? { hold: () => remote.hold?.() } : {}),
+						},
+						() => ui.custom(shown, options),
+						undefined,
+						(answer) => (checkedReplies(questions, answer.replies) as never) ?? REFUSED,
+						() => close?.(),
+					);
+				}
 				return this.tracked(
 					{
 						kind: "custom",
@@ -278,6 +297,14 @@ export class UIPromptTracker {
 			void this.emit(event).catch(() => undefined);
 		});
 	}
+}
+
+/** A dialog drawn only in a remote client: it stays open until `signal` aborts (an answer or the caller's abort), then closes as `closed`. */
+function closedOnAbort<T>(signal: AbortSignal | undefined, closed: T): Promise<T> {
+	return new Promise<T>((resolve) => {
+		if (!signal || signal.aborted) resolve(closed);
+		else signal.addEventListener("abort", () => resolve(closed), { once: true });
+	});
 }
 
 /** What a dialog's options say about it: whether it blocks work that goes on without the user. */

@@ -12,7 +12,7 @@ export interface Layers {
 	system: number;
 	/** The `<mcps>` section: each server's instructions and its tool list. */
 	mcpInstructions: number;
-	/** The `<skills>` and `<octocode_skills>` catalogs. */
+	/** The skill listing: the `path: description` lines at the end of the `skill` tool's description. */
 	skills: number;
 	/** Native tool declarations: name, description and parameter schema. */
 	nativeTools: number;
@@ -26,14 +26,23 @@ export interface Layers {
 const declared = (tool: AgentContext["tools"][number]): number =>
 	bytes(tool.name + tool.description + JSON.stringify(tool.parameters));
 
+/** Bytes of the skill listing in the `skill` tool's declaration (0 without the tool). */
+export function skillListingBytes(context: AgentContext): number {
+	const description = context.tools.find((tool) => tool.name === "skill")?.description ?? "";
+	const at = description.indexOf(SKILL_LISTING_MARKER);
+	return at < 0 ? 0 : bytes(description.slice(at + SKILL_LISTING_MARKER.length));
+}
+
+const SKILL_LISTING_MARKER = "Skills, as `path: description`:\n";
+
 export function measureLayers(context: AgentContext): Layers {
 	const text = systemText(context);
 	const mcpInstructions = blocks(text, /<mcps>[\s\S]*?<\/mcps>/g);
-	const skills = blocks(text, /<(?:octocode_)?skills>[\s\S]*?<\/(?:octocode_)?skills>/g);
+	const skills = skillListingBytes(context);
 	const sum = (tools: AgentContext["tools"]): number => tools.reduce((total, tool) => total + declared(tool), 0);
-	const nativeTools = sum(context.tools.filter((tool) => !isMcpTool(tool.name)));
+	const nativeTools = sum(context.tools.filter((tool) => !isMcpTool(tool.name))) - skills;
 	const mcpTools = sum(context.tools.filter((tool) => isMcpTool(tool.name)));
-	const system = bytes(text) - mcpInstructions - skills;
+	const system = bytes(text) - mcpInstructions;
 	const freellama =
 		sum(context.tools.filter((tool) => tool.name.startsWith("mcp__freellama__"))) +
 		blocks(text, /<mcp name="freellama"[\s\S]*?<\/mcp>/g);

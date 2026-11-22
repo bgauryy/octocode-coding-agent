@@ -3,6 +3,7 @@ import { type CachePreferences, mergeCachePreferences } from "@octocodeai/octoco
 import { builtInCompactionSettings } from "../../compaction/settings.ts";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS } from "../../http-dispatcher.ts";
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
+import { RUNTIME_DEFAULTS } from "../../settings-schema/runtime.ts";
 import type { CacheWarmingMode } from "../../settings-schema.ts";
 import type { CompactionPolicyModel, RetrySettings, RuntimeSettingsApi } from "../api/runtime.ts";
 import { CACHE_WARMING_MODES } from "../constants.ts";
@@ -77,6 +78,10 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 	/** `toolExecution.earlyStart`: start read-only, approval-free tool calls while the message still streams. */
 	getToolExecutionEarlyStart(): boolean {
 		return this.settings.toolExecution?.earlyStart ?? SETTINGS_DEFAULTS.toolExecution.earlyStart;
+	}
+
+	getEventLoopMode(): "old" | "shadow" | "new" {
+		return this.settings.runtime?.eventLoop ?? RUNTIME_DEFAULTS.eventLoop;
 	}
 
 	getHttpIdleTimeoutMs(): number {

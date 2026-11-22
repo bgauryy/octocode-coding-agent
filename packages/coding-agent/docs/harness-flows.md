@@ -31,14 +31,14 @@ flowchart TD
     H["History<br/>checkpoint, messages, tool results, notices, memory"]
 ```
 
-| Part                   | What it holds                                                                                                           | You change it with                                               |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| System prompt          | Built-in text, the policy for the declared tools, your `SYSTEM.md` or `APPEND_SYSTEM.md`                                | [Instructions](prompts.md)                                       |
-| Instruction files      | `AGENTS.md` files from the global one down to the working folder; deeper ones load when a file under them is first read | `--no-context-files`                                             |
-| Skills listing         | Each skill's name, description and path; the body loads only when the agent calls `skill`                               | `/harness` per skill; [skills](skills.md)                        |
-| MCP instruction blocks | One block per enabled server: its purpose, call prefix and instructions (deferred tools add one index line each)        | `/configuration enable` or `disable` `mcp:<name>`, [MCP](mcp.md) |
-| Tool declarations      | One declaration per tool: native tools in full, MCP tools by their exposure                                             | [Tool loadout](#3-tool-loadout)                                  |
-| History                | The latest checkpoint, recent messages, tool calls and results, memory and backlog notices                              | [Trimming context](#4-trimming-context)                          |
+| Part                   | What it holds                                                                                                           | You change it with                                          |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| System prompt          | Built-in text, the policy for the declared tools, your `SYSTEM.md` or `APPEND_SYSTEM.md`                                | [Instructions](prompts.md)                                  |
+| Instruction files      | `AGENTS.md` files from the global one down to the working folder; deeper ones load when a file under them is first read | `--no-context-files`                                        |
+| Skills listing         | Each skill's name, description and path; the body loads only when the agent calls `skill`                               | `/harness` per skill; [skills](skills.md)                   |
+| MCP instruction blocks | One block per enabled server: its purpose, call prefix and instructions (deferred tools add one index line each)        | `/settings enable` or `disable` `mcp:<name>`, [MCP](mcp.md) |
+| Tool declarations      | One declaration per tool: native tools in full, MCP tools by their exposure                                             | [Tool loadout](#3-tool-loadout)                             |
+| History                | The latest checkpoint, recent messages, tool calls and results, memory and backlog notices                              | [Trimming context](#4-trimming-context)                     |
 
 Block 3 is sent without a cache boundary, so a new day or a changed MCP status does not rewrite the two cached blocks above it. A session saved by an older version keeps its stored order. Block layout and the full section list: [Context management](../../../docs/CONTEXT.md#what-the-model-sees); per-adapter boundaries: [second instruction block](prompt-caching.md#second-instruction-block).
 
@@ -150,21 +150,21 @@ A tool its configuration puts on demand (`onDemand`) is left undeclared only whe
 | An MCP tool named exactly in the agent's `--tools` list (a pattern such as `mcp__browser__*` does not count) | `deferred` from the start                                            |
 | Otherwise                                                                                                    | `onDemand` until its first call or a read with `mcp`                 |
 
-`archive` and `models`, and `memory` in a subagent, are on demand whenever they would be `deferred` and no `nativeToolExposure` pin names them.
+`archive`, `models` and `configuration`, and `memory` in a subagent, are on demand whenever they would be `deferred` and no `nativeToolExposure` pin names them.
 
 ### Usage-based promotion
 
 `"usage"` declares every deferrable tool thin, however often sessions use it: no tool is promoted to a full declaration. Use decides only when an on-demand tool is declared: one the snapshot names is `deferred` from the session's start, any other waits for its first call.
 
-| Rule                 | Value                                                                                                                                                                                                                          |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Counts               | Per tool and per role group (main, subagent): sessions that declared it, called it, read its description, and calls its schema refused. Kept for 7 days across all folders                                                     |
-| Promoted by use      | At least 10% of declaring sessions called or read it, and at least 20 sessions of that group declared it; a tool with fewer sessions keeps its configured exposure                                                             |
-| Promoted by refusals | Refused calls exceed one per session that used the tool                                                                                                                                                                        |
-| Budget               | The promoted tools' thin declarations, most used first, fit `mcpPromotedBytes` (8,192 bytes per role group by default)                                                                                                         |
-| Snapshot             | Each group computes one per UTC day and installed version, at the first session start that needs it; the session, its resumptions and its subagents keep it                                                                    |
-| Native tools         | `memory` and `wait` are deferrable only under `"usage"` or a pin; `web`, `archive`, `models` and `backlogPlan` follow `recent` and `usage`; `archive` and `models` (and `memory` in a subagent) are the native on-demand tools |
-| No data              | Nothing is promoted: on-demand tools wait for their first call. Deleting the counts file has the same effect                                                                                                                   |
+| Rule                 | Value                                                                                                                                                                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Counts               | Per tool and per role group (main, subagent): sessions that declared it, called it, read its description, and calls its schema refused. Kept for 7 days across all folders                                                                                         |
+| Promoted by use      | At least 10% of declaring sessions called or read it, and at least 20 sessions of that group declared it; a tool with fewer sessions keeps its configured exposure                                                                                                 |
+| Promoted by refusals | Refused calls exceed one per session that used the tool                                                                                                                                                                                                            |
+| Budget               | The promoted tools' thin declarations, most used first, fit `mcpPromotedBytes` (8,192 bytes per role group by default)                                                                                                                                             |
+| Snapshot             | Each group computes one per UTC day and installed version, at the first session start that needs it; the session, its resumptions and its subagents keep it                                                                                                        |
+| Native tools         | `memory` and `notify` are deferrable only under `"usage"` or a pin; `web`, `archive`, `models`, `backlogPlan` and `configuration` follow `recent` and `usage`; `archive`, `models` and `configuration` (and `memory` in a subagent) are the native on-demand tools |
+| No data              | Nothing is promoted: on-demand tools wait for their first call. Deleting the counts file has the same effect                                                                                                                                                       |
 
 `"usage"` is the default. A tool sessions use often still sends only its thin declaration; its full schema arrives after its first call, in place where the model allows. Counts are a hint: an unreadable file reads as no data.
 
@@ -206,7 +206,7 @@ Only results that can be fetched again are cleared: `web`, MCP tools and `bash` 
 
 The payload of an old `file` change (written content, edit texts or a patch of at least 1,000 characters) is cleared too: the change is on disk, so each long string becomes its size and the start of its SHA-256, and the agent reads the file for its current text.
 
-Clearing needs the old results and payloads to total at least 4,000 tokens where the cache is rewritten anyway, or 20,000 while it is warm; the newest five results and the newest five `file` changes always stay. Results still in use stay too, up to 20,000 tokens, newest first: those called in the last ten turns, or whose file path a message of those turns names. In plain words:
+Clearing needs the old results and payloads to total at least 4,000 tokens where the cache is rewritten anyway, or 20,000 while it is warm; the newest five results and the newest five `file` changes always stay. Results still in use stay too: every one called in the last ten turns, whatever its size, and older ones whose file path a message of those turns names, up to 20,000 tokens, newest first. In plain words:
 
 - **Free:** if the next request would rewrite the cache anyway (the cache expired, a compaction replaced the history, the model changed, or an update rewrites the start), clearing costs nothing extra, so everything old goes at once.
 - **While the cache is warm:** clearing makes the next request write the changed history to the cache once, which costs more than reading it. It happens only when re-sending the old results for the requests still expected would cost more than that one rewrite; it may then clear only the results after a large message that stays, when that saves more. Expected requests are about as many as the session has made since the last compaction, capped by how many fit before the compaction threshold, and lowered when this session's earlier clearings were followed by fewer requests than expected.
@@ -220,15 +220,15 @@ The decision is stored with the session, so later requests, a resume and a fork 
 
 When context tokens exceed the window minus a reserve, Octocode summarizes older history into a checkpoint and keeps the newest messages verbatim.
 
-| Part     | Rule                                                                                                                                                                                                                                                          |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Window   | `contextBudget` (default 300,000 tokens), capped at 90% of the model's capacity; `"full"` uses all of it                                                                                                                                                      |
-| Trigger  | Context above the window minus the reserve: 16,384 tokens (an eighth of smaller windows), raised for the thinking budget, at most a sixth of the window. A 200,000-token window compacts above 183,616 with thinking off                                      |
-| Kept     | Up to 20,000 recent tokens (a quarter of smaller windows), word for word                                                                                                                                                                                      |
-| Manual   | `/compact [focus]`                                                                                                                                                                                                                                            |
-| Agent    | The `compact` tool, at a task boundary once a context notice says automatic compaction is near (from 90% of the room before it); refused under half of it. It can take the summary written ahead; its focus then follows the summary, labelled as the agent's |
-| Counting | Provider receipts where they apply; new content, tools and images are estimated at 2.5 characters per token for Claude (and any model of unknown family), 3.3 for DeepSeek models, 3.5 for OpenAI models                                                      |
-| Setting  | Automatic compaction is always on and has no switch; only `contextBudget` moves the trigger                                                                                                                                                                   |
+| Part     | Rule                                                                                                                                                                                                                                                                  |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Window   | `contextBudget` (default 300,000 tokens), capped at 90% of the model's capacity; `"full"` uses all of it                                                                                                                                                              |
+| Trigger  | Context above the window minus the reserve: 24,576 tokens, so the summary fits inside the cached request (an eighth of small windows), raised for the thinking budget, at most a sixth of the window. A 200,000-token window compacts above 175,424 with thinking off |
+| Kept     | Up to 20,000 recent tokens (a quarter of smaller windows), word for word                                                                                                                                                                                              |
+| Manual   | `/compact [focus]`                                                                                                                                                                                                                                                    |
+| Agent    | The `compact` tool, at a task boundary once a context notice says automatic compaction is near (from 90% of the room before it); refused under half of it. It can take the summary written ahead; its focus then follows the summary, labelled as the agent's         |
+| Counting | Provider receipts where they apply; new content, tools and images are estimated at 2.5 characters per token for Claude (and any model of unknown family), 3.3 for DeepSeek models, 3.5 for OpenAI models                                                              |
+| Setting  | Automatic compaction is always on and has no switch; only `contextBudget` moves the trigger                                                                                                                                                                           |
 
 What survives, and where else to find the rest:
 

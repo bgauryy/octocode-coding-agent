@@ -195,16 +195,10 @@ describe("installed MCP and skills through the native SDK", () => {
 								? { path: file, ranges: [{ startLine: 1, endLine: end }] }
 								: { path: file, startLine: 1, endLine: end, minify: "none" };
 						const system = getCurrentSystemPrompt(context.messages);
-						if (role === "browser") {
-							// The user's skills are listed to the main session only; a child loads them by name (below).
-							expect(system).not.toContain('<skill name="integration-skill"');
-							expect(system).toMatch(/\b\d+ more skills are not listed here; the skill tool loads any by name/);
-						} else {
-							expect(system).toContain('<skill name="integration-skill"');
-							expect(system).toContain(
-								"Use the skill tool (one call per name) to load a skill when its description matches",
-							);
-						}
+						// Skills are listed in the `skill` tool's description, never in the system prompt.
+						expect(system).not.toContain('<skill name="integration-skill"');
+						const skillTool = getCurrentTools(context.messages).find((tool) => tool.name === "skill");
+						expect(skillTool?.description).toContain(`${research.filePath}: `);
 						return fauxAssistantMessage(
 							[
 								fauxToolCall(reader!, {

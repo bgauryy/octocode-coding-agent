@@ -31,7 +31,16 @@ import { detectKeychain, type KeychainBackend } from "../../core/auth-storage/ke
 import { getConfigValueEnvVarNames, isCommandConfigValue } from "../../core/config-value.ts";
 import { discoveryInput } from "../../core/discovery/service.ts";
 import { SettingsManager } from "../../core/settings-manager.ts";
+import { providerTemplateInfos } from "./provider-template-infos.ts";
 import { readProviderOrigins, type ProviderOriginsView } from "./provider-origins.ts";
+import {
+	customEdit,
+	effectiveBaseUrl,
+	hostQuestion,
+	isOwnEndpointStub,
+	savedHost,
+	type SavedHost,
+} from "./provider-hosts.ts";
 import { resolveFolderTrust } from "../trust/resolve.ts";
 import { repoKey } from "../../utils/git-repository.ts";
 
@@ -76,6 +85,8 @@ export function classify(
 	if (credential.type === "oauth") {
 		return [{ kind: "oauth", ...(credential.expires > 0 ? { expiresAt: credential.expires } : {}) }];
 	}
+	// A key saved with a custom host: auth.json keeps a stub that points at the keychain record holding both.
+	if (isOwnEndpointStub(provider, credential, matchers)) return [{ kind: "keychain" }];
 	const key = credential.key;
 	if (!key) return [];
 	if (isCommandConfigValue(key)) {
@@ -91,6 +102,8 @@ export function classify(
 
 interface StoredSources {
 	byProvider: Map<string, CredentialSourceStatus[]>;
+	/** The host saved with each provider's key, when it has one. */
+	hosts: Map<string, SavedHost>;
 	error?: string;
 }
 
@@ -100,15 +113,19 @@ async function readStoredSources(
 	env: NodeJS.ProcessEnv,
 ): Promise<StoredSources> {
 	const byProvider = new Map<string, CredentialSourceStatus[]>();
+	const hosts = new Map<string, SavedHost>();
 	try {
 		const store = new ReadOnlyAuthStorage(join(agentDir, "auth.json"));
 		for (const { providerId } of await store.list()) {
 			const credential = await store.readRaw(providerId);
-			if (credential) byProvider.set(providerId, classify(providerId, credential, matchers, env));
+			if (!credential) continue;
+			byProvider.set(providerId, classify(providerId, credential, matchers, env));
+			const host = await savedHost(providerId, credential, matchers);
+			if (host) hosts.set(providerId, host);
 		}
-		return { byProvider };
+		return { byProvider, hosts };
 	} catch {
-		return { byProvider: new Map(), error: CREDENTIALS_ERROR };
+		return { byProvider: new Map(), hosts: new Map(), error: CREDENTIALS_ERROR };
 	}
 }
 
@@ -150,7 +167,15 @@ function authMethods(auth: ProviderAuth | undefined): ProviderAuthMethods | unde
 					},
 				}
 			: {}),
-		...(apiKey ? { keyAuth: { name: apiKey.name, ...(keyPage ? { keyPage } : {}) } } : {}),
+		...(apiKey
+			? {
+					keyAuth: {
+						name: apiKey.name,
+						...(keyPage ? { keyPage } : {}),
+						...(apiKey.host ? { host: hostQuestion(apiKey.host) } : {}),
+					},
+				}
+			: {}),
 	};
 	return methods.oauth || methods.keyAuth || methods.plan ? methods : undefined;
 }
@@ -159,6 +184,7 @@ function providerRows(
 	stored: StoredSources,
 	origins: ProviderOriginsView,
 	env: NodeJS.ProcessEnv,
+	hiddenModels: Record<string, string[]>,
 ): ProviderCredentialStatus[] {
 	const providers = new Map(builtinProviders().map((provider) => [provider.id, provider]));
 	const known = new Map([...providers].map(([id, provider]) => [id, provider.name]));
@@ -167,21 +193,34 @@ function providerRows(
 	return ids.map((provider) => {
 		const sources = mergeSources(stored.byProvider.get(provider) ?? [], envSources(provider, env));
 		const found = origins.origins.get(provider) ?? [];
-		// A models.json entry counts only when it sets a key; a definition alone says nothing about credentials.
-		const configured = sources.length > 0 || found.some((origin) => origin.file === "auth-json" || origin.hasKey);
-		const name = known.get(provider);
+		// A models.json entry counts only when it sets a usable key: a definition alone says nothing about credentials,
+		// and a key naming an unset environment variable gives none.
+		const configured =
+			sources.length > 0 || found.some((origin) => origin.file === "auth-json" || (origin.hasKey && !origin.keyUnset));
+		const custom = origins.custom.get(provider);
+		const name = known.get(provider) ?? custom?.name;
+		const models = custom?.models.slice(0, 64) ?? [];
 		// The credential endpoint accepts only ids its schema accepts; the page must not offer edits it would refuse.
 		const editable = Value.Check(ProviderIdSchema, provider) ? {} : { editable: false };
-		const auth = authMethods(providers.get(provider)?.auth);
+		const definition = providers.get(provider);
+		const auth = authMethods(definition?.auth);
+		const baseUrl = effectiveBaseUrl(definition, stored.hosts.get(provider), custom);
+		const edit = customEdit(definition, custom);
+		const ids = [...new Set([...(definition?.getModels().map((model) => model.id) ?? []), ...models])].slice(0, 1024);
+		const hidden = (hiddenModels[provider] ?? []).slice(0, 1024);
 		return {
 			provider,
 			...(name ? { name } : {}),
+			...(models.length > 0 ? { models } : {}),
 			configured,
 			...editable,
 			sources,
 			...(found.length > 0 ? { origins: found } : {}),
 			...(origins.disabled.has(provider) ? { disabled: true } : {}),
 			...(auth ? { auth } : {}),
+			...(baseUrl ? { baseUrl } : {}),
+			...(edit ? { customEdit: edit } : {}),
+			...(ids.length > 0 ? { modelChoice: { ids, hidden } } : {}),
 			route: deriveAgentRoute({
 				subscription:
 					auth?.plan?.billing === "plan" ||
@@ -225,6 +264,7 @@ export async function buildConfigSnapshot(options: ConfigStatusOptions): Promise
 		// Only entries that give a usable credential: signed-out, keyless and unset-reference entries are not an origin.
 		octocodeAuthIds: [...stored.byProvider].filter(([, sources]) => sources.length > 0).map(([id]) => id),
 		settings: manager,
+		env,
 	});
 	const credentialsError = stored.error ?? origins.error;
 
@@ -232,7 +272,9 @@ export async function buildConfigSnapshot(options: ConfigStatusOptions): Promise
 		protocolVersion: CONFIG_PROTOCOL_VERSION,
 		generatedAt: Date.now(),
 		keychainAvailable: keychain !== undefined && keychain !== null,
-		providers: providerRows(stored, origins, env),
+		providers: providerRows(stored, origins, env, manager.getHiddenModels()),
+		providerTemplates: providerTemplateInfos(),
+		modelsPath: join(options.agentDir, "models.json"),
 		sources: origins.sources,
 		...(credentialsError ? { credentialsError } : {}),
 		settings: settingRows(manager),

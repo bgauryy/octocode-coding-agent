@@ -126,7 +126,7 @@ export function scrollSelectionPoint(
 ): SelectionPoint {
 	const { box, visibleTop, visibleBottom } = visible;
 	const pointerRow = Math.max(visibleTop, Math.min(visibleBottom, y));
-	const maxContentRow = Math.max(0, (box.scrollContentHeight ?? box.scrollContentLines?.length ?? 1) - 1);
+	const maxContentRow = Math.max(0, scrollView.scrollHeight - 1);
 	const row = Math.max(0, Math.min(maxContentRow, scrollView.scrollTop + pointerRow - box.rect.y));
 	const point: SelectionPoint = { row, col: Math.max(0, Math.min(box.rect.width - 1, x - box.rect.x)), scrollView };
 	const anchor = box.scrollContentAnchor?.(row);
@@ -175,17 +175,24 @@ export function* selectedTextLines(
 ): Generator<string> {
 	if (!bounds) return;
 	let selection = bounds;
-	let sourceLines: readonly string[] = previousScreen;
+	let rowAt = (row: number): string | undefined => previousScreen[row];
 	if (selection.start.scrollView) {
 		if (!currentLayout) return;
 		const box = getScrollViewBox(currentLayout, selection.start.scrollView);
-		if (!box?.scrollContentLines) return;
-		sourceLines = box.scrollContentLines;
-		// Reading the lines measured every row: the points' rows are exact now.
-		selection = rebaseSelection(selection, box);
+		if (!box) return;
+		// Each frame exposes a contiguous window of measured rows. A selection inside it can be copied directly.
+		const read = box.scrollContentRow;
+		if (read && read(selection.start.row) !== undefined && read(selection.end.row) !== undefined) {
+			rowAt = read;
+		} else {
+			const lines = box.scrollContentLines;
+			if (!lines) return;
+			selection = rebaseSelection(selection, box);
+			rowAt = (row) => lines[row];
+		}
 	}
 	for (let row = selection.start.row; row <= selection.end.row; row++) {
-		const line = sourceLines[row] ?? "";
+		const line = rowAt(row) ?? "";
 		const plain = stripTerminalSequences(line);
 		if (row > selection.start.row && row < selection.end.row && !COPY_NEEDS_COLUMNS.test(plain.slice(-2))) {
 			yield plain.trimEnd();

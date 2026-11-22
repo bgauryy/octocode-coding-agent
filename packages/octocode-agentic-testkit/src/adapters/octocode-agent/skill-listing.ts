@@ -1,19 +1,22 @@
 import type { Skill } from "../../agents/inproc.ts";
 
-const ENTITIES: Record<string, string> = {
-	"&amp;": "&",
-	"&lt;": "<",
-	"&gt;": ">",
-	"&quot;": '"',
-	"&apos;": "'",
-	"&#39;": "'",
-};
-const unescape = (s: string): string => s.replace(/&(?:amp|lt|gt|quot|apos|#39);/g, (m) => ENTITIES[m] ?? m);
+/** One catalog line of the `skill` tool's description: `<path>/<name>/SKILL.md: <description>`. */
+const CATALOG_LINE = /^\S*?([^/\s]+)\/SKILL\.md: (.+)$/gm;
 
-/** The `<skill name="…">description</skill>` entries of a captured system prompt, descriptions unescaped. */
-export function parseSkillListing(systemPrompt: string): Pick<Skill, "name" | "description">[] {
-	const out: Pick<Skill, "name" | "description">[] = [];
-	for (const m of systemPrompt.matchAll(/<skill name="([^"]+)">\s*([\s\S]*?)\s*<\/skill>/g))
-		out.push({ name: m[1], description: unescape(m[2]) });
-	return out;
+type ToolDef = { name?: string; description?: string };
+
+/** The `skill` tool's description in a captured request's raw `tools` (OpenAI or Anthropic shape); empty when absent. */
+export function skillToolDescription(raw: unknown): string {
+	const tools = (raw as { tools?: unknown }).tools;
+	if (!Array.isArray(tools)) return "";
+	for (const tool of tools as (ToolDef & { function?: ToolDef })[]) {
+		const def = tool.function ?? tool;
+		if (def.name === "skill") return def.description ?? "";
+	}
+	return "";
+}
+
+/** The skills the `skill` tool's description catalogs (`path: description` lines); the name is the skill's folder. */
+export function parseSkillListing(skillToolText: string): Pick<Skill, "name" | "description">[] {
+	return [...skillToolText.matchAll(CATALOG_LINE)].map((m) => ({ name: m[1], description: m[2] }));
 }

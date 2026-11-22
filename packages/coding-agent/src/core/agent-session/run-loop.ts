@@ -11,6 +11,7 @@ import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { AssistantMessage } from "@octocodeai/octocode-ai/compat";
 import type { CacheWarmer } from "../cache-warmer.ts";
+import { withRunInputOrigin } from "../input-origin.ts";
 import type { AgentInterruptedEvent } from "../features/types.ts";
 import type { BeforeAgentStartTrigger } from "../features/runner.ts";
 import type { SessionBash } from "./bash.ts";
@@ -81,7 +82,16 @@ export class SessionRunLoop {
 	 * starting another. Cancellation during preparation prevents the first provider request.
 	 * @param onStarted Called once the run's messages are prepared, before the first request.
 	 */
-	async startRun(trigger: BeforeAgentStartTrigger, onStarted?: () => void, input?: PendingUserInput): Promise<void> {
+	startRun(trigger: BeforeAgentStartTrigger, onStarted?: () => void, input?: PendingUserInput): Promise<void> {
+		// The run's own origin scope: input queued into it from another client moves only this run's origin.
+		return withRunInputOrigin(() => this._startRun(trigger, onStarted, input));
+	}
+
+	private async _startRun(
+		trigger: BeforeAgentStartTrigger,
+		onStarted?: () => void,
+		input?: PendingUserInput,
+	): Promise<void> {
 		const { session, run, inputs, bash } = this.host;
 		// A second run would reset the active run's state and, on failing, settle the session while that run still streams.
 		if (run.active)
@@ -318,9 +328,9 @@ export class SessionRunLoop {
 		const { session, run } = this.host;
 		if (!run.active || !run.logicalTurnId || this._abortReason) return;
 		this._abortReason = reason;
-		if (reason === "interrupted" || reason === "replacement")
+		if (reason === "interrupted" || reason === "peer" || reason === "replacement")
 			session.sessionManager.appendCustomEntry("octocode-interrupt", { reason, at: new Date().toISOString() });
-		if (reason === "interrupted")
+		if (reason === "interrupted" || reason === "peer")
 			this._pendingInterruption = {
 				type: "agent_interrupted",
 				turnId: run.logicalTurnId,
@@ -351,7 +361,8 @@ export class SessionRunLoop {
 			run.agentRunAbortRequested = true;
 		}
 		session.abortRetry();
-		session.abortCompaction();
+		// Only the user's Stop cancels a running compaction in the loop's `new` mode: a peer's interrupt waits behind it.
+		if (reason !== "peer" || session.settingsManager.getEventLoopMode() !== "new") session.abortCompaction();
 		session.abortBranchSummary();
 		if (run.isBeforeSettle) run.beforeSettleAbort.abort();
 		session.agent.abort();

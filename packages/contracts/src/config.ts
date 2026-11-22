@@ -1,13 +1,17 @@
 import { Type, type Static } from "typebox";
 import { StringEnum } from "./schema.ts";
 import { AgentRouteSchema } from "./agent-route.ts";
+import { MAX_CREDENTIAL_KEY_LENGTH, ProviderIdSchema, ProviderTemplateInfoSchema } from "./config-commands.ts";
 
 export * from "./harness-config.ts";
 export * from "./mcp-add.ts";
 export * from "./tool-exposure.ts";
 export * from "./security-config.ts";
+export * from "./runner-config.ts";
+export * from "./provider-test.ts";
 export * from "./config-settings.ts";
 export * from "./agent-route.ts";
+export * from "./config-commands.ts";
 
 /** Version of the configuration read model; bump when a field changes meaning. */
 export const CONFIG_PROTOCOL_VERSION = 1 as const;
@@ -55,6 +59,30 @@ export const ProviderAuthMethodsSchema = Type.Object(
 					name: Type.String({ minLength: 1, maxLength: 128 }),
 					/** The provider's page that issues keys; always an https link. */
 					keyPage: Type.Optional(Type.String({ pattern: "^https://[^\\s]+$", maxLength: 512 })),
+					/** Present when the provider's API takes a base URL: sign-in may ask for an optional host. */
+					host: Type.Optional(
+						Type.Object(
+							{
+								example: Type.String({ minLength: 1, maxLength: 256 }),
+								/** The host takes an optional region. */
+								region: Type.Optional(Type.Boolean()),
+								/** The APIs an unrecognised host may speak; the page then requires one. */
+								apis: Type.Optional(
+									Type.Array(
+										Type.Object(
+											{
+												id: Type.String({ minLength: 1, maxLength: 64 }),
+												label: Type.String({ minLength: 1, maxLength: 128 }),
+											},
+											{ additionalProperties: false },
+										),
+										{ maxItems: 8 },
+									),
+								),
+							},
+							{ additionalProperties: false },
+						),
+					),
 				},
 				{ additionalProperties: false },
 			),
@@ -88,6 +116,8 @@ export const ProviderOriginSchema = Type.Object(
 		product: ProviderProductSchema,
 		file: StringEnum(["auth-json", "models-json"] as const),
 		hasKey: Type.Optional(Type.Boolean()),
+		/** True when `apiKey` names an environment variable that is not set, so the entry gives no usable key yet. */
+		keyUnset: Type.Optional(Type.Boolean()),
 	},
 	{ additionalProperties: false },
 );
@@ -115,8 +145,10 @@ export type ProviderSourceState = Static<typeof ProviderSourceStateSchema>;
 export const ProviderCredentialStatusSchema = Type.Object(
 	{
 		provider: Type.String({ minLength: 1, maxLength: 128 }),
-		/** Display name, when the provider is known. */
+		/** Display name, when the provider is known or models.json names it. */
 		name: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
+		/** Model ids a models.json entry defines for the provider (the first 64). */
+		models: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 64 })),
 		/** True when at least one source is present. */
 		configured: Type.Boolean(),
 		/** `false` when the credential endpoint would refuse this provider id, so the page offers no Set, Replace or Clear. */
@@ -126,8 +158,49 @@ export const ProviderCredentialStatusSchema = Type.Object(
 		origins: Type.Optional(Type.Array(ProviderOriginSchema, { maxItems: 8 })),
 		/** True when the user turned the provider off: its models are hidden and its credentials are kept. */
 		disabled: Type.Optional(Type.Boolean()),
+		/** The provider's models to tick on its page, and the ones the user hides from `/model`, Ctrl+P and subagents. */
+		modelChoice: Type.Optional(
+			Type.Object(
+				{
+					ids: Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 1024 }),
+					hidden: Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 1024 }),
+				},
+				{ additionalProperties: false },
+			),
+		),
 		/** The sign-ins the provider offers. Names and a public link only: never a credential. */
 		auth: Type.Optional(ProviderAuthMethodsSchema),
+		/** The base URL requests go to and where it comes from; a host is public, the key saved with it is never shown. */
+		baseUrl: Type.Optional(
+			Type.Object(
+				{
+					url: Type.String({ minLength: 1, maxLength: 2048 }),
+					source: StringEnum(["saved", "default", "models-json"] as const),
+					region: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+					api: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+				},
+				{ additionalProperties: false },
+			),
+		),
+		/** Present for a custom provider defined in Octocode's models.json: its host, limits and removal can be edited. */
+		customEdit: Type.Optional(
+			Type.Object(
+				{
+					models: Type.Array(
+						Type.Object(
+							{
+								id: Type.String({ minLength: 1, maxLength: 256 }),
+								contextWindow: Type.Integer({ minimum: 1 }),
+								maxOutput: Type.Integer({ minimum: 1 }),
+							},
+							{ additionalProperties: false },
+						),
+						{ maxItems: 64 },
+					),
+				},
+				{ additionalProperties: false },
+			),
+		),
 		/** How a request through the provider is billed (`config` or `subscription`), derived from its sign-ins and sources. */
 		route: Type.Optional(AgentRouteSchema),
 	},
@@ -151,51 +224,6 @@ export const ConfigSettingSchema = Type.Object(
 );
 export type ConfigSetting = Static<typeof ConfigSettingSchema>;
 
-/** The longest key the page accepts. */
-export const MAX_CREDENTIAL_KEY_LENGTH = 8192;
-
-/** The same provider ids the OS keychain accepts (account names), so a key can be stored under any id the page sends. */
-export const ProviderIdSchema = Type.String({ pattern: "^[a-z0-9][a-z0-9._-]*$", minLength: 1, maxLength: 128 });
-
-/**
- * `POST /api/admin/config/credentials`: set or replace one provider's API key, or clear the provider's stored
- * credential. This is the only schema that carries a secret (`key`); it travels in this request body and nowhere else,
- * and no reply, event, log line or audit row repeats it. Without an OS keychain the key is stored as plain text in
- * `auth.json` only when `acknowledgePlaintext` is true.
- */
-export const ConfigCredentialCommandSchema = Type.Union([
-	Type.Object(
-		{
-			action: Type.Literal("set"),
-			provider: ProviderIdSchema,
-			key: Type.String({ minLength: 1, maxLength: MAX_CREDENTIAL_KEY_LENGTH, pattern: "^[^\\u0000-\\u001f\\u007f]+$" }),
-			acknowledgePlaintext: Type.Optional(Type.Boolean()),
-			/** Save although the provider could not be reached to check the key (a rejected key is never saved). */
-			acknowledgeUnverified: Type.Optional(Type.Boolean()),
-		},
-		{ additionalProperties: false },
-	),
-	Type.Object({ action: Type.Literal("clear"), provider: ProviderIdSchema }, { additionalProperties: false }),
-]);
-export type ConfigCredentialCommand = Static<typeof ConfigCredentialCommandSchema>;
-
-/**
- * `POST /api/admin/config/providers`: turn one provider on or off (the global `disabledProviders` list), or turn the Pi
- * source on or off (the global `providerSources.pi` setting). Neither touches a credential or a configuration file. The
- * reply is the fresh `ConfigSnapshot`.
- */
-export const ConfigProviderCommandSchema = Type.Union([
-	Type.Object(
-		{ action: Type.Literal("set-provider"), provider: ProviderIdSchema, enabled: Type.Boolean() },
-		{ additionalProperties: false },
-	),
-	Type.Object(
-		{ action: Type.Literal("set-source"), source: Type.Literal("pi"), enabled: Type.Boolean() },
-		{ additionalProperties: false },
-	),
-]);
-export type ConfigProviderCommand = Static<typeof ConfigProviderCommandSchema>;
-
 /** A settings file that could not be read. The text is fixed; parser messages can quote file content. */
 export const SettingsFileErrorSchema = Type.Object(
 	{ scope: StringEnum(["global", "workspace"] as const), message: Type.String({ maxLength: 200 }) },
@@ -217,6 +245,10 @@ export const ConfigSnapshotSchema = Type.Object(
 		/** Whether this machine has an OS keychain tool (macOS Keychain, Secret Service). */
 		keychainAvailable: Type.Boolean(),
 		providers: Type.Array(ProviderCredentialStatusSchema),
+		/** The templates a custom provider can be created from; absent when the host cannot create one. */
+		providerTemplates: Type.Optional(Type.Array(ProviderTemplateInfoSchema, { maxItems: 32 })),
+		/** Where Octocode's models.json lives: custom hosts and providers are defined there. */
+		modelsPath: Type.Optional(Type.String({ minLength: 1, maxLength: 1024 })),
 		/** Where providers come from: Octocode and Pi, with their state. */
 		sources: Type.Optional(Type.Array(ProviderSourceStateSchema, { maxItems: 4 })),
 		/** Present when `auth.json` could not be read; the text is fixed because parser messages can quote file content. */

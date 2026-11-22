@@ -1,6 +1,6 @@
 ---
 name: octocode-clasify
-description: "Use to sort many unread files, hits, history rows or logs by a yes/no, label or score needing no reasoning, then read only what matters. Not when exact search answers it, or for a claim you must prove."
+description: "Use to sort many unread files, hits, history rows or logs by a yes/no, label or score needing no reasoning. Not when exact search answers it, or for a claim you must prove."
 ---
 
 # Classify instead of reading

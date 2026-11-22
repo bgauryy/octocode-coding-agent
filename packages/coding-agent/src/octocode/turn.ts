@@ -1,7 +1,5 @@
 import type { FeatureSetup, FeatureContext } from "../core/features/index.ts";
 import { leanMainPolicy } from "../core/lean-main.ts";
-import type { Skill } from "../core/skills.ts";
-import { isBundledSkill } from "../core/skills/category.ts";
 import {
 	currentEnvironment,
 	type EnvironmentSurface,
@@ -14,13 +12,8 @@ import { leanPromptSections } from "./native/prompts/lean.ts";
 import { octocodePromptSections, type ResearchContext } from "./native/prompts/policy.ts";
 import { readRolePrompt } from "./native/prompts/role.ts";
 import { getMcpSessionStatus, currentToolRoles } from "../../../mcp/src/api.ts";
-import {
-	envFlag,
-	LEAN_ENV,
-	READ_ONLY_ENV,
-	SKILL_CATALOG_ENV,
-	SKILLS_IN_TASK_ENV,
-} from "@octocodeai/octocode-common/env";
+import { envFlag, LEAN_ENV, READ_ONLY_ENV } from "@octocodeai/octocode-common/env";
+import type { SkillCatalog } from "./skill/catalog.ts";
 import { promptRootsFromEnv, rebasePath } from "./worktree-paths/prompt-root.ts";
 import { AGENT_ROLE_ENV } from "./team/store/env.ts";
 import { BROWSER_SERVER, DESKTOP_SERVER, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
@@ -54,6 +47,8 @@ export function registerTurnSetup(
 	api: FeatureSetup,
 	options: {
 		isSubagent: boolean;
+		/** The `skill` tool's catalog: a lean main session withholds its listing. */
+		skillCatalog?: SkillCatalog;
 		profiles: () => Map<string, AgentProfile>;
 	},
 ): { reset(): void } {
@@ -67,9 +62,6 @@ export function registerTurnSetup(
 	const role = options.isSubagent ? readRolePrompt() : undefined;
 	const readOnly = options.isSubagent && envFlag(process.env, READ_ONLY_ENV);
 	const lean = options.isSubagent && envFlag(process.env, LEAN_ENV);
-	// Skills the parent chose ride in the task (`subagents/task-skills.ts`), so the cached prompt does not depend on them.
-	const skillsInTask = lean || (options.isSubagent && envFlag(process.env, SKILLS_IN_TASK_ENV));
-	const skillCatalog = options.isSubagent ? process.env[SKILL_CATALOG_ENV]?.split(",").filter(Boolean) : undefined;
 	const promptRoots = options.isSubagent ? promptRootsFromEnv(process.env) : undefined;
 	// Only the coordinator routes tasks: its prompt states the routes once per session, later changes arrive as a notice.
 	const routing = new RoutingWatch();
@@ -176,7 +168,7 @@ export function registerTurnSetup(
 					})
 				: octocodePromptSections(inputs);
 		}
-		if (leanMain) event.systemPromptOptions.skills = [];
+		options.skillCatalog?.withhold(leanMain);
 		// A named section (not a whole-prompt override) lets Octocode record a small transcript delta. The policy and the
 		// role stay session sections: the profile list and a project-defined role are project specific, and project
 		// instructions follow the policy (`core/system-prompt-spec.ts`).
@@ -200,17 +192,9 @@ export function registerTurnSetup(
 			}));
 		}
 		if (options.isSubagent) {
-			// Keep skill routing metadata; task-specific bodies are read only when needed. A child cannot run /harness, so
-			// its prompt leaves out the harnesses line.
+			// A child cannot run /harness, so its prompt leaves out the harnesses line.
 			event.systemPromptOptions.sections.docs = "";
 			event.systemPromptOptions.sections.harnesses = "";
-			const skills = skillsInTask ? [] : childSkills(event.systemPromptOptions.skills ?? []);
-			event.systemPromptOptions.skills = skills;
-			// A child lists only its role's catalog: an empty one (`catalog: []`) lists none, an unset one every bundled
-			// skill. The user's own skills are listed to the main session only; a child still loads any of them by name.
-			if (!skillsInTask)
-				event.systemPromptOptions.skillCatalog =
-					skillCatalog ?? skills.filter(isBundledSkill).map((skill) => skill.name);
 		}
 		return notice ? { message: { customType: ROUTING_NOTICE_ID, content: notice, display: false } } : undefined;
 	});
@@ -286,8 +270,3 @@ function hasDelegated(entries: readonly unknown[]): boolean {
 /** Whether this session can reach MCP at all: the native `mcp` tool or declared server tools. */
 const canReachMcp = (selected: readonly string[]): boolean =>
 	selected.some((name) => name === "mcp" || name.startsWith("mcp__"));
-
-/** Copy the skill metadata so child prompt preparation cannot mutate the loader's catalog. */
-export function childSkills(skills: readonly Skill[]): Skill[] {
-	return skills.filter((skill) => skill.audience !== "coordinator").map((skill) => ({ ...skill }));
-}

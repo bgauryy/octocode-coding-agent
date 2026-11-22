@@ -2,6 +2,7 @@ import { fixtureBacklog } from "./backlog-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { AGENT_DIR } from "../../src/storage/agent-layout.ts";
 import { Value } from "typebox/value";
 import { afterEach, expect, it } from "vitest";
 import { ReportFileSchema, ReportsIndexSchema } from "@octocodeai/octocode-contracts/protocol";
@@ -19,8 +20,8 @@ function reportWorkspace(): string {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-reports-"));
 	cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }));
 	const write = (folder: string, name: string, content: string) => {
-		fs.mkdirSync(path.join(root, ".octocode", folder, "demo"), { recursive: true });
-		fs.writeFileSync(path.join(root, ".octocode", folder, "demo", name), content);
+		fs.mkdirSync(path.join(root, AGENT_DIR, folder, "demo"), { recursive: true });
+		fs.writeFileSync(path.join(root, AGENT_DIR, folder, "demo", name), content);
 	};
 	write(
 		"octocode-rfc-generator",
@@ -29,8 +30,8 @@ function reportWorkspace(): string {
 	);
 	write("octocode-rfc-generator", "appendix-engine.md", "# Appendix\nDetail.");
 	write("octocode-research", "brief.md", "---\nquestion: Who calls buildSystemPrompt?\n---\n\n# Prompt callers\n");
-	fs.mkdirSync(path.join(root, ".octocode", "octocode-brainstorming", "tmp"), { recursive: true });
-	fs.writeFileSync(path.join(root, ".octocode", "octocode-brainstorming", "tmp", "scratch.md"), "# Scratch");
+	fs.mkdirSync(path.join(root, AGENT_DIR, "octocode-brainstorming", "tmp"), { recursive: true });
+	fs.writeFileSync(path.join(root, AGENT_DIR, "octocode-brainstorming", "tmp", "scratch.md"), "# Scratch");
 	return root;
 }
 
@@ -85,7 +86,7 @@ it("opens the selected document when id and filename are duplicated across kinds
 	// The demo folder exists for both rfc and research; RFC.md only exists under rfc, brief.md only under research.
 	// Create an RFC.md in the research folder too so id+filename is duplicated.
 	fs.writeFileSync(
-		path.join(root, ".octocode", "octocode-research", "demo", "RFC.md"),
+		path.join(root, AGENT_DIR, "octocode-research", "demo", "RFC.md"),
 		"---\nquestion: Overlapping\n---\n\n# Research RFC\n",
 	);
 	const rfcFile = readReportFile(root, "demo", "rfc", "RFC.md");
@@ -102,7 +103,7 @@ it("rejects .md symlinks and keeps reads inside report folders", () => {
 	const root = reportWorkspace();
 	const outside = path.join(root, "outside-secret.md");
 	fs.writeFileSync(outside, "# secret");
-	const link = path.join(root, ".octocode", "octocode-rfc-generator", "demo", "escape.md");
+	const link = path.join(root, AGENT_DIR, "octocode-rfc-generator", "demo", "escape.md");
 	fs.symlinkSync(outside, link);
 	const index = readReportsIndex(root);
 	expect(index.reports.find((report) => report.kind === "rfc")?.files.some((file) => file.name === "escape.md")).toBe(
@@ -115,9 +116,9 @@ it("rejects .md symlinks and keeps reads inside report folders", () => {
 it("parses CRLF frontmatter", () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-reports-crlf-"));
 	cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }));
-	fs.mkdirSync(path.join(root, ".octocode", "octocode-rfc-generator", "demo"), { recursive: true });
+	fs.mkdirSync(path.join(root, AGENT_DIR, "octocode-rfc-generator", "demo"), { recursive: true });
 	fs.writeFileSync(
-		path.join(root, ".octocode", "octocode-rfc-generator", "demo", "RFC.md"),
+		path.join(root, AGENT_DIR, "octocode-rfc-generator", "demo", "RFC.md"),
 		"---\r\nstatus: Accepted\r\nconfidence: high\r\nquestion: Will it work?\r\n---\r\n\r\n# CRLF report\r\n",
 	);
 	const index = readReportsIndex(root);
@@ -132,9 +133,9 @@ it("parses CRLF frontmatter", () => {
 it("skips fenced code and frontmatter when finding the first heading", () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-reports-heading-"));
 	cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }));
-	fs.mkdirSync(path.join(root, ".octocode", "octocode-research", "demo"), { recursive: true });
+	fs.mkdirSync(path.join(root, AGENT_DIR, "octocode-research", "demo"), { recursive: true });
 	fs.writeFileSync(
-		path.join(root, ".octocode", "octocode-research", "demo", "brief.md"),
+		path.join(root, AGENT_DIR, "octocode-research", "demo", "brief.md"),
 		"---\nquestion: heading parsing\n---\n\n```\n# code sample\n```\n\nbody\n---\n# Actual title\n",
 	);
 	const index = readReportsIndex(root);
@@ -146,13 +147,13 @@ it("truncates generated payloads to schema bounds", () => {
 	cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }));
 	const longTitle = "T".repeat(500);
 	const longStatus = "S".repeat(100);
-	fs.mkdirSync(path.join(root, ".octocode", "octocode-rfc-generator", "demo"), { recursive: true });
+	fs.mkdirSync(path.join(root, AGENT_DIR, "octocode-rfc-generator", "demo"), { recursive: true });
 	fs.writeFileSync(
-		path.join(root, ".octocode", "octocode-rfc-generator", "demo", "RFC.md"),
+		path.join(root, AGENT_DIR, "octocode-rfc-generator", "demo", "RFC.md"),
 		`---\nstatus: ${longStatus}\n---\n\n# ${longTitle}\n`,
 	);
 	for (let i = 0; i < 40; i++) {
-		fs.writeFileSync(path.join(root, ".octocode", "octocode-rfc-generator", "demo", `extra-${i}.md`), `# Extra ${i}`);
+		fs.writeFileSync(path.join(root, AGENT_DIR, "octocode-rfc-generator", "demo", `extra-${i}.md`), `# Extra ${i}`);
 	}
 	const index = readReportsIndex(root);
 	expect(Value.Check(ReportsIndexSchema, index)).toBe(true);
@@ -164,10 +165,10 @@ it("truncates generated payloads to schema bounds", () => {
 it("skips identifiers that cannot be represented losslessly in the contracts schema", () => {
 	const root = reportWorkspace();
 	const longFile = `${"f".repeat(129)}.md`;
-	fs.writeFileSync(path.join(root, ".octocode", "octocode-rfc-generator", "demo", longFile), "# Too long");
+	fs.writeFileSync(path.join(root, AGENT_DIR, "octocode-rfc-generator", "demo", longFile), "# Too long");
 	const longId = "i".repeat(129);
-	fs.mkdirSync(path.join(root, ".octocode", "octocode-research", longId), { recursive: true });
-	fs.writeFileSync(path.join(root, ".octocode", "octocode-research", longId, "brief.md"), "# Too long");
+	fs.mkdirSync(path.join(root, AGENT_DIR, "octocode-research", longId), { recursive: true });
+	fs.writeFileSync(path.join(root, AGENT_DIR, "octocode-research", longId, "brief.md"), "# Too long");
 	const index = readReportsIndex(root);
 	expect(Value.Check(ReportsIndexSchema, index)).toBe(true);
 	expect(index.reports.find((report) => report.kind === "rfc")?.files.some((file) => file.name === longFile)).toBe(

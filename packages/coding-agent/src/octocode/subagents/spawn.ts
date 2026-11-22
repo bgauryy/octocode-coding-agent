@@ -1,40 +1,45 @@
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import type { Static } from "typebox";
-import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
+import type { FeatureContext } from "../../core/features/index.ts";
 import { withIdentity } from "../native/prompts/task.ts";
-import type { Permission } from "../permission/ask.ts";
 import { assignmentText, parentArchive } from "./identity-reminder.ts";
 import { modelLookup, textResult } from "../shared/util.ts";
 import { configureIdentity } from "./run-identity.ts";
 import { checkGoal } from "../team/identity.ts";
 import { launchOverlap } from "../team/overlap.ts";
-import { type AgentRuns, claimRun, planRun, type Run } from "./claim.ts";
-import type { Lingering } from "./linger.ts";
+import { claimRun, planRun, type Run } from "./claim.ts";
 import { runSubagent } from "./process.ts";
 import type { SubagentOutcome } from "./process/outcome.ts";
-import { buildRouteArgs, type ChildSession, childSession } from "./process/session.ts";
-import { type AgentProfile, askSpawn } from "./profiles.ts";
+import { buildRouteArgs, childSession } from "./process/session.ts";
+import { forkedContext, writeForkedSession } from "./context-fork.ts";
+import { askSpawn } from "./profiles.ts";
 import { spawnStillAllowed } from "./spawn-recheck.ts";
 import { startGate } from "./rate-gate.ts";
 import { type StaggerTurn, staggeredLaunch } from "./stagger.ts";
 import { admitResultSchema } from "./result-schema.ts";
-import type { RelayHost } from "./relay.ts";
 import { awaitSiblings, planReservation, type ReservationPlan, takeReservation, waitingText } from "./reservation.ts";
 import { pendingRefs, recordWorktreePid } from "./worktree.ts";
-import { REF_PREFIX } from "./worktree-base.ts";
-import { worktreeName } from "../worktree-paths/member-worktree.ts";
 import type { agentToolSpec } from "../native/tools/agent/spec.ts";
 import { resumeChild, resumedTask, resumeText } from "./children.ts";
 import { Isolation } from "./isolation.ts";
 import { nestingRefusal } from "./process/child-env.ts";
 import { finishChildNotes } from "./child-tasks.ts";
 import { delegatedCostNote } from "./delegated-cost.ts";
-import { chainPlan, type QueuedRun, queuedResult, queuedText, queueRun, startHeld } from "./spawn-chain.ts";
+import {
+	chainHandoff,
+	chainPlan,
+	type QueuedRun,
+	queuedResult,
+	queuedText,
+	queueRun,
+	startedText,
+	startHeld,
+} from "./spawn-chain.ts";
 import { holdItem, refuseLeanItem, refuseSecondChild as refuseSecond } from "./second-child.ts";
-import { routeSummary } from "./model.ts";
 import { runRunnerChild } from "./runner-child.ts";
-import type { Runners } from "./runner-port.ts";
-import { runnerPlan } from "./runner-task.ts";
+import type { SpawnEnv } from "./spawn-env.ts";
+import { runnerOf, runnerPlan } from "./runner-task.ts";
+import { foregroundHandOver } from "./foreground-handover.ts";
 import { reportInFlight, runForeground, startBackground } from "./run-execution.ts";
 import type { RunDetails } from "./run-types.ts";
 import { refuseOverLimit } from "./spawn-limits.ts";
@@ -45,30 +50,13 @@ import { resolveTaskServers } from "./task-servers.ts";
 import { joinTeamPatiently } from "./team-join.ts";
 import { type AgentUpdate, runDetails, tracker, waitingUpdate } from "./tracking.ts";
 
-/** What starting a subagent reads of the `agent` tool's registration (`tool.ts`). */
-export interface SpawnEnv {
-	api: FeatureSetup;
-	runs: AgentRuns;
-	permission: Permission;
-	getProfiles: () => Map<string, AgentProfile>;
-	getRefused?: () => ReadonlyMap<string, string>;
-	lingering: Lingering;
-	/** Live agent and goal pairs the launch result already named (`team/overlap.ts`): each is named once. */
-	overlapWarned: Set<string>;
-	/** The caller's signal joined with the one a permission change or shutdown aborts. */
-	withLaunch: (signal?: AbortSignal) => AbortSignal;
-	/** Runs `work` and, once it ends, records the run's session file and its questions to this session's agent. */
-	record: <T>(run: Run, details: RunDetails, session: ChildSession, work: Promise<T>) => Promise<T>;
-	relayHost: (ctx: Pick<FeatureContext, "hasUI" | "ui">) => RelayHost;
-	/** Connected runners: a task with `runner` runs its turns there instead of in an Octocode child (`runner-child.ts`). */
-	runners?: Runners;
-}
-
 type AgentParams = Static<ReturnType<typeof agentToolSpec>["parameters"]>;
 /**
  * One `agent` task call. A foreground call past the limit waits for a slot, its row saying so. A background call past it
  * returns its id at once and takes the slot detached (tied to the session), so a batch never keeps the parent deaf. `mail`:
  * the resume's `task` is a delivered message naming its sender, so it goes without the coordinator's follow-up header.
+ * A foreground call that outlasts the foreground budget continues as a background run and returns its id, unless
+ * `holdTurn`: the caller needs the child's report in this call.
  */
 export async function spawnAgent(
 	env: SpawnEnv,
@@ -78,6 +66,7 @@ export async function spawnAgent(
 	onUpdate: AgentUpdate | undefined,
 	ctx: FeatureContext,
 	mail = false,
+	holdTurn = false,
 ): Promise<AgentToolResult<RunDetails>> {
 	const { api, runs, permission, lingering } = env;
 	const team = runs.team;
@@ -96,18 +85,19 @@ export async function spawnAgent(
 	const resumed = params.resume ? resumeChild(ctx, params.resume, runs) : undefined;
 	const goal = checkGoal(params.goal ?? resumed?.child.goal);
 	if (resumed && params.isolate) throw new Error("resume continues a child in this tree; isolate does not apply.");
+	const forked = forkedContext(params, ctx.sessionManager); // frozen at dispatch: a queued child too
 	const refuseOverSpend = () => refuseOverLimit(api, ctx, runs, resumed?.child.id);
 	refuseOverSpend();
 	// Refusals first (an item this session cannot hold, unknown profile, unavailable model), then a slot, then the
 	// spawn ask: the user is never asked for a run that cannot start, and a refused or denied spawn claims nothing.
-	const { linked, after } = chainPlan(runs, api.settings.get(), params, ctx, resumed !== undefined);
+	const { linked, after, handoff } = chainPlan(runs, api.settings.get(), params, ctx, resumed !== undefined);
 	const chained = after.length > 0;
 	// One child per item (`second-child.ts`); the call that resumes a child passes for it.
 	const refuseSecondChild = (self?: string) => refuseSecond(runs, lingering, linked, [resumed?.child.id, self]);
 	refuseSecondChild();
-	const runner = params.runner;
+	const runner = runnerOf(params.runner, resumed?.child);
 	const plan = runner
-		? runnerPlan(params, env.runners)
+		? runnerPlan({ ...params, runner }, env.runners)
 		: planRun(
 				env.getProfiles(),
 				resumed ? resumedTask(params, resumed.child, ctx.modelRegistry.getAvailable()) : params,
@@ -124,11 +114,15 @@ export async function spawnAgent(
 		const row = waitingUpdate(params.profile, goal, 0);
 		onUpdate?.({ ...row, content: [{ type: "text", text: waitingText(waiting) }] });
 	};
-	const roleOnly = api.settings.get().subagents?.skillCatalog === "role";
-	const skillPlan = taskSkillPlan(plan.profile, params.skills, api.resources.getCommands(), roleOnly);
-	const skillResources = api.resources.getSkillResourceSnapshot(skillPlan.names);
+	const skillPlan = taskSkillPlan(plan.profile, params.skills, api.resources.getCommands());
+	// The named skills are checked (unknown, ambiguous and model-barred names fail here); a lean child reads only those,
+	// any other child inherits the whole list its `skill` tool declares.
+	const namedSkills = skillPlan.names && api.resources.getSkillResourceSnapshot(skillPlan.names);
+	const skillResources = skillPlan.inline && namedSkills ? namedSkills : api.resources.getSkillResourceSnapshot();
 	const artifactAccess = plan.profile?.lean ? "none" : "local";
 	const unhold = holdItem(runs, linked, id); // before any await, so one batch's calls hold their items in call order
+	// Held in the turn of the `chainPlan` check (nothing awaits between), so calls started together see each other's place.
+	const place = chained ? runs.chain!.reserve(linked?.ref, after) : undefined;
 	const slot = { held: false };
 	let referenced = "";
 	let claimed: Run | undefined;
@@ -136,6 +130,9 @@ export async function spawnAgent(
 	let approvedVia: string | undefined;
 	try {
 		referenced = withItems(await taskReferences(params.task, team, ctx, artifactAccess), params, ctx);
+		// A child that starts at once still gets the results of prerequisites that ended before the call.
+		if (!chained)
+			referenced = [referenced, await chainHandoff(runs, handoff, ctx, artifactAccess)].filter(Boolean).join("\n\n");
 		if (params.background) {
 			// A child just failed on a rate limit (`rate-gate.ts`): the next start would meet it too, so this one queues as well.
 			// So does one that waits for the reservations of a running child: it holds no slot and no lease until then.
@@ -190,6 +187,7 @@ export async function spawnAgent(
 		runs.groups.join(claimed.identity.id, params.background === true);
 	} finally {
 		unhold();
+		if (!claimed) place?.();
 		if (!claimed && slot.held) runs.slots.give();
 	}
 	const run = claimed;
@@ -201,8 +199,8 @@ export async function spawnAgent(
 	/** The run's place in the queue of children waiting for prerequisites. */
 	let queuedChild: QueuedRun | undefined;
 	// With the report's outcome (the success paths), the item the child worked on gets the report noted on it; `lingers`: the child stays reachable after it.
-	const finish = (outcome?: SubagentOutcome, lingers?: boolean) =>
-		(finalized ??= finishChildNotes(ctx, isolation, linked, outcome, run.identity.id, lingers, current)
+	const finish = (outcome?: SubagentOutcome, lingers?: boolean, stopped?: boolean) =>
+		(finalized ??= finishChildNotes(ctx, isolation, linked, outcome, run.identity.id, lingers, current, stopped)
 			.then((note) => {
 				runs.chain?.gate.refresh();
 				// A background report carrying a graph notice wakes the parent for it (`graph-wake.ts`).
@@ -239,27 +237,27 @@ export async function spawnAgent(
 				: await takeReservation(team, run, reserving, launchSignal);
 		if (!chained && linked) await linked.claim(launchSignal);
 		const host = env.relayHost(ctx);
-		const session = resumed?.session ?? childSession(run.identity);
+		const session = resumed && !resumed.runnerSession ? resumed.session : childSession(run.identity);
 		const details = runDetails(run, session);
 		run.identity.runId = details.runId;
 		runs.live.set(run.identity.id, details);
 		const track = tracker(run.identity, details, modelLookup(ctx), ctx);
-		// Only a background run that is not isolated (its worktree is gone) can stay reachable for a follow-up: for the linger setting, and after a `blocked` report whatever it is.
-		// A runner's conversation lives in its own CLI, so a runner run never lingers for a resume.
+		// Only a background run that is not isolated can stay reachable for a follow-up; a runner's conversation lives in its own CLI.
 		const isolated = params.isolate === true || resumed?.worktree !== undefined;
 		const lingers = !runner && params.background === true && !isolated;
 		const args = buildRouteArgs(run.profile, run.route, session, run.identity.mcpNamed);
-		const prefix = childCacheGroup(run, skillPlan);
+		const prefix = childCacheGroup(run);
 		const notes = `${run.teamNote}${reserved}${launchOverlap(team, run.identity.id, goal, env.overlapWarned)}`;
 		/** The part of a start that needs its slot: a worktree exists only for a run that can use it, and the teammates are those of the moment it starts. */
 		const begin = async (beginSignal: AbortSignal) => {
 			const cwd = isolated ? await isolation.start(ctx, run.identity, params.workingCopy, beginSignal) : ctx.cwd;
 			beginSignal.throwIfAborted();
+			if (forked) writeForkedSession(session, cwd, sessionId, forked);
 			const worktree = isolation.worktree;
 			const onSpawn = worktree ? (pid: number) => void recordWorktreePid(worktree, pid) : undefined;
 			const archive = parentArchive();
 			const told = resumeText(resumed, params.task);
-			const skillText = told.prefix || !skillPlan.inTask ? "" : taskSkillText(skillResources, skillPlan.inline);
+			const skillText = told.prefix || !namedSkills ? "" : taskSkillText(namedSkills, skillPlan.inline);
 			const parts = { referenced, browserMode: run.profile?.headless, skillText, resultContract };
 			const assigned = { ...run.identity, background: params.background === true, why: params.reason };
 			const task = withIdentity(`${mail ? "" : told.prefix}${childTaskInput(told.text, parts)}`, assigned, archive);
@@ -271,9 +269,7 @@ export async function spawnAgent(
 					if (change.responding) turn.warm();
 					tracked(change);
 				};
-				// A runner waits whole for its turn; an Octocode child boots at once and holds back only its task (`turn.ready`).
 				const onRunner = async (name: string) => {
-					await turn.ready();
 					const outcome = await runRunnerChild(env.runners!, {
 						runner: name,
 						model: params.model,
@@ -286,8 +282,11 @@ export async function spawnAgent(
 						onSpawn,
 						ctx,
 						team: runs.team,
+						...(resumed?.runnerSession ? { resume: resumed.runnerSession } : {}),
 					});
 					details.billing = outcome.billing;
+					if (outcome.runnerSession) details.runnerSession = outcome.runnerSession;
+					else if (resumed?.runnerSession) details.runnerSession = resumed.runnerSession;
 					return outcome;
 				};
 				const work = runner
@@ -312,7 +311,7 @@ export async function spawnAgent(
 				return env.record(run, details, session, work);
 			};
 			return {
-				staggered: staggeredLaunch(prefix, run.identity.cacheTtlMs, launch, run.identity.staggers === true),
+				staggered: staggeredLaunch(prefix, run.identity.cacheTtlMs, launch, run.identity.staggers === true && !runner),
 				warning: worktree?.warning ? `\n\n${worktree.warning}` : "",
 			};
 		};
@@ -347,7 +346,7 @@ export async function spawnAgent(
 				queuedChild = queueRun(
 					runs,
 					run,
-					{ goal, item: linked?.ref, after, details },
+					{ goal, item: linked?.ref, after, handoff, details },
 					() =>
 						spawnStillAllowed(permission, ctx, plan.profile, params.task, api.settings.get().defaultTools, approvedVia),
 					async (signal) => {
@@ -357,6 +356,7 @@ export async function spawnAgent(
 						await linked?.claim(signal);
 					},
 				);
+			place?.(); // the child is in the queue now: it counts there
 			startBackground(runs, run, details, params.task, whenFree, finish, sessionId, window);
 			handedOff = true;
 			details.status = "background";
@@ -366,31 +366,30 @@ export async function spawnAgent(
 		}
 		const started = await begin(launchSignal);
 		const warning = `${started.warning}${notes}`;
-		const stopping = () => {
-			details.stopping = true;
-			onUpdate?.({ content: [{ type: "text", text: "stopping…" }], details: { ...details } });
-		};
-		if (!params.background)
+		if (!params.background) {
+			const call = { runs, run, details, task: params.task, finish, sessionId, warning, onUpdate };
+			const handing = foregroundHandOver(call, holdTurn);
+			const launch = started.staggered(handing?.onUpdate ?? onUpdate);
 			return await runForeground(
 				runs,
 				run,
 				details,
-				started.staggered(onUpdate),
+				launch,
 				finish,
 				warning,
 				launchSignal,
-				stopping,
+				onUpdate,
+				handing?.handOver,
 			);
+		}
 		startBackground(runs, run, details, params.task, started.staggered(), finish, sessionId, window);
 		handedOff = true;
 		details.status = "background";
-		return textResult(
-			`Started ${run.identity.id} (${run.identity.role}) in the background; its report arrives as a message. Runs on ${routeSummary(run.route)}.${isolation.worktree ? ` Works in its own worktree ${worktreeName(isolation.worktree.path)}, removed when it ends; its result lands on ${REF_PREFIX}${run.identity.id}.` : ""}${warning}`,
-			details,
-		);
+		return textResult(startedText(run, isolation.worktree, warning), details);
 	} finally {
 		// A failure before the run started still removes the worktree, and leaves the step's group it joined.
 		if (!handedOff) {
+			place?.();
 			runs.groups.leave(run.identity.id);
 			runs.reports.reportingChanged();
 			await finish();

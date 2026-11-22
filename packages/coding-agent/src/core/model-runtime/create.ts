@@ -30,6 +30,8 @@ export interface ModelRuntimeParts {
 	providers: Provider[];
 	/** False in offline mode: catalog and availability refreshes stay local. */
 	modelNetworkEnabled: boolean;
+	/** Whether a login or credential change starts a network refresh of its provider: network on and requested. */
+	refreshAfterCredentialChange: boolean;
 }
 
 /** Load credentials, models.json and the catalog store, and create the built-in providers. */
@@ -50,7 +52,16 @@ export async function loadModelRuntimeParts(options: CreateModelRuntimeOptions):
 		(modelsPath
 			? new FileModelsStore(options.modelsStorePath ?? join(dirname(modelsPath), "models-store.json"))
 			: new InMemoryModelsStore());
-	return { credentials, config, modelsPath, modelsStore, providers, modelNetworkEnabled: !isOfflineModeEnabled() };
+	const modelNetworkEnabled = !isOfflineModeEnabled();
+	return {
+		credentials,
+		config,
+		modelsPath,
+		modelsStore,
+		providers,
+		modelNetworkEnabled,
+		refreshAfterCredentialChange: modelNetworkEnabled && options.allowModelNetwork === true,
+	};
 }
 
 /**

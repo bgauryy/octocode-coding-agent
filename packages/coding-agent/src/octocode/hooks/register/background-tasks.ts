@@ -49,6 +49,7 @@ export function backgroundTasks(work: RunningWork): BackgroundTask[] {
 						command: capped(row.detail ?? row.title),
 					},
 				];
+			if (row.kind === "job") return [{ id: row.id, type: "external", status: "running", description }];
 			if (row.kind === "timer") return [{ id: row.id, type: "timer", status: "scheduled", description }];
 			if (row.kind === "external") return [{ id: row.id, type: "external", status: "running", description }];
 			return [];

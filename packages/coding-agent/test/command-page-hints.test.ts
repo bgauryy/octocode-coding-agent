@@ -123,7 +123,7 @@ const PAGES: Page[] = [
 		keys: [MOVE, ENTER, ESC],
 	},
 	{
-		name: "/configuration",
+		name: "/settings",
 		build: () =>
 			new ConfigurationSelectorComponent({
 				entries: [],

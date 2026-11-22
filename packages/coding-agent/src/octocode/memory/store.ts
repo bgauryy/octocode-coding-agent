@@ -172,12 +172,13 @@ export class MemoryStore {
 		const scope = input.scope ?? current.scope;
 		const body = input.body === undefined ? current.body : storedText(input.body);
 		const keywords = input.keywords === undefined ? current.keywords : storedText(input.keywords);
-		// Moving to another scope is an insert there: refuse it when it repeats a memory already in that scope.
-		if (scope !== current.scope) {
-			const duplicate = this.duplicateOf(`${title} ${keywords} ${body}`, title);
-			if (duplicate && duplicate.id !== id)
+		// A retitle, a rewrite or a move to another scope is an insert as far as duplicates go: refuse it when it repeats
+		// another memory. A change that leaves them alone (pinning, a kind) never meets old near-duplicates.
+		if (scope !== current.scope || title !== current.title || body !== current.body || keywords !== current.keywords) {
+			const duplicate = this.duplicateOf(`${title} ${keywords} ${body}`, title, id);
+			if (duplicate)
 				throw new MemoryError(
-					`Similar memory ${memoryLabel(duplicate.id)} exists in ${scope} scope: "${duplicate.title}". Update or delete one of them instead.`,
+					`Similar memory ${memoryLabel(duplicate.id)} exists${scope === current.scope ? "" : ` in ${scope} scope`}: "${duplicate.title}". Update or delete one of them instead.`,
 				);
 		}
 		memories.update(this.db, id, {
@@ -199,7 +200,7 @@ export class MemoryStore {
 	 * normalized title, or whose title, keyword and body words (`text`) mostly match, among the full-text matches. A
 	 * queued lesson candidate (`file/candidate-tags.ts`) is no saved note: a save never yields to one.
 	 */
-	private duplicateOf(text: string, title: string): Memory | undefined {
+	private duplicateOf(text: string, title: string, exceptId?: number): Memory | undefined {
 		const normalized = normalizeTitle(title);
 		const words = identityTerms(text);
 		const matches = [
@@ -208,6 +209,7 @@ export class MemoryStore {
 		];
 		return matches.find(
 			(memory) =>
+				memory.id !== exceptId &&
 				!isCandidate(memory) &&
 				((normalized !== "" && normalizeTitle(memory.title) === normalized) ||
 					jaccard(words, identityTerms(`${memory.title} ${memory.keywords} ${memory.body}`)) >= DUPLICATE_JACCARD),

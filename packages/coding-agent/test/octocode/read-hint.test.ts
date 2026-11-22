@@ -92,18 +92,18 @@ describe("createReadHint", () => {
 		const hint = createReadHint(active);
 		for (let i = 0; i < READ_HINT_LIMIT; i++)
 			expect(hint("rg foo", cwd, "s1")).toBe(
-				"Hint: search source with `mcp__research__search_code`, with bash as the fallback. Bash suits builds, tests, scripts, git and command output.",
+				"Hint: search source with `mcp__research__search_code`; use bash for source only after they refuse the path or fail. Bash is for builds, tests, scripts and git.",
 			);
 		expect(hint("rg foo", cwd, "s1")).toBeUndefined();
 	});
 
-	it("routes a print to the reader and a search to the search tools, bash as the fallback for both", () => {
+	it("routes a print to the reader and a search to the search tools, bash only after they refuse or fail", () => {
 		const hint = createReadHint(active);
 		expect(hint("cat src/a.ts", cwd, "s1")).toContain(
-			`read source with \`${RESEARCH.reader}\`, with bash as the fallback`,
+			`read source with \`${RESEARCH.reader}\`; use bash for source only after`,
 		);
 		expect(hint("rg foo src", cwd, "s1")).toContain(
-			`search source with \`${RESEARCH.search}\`, with bash as the fallback`,
+			`search source with \`${RESEARCH.search}\`; use bash for source only after`,
 		);
 	});
 

@@ -16,7 +16,7 @@ function spawned(members: Member[]): string {
 	const parts = {
 		resultContract: undefined,
 		linked: undefined,
-		skillPlan: { inline: false, inTask: false, roleSkills: [] },
+		skillPlan: { inline: false, roleSkills: [] },
 		skillResources: {},
 		taskServers: undefined,
 		grants: [],

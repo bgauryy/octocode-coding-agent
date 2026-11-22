@@ -3,7 +3,7 @@ import type { ConfigCatalog } from "./catalog.ts";
 import type { AppliesWhen, ConfigEntry, ConfigOp, ConfigResult, ConfigScope } from "./types.ts";
 
 /**
- * The text form of the configuration verbs, shared by `/configuration <verb>` and `octocode configuration <verb>`: it
+ * The text form of the configuration verbs, shared by `/settings <verb>` and `octocode configuration <verb>`: it
  * parses the words, runs them on the catalog and returns what to print. Front-ends only print `lines` and use `ok` for the
  * exit code (or the warning level).
  */
@@ -49,7 +49,7 @@ export function parseConfigWords(tokens: readonly string[]): ParsedConfigWords {
 	};
 }
 
-/** One line per verb; `name` is the front-end's way to start the command (`/configuration`, `octocode configuration`). */
+/** One line per verb; `name` is the front-end's way to start the command (`/settings`, `octocode configuration`). */
 function configurationUsage(name: string): string[] {
 	return [
 		`Usage: ${name} [list [kind|text] | get <id> | enable <id>... | disable <id>... [--force] | set <key> <value> | unset <key> | add mcp <name> ... | remove <id>] [--local]`,
@@ -93,7 +93,7 @@ function formatEntries(all: readonly ConfigEntry[], limit: number, filtered: boo
 	if (hidden)
 		lines.push(
 			"",
-			`… ${hidden} more entries. ${filtered ? "Narrow it: /configuration list <kind> <text>" : "Filter: /configuration list <kind>|<text>"} (--json lists all)`,
+			`… ${hidden} more entries. ${filtered ? "Narrow it: /settings list <kind> <text>" : "Filter: /settings list <kind>|<text>"} (--json lists all)`,
 		);
 	return lines.slice(1);
 }

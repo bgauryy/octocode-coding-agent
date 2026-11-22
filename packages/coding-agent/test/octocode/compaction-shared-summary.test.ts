@@ -10,7 +10,8 @@ import { SUMMARY_METHOD_DETAILS, writeSummary } from "../../src/octocode/compact
 import { renderPrompt } from "../../src/core/prompt-template.ts";
 import { CLEARED_RESULTS_TYPE } from "../../src/octocode/files/reads.ts";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
-import { summaryTargetTokens } from "../../src/core/compaction/checkpoint.ts";
+import { inlineSummaryTokens, summaryTargetTokens } from "../../src/core/compaction/checkpoint.ts";
+import { builtInCompactionSettings } from "../../src/core/compaction/settings.ts";
 import { summarySizeTarget } from "../../src/core/compaction/summary-format.ts";
 import { asSetup } from "./fake-host.ts";
 
@@ -432,6 +433,30 @@ describe("cache-sharing compaction summary", () => {
 		expect(await sharedSummary(api, event, ctx, full as never, "x", (why) => reasons.push(why))).toBeUndefined();
 		expect(calls).toHaveLength(0);
 		expect(reasons).toEqual([expect.stringMatching(/window leaves 100 output tokens/)]);
+	});
+
+	// A main session has the model's whole window; a child's window is its context budget, below the model's capacity.
+	it.each([
+		["a main session", 1_000_000, "high"],
+		["a main session without thinking", 200_000, "off"],
+		["a child with a 300k budget", 300_000, "high"],
+		["a child with a 300k budget without thinking", 300_000, "off"],
+		["a child with a 200k budget", 200_000, "low"],
+	] as const)("writes the summary in the cached request at the threshold for %s", async (_name, window, level) => {
+		const { calls, api, ctx, event } = setup();
+		const { reserveTokens } = builtInCompactionSettings({ contextWindow: window, reasoning: true }, { level });
+		const atThreshold = window - reserveTokens + 1;
+		const preparation = (event as { preparation: { tokensBefore: number; settings: { reserveTokens: number } } })
+			.preparation;
+		preparation.tokensBefore = atThreshold;
+		preparation.settings = { reserveTokens };
+		const budgeted = { ...model, maxTokens: 64_000, contextWindow: window };
+		const reasons: string[] = [];
+		const result = await sharedSummary(api, event, ctx, budgeted as never, "x", (why) => reasons.push(why));
+		expect(reasons).toEqual([]);
+		expect(result).toBeDefined();
+		expect(calls).toHaveLength(1);
+		expect(calls[0].options.maxTokens).toBe(inlineSummaryTokens(reserveTokens));
 	});
 
 	it("asks every summary, the first one too, to stay under the computed size target", async () => {

@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 describe("running tool row cadence", () => {
-	it("repaints a foreground row every spinner frame", () => {
+	it("repaints a running row every light spinner frame", () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(10_000);
 		const invalidate = vi.fn();
@@ -28,7 +28,7 @@ describe("running tool row cadence", () => {
 			expanded: false,
 		};
 		toolHeader(theme, context, "Bash", "sleep 10");
-		vi.advanceTimersByTime(MOTION.spinnerMs * 10);
+		vi.advanceTimersByTime(MOTION.backgroundSpinnerMs * 10);
 		expect(invalidate.mock.calls.length).toBeGreaterThanOrEqual(9);
 	});
 });

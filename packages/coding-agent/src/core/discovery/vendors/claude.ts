@@ -4,7 +4,7 @@ import { repoKey } from "../../../utils/git-repository.ts";
 import { claudeConfigDir } from "../../../utils/host-config.ts";
 import { dirsToRepoRoot } from "../../../utils/repo-dirs.ts";
 import { makeItem } from "../roots.ts";
-import { externalSkillsEnabled, hookFileItems, listsProject, skillItemsIn } from "../sources.ts";
+import { externalSkillsEnabled, hookFileItems, listsProject, skillItemsIn, withinTrust } from "../sources.ts";
 import type { ConfigItem, DiscoverInput } from "../types.ts";
 import { mcpSource } from "./mcp-items.ts";
 import { vendorDefaultOn } from "./switch.ts";
@@ -14,14 +14,21 @@ const ROOT = { product: "octocode", vendor: "claude", origin: "claude" } as cons
 
 const claudeDir = (input: DiscoverInput) => claudeConfigDir(input.home, input.env ?? process.env);
 
-const projectClaudeFiles = (cwd: string) =>
-	["settings.json", "settings.local.json"].map((name) => path.join(repoKey(cwd).root, ".claude", name));
+/** The project's Claude settings files; none when the repository root lies outside the trust grant's folder. */
+const projectClaudeFiles = (input: DiscoverInput) => {
+	const root = repoKey(input.cwd).root;
+	return withinTrust(input, root)
+		? ["settings.json", "settings.local.json"].map((name) => path.join(root, ".claude", name))
+		: [];
+};
 
 /** `~/.claude/skills` and the workspace's `.claude/skills` (cwd up to its repository root), without `synced/`. */
 function skills(input: DiscoverInput): ConfigItem[] {
 	if (!externalSkillsEnabled(input.env ?? process.env)) return [];
 	const project = listsProject(input)
-		? dirsToRepoRoot(input.cwd).map((dir) => path.join(dir, ".claude", "skills"))
+		? dirsToRepoRoot(input.cwd)
+				.filter((dir) => withinTrust(input, dir))
+				.map((dir) => path.join(dir, ".claude", "skills"))
 		: [];
 	return [
 		...skillItemsIn(project, { ...ROOT, scope: "project" }, input, { skipSynced: true }),
@@ -33,7 +40,7 @@ function skills(input: DiscoverInput): ConfigItem[] {
 function hooks(input: DiscoverInput): ConfigItem[] {
 	return [
 		...hookFileItems([path.join(claudeDir(input), "settings.json")], "claude", "global", input),
-		...(listsProject(input) ? hookFileItems(projectClaudeFiles(input.cwd), "claude", "project", input) : []),
+		...(listsProject(input) ? hookFileItems(projectClaudeFiles(input), "claude", "project", input) : []),
 	];
 }
 
@@ -49,7 +56,7 @@ export function claudeMemoryDir(input: DiscoverInput): { dir: string; diagnostic
 	const env = input.env ?? process.env;
 	const diagnostics: string[] = [];
 	let configured: string | undefined;
-	for (const file of [path.join(claudeDir(input), "settings.json"), ...projectClaudeFiles(input.cwd)]) {
+	for (const file of [path.join(claudeDir(input), "settings.json"), ...projectClaudeFiles(input)]) {
 		if (!existsSync(file)) continue;
 		try {
 			const value = (JSON.parse(readFileSync(file, "utf8")) as { autoMemoryDirectory?: unknown }).autoMemoryDirectory;

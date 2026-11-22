@@ -1,24 +1,13 @@
 import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { setMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Skill } from "../../src/core/skills.ts";
-import { createSyntheticSourceInfo } from "../../src/core/source-info.ts";
 import { buildSystemPrompt } from "../../src/core/system-prompt.ts";
-import { childSkills, registerTurnSetup } from "../../src/octocode/turn.ts";
+import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost } from "./fake-host.ts";
 import { tmp, allSections } from "./helpers.ts";
 import { RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
 
 useResearchRoles();
-
-const skill = (name: string, disableModelInvocation = false): Skill => ({
-	name,
-	description: `Instructions for ${name}.`,
-	filePath: `/skills/${name}/SKILL.md`,
-	baseDir: `/skills/${name}`,
-	sourceInfo: createSyntheticSourceInfo(`/skills/${name}/SKILL.md`, { source: "test" }),
-	disableModelInvocation,
-});
 
 describe("registerTurnSetup routing and child trim", () => {
 	beforeEach(() => vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", tmp()));
@@ -58,7 +47,7 @@ describe("registerTurnSetup routing and child trim", () => {
 		expect(failed.research).toBe(before.research);
 	});
 
-	it("keeps synthetic skill metadata when preparing a child", async () => {
+	it("leaves a child's docs and skills out of its system prompt", async () => {
 		const fake = fakeHost();
 		fake.tools.set("bash", { name: "bash", exposure: "direct" });
 		registerTurnSetup(fake.api, { isSubagent: true, profiles: () => new Map() });
@@ -67,25 +56,16 @@ describe("registerTurnSetup routing and child trim", () => {
 				sections: {} as Record<string, string>,
 				baseSections: {} as Record<string, string>,
 				selectedTools: ["bash"],
-				skills: [skill("research"), skill("hidden", true)],
 			},
 		};
 		await fake.emit("before_agent_start", event, {});
 		expect(allSections(event).docs).toBe("");
-		expect(event.systemPromptOptions.skills.map((s) => [s.name, s.description, s.disableModelInvocation])).toEqual([
-			["research", skill("research").description, false],
-			["hidden", skill("hidden").description, true],
-		]);
 		const prompt = buildSystemPrompt({
 			cwd: "/tmp",
 			selectedTools: ["bash", RESEARCH.reader],
 			contextFiles: [],
 			sections: allSections(event),
-			skills: event.systemPromptOptions.skills,
 		});
-		expect(prompt).toMatch(/<skill name="research" location="[^"]+">Instructions for research\.<\/skill>/);
-		expect(childSkills([skill("x")])[0].description).toBe(skill("x").description);
-		// A coordinator-only skill (delegation, filing items) is left out of a subagent's listing.
-		expect(childSkills([skill("x"), { ...skill("lead"), audience: "coordinator" }]).map((s) => s.name)).toEqual(["x"]);
+		expect(prompt).not.toMatch(/<skills>|<available_skills>/);
 	});
 });

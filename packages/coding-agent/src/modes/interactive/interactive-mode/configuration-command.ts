@@ -1,5 +1,5 @@
 /**
- * `/configuration`: no arguments open the selector over the catalog, with arguments the text verbs run on it. Changes go
+ * `/settings`: no arguments open the selector over the catalog, with arguments the text verbs run on it. Changes go
  * through the session's own settings manager and the MCP owner's live switch, so what can apply now does.
  */
 
@@ -63,7 +63,7 @@ function print(host: ConfigurationHost, lines: readonly string[], ok: boolean): 
 	host.ui.requestRender();
 }
 
-/** `/configuration` with no arguments. */
+/** `/settings` with no arguments. */
 async function showConfigurationSelector(host: ConfigurationHost): Promise<void> {
 	const catalog = sessionCatalog(host);
 	const entries = await catalog.list();
@@ -92,10 +92,10 @@ async function showConfigurationSelector(host: ConfigurationHost): Promise<void>
 	});
 }
 
-/** `/configuration <verb> ...`: runs the verb and prints each result; with no words, opens the selector. */
+/** `/settings <verb> ...`: runs the verb and prints each result; with no words, opens the selector. */
 export async function handleConfigurationCommand(host: ConfigurationHost, args: string): Promise<void> {
 	const words = splitConfigWords(args);
 	if (words.length === 0) return showConfigurationSelector(host);
-	const outcome = await runConfigWords(sessionCatalog(host), words, "/configuration", { listRows: 40 });
+	const outcome = await runConfigWords(sessionCatalog(host), words, "/settings", { listRows: 40 });
 	print(host, outcome.lines, outcome.ok);
 }

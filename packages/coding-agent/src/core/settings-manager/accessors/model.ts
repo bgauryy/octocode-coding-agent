@@ -2,6 +2,7 @@ import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
 import type { Settings, ThinkingBudgetsSettings, TransportSetting } from "../../settings-schema.ts";
 import { normalizeProviderSources, SOURCE_DEFAULTS } from "../../provider-sources/gate.ts";
+import { type HiddenModels, normalizeHiddenModels } from "../../provider-models.ts";
 import type { ProviderSourceOverrides, ToggleableSourceId } from "../../provider-sources/types.ts";
 import type { ModelSettingsApi } from "../api/model.ts";
 import { type DefaultModelSelectionOptions, saveDefaultModelSelection, saveEnabledModels } from "../model-default.ts";
@@ -179,6 +180,19 @@ export abstract class ModelSettingsAccessors extends SettingsAccessorBase implem
 	setDisabledProviders(providerIds: readonly string[]): void {
 		this.globalSettings.disabledProviders = [...new Set(providerIds)];
 		this.markModified("disabledProviders");
+		this.save();
+	}
+
+	/** Model ids the user hid per provider. Global only: a project file cannot hide a model. */
+	getHiddenModels(): Record<string, string[]> {
+		return normalizeHiddenModels(this.globalSettings.hiddenModels);
+	}
+
+	setHiddenModels(hidden: HiddenModels): void {
+		const next = normalizeHiddenModels(hidden);
+		if (Object.keys(next).length === 0) delete this.globalSettings.hiddenModels;
+		else this.globalSettings.hiddenModels = next;
+		this.markModified("hiddenModels");
 		this.save();
 	}
 

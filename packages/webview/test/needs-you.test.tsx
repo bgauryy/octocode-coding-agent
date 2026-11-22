@@ -97,6 +97,15 @@ it("shows a header pill and a title prefix on any view, answers inline, then cle
 	expect(document.title).toBe(BASE_TITLE);
 });
 
+it("labels a pending question in the header and opens its answer field", async () => {
+	const view = await open("#board");
+	await view.send({ awaiting: { kind: "question", title: "Which branch?", id: "q1", allowsText: true } });
+	await userEvent.click(await screen.findByRole("button", { name: "Pending question" }));
+	const panel = screen.getByRole("region", { name: "Needs you" });
+	expect(within(panel).getByText(/Which branch/)).toBeInTheDocument();
+	expect(within(panel).getByRole("textbox")).toBeInTheDocument();
+});
+
 it("offers 'Answer waiting question' in the palette only while something waits", async () => {
 	const view = await open("#board");
 	await view.send({});

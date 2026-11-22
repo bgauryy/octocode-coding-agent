@@ -8,7 +8,7 @@ import {
 	createFauxCore,
 	fauxAssistantMessage,
 	fauxToolCall,
-	getCurrentSystemPrompt,
+	getCurrentTools,
 	type JsonObject,
 } from "@octocodeai/octocode-ai";
 import { afterEach, expect, it, vi } from "vitest";
@@ -177,8 +177,8 @@ async function fixture() {
 		cwd,
 		agentDir,
 		settingsManager,
+		// The parent keeps its MCP servers: a child runs only the servers of its coordinator's session (`planTaskMcpServers`).
 		nativeFeatures: nativeFeatureSet(),
-		disabledFeatures: ["mcp"],
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
@@ -219,7 +219,7 @@ async function fixture() {
 	const run = async (task: string, skills?: string[], expectedError = false, background = false) => {
 		faux.setResponses([
 			(context) => {
-				parentCatalog = getCurrentSystemPrompt(context.messages);
+				parentCatalog = getCurrentTools(context.messages).find((tool) => tool.name === "skill")?.description ?? "";
 				return fauxAssistantMessage(
 					[
 						fauxToolCall("agent", {
@@ -313,19 +313,25 @@ async function fixture() {
 		},
 	};
 }
+/** The text of the `skill` tool a child request declares: the list of skills it may load. */
+const childSkillList = (request: JsonObject): string =>
+	(request.tools as Array<{ function?: { name?: string; description?: string } }>)
+		.filter((tool) => tool.function?.name === "skill")
+		.map((tool) => tool.function?.description)
+		.join("");
+
 it("inherits accepted model-only and qualified plugin resources through the actual parent agent tool", async () => {
 	const f = await fixture();
 	try {
 		await f.run("Inspect the inherited catalog and use $review-kit:review. Return a short report.");
-		expect(f.parentCatalog()).toContain('<skill name="model-only"');
-		expect(f.parentCatalog()).toContain('<skill name="review-kit:review"');
+		expect(f.parentCatalog()).toContain("Model-only accepted resource");
+		expect(f.parentCatalog()).toContain("Qualified accepted resource");
 		expect(f.commands()).not.toContain("model-only");
 		expect(f.commands()).toContain("review-kit:review");
 		expect(f.requests).toHaveLength(1);
 		const child = JSON.stringify(f.requests[0]);
-		// The request is JSON, so the attribute's quotes are escaped.
-		expect(child).toContain('<skill name=\\"model-only\\"');
-		expect(child).toContain('<skill name=\\"review-kit:review\\"');
+		expect(childSkillList(f.requests[0])).toContain("Model-only accepted resource");
+		expect(childSkillList(f.requests[0])).toContain("Qualified accepted resource");
 		expect(child).toContain("PLUGIN_QUALIFIED_BODY");
 		expect(child).not.toContain("MODEL_ONLY_BODY");
 	} finally {
@@ -343,9 +349,7 @@ it("declares the mcp tool to a real child, so it can restart its own servers", a
 		expect(declared).toContain("mcp");
 		// The child adopted the parent's skills, so it can load one by name.
 		expect(declared).toContain("skill");
-		expect(JSON.stringify(f.requests[0].messages)).toContain(
-			"Use the skill tool (one call per name) to load a skill when its description matches",
-		);
+		expect(childSkillList(f.requests[0])).toContain("Load skills, several per call");
 	} finally {
 		await f.close();
 	}
@@ -416,17 +420,19 @@ it("uses the parent's canonical skill identity after its discovery symlink chang
 }, 30000);
 
 it.each([[["review-kit:review"]], [[]]])(
-	"inherits only an explicit skill subset %j",
+	"loads the mentioned skill whatever the selection %j",
 	async (skills) => {
 		const f = await fixture();
 		try {
 			await f.run("Use $review-kit:review and $collision.", skills);
 			const child = JSON.stringify(f.requests[0]);
-			// Explicit skills ride in the task; an empty selection carries no skill entries.
-			for (const name of ["model-only", "review-kit:review", "collision", "argument-kit:arguments", "aliased"])
-				if (skills.includes(name)) expect(child).toContain(`<name>${name}</name>`);
-				else expect(child).not.toContain(`<name>${name}</name>`);
-			expect(child.includes("PLUGIN_QUALIFIED_BODY")).toBe(skills.includes("review-kit:review"));
+			// `skills` only names what loads first: every child lists the parent's skills, so the one the task mentions
+			// loads with an empty selection too, and one it does not mention (or that is ambiguous) never does.
+			expect(child).toContain("<name>review-kit:review</name>");
+			expect(child).toContain("PLUGIN_QUALIFIED_BODY");
+			for (const name of ["model-only", "collision", "argument-kit:arguments", "aliased"])
+				expect(child).not.toContain(`<name>${name}</name>`);
+			expect(childSkillList(f.requests[0])).toContain("Qualified accepted resource");
 		} finally {
 			await f.close();
 		}
@@ -498,8 +504,8 @@ it("resumes the actual named child with its captured inventory after the parent 
 		const second = JSON.stringify(f.requests[1]);
 		expect(second).toContain("CANONICAL_BODY");
 		expect(second).not.toContain("RETARGET_BODY");
-		expect(second).toContain('<skill name=\\"model-only\\"');
-		expect(second).toContain('<skill name=\\"review-kit:review\\"');
+		expect(childSkillList(f.requests[1])).toContain("Model-only accepted resource");
+		expect(childSkillList(f.requests[1])).toContain("Qualified accepted resource");
 	} finally {
 		await f.close();
 	}
@@ -626,7 +632,7 @@ it("pins a model-only accepted alias for the child catalog and actual MCP refere
 		const first = JSON.stringify(f.requests[0]),
 			second = JSON.stringify(f.requests[1]);
 		// The catalog names skills; the `skill` tool returns the directory when one is loaded.
-		expect(first).toContain('<skill name=\\"model-only\\"');
+		expect(childSkillList(f.requests[0])).toContain("Model-only accepted resource");
 		expect(first).not.toContain("UNACCEPTED_MODEL_BODY");
 		expect(second).toContain("REFERENCE_model-only");
 		expect(second).not.toContain("UNACCEPTED_MODEL_REFERENCE");

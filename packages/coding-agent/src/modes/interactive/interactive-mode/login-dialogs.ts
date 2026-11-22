@@ -10,7 +10,11 @@ import type { Component } from "@octocodeai/octocode-tui";
 import { APP_NAME, getAgentDir, getDocsPath } from "../../../config.ts";
 import { CredentialSynchronizationError } from "../../../core/model-runtime.ts";
 import { detectKeychain } from "../../../core/auth-storage/keychain.ts";
-import { KeychainLoginSession, plaintextStorageNotice } from "../../../core/auth-storage/keychain-login.ts";
+import {
+	confirmPlaintextHost,
+	KeychainLoginSession,
+	plaintextStorageNotice,
+} from "../../../core/auth-storage/keychain-login.ts";
 import { DialogSelectorComponent } from "../components/dialog-selector.ts";
 import { LoginDialogComponent } from "../components/login-dialog.ts";
 import type { AuthSelectorProvider } from "../components/oauth-selector.ts";
@@ -38,22 +42,30 @@ type LoginDialogsHost = Pick<
 >;
 
 export async function completeProviderAuthentication(
-	host: LoginDialogsHost,
+	connected: Pick<
+		InteractiveModeHost,
+		| "session"
+		| "showModelSelector"
+		| "showStatus"
+		| "showWarning"
+		| "updateAvailableProviderCount"
+		| "updateEditorBorderColor"
+	>,
 	providerId: string,
 	providerName: string,
 	authType: "oauth" | "api_key",
 ): Promise<void> {
 	const actionLabel = authType === "oauth" ? `Logged in to ${providerName}` : `Saved API key for ${providerName}`;
-	host.updateAvailableProviderCount();
-	host.updateEditorBorderColor();
-	host.showStatus(`${actionLabel}. Choose a model; Esc keeps the current model.`);
-	if (host.session.modelRuntime.getProviderAuthStatus(providerId).source === "runtime") {
-		host.showWarning(
+	connected.updateAvailableProviderCount();
+	connected.updateEditorBorderColor();
+	connected.showStatus(`${actionLabel}. Choose a model; Esc keeps the current model.`);
+	if (connected.session.modelRuntime.getProviderAuthStatus(providerId).source === "runtime") {
+		connected.showWarning(
 			"The session API key override still takes priority. Clear it in /providers to use the saved credential.",
 		);
 	}
 	// The picker owns its bounded catalog refresh and cancellation. Connecting never silently changes the default.
-	host.showModelSelector(`${providerId}/`);
+	connected.showModelSelector(`${providerId}/`);
 }
 
 export function showAmbientAuthDialog(
@@ -85,11 +97,33 @@ export async function showApiKeyLoginDialog(
 	if (providerId === "amazon-bedrock") {
 		dialog.showDetails([
 			theme.fg("text", "You can also use an AWS profile, IAM keys, or role-based credentials."),
+			theme.fg(
+				"text",
+				"A custom endpoint host and region are optional and are saved with the key. For a fully custom host, choose the 'Custom OpenAI-compatible host' template instead.",
+			),
 			theme.fg("muted", "See:"),
 			theme.fg("accent", `  ${path.join(getDocsPath(), "providers.md")}`),
 		]);
 	}
 	await runLoginDialog(host, dialog, providerId, providerName, "api_key", onBack);
+}
+
+/** Asks for one secret with hidden input; undefined when the user cancels or types nothing. */
+export async function showSecretDialog(
+	slot: Pick<InteractiveModeHost, "editor" | "editorContainer" | "ui">,
+	title: string,
+	message: string,
+): Promise<string | undefined> {
+	const dialog = new LoginDialogComponent(slot.ui, "secret", () => {}, title, title);
+	showInEditorSlot(slot, dialog);
+	try {
+		return (await dialog.showPrompt(message, undefined, true)).trim() || undefined;
+	} catch (error: unknown) {
+		if (dialog.signal.aborted) return undefined;
+		throw error;
+	} finally {
+		showInEditorSlot(slot, slot.editor);
+	}
 }
 
 export async function showLoginDialog(
@@ -103,11 +137,11 @@ export async function showLoginDialog(
 }
 
 /** Puts `component` in the editor slot and focuses it. */
-function showInEditorSlot(host: Pick<InteractiveModeHost, "editorContainer" | "ui">, component: Component): void {
-	host.editorContainer.clear();
-	host.editorContainer.addChild(component);
-	host.ui.setFocus(component);
-	host.ui.requestRender();
+function showInEditorSlot(slot: Pick<InteractiveModeHost, "editorContainer" | "ui">, component: Component): void {
+	slot.editorContainer.clear();
+	slot.editorContainer.addChild(component);
+	slot.ui.setFocus(component);
+	slot.ui.requestRender();
 }
 
 /** Runs a provider login inside `dialog`, then restores the editor and reports the outcome. */
@@ -270,7 +304,9 @@ async function loginProvider(
 			method,
 			{
 				signal: dialog.signal,
-				prompt: storage ? storage.wrapPrompt(prompt) : prompt,
+				prompt: storage
+					? storage.wrapPrompt(prompt)
+					: confirmPlaintextHost(prompt, () => confirmPlaintextHostStorage(host, dialog)),
 				notify: (event) => notifyAuthDialog(dialog, event),
 			},
 			{ getDeviceId: () => host.settingsManager.getOrCreateDeviceId(), agentName: APP_NAME },
@@ -279,4 +315,18 @@ async function loginProvider(
 	} finally {
 		host.programStatus.setBlocked("login", undefined);
 	}
+}
+
+/** Asks before a custom host is saved in auth.json, because no system keychain can hold it. */
+async function confirmPlaintextHostStorage(host: LoginDialogsHost, dialog: LoginDialogComponent): Promise<boolean> {
+	const choice = await showAuthPrompt(host, dialog, {
+		type: "select",
+		message: `No system keychain is available. Save the key and host as plain text in ${path.join(getAgentDir(), "auth.json")} (owner-only permissions)?`,
+		signal: dialog.signal,
+		options: [
+			{ id: "save", label: "Save in auth.json" },
+			{ id: "cancel", label: "Cancel" },
+		],
+	});
+	return choice === "save";
 }

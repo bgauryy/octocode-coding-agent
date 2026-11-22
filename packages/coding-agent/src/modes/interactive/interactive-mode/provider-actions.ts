@@ -58,18 +58,25 @@ export function setProviderEnabled(host: ProviderManagerHost, id: string, name: 
 }
 
 /** Remove the saved (and session) credential for a provider after one confirmation. Returns true when it was removed. */
-export async function removeProviderCredential(host: ProviderManagerHost, id: string, name: string): Promise<boolean> {
+export async function removeProviderCredential(
+	host: ProviderManagerHost,
+	id: string,
+	name: string,
+	options: { confirmed?: boolean } = {},
+): Promise<boolean> {
 	const authStatus = host.session.modelRuntime.getProviderAuthStatus(id);
 	const sessionOverride = authStatus.source === "runtime";
 	const what = sessionOverride ? "saved and session credentials" : "saved credential";
 	// A credential that lives in Pi's or a legacy auth file is signed out in Octocode only; that file is never edited.
 	const fileNote =
 		authStatus.source === "stored" && authStatus.label ? `${authStatus.label}; that file stays unchanged` : "";
-	const confirmed = await confirmAction(host, `Remove ${what} for ${name}?`, [
-		sessionOverride
-			? "Remove saved and session credentials — environment and models.json stay unchanged"
-			: `Remove credential — ${fileNote ? `${fileNote}; ` : ""}environment and models.json stay unchanged`,
-	]);
+	const confirmed =
+		options.confirmed ||
+		(await confirmAction(host, `Remove ${what} for ${name}?`, [
+			sessionOverride
+				? "Remove saved and session credentials — environment and models.json stay unchanged"
+				: `Remove credential — ${fileNote ? `${fileNote}; ` : ""}environment and models.json stay unchanged`,
+		]));
 	if (!confirmed) return false;
 	try {
 		await host.session.modelRuntime.logout(id, { signal: AbortSignal.timeout(15_000) });

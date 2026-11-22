@@ -133,6 +133,28 @@ describe("a click survives pointer jitter and moving content", () => {
 });
 
 describe("wheel scrolling in the alternate screen", () => {
+	it("extends a held selection on the wheel and releases over the original cell without clicking it", async () => {
+		const rows = Array.from({ length: 30 }, (_, i) => new Row(`row ${i}`, ["click"]));
+		const body = new Container();
+		for (const row of rows) body.addChild(row);
+		const scroll = new ScrollView(body, { primary: true });
+		const { terminal, tui } = await started(6, (t) => t.setLayoutRoot(fill(scroll)));
+		try {
+			tui.setCopyOnSelect(false);
+			scroll.scrollToStart();
+			await terminal.waitForRender();
+			terminal.sendInput(sgr(0, 0, 2));
+			terminal.sendInput(sgr(65, 0, 2));
+			const selection = (tui as unknown as { selection: { getActiveSelectionText(): string | undefined } }).selection;
+			assert.equal(selection.getActiveSelectionText(), "row 2\nr");
+			terminal.sendInput(sgr(0, 0, 2, true));
+			assert.equal(selection.getActiveSelectionText(), "row 2\nr");
+			assert.ok(!rows[2].events.includes("click:1"));
+		} finally {
+			tui.stop();
+		}
+	});
+
 	it("moves the lines a burst asked for beyond one frame's cap over the following frames", async () => {
 		const rows = Array.from({ length: 400 }, (_, index) => new Row(`row ${index}`, []));
 		const body = new Container();

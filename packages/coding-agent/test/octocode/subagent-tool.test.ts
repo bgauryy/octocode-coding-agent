@@ -1,6 +1,7 @@
 import { renderPrompt } from "../../src/core/prompt-template.ts";
 import { captureSkillResourceSnapshot } from "../../src/core/skill-resource-snapshot.ts";
 import { loadSkills } from "../../src/core/skills.ts";
+import { AGENT_GITIGNORE } from "../../src/storage/agent-layout.ts";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -158,10 +159,13 @@ const reportOf = (text: string) => {
 	return reportJson(fs.readFileSync(file, "utf8"));
 };
 
+/** The text of a sent message under its source header (the header is pinned in events/source.test.ts). */
+const unsourced = (content: unknown) => String(content).replace(/^\[src [^\n]*\n/, "");
+
 describe("subagent scratch sweep", () => {
 	it("keeps old folders whose owning Octocode process is alive (another session's background subagent) and removes the rest", async () => {
 		const s = setup();
-		const root = path.join(s.cwd, ".octocode", "code", "temp", "agents");
+		const root = path.join(s.cwd, ".octocode", "agent", "temp", "agents");
 		// Past the default OCTOCODE_CLEANUP_DAYS (30).
 		const old = (Date.now() - 31 * 24 * 3_600_000) / 1000;
 		const folder = (name: string, owner?: number) => {
@@ -175,7 +179,7 @@ describe("subagent scratch sweep", () => {
 		// A recorded start time guards against pid reuse: the pid runs, but it is not the process that made the folder.
 		const started = processStartTime(process.pid);
 		const reused = folder("worker-reused", process.pid);
-		fs.writeFileSync(path.join(reused, ".owner"), `${process.pid} Thu Jan  1 00:00:00 1970`);
+		fs.writeFileSync(path.join(reused, ".owner"), `${process.pid} 1`);
 		const sameProcess = folder("worker-same", process.pid);
 		fs.writeFileSync(path.join(sameProcess, ".owner"), started ? `${process.pid} ${started}` : String(process.pid));
 		const dead = folder("worker-dead", 9_999_999);
@@ -273,7 +277,8 @@ describe("agent tool with a scripted child", () => {
 		const empty = reportOf((await s.run({ task: "report back", skills: [] })).content[0].text);
 		expect(empty.args).toContain("--no-skills");
 		expect(empty.args).not.toContain("--skill");
-		expect(empty.skillResources.resources).toEqual([]);
+		// `skills` only names what to load first: an empty list still declares the parent's whole list.
+		expect(empty.skillResources.resources).toEqual(inherited.skillResources.resources);
 		expect(fs.existsSync(empty.skillSnapshotFile)).toBe(false);
 		await expect(s.run({ task: "report back", skills: ["missing"] })).rejects.toThrow(/Unknown or ambiguous/);
 	});
@@ -294,11 +299,11 @@ describe("agent tool with a scripted child", () => {
 		expect(facts.parent).toBe(s.team.id);
 		expect(facts.cwd).toBe(fs.realpathSync(s.cwd));
 		// Each subagent gets a handoff folder in the workspace, which ignores itself in git.
-		expect(facts.scratch).toBe(path.join(fs.realpathSync(s.cwd), ".octocode", "code", "temp", "agents", facts.id));
+		expect(facts.scratch).toBe(path.join(fs.realpathSync(s.cwd), ".octocode", "agent", "temp", "agents", facts.id));
 		// Its saved conversation keeps the handoff folder available for an explicit resume.
 		expect(fs.existsSync(result.details.session.file)).toBe(true);
 		expect(path.dirname(result.details.session.file)).toBe(path.join(facts.scratch, "session"));
-		expect(fs.readFileSync(path.join(s.cwd, ".octocode", "code", ".gitignore"), "utf8")).toBe("*\n");
+		expect(fs.readFileSync(path.join(s.cwd, ".octocode", "agent", ".gitignore"), "utf8")).toBe(AGENT_GITIGNORE);
 		expect(facts.args).toEqual(
 			expect.arrayContaining([
 				"--mode",
@@ -310,7 +315,7 @@ describe("agent tool with a scripted child", () => {
 				"--model",
 				"faux/model:medium",
 				"--tools",
-				"read,bash,file,agent,wait,archive,memory,skill,mcp,mcp__*",
+				"read,bash,file,agent,notify,archive,memory,skill,mcp,mcp__*",
 				"--exclude-tools",
 				"browser",
 			]),
@@ -601,7 +606,7 @@ describe("agent tool with a scripted child", () => {
 		const file = path.join(
 			fs.realpathSync(s.cwd),
 			".octocode",
-			"code",
+			"agent",
 			"temp",
 			"agents",
 			result.details.id,
@@ -618,7 +623,7 @@ describe("agent tool with a scripted child", () => {
 		expect(fs.readFileSync(file, "utf8")).toMatch(/the end$/);
 		// A short report is not written to disk.
 		const short = await s.run({ task: "report" });
-		expect(fs.existsSync(path.join(s.cwd, ".octocode", "code", "temp", "agents", short.details.id, "report.md"))).toBe(
+		expect(fs.existsSync(path.join(s.cwd, ".octocode", "agent", "temp", "agents", short.details.id, "report.md"))).toBe(
 			false,
 		);
 		expect(short.details.reportArtifact).toEqual({ sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
@@ -1027,7 +1032,7 @@ describe("agent tool with a scripted child", () => {
 		await vi.waitFor(() => expect(s.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
 		const answer = s.sent[0];
 		expect(answer.options).toEqual({ triggerTurn: true, deliverAs: "followUp", together: true });
-		expect(answer.message.content).toMatch(
+		expect(unsourced(answer.message.content)).toMatch(
 			/^Background subagent [a-z]+-[a-z]+ \(general: check things\) finished \(\d+s · 1 tool call · ≈\$0\.01\) · ran on faux\/model, medium thinking \(this session's model\) · cite as report:[a-z]+-[a-z]+:\n<<<untrusted-[0-9a-f]{16} \(data from the sender[^\n]*\)\nreport /,
 		);
 		// The child's words end inside the fence; the footer after it is the parent's. The route is in the header, and a
@@ -1096,7 +1101,9 @@ describe("agent tool with a scripted child", () => {
 		expect(s.ctx.ui.notes.at(-1)).toEqual({ message: `Stopping ${id}…`, type: "info" });
 		await waiting;
 		await vi.waitFor(() => expect(s.sent.length).toBe(3), { timeout: 10_000 });
-		expect(s.sent[2].message.content).toBe(`Background subagent ${id} (general: check things) cancelled by the user`);
+		expect(unsourced(s.sent[2].message.content)).toBe(
+			`Background subagent ${id} (general: check things) cancelled by the user`,
+		);
 		// A stop the user asked for is an interruption, not a failure; the prompt is one expand away.
 		expect(rendered(renderer(s.sent[2].message, { expanded: false }, theme))).toMatch(
 			/^ ⏺ Agent.*\n {3}⎿ {2}Cancelled by the user\n {6}… prompt \(ctrl\+o to expand\)$/,
@@ -1117,7 +1124,7 @@ describe("agent tool with a scripted child", () => {
 		);
 		await vi.waitFor(
 			() =>
-				expect(s.sent.at(-1)?.message.content).toBe(
+				expect(unsourced(s.sent.at(-1)?.message.content)).toBe(
 					`Background subagent ${id} (general: check things) stopped by ${s.team.id}`,
 				),
 			{ timeout: 10_000 },
@@ -1140,7 +1147,7 @@ describe("agent tool with a scripted child", () => {
 		const slow = await s.run({ task: "slow at shutdown", background: true });
 		await s.emit("session_shutdown", {}, s.ctx);
 		// Shutdown returns only after the stopped child exited and its report was filed.
-		expect(s.sent.at(-1)?.message.content).toBe(
+		expect(unsourced(s.sent.at(-1)?.message.content)).toBe(
 			`Background subagent ${slow.details.id} (general: check things) stopped by session shutdown`,
 		);
 		expect(s.sent.at(-1)!.options.triggerTurn).toBe(false);
@@ -1924,7 +1931,7 @@ describe("background report delivery", () => {
 		queue.add(report("c", false));
 		expect(f.sent).toHaveLength(0);
 		queue.flush();
-		expect(f.sent.map((entry) => [entry.message.content, entry.options.triggerTurn])).toEqual([
+		expect(f.sent.map((entry) => [unsourced(entry.message.content), entry.options.triggerTurn])).toEqual([
 			["a", false],
 			["b", false],
 			["c", true],
@@ -1936,7 +1943,7 @@ describe("background report delivery", () => {
 
 	it("delivers without a turn a report whose file the parent already read since it was written", () => {
 		const cwd = tmp();
-		const scratch = path.join(cwd, ".octocode", "code", "temp", "agents", "general-abcdef");
+		const scratch = path.join(cwd, ".octocode", "agent", "temp", "agents", "general-abcdef");
 		fs.mkdirSync(scratch, { recursive: true });
 		const file = path.join(scratch, "report.md");
 		fs.writeFileSync(file, "report");
@@ -1944,7 +1951,7 @@ describe("background report delivery", () => {
 		fs.utimesSync(file, past, past);
 		const read = new ReadReports();
 		read.track("general-abcdef", scratch);
-		read.observe("read", { path: ".octocode/code/temp/agents/general-abcdef/report.md" }, cwd);
+		read.observe("read", { path: ".octocode/agent/temp/agents/general-abcdef/report.md" }, cwd);
 		expect(read.consume("general-abcdef")).toBe(true);
 		// Rewritten after the read: the parent has not seen the final version.
 		read.track("general-abcdef", scratch);
@@ -1963,7 +1970,7 @@ describe("background report delivery", () => {
 		const s = setup();
 		const result = await s.run({ task: "long report" });
 		const { id } = result.details as { id: string };
-		const scratch = path.join(s.cwd, ".octocode", "code", "temp", "agents", id);
+		const scratch = path.join(s.cwd, ".octocode", "agent", "temp", "agents", id);
 		expect(fs.existsSync(path.join(scratch, "report.md"))).toBe(true);
 		const late = await s.team.send(id, "more");
 		expect("error" in late && late.error).toContain(`(files it handed back, and its full report when cut, are in`);
@@ -1999,7 +2006,7 @@ describe("a child report as the parent model reads it", () => {
 		const id = (started.details as { id: string }).id;
 		await vi.waitFor(() => expect(s.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
 		expect(s.sent[0].message.details).toMatchObject({ status: "done", outcome: "done" });
-		const content = String(s.sent[0].message.content);
+		const content = unsourced(s.sent[0].message.content);
 		const lines = content.split("\n");
 		// The header is the parent's: this agent, its role and goal, its statistics. Nothing before the fence is the child's.
 		expect(lines[0]).toMatch(

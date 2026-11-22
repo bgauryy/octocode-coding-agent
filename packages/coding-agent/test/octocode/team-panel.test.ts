@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { stripRowMarks, visibleWidth } from "@octocodeai/octocode-tui";
-import { describe, expect, it } from "vitest";
+import { animationClock, stripRowMarks, visibleWidth } from "@octocodeai/octocode-tui";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { AgentsView, trafficRow } from "../../src/octocode/team/panel.ts";
 import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
@@ -15,6 +15,9 @@ import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const NOW = 1_000_000;
+// Reduced motion pins a running light to its first frame, ◒.
+beforeEach(() => animationClock.setReducedMotion(true));
+afterEach(() => animationClock.setReducedMotion(false));
 /** Lines without the style resets a cut (`…`) adds, for exact comparisons. */
 /** A row as drawn: no colour, and no row marks (the renderer strips them before output). */
 const plain = (lines: string[]) => lines.map((line) => stripRowMarks(line).replace(/\x1b\[[0-9;]*m/g, ""));
@@ -51,7 +54,7 @@ describe("agents panel", () => {
 		const rows = widgetLines([member("me-0001"), fresh], "me-0001", NOW, theme, 120);
 		// The spinner says it works; the mark is the only state shown, never a word.
 		expect(rows[1]).toBe(
-			" └ ⏺ general-1a2b · general                                                                                           1s",
+			" └ ◒ general-1a2b · general                                                                                           1s",
 		);
 		expect(rows.join("\n")).not.toMatch(/working|idle/);
 	});
@@ -106,7 +109,7 @@ describe("agents panel", () => {
 		// The narrow form: tree, mark and name; the cut goal under the name; the model, without its provider, on the stats line.
 		expect(plain(rows)).toEqual([
 			" 🦑 main ⏺ · main",
-			" └ ⏺ research-a · research-a",
+			" └ ◒ research-a · research-a",
 			"     Investigate Investigate Investigate Invest…",
 			"     a-very-long-model-name",
 		]);
@@ -144,13 +147,13 @@ describe("agents panel", () => {
 		for (const width of [56, 52, 48])
 			expect(widgetLines([busy], "main", NOW, theme, width)).toEqual([
 				" 🦑 main ⏺ · main",
-				" └ ⏺ researcher-with-a-r… · researcher-…",
+				" └ ◒ researcher-with-a-r… · researcher-…",
 				"     Inspect things",
 				"     ↳ localFetch x.ts",
 			]);
 		// From 60 columns the goal and the action share the grid row when the action fits whole.
 		expect(groupOf(widgetLines([busy], "main", NOW, theme, 100), "researcher-with-a-r")[0]).toMatch(
-			/^ └ ⏺ researcher-with-a-r… · researcher-… · Inspect things › localFetch x\.ts +1m$/,
+			/^ └ ◒ researcher-with-a-r… · researcher-… · Inspect things › localFetch x\.ts +1m$/,
 		);
 	});
 
@@ -216,11 +219,11 @@ describe("agents panel", () => {
 		expect(squash(lines[0])).toBe(" 🦑 main-aaaaaa ⏺ · main 1m");
 		// The grid row says who, spend and what (goal › action); the stats line under the name says how.
 		expect(squash(lines[1])).toBe(
-			" ├ ⏺ researcher-3fa9 · researcher · Find where tools register › localSearch registerTool 15k tok · ≈$0.04 2m14s",
+			" ├ ◒ researcher-3fa9 · researcher · Find where tools register › localSearch registerTool 15k tok · ≈$0.04 2m14s",
 		);
 		expect(squash(lines[2])).toBe(" │ claude-opus-4-5 15k tok · 12 tool calls");
 		// A grandchild sits under its parent with the tree line beside it; no goal or usage leaves those cells empty.
-		expect(squash(lines[3])).toBe(" │ └ ⏺ general-77aa · general · › bash yarn test 5s");
+		expect(squash(lines[3])).toBe(" │ └ ◒ general-77aa · general · › bash yarn test 5s");
 		expect(squash(lines[4])).toBe(" │ claude-haiku-4-5 1 tool call");
 		// The waiting messages close the goal cell; the locks are on the stats line.
 		expect(squash(lines[5])).toBe(" └ ⏺ reviewer-a1b2 · reviewer · Review the diff ✉ 1 5k tok · 45s");
@@ -242,22 +245,22 @@ describe("agents panel", () => {
 		};
 		const wide = at(120);
 		expect(wide.head).toBe(
-			" ├ ⏺ researcher-3fa9 · researcher · Find where tools register › localSearch registerTool                    ≈$0.04 2m14s",
+			" ├ ◒ researcher-3fa9 · researcher · Find where tools register › localSearch registerTool                    ≈$0.04 2m14s",
 		);
 		expect(wide.below[0]).toMatch(/^ │   claude-opus-4-5 +15k tok · 12 tool calls$/);
 		// The action does not fit whole beside the goal: it moves below, whole, and the goal stays whole.
 		const medium = at(70);
-		expect(medium.head).toMatch(/^ ├ ⏺ researcher-3fa9 · researcher · Find where tools register +≈\$0\.04$/);
+		expect(medium.head).toMatch(/^ ├ ◒ researcher-3fa9 · researcher · Find where tools register +≈\$0\.04$/);
 		expect(medium.below[0]).toMatch(/^ │   claude-opus-4-5 +15k tok · 12 tool calls$/);
 		expect(medium.below[1]).toBe(" │   ↳ localSearch registerTool");
 		// Narrower: the elapsed time leaves every row, the role is cut to 8 cells, and the cost leaves with it.
 		const narrow = at(60);
-		expect(narrow.head).toBe(" ├ ⏺ researcher-3fa9 · researc… · Find where tools register");
+		expect(narrow.head).toBe(" ├ ◒ researcher-3fa9 · researc… · Find where tools register");
 		expect(narrow.lines.join("\n")).not.toMatch(/2m14s|45s/);
 		expect(narrow.lines.join("\n")).toContain("Review the diff ✉ 1");
 		// Below 60 columns: the narrow form, goal and action under the name.
 		const compact = at(56);
-		expect(compact.head).toBe(" ├ ⏺ researcher-3fa9 · researcher");
+		expect(compact.head).toBe(" ├ ◒ researcher-3fa9 · researcher");
 		expect(compact.lines.slice(2, 5)).toEqual([
 			" │   Find where tools register",
 			" │   claude-opus-4-5             15k tok · 12 tool calls",
@@ -281,7 +284,7 @@ describe("agents panel", () => {
 		});
 		const lines = widgetLines([member("main-aaaaaa"), busy], "main-aaaaaa", NOW, theme, 70);
 		const [row, stats] = groupOf(lines, "glowing-prawn");
-		expect(row).toBe(" └ ⏺ glowing-prawn · glowing-pra… · ask parent a color, sleep, re…  5s");
+		expect(row).toBe(" └ ◒ glowing-prawn · glowing-pra… · ask parent a color, sleep, re…  5s");
 		expect(stats).toBe("     claude-haiku-5-5                             410 tok · 99% cached");
 		const action = lines[lines.indexOf(stats) + 1];
 		expect(action.trim()).toBe("↳ Running shell: sleep 25");
@@ -307,7 +310,7 @@ describe("agents panel", () => {
 		// The root row has no tally: each agent's mark says its state, and `left` is on the departed agent's ↳ line.
 		expect(lines).toEqual([
 			" 🦑 main-aaaaaa ⏺  · main                                                                                             1m",
-			" ├ ⏺ wobbly-siphon · wobbly-siph…                                                                                     1m",
+			" ├ ◒ wobbly-siphon · wobbly-siph…                                                                                     1m",
 			" └ ⏺ sly-crab      · sly-crab                                                                                        15s",
 			"     ↳ left",
 		]);

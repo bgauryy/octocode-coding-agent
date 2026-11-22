@@ -8,13 +8,15 @@
 import type { ProviderOrigin, ProviderSourceState } from "@octocodeai/octocode-contracts/config";
 import { listPiProviderCredentials } from "../../core/auth-storage/pi.ts";
 import { describeProviderSources } from "../../core/provider-sources/registry.ts";
-import { customModelsFiles } from "../../core/provider-sources/models-files.ts";
+import { customModelsFiles, type CustomProviderDetails } from "../../core/provider-sources/models-files.ts";
 import type { SettingsManager } from "../../core/settings-manager.ts";
 
 export interface ProviderOriginsView {
 	sources: ProviderSourceState[];
 	origins: Map<string, ProviderOrigin[]>;
 	disabled: ReadonlySet<string>;
+	/** Name and models per provider a models.json defines; the first file that defines it wins. */
+	custom: Map<string, CustomProviderInfo>;
 	/** Fixed text when a file listed above could not be read. */
 	error?: string;
 }
@@ -27,6 +29,14 @@ export interface ProviderOriginsOptions {
 	/** The Octocode provider ids that `auth.json` holds an entry for. */
 	octocodeAuthIds: Iterable<string>;
 	settings: SettingsManager;
+	/** Resolves the environment variables a models.json key names; default: the process's. */
+	env?: NodeJS.ProcessEnv;
+}
+
+/** What a models.json entry says about its provider: shown for providers no built-in list knows. */
+export interface CustomProviderInfo extends CustomProviderDetails {
+	/** Defined in Octocode's own models.json, the file the page can edit. */
+	own?: boolean;
 }
 
 export async function readProviderOrigins(options: ProviderOriginsOptions): Promise<ProviderOriginsView> {
@@ -61,16 +71,30 @@ export async function readProviderOrigins(options: ProviderOriginsOptions): Prom
 			error = "A Pi auth.json could not be read; its credentials are not shown.";
 		}
 	}
-	const files = await customModelsFiles({ ownDir: options.agentDir, piDirs: options.piDirs }, piOn);
+	const files = await customModelsFiles({ ownDir: options.agentDir, piDirs: options.piDirs }, piOn, options.env);
+	const custom = new Map<string, CustomProviderInfo>();
 	for (const file of files) {
 		if (file.unreadable) error ??= "A models.json file could not be read; its providers are not shown.";
 		const product = file.origin === "Pi" ? "pi" : "octocode";
-		for (const id of file.defines) add(id, { product, file: "models-json", hasKey: file.keyed.includes(id) });
+		for (const id of file.defines) {
+			add(id, {
+				product,
+				file: "models-json",
+				hasKey: file.keyed.includes(id),
+				...(file.unset.includes(id) ? { keyUnset: true } : {}),
+			});
+			if (!custom.has(id))
+				custom.set(id, {
+					...(file.details[id] ?? { models: [], limits: {} }),
+					...(file.origin === "Octocode" ? { own: true } : {}),
+				});
+		}
 	}
 	return {
 		sources,
 		origins,
 		disabled: new Set(settings.getDisabledProviders()),
+		custom,
 		...(error ? { error } : {}),
 	};
 }

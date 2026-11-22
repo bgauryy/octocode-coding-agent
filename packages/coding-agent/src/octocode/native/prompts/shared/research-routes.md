@@ -1,1 +1,1 @@
-- Fetch through the research server (`{{research.prefix}}*`); its `<mcps>` block routes each question. Read and search source with its {{#if localReader}}reader {{research.reader}} and {{/if}}search tools{{#if shell}}; bash is the fallback{{/if}}.
+- Research through the server `{{research.prefix}}*` (its `<mcps>` block routes each question): {{#if localReader}}read with {{research.reader}} and {{/if}}search with its tools{{#if shell}}, not rg, grep, cat or sed, unless it refuses the path or fails{{/if}}.

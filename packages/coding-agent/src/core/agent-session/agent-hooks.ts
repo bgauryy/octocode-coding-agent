@@ -13,6 +13,7 @@ import {
 	estimateUndeclaredToolTokens,
 	exceedsContextWindow,
 	shouldCompact,
+	shouldStopForCompaction,
 } from "../compaction/index.ts";
 import { withoutHiddenDeclarations } from "../hidden-declarations.ts";
 import { projectForcedSystemPrompt, type RequestSystemOverride } from "../forced-system-prompt.ts";
@@ -94,7 +95,9 @@ function needsCompaction(
 	);
 	return compactedSinceLastResponse(projection, session.sessionManager)
 		? exceedsContextWindow(tokens, model.contextWindow, settings, model.maxTokens)
-		: shouldCompact(tokens, model.contextWindow, settings);
+		: session.settingsManager.getEventLoopMode() === "new"
+			? shouldStopForCompaction(tokens, model.contextWindow, settings)
+			: shouldCompact(tokens, model.contextWindow, settings);
 }
 
 export function installAgentInputPreparation(host: AgentHooksHost): void {
@@ -102,7 +105,7 @@ export function installAgentInputPreparation(host: AgentHooksHost): void {
 	const agent = session.agent;
 	const previousInputSelected = agent.onInputSelected;
 	agent.onInputSelected = (batch) => {
-		for (const message of batch.messages) inputs.consumeQueuedUserMessage(message);
+		inputs.deliverSelected(batch.messages);
 		if (batch.kind === "followUp" && batch.messages.length > 0) run.logicalTurnId = randomUUID();
 		previousInputSelected?.(batch);
 	};

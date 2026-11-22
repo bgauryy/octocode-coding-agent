@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApplicationService } from "../../src/core/application/index.ts";
+import { inputOrigin } from "../../src/core/input-origin.ts";
 import type { AgentSession } from "../../src/core/agent-session.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
 import { type AgentDb } from "../../../db/src/api.ts";
@@ -120,6 +121,14 @@ describe("workspace runtime boundary", () => {
 		expect(app.session.sendUserMessage).toHaveBeenCalledTimes(1);
 		expect(store.get(app.item.ref)?.state).toBe("ongoing");
 		reconnected.close();
+	});
+
+	it("runs the work a web client queues under the web origin, so its confirmations go to the web dialog", async () => {
+		const origins: string[] = [];
+		const app = setup({ send: async () => void origins.push(inputOrigin()) });
+		expect(await app.connection.execute(app.command)).toMatchObject({ status: "accepted" });
+		expect(origins).toEqual(["web"]);
+		app.connection.close();
 	});
 
 	it("persists a failed receipt when application delivery rejects asynchronously, including after a view closes", async () => {

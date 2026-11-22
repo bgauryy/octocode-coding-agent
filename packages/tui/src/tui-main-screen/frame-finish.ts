@@ -14,7 +14,7 @@ export interface FinishedFrame {
 }
 
 /** A row wider than the terminal would wrap and shift every row below it, in the full render and the diff alike. */
-const finishRow = (line: string, width: number): string => clipLineToWidth(applyLineReset(line), width);
+export const finishRow = (line: string, width: number): string => clipLineToWidth(applyLineReset(line), width);
 
 /**
  * From the rendered rows to the rows the terminal gets: fake cursors resolved (so overlays and line slicing see plain
@@ -36,6 +36,7 @@ export class FrameFinisher {
 		width: number,
 		height: number,
 		overlays: ((lines: string[]) => string[]) | undefined,
+		prepared?: ReadonlyMap<string, string>,
 	): FinishedFrame {
 		const lastSource = this.lastSource;
 		const lastPath = this.lastPath;
@@ -59,7 +60,14 @@ export class FrameFinisher {
 			};
 			this.lastPath = "overlay";
 		} else {
-			frame = this.frameRows.apply(source, showHardwareCursor, width, height, { from: lastSource, rows: shared });
+			frame = this.frameRows.apply(
+				source,
+				showHardwareCursor,
+				width,
+				height,
+				{ from: lastSource, rows: shared },
+				prepared,
+			);
 			if (lastPath !== "plain") frame.unchanged = 0;
 			this.lastPath = "plain";
 		}

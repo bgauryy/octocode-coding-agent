@@ -99,7 +99,7 @@ export class Judge {
 		if (request.checks >= CHECK_CAPS.perWaitChecks || request.spentUsd >= CHECK_CAPS.perWaitUsd)
 			return {
 				verdict: "stop",
-				reason: `check budget: ${request.checks} judgments, ${usd(request.spentUsd)} spent on this wait`,
+				reason: `check budget: ${request.checks} judgments, ${usd(request.spentUsd)} spent on this request`,
 			};
 		if (before >= CHECK_CAPS.perSessionUsd)
 			return {

@@ -116,8 +116,8 @@ describe("tool exposure usage audit", () => {
 		});
 		expect(Value.Check(ToolExposureListSchema, list)).toBe(true);
 		const rows = group(list, "native")!.tools;
-		expect(rows.map((row) => row.name)).toEqual(["archive", "backlogPlan", "web", "models", "bash"]);
-		expect(rows.slice(0, 4).map((row) => row.decidedBy)).toEqual(["usage", "usage", "usage", "usage"]);
+		expect(rows.map((row) => row.name)).toEqual(["archive", "configuration", "backlogPlan", "web", "models", "bash"]);
+		expect(rows.slice(0, 5).map((row) => row.decidedBy)).toEqual(["usage", "usage", "usage", "usage", "usage"]);
 		expect(tool(list, "native", "archive")?.audit).toMatchObject({ reason: "unused", rate: 0, bytesSaved: 700 });
 		expect(tool(list, "native", "backlogPlan")?.audit).toMatchObject({ bytesSaved: 700, called: 1 });
 		expect(tool(list, "native", "backlogPlan")?.audit?.reason).toBeUndefined();
@@ -131,10 +131,10 @@ describe("tool exposure usage audit", () => {
 
 describe("audit rows of the usage-only native tools", () => {
 	const live = {
-		names: [...NATIVE_PINNABLE_TOOLS, "memory", "wait", "bash"],
+		names: [...NATIVE_PINNABLE_TOOLS, "memory", "notify", "bash"],
 		declared: new Map([
 			["memory", true],
-			["wait", true],
+			["notify", true],
 		]),
 		saved: new Map([["memory", 400]]),
 	};
@@ -152,15 +152,15 @@ describe("audit rows of the usage-only native tools", () => {
 	it("shows memory and timer with their audit under usage", async () => {
 		writeJson(globalSettings(), { mcpExposure: "usage" });
 		seed("memory", 25, 0);
-		seed("wait", 25, 10);
+		seed("notify", 25, 10);
 		const list = await listToolExposure({ agentDir, native: () => live });
 		expect(Value.Check(ToolExposureListSchema, list)).toBe(true);
 		expect(tool(list, "native", "memory")).toMatchObject({ state: "deferred", decidedBy: "usage" });
 		expect(tool(list, "native", "memory")?.audit).toMatchObject({ reason: "unused", rate: 0, bytesSaved: 400 });
 		// Used often, timer is still declared thin: promotion changes only on-demand tools.
-		expect(tool(list, "native", "wait")).toMatchObject({ state: "deferred", decidedBy: "usage" });
-		expect(tool(list, "native", "wait")?.audit).toMatchObject({ rate: 0.4 });
-		expect(tool(list, "native", "wait")?.audit?.reason).toBeUndefined();
+		expect(tool(list, "native", "notify")).toMatchObject({ state: "deferred", decidedBy: "usage" });
+		expect(tool(list, "native", "notify")?.audit).toMatchObject({ rate: 0.4 });
+		expect(tool(list, "native", "notify")?.audit?.reason).toBeUndefined();
 	});
 
 	it("shows them when pinned under another setting, and lists an unpinned one as a core tool otherwise", async () => {
@@ -170,8 +170,8 @@ describe("audit rows of the usage-only native tools", () => {
 		expect(tool(list, "native", "memory")).toMatchObject({ pin: "deferred", state: "deferred", decidedBy: "pin" });
 		expect(tool(list, "native", "memory")?.audit).toMatchObject({ called: 1, declared: 3 });
 		// Unpinned and not under usage, timer is a plain core row with no audit.
-		expect(tool(list, "native", "wait")).toMatchObject({ decidedBy: "core" });
-		expect(tool(list, "native", "wait")?.audit).toBeUndefined();
+		expect(tool(list, "native", "notify")).toMatchObject({ decidedBy: "core" });
+		expect(tool(list, "native", "notify")?.audit).toBeUndefined();
 	});
 });
 
@@ -211,6 +211,7 @@ describe("tool exposure read model", () => {
 			{ name: "archive", state: "direct", decidedBy: "recent" },
 			{ name: "models", pin: "direct", state: "direct", decidedBy: "pin" },
 			{ name: "backlogPlan", state: "deferred", decidedBy: "recent" },
+			{ name: "configuration", state: "deferred", decidedBy: "recent" },
 		]);
 	});
 
@@ -430,8 +431,8 @@ describe("/api/admin/config/tools", () => {
 			expect(pinned.status).toBe(200);
 			expect(tool((await pinned.json()) as ToolExposureList, "native", name)?.pin).toBe("direct");
 		}
-		expect(readJson(globalSettings())).toEqual({ nativeToolExposure: { memory: "direct", wait: "direct" } });
-		const unpinned = await call(server.token, { kind: "native", tool: "wait", pin: null, scope: "global" });
+		expect(readJson(globalSettings())).toEqual({ nativeToolExposure: { memory: "direct", notify: "direct" } });
+		const unpinned = await call(server.token, { kind: "native", tool: "notify", pin: null, scope: "global" });
 		expect(unpinned.status).toBe(200);
 		expect(readJson(globalSettings())).toEqual({ nativeToolExposure: { memory: "direct" } });
 	});

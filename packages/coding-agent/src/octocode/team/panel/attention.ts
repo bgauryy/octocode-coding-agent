@@ -4,7 +4,7 @@ import type { Need } from "./state.ts";
 /**
  * Waiting agents: `parent` for messages awaiting this session's agent; `ask` or `approval` only for a host's pending
  * user dialog. A dialog outranks a message. The newest message and count stay available for the panel.
- * Each need's `since` (the waiting mark breathes for a few seconds from it, then holds still) is the newest message's
+ * Each need's `since` (when the wait began) is the newest message's
  * time, or for a dialog the first `now` this agent was seen waiting in `seen`, which the caller keeps across frames;
  * agents no longer waiting leave `seen`. Without `seen` a dialog has no `since`.
  */

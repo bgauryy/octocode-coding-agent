@@ -51,6 +51,11 @@ function snapshot(): number {
 	return current;
 }
 
+/** The host's time right now (epoch ms), not the last tick: for stamping a start. */
+export function clockNow(): number {
+	return read();
+}
+
 /** The host's current time (epoch ms), updated once a second while the component is mounted. */
 export function useNow(): number {
 	return useSyncExternalStore(subscribe, snapshot);

@@ -453,7 +453,7 @@ describe("expandPromptTemplate", () => {
 		expect(expandPromptTemplate("/prompt:custom a b", templates, reserved)).toBe("custom: a / b");
 		expect(expandPromptTemplate("/review a b", templates, reserved)).toBe("review: a / b");
 		expect(expandPromptTemplate("/prompt:review a b", templates, reserved)).toBe("/prompt:review a b");
-		expect(expandPromptTemplate("/configuration a b", templates, reserved)).toBe("/configuration a b");
+		expect(expandPromptTemplate("/settings a b", templates, reserved)).toBe("/settings a b");
 	});
 
 	test("keeps qualified prompts distinct from extension names and duplicate templates", () => {
