@@ -12,7 +12,7 @@ export {
 	isTerminalProviderLimitError,
 	isUsageLimitError,
 } from "./retry-classes.ts";
-export { isCredentialError } from "./credential-errors.ts";
+export { isCredentialError, isModelAccessError } from "./credential-errors.ts";
 export { isMachineOffline } from "./connectivity.ts";
 
 /** A failure that clears by waiting gets at least this many retries, because a token bucket refills meanwhile and an outage ends. */

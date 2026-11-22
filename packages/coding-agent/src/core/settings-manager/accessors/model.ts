@@ -5,7 +5,12 @@ import { normalizeProviderSources, SOURCE_DEFAULTS } from "../../provider-source
 import { type HiddenModels, normalizeHiddenModels } from "../../provider-models.ts";
 import type { ProviderSourceOverrides, ToggleableSourceId } from "../../provider-sources/types.ts";
 import type { ModelSettingsApi } from "../api/model.ts";
-import { type DefaultModelSelectionOptions, saveDefaultModelSelection, saveEnabledModels } from "../model-default.ts";
+import {
+	type DefaultModelSelectionOptions,
+	saveDefaultModelSelection,
+	saveEnabledModels,
+	saveProviderModel,
+} from "../model-default.ts";
 import { DEFAULT_TOOL_NAMES, resolveDefaultTools } from "../tool-list.ts";
 import { SettingsAccessorBase } from "./base.ts";
 
@@ -40,7 +45,11 @@ export abstract class ModelSettingsAccessors extends SettingsAccessorBase implem
 	}
 
 	/** Save a model and its options together; success means this write reached storage. */
-	saveDefaultModelSelection(provider: string, modelId: string, options?: DefaultModelSelectionOptions): Promise<void> {
+	saveDefaultModelSelection(
+		provider: string,
+		modelId: string | undefined,
+		options?: DefaultModelSelectionOptions,
+	): Promise<void> {
 		return saveDefaultModelSelection(this.state, this.persistence, provider, modelId, options);
 	}
 
@@ -84,6 +93,10 @@ export abstract class ModelSettingsAccessors extends SettingsAccessorBase implem
 		this.markModified("defaultProvider");
 		this.markModified("defaultModel");
 		this.save();
+	}
+
+	saveProviderModel(provider: string, model: string | undefined): Promise<void> {
+		return saveProviderModel(this.state, this.persistence, provider, model);
 	}
 
 	getProviderModels(): Record<string, string> {

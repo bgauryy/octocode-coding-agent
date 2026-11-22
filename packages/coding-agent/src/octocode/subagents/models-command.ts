@@ -2,6 +2,7 @@ import { getSupportedThinkingLevels } from "@octocodeai/octocode-ai/compat";
 import { builtinDescription } from "../../core/slash-commands.ts";
 import type { CommandContext } from "../../core/features/index.ts";
 import { type Subcommands, say } from "../shared/commands.ts";
+import { modelSizeClass } from "./size-class.ts";
 import { formatTokens } from "../shared/format.ts";
 import {
 	type Catalog,
@@ -128,7 +129,7 @@ export function modelLine(model: ModelRef, parent: ModelRef | undefined, catalog
 	const cutoff =
 		known?.knowledge && /^\d{4}-\d{2}(?:-\d{2})?$/.test(known.knowledge) ? ` · cutoff ${known.knowledge}` : "";
 	const window = model.contextWindow !== undefined && model.contextWindow !== 0 ? model.contextWindow : known?.context;
-	return `${mark}${name(model)} · ${priceText(modelCost(model, catalog))} per M in/out · ${contextSize(window)} · ${caps}${levels}${cutoff}${sourceText(model, catalog)}`;
+	return `${mark}${name(model)} · ${priceText(modelCost(model, catalog))} per M in/out · ${contextSize(window)} · ${caps}${levels}${cutoff}${sourceText(model, catalog)} · ${modelSizeClass(model)} (estimated size)${model.maxTokens ? ` · ${formatTokens(model.maxTokens)} max output` : ""}`;
 }
 
 /**
@@ -146,7 +147,7 @@ export function describeUnrunnable(
 		.sort((a, b) => name(a.model).localeCompare(name(b.model)));
 	if (rows.length === 0) return "";
 	return [
-		"Cannot run a task (a task needs tool calls, a current model and 100k context):",
+		"Available by exact provider/id; skipped by automatic model selection:",
 		...rows.map(({ model, why }) => `${modelLine(model, parent, catalog)} · ${why}`),
 	].join("\n");
 }

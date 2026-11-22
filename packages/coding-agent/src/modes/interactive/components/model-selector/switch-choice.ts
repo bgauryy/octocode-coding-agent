@@ -3,7 +3,7 @@ import type { Model } from "@octocodeai/octocode-ai";
 import { theme } from "../../../../theme/theme.ts";
 import { listTheme } from "../list-kit.ts";
 
-export type SwitchChoice = "chat" | "default" | "both";
+export type SwitchChoice = "chat" | "default" | "both" | "provider";
 
 interface ChoiceItem {
 	value: SwitchChoice;
@@ -13,7 +13,8 @@ interface ChoiceItem {
 const ITEMS: readonly ChoiceItem[] = [
 	{ value: "chat", label: "Switch this chat" },
 	{ value: "default", label: "Set as default for new chats" },
-	{ value: "both", label: "Both" },
+	{ value: "both", label: "Switch this chat and set the startup default" },
+	{ value: "provider", label: "Set as this provider’s preferred model" },
 ];
 
 /** The inline question shown under the model list after Enter: what to do with the highlighted model. */

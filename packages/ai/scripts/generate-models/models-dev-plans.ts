@@ -10,7 +10,7 @@ import {
 	QWEN_TOKEN_PLAN_INDIVIDUAL_MODEL_IDS,
 	QWEN_TOKEN_PLAN_REASONING_EFFORT_FALLBACK_MODEL_IDS,
 } from "./constants.ts";
-import { generatorOptions } from "./options.ts";
+import { refreshesProvider } from "./options.ts";
 import { getModelsDevCost } from "./pricing.ts";
 import { createKimiCodingModels } from "./processors.ts";
 import { recordModelsDevReasoningOptions } from "./thinking-levels.ts";
@@ -234,7 +234,7 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 			emittedModelIds?.add(modelId);
 		}
 
-		if (modelIds && emittedModelIds && generatorOptions.strict) {
+		if (modelIds && emittedModelIds && refreshesProvider(provider)) {
 			assertExactModelIds(provider, modelIds, emittedModelIds);
 		}
 	}

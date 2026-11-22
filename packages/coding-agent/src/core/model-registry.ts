@@ -73,8 +73,19 @@ export class ModelRegistry {
 		return [...this.runtime.getModels()];
 	}
 
+	isProviderDisabled(provider: string): boolean {
+		return this.runtime.isProviderDisabled(provider);
+	}
+
+	isModelAccessRejected(model: Pick<Model<Api>, "provider" | "id">): boolean {
+		return this.runtime.isModelAccessRejected(model);
+	}
+
 	isModelHidden(model: Pick<Model<Api>, "provider" | "id">): boolean {
 		return this.runtime.isModelHidden(model);
+	}
+	isModelAvailableToChild(model: Pick<Model<Api>, "provider" | "id">): boolean {
+		return this.runtime.isModelAvailableToChild(model);
 	}
 
 	getAvailable(): Model<Api>[] {
@@ -131,8 +142,8 @@ export class ModelRegistry {
 	}
 
 	/** Whether usage is paid by a subscription, so a cost figure is an estimate of API value, not a bill. */
-	billedBySubscription(provider: string): boolean {
-		return this.runtime.isUsingSubscription(provider);
+	billedBySubscription(provider: string, scope?: "child"): boolean {
+		return this.runtime.isUsingSubscription(provider, scope);
 	}
 
 	/** Stream through the configured provider with request-time authentication. */
@@ -220,8 +231,8 @@ export class ModelRegistry {
 	}
 
 	/** "plan" when a subscription pays for this provider's requests, else "metered" (see `ProviderPlan`). */
-	getProviderBilling(provider: string): ProviderPlan["billing"] {
-		return this.runtime.getProviderBilling(provider);
+	getProviderBilling(provider: string, scope?: "child"): ProviderPlan["billing"] {
+		return this.runtime.getProviderBilling(provider, scope);
 	}
 
 	/** False for a plan whose vendor allows only interactive use: automatic background routing skips it. */

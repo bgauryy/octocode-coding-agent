@@ -49,6 +49,7 @@ export interface SessionRunState {
 	lengthRecoveries: number;
 	/** Replies cut off at the output limit this run asked the model to continue; reset when a run starts. */
 	lengthContinuations: number;
+	modelAccessGeneration?: number;
 	/** Consecutive turns whose tool calls were cut off at the output limit. */
 	truncatedToolTurns: number;
 	lastAssistantMessage: AssistantMessage | undefined;

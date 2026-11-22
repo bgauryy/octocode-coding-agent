@@ -272,6 +272,7 @@ export const COMMAND_ALIASES: ReadonlyMap<string, string> = new Map([
 	["release-notes", "changelog"],
 	["feedback", "bug"],
 	["login", "providers"],
+	["models", "model"],
 	["continue", "resume"],
 	["allowed-tools", "permissions"],
 	["doctor", "debug"],

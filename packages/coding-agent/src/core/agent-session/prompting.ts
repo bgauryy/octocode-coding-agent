@@ -116,6 +116,7 @@ export async function prompt(host: PromptingHost, text: string, options?: Prompt
 		throw new AuthRequiredError(formatNoModelSelectedMessage());
 	}
 
+	session.modelRuntime.assertModelAccess(session.model);
 	const hasConfiguredAuth =
 		session.modelRuntime.hasConfiguredAuth(session.model.provider) ||
 		(await session.modelRuntime.checkAuth(session.model.provider)) !== undefined;

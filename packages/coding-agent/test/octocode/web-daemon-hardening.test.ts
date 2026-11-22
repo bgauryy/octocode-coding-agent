@@ -536,6 +536,8 @@ describe("F9: smaller items", () => {
 			LANG: "C",
 			LC_ALL: "C",
 			NODE_OPTIONS: "--no-warnings",
+			NODE_COMPILE_CACHE: "/shared/compile-cache",
+			NODE_DISABLE_COMPILE_CACHE: "1",
 			OCTOCODE_HOME: "/h",
 			OCTOCODE_WEB_DAEMON_IDLE_MINUTES: "3",
 			OCTOCODE_API_TOKEN: "leak-1",
@@ -555,6 +557,8 @@ describe("F9: smaller items", () => {
 			OCTOCODE_HOME: "/h",
 			OCTOCODE_WEB_DAEMON_IDLE_MINUTES: "3",
 			NODE_OPTIONS: "--no-warnings",
+			NODE_COMPILE_CACHE: "/shared/compile-cache",
+			NODE_DISABLE_COMPILE_CACHE: "1",
 		});
 		expect(env.OPENAI_API_KEY).toBe("set");
 		expect(JSON.stringify(env)).not.toMatch(/leak-|sentinel|user:pass/);

@@ -12,7 +12,7 @@ import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "../defaults.ts";
 import { findLatestResponse, getBranchSelection, isVirtualModel } from "../virtual-models.ts";
 import type { SessionInternals } from "./host.ts";
 import type { ModelCycleResult, ModelMutationOptions } from "./types.ts";
-import { persistDefaultModel } from "./model-default.ts";
+import { includeDefaultModel, persistDefaultModel } from "./model-default.ts";
 import { deadline } from "@octocodeai/octocode-common/deadline";
 import { SessionContextCapacity } from "./context-capacity.ts";
 export { workingContextTokens } from "./context-capacity.ts";
@@ -144,6 +144,7 @@ export class SessionModelControl {
 
 	/** `fallback`: `retry.fallbackModels` replaces a failed model for `reason`, at `level` when the entry names one. */
 	async setModel(model: Model<any>, options: SetModelOptions): Promise<void> {
+		this.host.session.modelRuntime.assertModelAccess(model);
 		const limit = deadline(15_000);
 		const authed = await this.host.session.modelRuntime
 			.checkAuth(model.provider, { signal: limit.signal })
@@ -185,13 +186,7 @@ export class SessionModelControl {
 		if (this.scopedModels.length > 0 && !this.scopedModels.some((scoped) => modelsAreEqual(scoped.model, model)))
 			this.scopedModels = [...this.scopedModels, { model }];
 
-		const settingsManager = this.host.session.settingsManager;
-		const enabledModels = settingsManager.getGlobalSettings().enabledModels;
-		if (!enabledModels?.length) return;
-
-		const modelReference = `${model.provider}/${model.id}`;
-		if (enabledModels.some((pattern) => pattern.toLowerCase() === modelReference.toLowerCase())) return;
-		return [...enabledModels, modelReference];
+		return includeDefaultModel(this.host.session.settingsManager.getGlobalSettings().enabledModels, model);
 	}
 
 	async cycleModel(

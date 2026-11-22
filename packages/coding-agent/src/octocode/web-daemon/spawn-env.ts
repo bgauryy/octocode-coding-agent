@@ -4,7 +4,7 @@ import { getOctocodeHome } from "../../config.ts";
 
 /** What a detached, long-lived process needs from the launching session's environment, and nothing else. */
 const KEPT =
-	/^(HOME|USERPROFILE|PATH|SHELL|USER|LOGNAME|LANG|LANGUAGE|LC_[A-Z_]+|TZ|TMPDIR|TEMP|TMP|TERM|NODE_OPTIONS|SystemRoot|SYSTEMROOT|windir|ComSpec|APPDATA|LOCALAPPDATA|XDG_[A-Z_]+)$/;
+	/^(HOME|USERPROFILE|PATH|SHELL|USER|LOGNAME|LANG|LANGUAGE|LC_[A-Z_]+|TZ|TMPDIR|TEMP|TMP|TERM|NODE_OPTIONS|NODE_COMPILE_CACHE|NODE_DISABLE_COMPILE_CACHE|SystemRoot|SYSTEMROOT|windir|ComSpec|APPDATA|LOCALAPPDATA|XDG_[A-Z_]+)$/;
 /** An Octocode setting is kept unless its name says it holds a credential. */
 const CREDENTIAL_NAME = /(TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL)/i;
 

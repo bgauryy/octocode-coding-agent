@@ -179,6 +179,10 @@ export const usable = (daemon: Pick<Live, "status">, build: string): boolean =>
 	(daemon.status.build === build ||
 		(!isNewer(build, daemon.status.build) && !samePlaceOtherPage(build, daemon.status.build)));
 
+// The install can be updated in place after a terminal loaded its page. Remember the nonce of the live replacement
+// this launcher started, so subsequent opens from that terminal can reuse the page now on disk.
+let replacement: { requested: string; nonce: string } | undefined;
+
 /** Waits `ms`; rejects with an `AbortError` as soon as `signal` aborts, so a cancelled launch stops polling. */
 const sleep = (ms: number, signal?: AbortSignal) =>
 	sleepUnlessAborted(ms, signal, () => createAbortError("The web daemon launch was aborted."));
@@ -197,13 +201,19 @@ export async function ensureWebDaemon(options: LaunchOptions = {}): Promise<Laun
 		token: daemon.token,
 		record: daemon.record,
 	});
+	const accepts = (current: Live) =>
+		usable(current, build) ||
+		(replacement?.requested === build &&
+			replacement.nonce === current.record.nonce &&
+			current.status.protocolVersion === DAEMON_PROTOCOL_VERSION &&
+			!current.status.draining);
 	const quick = await live(paths.record);
-	if (quick && usable(quick, build)) return result(quick);
+	if (quick && accepts(quick)) return result(quick);
 	privateDir(paths.dir);
 	const release = await acquireRegistryLock(paths.launchLock, START_TIMEOUT_MS + DRAIN_WAIT_MS + 5000);
 	try {
 		let current = await live(paths.record);
-		if (current && usable(current, build)) return result(current);
+		if (current && accepts(current)) return result(current);
 		if (current) {
 			// Another build (or a draining one) holds the record: ask it to hand over, then wait for the record to go.
 			await call(current.origin, DAEMON_ROUTES.drain, current.token, "POST");
@@ -233,11 +243,19 @@ export async function ensureWebDaemon(options: LaunchOptions = {}): Promise<Laun
 		const deadline = Date.now() + START_TIMEOUT_MS;
 		while (Date.now() < deadline) {
 			current = await live(paths.record);
-			if (current && usable(current, build)) return result(current);
+			if (
+				current &&
+				current.record.pid === child.pid &&
+				current.status.build !== build &&
+				samePlaceOtherPage(build, current.status.build)
+			) {
+				replacement = { requested: build, nonce: current.record.nonce };
+			}
+			if (current && accepts(current)) return result(current);
 			// A daemon that found another one running exits quietly; its record then answers the next check.
 			if (failed) {
 				current = await live(paths.record);
-				if (current && usable(current, build)) return result(current);
+				if (current && accepts(current)) return result(current);
 				throw failed;
 			}
 			await sleep(50, options.signal);

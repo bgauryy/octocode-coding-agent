@@ -17,6 +17,7 @@ export interface DefaultModelReference {
 }
 
 export interface DefaultModelContext {
+	providerOnly?: string;
 	source: "global" | "project" | "run";
 	global?: DefaultModelReference;
 }

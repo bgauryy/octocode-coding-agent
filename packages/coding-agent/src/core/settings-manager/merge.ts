@@ -33,6 +33,8 @@ export function deepMergeObjects(
 /** Deep merge settings: project/overrides take precedence, nested objects merge recursively */
 export function deepMergeSettings(base: Settings, overrides: Settings): Settings {
 	const merged = deepMergeObjects(base, overrides) as Settings;
+	// A provider-only choice follows that provider's preferred model, even when another layer pins a model.
+	if (overrides.defaultProvider !== undefined && overrides.defaultModel === undefined) delete merged.defaultModel;
 	Object.assign(
 		merged,
 		mergeCachePreferences([

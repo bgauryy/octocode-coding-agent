@@ -33,3 +33,8 @@ export function guessSizeClass({ id, context, output }: SizeFacts): SizeClass {
 	if (context !== undefined && context < SMALL_CONTEXT) return "small";
 	return "medium";
 }
+
+/** Use the same size estimate in the CLI, the model tool and the task router. */
+export function modelSizeClass(model: { id: string; contextWindow?: number; maxTokens?: number }): SizeClass {
+	return guessSizeClass({ id: model.id, context: model.contextWindow, output: model.maxTokens });
+}

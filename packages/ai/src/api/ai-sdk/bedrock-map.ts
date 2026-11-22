@@ -1,3 +1,4 @@
+import { isBedrockNova2 } from "../../utils/bedrock-models.ts";
 import { jsonSchema, tool, type ModelMessage } from "ai";
 import type { Model, TranscriptContext, Usage } from "../../types.ts";
 import { calculateCost } from "../../models/model-helpers.ts";
@@ -141,6 +142,13 @@ export function bedrockSdkMapping(
 			responseRetryAfterMs = parseRetryAfterMs(response.headers);
 		}),
 		augmentRequest(body) {
+			if (isBedrockNova2(model.id) && ["high", "xhigh", "max"].includes(options.reasoning ?? "")) {
+				const inference = body.inferenceConfig as { temperature?: number; topP?: number } | undefined;
+				if (inference) {
+					delete inference.temperature;
+					delete inference.topP;
+				}
+			}
 			if (Array.isArray(body.system) && body.system.length === 0) delete body.system;
 			if (emptyMessages) body.messages = [];
 			if (syntheticTools) delete body.toolConfig;

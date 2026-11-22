@@ -195,6 +195,28 @@ describe("ModelRuntime virtual models", () => {
 		expect(runtime.getModels("router").map((model) => model.id)).toEqual(["second"]);
 	});
 
+	it.each(["hidden model", "disabled provider"])("rejects a virtual request routed to a %s", async (restriction) => {
+		const { runtime, definition, virtual } = await createRuntime();
+		const model = runtime.getModel("faux", "small")!;
+		runtime.registerVirtualModel({ ...definition, route: () => ({ model, thinkingLevel: "off" }) });
+		if (restriction === "hidden model") runtime.setHiddenModels({ faux: ["small"] });
+		else runtime.setDisabledProviders(["faux"]);
+		await expect(runtime.resolveModel(virtual, [], { reason: "retry", thinkingLevel: "off" })).rejects.toThrow(
+			restriction,
+		);
+	});
+
+	it("rejects a previously denied virtual target and still routes to its accessible sibling", async () => {
+		const { runtime, virtual } = await createRuntime();
+		runtime.setModelAccess({ provider: "faux", id: "small" }, true);
+		await expect(runtime.resolveModel(virtual, [], { reason: "retry", thinkingLevel: "low" })).rejects.toThrow(
+			"unavailable for this account or endpoint",
+		);
+		await expect(runtime.resolveModel(virtual, [], { reason: "retry", thinkingLevel: "high" })).resolves.toMatchObject({
+			model: { id: "large" },
+		});
+	});
+
 	it("rejects routes to virtual or unknown models", async () => {
 		const { runtime, definition, virtual } = await createRuntime();
 		const unknown = { ...virtual, provider: "faux", id: "missing" };

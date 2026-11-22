@@ -1,15 +1,18 @@
-import type {
-	AnyModel,
-	Api,
-	AuthOperationOptions,
-	AuthCheck,
-	Model,
-	ModelType,
-	ModelTypeMap,
-	MutableModels,
-	Provider,
-	ProviderPlan,
-	StreamOptions,
+import {
+	isModelAccessError,
+	type AssistantMessage,
+	type AssistantMessageEventStream,
+	type AnyModel,
+	type Api,
+	type AuthOperationOptions,
+	type AuthCheck,
+	type Model,
+	type ModelType,
+	type ModelTypeMap,
+	type MutableModels,
+	type Provider,
+	type ProviderPlan,
+	type StreamOptions,
 } from "@octocodeai/octocode-ai";
 import type { CachePreferenceLayer } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { dirname } from "node:path";
@@ -42,6 +45,64 @@ function isLoopbackUrl(baseUrl: string): boolean {
 
 /** The read-only catalog and availability queries of a model runtime, over the collections it owns. */
 export abstract class ModelCatalog {
+	/** A provider may accept a credential while refusing one particular model or regional profile. */
+	private readonly refused = new Map<string, Map<string, number>>();
+
+	private accessGeneration = 0;
+	/** Requests which began before a credential or endpoint change cannot update the new account's availability. */
+	get modelAccessGeneration(): number {
+		return this.accessGeneration;
+	}
+
+	setModelAccess(model: { provider: string; id: string }, rejected: boolean, generation = this.accessGeneration): void {
+		if (generation !== this.accessGeneration) return;
+		const entries = this.refused.get(model.provider);
+		if (!rejected) {
+			entries?.delete(model.id);
+			if (!entries?.size) this.refused.delete(model.provider);
+			return;
+		}
+		const current = entries ?? new Map<string, number>();
+		current.set(model.id, Date.now() + 5 * 60_000);
+		this.refused.set(model.provider, current);
+	}
+
+	protected clearModelAccess(provider?: string): void {
+		this.accessGeneration++;
+		if (provider === undefined) this.refused.clear();
+		else this.refused.delete(provider);
+	}
+
+	isModelAccessRejected(model: { provider: string; id: string }): boolean {
+		const until = this.refused.get(model.provider)?.get(model.id);
+		if (until === undefined) return false;
+		if (until > Date.now()) return true;
+		this.setModelAccess(model, false);
+		return false;
+	}
+
+	assertModelAccess(model: { provider: string; id: string }): void {
+		if (this.isModelAccessRejected(model)) {
+			throw new Error(
+				`The provider recently refused ${model.provider}/${model.id}. Choose another model in /models or recheck access in /providers.`,
+			);
+		}
+	}
+
+	observeModelAccess(message: AssistantMessage, generation = this.accessGeneration): void {
+		const model = { provider: message.provider, id: message.model };
+		if (message.stopReason === "error") {
+			if (isModelAccessError(message.errorMessage ?? "")) this.setModelAccess(model, true, generation);
+		} else if (message.stopReason !== "aborted") this.setModelAccess(model, false, generation);
+	}
+
+	protected observeStream(stream: AssistantMessageEventStream): AssistantMessageEventStream {
+		// The terminal result is also available to the stream consumer and never consumes a delta.
+		const generation = this.accessGeneration;
+		void stream.result().then((message) => this.observeModelAccess(message, generation));
+		return stream;
+	}
+
 	protected abstract readonly models: MutableModels;
 	protected abstract readonly layers: ProviderLayers;
 	protected abstract readonly modelsPath: string | undefined;
@@ -89,11 +150,13 @@ export abstract class ModelCatalog {
 		providerId?: string,
 		options?: AuthOperationOptions,
 	): Promise<readonly ModelTypeMap[TType][]> {
-		return this.withoutPausedPlans(await this.models.getAvailableOfType(type, providerId, options));
+		const models = await this.models.getAvailableOfType(type, providerId, options);
+		return this.availableRoutes(this.availability.visible(models));
 	}
 
 	async getAllAvailable(providerId?: string, options?: AuthOperationOptions): Promise<readonly AnyModel[]> {
-		return this.withoutPausedPlans(await this.models.getAllAvailable(providerId, options));
+		const models = await this.models.getAllAvailable(providerId, options);
+		return this.availableRoutes(this.availability.visible(models));
 	}
 
 	async checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined> {
@@ -101,7 +164,7 @@ export abstract class ModelCatalog {
 	}
 
 	async getAvailable(providerId?: string, options?: AuthOperationOptions): Promise<readonly Model<Api>[]> {
-		return this.withoutPausedPlans(await this.availability.getAvailable(providerId, options));
+		return this.availableRoutes(await this.availability.getAvailable(providerId, options));
 	}
 
 	setHiddenModels(hidden: Readonly<Record<string, readonly string[]>>): void {
@@ -113,7 +176,7 @@ export abstract class ModelCatalog {
 	}
 
 	getAvailableSnapshot(): readonly Model<Api>[] {
-		return this.withoutPausedPlans(this.availability.snapshot.available);
+		return this.availableRoutes(this.availability.snapshot.available);
 	}
 
 	/**
@@ -142,13 +205,15 @@ export abstract class ModelCatalog {
 	}
 
 	/** Models whose provider's plan is paused leave every availability answer; credentials and the catalog stay. */
-	private withoutPausedPlans<T extends { provider: string }>(models: readonly T[]): readonly T[] {
+	private availableRoutes<T extends { provider: string; id: string }>(models: readonly T[]): readonly T[] {
 		const paused = new Set(
 			this.getProviders()
 				.map((provider) => provider.id)
 				.filter((providerId) => this.getPlanDisabledReason(providerId) !== undefined),
 		);
-		return paused.size === 0 ? models : models.filter((model) => !paused.has(model.provider));
+		return paused.size === 0 && this.refused.size === 0
+			? models
+			: models.filter((model) => !paused.has(model.provider) && !this.isModelAccessRejected(model));
 	}
 
 	getRegisteredProviderConfig(providerId: string): ProviderConfigInput | undefined {
@@ -172,18 +237,18 @@ export abstract class ModelCatalog {
 		);
 	}
 
-	isUsingOAuth(providerId: string): boolean {
-		return this.availability.snapshot.auth.get(providerId)?.type === "oauth";
+	isUsingOAuth(providerId: string, scope?: "child"): boolean {
+		return this.availability.authType(providerId, scope) === "oauth";
 	}
 
 	/**
 	 * The one billing test: the footer's `(sub)`, the cache description, `/providers` and `models` all answer from it.
 	 * A provider whose plan bills by plan counts for every credential; otherwise a subscription OAuth login does.
 	 */
-	isUsingSubscription(providerId: string): boolean {
+	isUsingSubscription(providerId: string, scope?: "child"): boolean {
 		return isSubscriptionBilled({
 			plan: this.getProviderPlan(providerId),
-			usingOAuth: this.isUsingOAuth(providerId),
+			usingOAuth: this.isUsingOAuth(providerId, scope),
 			oauthIsSubscription: this.models.getProvider(providerId)?.auth.oauth?.isSubscription === true,
 		});
 	}
@@ -192,8 +257,8 @@ export abstract class ModelCatalog {
 	 * What a request through the provider costs the user, from the same test: `plan` when a subscription pays for it
 	 * (its marginal cost is the plan, not the metered list price), else `metered`. Model routing ranks by it.
 	 */
-	getProviderBilling(providerId: string): ProviderPlan["billing"] {
-		return this.isUsingSubscription(providerId) ? "plan" : "metered";
+	getProviderBilling(providerId: string, scope?: "child"): ProviderPlan["billing"] {
+		return this.isUsingSubscription(providerId, scope) ? "plan" : "metered";
 	}
 
 	/**
@@ -231,6 +296,9 @@ export abstract class ModelCatalog {
 	/** True when the user unticked the model on its provider's page. */
 	isModelHidden(model: { provider: string; id: string }): boolean {
 		return this.availability.isModelHidden(model);
+	}
+	isModelAvailableToChild(model: Pick<Model<Api>, "provider" | "id">): boolean {
+		return this.availability.isModelAvailableToChild(model);
 	}
 
 	isProviderDisabled(providerId: string): boolean {

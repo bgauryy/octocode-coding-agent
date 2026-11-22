@@ -99,6 +99,18 @@ export const ConfigProviderCommandSchema = Type.Union([
 		{ action: Type.Literal("set-provider"), provider: ProviderIdSchema, enabled: Type.Boolean() },
 		{ additionalProperties: false },
 	),
+	Type.Object(
+		{ action: Type.Literal("set-default-provider"), provider: ProviderIdSchema },
+		{ additionalProperties: false },
+	),
+	Type.Object(
+		{
+			action: Type.Literal("set-provider-model"),
+			provider: ProviderIdSchema,
+			model: Type.Union([Type.String({ minLength: 1, maxLength: 256 }), Type.Null()]),
+		},
+		{ additionalProperties: false },
+	),
 	// Which of a provider's models stay visible: `hidden` replaces the provider's hidden list (empty: show all).
 	Type.Object(
 		{

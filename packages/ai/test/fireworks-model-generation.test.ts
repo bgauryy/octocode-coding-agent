@@ -40,8 +40,6 @@ function generateFireworksModels(
 			`globalThis.fetch = async (input) => {\n` +
 			`  const url = String(input);\n` +
 			`  if (url === "https://models.dev/api.json") return Response.json(catalog);\n` +
-			`  if (url === "https://models.dev/models.json?type=decision") return Response.json({ "typesafe/jev-latest": { name: "Jev", type: "decision", limit: { context: 64000, output: 0 } } });\n` +
-			`  if (url.startsWith("https://openrouter.ai/api/v1/models") || url === "https://ai-gateway.vercel.sh/v1/models") return Response.json({ data: [] });\n` +
 			`  throw new Error(\`Unexpected fetch: \${url}\`);\n` +
 			`};\n`,
 	);
@@ -51,6 +49,8 @@ function generateFireworksModels(
 			"--import",
 			pathToFileURL(preloadPath).href,
 			"scripts/generate-models.ts",
+			"--providers",
+			"fireworks",
 			"--json-only",
 			"--json-output",
 			outputPath,
@@ -59,7 +59,17 @@ function generateFireworksModels(
 	);
 	expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
 	expect(result.stderr).toBe("");
-	return JSON.parse(readFileSync(join(outputPath, "providers/fireworks.json"), "utf8")) as Record<string, Model<Api>>;
+	const published = JSON.parse(readFileSync(join(outputPath, "providers/fireworks.json"), "utf8")) as Record<
+		string,
+		Model<Api>
+	>;
+	// A scoped refresh also exports older models. Check every requested fixture row.
+	return Object.fromEntries(
+		Object.keys(catalog["fireworks-ai"].models).map((id) => {
+			expect(published[id]).toBeDefined();
+			return [id, published[id]];
+		}),
+	);
 }
 
 describe("Fireworks model generation", () => {

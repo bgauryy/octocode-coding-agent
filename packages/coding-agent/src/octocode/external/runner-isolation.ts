@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 /** Claude's launch options preserve sign-in while excluding ambient skills, settings and MCP servers. */
 export const claudeIsolationOptions = () => ({
 	settingSources: [],
@@ -11,7 +13,10 @@ export const runnerSessionMeta = (vendor: string): Record<string, unknown> | und
 /** Gemini's per-launch allowlist restricts MCP to the explicit bridge without overriding workspace trust. */
 export const runnerLaunchArgs = (vendor: string, args: readonly string[], bridge?: string): string[] => [
 	...args,
-	...(vendor === "gemini" && bridge ? [`--allowed-mcp-server-names=${bridge}`] : []),
+	// Gemini treats an empty allowlist as unrestricted. A fresh unmatched name admits no configured server.
+	...(vendor === "gemini"
+		? ["--extensions=none", `--allowed-mcp-server-names=${bridge ?? `octocode-none-${randomUUID()}`}`]
+		: []),
 ];
 
 export const CLAUDE_ISOLATION_ARGS = [

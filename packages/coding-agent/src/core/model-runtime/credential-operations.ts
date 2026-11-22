@@ -22,6 +22,7 @@ export interface CredentialOperationsHost {
 	readonly credentials: RuntimeCredentials;
 	readonly layers: ProviderLayers;
 	readonly availability: ModelAvailability;
+	readonly clearModelAccess: (providerId: string) => void;
 	/** Called once a login, import or runtime API key is saved and synchronized, never after a removal. */
 	readonly credentialSaved: (providerId: string) => void;
 }
@@ -77,6 +78,7 @@ export class CredentialOperations {
 		signal: AbortSignal,
 	): Promise<void> {
 		const { models, layers, availability } = this.host;
+		this.host.clearModelAccess(providerId);
 		for (const listener of credentialListeners) listener(providerId);
 		try {
 			signal.throwIfAborted();

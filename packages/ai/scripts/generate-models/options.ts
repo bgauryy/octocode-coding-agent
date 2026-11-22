@@ -8,14 +8,12 @@ const __dirname = dirname(__filename);
 export const packageRoot = join(__dirname, "../..");
 
 function readGeneratorOptions(args: string[]): {
-	strict: boolean;
 	dataOnly: boolean;
 	jsonOnly: boolean;
 	jsonOutputDir: string | undefined;
 	pretty: boolean;
 	providers: string[] | undefined;
 } {
-	let strict = false;
 	let dataOnly = false;
 	let jsonOnly = false;
 	let jsonOutputDir: string | undefined;
@@ -29,10 +27,8 @@ function readGeneratorOptions(args: string[]): {
 			if (!providers?.length) throw new Error("--providers requires comma-separated provider IDs");
 			continue;
 		}
-		if (arg === "--strict") {
-			strict = true;
-			continue;
-		}
+		// Kept for existing build and release commands. A partial response always fails generation.
+		if (arg === "--strict") continue;
 		if (arg === "--data-only") {
 			dataOnly = true;
 			continue;
@@ -57,7 +53,12 @@ function readGeneratorOptions(args: string[]): {
 	if (jsonOnly && !jsonOutputDir) throw new Error("--json-only requires --json-output");
 	if (dataOnly && (jsonOnly || jsonOutputDir))
 		throw new Error("--data-only cannot be combined with JSON catalog output");
-	return { strict, dataOnly, jsonOnly, jsonOutputDir, pretty, providers };
+	return { dataOnly, jsonOnly, jsonOutputDir, pretty, providers };
 }
 
 export const generatorOptions = readGeneratorOptions(process.argv.slice(2));
+
+/** Full runs include every source. Scoped runs fetch only the selected providers’ dependencies. */
+export function refreshesProvider(id: string): boolean {
+	return !generatorOptions.providers || generatorOptions.providers.includes(id);
+}

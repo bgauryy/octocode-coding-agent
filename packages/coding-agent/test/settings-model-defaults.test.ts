@@ -20,6 +20,21 @@ class Storage implements SettingsStorage {
 }
 
 describe("saving a default model", () => {
+	it("keeps an inherited Pi model pin from overriding an explicit startup provider after restart", async () => {
+		const storage = Object.assign(new Storage(), {
+			loadInherited: () => ({ settings: { defaultProvider: "pi", defaultModel: "shared" }, warnings: [] }),
+		});
+		storage.content = "{}";
+		const settings = SettingsManager.fromStorage(storage);
+		expect(settings.getDefaultModel()).toBe("shared");
+		await settings.saveProviderModel("gateway", "preferred");
+		await settings.saveDefaultModelSelection("gateway", undefined);
+		const restarted = SettingsManager.fromStorage(storage);
+		expect(restarted.getDefaultProvider()).toBe("gateway");
+		expect(restarted.getDefaultModel()).toBeUndefined();
+		expect(restarted.getProviderModels().gateway).toBe("preferred");
+	});
+
 	it("persists or clears the provider/model pair in a single write", async () => {
 		const storage = new Storage();
 		const settings = SettingsManager.fromStorage(storage);
@@ -31,6 +46,24 @@ describe("saving a default model", () => {
 		await settings.flush();
 		expect(storage.writes).toBe(2);
 		expect(JSON.parse(storage.content)).toEqual({ theme: "dark" });
+	});
+
+	it("saves the startup provider independently and retains other providers' preferred models", async () => {
+		const storage = new Storage();
+		const first = SettingsManager.fromStorage(storage);
+		const other = SettingsManager.fromStorage(storage);
+		await first.saveProviderModel("alpha", "shared");
+		await other.saveProviderModel("beta", "shared");
+		await first.saveDefaultModelSelection("beta", undefined);
+		const saved = SettingsManager.fromStorage(storage);
+		expect(saved.getDefaultProvider()).toBe("beta");
+		expect(saved.getDefaultModel()).toBeUndefined();
+		expect(saved.getProviderModels()).toEqual({ alpha: "shared", beta: "shared" });
+		storage.failures = 1;
+		await expect(saved.saveProviderModel("beta", "broken")).rejects.toThrow("fixture write failed");
+		expect(saved.getProviderModels().beta).toBe("shared");
+		await saved.saveProviderModel("beta", undefined);
+		expect(SettingsManager.fromStorage(storage).getProviderModels()).toEqual({ alpha: "shared" });
 	});
 
 	it("rolls back failed shortcut persistence and serializes it with a later default save", async () => {

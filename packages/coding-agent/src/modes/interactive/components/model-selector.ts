@@ -59,7 +59,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private currentModel?: Model<any>;
 	private modelRuntime: ModelRuntime;
 	private onSelectCallback: (model: Model<any>) => void;
-	private onSelectAsDefaultCallback?: (model: Model<any>) => void;
+	private onSelectAsDefaultCallback?: (model: Model<any>, choice?: Exclude<SwitchChoice, "chat">) => void;
 	private onCancelCallback: () => void;
 	private errorMessage?: string;
 	private refreshStatusMessage = "Refreshing model catalogs…";
@@ -88,7 +88,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		onSelect: (model: Model<any>) => void,
 		onCancel: () => void,
 		initialSearchInput?: string,
-		onSelectAsDefault?: (model: Model<any>) => void,
+		onSelectAsDefault?: (model: Model<any>, choice?: Exclude<SwitchChoice, "chat">) => void,
 		defaultModel?: DefaultModelReference,
 		defaultContext?: DefaultModelContext,
 	) {
@@ -134,7 +134,9 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.addChild(new Text(theme.fg("accent", theme.bold("Choose a model for this chat")), 1, 0));
 		const startup = defaultModel
 			? `Startup default (${defaultContext?.source ?? "global"}): ${defaultModel.provider}/${defaultModel.id}`
-			: "Startup default: automatic";
+			: defaultContext?.providerOnly
+				? `Startup provider (${defaultContext.source}): ${defaultContext.providerOnly} · automatic model`
+				: "Startup default: automatic";
 		this.addChild(new TruncatedText(theme.fg("muted", startup), 1, 0));
 		if (scopedModels.length > 0) {
 			this.scopeText = new Text(this.getScopeText(), 1, 0);
@@ -374,8 +376,8 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 	private finish(model: Model<any>, choice: SwitchChoice): void {
 		this.dispose();
-		if (choice !== "default") this.onSelectCallback(model);
-		if (choice !== "chat") this.onSelectAsDefaultCallback?.(model);
+		if (choice === "chat") this.onSelectCallback(model);
+		else this.onSelectAsDefaultCallback?.(model, choice);
 	}
 
 	/** The search text the list filters by. */

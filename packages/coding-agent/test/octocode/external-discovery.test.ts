@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type InstalledAcpAgent, installedAcpAgents } from "../../src/octocode/external/discover.ts";
-import { describeExternal } from "../../src/octocode/external/describe.ts";
+import { describeExternal, externalListing } from "../../src/octocode/external/describe.ts";
+import { apiDir, instancesDir } from "../../src/octocode/api/registry.ts";
 import { ExternalAgents, type ExternalFactories } from "../../src/octocode/external/manager.ts";
 import type { ExternalBackend } from "@octocodeai/octocode-contracts/external";
 import { parseExternalParams } from "../../src/octocode/external/protocol.ts";
@@ -28,6 +29,32 @@ const policy = {
 	permission: () => async () => ({ outcome: { outcome: "cancelled" as const } }),
 	sender: () => "local-session",
 };
+
+it("offers only other live Octocode instances as external destinations", async () => {
+	const home = tempDir();
+	vi.stubEnv("OCTOCODE_HOME", home);
+	try {
+		const dir = instancesDir(apiDir());
+		expect(dir.startsWith(home)).toBe(true);
+		mkdirSync(dir, { recursive: true });
+		const record = (id: string, pid: number) =>
+			writeFileSync(join(dir, id + ".json"), JSON.stringify({ id, pid, cwd: home, protocol: 1, startedAt: 1 }));
+		record("coordinator-fixture", process.pid);
+		const agents = new ExternalAgents(policy, { discover: () => [] });
+		managers.push(agents);
+		const ctx = fakeCtx({ cwd: home });
+		expect(agents.discoverable()).toBe(false);
+		expect(await externalListing(agents, ctx)).toEqual([]);
+
+		record("peer-fixture", process.ppid);
+		expect(agents.discoverable()).toBe(true);
+		const listing = (await externalListing(agents, ctx)).join("\n");
+		expect(listing).toContain("peer-fixture");
+		expect(listing).not.toContain("coordinator-fixture");
+	} finally {
+		vi.unstubAllEnvs();
+	}
+});
 
 function manager(backend: ExternalBackend, discover: () => InstalledAcpAgent[] = () => []) {
 	const acp = vi.fn(async (_input: Record<string, unknown>) => backend);

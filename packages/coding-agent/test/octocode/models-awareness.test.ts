@@ -27,14 +27,13 @@ describe("canRunTask and explicit routes", () => {
 		expect(canRunTask(unknown, undefined)).toBe(true);
 	});
 
-	it("refuses an explicit model that cannot run a task and names runnable ones of its provider", () => {
-		const route = routeModel({ explicit: "openai/gpt-4", available: refs, parent: sessionModel });
-		expect(route).toEqual({
-			error:
-				'Model "openai/gpt-4" cannot run a task: context 8.2k (needs 100k). Runnable openai models: openai/gpt-5, openai/gpt-5-mini',
+	it("runs the user's explicitly selected small model by qualified or unambiguous ID", () => {
+		expect(routeModel({ explicit: "openai/gpt-4", available: refs, parent: sessionModel })).toEqual({
+			model: "openai/gpt-4",
 		});
-		// A bare id resolves the same way.
-		expect(routeModel({ explicit: "gpt-4:low", available: refs, parent: sessionModel })).toHaveProperty("error");
+		expect(routeModel({ explicit: "gpt-4:low", available: refs, parent: sessionModel })).toEqual({
+			model: "openai/gpt-4:low",
+		});
 	});
 
 	it("starts a model the catalog does not know, and a runnable one", () => {
@@ -99,7 +98,7 @@ describe("models tool listings", () => {
 		const text = await modelsTool()({});
 		for (const model of refs)
 			expect(text.split("\n").filter((line) => line.startsWith(`${model.provider}/${model.id} ·`))).toHaveLength(1);
-		expect(text).toContain("openai/gpt-4 · $30/$60 · 8.2k · tools · ?");
+		expect(text).toContain("openai/gpt-4 · $30/$60 · 8.2k · tools · small (estimated size) · ?");
 		expect(text).not.toContain("Subagent purposes:");
 		expect(text).not.toContain("Profiles:");
 		expect(text).not.toContain("saved credential");
@@ -110,7 +109,7 @@ describe("models tool listings", () => {
 
 	it("lists a provider's runnable models, then those that cannot run a task under their own heading", async () => {
 		const text = await modelsTool()({ provider: "openai" });
-		const [runnable, other] = text.split("Cannot run a task");
+		const [runnable, other] = text.split("Available by exact provider/id");
 		expect(runnable).toMatch(/openai\/gpt-5-mini · /);
 		expect(runnable).not.toContain("openai/gpt-4 ");
 		expect(other).toMatch(/openai\/gpt-4 · .* · context 8\.2k \(needs 100k\)/);
@@ -125,7 +124,7 @@ describe("models tool listings", () => {
 		const text = await tool({ query: "model-" });
 		expect(text).toContain("45 models match; too many to list.");
 		expect(text).toContain("gateway · API key · saved credential · route config · 45 runnable · 45 match");
-		expect(text).toContain("openai · API key · models.json · route config · 2 runnable of 3 · 0 match");
+		expect(text).toContain("openai · API key · models.json · route config · 3 runnable · 0 match");
 		expect(text).not.toMatch(/gateway\/model-1 · /);
 	});
 });

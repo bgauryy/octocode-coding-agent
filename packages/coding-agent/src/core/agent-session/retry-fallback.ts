@@ -4,7 +4,7 @@
  */
 
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
-import { isCredentialError, isUsageLimitError } from "@octocodeai/octocode-ai";
+import { isCredentialError, isModelAccessError, isUsageLimitError } from "@octocodeai/octocode-ai";
 import type { AssistantMessage, Model } from "@octocodeai/octocode-ai/compat";
 import { isValidThinkingLevel } from "../thinking-level.ts";
 import { isVirtualModel } from "../virtual-models.ts";
@@ -25,11 +25,12 @@ const isExhausted = (provider: string, id: string, cooldownMs: number) =>
 	recent(keyOf(provider, id), cooldownMs) || recent(keyOf(provider, "*"), cooldownMs);
 
 /** Why the turn moves on: `usage` a usage limit, `credential` a refused credential, `outage` retries ran out. */
-type FallbackReason = "usage" | "credential" | "outage";
+type FallbackReason = "usage" | "credential" | "outage" | "model";
 
 const REASON_TEXT: Record<FallbackReason, string> = {
 	usage: "hit a usage limit",
 	credential: "refused the credential",
+	model: "was unavailable for this account or endpoint",
 	outage: "kept failing after retries",
 };
 
@@ -67,6 +68,7 @@ export class SessionFallback {
 	private reasonOf(message: AssistantMessage): FallbackReason | undefined {
 		if (message.stopReason !== "error") return undefined;
 		const text = message.errorMessage ?? "";
+		if (isModelAccessError(text)) return "model";
 		if (isUsageLimitError(text)) return "usage";
 		// Before the credential test: a rate limit that names the key is about waiting, not the key.
 		if (this.host.isRetryable(message)) return "outage";
@@ -86,6 +88,12 @@ export class SessionFallback {
 		const failedKey = keyOf(message.provider, message.model);
 		const current = session.model;
 		if (current && isVirtualModel(current)) {
+			// The physical target was rejected. The router can choose again, and target validation prevents retrying it.
+			if (reason === "model")
+				return (
+					session.modelRuntime.isModelAccessRejected({ provider: message.provider, id: message.model }) &&
+					this.resume(message)
+				);
 			if (
 				reason !== "usage" ||
 				isExhausted(message.provider, message.model, session.settingsManager.getRetryFallbackCooldownMs())
@@ -94,9 +102,11 @@ export class SessionFallback {
 			exhausted.set(failedKey, Date.now());
 			return this.resume(message);
 		}
-		exhausted.set(reason === "credential" ? keyOf(message.provider, "*") : failedKey, Date.now());
+		if (reason !== "model")
+			exhausted.set(reason === "credential" ? keyOf(message.provider, "*") : failedKey, Date.now());
 		const candidate = await this.pick(
 			session.settingsManager.getRetryFallbackModels(),
+			reason === "model" ? failedKey : undefined,
 			session.settingsManager.getRetryFallbackCooldownMs(),
 		);
 		if (!candidate) return false;
@@ -124,14 +134,27 @@ export class SessionFallback {
 	/** The first entry that resolves, has credentials, is not exhausted and whose window holds the context. */
 	private async pick(
 		selectors: readonly string[],
+		rejectedModel: string | undefined,
 		cooldownMs: number,
 	): Promise<{ model: Model<any>; thinking?: ThinkingLevel } | undefined> {
 		const { session } = this.host;
 		const tokens = session.getContextUsage()?.tokens ?? undefined;
 		for (const selector of selectors) {
 			const parsed = parseSelector(selector.trim());
-			if (!parsed || isExhausted(parsed.provider, parsed.id, cooldownMs)) continue;
-			const model = session.modelRuntime.getPhysicalModel(parsed.provider, parsed.id);
+			if (
+				!parsed ||
+				keyOf(parsed.provider, parsed.id) === rejectedModel ||
+				isExhausted(parsed.provider, parsed.id, cooldownMs)
+			)
+				continue;
+			const runtime = session.modelRuntime;
+			if (
+				runtime.isProviderDisabled(parsed.provider) ||
+				runtime.isModelHidden(parsed) ||
+				runtime.isModelAccessRejected(parsed)
+			)
+				continue;
+			const model = runtime.getPhysicalModel(parsed.provider, parsed.id);
 			if (!model) continue;
 			// A window too small would compact first on the exhausted model, which fails on the same limit.
 			const reserve = session.settingsManager.getCompactionReserveTokens(model);

@@ -1,3 +1,4 @@
+import { bedrockReplyBudget } from "../utils/bedrock-models.ts";
 import { clampThinkingLevel } from "../models/model-helpers.ts";
 import type {
 	Api,
@@ -57,7 +58,11 @@ export function buildBaseOptions(
 	return {
 		temperature: options?.temperature,
 		samplingParams,
-		maxTokens: clampMaxTokensToContext(model, context, options?.maxTokens ?? model.maxTokens),
+		maxTokens: clampMaxTokensToContext(
+			model,
+			context,
+			bedrockReplyBudget(model, options?.maxTokens) ?? options?.maxTokens ?? model.maxTokens,
+		),
 		signal: options?.signal,
 		telemetry: options?.telemetry,
 		apiKey: apiKey || options?.apiKey,

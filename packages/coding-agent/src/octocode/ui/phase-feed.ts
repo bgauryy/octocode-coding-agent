@@ -59,6 +59,9 @@ export function registerPhaseFeed(api: FeatureSetup, openItemsOf: (ctx: FeatureC
 		dialogs.clear();
 		phase.reset();
 	});
+	// Release the job before teardown detaches its timers and wake sources. Otherwise removal can
+	// announce completion and append a turn summary to the original transcript after a clone.
+	api.bus.on("session_shutdown", async () => phase.reset());
 	api.bus.on("agent_start", async () => {
 		tools.clear();
 		phase.startRun("Thinking");

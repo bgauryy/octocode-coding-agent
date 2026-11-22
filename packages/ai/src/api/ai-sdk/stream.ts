@@ -1,3 +1,6 @@
+import { bedrockErrorHint } from "../bedrock-converse-stream/errors.ts";
+import { isBedrockInferenceHost } from "../../utils/provider-host.ts";
+import { bedrockReplyBudget } from "../../utils/bedrock-models.ts";
 import {
 	experimental_streamTextLowMemory as streamText,
 	type ModelMessage,
@@ -119,11 +122,12 @@ export function streamSdk(
 				toolChoice: mapping?.toolChoice,
 				include: { rawChunks: mapping?.includeRawChunks },
 				maxOutputTokens:
-					model.api === "anthropic-messages" || model.api === "bedrock-converse-stream"
+					bedrockReplyBudget(model, options.maxTokens) ??
+					(model.api === "anthropic-messages" || model.api === "bedrock-converse-stream"
 						? (options.maxTokens ?? model.maxTokens)
 						: model.api.endsWith("responses") && options.maxTokens
 							? Math.max(16, options.maxTokens)
-							: options.maxTokens,
+							: options.maxTokens),
 				providerOptions: mapping?.providerOptions ?? (await sdkProviderOptions(model, options)),
 				temperature:
 					model.compat && "supportsTemperature" in model.compat && model.compat.supportsTemperature === false
@@ -220,6 +224,11 @@ export function streamSdk(
 									? "Mistral API error"
 									: undefined,
 						);
+			if (
+				output.stopReason === "error" &&
+				(model.api === "bedrock-converse-stream" || isBedrockInferenceHost(model.baseUrl))
+			)
+				output.errorMessage += bedrockErrorHint(output.errorMessage);
 			if (output.errorMessage?.includes("subscription_sharing_usage_limit_exceeded"))
 				output.errorMessage += "\nCheck your ChatGPT usage: https://chatgpt.com/settings/usage";
 			const retryAfterMs =

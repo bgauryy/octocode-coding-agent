@@ -14,6 +14,8 @@ yarn run hydrate:model-data   # downloads the provider model catalog
 yarn start                    # run from source; `yarn start --help` lists options
 ```
 
+To update one hydrated provider, run `yarn run generate:models --providers openrouter`. The [AI catalog guide](packages/ai/docs/development.md#3-model-generation-scriptsgenerate-modelsts) explains source selection, registration, and how the generator handles failed refreshes.
+
 Inside the app: `/providers` connects an account, `/model` picks a model, `/help` lists commands.
 
 | Command                      | Does                                                                                         |

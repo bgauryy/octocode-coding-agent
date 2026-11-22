@@ -21,6 +21,7 @@ describe("custom Amazon Bedrock host", () => {
 		expect(bedrockHostFamily("https://bedrock-runtime.eu-central-1.amazonaws.com")).toBe("runtime");
 		expect(bedrockHostFamily(mantle)).toBe("mantle");
 		expect(bedrockHostFamily("https://llm.corp.example/v1")).toBe("unknown");
+		expect(bedrockHostFamily("https://bedrock-runtime.us-east-1.amazonaws.com.example.org/v1")).toBe("unknown");
 		expect(bedrockHostFamily("not a url")).toBe("unknown");
 	});
 
@@ -30,6 +31,16 @@ describe("custom Amazon Bedrock host", () => {
 			api: "bedrock-converse-stream",
 			baseUrl: url,
 		});
+	});
+
+	test("keeps the AWS OpenAI-compatible runtime base URL on bearer login", () => {
+		const baseUrl = "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1";
+		expect(bedrockEndpoint({ host: baseUrl }, "bearer-token")?.baseUrl).toBe(baseUrl);
+		expect(bedrockRoute(model("global.moonshotai.kimi-k3.1", baseUrl), undefined)).toEqual({
+			api: "openai-completions",
+			baseUrl,
+		});
+		expect(() => bedrockEndpoint({ host: baseUrl }, "aws-profile")).toThrow(/bearer token/);
 	});
 
 	test("bedrock-mantle picks the base path and API per model family", () => {

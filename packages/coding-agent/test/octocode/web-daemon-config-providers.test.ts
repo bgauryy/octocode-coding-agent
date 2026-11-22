@@ -72,6 +72,28 @@ describe("providers from configuration", () => {
 		expect(JSON.stringify(snapshot)).not.toContain(SECRET);
 	});
 
+	it("offers custom models beyond the compact provider summary when selecting a preference", async () => {
+		const models = Array.from({ length: 70 }, (_, i) => ({ id: `model-${i}` }));
+		write(path.join(agentDir, "models.json"), {
+			providers: { large: { models, api: "openai-completions", apiKey: SECRET } },
+		});
+		expect(row(await snapshotOf(), "large")?.modelChoice?.ids).toContain("model-69");
+		await writeConfigProvider({ action: "set-provider-model", provider: "large", model: "model-69" }, options());
+		expect(row(await snapshotOf(), "large")?.modelChoice?.preferred).toBe("model-69");
+	});
+	it("saves a provider and its preferred model independently and rejects unavailable choices", async () => {
+		const provider = "guy-provider-anthropic-x";
+		await writeConfigProvider({ action: "set-provider-model", provider, model: "m" }, options());
+		await writeConfigProvider({ action: "set-default-provider", provider }, options());
+		expect(row(await snapshotOf(), provider)?.modelChoice).toMatchObject({ defaultProvider: true, preferred: "m" });
+		await expect(
+			writeConfigProvider({ action: "set-provider-model", provider, model: "absent" }, options()),
+		).rejects.toThrow(/visible model/);
+		await writeConfigProvider({ action: "set-provider-model", provider, model: null }, options());
+		expect(row(await snapshotOf(), provider)?.modelChoice).not.toHaveProperty("preferred");
+		expect(row(await snapshotOf(), provider)?.modelChoice?.defaultProvider).toBe(true);
+	});
+
 	it("reports the winning model definition when a lower-priority file also has a key", async () => {
 		write(path.join(agentDir, "models.json"), {
 			providers: {

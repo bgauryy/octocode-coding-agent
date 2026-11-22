@@ -1,3 +1,4 @@
+import { bedrockRequestEffort } from "../../utils/bedrock-models.ts";
 import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { ToolChoice, ToolSet } from "ai";
 import type { TranscriptContext } from "../../types.ts";
@@ -27,16 +28,20 @@ export function responsesMapping(
 	const requested = options.reasoningEffort ?? (options.reasoningSummary ? "medium" : undefined);
 	const update = getConfigurationUpdateEffort(model, options, compat);
 	const mapped = requested ? (model.thinkingLevelMap?.[requested] ?? requested) : undefined;
-	const reasoning = model.reasoning
-		? mapped
-			? {
-					reasoningEffort: update === undefined ? mapped : "medium",
-					reasoningSummary: options.reasoningSummary || "auto",
-				}
-			: getProviderCapabilities(model.provider).acceptsReasoningOff && model.thinkingLevelMap?.off !== null
-				? { reasoningEffort: model.thinkingLevelMap?.off ?? "none" }
-				: {}
-		: {};
+	const bedrockEffort = bedrockRequestEffort(model, requested);
+	const reasoning =
+		bedrockEffort !== undefined
+			? { reasoningEffort: bedrockEffort }
+			: model.reasoning
+				? mapped
+					? {
+							reasoningEffort: update === undefined ? mapped : "medium",
+							reasoningSummary: options.reasoningSummary || "auto",
+						}
+					: getProviderCapabilities(model.provider).acceptsReasoningOff && model.thinkingLevelMap?.off !== null
+						? { reasoningEffort: model.thinkingLevelMap?.off ?? "none" }
+						: {}
+				: {};
 	const openai = {
 		store: false,
 		forceReasoning: model.reasoning,

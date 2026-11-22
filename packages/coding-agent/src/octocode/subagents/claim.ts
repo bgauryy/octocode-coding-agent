@@ -3,7 +3,7 @@ import type { AgentEnd } from "../team/panel/state.ts";
 import { randomUUID } from "node:crypto";
 import { maxSubagents, MAX_SUBAGENTS_ENV } from "./concurrency.ts";
 export { machineSubagents, maxSubagents, MAX_SUBAGENTS_ENV } from "./concurrency.ts";
-import { getEnvApiKey } from "@octocodeai/octocode-ai/compat";
+import { modelAvailableToChild, modelEnabled, sessionOnlyProvider } from "./task-model-visibility.ts";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import type { ReportStatus } from "../native/prompts/report.ts";
 import { envInt } from "@octocodeai/octocode-common/env";
@@ -201,18 +201,15 @@ export interface Run {
  */
 export type RunRoute = Extract<ModelRoute, { model?: string }> & { via?: string; parent?: string };
 
-/**
- * Whether `provider` authenticates only through this session's runtime override (`--api-key`): that key lives in this
- * process's memory and never reaches a child, which inherits the environment and the shared credential store instead.
- * An environment key the child inherits keeps the provider usable.
- */
-function sessionOnlyProvider(registry: FeatureContext["modelRegistry"] | undefined, provider: string): boolean {
-	return registry?.getProviderAuthStatus?.(provider).source === "runtime" && !getEnvApiKey(provider);
-}
-
 function sessionOnlyError(provider: string): Error {
 	return new Error(
 		`${provider} is authenticated by this session's --api-key, which subagents do not receive. Connect it with /providers or choose a model from another provider.`,
+	);
+}
+
+function childAccountError(model: { provider: string; id: string }): Error {
+	return new Error(
+		`The child account cannot use ${model.provider}/${model.id}. Choose a model available to tasks in the models tool.`,
 	);
 }
 
@@ -221,7 +218,10 @@ function childAvailable(registry: FeatureContext["modelRegistry"] | undefined, e
 	if (!registry) return [];
 	const provider = explicit?.includes("/") ? explicit.slice(0, explicit.indexOf("/")) : undefined;
 	if (provider && sessionOnlyProvider(registry, provider)) throw sessionOnlyError(provider);
-	return registry.getAvailable().filter((model) => !sessionOnlyProvider(registry, model.provider));
+	const all = registry.getAvailable();
+	const requested = routedModel(explicit, all);
+	if (requested && !modelAvailableToChild(registry, requested)) throw childAccountError(requested);
+	return all.filter((model) => modelAvailableToChild(registry, model));
 }
 
 /** What a call asks for, checked before anything waits, asks or starts: its profile and the model it routes to. */
@@ -255,11 +255,15 @@ export function planRun(
 	// An explicit model is strict; a profile's is a preference that falls back to this session's model; a task with
 	// neither a model nor a profile takes the default purpose.
 	const available = childAvailable(ctx.modelRegistry, params.model);
+	const excludedParent = ctx.model && !modelEnabled(ctx.modelRegistry, ctx.model);
+	const unavailableParent = ctx.model && !modelAvailableToChild(ctx.modelRegistry, ctx.model) ? ctx.model : undefined;
+	if (excludedParent && !available.length)
+		throw new Error("This session’s model is hidden or disabled. Enable a task model in /providers.");
 	const routed = routeModel({
 		explicit: params.model,
 		preferred: profile ? profile.model : SUBAGENT_DEFAULT_TIER,
 		available,
-		parent: ctx.model,
+		parent: excludedParent || unavailableParent ? undefined : ctx.model,
 		catalog: currentCatalog(),
 		refused: (provider, id, proven, cost) => providerHealth.refused(provider, id, proven, cost),
 		thinking: subagentThinking(),
@@ -268,10 +272,14 @@ export function planRun(
 		billing: registryBilling(ctx.modelRegistry, params.background === true),
 	});
 	if ("error" in routed) throw new Error(routed.error);
+	if (unavailableParent && !routed.model) {
+		if (sessionOnlyProvider(ctx.modelRegistry, unavailableParent.provider))
+			throw sessionOnlyError(unavailableParent.provider);
+		throw childAccountError(unavailableParent);
+	}
+	if (excludedParent && !routed.model)
+		throw new Error("No enabled model can run this task. Choose a task model in /providers.");
 	const route = routed.model ? { ...routed, model: supportedThinking(routed.model, available) } : routed;
-	// A preference that fell back, or a default purpose with no candidate, runs the child on this session's model.
-	const routedProvider = route.model ? route.model.slice(0, route.model.indexOf("/")) : ctx.model?.provider;
-	if (routedProvider && sessionOnlyProvider(ctx.modelRegistry, routedProvider)) throw sessionOnlyError(routedProvider);
 	const parent = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
 	// The default purpose names its route only when it chose a model other than this session's.
 	const onParent = !route.model || route.model === parent || route.model.startsWith(`${parent}:`);
@@ -377,7 +385,7 @@ export function claimRun(
 	};
 	const agentRoute =
 		childModel && ctx.modelRegistry?.billedBySubscription
-			? deriveAgentRoute({ subscription: ctx.modelRegistry.billedBySubscription(childModel.provider) })
+			? deriveAgentRoute({ subscription: ctx.modelRegistry.billedBySubscription(childModel.provider, "child") })
 			: undefined;
 	return { identity, profile, route, ...(agentRoute ? { agentRoute } : {}), teamNote, release };
 }

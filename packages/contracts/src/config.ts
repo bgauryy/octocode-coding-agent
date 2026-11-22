@@ -163,6 +163,8 @@ export const ProviderCredentialStatusSchema = Type.Object(
 			Type.Object(
 				{
 					ids: Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 1024 }),
+					preferred: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+					defaultProvider: Type.Optional(Type.Boolean()),
 					hidden: Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 1024 }),
 				},
 				{ additionalProperties: false },

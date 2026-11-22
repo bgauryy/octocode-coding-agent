@@ -23,6 +23,8 @@ import {
 	applyOpenAIResponsesTranscriptMetadata,
 	applyOpenAIToolSearchMetadata,
 } from "./generate-models/openai-compat.ts";
+import { refreshesProvider } from "./generate-models/options.ts";
+import { KNOWN_PROVIDER_IDS, type KnownProvider } from "../src/types/ids.ts";
 import { applyModelsDevReasoningOptionMetadata, applyThinkingLevelMetadata } from "./generate-models/thinking.ts";
 import { applyUpstreamCorrections } from "./generate-models/upstream-corrections.ts";
 import { writeModelCatalogs } from "./generate-models/writers.ts";
@@ -32,10 +34,29 @@ async function generateModels() {
 	// models.dev: Anthropic, Google, OpenAI, Groq, Cerebras, and others
 	// OpenRouter: its tool-capable routed catalog
 	// AI Gateway: OpenAI-compatible catalog with tool-capable models
-	const modelsDevModels = await loadModelsDevData();
-	const modelsDevClassifierModels = await loadModelsDevClassifierModels();
-	const openRouterCatalog = await fetchOpenRouterModels();
-	const aiGatewayCatalog = await fetchAiGatewayModels();
+	// Azure derives its catalog from OpenAI and DeepSeek. The other exceptions have their own listings or manual models.
+	const otherSources = new Set<KnownProvider>([
+		"ant-ling",
+		"azure",
+		"deepseek",
+		"openrouter",
+		"typesafe",
+		"vercel-ai-gateway",
+	]);
+	const modelsDevOwners = KNOWN_PROVIDER_IDS.filter(
+		(id) => !otherSources.has(id) && (refreshesProvider(id) || (id === "openai" && refreshesProvider("azure"))),
+	);
+	const modelsDevModels = modelsDevOwners.length ? await loadModelsDevData() : [];
+	const populated = new Set(modelsDevModels.map((model) => model.provider));
+	const missing = modelsDevOwners.filter((id) => !populated.has(id));
+	if (missing.length) throw new Error(`models.dev returned no usable chat models for: ${missing.join(", ")}`);
+	const modelsDevClassifierModels = refreshesProvider("typesafe") ? await loadModelsDevClassifierModels() : [];
+	const openRouterCatalog = refreshesProvider("openrouter")
+		? await fetchOpenRouterModels()
+		: { chat: [], images: [], classifiers: [] };
+	const aiGatewayCatalog = refreshesProvider("vercel-ai-gateway")
+		? await fetchAiGatewayModels()
+		: { chat: [], classifiers: [] };
 
 	// Combine chat models (models.dev has priority where sources overlap).
 	const allModels = [...modelsDevModels, ...openRouterCatalog.chat, ...aiGatewayCatalog.chat].filter(
@@ -71,8 +92,9 @@ async function generateModels() {
 	writeModelCatalogs(sortProviderCatalogs(providers));
 
 	// Print statistics
-	const totalModels = allModels.length;
-	const reasoningModels = allModels.filter((model) => model.reasoning).length;
+	const publishedChat = Object.values(providers).flatMap((catalog) => Object.values(catalog.chat));
+	const totalModels = publishedChat.length;
+	const reasoningModels = publishedChat.filter((model) => model.reasoning).length;
 
 	console.log(`\nModel Statistics:`);
 	console.log(`  Total tool-capable models: ${totalModels}`);

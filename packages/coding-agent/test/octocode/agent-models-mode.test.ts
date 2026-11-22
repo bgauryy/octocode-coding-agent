@@ -33,6 +33,7 @@ function mode(profiles = new Map()) {
 		input: Record<string, unknown>,
 		available = [opus, haiku, zen],
 		kinds?: Record<string, string>,
+		visibility?: { hidden?: string; disabled?: string },
 	) => {
 		const result = await tool!.execute("call-1", input, undefined, undefined, {
 			model: { ...opus, contextWindow: 180_000 },
@@ -42,6 +43,8 @@ function mode(profiles = new Map()) {
 				getAvailable: () => available,
 				streamSimple,
 				getAll: () => catalog,
+				isModelHidden: (model: ModelRef) => model.id === visibility?.hidden,
+				isProviderDisabled: (provider: string) => provider === visibility?.disabled,
 				find: (provider: string, id: string) => catalog.find((e) => e.provider === provider && e.id === id),
 				...(kinds ? { getProviderKind: (provider: string) => kinds[provider] ?? "API key" } : {}),
 				getProviderAuthStatus: (provider: string) => ({
@@ -71,7 +74,9 @@ describe("models tool", () => {
 		expect(tool.name).toBe("models");
 		expect(Object.keys((tool.parameters as { properties: object }).properties)).toEqual([
 			"routes",
+			"offset",
 			"provider",
+			"size",
 			"ability",
 			"query",
 			"check",
@@ -85,8 +90,8 @@ describe("models tool", () => {
 		expect(text.split("\n")[0]).toBe(
 			"This session: anthropic/claude-opus · thinking high · context budget 180k of 200k capacity.",
 		);
-		expect(text).toContain("\nanthropic/claude-haiku · $1/$5 · 200k · tools, images · ?");
-		expect(text).toContain("\nopencode/qwen-coder · $0.50/$2 · 200k · tools · ?");
+		expect(text).toMatch(/anthropic\/claude-haiku · \$1\/\$5 · 200k · tools, images.*estimated size.* · \?/);
+		expect(text).toContain("Session only (child tasks cannot inherit these credentials): opencode/qwen-coder");
 	});
 
 	it("names each provider's kind on its row", async () => {
@@ -99,6 +104,31 @@ describe("models tool", () => {
 		expect(await run({ query: "/" }, undefined, { anthropic: "local" })).toContain(
 			"\n  anthropic · local · saved credential",
 		);
+	});
+
+	it("excludes hidden models and disabled providers from catalog discovery", async () => {
+		const { run } = mode();
+		for (const visibility of [{ hidden: "gemini-3.1-pro" }, { disabled: "google" }]) {
+			const result = await run({ scope: "catalog", query: "gemini" }, undefined, undefined, visibility);
+			expect(result).not.toContain("google/gemini-3.1-pro");
+			expect(result).toContain("No model matches");
+		}
+	});
+
+	it("lists every matching enabled model across pages and filters the same inventory by size", async () => {
+		const { run } = mode();
+		const large = Array.from({ length: 105 }, (_, index) =>
+			m("gateway", `mini-${String(index).padStart(3, "0")}`, 1, 2),
+		);
+		const filters = { provider: "gateway", size: "small" };
+		const first = await run(filters, large);
+		const second = await run({ ...filters, offset: 64 }, large);
+		expect(first).toContain("Continue with offset 64");
+		expect(second).toContain("End of list.");
+		for (const model of large) {
+			expect((first + second).split(`gateway/${model.id} ·`)).toHaveLength(2);
+		}
+		expect(await run({ ...filters, size: "large" }, large)).toContain("No model matches");
 	});
 
 	it("lists unconnected catalog models as not runnable only when asked for the catalog scope", async () => {
@@ -121,7 +151,7 @@ describe("models tool", () => {
 		]);
 		expect(text).toMatch(/^anthropic\/claude-haiku · .* · ✓$/m);
 		expect(text).toMatch(/^anthropic\/claude-opus · .* · ✓$/m);
-		expect(text).toMatch(/^opencode\/qwen-coder · .* · ✗$/m);
+		expect(text).toContain("Session only (child tasks cannot inherit these credentials): opencode/qwen-coder");
 		const details = await run({ provider: "opencode" });
 		expect(details.match(/credential refused/g)).toHaveLength(1);
 		expect(details).toContain("401 api_key_expired — fix with /providers");

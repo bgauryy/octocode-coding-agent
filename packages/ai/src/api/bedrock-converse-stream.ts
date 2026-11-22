@@ -5,6 +5,7 @@ import { lazyApi } from "./lazy.ts";
 import {
 	adjustMaxTokensForThinking,
 	buildBaseOptions,
+	requestedReasoningEffort,
 	clampMaxTokensToContext,
 	clampReasoning,
 	thinkingBudgetForLevel,
@@ -31,7 +32,9 @@ export const streamSimple: StreamFunction<"bedrock-converse-stream", SimpleStrea
 		toolChoice: options?.toolChoice,
 	} satisfies BedrockOptions;
 	if (!options?.reasoning) return stream(model, context, { ...base, reasoning: undefined });
-	if (!isAnthropicClaudeModel(model) || supportsAdaptiveThinking(model.id, model.name))
+	if (!isAnthropicClaudeModel(model))
+		return stream(model, context, { ...base, reasoning: requestedReasoningEffort(model, options) });
+	if (supportsAdaptiveThinking(model.id, model.name))
 		return stream(model, context, { ...base, reasoning: options.reasoning, thinkingBudgets: options.thinkingBudgets });
 	const adjusted = adjustMaxTokensForThinking(
 		base.maxTokens,

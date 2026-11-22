@@ -230,7 +230,12 @@ const CASES: Record<string, Case> = {
 			expect(copied.slice(was.entries.length)).toEqual([
 				expect.objectContaining({ type: "custom", customType: "octocode-team" }),
 			]);
-			expect(entriesOf(was.file), "the original is unchanged").toEqual(was.entries);
+			const after = entriesOf(was.file);
+			const extra = after.slice(was.entries.length).map((value) => {
+				const entry = value as { type?: string; customType?: string; message?: { role?: string } };
+				return [entry.type, entry.customType, entry.message?.role].filter(Boolean).join(" ");
+			});
+			expect(after, `the original is unchanged (new entries: ${extra.join(", ")})`).toEqual(was.entries);
 		},
 	},
 	import: { check: says(/Usage: \/import <path\.jsonl>/) },

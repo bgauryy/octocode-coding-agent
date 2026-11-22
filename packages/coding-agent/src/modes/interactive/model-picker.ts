@@ -1,10 +1,12 @@
 /** The /model picker: choosing a model for this chat, or saving it as the global or project default. */
 
+import { isBedrockCandidate, preflightBedrockSelection } from "../../core/bedrock-model-access.ts";
 import type { Model } from "@octocodeai/octocode-ai/compat";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { DefaultModelSaveError } from "../../core/agent-session/model-default.ts";
+import { DefaultModelSaveError, includeDefaultModel } from "../../core/agent-session/model-default.ts";
 import { getApplicationPort } from "../../core/application/index.ts";
 import { ModelSelectorComponent } from "./components/model-selector.ts";
+import type { SwitchChoice } from "./components/model-selector/switch-choice.ts";
 import type { InteractiveModeHost } from "./interactive-mode/host.ts";
 
 type ModelPickerHost = Pick<
@@ -29,12 +31,39 @@ export function showModelSelector(host: ModelPickerHost, initialSearchInput?: st
 	// The picker and its pending save belong to the session that opened it.
 	const { session, settingsManager } = host;
 	host.showSelector((done) => {
-		// "Both" fires the chat switch and the default save back to back: run them one after the other.
-		let queue: Promise<void> = Promise.resolve();
-		const enqueue = (model: Model<any>, persist: boolean): void => {
-			queue = queue.then(() => selectModel(model, persist));
-		};
-		const selectModel = async (model: Model<any>, persist: boolean) => {
+		const closed = new AbortController();
+		let checking = false;
+		const selectModel = async (model: Model<any>, choice: SwitchChoice) => {
+			if (checking || closed.signal.aborted) return;
+			if (isBedrockCandidate(model)) {
+				checking = true;
+				host.showStatus(`Checking Bedrock access for ${model.id}…`);
+				try {
+					const warning = await preflightBedrockSelection(session.modelRuntime, model, closed.signal);
+					if (closed.signal.aborted) return;
+					if (warning) host.showWarning(warning);
+				} catch (error) {
+					if (!closed.signal.aborted) {
+						done();
+						host.showError(errorMessage(error));
+					}
+					return;
+				} finally {
+					checking = false;
+				}
+			}
+			const persist = choice === "default" || choice === "both";
+			if (choice === "provider") {
+				try {
+					await settingsManager.saveProviderModel(model.provider, model.id);
+					host.showStatus(`Preferred model for ${model.provider}: ${model.id}`);
+				} catch (error) {
+					host.showError(errorMessage(error));
+				} finally {
+					done();
+				}
+				return;
+			}
 			let scope: "global" | "project" = "global";
 			if (persist && settingsManager.isProjectTrusted()) {
 				// A default saved from a session defaults to this project (per-process isolated) so it never leaks to
@@ -52,9 +81,17 @@ export function showModelSelector(host: ModelPickerHost, initialSearchInput?: st
 			}
 			if (persist) host.showStatus(`Saving default model: ${model.provider}/${model.id}…`);
 			try {
-				await getApplicationPort(session).invoke("setModel", model, { persist, scope });
-				host.updateAvailableProviderCount();
-				host.updateEditorBorderColor();
+				if (choice === "default") {
+					const enabledModels =
+						scope === "global"
+							? includeDefaultModel(settingsManager.getGlobalSettings().enabledModels, model)
+							: undefined;
+					await settingsManager.saveDefaultModelSelection(model.provider, model.id, { scope, enabledModels });
+				} else {
+					await getApplicationPort(session).invoke("setModel", model, { persist, scope });
+					host.updateAvailableProviderCount();
+					host.updateEditorBorderColor();
+				}
 				done();
 				const scopedOverride =
 					Boolean(settingsManager.getEnabledModels()?.length) &&
@@ -82,14 +119,18 @@ export function showModelSelector(host: ModelPickerHost, initialSearchInput?: st
 							}`
 						: `Model: ${model.id}`,
 				);
-				void host.maybeWarnAboutAnthropicSubscriptionAuth(model);
+				if (choice !== "default") void host.maybeWarnAboutAnthropicSubscriptionAuth(model);
 			} catch (error) {
 				done();
 				if (error instanceof DefaultModelSaveError) {
 					host.updateAvailableProviderCount();
 					host.updateEditorBorderColor();
 					host.showWarning(error.message);
-				} else host.showError(errorMessage(error));
+				} else {
+					host.showError(
+						choice === "default" ? `Could not save the default model: ${errorMessage(error)}` : errorMessage(error),
+					);
+				}
 			}
 		};
 		const defaultProvider = settingsManager.getDefaultProvider();
@@ -103,21 +144,30 @@ export function showModelSelector(host: ModelPickerHost, initialSearchInput?: st
 				: project.defaultProvider !== undefined || project.defaultModel !== undefined
 					? "project"
 					: "global";
+		const startupModel =
+			defaultModel ?? (defaultProvider ? settingsManager.getProviderModels()[defaultProvider] : undefined);
 		const selector = new ModelSelectorComponent(
 			host.ui,
 			session.model,
 			session.modelRuntime,
 			session.scopedModels,
-			(model) => enqueue(model, false),
+			(model) => void selectModel(model, "chat"),
 			() => {
 				done();
 				host.ui.requestRender();
 			},
 			initialSearchInput,
-			(model) => enqueue(model, true),
-			defaultProvider && defaultModel ? { provider: defaultProvider, id: defaultModel } : undefined,
-			{ source },
+			(model, choice = "default") => void selectModel(model, choice),
+			defaultProvider && startupModel ? { provider: defaultProvider, id: startupModel } : undefined,
+			{ source, providerOnly: defaultProvider },
 		);
-		return { component: selector, focus: selector, dispose: () => selector.dispose() };
+		return {
+			component: selector,
+			focus: selector,
+			dispose: () => {
+				closed.abort();
+				selector.dispose();
+			},
+		};
 	});
 }

@@ -271,7 +271,7 @@ export default function octocode(host: FeatureSetup): void {
 			() => profiles,
 			async (ctx, _signal, filters) => [
 				...runnerRows(runners.states, filters),
-				...(externalAccess.enabled ? await externalListing(external, ctx, filters) : []),
+				...(agentTool.has("external") ? await externalListing(external, ctx, filters) : []),
 			],
 		);
 	} else if (runners.ids.length > 0 && !envFlag(process.env, LEAN_ENV)) {

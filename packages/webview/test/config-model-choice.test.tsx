@@ -30,6 +30,38 @@ const snapshot: ConfigSnapshot = {
 };
 
 describe("provider model checkboxes", () => {
+	it("saves a preferred model separately from the default provider", async () => {
+		const saveProvider = vi.fn(async (_command: ConfigProviderCommand) => snapshot);
+		render(<ConfigView load={async () => snapshot} saveProvider={saveProvider} />);
+		await userEvent.click(await screen.findByRole("button", { name: "Choose models of My gateway" }));
+		const select = screen.getByRole("combobox", { name: "Preferred model" });
+		const options = [...(select as HTMLSelectElement).options].map((option) => option.value);
+		expect(options).toHaveLength(3);
+		await userEvent.selectOptions(select, options[1]);
+		await userEvent.click(screen.getByRole("button", { name: "Save preference" }));
+		expect(saveProvider.mock.calls[0]?.[0]).toEqual({
+			action: "set-provider-model",
+			provider: "gateway",
+			model: options[1],
+		});
+		await userEvent.click(screen.getByRole("button", { name: "Set as default provider" }));
+		expect(saveProvider.mock.calls[1]?.[0]).toEqual({ action: "set-default-provider", provider: "gateway" });
+	});
+
+	it("can clear a saved preference after its model is hidden", async () => {
+		const row = snapshot.providers[0];
+		const data = { ...snapshot, providers: [{ ...row, modelChoice: { ...row.modelChoice!, preferred: "m3" } }] };
+		const saveProvider = vi.fn(async (_command: ConfigProviderCommand) => snapshot);
+		render(<ConfigView load={async () => data} saveProvider={saveProvider} />);
+		await userEvent.click(await screen.findByRole("button", { name: "Choose models of My gateway" }));
+		const select = screen.getByRole("combobox", { name: "Preferred model" });
+		expect(select).toHaveValue("m3");
+		expect(screen.getByRole("option", { name: "m3 (unavailable)" })).toBeDisabled();
+		await userEvent.selectOptions(select, "");
+		await userEvent.click(screen.getByRole("button", { name: "Save preference" }));
+		expect(saveProvider.mock.calls[0]?.[0]).toEqual({ action: "set-provider-model", provider: "gateway", model: null });
+	});
+
 	it("ticks what is not hidden and saves the unticked ids with the unlisted hidden ones", async () => {
 		const saveProvider = vi.fn(async (_command: ConfigProviderCommand) => snapshot);
 		render(<ConfigView load={async () => snapshot} saveProvider={saveProvider} />);

@@ -1,4 +1,5 @@
 import type { Model, ThinkingLevel } from "../../types.ts";
+import { bedrockRequestEffort, isBedrockNova2 } from "../../utils/bedrock-models.ts";
 import { getConfiguredBedrockRegion } from "./client-config.ts";
 import { getModelMatchCandidates, isAnthropicClaudeModel, supportsAdaptiveThinking } from "./model-match.ts";
 import { mapThinkingLevelToEffort, supportsThinkingBlockBinding } from "./model-support.ts";
@@ -18,6 +19,11 @@ export function buildAdditionalModelRequestFields(
 	model: Model<"bedrock-converse-stream">,
 	options: BedrockOptions,
 ): Record<string, any> | undefined {
+	const effort = bedrockRequestEffort(model, options.reasoning);
+	if (effort !== undefined) return { reasoning_effort: effort };
+	if (model.reasoning && isBedrockNova2(model.id) && options.reasoning) {
+		return { reasoningConfig: { type: "enabled", maxReasoningEffort: OPENAI_GPT_OSS_EFFORT[options.reasoning] } };
+	}
 	if (!options.reasoning || !model.reasoning) {
 		return undefined;
 	}
@@ -84,6 +90,10 @@ export function buildAdditionalModelRequestFields(
 		};
 	}
 
+	if (model.thinkingLevelMap && Object.values(model.thinkingLevelMap).every((level) => level === null))
+		throw new Error(
+			`Bedrock Converse has no configurable reasoning effort for ${model.id}. Leave effort automatic for this route.`,
+		);
 	return undefined;
 }
 

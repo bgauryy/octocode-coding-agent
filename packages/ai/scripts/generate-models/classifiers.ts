@@ -2,7 +2,6 @@ import { CLOUDFLARE_WORKERS_AI_REST_BASE_URL } from "../../src/api/cloudflare.ts
 import { getOpenCodeBaseUrl } from "../../src/providers/opencode-endpoints.ts";
 import type { ClassifierModel } from "../../src/types.ts";
 import { fetchCatalog } from "./fetchers.ts";
-import { generatorOptions } from "./options.ts";
 import { withOpenAiLongContextPricing } from "./pricing.ts";
 import type { ModelsDevMetadata } from "./types.ts";
 import { nonZeroOr } from "../../src/utils/non-zero.ts";
@@ -10,35 +9,29 @@ import { nonZeroOr } from "../../src/utils/non-zero.ts";
 /** Classifier models: the models.dev decision catalog and the hand-listed OpenCode, Workers AI and OpenAI models. */
 
 export async function loadModelsDevClassifierModels(): Promise<ClassifierModel<"typesafe-system-one">[]> {
-	try {
-		console.log("Fetching classifier models from models.dev API...");
-		const response = await fetchCatalog("https://models.dev/models.json?type=decision");
-		if (!response.ok) throw new Error(`models.dev classifier API returned ${response.status}`);
-		const data = (await response.json()) as Record<string, ModelsDevMetadata>;
-		const metadata = data["typesafe/jev-latest"];
-		if (!metadata || metadata.type !== "decision") {
-			throw new Error("models.dev did not return decision model typesafe/jev-latest");
-		}
-		return [
-			{
-				type: "classifier",
-				id: "jev-latest",
-				name: metadata.name,
-				api: "typesafe-system-one",
-				provider: "typesafe",
-				baseUrl: "https://api.typesafe.ai/v1/",
-				input: metadata.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
-				// The canonical models.dev entry has no direct-provider pricing. System One reports token usage,
-				// so classify() results carry token counts but price them at zero.
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-				contextWindow: nonZeroOr(64000, metadata.limit?.context),
-			},
-		];
-	} catch (error) {
-		console.error("Failed to load models.dev classifier data:", error);
-		if (generatorOptions.strict) throw error;
-		return [];
+	console.log("Fetching classifier models from models.dev API...");
+	const response = await fetchCatalog("https://models.dev/models.json?type=decision");
+	if (!response.ok) throw new Error(`models.dev classifier API returned ${response.status}`);
+	const data = (await response.json()) as Record<string, ModelsDevMetadata>;
+	const metadata = data["typesafe/jev-latest"];
+	if (!metadata || metadata.type !== "decision") {
+		throw new Error("models.dev did not return decision model typesafe/jev-latest");
 	}
+	return [
+		{
+			type: "classifier",
+			id: "jev-latest",
+			name: metadata.name,
+			api: "typesafe-system-one",
+			provider: "typesafe",
+			baseUrl: "https://api.typesafe.ai/v1/",
+			input: metadata.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+			// The canonical models.dev entry has no direct-provider pricing. System One reports token usage,
+			// so classify() results carry token counts but price them at zero.
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: nonZeroOr(64000, metadata.limit?.context),
+		},
+	];
 }
 
 // Workers AI has no unauthenticated catalog and models.dev does not list its

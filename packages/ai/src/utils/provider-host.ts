@@ -25,3 +25,11 @@ export function matchesDomain(baseUrl: string, ...domains: string[]): boolean {
 export function isOpenRouterModel(model: { provider: string; baseUrl: string }): boolean {
 	return model.provider === "openrouter" || matchesHost(model.baseUrl, "openrouter.ai");
 }
+
+/** Amazon Bedrock's public inference endpoints, including FIPS, dual-stack and China partitions. */
+export function isBedrockInferenceHost(baseUrl: string): boolean {
+	if (!URL.canParse(baseUrl)) return false;
+	return /^bedrock-(?:runtime|mantle)(?:-fips)?\.[a-z0-9-]+\.(?:amazonaws\.com(?:\.cn)?|api\.aws)$/.test(
+		new URL(baseUrl).hostname,
+	);
+}

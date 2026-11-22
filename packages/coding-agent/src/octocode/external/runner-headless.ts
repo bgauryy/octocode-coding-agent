@@ -6,6 +6,7 @@ import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { adoptTree, KILL_GRACE_MS, prepareTree, reapWithParent, stopTree } from "../shared/process.ts";
 import { pollDescendants } from "../shared/descendant-poller.ts";
+import { runnerLaunchArgs } from "./runner-isolation.ts";
 import { agentEnv } from "./runner-env.ts";
 import type { RunnerBilling } from "./runners.ts";
 import { checkRunnerCommunication, type RunnerCommunication, withCommunicationConfig } from "./runner-communication.ts";
@@ -130,7 +131,8 @@ async function runHeadlessTurn(
 ): Promise<HeadlessReply> {
 	if (input.signal.aborted) throw abortError(input.signal);
 	// The task text rides on stdin where the CLI reads it there, so its length and any secret in it never reach argv.
-	const argv = route.task === "argv" ? [...args, "--", input.text] : args;
+	const isolatedArgs = runnerLaunchArgs(input.runner, args);
+	const argv = route.task === "argv" ? [...isolatedArgs, "--", input.text] : isolatedArgs;
 	await prepareTree();
 	if (input.signal.aborted) throw abortError(input.signal);
 	const child = spawn(input.command, argv, {

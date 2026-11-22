@@ -391,7 +391,7 @@ describe("model selector", () => {
 				(m) => calls.push(`chat:${m.id}`),
 				() => calls.push("cancel"),
 				undefined,
-				withDefault ? (m) => calls.push(`default:${m.id}`) : undefined,
+				withDefault ? (m, choice = "default") => calls.push(`${choice}:${m.id}`) : undefined,
 			);
 			selector.handleInput(DOWN);
 			selector.handleInput(ENTER);
@@ -415,12 +415,12 @@ describe("model selector", () => {
 			expect(calls).toEqual(["default:beta-model"]);
 		});
 
-		it("does both, switching first", async () => {
+		it("requests a single switch-and-save operation", async () => {
 			const { selector, calls } = await open();
 			selector.handleInput(DOWN);
 			selector.handleInput(DOWN);
 			selector.handleInput(ENTER);
-			expect(calls).toEqual(["chat:beta-model", "default:beta-model"]);
+			expect(calls).toEqual(["both:beta-model"]);
 		});
 
 		it("returns to the list on escape, and a second escape closes the picker", async () => {

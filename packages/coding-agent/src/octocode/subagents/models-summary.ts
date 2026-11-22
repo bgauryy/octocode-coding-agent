@@ -1,9 +1,10 @@
+import { modelAvailableToChild } from "./task-model-visibility.ts";
 import { deriveAgentRoute } from "@octocodeai/octocode-contracts/config";
 import type { ProviderKind } from "../../core/model-runtime/catalog.ts";
 import { credentialSourceLabel } from "../../core/provider-composer/types.ts";
 import type { FeatureContext } from "../../core/features/index.ts";
 import type { Catalog } from "./catalog.ts";
-import { canRunTask, type ModelRef } from "./model.ts";
+import { type ModelRef } from "./model.ts";
 import { modelLine, modelCost, priceRank, priceText } from "./models-command.ts";
 import { describeHealth, providerHealth } from "./provider-health.ts";
 
@@ -40,7 +41,11 @@ function credentialText(
 	kinds: ReadonlyMap<string, ProviderKind> | undefined,
 ): string | undefined {
 	const auth = registry.getProviderAuthStatus?.(provider);
-	if (auth?.source === "runtime") return "--api-key, this session only (tasks cannot use it)";
+	if (auth?.source === "runtime") {
+		if (!auth.hasInheritedAuth) return "--api-key, this session only (tasks cannot use it)";
+		const billing = registry.getProviderBilling?.(provider, "child");
+		return `--api-key for this session; tasks use their own configured credentials${billing ? ` (task billing: ${billing})` : ""}`;
+	}
 	const source = auth && (auth.label || auth.source) ? credentialSourceLabel(auth) : undefined;
 	const kind = kinds?.get(provider);
 	const route = kind
@@ -88,10 +93,10 @@ export function providerSummary(
 	if (providers.length === 0) return "Providers: none configured; the user connects one with /providers.";
 	const priced = (model: ModelRef) => `${model.provider}/${model.id} (${priceText(modelCost(model, catalog))})`;
 	return [
-		"Providers (kind · credential source · route; last result; models that can run a task; cheapest and highest priced of them, price per million tokens in/out):",
+		"Providers (kind · credential source · route; last result; model count; cheapest and highest priced, price per million tokens in/out):",
 		...providers.map((provider) => {
 			const own = available.filter((model) => model.provider === provider);
-			const runnable = own.filter((model) => canRunTask(model, catalog));
+			const runnable = own.filter((model) => modelAvailableToChild(registry, model));
 			const ranked = runnable
 				.filter((model) => priceRank(modelCost(model, catalog)) !== Infinity)
 				.sort((a, b) => priceRank(modelCost(a, catalog)) - priceRank(modelCost(b, catalog)));

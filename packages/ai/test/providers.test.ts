@@ -7,7 +7,6 @@ import { createModels, createProvider, getSupportedThinkingLevels } from "../src
 import { InMemoryModelsStore } from "../src/models-store.ts";
 import {
 	builtinModels,
-	builtinProviders,
 	getAllBuiltinModels,
 	getBuiltinClassifierModel,
 	getBuiltinClassifierModels,
@@ -31,6 +30,7 @@ import type {
 	Model,
 	ProviderStreams,
 } from "../src/types.ts";
+import { KNOWN_PROVIDER_IDS } from "../src/types/ids.ts";
 import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
@@ -56,7 +56,8 @@ describe("builtin providers", () => {
 	it("builtinModels registers every builtin provider with models", async () => {
 		const models = builtinModels();
 		const providers = models.getProviders();
-		expect(providers.length).toBe(builtinProviders().length);
+		expect(providers.map((provider) => provider.id).sort()).toEqual([...KNOWN_PROVIDER_IDS].sort());
+		expect(getBuiltinProviders().sort()).toEqual([...KNOWN_PROVIDER_IDS].sort());
 		expect(providers.map((p) => p.id)).toContain("anthropic");
 
 		const anthropic = models.getModel("anthropic", "claude-haiku-4-5");

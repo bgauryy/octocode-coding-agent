@@ -191,8 +191,11 @@ function providerRows(
 	stored: StoredSources,
 	origins: ProviderOriginsView,
 	env: NodeJS.ProcessEnv,
-	hiddenModels: Record<string, string[]>,
+	manager: SettingsManager,
 ): ProviderCredentialStatus[] {
+	const hiddenModels = manager.getHiddenModels();
+	const preferred = manager.getProviderModels();
+	const defaultProvider = manager.getDefaultProvider();
 	const known = new Map([...providers].map(([id, provider]) => [id, provider.name]));
 	const extra = new Set([...stored.byProvider.keys(), ...origins.origins.keys(), ...origins.disabled]);
 	const ids = [...known.keys(), ...[...extra].filter((id) => !known.has(id)).sort()];
@@ -215,7 +218,9 @@ function providerRows(
 		const auth = authMethods(definition?.auth);
 		const baseUrl = effectiveBaseUrl(definition, stored.hosts.get(provider), custom);
 		const edit = customEdit(definition, custom);
-		const ids = [...new Set([...(definition?.getModels().map((model) => model.id) ?? []), ...models])].slice(0, 1024);
+		const ids = [
+			...new Set([...(definition?.getModels().map((model) => model.id) ?? []), ...(custom?.models ?? [])]),
+		].slice(0, 1024);
 		const hidden = (hiddenModels[provider] ?? []).slice(0, 1024);
 		return {
 			provider,
@@ -229,7 +234,18 @@ function providerRows(
 			...(auth ? { auth } : {}),
 			...(baseUrl ? { baseUrl } : {}),
 			...(edit ? { customEdit: edit } : {}),
-			...(ids.length > 0 ? { modelChoice: { ids, hidden } } : {}),
+			...(ids.length > 0
+				? {
+						modelChoice: {
+							ids,
+							hidden,
+							...(Object.hasOwn(preferred, provider) && ids.includes(preferred[provider])
+								? { preferred: preferred[provider] }
+								: {}),
+							...(defaultProvider === provider ? { defaultProvider: true } : {}),
+						},
+					}
+				: {}),
 			route: deriveAgentRoute({
 				subscription:
 					auth?.plan?.billing === "plan" ||
@@ -281,7 +297,7 @@ export async function buildConfigSnapshot(options: ConfigStatusOptions): Promise
 		protocolVersion: CONFIG_PROTOCOL_VERSION,
 		generatedAt: Date.now(),
 		keychainAvailable: keychain !== undefined && keychain !== null,
-		providers: providerRows(definitions, stored, origins, env, manager.getHiddenModels()),
+		providers: providerRows(definitions, stored, origins, env, manager),
 		providerTemplates: providerTemplateInfos(),
 		modelsPath: join(options.agentDir, "models.json"),
 		sources: origins.sources,

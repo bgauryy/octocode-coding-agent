@@ -258,7 +258,12 @@ export function applyModelsJson(
 		const defaults = findModelDefaults(models, definition.id, definition.api ?? config.api);
 		const api = definition.api ?? config.api ?? defaults?.api;
 		const existing = existingIndex >= 0 ? (models[existingIndex] as Model<Api>) : undefined;
-		const knownBase = existing?.api === api ? existing : api ? known?.(api, definition.id) : undefined;
+		const knownBase =
+			existing?.api === api
+				? existing
+				: api
+					? known?.(api, definition.id, definition.baseUrl ?? config.baseUrl ?? defaults?.baseUrl)
+					: undefined;
 		const model = modelFromJson(providerId, definition, config, defaults, knownBase);
 		if (existingIndex >= 0) models[existingIndex] = model;
 		else models.push(model);

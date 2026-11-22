@@ -92,6 +92,23 @@ describe("models tool agents and credentials", () => {
 		expect(text).toContain("\n  openai · subscription · saved credential");
 		expect(text).toContain("\n  gateway · API key · saved credential");
 	});
+	it("labels parent-account-only models and excludes rejected raw catalog entries", async () => {
+		const rejected = { ...refs[1], provider: "other", id: "blocked" };
+		const permitted = { ...rejected, id: "available" };
+		const registry = {
+			getAll: () => [...refs, rejected, permitted],
+			isModelAvailableToChild: (model: ModelRef) => model.provider !== "openai",
+			isModelAccessRejected: (model: ModelRef) => model.id === "blocked",
+			getProviderAuthStatus: (provider: string) =>
+				provider === "openai"
+					? { configured: true, source: "runtime", hasInheritedAuth: true }
+					: { configured: true, source: "stored" },
+		};
+		const text = await run({ scope: "catalog", offset: 0 }, undefined, registry);
+		expect(text).toMatch(/openai\/gpt-5[^\n]*unavailable to the child account/);
+		expect(text).toMatch(/other\/available[^\n]*not connected/);
+		expect(text).not.toContain("other/blocked");
+	});
 	it("lists only matching external runners even when no native model matches", async () => {
 		const runners: RunnerState[] = ["opencode", "codex"].map((id) => ({
 			id,

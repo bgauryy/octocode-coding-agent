@@ -18,8 +18,6 @@ it("scoped generation preserves other providers and historical IDs while adding 
 globalThis.fetch = async (input) => {
  const url = String(input);
  if (url === "https://models.dev/api.json") return Response.json({opencode:{models:{"scope-test-new-model":{name:"New model",tool_call:true}}}});
- if (url === "https://models.dev/models.json?type=decision") return Response.json({"typesafe/jev-latest":{name:"Jev",type:"decision"}});
- if (url.startsWith("https://openrouter.ai/api/v1/models") || url === "https://ai-gateway.vercel.sh/v1/models") return Response.json({data:[]});
  throw new Error("Unexpected network request: " + url);
 };
 `,
@@ -41,12 +39,14 @@ globalThis.fetch = async (input) => {
 		);
 		expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
 		expect(result.stderr).toBe("");
+		let chatModels = 0;
 		for (const provider of readModelDataProviderIds(packageRoot)) {
 			const groups = JSON.parse(
 				readFileSync(join(packageRoot, "src/providers/data", `${provider}.json`), "utf8"),
 			) as Record<string, Record<string, AnyModel>>;
 			const before = Object.values(groups).flatMap(Object.values);
 			const after = JSON.parse(readFileSync(join(output, "providers", `${provider}.all.json`), "utf8")) as AnyModel[];
+			chatModels += after.filter((model) => model.type === "chat").length;
 			for (const model of before)
 				expect(after.find((entry) => entry.id === model.id && entry.type === model.type)).toEqual(model);
 			expect(after).toHaveLength(before.length + (provider === "opencode" ? 1 : 0));
@@ -55,6 +55,7 @@ globalThis.fetch = async (input) => {
 					"https://opencode.ai/inference/openai/v1",
 				);
 		}
+		expect(result.stdout).toContain(`Total tool-capable models: ${chatModels}\n`);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

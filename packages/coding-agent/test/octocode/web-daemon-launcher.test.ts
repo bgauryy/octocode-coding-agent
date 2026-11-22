@@ -101,6 +101,20 @@ describe("daemon launcher", () => {
 		expect(readDaemonRecord(webDaemonPaths(env).record)!.pid).toBe(current.record.pid);
 	});
 
+	it("reuses the fresh daemon when the install's page changed since this terminal started", async () => {
+		const { env } = isolatedEnv({ OCTOCODE_WEB_DAEMON_IDLE_MINUTES: "5" });
+		const build = `${VERSION}:earlier-page:${daemonPage().build.split(":")[2]}`;
+		const launch = () => ensureWebDaemon({ env, build, invocation: invocation() });
+		try {
+			const first = track(await launch());
+			expect(first.record.build).toBe(daemonPage().build);
+			expect((await launch()).record.nonce).toBe(first.record.nonce);
+		} finally {
+			const record = readDaemonRecord(webDaemonPaths(env).record);
+			if (record) pids.add(record.pid);
+		}
+	});
+
 	it("drains a daemon of its own install and version that serves an older page", async () => {
 		const { env } = isolatedEnv({ OCTOCODE_WEB_DAEMON_IDLE_MINUTES: "5" });
 		const install = daemonPage().build.split(":")[2];

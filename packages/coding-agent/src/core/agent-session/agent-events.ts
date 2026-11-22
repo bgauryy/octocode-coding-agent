@@ -41,6 +41,7 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent,
 	// An abort requested while the run was starting, e.g. during before_agent_start, stops it
 	// here. agent_start is awaited before the first request.
 	if (event.type === "agent_start") {
+		run.modelAccessGeneration = session.modelRuntime.modelAccessGeneration;
 		run.lengthContinuations = 0;
 		run.truncatedToolTurns = 0;
 	}
@@ -59,8 +60,10 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent,
 	// programmatic callers (up to 1 MiB) is read from its saved file when read, as after a resume.
 	if (event.type === "message_start" && event.message.role === "toolResult") releaseSavedOutput(event.message);
 
-	if (event.type === "message_end" && event.message.role === "assistant" && !signal?.aborted)
+	if (event.type === "message_end" && event.message.role === "assistant" && !signal?.aborted) {
+		session.modelRuntime.observeModelAccess(event.message, run.modelAccessGeneration);
 		host.observeContextCapacity(event.message);
+	}
 	// Emit to features first, then notify public listeners.
 	await host.emitFeatureEvent(event);
 	// After an abort the agent stops waiting for a streaming delta's delivery, so this one may resume after its run

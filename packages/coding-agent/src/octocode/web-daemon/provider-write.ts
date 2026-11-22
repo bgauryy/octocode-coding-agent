@@ -38,6 +38,23 @@ async function apply(command: ConfigProviderCommand, options: ProviderWriteOptio
 		);
 	if (command.action === "set-source") {
 		manager.setProviderSourceEnabled(command.source, command.enabled);
+	} else if (command.action === "set-default-provider" || command.action === "set-provider-model") {
+		const row = (await buildConfigSnapshot({ ...options, cwd: undefined })).providers.find(
+			(row) => row.provider === command.provider,
+		);
+		if (!row) throw new ConfigWriteError(404, "Unknown provider.", "unknown");
+		if (command.action === "set-default-provider") {
+			if (!row.configured || row.disabled || !row.modelChoice?.ids.some((id) => !row.modelChoice?.hidden.includes(id)))
+				throw new ConfigWriteError(400, "Connect and enable a provider with an available model first.");
+			await manager.saveDefaultModelSelection(command.provider, undefined);
+		} else {
+			if (
+				command.model !== null &&
+				(!row.modelChoice?.ids.includes(command.model) || row.modelChoice.hidden.includes(command.model))
+			)
+				throw new ConfigWriteError(400, "Choose a visible model from this provider.");
+			await manager.saveProviderModel(command.provider, command.model ?? undefined);
+		}
 	} else if (command.action === "set-models") {
 		const known = (await buildConfigSnapshot({ ...options, cwd: undefined })).providers.some(
 			(row) => row.provider === command.provider,

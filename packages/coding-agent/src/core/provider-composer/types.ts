@@ -83,6 +83,8 @@ export interface ProviderConfigInput {
 
 export type AuthStatus = {
 	configured: boolean;
+	/** An independent provider check also succeeded without the active session override. */
+	hasInheritedAuth?: boolean;
 	source?: "stored" | "runtime" | "environment" | "fallback" | "models_json_key" | "models_json_command";
 	label?: string;
 };

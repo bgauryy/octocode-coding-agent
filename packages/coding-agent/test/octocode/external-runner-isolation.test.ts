@@ -126,10 +126,18 @@ it.each([false, true])("keeps headless bridge credentials private and cleans up 
 	expect(fs.existsSync(path.dirname(config))).toBe(false);
 });
 
-it("restricts Gemini MCP to the explicit bridge without changing a no-bridge launch", () => {
+it("launches Gemini without extensions and admits only an explicitly supplied MCP bridge", () => {
 	expect(runnerLaunchArgs("gemini", ["--acp"], "octocode-team")).toEqual([
 		"--acp",
+		"--extensions=none",
 		"--allowed-mcp-server-names=octocode-team",
 	]);
-	expect(runnerLaunchArgs("gemini", ["--acp"])).toEqual(["--acp"]);
+	const empty = runnerLaunchArgs("gemini", ["--acp"]);
+	expect(empty).toEqual([
+		"--acp",
+		"--extensions=none",
+		expect.stringMatching(/^--allowed-mcp-server-names=octocode-none-[a-f0-9-]{36}$/),
+	]);
+	expect(runnerLaunchArgs("gemini", ["--acp"]).at(-1)).not.toBe(empty.at(-1));
+	expect(runnerLaunchArgs("codex", ["exec"])).toEqual(["exec"]);
 });

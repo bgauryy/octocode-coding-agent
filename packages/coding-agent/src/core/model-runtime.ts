@@ -109,6 +109,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 			credentials,
 			layers: this.layers,
 			availability: this.availability,
+			clearModelAccess: (providerId) => this.clearModelAccess(providerId),
 			credentialSaved: (providerId) => this.credentialRefresh.schedule(providerId),
 		});
 		this.registrations = new ProviderRegistrations(this.layers, this.availability, () => {
@@ -124,6 +125,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 				const next = await loadSettledConfig(this.modelsPath);
 				if (next.isUnreadable()) return this.reloadErrors.set(next.getError());
 				await this.applyRefresh({ allowNetwork: false }, next);
+				this.clearModelAccess();
 				this.reloadErrors.set(this.layers.config.getError());
 			},
 			onError: this.reloadErrors.set,
@@ -264,7 +266,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		context: Context,
 		options?: ModelsApiStreamOptions<TApi>,
 	): AssistantMessageEventStream {
-		return streamChatModel(this.requestHost, model, context, options);
+		return this.observeStream(streamChatModel(this.requestHost, model, context, options));
 	}
 
 	complete<TApi extends Api>(
@@ -276,7 +278,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 	}
 
 	streamSimple(model: Model<Api>, context: Context, options?: RuntimeSimpleStreamOptions): AssistantMessageEventStream {
-		return streamSimpleChatModel(this.requestHost, model, context, options);
+		return this.observeStream(streamSimpleChatModel(this.requestHost, model, context, options));
 	}
 
 	completeSimple(model: Model<Api>, context: Context, options?: RuntimeSimpleStreamOptions): Promise<AssistantMessage> {
@@ -373,10 +375,8 @@ export class ModelRuntime extends ModelCatalog implements Models {
 	 * Ask a virtual model's router for the model and thinking level of one request. The router must
 	 * return a physical catalog model whose provider has credentials; the thinking level is clamped
 	 * to that model. Throws when routing fails.
-	 *
 	 * `previous` reports the latest successful response in `messages`. A retry passes the failed
-	 * response as `options.failed`; `messages` no longer contains it. `options.state` is the router
-	 * state stored by the caller, which also stores the returned state.
+	 * response as `options.failed`. The caller owns the router state (`options.state` and the returned state).
 	 */
 	async resolveModel(
 		model: Model<Api>,

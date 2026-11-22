@@ -24,8 +24,9 @@ import { createInteractiveModeHost } from "../../src/modes/interactive/interacti
 import type { InteractiveModeHost } from "../../src/modes/interactive/interactive-mode/host.ts";
 import { submitPrompt } from "../../src/modes/interactive/interactive-mode/refused-input.ts";
 import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
-import { recordProcessAlive } from "../../src/octocode/web-daemon/records.ts";
+import { readDaemonRecord, recordProcessAlive } from "../../src/octocode/web-daemon/records.ts";
 import { daemonRequest, findWebDaemon } from "../../src/octocode/web-daemon/launcher.ts";
+import { webDaemonPaths } from "../../src/octocode/web-daemon/paths.ts";
 import { resetOctocodeEnv, tmp } from "./helpers.ts";
 import { testFeatures } from "../helpers/features.ts";
 import { nativeFeatureSet } from "../helpers/native-features.ts";
@@ -124,7 +125,42 @@ export interface InteractiveHarness {
 	stop(): Promise<void>;
 }
 
-const savedEnv = { ...process.env };
+/** A fixture has no successor to hand tabs over to. SIGTERM runs the daemon's graceful shutdown and closes its tabs. */
+async function stopFixtureDaemon(env: NodeJS.ProcessEnv): Promise<void> {
+	const file = webDaemonPaths(env).record;
+	const owned = readDaemonRecord(file);
+	if (!owned) return;
+	const matchesOwner = (record: typeof owned | undefined) =>
+		record?.nonce === owned.nonce && record.pid === owned.pid && record.pid_started === owned.pid_started;
+	// Windows emulates SIGTERM by forcibly ending the process. The authenticated drain gives tabs up to 30s to close.
+	const drain = process.platform === "win32";
+	const deadline = Date.now() + (drain ? 45_000 : 15_000);
+	let requested = false;
+	while (await recordProcessAlive(owned)) {
+		if (Date.now() >= deadline) {
+			throw new Error(
+				`Fixture web daemon ${owned.pid} ${requested ? "did not exit after shutdown" : "did not acknowledge shutdown"}`,
+			);
+		}
+		if (!requested) {
+			// findWebDaemon authenticates the nonce and PID over loopback. Re-read the private record before signalling.
+			const daemon = await findWebDaemon(env);
+			if (daemon && matchesOwner(daemon.record) && matchesOwner(readDaemonRecord(file))) {
+				if (drain) requested = (await daemonRequest(daemon, DAEMON_ROUTES.drain, { method: "POST" }))?.status === 200;
+				else {
+					try {
+						process.kill(owned.pid, "SIGTERM");
+					} catch (error) {
+						if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+						throw error;
+					}
+					requested = true;
+				}
+			}
+		}
+		await new Promise((resolve) => setTimeout(resolve, 50));
+	}
+}
 
 export async function startInteractive(options: InteractiveOptions = {}): Promise<InteractiveHarness> {
 	const root = fs.realpathSync(tmp("octocode-e2e-commands-"));
@@ -142,16 +178,26 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 	git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-q", "--allow-empty", "-m", "init");
 
 	// The extension reads the environment when the session starts: change the same object, never replace it.
+	const savedEnv = { ...process.env };
+	await using startup = new AsyncDisposableStack();
+	startup.defer(() => {
+		for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
+		Object.assign(process.env, savedEnv);
+	});
 	resetOctocodeEnv();
-	Object.assign(process.env, {
+	const fixtureEnv = {
 		HOME: home,
+		// This run owns a disposable home; its child processes have no future launch to warm at exit.
+		NODE_DISABLE_COMPILE_CACHE: "1",
 		OCTOCODE_CODING_AGENT_DIR: agentDir,
 		OCTOCODE_HOME: path.join(home, ".octocode"),
 		OCTOCODE_AGENT_DB: path.join(root, "team.sqlite"),
 		OCTOCODE_MCP: "1",
 		OCTOCODE_OFFLINE: "1",
 		OCTOCODE_PERMISSION: "workspace",
-	});
+	};
+	Object.assign(process.env, fixtureEnv);
+	startup.defer(() => stopFixtureDaemon(fixtureEnv));
 
 	const faux = createFauxCore({
 		provider: "faux",
@@ -188,13 +234,16 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 			diagnostics: services.diagnostics,
 		};
 	};
+	startup.defer(closeSharedAgentDb);
 	const runtime = await createAgentSessionRuntime(createRuntime, {
 		cwd,
 		agentDir,
 		sessionManager: SessionManager.create(cwd, path.join(root, "sessions")),
 	});
+	startup.defer(() => runtime.dispose());
 	const terminal: InputTerminal = options.terminal ?? new NullTerminal();
 	const host = createInteractiveModeHost(runtime, { terminal });
+	startup.defer(() => host.stop());
 	await host.init();
 	// The input loop of `startup.run`, without its startup network checks: a submitted line that is not a terminal
 	// command (extension, skill and prompt commands, plain text) reaches the session here.
@@ -293,21 +342,11 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 		};
 	};
 
-	const stop = async () => {
+	startup.defer(() => {
 		stopped = true;
 		host.onInputCallback?.("");
-		host.stop();
-		await runtime.dispose();
-		// This harness's home has its own agent database: close its connections and writer threads with the run.
-		closeSharedAgentDb();
-		// `/web` and `/remote` start the detached user-level daemon in this home: ask it to exit with the run.
-		const daemon = await findWebDaemon(process.env);
-		if (daemon) {
-			await daemonRequest(daemon, DAEMON_ROUTES.drain, { method: "POST" });
-			await until(async () => !(await recordProcessAlive(daemon.record)), "isolated web daemon to exit");
-		}
-		for (const key of Object.keys(process.env)) delete process.env[key];
-		Object.assign(process.env, savedEnv);
-	};
+	});
+	const cleanup = startup.move();
+	const stop = () => cleanup.disposeAsync();
 	return { host, root, cwd, requests, reply, submit, stop, terminal, press, grid, until, script, screen };
 }

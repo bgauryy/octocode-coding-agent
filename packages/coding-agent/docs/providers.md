@@ -26,7 +26,27 @@ Then switch freely: `/model` picks this chat's model (`/model openai/` limits it
 
 `ready` from `auth check` establishes local credential readiness, not provider reachability, model access, quota or billing. **Test** on a provider page sends one small model request and can consume provider usage. Login's free endpoint check is narrower: HTTP 401 refuses the key; HTTP 403 saves it with a permission warning because access to model listings and model requests can differ. Custom gateway definitions do not inherit upstream key checks.
 
-To keep a model for new chats, use `/model` → **Ctrl+S**; Enter changes only the current chat. See [saved defaults and connection limits](models.md#save-a-startup-default).
+In `/models`, highlight a model and press **Enter** to choose where to use it. Press **Ctrl+S** to save it as the startup default. See [saved defaults and connection limits](models.md#save-a-startup-default).
+
+### Choose the models the agent may use
+
+Open `/providers`, pick a provider and choose **Choose models**. Tick the models you want to offer. The same controls are in web Settings. Open `/models` to see selections across providers, including custom providers from Octocode and Pi `models.json`. The coordinator uses the same enabled inventory. It can start a task on any enabled chat model with credentials the child can access, using its exact `provider/id`.
+
+To make a provider the startup choice, select **Set as default provider for new chats** on its page. To set its preferred model, highlight that model in `/models`, press Enter and choose **Set as this provider’s preferred model**. These preferences take effect in new chats. [Model selection and startup defaults](models.md#save-a-startup-default)
+
+### Check Amazon Bedrock model access
+
+Open `/providers amazon-bedrock` to choose an AWS profile, ambient IAM credentials, or a Bedrock bearer key. Select **Check account access for a model** to query one model without sending a prompt. The CLI can check matching models together:
+
+```sh
+octocode --provider amazon-bedrock --list-models glm --check-model-access
+```
+
+When you choose a Bedrock Runtime model in the terminal, Octocode checks its foundation-model entitlement. For a global or geographic profile, it also checks the exact profile ID in the selected region. **Entitled** means AWS reported the agreement, entitlement, authorization and regional availability, and confirmed the profile is active when one was specified. Invocation also requires IAM permission. An active cross-region profile can reach a model that does not offer direct inference in the source region. Mantle checks the exact ID on its own Models API and reports **listed on Mantle**. [Inference profiles](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_GetInferenceProfile.html) · [Foundation model availability](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_GetFoundationModelAvailability.html) · [Mantle model operations](https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html)
+
+A missing profile or an explicit account denial stops the selection. Choose another model or recheck it in `/providers` after changing access. A key queries AWS directly. A profile or IAM login uses the AWS CLI. In offline mode, when the CLI is missing, when the lookup lacks permission, or when the check takes over 2.5 seconds in the picker, Octocode shows **unverified** and lets the next request establish access. **Test** on the provider page sends a small inference request and can consume quota.
+
+On Bedrock, Kimi K3 and K3.1 accept off, low, medium, high, xhigh and max. GLM 5.3 always reasons and starts at low when reasoning is switched off. Kimi K3.1 requests up to 16,384 output tokens by default. An explicit request can raise that to the 131,072-token ceiling. Use the `/openai/v1` runtime endpoint with a bearer key for Chat Completions. AWS recommends its OpenAI-compatible API for Kimi and documents limitations of Converse for multi-turn reasoning. [Kimi model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-moonshot-ai-kimi-k3-1-highspeed.html) · [GLM model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-zai-glm-5-3.html) · [Account availability](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_GetFoundationModelAvailability.html)
 
 ## Subscriptions and billing
 
@@ -75,7 +95,7 @@ A plan whose vendor reserves it for its own apps can only be used as an external
 | Gemini API key or Vertex AI                     | `google`, `google-vertex`                               | Gemini CLI signed in with a key  | Billed to the key                                                                                                                                                                                                                                                                                                                                                   |
 | Kimi Code key, Grok, Z.AI, Qwen or Xiaomi plans | Their providers ([billing](#subscriptions-and-billing)) | none                             | Each vendor's plan terms apply; Kimi, for example, documents the coding agents it supports ([Kimi](https://www.kimi.com/en/help/kimi-code/third-party-agents))                                                                                                                                                                                                      |
 
-The coordinator can mix both: `agent` tasks run on any enabled provider's model (`small`, `medium` and `large` pick one, or a task names a model) and, with external agents enabled, in any selected CLI (`runner`). Octocode gives an external agent none of its MCP servers, skills or hooks; it reads team messages by fetching them from the team mailbox server Octocode gives that task. Claude Code also runs without its own settings, MCP servers and slash commands, and Gemini CLI admits only that mailbox server; Codex CLI and OpenCode still load their own configured MCP servers and skills, which Octocode cannot switch off. See [external runners](native-features.md#external-runners).
+The coordinator can mix both: `agent` tasks run on any enabled provider's model (`small`, `medium` and `large` pick one, or a task names a model) and, with external agents enabled, in any selected CLI (`runner`). Octocode gives an external agent none of its MCP servers, skills or hooks; it reads team messages by fetching them from the team mailbox server Octocode gives that task. Claude Code also runs without its own settings, MCP servers and slash commands, and Gemini CLI starts with extensions disabled and admits only an explicitly attached mailbox server. Without a mailbox its allowlist admits no configured server. Headless Codex uses `--ignore-user-config` and keeps the vendor sign-in. The Codex ACP adapter and OpenCode can still load vendor configuration. See [external runners](native-features.md#external-runners).
 
 ## How sign-in works
 
@@ -130,7 +150,7 @@ Each provider row and page shows one status, then where the credential comes fro
 
 | Status     | Meaning                                                                                                                                      |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Connected  | A usable credential is set. This is local evidence, not proof the provider accepts it; use **Test**.                              |
+| Connected  | A usable credential is set. This is local evidence, not proof the provider accepts it; use **Test**.                                         |
 | Expired    | An account sign-in is past its expiry and has no refresh token that can renew it (or the provider refused the refresh token). Sign in again. |
 | Signed out | The account was signed out; only its registration remains.                                                                                   |
 | Not set    | No usable credential.                                                                                                                        |
@@ -179,6 +199,8 @@ Press `e` on a provider in `/providers`, or choose **Disable provider** on its p
 Open a source (or press `e` on it) to turn it on or off. The choice is saved in the global `providerSources` setting (only changes from the defaults; project settings cannot set it) and takes effect at once: turning Pi off hides Pi-only providers and models from `/model` and `/providers`, turning it on restores them. Files are never changed.
 
 The web Settings page (opened with `/web`) shows the same sources and each provider's origin (Octocode or Pi, `auth.json` or `models.json`; never a value) and has the same switches for the Pi source and for each provider. The terminal and the page write the same settings; a running session applies a provider switch (a provider or the Pi source) saved on the page or in another terminal within a second or two, without `/reload`. Other settings still need `/reload`.
+
+In `/providers`, **+ Provider** creates a custom connection and **+ From template** starts with a supported host configuration. Open a connected provider and choose **Set as default provider for new chats**. In `/models`, choose a model and select **Set as this provider’s preferred model**. Provider and model preferences are independent, and an explicit startup model takes precedence until you choose a startup provider again.
 
 ### Detected tools
 

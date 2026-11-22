@@ -1,3 +1,4 @@
+import { applyBedrockAccessCheck, bedrockModelAccess, isBedrockCandidate } from "../../../core/bedrock-model-access.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { ModelConfig } from "../../../core/model-config.ts";
 import type { ProviderEntry, ProviderSnapshot } from "../../../core/provider-view/snapshot.ts";
@@ -50,7 +51,8 @@ export async function showProviderDetail(
 	const { name, disabled } = entry;
 	const sessionOverride = runtime.getProviderAuthStatus(id).source === "runtime";
 	const actions = new Map<string, Action>();
-	const catalogSize = runtime.getModels(id).length;
+	const models = runtime.getModels(id);
+	const catalogSize = models.length;
 	const hiddenCount = host.session.settingsManager.getHiddenModels()[id]?.length ?? 0;
 	const removal: [string, Action] | undefined = entry.stored
 		? [
@@ -65,7 +67,35 @@ export async function showProviderDetail(
 	// A credential that configures nothing: the fix comes first.
 	if (removal && entry.state === "orphaned") actions.set(...removal);
 	if (entry.models > 0) {
+		if (!disabled)
+			actions.set("Set as default provider for new chats", {
+				run: async () => {
+					await host.session.settingsManager.saveDefaultModelSelection(id, undefined);
+					host.showStatus(`Saved global default provider: ${name}. New chats use its preferred model.`);
+				},
+			});
 		actions.set("Choose a model for this chat", { run: () => host.showModelSelector(`${id}/`), leaves: true });
+	}
+	const bedrock = models.filter(isBedrockCandidate);
+	if (bedrock.length && !disabled && runtime.getProviderAuthStatus(id).configured) {
+		actions.set("Check account access for a model (no inference)", {
+			run: async () => {
+				const modelId = await host.showSelectorDialog(
+					"Check Bedrock account access",
+					bedrock.map((m) => m.id),
+				);
+				const model = bedrock.find((m) => m.id === modelId);
+				if (!model) return;
+				const generation = runtime.modelAccessGeneration;
+				const access = await bedrockModelAccess(runtime, [model]);
+				if (runtime.modelAccessGeneration !== generation) {
+					host.showStatus("Provider configuration changed. Check model access again.");
+					return;
+				}
+				applyBedrockAccessCheck(runtime, model, access.get(model), generation);
+				host.showStatus(`${modelId}: ${access.get(model)}`);
+			},
+		});
 	}
 	if (catalogSize > 0) {
 		actions.set("Choose models — tick which of this provider's models /model, Ctrl+P and subagents may use", {

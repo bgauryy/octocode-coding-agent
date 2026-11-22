@@ -27,3 +27,10 @@ export async function persistDefaultModel(
 		throw new DefaultModelSaveError(model, error);
 	}
 }
+
+/** Keep a newly saved startup model reachable when a global shortcut list is in use. */
+export function includeDefaultModel(patterns: string[] | undefined, model: Selection): string[] | undefined {
+	if (!patterns?.length) return;
+	const reference = `${model.provider}/${model.id}`;
+	if (!patterns.some((pattern) => pattern.toLowerCase() === reference.toLowerCase())) return [...patterns, reference];
+}

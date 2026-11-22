@@ -148,7 +148,6 @@ export const QWEN_TOKEN_PLAN_INDIVIDUAL_MODEL_IDS = new Set<string>([
 	"qwen3.8-max",
 ]);
 
-export const KIMI_K3_MAX_TOKENS = 131072;
 export const KIMI_K3_COST = {
 	input: 3,
 	output: 15,

@@ -39,9 +39,19 @@ Octocode starts with a bundled catalog; cached catalog data works offline. `OCTO
 - The compact picker shows context, output limits, image/reasoning support and billing. **Ctrl+D** toggles full identifiers, names, catalog prices and cache lifetimes; **PgUp/PgDn** scroll those details. A time-limited price (`cost.until` with `cost.after`) shows today's rates. For subscription routes, catalog API prices are reference estimates. Account terms, retention, long-context tiers, service tiers, credits and regional premiums can change totals.
 - A session records model and thinking changes; resuming restores them without changing defaults.
 
+### List models by size
+
+When the provider refuses a specific model for your account or endpoint, Octocode leaves it out of the current session’s model choices for five minutes. Other models on the same provider stay available. Reconnecting the provider or a successful access check restores the model immediately. Your saved defaults and enabled models stay in settings.
+
+Run `octocode --list-models` to see configured models grouped by provider and ordered from small to large. The size class is an estimate from the model name and token limits. The context and max-output columns give the catalog’s actual token limits. Filter the same list with `octocode --provider amazon-bedrock --list-models kimi` or `octocode --model-size small`.
+
+The lead agent’s `models` tool accepts the same `size` filter. Combine it with `provider` or `ability` to narrow the results. For a large inventory, follow the returned `offset` using the same filters. Request `routes: true` to see which model each task purpose or agent profile would use. Hidden models, disabled providers and credentials confined to the parent session are excluded from child routes. Use the exact `provider/id` when starting a task. Consult the output limit for long responses and the context window for large inputs.
+
 ### Save a startup default
 
-Open `/model`, highlight the model, then press **Ctrl+S** (the **global default** action). This selects it for the current chat and saves its provider, model ID and any required shortcut-list addition together. Success is shown after the write finishes. If saving fails, the chat keeps the selected model and a warning explains that the default was not saved. Model shortcut saves also wait for storage; failed saves retain the unsaved state and can be retried.
+Open `/model` or `/models`, highlight a model and press Enter. Choose whether to switch this chat, save a startup default, do both, or make this the selected provider’s preferred model. **Ctrl+S** saves the startup default directly. In a trusted workspace, choose project or global scope. Saving only a preference keeps the current chat on its existing model.
+
+To start new chats with a provider and follow its preferred model, open `/providers`, select the provider, and choose **Set as default provider for new chats**. This clears a previously pinned global model. If that provider has no preferred model, Octocode uses its built-in default or an available model from its catalog. Web Settings offers the same global controls in the provider’s model settings.
 
 The saved global default applies to new sessions. Trusted workspace or run settings can override it; the picker says when they do. Resuming an existing session restores its prior available model. Disabled or unavailable providers are skipped rather than reactivated by a saved selection.
 

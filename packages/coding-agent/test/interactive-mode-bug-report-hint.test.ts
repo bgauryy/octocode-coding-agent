@@ -28,7 +28,7 @@ describe("InteractiveMode bug report hints", () => {
 		expect(formatCrashFeatureHint(undefined)).toBeUndefined();
 	});
 
-	test("does not suggest reports for retryable provider failures", () => {
+	test("does not suggest reports for expected provider failures", () => {
 		const context = { suggestBugReport: vi.fn(), maybeShowInstallChangeWarning: vi.fn(() => false) };
 		const failures = [
 			"500 Internal Server Error",
@@ -39,6 +39,8 @@ describe("InteractiveMode bug report hints", () => {
 			"Provider overloaded",
 			"Network connection lost",
 			"Request timed out",
+			'403 {"message":"zai.glm-5.3 is not available for this account."}',
+			'400 {"message":"The provided model identifier is invalid."}',
 		];
 
 		for (const failure of failures) maybeSuggestBugReport(context, errorMessage(failure));

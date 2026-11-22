@@ -49,6 +49,8 @@ describe("routing and provider health (B347 P2-5)", () => {
 	});
 
 	it.each([
+		'Validation error: 400 {"message":"The provided model identifier is invalid."}',
+		'AccessDeniedException: 403 {"message":"This model is not available for this account."}',
 		"403 You do not have access to model tiny",
 		"403 Access to this model is denied",
 		"403 Model tiny is not available for your account",

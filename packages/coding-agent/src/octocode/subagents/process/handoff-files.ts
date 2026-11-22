@@ -10,6 +10,7 @@ import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 
 /** Private files passed to a child by path; the caller removes them when the child exits. */
 export interface ChildResourceFiles {
+	shellGroupsFile?: string;
 	skillSnapshotFile?: string;
 	mcpServersFile?: string;
 	parentHeapFile?: string;
@@ -19,6 +20,13 @@ export interface ChildResourceFiles {
 export function prepareChildResourceFiles(identity: Identity): ChildResourceFiles {
 	const files: ChildResourceFiles = {};
 	try {
+		// Each launch owns its shell ledger even if the caller's optional report folder is unavailable.
+		if (process.platform !== "win32") {
+			files.shellGroupsFile = path.join(
+				outputDir("shell-groups"),
+				`shell-groups-${randomBytes(16).toString("hex")}.jsonl`,
+			);
+		}
 		if (identity.resultContract) {
 			const session = childSession(identity);
 			fs.mkdirSync(session.dir, { recursive: true, mode: 0o700 });
@@ -86,7 +94,7 @@ export function prepareChildResourceFiles(identity: Identity): ChildResourceFile
 
 /** Remove temporary handoffs without hiding the child's original failure or report. */
 export function removeChildResourceFiles(files: ChildResourceFiles): void {
-	for (const file of [files.skillSnapshotFile, files.mcpServersFile, files.parentHeapFile]) {
+	for (const file of [files.skillSnapshotFile, files.mcpServersFile, files.parentHeapFile, files.shellGroupsFile]) {
 		if (!file) continue;
 		try {
 			fs.rmSync(file, { force: true });

@@ -52,6 +52,11 @@ import type {
 import { ProviderModelsRefresher } from "./refresh.ts";
 import { ModelRequests } from "./requests.ts";
 
+function availableChatModels(provider: Provider, credential: Credential | undefined): readonly Model<Api>[] {
+	const models = provider.getModels();
+	return provider.filterModels?.(models, credential) ?? models;
+}
+
 export class ModelsImpl implements MutableModels {
 	private providers = new Map<string, Provider>();
 	private credentials: CredentialStore;
@@ -159,16 +164,10 @@ export class ModelsImpl implements MutableModels {
 		return this.refresher.refresh(options);
 	}
 
-	private readCredential(providerId: string, signal: AbortSignal): Promise<Credential | undefined> {
-		return readCredential(this.credentials, providerId, signal);
-	}
-
-	private checkProviderAuth(
-		provider: Provider,
-		credential: Credential | undefined,
-		signal: AbortSignal,
-	): Promise<AuthCheck | undefined> {
-		return checkProviderAuth(this.credentials, this.authContext, provider, credential, signal);
+	private async checkedProvider(provider: Provider, credentials: CredentialStore, signal: AbortSignal) {
+		const credential = await readCredential(credentials, provider.id, signal);
+		const auth = await checkProviderAuth(credentials, this.authContext, provider, credential, signal);
+		return { provider, credential, auth };
 	}
 
 	checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined> {
@@ -177,7 +176,7 @@ export class ModelsImpl implements MutableModels {
 			signal.throwIfAborted();
 			const provider = this.providers.get(providerId);
 			if (!provider) return undefined;
-			return this.checkProviderAuth(provider, await this.readCredential(providerId, signal), signal);
+			return (await this.checkedProvider(provider, this.credentials, signal)).auth;
 		})();
 		return raceWithAbortSignal(check, signal);
 	}
@@ -188,23 +187,32 @@ export class ModelsImpl implements MutableModels {
 			? [this.providers.get(providerId)].filter((entry) => entry !== undefined)
 			: this.getProviders();
 		const checks = await Promise.all(
-			providers.map(async (provider) => {
-				const credential = await this.readCredential(provider.id, signal);
-				return { provider, credential, auth: await this.checkProviderAuth(provider, credential, signal) };
-			}),
+			providers.map((provider) => this.checkedProvider(provider, this.credentials, signal)),
 		);
 		return checks.filter((entry) => entry.auth !== undefined);
 	}
 
-	getAvailable(providerId?: string, options?: AuthOperationOptions): Promise<readonly Model<Api>[]> {
+	getAvailableFromStore(
+		providerId: string,
+		credentials: CredentialStore,
+		options?: AuthOperationOptions,
+	): Promise<{ authType: AuthType; models: readonly Model<Api>[] } | undefined> {
 		const signal = operationSignal(options?.signal);
 		const available = (async () => {
-			const providers = await this.getAuthenticatedProviders(providerId, signal);
-			return providers.flatMap(({ provider, credential }) => {
-				const models = provider.getModels();
-				return provider.filterModels?.(models, credential) ?? models;
-			});
+			signal.throwIfAborted();
+			const provider = this.providers.get(providerId);
+			if (!provider) return undefined;
+			const { credential, auth } = await this.checkedProvider(provider, credentials, signal);
+			return auth && { authType: auth.type, models: availableChatModels(provider, credential) };
 		})();
+		return raceWithAbortSignal(available, signal);
+	}
+
+	getAvailable(providerId?: string, options?: AuthOperationOptions): Promise<readonly Model<Api>[]> {
+		const signal = operationSignal(options?.signal);
+		const available = this.getAuthenticatedProviders(providerId, signal).then((providers) =>
+			providers.flatMap(({ provider, credential }) => availableChatModels(provider, credential)),
+		);
 		return raceWithAbortSignal(available, signal);
 	}
 

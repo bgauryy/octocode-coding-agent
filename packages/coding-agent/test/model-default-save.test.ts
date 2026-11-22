@@ -6,7 +6,7 @@ import { setKeybindings } from "@octocodeai/octocode-tui";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
 import { DefaultModelSaveError } from "../src/core/agent-session/model-default.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
@@ -17,7 +17,8 @@ import { ModelRuntime } from "../src/core/model-runtime.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import type { ModelSelectorComponent } from "../src/modes/interactive/components/model-selector.ts";
-import { showModelSelector } from "../src/modes/interactive/interactive-mode/model-controls.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
+import { handleModelCommand, showModelSelector } from "../src/modes/interactive/interactive-mode/model-controls.ts";
 import { createClaudeCodeBackend } from "../src/octocode/claude-code/provider.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { createTestResourceLoader } from "./utilities.ts";
@@ -231,7 +232,54 @@ describe("saving a default model", () => {
 		);
 	});
 
-	it("shows a session-only warning instead of saved-default success after a storage failure", async () => {
+	it.each(["picker", "command"])(
+		"checks an exact Bedrock profile before saving or switching through the %s",
+		async (entry) => {
+			const context = await fixture();
+			const model = {
+				...context.selected,
+				provider: "custom-bedrock",
+				id: "eu.amazon.nova-pro-v1:0",
+				baseUrl: "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1",
+			};
+			context.runtime.registerProvider(model.provider, {
+				api: model.api,
+				apiKey: "fixture",
+				baseUrl: model.baseUrl,
+				models: [model],
+			});
+			await context.runtime.refresh({ allowNetwork: false });
+			vi.stubEnv("OCTOCODE_OFFLINE", "0");
+			onTestFinished(() => {
+				vi.unstubAllEnvs();
+			});
+			context.session.setScopedModels([{ model }]);
+			vi.spyOn(context.runtime, "getAuth").mockResolvedValue({ auth: { apiKey: "fixture" } });
+			const request = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+				if (new URL(String(url)).pathname.startsWith("/inference-profiles/"))
+					return Response.json(
+						{ message: "Invalid profile" },
+						{ status: 404, headers: { "x-amzn-errortype": "ResourceNotFoundException" } },
+					);
+				return new Response(null, { status: 403 });
+			});
+			const { host, component } = picker({ ...context, selected: model });
+			if (entry === "picker") component.handleInput("\x13");
+			else
+				await handleModelCommand(
+					createFakeHost({ ...host, findExactModelMatch: () => model }),
+					`${model.provider}/${model.id} --set-default`,
+				);
+			await vi.waitFor(() =>
+				expect(host.showError).toHaveBeenCalledWith(expect.stringContaining("profile not found in region")),
+			);
+			expect(request).toHaveBeenCalledTimes(2);
+			expect(context.session.model?.id).toBe(context.initial.id);
+			expect(context.settings.getDefaultModel()).toBeUndefined();
+		},
+	);
+
+	it("reports a failed default-only save and preserves the current chat", async () => {
 		const context = await fixture();
 		await context.settings.saveDefaultModelSelection(context.initial.provider, context.initial.id);
 		rmSync(context.settingsPath);
@@ -239,10 +287,24 @@ describe("saving a default model", () => {
 		const { host, component, done } = picker(context);
 		component.handleInput("\x13");
 		await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
-		expect(host.showWarning).toHaveBeenCalledWith(expect.stringContaining("Could not save the default model"));
+		expect(host.showError).toHaveBeenCalledWith(expect.stringContaining("Could not save the default model"));
 		expect(host.showStatus).not.toHaveBeenCalledWith(expect.stringMatching(/^(Default model:|Saved global default:)/));
-		expect(host.showError).not.toHaveBeenCalled();
-		expect(host.updateEditorBorderColor).toHaveBeenCalledOnce();
+		expect(host.showWarning).not.toHaveBeenCalled();
+		expect(host.updateEditorBorderColor).not.toHaveBeenCalled();
+		expect(context.session.model?.id).toBe(context.initial.id);
+	});
+
+	it("switches and saves together once after a scope is chosen", async () => {
+		const context = await fixture();
+		const { component, done } = picker(context);
+		const switchModel = vi.spyOn(context.session, "setModel");
+		const save = vi.spyOn(context.settings, "saveDefaultModelSelection");
+		for (const key of ["\r", "\x1b[B", "\x1b[B", "\r"]) component.handleInput(key);
+		await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
+		expect(switchModel).toHaveBeenCalledOnce();
+		expect(save).toHaveBeenCalledOnce();
+		expect(context.session.model?.id).toBe(context.selected.id);
+		expect(context.settings.getDefaultModel()).toBe(context.selected.id);
 	});
 
 	it("keeps Enter session-only and leaves startup settings untouched", async () => {
@@ -287,10 +349,8 @@ describe("saving a default model", () => {
 		if (global) expect(stored.enabledModels).toEqual([...globals, selected]);
 		else expect(stored).not.toHaveProperty("enabledModels");
 		expect(context.settings.getEnabledModels()).toEqual([initial]);
-		expect(context.session.scopedModels.map(({ model }) => `${model.provider}/${model.id}`)).toEqual([
-			initial,
-			selected,
-		]);
+		expect(context.session.scopedModels.map(({ model }) => `${model.provider}/${model.id}`)).toEqual([initial]);
+		expect(context.session.model?.id).toBe(context.initial.id);
 		expect(host.showStatus).toHaveBeenLastCalledWith(
 			`Saved global default: ${selected}. Workspace or run settings take precedence here.`,
 		);

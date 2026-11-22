@@ -1,6 +1,4 @@
 import { spawn } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
 import { adoptTree } from "../../../utils/process-tree.ts";
 import { leadsProcessGroup, trackDetachedChildPid, untrackDetachedChildPid } from "../../../utils/shell.ts";
 import { killShellGroupsNow, SHELL_GROUPS_FILE_ENV, stopShellGroups } from "../../shared/shell-groups.ts";
@@ -51,15 +49,7 @@ export function superviseChild(run: ChildRun, prepared: PreparedChild): Promise<
 	const ready = run.ready ?? (() => Promise.resolve());
 	const { command, prefix, history, nonce, nonceFile } = prepared;
 	const outputDir = identity.scratch ?? reportDir(identity.id);
-	// The child's bash commands each lead a group outside its own: the child lists them here for `stopShellGroups`.
-	// SDK callers can supply a scratch path before it exists. The child must be able to register its first shell.
-	if (outputDir) fs.mkdirSync(outputDir, { recursive: true, mode: 0o700 });
-	const shellGroups = outputDir ? path.join(outputDir, "shell-groups.jsonl") : undefined;
-	try {
-		if (shellGroups) fs.rmSync(shellGroups, { force: true });
-	} catch {
-		// An old list only names groups that `stopShellGroups` proves are gone or not the child's.
-	}
+	const shellGroups = prepared.resources.shellGroupsFile;
 	return new Promise<SubagentOutcome>((resolve, reject) => {
 		// Detached on POSIX so the child leads a process group: cancelling kills its whole tree (MCP servers, Chrome, bash).
 		const child = spawn(command, [...prefix, ...args], {

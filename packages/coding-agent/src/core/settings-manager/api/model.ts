@@ -12,7 +12,11 @@ export interface ModelSettingsApi {
 	setDefaultModel(modelId: string): void;
 	setDefaultModelAndProvider(provider: string, modelId: string): void;
 	/** Saves provider, model and its options together; rejects on invalid settings or storage failure. */
-	saveDefaultModelSelection(provider: string, modelId: string, options?: DefaultModelSelectionOptions): Promise<void>;
+	saveDefaultModelSelection(
+		provider: string,
+		modelId: string | undefined,
+		options?: DefaultModelSelectionOptions,
+	): Promise<void>;
 	/** Sets or (with undefined) removes `defaultProvider` or `defaultModel` in one file; a project write needs a trusted project. */
 	setDefaultSelection(
 		scope: "global" | "project",
@@ -25,6 +29,7 @@ export interface ModelSettingsApi {
 		selection: { provider: string; model: string } | undefined,
 	): void;
 	/** The user's default model id per provider. */
+	saveProviderModel(provider: string, model: string | undefined): Promise<void>;
 	getProviderModels(): Record<string, string>;
 	getSteeringMode(): "all" | "one-at-a-time";
 	setSteeringMode(mode: "all" | "one-at-a-time"): void;

@@ -19,46 +19,49 @@ export type KnownClassifierApi = "typesafe-system-one" | "cloudflare-workers-ai-
 
 export type ClassifierApi = KnownClassifierApi | (string & {});
 
-export type KnownProvider =
-	| "amazon-bedrock"
-	| "ant-ling"
-	| "anthropic"
-	| "google"
-	| "google-vertex"
-	| "openai"
-	| "azure"
-	| "typesafe"
-	| "nvidia"
-	| "deepseek"
-	| "github-copilot"
-	| "xai"
-	| "groq"
-	| "cerebras"
-	| "openrouter"
-	| "vercel-ai-gateway"
-	| "zai"
-	| "zai-coding-cn"
-	| "mistral"
-	| "minimax"
-	| "minimax-cn"
-	| "moonshotai"
-	| "moonshotai-cn"
-	| "huggingface"
-	| "fireworks"
-	| "together"
-	| "baseten"
-	| "opencode"
-	| "opencode-go"
-	| "kimi-coding"
-	| "meta"
-	| "cloudflare-workers-ai"
-	| "cloudflare-ai-gateway"
-	| "qwen-token-plan"
-	| "qwen-token-plan-cn"
-	| "qwen-token-plan-individual"
-	| "xiaomi"
-	| "xiaomi-token-plan-cn"
-	| "xiaomi-token-plan-ams"
-	| "xiaomi-token-plan-sgp";
+/** Required provider catalogs, available before generated model data is hydrated. */
+export const KNOWN_PROVIDER_IDS = [
+	"amazon-bedrock",
+	"ant-ling",
+	"anthropic",
+	"azure",
+	"baseten",
+	"cerebras",
+	"cloudflare-ai-gateway",
+	"cloudflare-workers-ai",
+	"deepseek",
+	"fireworks",
+	"github-copilot",
+	"google",
+	"google-vertex",
+	"groq",
+	"huggingface",
+	"kimi-coding",
+	"meta",
+	"minimax",
+	"minimax-cn",
+	"mistral",
+	"moonshotai",
+	"moonshotai-cn",
+	"nvidia",
+	"openai",
+	"opencode",
+	"opencode-go",
+	"openrouter",
+	"qwen-token-plan",
+	"qwen-token-plan-cn",
+	"qwen-token-plan-individual",
+	"together",
+	"typesafe",
+	"vercel-ai-gateway",
+	"xai",
+	"xiaomi",
+	"xiaomi-token-plan-ams",
+	"xiaomi-token-plan-cn",
+	"xiaomi-token-plan-sgp",
+	"zai",
+	"zai-coding-cn",
+] as const;
+export type KnownProvider = (typeof KNOWN_PROVIDER_IDS)[number];
 // oxlint-disable-next-line typescript/no-redundant-type-constituents -- names the built-in providers while accepting custom provider IDs
 export type ProviderId = KnownProvider | string;

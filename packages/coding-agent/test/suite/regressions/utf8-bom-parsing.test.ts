@@ -39,7 +39,8 @@ describe("UTF-8 BOM parsing", () => {
 		);
 
 		const settings = SettingsManager.create(projectDir, agentDir, { projectTrusted: true });
-		expect(settings.getDefaultModel()).toBe("global-model");
+		expect(settings.getGlobalSettings().defaultModel).toBe("global-model");
+		expect(settings.getDefaultModel()).toBeUndefined();
 		expect(settings.getDefaultProvider()).toBe("project-provider");
 
 		settings.setTheme("dark");

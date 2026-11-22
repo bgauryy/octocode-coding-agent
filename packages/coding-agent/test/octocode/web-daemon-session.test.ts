@@ -109,7 +109,13 @@ describe("/web with the daemon", () => {
 			}
 			return attach.ensure(ctx).then((endpoint) => endpoint?.close());
 		});
-		expect(opened).toHaveLength(1);
+		expect(
+			opened,
+			ctx.ui.notes
+				.filter((note) => note.type === "warning")
+				.map((note) => note.message)
+				.join("\n"),
+		).toHaveLength(1);
 		// What goes through a process argument holds a one-time code, never the launch token.
 		const launch = new URLSearchParams(new URL(record.url).hash.slice(1)).get("access")!;
 		expect(opened[0]).not.toContain(launch);

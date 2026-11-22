@@ -1,3 +1,4 @@
+import { isModelAccessError } from "@octocodeai/octocode-ai";
 import { ThemedText } from "@octocodeai/octocode-tui";
 /**
  * Fatal errors and crashes: the crash record, feature hints, the /bug suggestion after errors, and the warning
@@ -111,7 +112,12 @@ export function suggestBugReport(host: CrashReportingHost): void {
 }
 
 export function maybeSuggestBugReport(host: CrashReportingHost, message: AssistantMessage): void {
-	if (message.stopReason !== "error" || isRetryableAssistantError(message)) return;
+	if (
+		message.stopReason !== "error" ||
+		isRetryableAssistantError(message) ||
+		isModelAccessError(message.errorMessage ?? "")
+	)
+		return;
 	if (/\b(?:abort(?:ed)?|cancel(?:l?ed)?)\b/i.test(message.errorMessage ?? "")) return;
 	if (host.maybeShowInstallChangeWarning()) return;
 	host.suggestBugReport();

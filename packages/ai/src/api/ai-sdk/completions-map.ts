@@ -1,3 +1,4 @@
+import { bedrockRequestEffort } from "../../utils/bedrock-models.ts";
 import { jsonSchema, tool, type ToolChoice, type ToolSet, type TextStreamPart } from "ai";
 import { splitSystemMessageIntoBlocks } from "../../utils/instruction-split.ts";
 import { resolveToolLoadingMode } from "../../utils/tool-loading.ts";
@@ -190,11 +191,13 @@ function augmentCompletionsRequest(
 	if (compat.vllmPriority !== undefined) body.priority = compat.vllmPriority;
 	if (compat.zaiToolStream && Array.isArray(body.tools) && body.tools.length) body.tool_stream = true;
 	const enabled = !!options.reasoningEffort;
-	const effort = enabled
-		? (model.thinkingLevelMap?.[options.reasoningEffort!] ?? options.reasoningEffort)
-		: model.thinkingLevelMap?.off === null
-			? undefined
-			: (model.thinkingLevelMap?.off ?? (matchesHost(model.baseUrl, "api.openai.com") ? "none" : undefined));
+	const effort =
+		bedrockRequestEffort(model, options.reasoningEffort) ??
+		(enabled
+			? (model.thinkingLevelMap?.[options.reasoningEffort!] ?? options.reasoningEffort)
+			: model.thinkingLevelMap?.off === null
+				? undefined
+				: (model.thinkingLevelMap?.off ?? (matchesHost(model.baseUrl, "api.openai.com") ? "none" : undefined)));
 	if (model.reasoning) {
 		delete body.reasoning_effort;
 		if (compat.supportsReasoningEffort && typeof effort === "string") body.reasoning_effort = effort;

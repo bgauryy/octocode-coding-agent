@@ -72,10 +72,9 @@ describe("subagents.models: routing precedence", () => {
 			skipped: "subagents.models.small pick/chosen: pick refused its credential".replace("pick/chosen", "pick/chosen"),
 		});
 		const small = model("pick", "chosen", 1, 4, { contextWindow: 8_192 });
-		// No other provider offers a model that can run a task, so the route has no fallback list.
-		expect(routeModel({ preferred: "small", available: [parent, cheap, small], parent, configured })).toEqual({
-			model: "cheap/tiny",
-			skipped: "subagents.models.small pick/chosen cannot run a task: context 8.2k (needs 100k)",
+		expect(routeModel({ preferred: "small", available: [parent, cheap, small], parent, configured })).toMatchObject({
+			model: "pick/chosen:high",
+			setting: "subagents.models.small",
 		});
 	});
 

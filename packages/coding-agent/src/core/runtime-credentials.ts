@@ -55,7 +55,8 @@ const sameCredential = (a: Credential | undefined, b: Credential | undefined) =>
 
 /** Async credential store overlay for non-persistent runtime API keys. */
 export class RuntimeCredentials implements CredentialStore {
-	private readonly store: CredentialStore;
+	/** Shared credentials available to a fresh session, without this process's API-key overrides. */
+	readonly store: CredentialStore;
 	private readonly overrides = new Map<string, string>();
 	private readonly writeTransforms = new Map<string, CredentialWriteTransform>();
 

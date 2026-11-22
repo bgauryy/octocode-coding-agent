@@ -1,3 +1,4 @@
+import { isBedrockInferenceHost } from "@octocodeai/octocode-ai/utils/provider-host";
 import { type Api, isModelType, type Model, type Provider } from "@octocodeai/octocode-ai";
 
 /**
@@ -5,7 +6,7 @@ import { type Api, isModelType, type Model, type Provider } from "@octocodeai/oc
  * `baseUrl` and `api`) gets the vendor's context window, output limit, thinking map, input types, prices, input limits
  * and compatibility. The entry's own fields win.
  */
-export type KnownModelLookup = (api: Api, modelId: string) => Model<Api> | undefined;
+export type KnownModelLookup = (api: Api, modelId: string, baseUrl?: string) => Model<Api> | undefined;
 
 /** The built-in providers whose models an API's custom entries take their defaults from, first match wins. */
 const VENDORS_BY_API: Partial<Record<string, readonly string[]>> = {
@@ -94,7 +95,24 @@ function crossApiModel(providers: VendorProviders, api: Api, modelId: string): M
  * model on another API (only API-independent fields). Reads the providers on every call, so refreshed catalogs apply.
  */
 export function knownModelLookup(builtins: VendorProviders): KnownModelLookup {
-	return (api, modelId) => {
+	return (api, modelId, baseUrl) => {
+		const bedrockOpenAI =
+			(api === "openai-completions" || api === "openai-responses") && baseUrl && isBedrockInferenceHost(baseUrl);
+		if (bedrockOpenAI || api === "bedrock-converse-stream") {
+			const provider = builtins.get("amazon-bedrock");
+			const models = provider && chatModels(provider);
+			let match = models?.find((model) => model.id === modelId);
+			// AWS lists India and US Kimi profiles at the same regional rates. Older catalogs list only US.
+			if (!match && /^in\.moonshotai\.kimi-k3(?:\.1)?$/.test(modelId)) {
+				const us = models?.find((model) => model.id === `us.${modelId.slice(3)}`);
+				if (us) match = { ...us, id: modelId, name: modelId };
+			}
+			if (match) {
+				if (api === match.api) return match;
+				const { compat: _wire, headers: _headers, promptCache: _cache, ...metadata } = match;
+				return { ...metadata, api };
+			}
+		}
 		for (const vendor of VENDORS_BY_API[api] ?? []) {
 			const provider = builtins.get(vendor);
 			if (!provider) continue;

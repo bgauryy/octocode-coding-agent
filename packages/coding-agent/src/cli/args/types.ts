@@ -60,6 +60,8 @@ export interface Args {
 	noThemes?: boolean;
 	noContextFiles?: boolean;
 	listModels?: string | true;
+	modelSize?: "small" | "medium" | "large";
+	checkModelAccess?: boolean;
 	offline?: boolean;
 	tuiMode?: TuiMode;
 	verbose?: boolean;

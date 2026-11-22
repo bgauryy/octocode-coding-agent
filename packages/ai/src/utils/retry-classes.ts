@@ -1,4 +1,5 @@
 import type { AssistantMessage } from "../types.ts";
+import { isModelAccessError } from "./credential-errors.ts";
 
 function buildProviderErrorPattern(patterns: readonly string[]): RegExp {
 	return new RegExp(patterns.join("|"), "i");
@@ -296,6 +297,6 @@ export function isRetryableAssistantError(message: AssistantMessage): boolean {
 /** {@link isRetryableAssistantError} for text a caller holds without the message, such as a run's recorded outcome. */
 export function isRetryableErrorText(errorMessage: string): boolean {
 	if (isTerminalProviderLimitError(errorMessage)) return false;
-	if (isRejectedRequestText(errorMessage)) return false;
+	if (isRejectedRequestText(errorMessage) || isModelAccessError(errorMessage)) return false;
 	return RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);
 }

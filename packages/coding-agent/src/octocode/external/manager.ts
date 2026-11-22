@@ -71,6 +71,11 @@ function attachedWorkspace(input: ExternalParams): string | undefined {
 	return matchInstances(listInstances(apiDir()), input.instanceId)[0]?.cwd;
 }
 
+/** The external destinations this process can advertise, excluding its own session API. */
+function peerInstances(prune: boolean) {
+	return listInstances(apiDir(), prune).filter((instance) => instance.pid !== process.pid);
+}
+
 export interface ExternalFactories {
 	acp: (input: AcpConnectInput, permission: AcpPermission, signal?: AbortSignal) => Promise<AcpBackend>;
 	octocode: typeof OctocodeBackend.connect;
@@ -100,7 +105,7 @@ export class ExternalAgents {
 	 */
 	discoverable(): boolean {
 		if (this.installed().length > 0) return true;
-		return listInstances(apiDir(), false).some((instance) => instance.pid !== process.pid);
+		return peerInstances(false).length > 0;
 	}
 
 	private installed(): InstalledAcpAgent[] {
@@ -123,7 +128,7 @@ export class ExternalAgents {
 		if (input.action === "list") {
 			return {
 				connections: [...this.connections.values()].map(view),
-				instances: listInstances(apiDir()).map(({ id, name, pid, cwd, protocol, session }) => ({
+				instances: peerInstances(true).map(({ id, name, pid, cwd, protocol, session }) => ({
 					id,
 					name,
 					pid,

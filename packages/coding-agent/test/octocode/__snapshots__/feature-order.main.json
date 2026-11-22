@@ -228,6 +228,7 @@
 			"registerTerminal@octocode/terminal/register.ts",
 			"registerAgentTool@octocode/subagents/tool.ts",
 			"registerFooter@octocode/ui/footer.ts",
+			"registerPhaseFeed@octocode/ui/phase-feed.ts",
 			"registerPhasePort@octocode/ui/phase-port.ts",
 			"registerPhaseLine@octocode/ui/phase-line.ts",
 			"registerAwaiting@octocode/ui/awaiting.ts",

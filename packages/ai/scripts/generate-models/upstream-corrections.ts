@@ -1,11 +1,11 @@
 import type { Api, Model } from "../../src/types.ts";
+import { KIMI_K3_MAX_TOKENS, withBedrockModelCapabilities } from "../../src/utils/bedrock-models.ts";
 import { withClaudeThinkingCapabilities } from "../../src/utils/claude-thinking.ts";
 import {
 	COPILOT_STATIC_HEADERS,
 	GITHUB_COPILOT_EXTENDED_CONTEXT_MODELS,
 	GOOGLE_MISSING_CACHE_READ_COSTS,
 	GOOGLE_TIME_LIMITED_COSTS,
-	KIMI_K3_MAX_TOKENS,
 	OPENAI_LONG_CONTEXT_INPUT_THRESHOLD,
 	OPENAI_LONG_CONTEXT_PRICING_MODEL_IDS,
 	OPENAI_SHORT_CONTEXT_CAPPED_MODEL_IDS,
@@ -63,6 +63,7 @@ export function applyUpstreamCorrections(allModels: Model<any>[]): void {
 
 	// Temporary overrides until upstream model metadata is corrected.
 	for (const candidate of allModels) {
+		if (candidate.provider === "amazon-bedrock") Object.assign(candidate, withBedrockModelCapabilities(candidate));
 		if (candidate.provider === "github-copilot" && GITHUB_COPILOT_EXTENDED_CONTEXT_MODELS.has(candidate.id)) {
 			candidate.contextWindow = 1000000;
 		}

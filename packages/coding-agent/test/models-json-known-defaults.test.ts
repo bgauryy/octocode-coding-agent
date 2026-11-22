@@ -31,6 +31,36 @@ async function registryFor(providers: Record<string, unknown>) {
 }
 
 describe("models.json entries that name a known model", () => {
+	test("inherits Bedrock catalog limits, regional prices and effort on its OpenAI-compatible endpoint", async () => {
+		const id = "global.moonshotai.kimi-k3.1";
+		const registry = await registryFor({
+			"custom-bedrock": {
+				baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1",
+				api: "openai-completions",
+				apiKey: "fixture",
+				models: [{ id }, { id: "in.moonshotai.kimi-k3.1", maxTokens: 4096 }],
+			},
+			"other-host": {
+				baseUrl: "https://example.test/bedrock-runtime.us-east-1.amazonaws.com",
+				api: "openai-completions",
+				apiKey: "fixture",
+				models: [{ id }],
+			},
+		});
+		expect(registry.find("custom-bedrock", id)).toMatchObject({
+			maxTokens: 131072,
+			cost: { cacheRead: 0.2, cacheWrite: 5 },
+			thinkingLevelMap: { off: "none", minimal: null },
+		});
+		expect(registry.find("custom-bedrock", "in.moonshotai.kimi-k3.1")).toMatchObject({
+			id: "in.moonshotai.kimi-k3.1",
+			maxTokens: 4096,
+			cost: { cacheRead: 0.22, cacheWrite: 5.5 },
+			thinkingLevelMap: { off: "none", minimal: null },
+		});
+		expect(registry.find("other-host", id)?.maxTokens).toBe(16384);
+	});
+
 	test("a gateway provider's bare ids take each vendor's model metadata", async () => {
 		const registry = await registryFor({
 			"anthropic-gw": {

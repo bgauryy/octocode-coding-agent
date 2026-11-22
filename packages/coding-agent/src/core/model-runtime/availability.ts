@@ -7,6 +7,11 @@ import type { ProviderLayers } from "./provider-layers.ts";
 import type { ModelRuntimeSnapshot } from "./types.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
+interface ChildProvider {
+	authType: AuthType;
+	models: ReadonlySet<string>;
+}
+
 /**
  * The model runtime's availability snapshot: which models are usable, which providers have auth, and the latest
  * availability error. Full and per-provider refresh passes are sequenced so a stale pass never overwrites a newer one.
@@ -23,6 +28,8 @@ export class ModelAvailability {
 	};
 	/** Models usable by credentials, before the user's disabled providers are removed from the snapshot. */
 	private rawAvailable: readonly Model<Api>[] = [];
+	/** Models permitted by the child credential for each provider with an active session override. */
+	private childProviders = new Map<string, ChildProvider>();
 	private disabledProviders: ReadonlySet<string> = new Set();
 	private hiddenModels: HiddenModels = {};
 	private availabilityRefreshSeq = 0;
@@ -58,7 +65,7 @@ export class ModelAvailability {
 		return this.disabledProviders.has(providerId);
 	}
 
-	private visible(models: readonly Model<Api>[]): Model<Api>[] {
+	visible<T extends { provider: string; id: string }>(models: readonly T[]): T[] {
 		return models.filter((model) => !this.disabledProviders.has(model.provider) && !this.isModelHidden(model));
 	}
 
@@ -72,9 +79,31 @@ export class ModelAvailability {
 		this.snapshot = { ...this.snapshot, all, available: this.visible(this.rawAvailable) };
 	}
 
+	isModelAvailableToChild(model: Pick<Model<Api>, "provider" | "id">): boolean {
+		return (
+			!this.credentials.hasRuntimeApiKey(model.provider) ||
+			this.childProviders.get(model.provider)?.models.has(model.id) === true
+		);
+	}
+
+	authType(providerId: string, scope?: "child"): AuthType | undefined {
+		return scope === "child" && this.credentials.hasRuntimeApiKey(providerId)
+			? this.childProviders.get(providerId)?.authType
+			: this.snapshot.auth.get(providerId)?.type;
+	}
+
+	private async checkInheritedModels(
+		providerId: string,
+		signal: AbortSignal,
+	): Promise<[string, ChildProvider] | undefined> {
+		if (!this.credentials.hasRuntimeApiKey(providerId)) return undefined;
+		const child = await this.models.getAvailableFromStore(providerId, this.credentials.store, { signal });
+		return child && [providerId, { authType: child.authType, models: new Set(child.models.map((model) => model.id)) }];
+	}
+
 	private async runAvailabilityRefresh(seq: number, errorSeq: number, signal: AbortSignal): Promise<void> {
 		const providers = this.models.getProviders();
-		const [available, checks, credentials] = await Promise.all([
+		const [available, checks, credentials, inherited] = await Promise.all([
 			this.models.getAvailable(undefined, { signal }),
 			Promise.all(
 				providers.map(async (provider): Promise<[string, AuthCheck | undefined]> => [
@@ -83,8 +112,10 @@ export class ModelAvailability {
 				]),
 			),
 			this.credentials.list({ signal }),
+			Promise.all(providers.map(({ id }) => this.checkInheritedModels(id, signal))),
 		]);
 		if (seq !== this.availabilityRefreshSeq) return;
+		this.childProviders = new Map(inherited.filter((entry) => entry !== undefined));
 		const auth = new Map(checks);
 		const configuredProviders = new Set(
 			checks.filter((entry): entry is [string, AuthCheck] => entry[1] !== undefined).map(([providerId]) => providerId),
@@ -122,13 +153,16 @@ export class ModelAvailability {
 		this.providerAvailabilitySeq.set(providerId, providerSeq);
 		const errorSeq = ++this.availabilityErrorSeq;
 		try {
-			const [available, auth, credential] = await Promise.all([
+			const [available, auth, credential, inherited] = await Promise.all([
 				this.models.getAvailable(providerId, { signal }),
 				this.models.checkAuth(providerId, { signal }),
 				this.credentials.read(providerId, { signal }),
+				this.checkInheritedModels(providerId, signal),
 			]);
 			signal.throwIfAborted();
 			if (this.providerAvailabilitySeq.get(providerId) !== providerSeq) return;
+			if (inherited) this.childProviders.set(...inherited);
+			else this.childProviders.delete(providerId);
 			const configuredProviders = new Set(this.snapshot.configuredProviders);
 			const storedProviders = new Set(this.snapshot.storedProviders);
 			const authByProvider = new Map(this.snapshot.auth);
@@ -215,7 +249,9 @@ export class ModelAvailability {
 
 	/** How a provider is configured: runtime key, stored credential, configured key, then the latest auth check. */
 	getProviderAuthStatus(providerId: string, credentials: RuntimeCredentials, layers: ProviderLayers): AuthStatus {
-		if (credentials.hasRuntimeApiKey(providerId)) return { configured: true, source: "runtime" };
+		if (credentials.hasRuntimeApiKey(providerId)) {
+			return { configured: true, source: "runtime", hasInheritedAuth: this.childProviders.has(providerId) };
+		}
 		if (this.snapshot.storedProviders.has(providerId)) {
 			const origin = credentials.credentialOrigin(providerId);
 			const stored = credentials.storedIn(providerId);

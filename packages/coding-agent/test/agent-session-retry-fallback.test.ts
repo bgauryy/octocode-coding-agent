@@ -105,6 +105,14 @@ describe("AgentSession retry.fallbackModels", () => {
 		return { session, calls, retries, retryEnds };
 	}
 
+	it.each(["hidden", "disabled"])("skips a %s fallback candidate before checking its credentials", async (reason) => {
+		const created = await createSession([`anthropic/${FALLBACK}`]);
+		if (reason === "hidden") created.session.modelRuntime.setHiddenModels({ anthropic: [FALLBACK] });
+		else created.session.modelRuntime.setDisabledProviders(["anthropic"]);
+		await created.session.prompt("Test");
+		expect(created.calls).toEqual([PRIMARY]);
+	});
+
 	it("continues the turn on the first usable fallback after a usage limit, without a backoff retry", async () => {
 		const created = await createSession(["nowhere/missing", `anthropic/${FALLBACK}:low`]);
 		await created.session.prompt("Test");
@@ -145,6 +153,20 @@ describe("AgentSession retry.fallbackModels", () => {
 		expect(created.calls).toEqual([PRIMARY]);
 		expect(created.session.model?.id).toBe(PRIMARY);
 		expect((created.session.messages.at(-1) as AssistantMessage).errorMessage).toContain("insufficient_quota");
+	});
+
+	it.each([
+		'AccessDeniedException: 403 {"message":"This model is not available for this account."}',
+		'Validation error: 400 {"message":"The provided model identifier is invalid."}',
+	])("immediately tries a configured sibling after a model-specific rejection: %s", async (failure) => {
+		const created = await createSession(
+			[`anthropic/${PRIMARY}`, `anthropic/${FALLBACK}`, "openai/gpt-4.1-mini"],
+			failure,
+		);
+		await created.session.prompt("Test");
+		expect(created.calls).toEqual([PRIMARY, FALLBACK]);
+		expect(created.retries).toEqual([]);
+		expect(created.session.lastRunOutcome?.warning).toContain("unavailable for this account or endpoint");
 	});
 
 	it("moves to another provider after a refused credential, skipping the refused provider's other models", async () => {

@@ -98,11 +98,12 @@ describe("built-in slash commands", () => {
 			instance[method] = () => effects.push(method);
 		instance.onInputCallback = (text: string) => effects.push(`prompt:${text}`);
 		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
-		for (const removed of ["/models", "/thinking high", "/stats"]) await instance.defaultEditor.onSubmit(removed);
+		await instance.defaultEditor.onSubmit("/models");
+		expect(effects.splice(0)).toEqual(["handleModelCommand"]);
+		for (const removed of ["/thinking high", "/stats"]) await instance.defaultEditor.onSubmit(removed);
 		expect(effects).toEqual([]);
 		expect(instance.showWarning.mock.calls.map(([message]: [string]) => message)).toEqual(
 			[
-				"Unknown command /models. Did you mean /model?",
 				"Unknown command /thinking. Search commands with /help thinking.",
 				"Unknown command /stats. Did you mean /status?",
 			].map((message) => message + HINT),

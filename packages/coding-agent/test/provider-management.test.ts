@@ -80,6 +80,7 @@ function manager() {
 			modelRuntime: runtime,
 			model: { provider: "openai", id: "one" },
 			settingsManager: {
+				saveDefaultModelSelection: vi.fn(),
 				getProviderSources: () => ({}),
 				getDisabledProviders: () => disabled,
 				getHiddenModels: () => hiddenModels,
@@ -486,6 +487,18 @@ describe("provider setup flow", () => {
 		expect(Object.values(saved)[0]).toHaveLength(1);
 		list.handleInput(ESC);
 		await closeList(value, 2);
+		await run;
+	});
+
+	it("sets a default provider from its page without changing the current chat", async () => {
+		const { host, value } = manager();
+		const run = showProviderManager(host, "openai", { sourceEnvironment: sourceEnvironment() });
+		choose(await pageAt(value, 0), "Set as default provider for new chats");
+		await vi.waitFor(() =>
+			expect(value.session.settingsManager.saveDefaultModelSelection).toHaveBeenCalledWith("openai", undefined),
+		);
+		expect(value.showModelSelector).not.toHaveBeenCalled();
+		await closeList(value, 1);
 		await run;
 	});
 

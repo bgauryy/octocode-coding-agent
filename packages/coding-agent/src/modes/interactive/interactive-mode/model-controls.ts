@@ -3,6 +3,7 @@
  * keyboard cycling, and the notice for a saved Claude subscription token.
  */
 
+import { isBedrockCandidate, preflightBedrockSelection } from "../../../core/bedrock-model-access.ts";
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { Model } from "@octocodeai/octocode-ai/compat";
 import { getApplicationPort } from "../../../core/application/index.ts";
@@ -68,6 +69,10 @@ export async function cycleModel(host: ModelControlsHost, direction: "forward" |
 
 export function handleThinkingCommand(host: ModelControlsHost, searchTerm?: string): void {
 	const availableLevels = host.session.getAvailableThinkingLevels();
+	if (availableLevels.length === 0) {
+		host.showStatus("This provider manages reasoning for this model. It exposes no selectable effort on this route.");
+		return;
+	}
 	if (!searchTerm) {
 		const saved = host.settingsManager.getDefaultThinkingLevel();
 		if (saved && saved !== host.session.thinkingLevel)
@@ -136,8 +141,14 @@ export async function handleModelCommand(host: ModelControlsHost, searchTerm?: s
 		model = unlisted;
 	}
 	if (model) {
+		const { session } = host;
 		try {
-			await getApplicationPort(host.session).invoke("setModel", model, {
+			if (isBedrockCandidate(model)) {
+				host.showStatus(`Checking Bedrock access for ${model.id}…`);
+				const warning = await preflightBedrockSelection(session.modelRuntime, model);
+				if (warning) host.showWarning(warning);
+			}
+			await getApplicationPort(session).invoke("setModel", model, {
 				persist: setDefault,
 				scope: setDefault ? "global" : undefined,
 			});

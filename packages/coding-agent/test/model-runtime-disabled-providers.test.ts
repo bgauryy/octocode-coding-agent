@@ -1,4 +1,4 @@
-import type { Model, Provider } from "@octocodeai/octocode-ai";
+import { fauxAssistantMessage, type Model, type Provider } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { ModelRegistry } from "../src/core/model-registry.ts";
@@ -66,6 +66,8 @@ describe("disabled providers", () => {
 		runtime.setDisabledProviders(["alpha"]);
 		expect(ids(runtime.getAvailableSnapshot())).toEqual(["beta"]);
 		expect(ids(registry.getAvailable())).toEqual(["beta"]);
+		expect(ids(await runtime.getAvailableOfType("chat"))).toEqual(["beta"]);
+		expect((await runtime.getAllAvailable()).map((entry) => entry.provider)).not.toContain("alpha");
 		expect(ids(await runtime.getAvailable())).toEqual(["beta"]);
 		expect(await runtime.getAvailable("alpha")).toEqual([]);
 		// Credentials and the full catalogue are untouched.
@@ -112,6 +114,37 @@ describe("disabled providers", () => {
 		expect(runtime.getModels("alpha")).toHaveLength(1);
 		runtime.setHiddenModels({});
 		expect(ids(runtime.getAvailableSnapshot())).toEqual(["alpha", "beta"]);
+	});
+
+	it("keeps a refusal on the exact model across picker refreshes and clears it after a credential change", async () => {
+		const runtime = await runtimeWithTwoProviders();
+		try {
+			const denied = model("alpha");
+			const registry = new ModelRegistry(runtime);
+			runtime.observeModelAccess({
+				...fauxAssistantMessage("", {
+					stopReason: "error",
+					errorMessage: 'AccessDeniedException: 403 {"message":"model is not available for this account"}',
+				}),
+				provider: denied.provider,
+				model: denied.id,
+			});
+			expect(registry.isModelAccessRejected(denied)).toBe(true);
+			expect(() => runtime.assertModelAccess(denied)).toThrow(/alpha\/m/);
+			expect(registry.isModelAccessRejected(model("alpha", "sibling"))).toBe(false);
+			expect(ids(registry.getAvailable())).toEqual(["beta"]);
+			expect(await runtime.getAvailable("alpha")).toEqual([]);
+			expect(await runtime.getAvailableOfType("chat", "alpha")).toEqual([]);
+			expect(runtime.getModel("alpha", denied.id)).toBeDefined();
+			await runtime.refresh({ allowNetwork: false, providers: ["alpha"] });
+			expect(registry.isModelAccessRejected(denied)).toBe(true);
+			const previous = runtime.modelAccessGeneration;
+			await runtime.setRuntimeApiKey("alpha", "new-test-key");
+			runtime.setModelAccess(denied, true, previous);
+			expect(ids(registry.getAvailable())).toEqual(["alpha", "beta"]);
+		} finally {
+			runtime.dispose();
+		}
 	});
 
 	it("persist in the global settings only", () => {

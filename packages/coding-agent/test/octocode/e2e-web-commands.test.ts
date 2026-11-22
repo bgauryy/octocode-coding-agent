@@ -1,4 +1,8 @@
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { once } from "node:events";
+import { join } from "node:path";
+import { WebSocket } from "ws";
+import { recordProcessAlive } from "../../src/octocode/web-daemon/records.ts";
 import { TERMINAL_COMMAND_ROUTE, type TerminalCommandResult } from "@octocodeai/octocode-contracts/protocol";
 import { menuCommands } from "../../src/modes/interactive/interactive-mode/command-menu.ts";
 import { findWebDaemon, daemonRequest } from "../../src/octocode/web-daemon/launcher.ts";
@@ -16,10 +20,32 @@ vi.mock("../../src/octocode/browser/app-window.ts", async (importOriginal) => ({
 }));
 
 let t: InteractiveHarness;
+let previousHome: string | undefined;
 beforeAll(async () => {
+	previousHome = process.env.OCTOCODE_HOME;
 	t = await startInteractive();
 }, 120000);
 afterAll(async () => t?.stop());
+
+it("restores the caller's environment after interactive fixture setup fails", async () => {
+	const originalHome = process.env.OCTOCODE_HOME;
+	const originalMarker = process.env.OCTOCODE_FIXTURE_CALLER;
+	process.env.OCTOCODE_FIXTURE_CALLER = "private caller setting";
+	try {
+		await expect(
+			startInteractive({
+				get models(): string[] {
+					throw new Error("failed to load fixture models");
+				},
+			}),
+		).rejects.toThrow("failed to load fixture models");
+		expect(process.env.OCTOCODE_HOME).toBe(originalHome);
+		expect(process.env.OCTOCODE_FIXTURE_CALLER).toBe("private caller setting");
+	} finally {
+		if (originalMarker === undefined) delete process.env.OCTOCODE_FIXTURE_CALLER;
+		else process.env.OCTOCODE_FIXTURE_CALLER = originalMarker;
+	}
+});
 
 it("serves the live slash menu and drives the attached session's configuration dialog through the local web daemon", async () => {
 	await t.submit("/web");
@@ -58,4 +84,21 @@ it("serves the live slash menu and drives the attached session's configuration d
 	);
 	const result = (await post({ action: "status", id: "change-setting" }))?.json();
 	expect(result).toMatchObject({ phase: "done", text: expect.stringContaining("outputPad") });
+
+	// A tab can remain connected when the editor closes. Teardown owns only the daemon of this harness.
+	const socket = new WebSocket(`ws://127.0.0.1:${daemon.record.port}/s/${sessionId}/api/backlogs/live`, {
+		headers: { Origin: daemon.origin },
+	});
+	try {
+		await once(socket, "open");
+		const firstPacket = once(socket, "message");
+		socket.send(JSON.stringify({ token: daemon.token, protocolVersion: 1 }));
+		await firstPacket;
+		process.env.OCTOCODE_HOME = join(t.root, "other-private-home");
+		await t.stop();
+		expect(await recordProcessAlive(daemon.record)).toBe(false);
+		expect(process.env.OCTOCODE_HOME).toBe(previousHome);
+	} finally {
+		socket.terminate();
+	}
 });

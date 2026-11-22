@@ -1,3 +1,4 @@
+import { modelAccessIssue } from "../../utils/credential-errors.ts";
 import type { AssistantMessage, JsonObject } from "../../types.ts";
 import { appendAssistantMessageDiagnostic } from "../../utils/diagnostics.ts";
 import { normalizeProviderError } from "../../utils/error-body.ts";
@@ -39,14 +40,27 @@ export function formatBedrockError(error: unknown): string {
 		!norm.messageCarriesBody && norm.status !== undefined && norm.body !== undefined
 			? `${norm.status}: ${norm.body}`
 			: norm.message;
-	const dataRetentionHint = /data retention mode/i.test(core)
-		? ` See ${BEDROCK_DATA_RETENTION_DOCS_URL} for supported data retention modes.`
-		: "";
 	if (error instanceof Error && error.name.endsWith("Exception")) {
 		const prefix = BEDROCK_ERROR_PREFIXES[error.name] ?? error.name;
-		return `${prefix}: ${core}${dataRetentionHint}`;
+		return `${prefix}: ${core}`;
 	}
-	return `${core}${dataRetentionHint}`;
+	return core;
+}
+
+/** Appended after formatting so headerless rejections and OpenAI-compatible Bedrock endpoints get the same guidance. */
+export function bedrockErrorHint(message: string): string {
+	if (/data retention mode/i.test(message))
+		return ` See ${BEDROCK_DATA_RETENTION_DOCS_URL} for supported data retention modes.`;
+	switch (modelAccessIssue(message)) {
+		case "profile":
+			return " Select a supported geographic or global inference profile ID for this model.";
+		case "identifier":
+			return " Check the model ID, endpoint family and AWS region against the Bedrock model card.";
+		case "account":
+			return " Check model availability in this AWS account and region. For restricted models, request approval from your AWS account team.";
+		case undefined:
+			return "";
+	}
 }
 
 type SdkErrorMetadata = {

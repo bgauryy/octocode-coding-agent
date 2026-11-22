@@ -8,7 +8,8 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { KNOWN_PROVIDER_IDS } from "../../src/types/ids.ts";
 import type { AnyModel } from "../../src/types.ts";
 import {
 	createModelDataManifest,
@@ -128,9 +129,9 @@ export function writeModelCatalogs({
 	const generatedDataProviderIds = generatorOptions.dataOnly
 		? readModelDataProviderIds(packageRoot)
 		: sortedProviderIds;
-	const missingProviderIds = generatedDataProviderIds.filter((providerId) => !jsonAllProviders[providerId]);
+	const missingProviderIds = KNOWN_PROVIDER_IDS.filter((providerId) => !jsonAllProviders[providerId]);
 	if (missingProviderIds.length > 0) {
-		throw new Error(`Cannot hydrate missing providers: ${missingProviderIds.join(", ")}`);
+		throw new Error(`Upstream catalogs are missing registered providers: ${missingProviderIds.join(", ")}`);
 	}
 
 	// Only the ignored internal data is grouped by API for type derivation.
@@ -183,13 +184,15 @@ export function writeModelCatalogs({
 			try {
 				renameSync(stagedDataDir, dataDir);
 				validateGeneratedModelData(packageRoot);
+				const stagedFlags = join(stagingRoot, "cache-flags.ts");
+				writeFileSync(stagedFlags, serializeCacheFlagTable(buildCacheFlagTable()));
+				renameSync(stagedFlags, join(packageRoot, CACHE_FLAGS_MODULE));
 			} catch (error) {
 				rmSync(dataDir, { recursive: true, force: true });
 				if (hadPreviousData && existsSync(previousDataDir)) renameSync(previousDataDir, dataDir);
 				throw error;
 			}
 			restoreGeneratedCatalog = undefined;
-			writeFileSync(join(packageRoot, CACHE_FLAGS_MODULE), serializeCacheFlagTable(buildCacheFlagTable()));
 			console.log(
 				generatorOptions.dataOnly
 					? "Hydrated JSON model values under src/providers/data/"
@@ -206,15 +209,32 @@ export function writeModelCatalogs({
 	if (generatorOptions.jsonOutputDir) {
 		// `models.json` and `providers/{id}.json` hold the keyed chat catalog.
 		// The `.all` variants are arrays so the same upstream id can appear once per type.
-		const providerOutputDir = join(generatorOptions.jsonOutputDir, "providers");
-		rmSync(generatorOptions.jsonOutputDir, { recursive: true, force: true });
-		mkdirSync(providerOutputDir, { recursive: true });
-		writeJson(join(generatorOptions.jsonOutputDir, "models.json"), jsonChatProviders);
-		writeJson(join(generatorOptions.jsonOutputDir, "models.all.json"), jsonAllProviders);
-		writeJson(join(generatorOptions.jsonOutputDir, "providers.json"), sortedProviderIds);
-		for (const providerId of sortedProviderIds) {
-			writeJson(join(providerOutputDir, `${providerId}.json`), jsonChatProviders[providerId]);
-			writeJson(join(providerOutputDir, `${providerId}.all.json`), jsonAllProviders[providerId]);
+		const target = generatorOptions.jsonOutputDir;
+		mkdirSync(dirname(target), { recursive: true });
+		const stagingRoot = mkdtempSync(join(dirname(target), ".model-export-"));
+		const staged = join(stagingRoot, "catalog");
+		const previous = join(stagingRoot, "previous");
+		try {
+			const providerOutputDir = join(staged, "providers");
+			mkdirSync(providerOutputDir, { recursive: true });
+			writeJson(join(staged, "models.json"), jsonChatProviders);
+			writeJson(join(staged, "models.all.json"), jsonAllProviders);
+			writeJson(join(staged, "providers.json"), sortedProviderIds);
+			for (const providerId of sortedProviderIds) {
+				writeJson(join(providerOutputDir, `${providerId}.json`), jsonChatProviders[providerId]);
+				writeJson(join(providerOutputDir, `${providerId}.all.json`), jsonAllProviders[providerId]);
+			}
+			if (existsSync(target)) renameSync(target, previous);
+			try {
+				renameSync(staged, target);
+			} catch (error) {
+				if (existsSync(previous)) renameSync(previous, target);
+				throw error;
+			}
+			rmSync(previous, { recursive: true, force: true });
+		} finally {
+			// Keep the previous catalog available if the filesystem also refused the rollback.
+			if (!existsSync(previous)) rmSync(stagingRoot, { recursive: true, force: true });
 		}
 		console.log(`Generated JSON model catalog under ${generatorOptions.jsonOutputDir}`);
 	}

@@ -1,6 +1,13 @@
 import { renderPrompt } from "../../core/prompt-template.ts";
 import { randomUUID } from "node:crypto";
-import { type Api, isCredentialError, isUsageLimitError, type Model, type Usage } from "@octocodeai/octocode-ai";
+import {
+	type Api,
+	isCredentialError,
+	isModelAccessError,
+	isUsageLimitError,
+	type Model,
+	type Usage,
+} from "@octocodeai/octocode-ai";
 import { checkCredentialByList } from "@octocodeai/octocode-ai/providers/discovery";
 import type { ModelRegistry } from "../../core/model-registry.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -24,7 +31,7 @@ export const BILLING_ERROR =
  * nothing about the other models of that provider.
  */
 const credentialRefused = (text: string): boolean =>
-	isCredentialError(text) || BILLING_ERROR.test(text) || isUsageLimitError(text);
+	!isModelAccessError(text) && (isCredentialError(text) || BILLING_ERROR.test(text) || isUsageLimitError(text));
 /** A known price of zero for input and output; an unknown price is not free. */
 const costsNothing = (cost: ModelRef["cost"]): boolean => {
 	const rates = currentPrice(cost);
@@ -58,7 +65,7 @@ export const spentNothing = (usage: Usage | undefined): boolean =>
  * request to that model fails again, whatever the task.
  */
 export const refusedBeforeWork = (error: string, nothingSpent: boolean): boolean =>
-	nothingSpent && CLIENT_ERROR.test(error);
+	nothingSpent && (CLIENT_ERROR.test(error) || isModelAccessError(error));
 
 const withoutThinking = (model: string) => model.replace(/:(?:off|minimal|low|medium|high|xhigh|max)$/, "");
 
@@ -179,8 +186,9 @@ export function describeHealth(status: ProviderStatus | undefined): string {
 	if (status.ok && status.via === "list") return ` ✓ credential accepted (${source}, ${when}; credit not tested)`;
 	if (status.ok) return ` ✓ credential worked (${source}, ${when})`;
 	const detail = status.detail ?? "";
-	const billing = BILLING_ERROR.test(detail);
-	const limited = !billing && !isCredentialError(detail) && isUsageLimitError(detail);
+	const modelAccess = isModelAccessError(detail);
+	const billing = !modelAccess && BILLING_ERROR.test(detail);
+	const limited = !modelAccess && !billing && !isCredentialError(detail) && isUsageLimitError(detail);
 	const refused = billing || limited || credentialRefused(detail);
 	const label = billing
 		? "out of funds"

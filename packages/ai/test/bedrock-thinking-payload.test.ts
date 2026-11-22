@@ -43,7 +43,7 @@ async function capturePayload(
 		env: {},
 		fetch: async () => bedrockResponse(bedrockTextEvents),
 		...options,
-		reasoning: options?.reasoning ?? "high",
+		reasoning: options && "reasoning" in options ? options.reasoning : "high",
 		onPayload: (payload) => {
 			capturedPayload = payload as BedrockThinkingPayload;
 			return payload;
@@ -222,6 +222,27 @@ describe("Bedrock OpenAI reasoning payload", () => {
 		const payload = await capturePayload(model, { reasoning: "medium" });
 
 		expect(payload.additionalModelRequestFields).toEqual({ reasoning: { effort: "medium" } });
+	});
+
+	it.each([
+		["global.moonshotai.kimi-k3.1", undefined, "none"],
+		["us.moonshotai.kimi-k3.1", "minimal", "low"],
+		["global.moonshotai.kimi-k3", "max", "max"],
+		["global.zai.glm-5.3", undefined, "low"],
+		["us.zai.glm-5.3", "xhigh", "xhigh"],
+	] as const)("serializes %s effort %s as %s", async (id, reasoning, expected) => {
+		const model = getBuiltinModel("amazon-bedrock", id);
+		const payload = await capturePayload(model, { reasoning });
+		expect(payload.additionalModelRequestFields).toEqual({ reasoning_effort: expected });
+		expect(model.thinkingLevelMap?.minimal).toBeNull();
+		if (id.endsWith("kimi-k3.1")) expect(model.maxTokens).toBeLessThanOrEqual(131072);
+	});
+
+	it("encodes Nova 2 effort with its native parameter", async () => {
+		const model = getBuiltinModel("amazon-bedrock", "us.amazon.nova-2-lite-v1:0");
+		expect((await capturePayload(model, { reasoning: "medium" })).additionalModelRequestFields).toMatchObject({
+			reasoningConfig: { type: "enabled", maxReasoningEffort: "medium" },
+		});
 	});
 
 	it("sends flat reasoning_effort for gpt-oss, clamped to high", async () => {

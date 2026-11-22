@@ -6,13 +6,11 @@ import { type ConfiguredModels, settingKey } from "./configured-models.ts";
 import { routeThinking, THINKING_LEVELS, thinkingSuffix, withThinking } from "../render/route-thinking.ts";
 import { SUBAGENT_DEFAULT_THINKING, SUBAGENT_THINKING_ENV, subagentThinking } from "./thinking.ts";
 import {
-	canRunTask,
 	isModelTier,
 	type ModelRef,
 	type ModelTier,
 	resolveTier,
 	resolveTierChoice,
-	taskBlocker,
 	type TierBilling,
 } from "./tier.ts";
 
@@ -34,11 +32,14 @@ export { SUBAGENT_DEFAULT_THINKING, SUBAGENT_THINKING_ENV, subagentThinking };
 /** A registry's billing facts as routing reads them; no registry bills nothing by plan. */
 export const registryBilling = (
 	registry:
-		| { getProviderBilling(provider: string): ProviderPlan["billing"]; allowsUnattendedUse(provider: string): boolean }
+		| {
+				getProviderBilling(provider: string, scope?: "child"): ProviderPlan["billing"];
+				allowsUnattendedUse(provider: string): boolean;
+		  }
 		| undefined,
 	background = false,
 ): TierBilling => ({
-	plan: (provider) => registry?.getProviderBilling(provider) === "plan",
+	plan: (provider) => registry?.getProviderBilling(provider, "child") === "plan",
 	unattended: (provider) => registry?.allowsUnattendedUse(provider) !== false,
 	background,
 });
@@ -123,8 +124,6 @@ export function modelLabel(details: { model?: string; fallback?: string; refused
 		? `${model ?? "parent model"} (${fallbackNote(details.fallback, details.refusedBy)})`
 		: (model ?? "");
 }
-
-const sameModel = (a: ModelRef, b: ModelRef | undefined) => a.provider === b?.provider && a.id === b.id;
 
 /** `ProviderHealth.refused`: the model, or unless `proven` its provider's credential (funds: only if `cost` is not free). */
 export type Refused = (provider: string, id?: string, proven?: boolean, cost?: ModelRef["cost"]) => boolean;
@@ -228,17 +227,11 @@ function configuredRoute(
 	if (!value) return undefined;
 	const provider = input.parent?.provider;
 	const found = resolveModel(value, usable, provider);
-	const chosen = routedModel(found, usable);
-	const blocker = chosen && !sameModel(chosen, input.parent) ? taskBlocker(chosen, input.catalog) : undefined;
-	if (found && !blocker) return { model: found };
+	if (found) return { model: found };
 	const named = resolveModel(value, input.available, provider);
 	const listed = routedModel(named, input.available);
 	const base = listed ? `${listed.provider}/${listed.id}` : value;
-	const why = blocker
-		? ` cannot run a task: ${blocker}`
-		: listed
-			? `: ${listed.provider} refused its credential`
-			: " unavailable";
+	const why = listed ? `: ${listed.provider} refused its credential` : " unavailable";
 	return { skipped: `${settingKey(tier)} ${base}${why}` };
 }
 
@@ -337,19 +330,7 @@ function routeWithoutThinking(request: RouteInput): ModelRoute {
 				error: `Model "${explicit}" matches several providers. Use provider/id: ${choice.alternatives.join(", ")}`,
 			};
 		const model = choice?.model;
-		if (model) {
-			const chosen = routedModel(model, available);
-			const blocker = chosen && !sameModel(chosen, parent) ? taskBlocker(chosen, request.catalog) : undefined;
-			if (!chosen || !blocker) return { model };
-			const others = available
-				.filter((candidate) => candidate.provider === chosen.provider && canRunTask(candidate, request.catalog))
-				.map((candidate) => `${candidate.provider}/${candidate.id}`);
-			const runnable =
-				others.length > 0
-					? `Runnable ${chosen.provider} models: ${others.slice(0, 8).join(", ")}${others.length > 8 ? ", …" : ""}`
-					: `No ${chosen.provider} model can run a task`;
-			return { error: `Model "${chosen.provider}/${chosen.id}" cannot run a task: ${blocker}. ${runnable}` };
-		}
+		if (model) return { model };
 		const close = closeModels(explicit, available);
 		const names = [...new Set(available.map((candidate) => `${candidate.provider}/${candidate.id}`))];
 		const hint =

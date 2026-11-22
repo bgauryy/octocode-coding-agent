@@ -322,6 +322,12 @@ export interface Models {
 }
 
 export interface MutableModels extends Models {
+	/** Local auth method and account-permitted chat models for this store, absent when unconfigured. */
+	getAvailableFromStore(
+		providerId: string,
+		credentials: CredentialStore,
+		options?: AuthOperationOptions,
+	): Promise<{ authType: AuthType; models: readonly Model<Api>[] } | undefined>;
 	/** Upsert/replace by provider.id. Provider ids are unique. */
 	setProvider(provider: Provider): void;
 	deleteProvider(id: string): void;

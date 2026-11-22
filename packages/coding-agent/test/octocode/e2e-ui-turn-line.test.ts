@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { visibleWidth } from "@octocodeai/octocode-tui/text";
 import { afterEach, describe, expect, it } from "vitest";
@@ -29,6 +30,23 @@ describe("turn summary line", () => {
 		await idle();
 		expect(await lines()).toEqual([expect.stringMatching(/^✻ Worked \d+s · 2 tools/)]);
 		expect(t.requests).toHaveLength(3);
+	});
+
+	it("clones without recording a finished job when shutdown detaches a scheduled timer", async () => {
+		const run = await startInteractive();
+		try {
+			expect((await run.submit("/loop 10m check again")).text).toContain("Scheduled task");
+			run.script(toolTurn("echo one"), fauxAssistantMessage("done"));
+			await run.submit("run a tool");
+			await run.host.session.waitForIdle();
+			const file = run.host.sessionManager.getSessionFile()!;
+			const before = readFileSync(file, "utf8");
+			expect(before).not.toContain('"customType":"octocode-turn"');
+			expect((await run.submit("/clone")).text).toContain("Cloned to new session");
+			expect(readFileSync(file, "utf8")).toEqual(before);
+		} finally {
+			await run.stop();
+		}
 	});
 
 	it("waits for a queued follow-up, then writes one line", async () => {

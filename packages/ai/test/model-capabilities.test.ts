@@ -30,6 +30,7 @@ describe("model capabilities", () => {
 		["Anthropic adaptive", model("anthropic-messages", { compat: { forceAdaptiveThinking: true } }), "effort"],
 		["Anthropic budget", model("anthropic-messages"), "budget"],
 		["Bedrock adaptive Claude", model("bedrock-converse-stream", { id: "us.anthropic.claude-opus-5-5-v1" }), "effort"],
+		["Bedrock Nova effort", model("bedrock-converse-stream", { id: "amazon.nova-2-lite-v1:0" }), "effort"],
 		["Bedrock older Claude", model("bedrock-converse-stream", { id: "anthropic.claude-3-7-sonnet" }), "budget"],
 		["Gemini 3 level", model("google-generative-ai", { id: "gemini-3.1-pro-preview" }), "level"],
 		["Gemini 2.5 budget", model("google-generative-ai", { id: "gemini-2.5-pro" }), "budget"],
@@ -192,7 +193,21 @@ describe("model capabilities", () => {
 			for (const entry of models.getModels(provider.id)) {
 				const caps = resolveModelCapabilities(entry);
 				expect(caps.contextWindow).toBe(entry.contextWindow);
-				expect(caps.thinking.levels.length).toBeGreaterThan(0);
+				const managed =
+					entry.reasoning &&
+					(["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const).every(
+						(level) => entry.thinkingLevelMap?.[level] === null,
+					);
+				if (managed) {
+					expect(caps.thinking, `${entry.provider}/${entry.id}`).toEqual({
+						control: "managed",
+						levels: [],
+						canDisable: false,
+					});
+				} else {
+					expect(caps.thinking.levels.length, `${entry.provider}/${entry.id}`).toBeGreaterThan(0);
+					expect(caps.thinking.control).not.toBe("managed");
+				}
 			}
 		}
 	});

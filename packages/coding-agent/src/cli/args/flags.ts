@@ -4,6 +4,7 @@ import { getToolListError } from "../../core/settings-manager/tool-list.ts";
 import { VALID_THINKING_LEVELS } from "../../core/thinking-level.ts";
 import { CHOOSABLE_MODES, type PermissionMode } from "../../octocode/permission/mode.ts";
 import type { Args, FlagSpec, Mode } from "./types.ts";
+import { MODEL_LIST_FLAGS } from "./model-list-flags.ts";
 import { API_KEY_FLAGS } from "./api-key-flags.ts";
 import { CONFIGURATION_FLAGS } from "./configuration-flags.ts";
 import { RESUME_FLAG } from "./resume-flag.ts";
@@ -317,14 +318,7 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 		help: ["Export session file to HTML and exit"],
 		apply: (a, v) => void (a.export = v),
 	},
-	{
-		name: "--list-models",
-		kind: "optional",
-		arg: "[search]",
-		completion: "text",
-		help: ["List available models (with optional fuzzy search)"],
-		apply: (a, v) => void (a.listModels = v ?? true),
-	},
+	...MODEL_LIST_FLAGS,
 	{
 		name: "--no-color",
 		kind: "boolean",

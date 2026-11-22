@@ -130,10 +130,10 @@ describe("model picker contract", () => {
 		expect(screen(view)).not.toContain("Switch this chat");
 		view.handleInput("\r");
 		for (let i = 0; i < 4; i++) view.handleInput(DOWN);
-		expect(screen(view)).toContain("› Both");
+		expect(screen(view)).toContain("› Set as this provider’s preferred model");
 		view.handleInput("\r");
-		expect(select).toHaveBeenCalledWith(models[0]);
-		expect(save).toHaveBeenCalledWith(models[0]);
+		expect(select).not.toHaveBeenCalled();
+		expect(save).toHaveBeenCalledWith(models[0], "provider");
 	});
 });
 

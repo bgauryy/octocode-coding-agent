@@ -1,3 +1,4 @@
+import { modelAvailableToChild, modelEnabled } from "./task-model-visibility.ts";
 import type { FeatureContext } from "../../core/features/index.ts";
 import { renderPrompt } from "../../core/prompt-template.ts";
 import { type Catalog, readCatalog } from "./catalog.ts";
@@ -28,12 +29,26 @@ export function currentRouting(
 	const catalog = readCatalog();
 	// Without a session model nothing routes (`routingFacts`), so the registry is not read.
 	if (!model) return { facts: undefined, catalog, under: () => undefined };
-	const available = ctx.modelRegistry.getAvailable();
+	const available = ctx.modelRegistry
+		.getAvailable()
+		.filter((candidate) => modelAvailableToChild(ctx.modelRegistry, candidate));
 	const billing = registryBilling(ctx.modelRegistry);
 	const list = [...profiles];
 	const gone = unavailablePins(ctx.modelRegistry, list, available);
 	const under = (index: Catalog | undefined) =>
-		withReplacedProfileModels(routingFacts(available, model, list, index, undefined, undefined, billing), list, gone);
+		withReplacedProfileModels(
+			routingFacts(
+				available,
+				modelEnabled(ctx.modelRegistry, model) && modelAvailableToChild(ctx.modelRegistry, model) ? model : undefined,
+				list,
+				index,
+				undefined,
+				undefined,
+				billing,
+			),
+			list,
+			gone,
+		);
 	return { facts: under(catalog), catalog, under };
 }
 

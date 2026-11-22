@@ -15,6 +15,7 @@ import { Text } from "./text.ts";
 
 /** How `wrapTextWithAnsi` splits text into logical lines. */
 const LINE_BREAK = /\r\n|\r|\n/;
+const NON_ASCII = /[^\x00-\x7f]/;
 
 export interface VisualTruncateResult {
 	visualLines: string[];
@@ -95,7 +96,11 @@ export function truncateToVisualLines(
 function visualRowCount(line: string, width: number, prefix: () => string): number {
 	const normalized = line.includes("\t") ? line.replace(/\t/g, "   ") : line;
 	// No UTF-16 code unit is wider than two cells, so a line this short fits whatever it holds.
-	if (normalized.length * 2 <= width || visibleWidth(normalized) <= width) return 1;
+	if (normalized.length * 2 <= width) return 1;
+	// In ASCII logs each character takes at most one cell, including the bytes of ANSI styling.
+	// Avoid measuring and caching thousands of distinct hidden lines that already fit.
+	if (normalized.length <= width && !NON_ASCII.test(normalized)) return 1;
+	if (visibleWidth(normalized) <= width) return 1;
 	return wrapTextWithAnsi(prefix() + normalized, width).length;
 }
 

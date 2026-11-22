@@ -17,14 +17,15 @@ export function saveDefaultModelSelection(
 	state: SettingsState,
 	persistence: SettingsPersistence,
 	provider: string,
-	modelId: string,
+	modelId: string | undefined,
 	options: DefaultModelSelectionOptions = {},
 ): Promise<void> {
 	if (options.scope === "project") {
 		return queueSelection(state, async () => {
 			persistence.updateProjectSettings(["defaultProvider", "defaultModel"], (settings) => {
 				settings.defaultProvider = provider;
-				settings.defaultModel = modelId;
+				if (modelId === undefined) delete settings.defaultModel;
+				else settings.defaultModel = modelId;
 			});
 		});
 	}
@@ -41,6 +42,28 @@ function queueSelection(state: SettingsState, commit: () => Promise<void>): Prom
 	};
 	void saved.then(forget, forget);
 	return saved;
+}
+
+/** Update just this provider's preferred model under the settings-file lock. Other provider preferences survive concurrent writes. */
+export function saveProviderModel(
+	state: SettingsState,
+	persistence: SettingsPersistence,
+	provider: string,
+	model: string | undefined,
+): Promise<void> {
+	return queueSelection(state, async () => {
+		if (state.globalSettingsLoadError) throw state.globalSettingsLoadError;
+		const previous = state.globalSettings.providerModels;
+		const next = model === undefined ? { ...previous } : { ...previous, [provider]: model };
+		if (model === undefined) delete next[provider];
+		state.globalSettings.providerModels = next;
+		persistence.markModified("providerModels", provider);
+		const error = await persistence.save();
+		if (!error) return;
+		state.globalSettings.providerModels = previous;
+		state.settings = effectiveSettings(state);
+		throw error;
+	});
 }
 
 /** Save shortcut selection through the same queue as defaults; a failed write keeps the prior saved selection. */
@@ -72,7 +95,7 @@ async function commitSelection(
 	state: SettingsState,
 	persistence: SettingsPersistence,
 	provider: string,
-	modelId: string,
+	modelId: string | undefined,
 	options: DefaultModelSelectionOptions,
 ): Promise<void> {
 	if (state.globalSettingsLoadError) throw state.globalSettingsLoadError;
@@ -81,7 +104,8 @@ async function commitSelection(
 	const key = `${provider}/${modelId}`;
 	const enabledModels = options.enabledModels && [...options.enabledModels];
 	global.defaultProvider = provider;
-	global.defaultModel = modelId;
+	if (modelId === undefined) delete global.defaultModel;
+	else global.defaultModel = modelId;
 	persistence.markModified("defaultProvider");
 	persistence.markModified("defaultModel");
 	if (options.thinkingLevel !== undefined) {

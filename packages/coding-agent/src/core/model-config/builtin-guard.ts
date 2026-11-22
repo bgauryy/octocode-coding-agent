@@ -4,28 +4,20 @@
  * of an official model (`modelOverrides`), limited to compat and limits.
  */
 
-import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
+import { getBuiltinProviders } from "@octocodeai/octocode-ai/providers/all";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** The per-model fields an official provider's `modelOverrides` entry may set. Never host, api or key. */
 const OFFICIAL_MODEL_OVERRIDE_FIELDS: readonly string[] = ["compat", "contextWindow", "maxTokens", "inputLimits"];
 
-let officialIds: ReadonlySet<string> | undefined;
-
-/** Ids of the official (built-in) providers. */
-function officialProviderIds(): ReadonlySet<string> {
-	officialIds ??= new Set(builtinProviders().map((provider) => provider.id));
-	return officialIds;
-}
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
+const officialIds: ReadonlySet<string> = new Set(getBuiltinProviders());
 
 /**
  * What is wrong with an entry that carries an official provider's id, or undefined when it only tunes models
  * (`modelOverrides` with allowed fields). Names the file and id, never a value.
  */
 export function officialEntryProblem(providerId: string, entry: unknown, file: string): string | undefined {
-	if (!officialProviderIds().has(providerId)) return undefined;
+	if (!officialIds.has(providerId)) return undefined;
 	const fields = isRecord(entry) ? Object.keys(entry) : [];
 	const extraProviderFields = fields.filter((field) => field !== "modelOverrides");
 	const overrides = isRecord(entry) && isRecord(entry.modelOverrides) ? entry.modelOverrides : {};

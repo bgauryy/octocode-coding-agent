@@ -238,7 +238,11 @@ export async function runSession(
 	if (parsed.listModels !== undefined) {
 		reportDiagnostics(startupSettingsDiagnostics);
 		const searchPattern = typeof parsed.listModels === "string" ? parsed.listModels : undefined;
-		await listModels(modelRuntime, searchPattern, AbortSignal.timeout(15_000));
+		await listModels(modelRuntime, searchPattern, AbortSignal.timeout(15_000), {
+			provider: parsed.provider,
+			size: parsed.modelSize,
+			checkAccess: parsed.checkModelAccess,
+		});
 		process.exit(0);
 	}
 

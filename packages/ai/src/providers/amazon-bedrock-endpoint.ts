@@ -1,6 +1,7 @@
 import { anthropicMessagesApi } from "../api/anthropic-messages.lazy.ts";
 import { bedrockConverseStreamApi } from "../api/bedrock-converse-stream.lazy.ts";
 import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
+import { isBedrockInferenceHost } from "../utils/provider-host.ts";
 import { endpointFromAnswers } from "../auth/endpoint.ts";
 import type { ApiKeyEndpoint, ApiKeyHostOption } from "../auth/types.ts";
 import type { Api, Model, ProviderStreams, SimpleStreamOptions, StreamOptions } from "../types.ts";
@@ -17,15 +18,8 @@ const ENDPOINT_API_ENV = "OCTOCODE_ENDPOINT_API";
  * OpenAI-compatible and Anthropic Messages APIs (docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html).
  */
 export function bedrockHostFamily(baseUrl: string): "runtime" | "mantle" | "unknown" {
-	let hostname: string;
-	try {
-		hostname = new URL(baseUrl).hostname;
-	} catch {
-		return "unknown";
-	}
-	if (/^bedrock-runtime(?:-fips)?\./.test(hostname)) return "runtime";
-	if (/^bedrock-mantle(?:-fips)?\./.test(hostname)) return "mantle";
-	return "unknown";
+	if (!isBedrockInferenceHost(baseUrl)) return "unknown";
+	return new URL(baseUrl).hostname.startsWith("bedrock-mantle") ? "mantle" : "runtime";
 }
 
 /**
@@ -43,6 +37,10 @@ export function bedrockEndpoint(
 	if (family === "mantle" && method !== "bearer-token") {
 		throw new Error("A bedrock-mantle host needs an Amazon Bedrock API key (bearer token), not AWS credentials.");
 	}
+	if (family === "runtime" && usesOpenAIRuntimePath(checked!.baseUrl) && method !== "bearer-token")
+		throw new Error(
+			"Use a Bedrock bearer token with the OpenAI-compatible base URL, or use the root runtime endpoint with AWS credentials.",
+		);
 	if (family !== "unknown") return endpointFromAnswers(answers.host, answers.region ?? "");
 	if (!isEndpointApi(answers.api)) {
 		throw new Error(`Say which API this host serves: ${BEDROCK_ENDPOINT_APIS.join(", ")}. Its name does not tell.`);
@@ -81,6 +79,10 @@ export function mantleRoute(modelId: string, baseUrl: string): { api: BedrockEnd
 	return { api: "openai-completions", baseUrl: `${origin}/v1` };
 }
 
+function usesOpenAIRuntimePath(baseUrl: string): boolean {
+	return new URL(baseUrl).pathname.replace(/\/$/, "") === "/openai/v1";
+}
+
 /** The API and base URL a request to `model` uses: the model's own Converse stream unless its host says otherwise. */
 export function bedrockRoute(
 	model: Model<Api>,
@@ -88,7 +90,11 @@ export function bedrockRoute(
 ): { api: BedrockEndpointApi; baseUrl: string } {
 	const family = bedrockHostFamily(model.baseUrl);
 	if (family === "mantle") return mantleRoute(model.id, model.baseUrl);
-	if (family === "runtime") return { api: "bedrock-converse-stream", baseUrl: model.baseUrl };
+	if (family === "runtime")
+		return {
+			api: usesOpenAIRuntimePath(model.baseUrl) ? "openai-completions" : "bedrock-converse-stream",
+			baseUrl: model.baseUrl,
+		};
 	const picked = env?.[ENDPOINT_API_ENV];
 	// A host whose name does not tell speaks the API the user picked; without a pick it is the default, Converse.
 	return { api: isEndpointApi(picked) ? picked : "bedrock-converse-stream", baseUrl: model.baseUrl };

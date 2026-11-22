@@ -25,9 +25,9 @@ import { getSupportedThinkingLevels } from "./model-helpers.ts";
 
 /**
  * How thinking is requested: `effort` names a level, `budget` sends a token budget, `level` is Gemini's discrete
- * `thinkingLevel`, `none` means the model does not reason.
+ * `thinkingLevel`, and `managed` means the provider controls reasoning without user-selectable levels.
  */
-export type ThinkingControl = "none" | "effort" | "budget" | "level";
+export type ThinkingControl = "none" | "effort" | "budget" | "level" | "managed";
 
 /**
  * How a prompt prefix is cached: `markers` are Anthropic-style breakpoints with 5-minute and 1-hour tiers, `key` is a
@@ -90,7 +90,11 @@ export function resolveModelCapabilities(model: Model<Api>, env?: ProviderEnv): 
 		contextWindow: model.contextWindow,
 		maxOutputTokens: model.maxTokens,
 		input: model.input,
-		thinking: { control: thinkingControl(model), levels, canDisable: levels.includes("off") },
+		thinking: {
+			control: levels.length === 0 ? "managed" : thinkingControl(model),
+			levels,
+			canDisable: levels.includes("off"),
+		},
 		cache: cacheCapability(model, env),
 	};
 }
@@ -101,7 +105,10 @@ function thinkingControl(model: Model<Api>): ThinkingControl {
 		case "anthropic-messages":
 			return (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking ? "effort" : "budget";
 		case "bedrock-converse-stream":
-			return supportsAdaptiveThinking(model.id, model.name) ? "effort" : "budget";
+			return isAnthropicClaudeModel(model as Model<"bedrock-converse-stream">) &&
+				!supportsAdaptiveThinking(model.id, model.name)
+				? "budget"
+				: "effort";
 		case "google-generative-ai":
 		case "google-vertex":
 			return usesGoogleThinkingLevel(model as Model<"google-generative-ai">) ? "level" : "budget";
