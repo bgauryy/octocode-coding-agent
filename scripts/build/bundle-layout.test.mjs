@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { BUNDLE_CODE_FILES, FAST_COMMANDS, launcherSource } from "./bundle-layout.mjs";
+import { BUNDLE_CODE_FILES, FAST_COMMANDS, launcherSource, workerForeignModules } from "./bundle-layout.mjs";
 
 /** A bundle folder whose files print which of them ran, with `cli.js` as the build writes it. */
 function stubBundle(t) {
@@ -48,4 +48,19 @@ test("launchers stay small and every fast command's file is a listed code file",
 	// `publish-stage.mjs` refuses a file beside the bundle larger than this unless it is a listed code file.
 	assert.ok(Buffer.byteLength(launcherSource("runCli", FAST_COMMANDS)) <= 1024);
 	for (const { file } of FAST_COMMANDS) assert.ok(BUNDLE_CODE_FILES.has(file), file);
+});
+
+test("a worker may not bundle provider SDKs or the terminal UI", () => {
+	const ids = [
+		"/repo/packages/db/src/writer/worker-entry.ts",
+		"/repo/packages/common/dist/clip.js",
+		"/repo/packages/ai/dist/index.js",
+		"/repo/packages/tui/dist/utils/ansi-codes.js",
+		"/repo/node_modules/@ai-sdk/openai/dist/index.mjs",
+		"/repo/node_modules/ai/dist/index.mjs",
+		"/repo/node_modules/highlight.js/lib/core.js",
+		"/repo/node_modules/graceful-fs/graceful-fs.js",
+		"C:\\repo\\packages\\tui\\dist\\index.js",
+	];
+	assert.deepEqual(workerForeignModules(ids), [ids[2], ids[3], ids[4], ids[5], ids[6], ids[8]]);
 });

@@ -66,10 +66,11 @@ export function envelopeHint(toolName: string, schema: Record<string, unknown>):
 export function siblingHint(
 	schema: Record<string, unknown>,
 	unexpected: ToolValidationFailure["unexpected"],
+	envelope?: string,
 ): string | undefined {
 	const lines = new Set<string>();
-	let length = 0;
-	for (const { instancePath, schemaPath } of unexpected ?? []) {
+	let length = envelope?.length ?? 0;
+	for (const { instancePath, schemaPath, names } of unexpected ?? []) {
 		if (!schemaPath) {
 			lines.add("Load the full schema for the remaining rejected fields.");
 			continue;
@@ -86,6 +87,16 @@ export function siblingHint(
 		if (!isRecord(node) || !isRecord(node.properties)) continue;
 		const fields = Object.keys(node.properties);
 		if (!fields.length) continue;
+		for (const name of names) {
+			const field = name.slice(0, -1);
+			if (!name.endsWith(":") || !Object.hasOwn(node.properties, field)) continue;
+			const line = `Use ${JSON.stringify(field)} for the rejected key ${JSON.stringify(name)} at ${instancePath || "root"}.`;
+			if (length + line.length <= 1000 && !lines.has(line)) {
+				lines.add(line);
+				length += line.length + 1;
+			}
+		}
+		if (envelope) continue;
 		const prefix = `Declared fields at ${instancePath || "root"}: `;
 		const shown: string[] = [];
 		let size = prefix.length;
@@ -102,5 +113,6 @@ export function siblingHint(
 		if (!lines.has(line)) length += line.length + 1;
 		lines.add(line);
 	}
+	if (envelope) lines.add(envelope);
 	return [...lines].join("\n") || (unexpected?.length ? "Load the full schema for the rejected fields." : undefined);
 }

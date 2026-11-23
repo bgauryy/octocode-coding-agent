@@ -1,5 +1,5 @@
 import type { FeatureSetup, CommandContext } from "../../core/features/index.ts";
-import { type Subcommand, say, wordCompletions } from "../shared/commands.ts";
+import { type Subcommand, refuse, say, wordCompletions } from "../shared/commands.ts";
 import { openTarget } from "@octocodeai/octocode-common/open-target";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -231,7 +231,7 @@ export function backlogCommand(api: FeatureSetup, deps: CommandDeps): Subcommand
 				if (command) return await command.run(ctx, backlog, tail);
 				if (rest.length > 1) return say(ctx, `Usage: /backlog ${usage}`, "warning");
 				const item = backlog.store.get(word);
-				if (!item) return say(ctx, `Unknown backlog item or subcommand "${word}". Usage: /backlog ${usage}`, "warning");
+				if (!item) return refuse(ctx, `Unknown backlog item or subcommand "${word}". Usage: /backlog ${usage}`);
 				const verb = rest[0];
 				if (verb === undefined) {
 					if (ctx.hasUI) {
@@ -243,15 +243,17 @@ export function backlogCommand(api: FeatureSetup, deps: CommandDeps): Subcommand
 				if (isState(verb)) {
 					const refused = await move(ctx, backlog, item, verb);
 					return refused
-						? say(ctx, refused, "warning")
+						? refuse(ctx, refused)
 						: say(ctx, `Moved ${itemLine(backlog.store.get(item.ref)!, backlog.session)}`);
 				}
 				if (verb === "close") {
-					if (!ctx.hasUI) return say(ctx, "Closing asks for a reason: run it in the interactive UI.", "warning");
+					if (!ctx.hasUI) return refuse(ctx, "Closing asks for a reason: run it in the interactive UI.");
 					return await closeItem(ctx, backlog, item);
 				}
-				return say(ctx, `Unknown action "${verb}". Usage: /backlog ${usage}`, "warning");
+				return refuse(ctx, `Unknown action "${verb}". Usage: /backlog ${usage}`);
 			} catch (error) {
+				// Print and JSON modes report a failed command through the runner, which sets the exit status.
+				if (!ctx.hasUI) throw error;
 				say(ctx, errorMessage(error), "error");
 			}
 		},

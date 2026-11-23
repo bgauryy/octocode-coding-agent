@@ -22,7 +22,7 @@ const BACKGROUND_OUTPUT = Type.Object({
  * `bashBackgroundAfterSeconds` and `bash.longCommandAfterSeconds` are read per call (`settingsFor`).
  */
 export function bashDescription(): string {
-	return `Run in the working directory. Background builds, suites, servers and work over a minute. Get job id, pid and log now, completion by message. Foreground combines output and backgrounds on user input or after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${SETTINGS_DEFAULTS.bash.longCommandAfterSeconds}s for builds, tests, servers). Inspect effects before retrying a timeout.\n\n${renderCliGuide(probeCliHost())}`;
+	return `Background builds, suites, servers and work over a minute. Get job id, pid and log now, completion by message. Foreground combines output and backgrounds on user input or after ${SETTINGS_DEFAULTS.bashBackgroundAfterSeconds}s (${SETTINGS_DEFAULTS.bash.longCommandAfterSeconds}s for builds, tests, servers). Inspect effects before retrying a timeout.\n\n${renderCliGuide(probeCliHost())}`;
 }
 
 /** Programmatic callers receive `structuredContent` only from tools that declare its schema. */
@@ -43,7 +43,7 @@ export const bashParameters = Type.Object({
 	timeout: Type.Optional(
 		Type.Number({
 			// The description states when an unset foreground call backgrounds; this field says only when the command stops.
-			description: `Seconds before stop (max ${MAX_FOREGROUND_TIMEOUT}); foreground backgrounds after ${SETTINGS_DEFAULTS.bash.deliberateMaxSeconds} s. Unset: never stopped`,
+			description: `Seconds before stop (max ${MAX_FOREGROUND_TIMEOUT}); a foreground call with it waits at most ${SETTINGS_DEFAULTS.bash.deliberateMaxSeconds} s, then backgrounds. Unset: never stopped`,
 		}),
 	),
 	maxOutputTokens: maxOutputTokensParameter,

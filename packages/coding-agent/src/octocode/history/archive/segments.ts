@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { stringList } from "../../shared/util.ts";
+import { stringList } from "@octocodeai/octocode-contracts/guards";
 import { headerField, readHeader } from "./text.ts";
 
 /**

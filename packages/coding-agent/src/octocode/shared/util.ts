@@ -137,8 +137,7 @@ export const finiteNumber = (value: unknown): number | undefined =>
 	typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
 /** `value` when it is an array of strings, else undefined. */
-export const stringList = (value: unknown): string[] | undefined =>
-	Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
+export { stringList } from "@octocodeai/octocode-contracts/guards";
 
 export { MINUTE_MS, HOUR_MS, DAY_MS } from "@octocodeai/octocode-common/time";
 

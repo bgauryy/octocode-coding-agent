@@ -1,7 +1,7 @@
 import { STATES, type Snapshot } from "@octocodeai/octocode-contracts/snapshot";
 import { pagePolicy } from "./csp.ts";
 import { OCTOCODE_FAVICON_DATA_URI } from "./favicon.generated.ts";
-import { OFFLINE_PAGE_JS, WORKSPACE_STATE_JS } from "./state.generated.ts";
+import { offlinePageJs, workspaceStateJs } from "./state.generated.ts";
 import { PAGE_CSS } from "./styles.ts";
 
 /**
@@ -37,7 +37,7 @@ export function renderBacklogHtml(snapshot: Snapshot, live = false, daemon = fal
 <div id="app"></div>
 <noscript>This page needs JavaScript. The backlog data is in the page source, in the JSON block with id "data".</noscript>
 <script type="application/json" id="data">${embeddedJson(snapshot)}</script>
-<script>${live ? WORKSPACE_STATE_JS : OFFLINE_PAGE_JS}
+<script>${live ? workspaceStateJs() : offlinePageJs()}
 WorkspaceView.mountPage();</script>
 </body>
 </html>

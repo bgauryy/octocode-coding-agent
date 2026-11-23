@@ -17,7 +17,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { rolldown } from "rolldown";
 import { readWorkspacePackages, sourceWorkspaceGroups } from "../lib/source-workspaces.mjs";
-import { BUNDLE_CODE_FILES, FAST_COMMANDS, launcherSource } from "./bundle-layout.mjs";
+import { BUNDLE_CODE_FILES, FAST_COMMANDS, launcherSource, workerForeignModules } from "./bundle-layout.mjs";
 import { copyNative } from "./copy-native.mjs";
 import { copySandboxVendor } from "./sandbox-vendor.mjs";
 import { stageBashParser } from "./stage-bash-parser.mjs";
@@ -181,6 +181,13 @@ async function buildBundle() {
 		unresolved,
 	);
 	if (indexWorker.length !== 1) throw new Error(`Expected one archive index worker file, got ${indexWorker.length}`);
+	for (const chunk of [...worker, ...indexWorker]) {
+		const foreign = workerForeignModules(Object.keys(chunk.modules));
+		if (foreign.length > 0)
+			throw new Error(
+				`${chunk.fileName} bundles ${foreign.length} provider or terminal modules, first ${foreign[0]}: import leaf modules, not hubs`,
+			);
+	}
 	const fast = [];
 	for (const command of FAST_COMMANDS) {
 		const name = command.file.replace(/\.js$/, "");

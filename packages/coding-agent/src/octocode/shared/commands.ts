@@ -24,6 +24,15 @@ export function say(ctx: Pick<FeatureContext, "hasUI" | "ui">, text: string, lev
 	if (!ctx.hasUI) process.stderr.write(`${sanitizeTerminalText(text)}\n`);
 }
 
+/**
+ * A command that did not do what it was asked: a warning with a UI; without one (print and JSON modes) an error the
+ * command runner reports, so the run exits non-zero instead of printing the refusal and succeeding.
+ */
+export function refuse(ctx: Pick<FeatureContext, "hasUI" | "ui">, text: string): void {
+	if (!ctx.hasUI) throw new Error(text);
+	say(ctx, text, "warning");
+}
+
 const CANCELLED = "Cancelled: nothing was ";
 
 /** The one line a declined or abandoned confirmation says: `cancelledText("stopped")` is "Cancelled: nothing was stopped.". */

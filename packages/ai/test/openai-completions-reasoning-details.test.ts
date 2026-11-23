@@ -219,6 +219,44 @@ describe("openai-completions reasoning_details streaming", () => {
 
 		expect(getAssistantPayload(mockState.payloads[1])?.reasoning_details).toEqual(expectedReasoningDetails);
 	});
+
+	it("serializes the reasoning_details once per reply, not once per chunk", async () => {
+		const deltas = 400;
+		mockState.chunkSets = [
+			[
+				chunk({ reasoning_content: "thinking" }),
+				...Array.from({ length: deltas }, () =>
+					chunk({ reasoning_details: [{ type: "reasoning.text", text: "x", index: 0 }] }),
+				),
+				chunk({ content: "ok" }),
+				chunk({}, "stop"),
+			],
+		];
+		const stringify = vi.spyOn(JSON, "stringify");
+		try {
+			const assistantMessage = await runOpenAICompletionsStream();
+			const detailsSerialized = stringify.mock.calls.filter(
+				([value]) => Array.isArray(value) && (value[0] as { type?: unknown })?.type === "reasoning.text",
+			).length;
+			// Each chunk serializing the merged details made a reply's reasoning cost grow with its square.
+			expect(detailsSerialized).toBeLessThan(5);
+			const thinking = assistantMessage.content.find((block) => block.type === "thinking");
+			expect(thinking?.type === "thinking" && thinking.thinkingSignature).toBe(
+				JSON.stringify([{ type: "reasoning.text", text: "x".repeat(deltas), index: 0 }]),
+			);
+		} finally {
+			stringify.mockRestore();
+		}
+	});
+
+	it("keeps the reasoning_details read so far when the stream ends without a finish reason", async () => {
+		mockState.chunkSets = [[chunk({ reasoning_content: "thinking" }), chunk({ reasoning_details: [reasoningDetail] })]];
+
+		const assistantMessage = await runOpenAICompletionsStream();
+		expect(assistantMessage.stopReason).toBe("error");
+		const thinking = assistantMessage.content.find((block) => block.type === "thinking");
+		expect(thinking?.type === "thinking" && thinking.thinkingSignature).toBe(JSON.stringify([reasoningDetail]));
+	});
 });
 
 describe("openai-completions reasoning and content in one delta", () => {

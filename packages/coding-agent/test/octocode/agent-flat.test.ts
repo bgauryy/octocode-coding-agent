@@ -38,6 +38,43 @@ async function mainSession(options: { acp?: boolean; externalAgents?: boolean | 
 }
 
 describe("agent with flat fields in a main session", () => {
+	it("runs a task sent with Claude Code's Agent field names under ours", async () => {
+		const { agent } = await mainSession();
+		const call = {
+			prompt: "Find the caller",
+			description: "Find caller",
+			subagent_type: "general-purpose",
+			run_in_background: true,
+			reason: "r",
+		};
+		expect(agent.prepareArguments?.(call)).toEqual({
+			type: "task",
+			task: "Find the caller",
+			goal: "Find caller",
+			background: true,
+			reason: "r",
+		});
+		// Ours win when both are sent, and theirs is dropped rather than failing the call; another type is left as sent.
+		expect(agent.prepareArguments?.({ type: "task", task: "mine", prompt: "theirs", reason: "r" })).toEqual({
+			type: "task",
+			task: "mine",
+			reason: "r",
+		});
+		const message = { type: "message", to: "parent", message: "hi", prompt: "x", reason: "r" };
+		expect(agent.prepareArguments?.(message)).toEqual(message);
+		expect(
+			agent.prepareArguments?.({ type: "task", subagent_type: "reviewer", prompt: "p", reason: "r" }),
+		).toMatchObject({
+			profile: "reviewer",
+		});
+		// Without a type, `action: "task"` names it; `action` is coordinate's field.
+		expect(agent.prepareArguments?.({ action: "task", prompt: "p", reason: "r" })).toEqual({
+			type: "task",
+			task: "p",
+			reason: "r",
+		});
+	});
+
 	it("declares every type's fields at the top level under public names, and models as its own tool", async () => {
 		const { fake, agent } = await mainSession();
 		const properties = agent.parameters.properties as Record<string, { description?: string }>;

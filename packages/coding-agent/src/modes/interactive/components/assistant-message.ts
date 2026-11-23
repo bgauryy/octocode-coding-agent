@@ -213,7 +213,8 @@ export class AssistantMessageComponent extends Container {
 		const now = Date.now();
 		message.content?.forEach((block, index, blocks) => {
 			if (block.type !== "thinking") return;
-			const chars = contentText(block, this.contentOptions.readAsset).trim().length;
+			// Only growth matters here: a long block's asset size, never its whole text re-read and trimmed per delta.
+			const chars = block.full ? block.full.size : contentText(block).trim().length;
 			observeThinking(block.id, chars, index < blocks.length - 1, now, isStreaming);
 		});
 		this.contentDirty = true;

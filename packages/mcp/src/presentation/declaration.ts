@@ -59,9 +59,15 @@ function fieldsNode(schema: unknown, root: unknown, type: string): unknown {
 	const node = resolveLocalRef(schema, root);
 	if (!isSchema(node)) return undefined;
 	if (type === "object") return node;
-	if (type !== "array" || !isSchema(node.items)) return undefined;
+	if (type !== "array" || node.prefixItems !== undefined || !isSchema(node.items)) return undefined;
 	const items = propertyTypes(node.items, root, new Set());
 	return items?.length === 1 && items[0] === "object" ? node.items : undefined;
+}
+
+/** A thin object can advertise a closed key set only if the server closes it and allows no pattern keys. */
+function allowsOtherFields(schema: unknown, root: unknown): boolean {
+	const node = resolveLocalRef(schema, root);
+	return !isSchema(node) || node.additionalProperties !== false || node.patternProperties !== undefined;
 }
 
 /** The field names an object node requires (after a local `$ref`), listed first under the cap. */
@@ -72,7 +78,7 @@ function requiredNames(node: unknown, root: unknown): Set<string> {
 }
 
 /**
- * An object node's thin form, open to other fields: the fields it lists, each thin, at most
+ * An object node's thin form, open when truncated: the fields it lists, each thin, at most
  * {@link THIN_NESTED_NAMES}, and the listed ones it requires. Undefined when it lists none.
  */
 function thinObject(node: unknown, root: unknown, level: number): Schema | undefined {
@@ -86,11 +92,16 @@ function thinObject(node: unknown, root: unknown, level: number): Schema | undef
 	// Object.fromEntries defines own properties, so a field named `__proto__` or `constructor` keeps its own type.
 	const properties = Object.fromEntries(ordered.map(([key, value]) => [key, thinProperty(value, root, level)]));
 	const listed = ordered.flatMap(([key]) => (required.has(key) ? [key] : []));
-	return { type: "object", properties, additionalProperties: true, ...(listed.length > 0 ? { required: listed } : {}) };
+	const complete = ordered.length === entries.length;
+	return {
+		type: "object",
+		properties,
+		additionalProperties: !complete || allowsOtherFields(node, root),
+		...(listed.length > 0 ? { required: listed } : {}),
+	};
 }
 
-/** The most values a thin declaration lists of a field's allowed values, and the most characters they may take. */
-const THIN_ENUM_VALUES = 16;
+/** The most serialized characters a thin declaration spends on a field's permitted values. */
 const THIN_ENUM_CHARS = 240;
 
 /**
@@ -116,7 +127,7 @@ function allowedValues(schema: unknown, root: unknown, seen: Set<unknown>): Prim
 /** A field's allowed values when they are few and short, as `enum` with their one JSON type when they share one. */
 function shortEnum(schema: unknown, root: unknown, types: readonly string[] | undefined): Schema | undefined {
 	const values = allowedValues(schema, root, new Set());
-	if (!values || values.length > THIN_ENUM_VALUES || JSON.stringify(values).length > THIN_ENUM_CHARS) return undefined;
+	if (!values || values.length > THIN_ENUM_CHARS || JSON.stringify(values).length > THIN_ENUM_CHARS) return undefined;
 	const kinds = new Set(values.map(jsonType));
 	const type = types?.length === 1 ? types[0] : kinds.size === 1 ? [...kinds][0] : undefined;
 	return { ...(type ? { type } : {}), enum: values };
@@ -127,7 +138,13 @@ function arrayFacts(schema: unknown, root: unknown, withItems: boolean): Schema 
 	const node = resolveLocalRef(schema, root);
 	if (!isSchema(node)) return {};
 	const bound = (value: unknown) => (Number.isInteger(value) ? value : undefined);
-	const items = withItems && node.items !== undefined ? shortEnum(node.items, root, undefined) : undefined;
+	const types = withItems && node.prefixItems === undefined ? propertyTypes(node.items, root, new Set()) : undefined;
+	const itemType = types?.length === 1 ? types[0] : undefined;
+	const items =
+		withItems && node.prefixItems === undefined
+			? (shortEnum(node.items, root, types) ??
+				(itemType && itemType !== "object" && itemType !== "array" ? { type: itemType } : undefined))
+			: undefined;
 	return {
 		...(bound(node.minItems) === undefined ? {} : { minItems: node.minItems }),
 		...(bound(node.maxItems) === undefined ? {} : { maxItems: node.maxItems }),
@@ -142,7 +159,7 @@ function arrayFacts(schema: unknown, root: unknown, withItems: boolean): Schema 
  * their thin schemas and the ones it requires; in that level, a field that is an array of objects names its items'
  * fields too (`queries[].ranges[].startLine`), a nested plain object only its type. Without these names a model sees
  * `queries: array` and cannot name a field such as `startLine` before reading the schema. Descriptions and other
- * bounds stay out, and each object stays open, so the declaration is never narrower than the server's.
+ * bounds stay out, and truncated or pattern-keyed objects stay open.
  */
 function thinProperty(schema: unknown, root: unknown, level: number): Schema {
 	const types = propertyTypes(schema, root, new Set());

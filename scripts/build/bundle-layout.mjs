@@ -22,6 +22,21 @@ export const BUNDLE_CODE_FILES = new Set([
 ]);
 
 /**
+ * Modules a worker file must not bundle: provider SDKs and the terminal UI. A worker compiles and holds everything it
+ * bundles, and these arrive only through an import of a hub module (`shared/util.ts`, a package root) where a leaf
+ * module would do; the archive-index worker once carried 6 MB of them for 170 KB of its own code.
+ */
+const WORKER_FOREIGN = [
+	/[\\/]packages[\\/](ai|tui)[\\/]/,
+	/[\\/]node_modules[\\/](@ai-sdk[\\/]|ai[\\/]|highlight\.js[\\/]|marked[\\/])/,
+];
+
+/** The ids among a worker chunk's `moduleIds` that it must not bundle (`WORKER_FOREIGN`). */
+export function workerForeignModules(moduleIds) {
+	return moduleIds.filter((id) => WORKER_FOREIGN.some((pattern) => pattern.test(id)));
+}
+
+/**
  * A launcher: it turns on the compile cache, then imports the bundle and calls `run`. With `fast`, a fast command given
  * alone loads only its own file. The bundle uses top-level await, which require() cannot load.
  */

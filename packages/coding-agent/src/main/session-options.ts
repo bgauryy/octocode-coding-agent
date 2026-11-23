@@ -29,7 +29,8 @@ export function buildSessionOptions(
 	// Model from CLI
 	// - supports --provider <name> --model <pattern>
 	// - supports --model <provider>/<pattern>
-	if (parsed.provider && !parsed.model) {
+	// With --list-models, --provider is a filter on the list (providers.md), not half of a model choice.
+	if (parsed.provider && !parsed.model && parsed.listModels === undefined) {
 		diagnostics.push({
 			type: "error",
 			message: `--provider requires --model (for example: --provider ${parsed.provider} --model <pattern>)`,

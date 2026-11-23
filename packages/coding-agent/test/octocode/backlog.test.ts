@@ -919,8 +919,8 @@ describe("/backlog", () => {
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/claimed .+ ago by you/);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/version \d/);
 		await t.command.handler("B1 done", ctx);
-		await t.command.handler("B9", ctx);
-		expect(ctx.ui.notes.at(-1)).toMatchObject({ type: "warning" });
+		// Headless, an unknown item fails the command (print mode exits 1) instead of printing a warning and succeeding.
+		await expect(t.command.handler("B9", ctx)).rejects.toThrow(/Unknown backlog item or subcommand "B9"/);
 		await t.command.handler("export", ctx);
 		const file = path.join(t.cwd, ".octocode", "agent", "backlog.md");
 		expect(ctx.ui.notes.at(-1)!.message).toContain(file);
@@ -932,6 +932,20 @@ describe("/backlog", () => {
 		expect(t.commands.complete("backlog e")).toEqual([expect.objectContaining({ value: "backlog export" })]);
 		expect(t.commands.complete("backlog B1 d")!.map((item) => item.value)).toEqual(["backlog B1 done"]);
 		expect(t.commands.complete("backlog B1 c")!.map((item) => item.value)).toEqual(["backlog B1 close"]);
+	});
+
+	it("fails a headless move, close or unknown item instead of printing the refusal and succeeding", async () => {
+		const t = setup();
+		workspaceStore(t.cwd).add({ title: "Needs answers", state: "todo", createdBy: "user" });
+		const headless = fakeCtx({ cwd: t.cwd, hasUI: false });
+		// Print mode exits non-zero when a command throws: a refusal that only printed left the exit status 0.
+		await expect(t.command.handler("B1 ongoing", headless)).rejects.toThrow("Move cancelled: reason needed.");
+		await expect(t.command.handler("B1 close", headless)).rejects.toThrow(/Closing asks for a reason/);
+		await expect(t.command.handler("B9 ongoing", headless)).rejects.toThrow(/Unknown backlog item or subcommand "B9"/);
+		await expect(t.command.handler("do B1", headless)).rejects.toThrow("Move cancelled: reason needed.");
+		expect(workspaceStore(t.cwd).get("B1")?.state).toBe("todo");
+		// With a UI the same refusals stay notices.
+		await expect(t.command.handler("B9 ongoing", fakeCtx({ cwd: t.cwd }))).resolves.toBeUndefined();
 	});
 
 	it('"do" marks the item ongoing and sends it to the agent, as a follow-up while busy', async () => {

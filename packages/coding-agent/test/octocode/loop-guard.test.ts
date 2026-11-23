@@ -91,6 +91,36 @@ describe("repeated-call loop guard", () => {
 		expect(noted?.message.structuredContent).toEqual({ exit_code: 0 });
 	});
 
+	it("counts model listings that differ only in spend and resets on a changed catalog", async () => {
+		const { call, before } = guard();
+		for (let i = 0; i < LOOP_HALT_AT; i++) {
+			const text = `  test (this session): spent ≈$1.${i}
+This session spent ≈$3.${i} (replies, summaries and subagents; plan at list price).
+Model A`;
+			const result = await call("models", { reason: String(i) }, text);
+			if (i + 1 === LOOP_NOTE_AT) {
+				expect(result?.message.content[0]?.text).toBe(text);
+				expect(noteOf(result)).toContain("3 times");
+			}
+		}
+		expect(await before("models", {})).toMatchObject({ terminate: true });
+		expect(await call("models", {}, "Model B")).toBeUndefined();
+		expect(await before("models", {})).toBeUndefined();
+	});
+
+	it("only counts consecutive sentences within one assistant text block", async () => {
+		const { fake, ctx } = guard();
+		const sentence = "Should use the Octocode tools. ";
+		const send = (type: string, contentIndex: number, delta: string) =>
+			fake.fire("message_update", { assistantMessageEvent: { type, contentIndex, delta } }, ctx);
+		await send("toolcall_delta", 0, sentence.repeat(80));
+		await send("thinking_delta", 1, sentence.repeat(80));
+		await send("text_delta", 2, sentence.repeat(15));
+		await send("text_delta", 3, sentence.repeat(15));
+		await send("text_delta", 3, "The check succeeded. " + sentence.repeat(15));
+		expect(ctx.ui.notes).toHaveLength(0);
+	});
+
 	it("is reset by any different call and by a new prompt", async () => {
 		const { call, fake, ctx } = guard();
 		await call("web", { url: "u" });

@@ -5,6 +5,7 @@ import { parseStringifiedContainers } from "./stringified-containers.ts";
 import { validationFailure } from "./validation-errors.ts";
 import { inferSchemaTypes, parseJsonContainer, resolveLocalRef } from "./json-schema-shape.ts";
 import { getToolValidator, getValidator } from "./validation-compiler.ts";
+import { loneStringItem, nearestEnumValue } from "./validation-aliases.ts";
 
 export { formatValidationPath } from "./validation-errors.ts";
 
@@ -257,6 +258,9 @@ function coerceWithJsonSchema(value: unknown, declared: JsonSchemaObject, root: 
 			}
 		}
 	}
+
+	if (schemaTypes.includes("string")) nextValue = nearestEnumValue(nextValue, schema);
+	if (schemaTypes.includes("array")) nextValue = loneStringItem(nextValue, schema);
 
 	if (
 		schemaTypes.includes("object") &&

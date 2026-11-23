@@ -44,6 +44,7 @@ import { capturePipeStatus } from "./pipe-status.ts";
 import { ownerSpawnHook, runOwner, withRunOwner } from "./owner-env.ts";
 import { agentNameOf } from "../../../shared/agent-name.ts";
 import { refuseUnsandboxed } from "./unsandboxed.ts";
+import { claudeCodeBashAliases } from "../../../shared/claude-code-aliases.ts";
 import { activeCommandSandbox } from "../../../../utils/command-sandbox.ts";
 
 /**
@@ -217,7 +218,7 @@ export function registerBashTool(
 				if (misuse) throw new Error(misuse);
 				// Before the permission gate could ask: `sandbox: "false"` or `0` is coerced to false only after this runs.
 				if (isRecord(args)) refuseUnsandboxed(args.sandbox);
-				return args as never;
+				return claudeCodeBashAliases(args) as never;
 			},
 			async execute(toolCallId, params, signal, onUpdate, ctx) {
 				signal?.throwIfAborted();

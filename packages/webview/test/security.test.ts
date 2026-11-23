@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { JSDOM, VirtualConsole } from "jsdom";
 import { afterEach, describe, expect, it } from "vitest";
 import { renderBacklogHtml } from "../src/index.ts";
-import { OFFLINE_PAGE_JS } from "../src/state.generated.ts";
+import { offlinePageJs } from "../src/state.generated.ts";
 
 /**
  * The offline export's guarantee: data renders only as text and the page never parses HTML or reaches the network.
@@ -51,7 +51,7 @@ describe("offline export security", () => {
 	});
 
 	it("ships no Mermaid in the offline export, which never loads a diagram renderer", () => {
-		expect(OFFLINE_PAGE_JS).not.toMatch(/mermaid/i);
+		expect(offlinePageJs()).not.toMatch(/mermaid/i);
 	});
 
 	it("renders hostile data as text in every view without touching a sink or the network", async () => {

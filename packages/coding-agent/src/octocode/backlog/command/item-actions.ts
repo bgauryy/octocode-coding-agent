@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { FeatureSetup, CommandContext } from "../../../core/features/index.ts";
 import { USER_AUTHOR } from "../../../../../db/src/api.ts";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
-import { say, type Subcommand } from "../../shared/commands.ts";
+import { refuse, say, type Subcommand } from "../../shared/commands.ts";
 import { showCommandPage } from "../../shared/page.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { delegatePrompt, doItPrompt } from "../actions.ts";
@@ -109,7 +109,7 @@ export function createItemActions(api: FeatureSetup, deps: CommandDeps) {
 	): Promise<boolean> => {
 		const asked = await askWhyGoal(ctx, item);
 		if ("refused" in asked) {
-			say(ctx, asked.refused, "warning");
+			refuse(ctx, asked.refused);
 			return false;
 		}
 		let claimed!: Item;
@@ -130,7 +130,7 @@ export function createItemActions(api: FeatureSetup, deps: CommandDeps) {
 				),
 			);
 		} catch (error) {
-			say(ctx, errorMessage(error), "warning");
+			refuse(ctx, errorMessage(error));
 			return false;
 		}
 		deps.changed(ctx);

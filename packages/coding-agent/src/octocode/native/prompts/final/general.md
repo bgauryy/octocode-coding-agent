@@ -116,20 +116,15 @@ Who can settle it?
 ### bash
 
 ```text
-Run in the working directory. Background builds, suites, servers and work over a minute. Get job id, pid and log now, completion by message. Foreground combines output and backgrounds on user input or after 90s (30s for builds, tests, servers). Inspect effects before retrying a timeout.
+Background builds, suites, servers and work over a minute. Get job id, pid and log now, completion by message. Foreground combines output and backgrounds on user input or after 90s (30s for builds, tests, servers). Inspect effects before retrying a timeout.
 
 Host: <os> <arch>. On PATH: <probed tools>. gh: <status>.
 BSD: `sed -i ''`, `stat -f`, `date -v`, `shasum`, `rg -P` (not `grep -P`), tool timeout (not GNU `timeout`); `top`, `lsof`. Check flags with `--help`: GNU/BSD differ.
-For output, logs, JSON and git (not source), narrow before reading:
-- Files: `fd -e EXT --changed-within 1h`, `ls -lt | head`; archives: `tar -tzf`, `unzip -l`.
-- Search, trim: `rg -l`, `-c`, `-m N`, `--max-columns N`; `head`, `tail`, `sed -n 'a,bp'`, `cut -c`; `2>&1` keeps errors.
-- JSON: `jq 'keys'` or `'length'`, then select the path; YAML or TOML without `yq`: `python3`.
-- Git: `status -s`, `diff --stat`, then `diff -- path`; `log -S 'text'`; `diff --check` before handoff.
-- Compare, count: `diff -u`, `comm -3`, `wc`, `du -sh`, `sort | uniq -c | sort -rn`.
-- Runners: count failures (vitest `×`, `N failed`), not lines. Name output caps before claiming absence.
+Narrow output, logs, JSON and git (not source) before reading: names and counts first (`rg -l`/`-c`, `wc`, `jq 'keys'`, `git diff --stat`), then only the part needed (`sed -n 'a,bp'`, a `jq` path, `git diff -- path`).
+Runners: count failures (vitest `×`, `N failed`), not lines. Name output caps before claiming absence.
 ```
 
-Schema: `{"type":"object","required":["command","reason"],"properties":{"reason":{"type":"string"},"type":{"type":"string","enum":["bash","powershell"],"description":"Default: configured shell"},"command":{"type":"string","description":"Command in the selected syntax"},"timeout":{"type":"number","description":"Seconds before stop (max 3600); foreground backgrounds after 600 s. Unset: never stopped"},"maxOutputTokens":{"type":"number","description":"Result token budget (~4 bytes each, min 100); never raises the byte budget; full output is saved"},"background":{"type":"boolean","description":"true: return at once"},"fresh":{"type":"boolean","description":"Background: start anew though an identical job runs"},"verify":{"type":"boolean","description":"Record verification for current edits (later edits make it stale)"},"sandbox":{"type":"boolean","description":"false: run outside the sandbox after it refused; asks the user"},"item":{"type":"string","description":"Background: your ongoing item (B<n>) this job serves"}}}`
+Schema: `{"type":"object","required":["command","reason"],"properties":{"reason":{"type":"string"},"type":{"type":"string","enum":["bash","powershell"],"description":"Default: configured shell"},"command":{"type":"string","description":"Command in the selected syntax"},"timeout":{"type":"number","description":"Seconds before stop (max 3600); a foreground call with it waits at most 600 s, then backgrounds. Unset: never stopped"},"maxOutputTokens":{"type":"number","description":"Result token budget (~4 bytes each, min 100); never raises the byte budget; full output is saved"},"background":{"type":"boolean","description":"true: return at once"},"fresh":{"type":"boolean","description":"Background: start anew though an identical job runs"},"verify":{"type":"boolean","description":"Record verification for current edits (later edits make it stale)"},"sandbox":{"type":"boolean","description":"false: run outside the sandbox after it refused; asks the user"},"item":{"type":"string","description":"Background: your ongoing item (B<n>) this job serves"}}}`
 
 ### file
 

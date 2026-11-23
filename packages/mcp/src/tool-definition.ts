@@ -141,7 +141,10 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 			lastFailure = signature && signature.length <= MAX_ECHOED_ARGUMENTS_CHARS ? signature : undefined;
 			const echo = repeated ? correctedCalls(tool.inputSchema, failure) : undefined;
 			const shape = envelope ? envelopeHint(options.name, tool.inputSchema) : undefined;
-			if (shape && shape.length <= MAX_ECHOED_ARGUMENTS_CHARS) return echo ? `${shape}\n\n${echo}` : shape;
+			if (shape && shape.length <= MAX_ECHOED_ARGUMENTS_CHARS) {
+				const hint = siblingHint(tool.inputSchema, unexpected, shape);
+				return echo ? `${hint}\n\n${echo}` : hint;
+			}
 			const fields = siblingHint(tool.inputSchema, unexpected);
 			const block = compact?.signature();
 			const cap = queriesCap(tool.inputSchema);

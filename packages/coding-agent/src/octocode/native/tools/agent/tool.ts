@@ -7,6 +7,7 @@ import type { FeatureSetup, ToolDefinition } from "../../../../core/features/ind
 import { asRecord, errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { envFlag, LEAN_ENV } from "@octocodeai/octocode-common/env";
 import { TASKS_FIELD, batchCallText, batchGoals, batchOf, runBatch, tasksSchema } from "./batch.ts";
+import { claudeCodeTaskAliases } from "../../../shared/claude-code-aliases.ts";
 import {
 	MESSAGES_FIELD,
 	messageBatchOf,
@@ -137,6 +138,7 @@ export function agentModes() {
 				...(envFlag(process.env, LEAN_ENV) ? {} : { companionTools: ["notify"] }),
 				// A foreground child stopped by Esc still returns its record and spend once its process is down.
 				abortGraceMs: FOREGROUND_ABORT_GRACE_MS,
+				prepareArguments: claudeCodeTaskAliases as never,
 				// The call's `reason` is declared here, not added by the native wrapper, so `execute` keeps it for coordinate's lock note.
 				parameters: Type.Unsafe<{ type: Mode; reason?: string } & Record<string, unknown>>({
 					type: "object",

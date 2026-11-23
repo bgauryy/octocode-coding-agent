@@ -10,11 +10,6 @@ import {
 } from "../constrained-sampling.ts";
 import { sanitizeMoonshotToolParameters } from "../openai-completions/tool-schema-flavor.ts";
 import type { AssistantMessageEventStream } from "../../utils/event-stream.ts";
-import {
-	appendOpenAIReasoningDetail,
-	isOpenAIReasoningDetail,
-	type StreamedReasoningDetails,
-} from "../openai-completions/reasoning-details.ts";
 import type { AssistantMessage, Model } from "../../types.ts";
 import type { TranscriptContext } from "../../utils/transcript.ts";
 import {
@@ -82,7 +77,6 @@ export function completionsMapping(
 			compat.supportsOpenAIGrammarTools,
 		),
 	};
-	const streamed: StreamedReasoningDetails = {};
 	const onPart = (
 		part: TextStreamPart<ToolSet>,
 		output: AssistantMessage,
@@ -99,26 +93,6 @@ export function completionsMapping(
 			);
 			output.thinkingBudget = thinkingBudgetReduction(requested, sent);
 		}
-		if (part.type === "raw") {
-			const raw = part.rawValue as {
-				choices?: {
-					delta?: {
-						reasoning_details?: unknown;
-						reasoning_content?: string;
-						reasoning?: string;
-						reasoning_text?: string;
-					};
-				}[];
-			};
-			const details = raw?.choices?.[0]?.delta?.reasoning_details;
-			if (Array.isArray(details)) {
-				for (const detail of details)
-					if (isOpenAIReasoningDetail(detail)) appendOpenAIReasoningDetail((streamed.details ??= []), detail);
-			}
-			for (const block of output.content)
-				if (block.type === "thinking" && streamed.details) block.thinkingSignature = JSON.stringify(streamed.details);
-			return true;
-		}
 		if (part.type === "finish") {
 			const notice = takeUnmarkedClaudeNotice(
 				model,
@@ -129,11 +103,15 @@ export function completionsMapping(
 		}
 		if (
 			(part.type === "finish" || part.type === "text-start") &&
-			streamed.details?.length &&
+			completionsState.details?.length &&
 			!output.content.some((block) => block.type === "thinking")
 		) {
 			const contentIndex = output.content.length;
-			output.content.push({ type: "thinking", thinking: "", thinkingSignature: JSON.stringify(streamed.details) });
+			output.content.push({
+				type: "thinking",
+				thinking: "",
+				thinkingSignature: JSON.stringify(completionsState.details),
+			});
 			stream.push({ type: "thinking_start", contentIndex, partial: output });
 			stream.push({ type: "thinking_end", contentIndex, content: "", partial: output });
 		}
@@ -145,7 +123,8 @@ export function completionsMapping(
 		tools,
 		toolChoice,
 		onPart,
-		includeRawChunks: true,
+		// No raw chunks: `normalizeCompletionsResponse` already reads every SSE event (reasoning_details included), and a
+		// raw part per chunk doubles the parts the SDK's stream pipeline carries.
 		augmentRequest: (body: Record<string, unknown>) => {
 			completionsState.longCacheWrites = augmentCompletionsRequest(model, options, body, context);
 		},

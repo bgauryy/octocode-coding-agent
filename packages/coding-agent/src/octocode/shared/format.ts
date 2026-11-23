@@ -2,8 +2,11 @@
 import { formatEstimate } from "@octocodeai/octocode-common/money";
 import { shortPath } from "../../utils/display-path.ts";
 import { formatDuration } from "../../utils/duration.ts";
-import { plural } from "./text.ts";
-import { DAY_MS, HOUR_MS, type TokenTotals } from "./util.ts";
+// Leaf modules only: the archive-index worker reaches this file, and `./text.ts` / `./util.ts` pull in the terminal UI
+// and every provider SDK.
+import { plural } from "@octocodeai/octocode-common/clip";
+import { DAY_MS, HOUR_MS } from "@octocodeai/octocode-common/time";
+import type { TokenTotals } from "./util.ts";
 
 /**
  * The line that goes before the end of a captured stream (`shown` of its `total` characters): how much it shows and where

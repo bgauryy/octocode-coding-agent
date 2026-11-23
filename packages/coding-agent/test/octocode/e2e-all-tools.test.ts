@@ -66,9 +66,8 @@ const sourceOf = (steps: readonly Step[]) => script(steps).slice("B64SCRIPT:".le
 const requestsOf = (steps: readonly Step[]) => endpoint.requests.filter((one) => one.script === sourceOf(steps));
 const lastResults = (steps: readonly Step[]) => requestsOf(steps).at(-1)?.toolResults ?? [];
 const call = (tool: string, args: Record<string, unknown> = {}): Step => ({ tool, args });
-const row = (extra: Record<string, unknown>) => ({ mainGoal: "prove the tool", reasoning: "scripted", ...extra });
 const research = (tool: string, ...rows: Record<string, unknown>[]) =>
-	call(`mcp__octocode__${tool}`, { queries: rows.map(row) });
+	call(`mcp__octocode__${tool}`, { queries: rows });
 
 /**
  * A sandbox with the research server on and a small TypeScript project the language server can resolve. The cases that
@@ -1263,6 +1262,34 @@ describe.skipIf(process.env.OCTOCODE_E2E_CHROME !== "1")(
 );
 
 describe("the real research server, declared", () => {
+	it("declares the nested search fields and recovers from a literal colon in a query key", async () => {
+		const tool = "mcp__octocode__localSearch";
+		const query = { path: "src/math.ts", matchString: ["addNumbers"] };
+		const steps: Step[] = [
+			call(tool, { queries: [{ ...query, "limit:": 1 }] }),
+			call(tool, { queries: [{ ...query, limit: 1 }] }),
+			{ text: "search recovered" },
+		];
+		const run = repository({}).start(["-p", script(steps)]);
+		await expectCleanRun(run, "search recovered");
+		const requests = requestsOf(steps);
+		expect(requests).toHaveLength(3);
+		expect(requests[0].declarations[tool].parameters).toMatchObject({
+			properties: {
+				queries: {
+					items: {
+						additionalProperties: false,
+						properties: { limit: { type: "integer" }, matchString: { type: "array", items: { type: "string" } } },
+					},
+				},
+			},
+		});
+		const [refusal] = requests[1].toolResults;
+		expect(refusal).toContain('"limit" for the rejected key "limit:" at /queries/0');
+		const result = requests[2].toolResults.at(-1);
+		expect(result).toContain("export function addNumbers");
+	});
+
 	it("carries each tool's full description and schema in its declaration, and its instructions in the block", async () => {
 		const steps: Step[] = [{ text: "declared-done" }];
 		// Declared presentation (the default) with every tool direct: the default exposure defers an unused tool.

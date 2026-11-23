@@ -12,3 +12,7 @@ export function asRecord(value: unknown): Record<string, unknown> {
 export function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
+
+/** `value` when it is an array of strings, otherwise undefined. */
+export const stringList = (value: unknown): string[] | undefined =>
+	Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;

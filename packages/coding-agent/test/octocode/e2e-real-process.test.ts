@@ -192,6 +192,37 @@ describe("a parent's tool restrictions reach its children", () => {
 });
 
 describe("what a script reads from a headless run", () => {
+	it("stops repeated assistant prose in a reply with no tool calls", async () => {
+		const steps = [{ text: "Should use the Octocode tools. ".repeat(160) }];
+		const run = fresh().start(["-p", script(steps)]);
+		expect((await run.exited).code).toBe(1);
+		expect(run.stderr()).toMatch(/loop guard.*repeated assistant text/i);
+		expect(requestsOf(steps)).toHaveLength(1);
+	});
+
+	it("refuses the ninth identical models request even as the session spend rises", async () => {
+		const steps: Step[] = [
+			...Array.from({ length: 9 }, (_, i) => ({
+				tool: "models",
+				args: { reason: `Check the catalog, attempt ${i + 1}` },
+				promptTokens: 20_000,
+			})),
+			{ text: "All nine calls ran." },
+		];
+		const run = fresh().start(["-p", script(steps)]);
+		expect((await run.exited).code).toBe(1);
+		expect(requestsOf(steps)).toHaveLength(9);
+		const results = lastResults(steps);
+		expect(results).toHaveLength(8);
+		const amounts = results.map((result) => {
+			const spend = /This session spent ≈\$(\d+\.\d+)/.exec(result);
+			expect(spend, result).toBeTruthy();
+			return Number(spend![1]);
+		});
+		for (let i = 1; i < amounts.length; i++) expect(amounts[i]).toBeGreaterThan(amounts[i - 1]);
+		expect(run.stderr()).toMatch(/loop guard.*8 identical models calls/i);
+	});
+
 	it("the loop guard ends a run with exit 1 and says why", async () => {
 		const { start } = fresh();
 		const run = start(["-p", script([{ tool: "bash", args: { command: "ls" } }])]);

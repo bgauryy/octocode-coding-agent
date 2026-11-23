@@ -19,6 +19,7 @@ const GENERIC = new Set(["skill", "skills", "code", "local", "agentic", "clean",
 const PUNCTUATION = /^[("'[{<]+|[)"'\]}>.,;:!?]+$/gu;
 const PLAIN_WORD = /^[\p{L}\p{N}]+$/u;
 const EXPLICIT = /^[$/]([\w:-]+)$/;
+const WORD_CHAR = /[\p{L}\p{N}_]/u;
 
 /** Words that differ only by case, an inflection or a doubled final letter (`debugging`, `debugs`) share one key. */
 function wordKey(word: string): string {
@@ -121,9 +122,12 @@ export function skillWordHighlight(
 		return vocabulary;
 	};
 	return {
-		find: (line) => findSkillWords(line, current()),
+		// A line without a letter, digit or underscore holds no skill word: an empty editor (each frame while a reply
+		// streams) never reads the session's commands.
+		find: (line) => (WORD_CHAR.test(line) ? findSkillWords(line, current()) : []),
 		style: paint,
 		hintAt(line, column) {
+			if (!WORD_CHAR.test(line)) return undefined;
 			const hit = findSkillWords(line, current()).find((word) => column >= word.start && column <= word.end);
 			return hit ? `${line.slice(hit.start, hit.end)} → ${hit.skills.join(", ")}` : undefined;
 		},

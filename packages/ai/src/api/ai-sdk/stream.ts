@@ -65,6 +65,16 @@ async function* partsOf<T>(stream: ReadableStream<T>): AsyncGenerator<T> {
 	}
 }
 
+/**
+ * Signs a Completions reply's thinking blocks once, from the reasoning_details the response normalizer collected: at
+ * the step's end, or (`finished` false) when the stream stopped early, where only collected details sign.
+ */
+function signCompletionsThinking(output: AssistantMessage, completions: CompletionsState, finished: boolean): void {
+	if (!finished && !completions.details) return;
+	const signature = completions.details ? JSON.stringify(completions.details) : completions.reasoningField;
+	for (const block of output.content) if (block.type === "thinking") block.thinkingSignature = signature;
+}
+
 export function streamSdk(
 	model: Model<Api>,
 	context: TranscriptContext,
@@ -164,13 +174,7 @@ export function streamSdk(
 					output.responseId = part.response.id;
 					output.rawStopReason = part.rawFinishReason;
 					if (part.response.modelId && part.response.modelId !== model.id) output.responseModel = part.response.modelId;
-					if (model.api === "openai-completions") {
-						for (const block of output.content)
-							if (block.type === "thinking")
-								block.thinkingSignature = completions.details
-									? JSON.stringify(completions.details)
-									: completions.reasoningField;
-					}
+					if (model.api === "openai-completions") signCompletionsThinking(output, completions, true);
 				}
 				if (part.type === "finish") {
 					if (model.api === "openai-completions" && completions.usage)
@@ -208,6 +212,8 @@ export function streamSdk(
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 		} catch (caught) {
 			const error = completions.error ?? caught;
+			// A reply cut short keeps the reasoning_details read so far, for its replay.
+			if (model.api === "openai-completions") signCompletionsThinking(output, completions, false);
 			// Usage the endpoint already reported is billed even when the stream never reaches its finish chunk.
 			if (model.api === "openai-completions" && completions.usage)
 				output.usage = parseChunkUsage(

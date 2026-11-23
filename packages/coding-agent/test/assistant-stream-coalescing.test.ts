@@ -57,4 +57,31 @@ describe("streaming assistant presentation", () => {
 		void component.children;
 		expect(subscribe).not.toHaveBeenCalled();
 	});
+
+	it("reads a long thinking block's whole text at most once while it streams, not once per delta", () => {
+		initTheme("dark");
+		let reads = 0;
+		const component = new AssistantMessageComponent(undefined, true, undefined, undefined, 1, [], {
+			readAsset: (id) => {
+				reads++;
+				return { asset: { id, mimeType: "text/plain", size: 0 }, encoding: "utf8", data: "x".repeat(50_000) };
+			},
+		});
+		for (let size = 5_000; size <= 50_000; size += 100) {
+			const full = { id: "thinking-full", mimeType: "text/plain", size, revision: String(size) };
+			component.updateMessage(
+				{
+					id: "reply",
+					role: "assistant",
+					text: "",
+					complete: false,
+					content: [{ id: "t", type: "thinking", text: "x".repeat(4_000), full }],
+				},
+				true,
+			);
+		}
+		// Each delta re-reading and trimming the whole thinking text made a long block cost its length squared.
+		expect(reads).toBeLessThan(5);
+		component.dispose();
+	});
 });

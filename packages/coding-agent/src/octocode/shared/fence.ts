@@ -2,7 +2,7 @@ import { renderPrompt } from "../../core/prompt-template.ts";
 import { randomBytes } from "node:crypto";
 import { formatClock } from "./format.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
-import { clipText } from "./util.ts";
+import { clipText } from "@octocodeai/octocode-common/clip";
 
 /**
  * The one way text from anyone but the user reaches the model as a message (peer `agents.tell`, API `message.send`,

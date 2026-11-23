@@ -1,3 +1,4 @@
+import { validateToolArguments } from "@octocodeai/octocode-ai";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -110,8 +111,14 @@ describe("browser MCP preset", () => {
 		expect(server.connection?.state).toBe("connected");
 		expect(server.connection?.tools.map((tool) => tool.name)).toEqual(
 			// Captures are `run` plan steps: the server's MCP presets export no snapshot or screenshot tool.
-			expect.arrayContaining(["open", "run", "query", "artifact", "cleanup", "schema"]),
+			expect.arrayContaining(["open", "run", "query", "cleanup", "schema"]),
 		);
+		// The server exposes saved artifact windows through query.
+		const query = host.tools.get(createMcpToolName(BROWSER_SERVER, "query"));
+		const window = { file: "capture.json", offset: 0, length: 9 };
+		expect(
+			validateToolArguments(query, { type: "toolCall", id: "window", name: query.name, arguments: window }),
+		).toEqual(window);
 		// Contract change: Octocode ships no overrides for the browser server, so the prompt carries the server's own
 		// instructions, word for word.
 		const prompt = Object.values(sections).join("\n");

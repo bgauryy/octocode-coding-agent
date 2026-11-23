@@ -1,3 +1,4 @@
+import { registerRepeatedProseGuard } from "./repeated-prose.ts";
 import { renderPrompt } from "../core/prompt-template.ts";
 import { memoryMutation } from "./shared/archive-operation.ts";
 import type { FeatureSetup, FeatureContext } from "../core/features/index.ts";
@@ -75,6 +76,7 @@ function withoutReasons(value: unknown): unknown {
  * `LOOP_HALT_AT` and ends the run. `tool-gates.ts` runs it first in the pipeline.
  */
 export function registerLoopGuard(api: FeatureSetup): Gate {
+	registerRepeatedProseGuard(api);
 	/** Call key and executed outcome of each top-level call of the current message, by tool call id. */
 	const calls = new Map<string, { key?: string; outcome?: string; checked?: boolean }>();
 	let lastCall: string | undefined;
@@ -102,7 +104,15 @@ export function registerLoopGuard(api: FeatureSetup): Gate {
 	});
 	api.bus.on("tool_result", async (event) => {
 		const call = event.parentToolCallId ? undefined : calls.get(event.toolCallId);
-		if (call && !event.isError) call.outcome = sha256(plainText(event.content) ?? JSON.stringify(event.content));
+		if (call && !event.isError) {
+			const text = plainText(event.content) ?? JSON.stringify(event.content);
+			// A models call itself increases the reported spend. Keep every catalog, price, quota and health change.
+			const comparable =
+				event.toolName === "models"
+					? text.replace(/\bspent (?:≈\$<?[\d.]+(?: \+ n\/a)?(?: · ~\$<?[\d.]+ plan)?|~\$<?[\d.]+ plan)/g, "spent")
+					: text;
+			call.outcome = sha256(comparable);
+		}
 		return undefined;
 	});
 	api.bus.on("message_end", async (event, ctx) => {

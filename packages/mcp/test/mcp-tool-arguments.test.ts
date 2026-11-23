@@ -101,6 +101,13 @@ describe("MCP tool arguments", () => {
 		expect(sent).toEqual([valid]);
 	});
 
+	it("identifies a literal trailing colon in a rejected key on the first attempt", () => {
+		const tool = define(OCTOCODE);
+		const invalid = { queries: [{ "path:": "a" }] };
+		expect(() => validate(tool, invalid)).toThrow('Use "path" for the rejected key "path:" at /queries/0.');
+		expect(validate(tool, { queries: [{ path: "a" }] })).toEqual({ queries: [{ path: "a" }] });
+	});
+
 	it("keeps a reason the server declares", () => {
 		const tool = define({ type: "object", properties: { reason: { type: "string" } }, additionalProperties: false });
 		expect(validate(tool, { reason: "r" })).toEqual({ reason: "r" });

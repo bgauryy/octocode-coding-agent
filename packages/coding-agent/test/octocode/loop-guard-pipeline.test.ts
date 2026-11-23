@@ -102,6 +102,22 @@ it.each(["invalid", "unknown"])("settles a real session after repeated %s calls"
 	}
 });
 
+it("ends a repetitive text stream and accepts a fresh prompt", async () => {
+	const harness = await createHarness({ features: testFeatures([loopGuard]), settings: { retry: { enabled: false } } });
+	await harness.session.bindFeatures({});
+	const repeated = "Should use the Octocode tools. ".repeat(160);
+	harness.setResponses([fauxAssistantMessage(repeated), fauxAssistantMessage("Finished checking the catalog.")]);
+	try {
+		await harness.session.prompt("Check the catalog");
+		expect(harness.session.lastRunOutcome?.errorMessage).toBe("Loop guard stopped repeated assistant text.");
+		await harness.session.prompt("Continue");
+		expect(getMessageText(harness.session.messages.at(-1))).toBe("Finished checking the catalog.");
+		expect(harness.session.lastRunOutcome?.status).toBe("completed");
+	} finally {
+		harness.cleanup();
+	}
+});
+
 it("runs the loop guard as the audited first step of the tool_call pipeline", async () => {
 	const fake = fakeHost();
 	const ctx = fakeCtx({ cwd: "/repo" });

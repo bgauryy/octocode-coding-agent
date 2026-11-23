@@ -77,4 +77,21 @@ describe("skill words", () => {
 		expect(highlight.hintAt(line, 1)).toBeUndefined();
 		expect(highlight.hintAt("research", 8)).toContain("octocode-local-research, octocode-github-research");
 	});
+	it("reads no skills for a line without words, as an empty editor each frame while a reply streams", () => {
+		let reads = 0;
+		const highlight = skillWordHighlight(
+			() => {
+				reads++;
+				return names.map((name) => ({ name }));
+			},
+			(text) => text,
+		);
+		for (const line of ["", "   ", "... --- !?"]) {
+			expect(highlight.find(line)).toEqual([]);
+			expect(highlight.hintAt(line, 0)).toBeUndefined();
+		}
+		expect(reads).toBe(0);
+		expect(highlight.find("debug")).toHaveLength(1);
+		expect(reads).toBe(1);
+	});
 });

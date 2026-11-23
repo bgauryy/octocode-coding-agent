@@ -44,7 +44,7 @@ describe("thin MCP declarations of nested fields", () => {
 			},
 			$defs: { line: { type: "integer", minimum: 1 } },
 		});
-		// Enums, item bounds and required fields are kept; no description or other bound is, and every object stays open.
+		// Enums, item bounds and required fields are kept; no description or other bound is, and complete objects preserve closed keys.
 		expect(JSON.stringify(thin)).toBe(
 			JSON.stringify(
 				open({
@@ -59,12 +59,14 @@ describe("thin MCP declarations of nested fields", () => {
 									type: "array",
 									items: {
 										...open({ startLine: { type: "integer" }, endLine: { type: "integer" } }),
+										additionalProperties: false,
 										required: ["startLine", "endLine"],
 									},
 								},
 								context: { type: "object" },
-								tags: { type: "array" },
+								tags: { type: "array", items: { type: "string" } },
 							}),
+							additionalProperties: false,
 							required: ["path"],
 						},
 					},
@@ -88,7 +90,7 @@ describe("thin MCP declarations of nested fields", () => {
 				mode: { enum: ["fast", 2] },
 				strict: { const: true },
 				fields: { type: "array", minItems: 1, maxItems: 3, items: { enum: ["a", "b"] } },
-				many: { enum: Array.from({ length: 17 }, (_, i) => `v${i}`) },
+				many: { enum: Array.from({ length: 17 }, (_, i) => `long-enum-value-${i}`) },
 				either: { anyOf: [{ enum: ["x"] }, { type: "null" }] },
 			},
 		});
@@ -103,6 +105,25 @@ describe("thin MCP declarations of nested fields", () => {
 			}),
 			required: ["op"],
 		});
+	});
+
+	it("keeps a compact list of more than sixteen allowed array values", () => {
+		const fields = Array.from({ length: 18 }, (_, i) => `field${i}`);
+		const schema = { properties: { fields: { type: "array", items: { enum: fields } } } };
+		expect(thinParameters(schema)).toHaveProperty("properties.fields.items", { type: "string", enum: fields });
+	});
+
+	it("does not narrow tuple prefixes or pattern keys in a deferred declaration", () => {
+		const map = {
+			type: "object",
+			properties: { path: { type: "string" } },
+			patternProperties: { "^x": {} },
+			additionalProperties: false,
+		};
+		const tuple = { type: "array", prefixItems: [{ type: "integer" }], items: { type: "string" } };
+		const thin = thinParameters({ properties: { map, tuple } });
+		expect(thin).toHaveProperty("properties.map.additionalProperties", true);
+		expect(thin).toHaveProperty("properties.tuple", { type: "array" });
 	});
 
 	it("names a top-level object's fields, and lifts item alternatives and references", () => {
@@ -159,7 +180,7 @@ describe("thin MCP declarations of nested fields", () => {
 		const properties = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`f${i}`, { type: "string" }]));
 		const thin = thinParameters({
 			type: "object",
-			properties: { options: { type: "object", required: ["f39"], properties } },
+			properties: { options: { type: "object", additionalProperties: false, required: ["f39"], properties } },
 		}) as { properties: { options: { properties: Record<string, unknown>; additionalProperties: unknown } } };
 		const names = Object.keys(thin.properties.options.properties);
 		expect(names).toHaveLength(32);
@@ -180,6 +201,7 @@ describe("thin MCP declarations of nested fields", () => {
 			maxItems: 100,
 			items: {
 				...open({ startLine: { type: "integer" }, endLine: { type: "integer" } }),
+				additionalProperties: false,
 				required: ["startLine", "endLine"],
 			},
 		});
