@@ -261,8 +261,12 @@ describe("backlog composition", () => {
 		store.update(item.ref, { state: "ongoing" }, actor);
 		const child = { id: "child", owners: new Set([actor.id]) };
 		expect(() => store.update(item.ref, { title: "Changed" }, child)).toThrow(/only the state/);
-		expect(() => store.update(item.ref, { state: "todo" }, child)).toThrow(/only ongoing or done/);
-		expect(store.update(item.ref, { state: "done", completion: result() }, child).assignee).toBe(actor.id);
+		expect(() => store.update(item.ref, { state: "todo" }, child)).toThrow(/leaves the state to its coordinator/);
+		// Contract change: the child reports and its coordinator finishes the item, so the claim stays the parent's.
+		expect(() => store.update(item.ref, { state: "done", completion: result() }, child)).toThrow(
+			/does not finish its coordinator's items/,
+		);
+		expect(store.get(item.ref)).toMatchObject({ state: "ongoing", assignee: actor.id });
 	});
 
 	it("refuses writes from an older connection but leaves reads available", () => {

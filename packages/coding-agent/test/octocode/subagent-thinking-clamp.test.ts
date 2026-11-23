@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ToolDefinition } from "../../src/core/features/index.ts";
-import { MODELS_DEV_ENV } from "../../src/octocode/subagents/catalog.ts";
+import { MODELS_DEV_ENV } from "../../src/core/model-catalog/index-store.ts";
 import { planRun } from "../../src/octocode/subagents/claim.ts";
 import { clampNote, type ModelRef, routeSummary } from "../../src/octocode/subagents/model.ts";
 import { registerModelsTool } from "../../src/octocode/native/tools/models/tool.ts";
@@ -69,7 +69,11 @@ describe("the models tool", () => {
 	const register = () => {
 		const tools: ToolDefinition[] = [];
 		registerModelsTool(
-			asSetup({ registerTool: (definition: ToolDefinition) => void tools.push(definition) }) as never,
+			asSetup({
+				registerTool: (definition: ToolDefinition) => void tools.push(definition),
+				// The quota notice registers with the tool (`models-quota-notice.ts`); no event fires here.
+				on: () => () => undefined,
+			}) as never,
 			() => new Map(),
 		);
 		return tools[0];

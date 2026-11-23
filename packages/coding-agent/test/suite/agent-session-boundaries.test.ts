@@ -960,7 +960,10 @@ describe("durable length recovery", () => {
 			expect.objectContaining({
 				success: false,
 				attempt: 1,
-				finalError: expect.stringMatching(/^invalid_api_key \(2 attempts over \d+s\)$/),
+				// A credential failure names its provider and model, keeps the retry note on that line, and ends with the fix.
+				finalError: expect.stringMatching(
+					/^faux\/faux-1: invalid_api_key \(2 attempts over \d+s\)\nFix: \/providers → faux$/,
+				),
 			}),
 		);
 	});

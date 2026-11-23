@@ -1,3 +1,4 @@
+import { type ModelsDevManifestSource, readModelsDevManifestSource } from "../catalog/models-dev-sources.ts";
 import { CLASSIFIER_MODELS, IMAGE_MODELS, MODELS } from "../models.generated.ts";
 import { type CreateModelsOptions, createModels, type MutableModels, type Provider } from "../models.ts";
 import type { AnyModel, Api, ClassifierApi, ClassifierModel, ImageApi, ImageModel, Model } from "../types.ts";
@@ -93,6 +94,14 @@ export function getBuiltinProviders(): BuiltinProvider[] {
 export function getBuiltinModelDataGeneratedAt(): number | undefined {
 	const generatedAt = Date.parse(modelDataManifest.generatedAt);
 	return Number.isNaN(generatedAt) ? undefined : generatedAt;
+}
+
+/**
+ * Where the built-in catalog's models.dev listings came from: when that data was taken, and each provider's listing and
+ * left-out ids. Undefined for a catalog without the stamp (hydrated before it was recorded): nothing is then added.
+ */
+export function getBuiltinModelsDevSource(): ModelsDevManifestSource | undefined {
+	return readModelsDevManifestSource(modelDataManifest);
 }
 
 export function getBuiltinModels<TProvider extends BuiltinProvider>(

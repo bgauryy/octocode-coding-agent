@@ -7,6 +7,7 @@ import {
 	ScrollView,
 	setKeybindings,
 	Text,
+	TuiMainScreen,
 } from "@octocodeai/octocode-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
@@ -196,6 +197,45 @@ describe("createInteractiveTui", () => {
 		expect([terminal.startCount, terminal.stopCount]).toEqual([2, 2]);
 		expect(pointerClicksActive()).toBe(false);
 	});
+
+	it("continues the main screen's diff state after a round trip through fullscreen", async () => {
+		const terminal = new RecordingTerminal(40, 8);
+		const renderer = createInteractiveTui({
+			tuiMode: "regular",
+			showHardwareCursor: false,
+			logDirectory: "/tmp",
+			terminal,
+		});
+		const component: Component = { render: () => ["content"], invalidate: () => {} };
+		renderer.addChild(component);
+		const context = {
+			settingsManager: {
+				getFullscreenCopyOnSelect: () => false,
+				getFullscreenWheelScrollLines: (): WheelScrollLines => "auto",
+				getReplayRows: () => 5000,
+			},
+			renderer: renderer as ReturnType<typeof createInteractiveTui>,
+			ui: undefined as unknown as TUI,
+			fullscreenLayoutRoot: component,
+			options: { tuiMode: "regular" as TuiMode },
+			themeController: { rebindTui: () => {} },
+			featureTerminalInputSubscriptions: new Set<never>(),
+			chatContainer: new Container(),
+		};
+		context.ui = createInteractiveTuiReference(() => context.renderer);
+		const host = createFakeHost(context);
+		renderer.start();
+		await terminal.waitForRender();
+		const left = renderer.captureRenderState();
+		expect(left.previousLines.join("\n")).toContain("content");
+
+		expect(switchTuiMode(host, "fullscreen", false, false)).toBe(true);
+		expect(switchTuiMode(host, "regular", false, false)).toBe(true);
+
+		expect(context.renderer).not.toBe(renderer);
+		expect(context.renderer).toBeInstanceOf(TuiMainScreen);
+		expect((context.renderer as TuiMainScreen).captureRenderState()).toEqual(left);
+	});
 });
 
 describe("InteractiveMode right-click paste", () => {
@@ -271,7 +311,7 @@ describe("InteractiveMode copy confirmation", () => {
 			expect(getLastAssistantText).not.toHaveBeenCalled();
 			expect(showStatus).not.toHaveBeenCalled();
 			expect(showError).not.toHaveBeenCalled();
-			expect(terminal.getViewport().some((line) => line.includes("Copied!"))).toBe(true);
+			expect(terminal.getViewport().some((line) => line.includes("Copied 2 lines · 10 chars"))).toBe(true);
 		} finally {
 			ui.stop();
 		}
@@ -313,13 +353,13 @@ describe("InteractiveMode copy confirmation", () => {
 			expect(getLastAssistantText).toHaveBeenCalledOnce();
 			expect(showStatus).not.toHaveBeenCalled();
 			expect(showError).not.toHaveBeenCalled();
-			expect(terminal.getViewport().some((line) => line.includes("Copied!"))).toBe(true);
+			expect(terminal.getViewport().some((line) => line.includes("Copied 18 chars"))).toBe(true);
 		} finally {
 			ui.stop();
 		}
 	});
 
-	it("flashes Copied! for the copy shortcut in fullscreen mode", async () => {
+	it("flashes how much the copy shortcut copied in fullscreen mode", async () => {
 		const terminal = new RecordingTerminal(40, 4);
 		const ui = createInteractiveTui({
 			tuiMode: "fullscreen",
@@ -345,7 +385,7 @@ describe("InteractiveMode copy confirmation", () => {
 			expect(clipboardMocks.copyToClipboard).toHaveBeenCalledWith("assistant response");
 			expect(showStatus).not.toHaveBeenCalled();
 			expect(showError).not.toHaveBeenCalled();
-			expect(terminal.getViewport().some((line) => line.includes("Copied!"))).toBe(true);
+			expect(terminal.getViewport().some((line) => line.includes("Copied 18 chars"))).toBe(true);
 		} finally {
 			ui.stop();
 		}
@@ -369,7 +409,7 @@ describe("InteractiveMode copy confirmation", () => {
 
 		await callHandleCopyCommand(context, { flashConfirmation: true, preferSelection: true });
 
-		expect(showStatus).toHaveBeenCalledWith("Copied last agent message to clipboard");
+		expect(showStatus).toHaveBeenCalledWith("Copied last agent message to clipboard · 18 chars");
 		expect(showError).not.toHaveBeenCalled();
 	});
 });
@@ -418,7 +458,6 @@ type StatusEditor = {
 
 type ClearStatusContext = {
 	activeStatusIndicator: { kind: StatusIndicatorKind; dispose: () => void } | undefined;
-	activeWorkingIndicatorEmbedded: boolean;
 	statusContainer: Container;
 	defaultEditor: StatusEditor;
 	editor: Partial<StatusEditor>;
@@ -434,7 +473,6 @@ describe("clear-on-shrink status spacing", () => {
 		const editor: StatusEditor = { embedWorkingStatus, setWorkingStatusIndicator: vi.fn() };
 		const context: ClearStatusContext = {
 			activeStatusIndicator: undefined,
-			activeWorkingIndicatorEmbedded: false,
 			statusContainer: new Container(),
 			defaultEditor: { embedWorkingStatus: true, setWorkingStatusIndicator: vi.fn() },
 			editor,
@@ -454,7 +492,8 @@ describe("clear-on-shrink status spacing", () => {
 			for (const indicator of indicators) {
 				showStatusIndicator(createFakeHost(context), indicator);
 				expect(context.activeStatusIndicator).toBe(indicator);
-				expect(context.activeWorkingIndicatorEmbedded).toBe(embedWorkingStatus);
+				// Embedded exactly when the status row does not hold it.
+				expect(context.statusContainer.children.includes(indicator)).toBe(!embedWorkingStatus);
 				if (embedWorkingStatus) {
 					expect(editor.setWorkingStatusIndicator).toHaveBeenLastCalledWith(indicator);
 					expect(context.statusContainer.children).toHaveLength(0);
@@ -474,7 +513,7 @@ describe("clear-on-shrink status spacing", () => {
 			const editor: StatusEditor = { embedWorkingStatus: true, setWorkingStatusIndicator: vi.fn() };
 			const context: ClearStatusContext = {
 				activeStatusIndicator: { kind, dispose },
-				activeWorkingIndicatorEmbedded: true,
+				// Embedded: the status row does not hold it.
 				statusContainer: new Container(),
 				defaultEditor: editor,
 				editor,
@@ -498,10 +537,13 @@ describe("clear-on-shrink status spacing", () => {
 		] as const) {
 			const defaultEditor: StatusEditor = { embedWorkingStatus: true, setWorkingStatusIndicator: vi.fn() };
 			const customEditor = { embedWorkingStatus: false, setWorkingStatusIndicator: vi.fn() };
+			// Standalone: the indicator has the status row to itself, as `showStatusIndicator` leaves it.
+			const indicator = Object.assign(new Text("", 0, 0), { kind: "working" as const, dispose: vi.fn() });
+			const statusContainer = new Container();
+			statusContainer.addChild(indicator);
 			const context: ClearStatusContext = {
-				activeStatusIndicator: { kind: "working", dispose: vi.fn() },
-				activeWorkingIndicatorEmbedded: false,
-				statusContainer: new Container(),
+				activeStatusIndicator: indicator,
+				statusContainer,
 				defaultEditor,
 				editor: customEditor,
 				options: { tuiMode },

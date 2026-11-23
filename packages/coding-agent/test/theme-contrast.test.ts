@@ -1,4 +1,4 @@
-import { colorToOkhsl, colorToRgb } from "@octocodeai/octocode-tui";
+import { colorToOkhsl, colorToOklch, colorToRgb } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
 import { loadTheme } from "../src/theme/theme-loader.ts";
 import type { ThemeToken } from "../src/theme/theme-tokens.ts";
@@ -149,6 +149,25 @@ describe.each(THEMES)("theme contrast: %s", (name) => {
 			// Neutral means nearly grey, or a clearly different hue.
 			expect(bash.s < 0.15 || hueGap > 40, `bashMode vs ${state}`).toBe(true);
 		}
+	});
+
+	it("keeps the state colours apart (OKLab ΔE ≥ 0.1): a yellow light never reads as a red one", () => {
+		const theme = loadTheme(name, "truecolor");
+		const lab = (token: ThemeToken) => {
+			const { l, c, h } = colorToOklch(theme.colors[token]);
+			return [l, c * Math.cos((h * Math.PI) / 180), c * Math.sin((h * Math.PI) / 180)];
+		};
+		const pairs = [
+			["success", "warning"],
+			["warning", "error"],
+			["success", "error"],
+			["warning", "dim"],
+		] as const;
+		const close = pairs.flatMap(([a, b]) => {
+			const gap = Math.hypot(...lab(a).map((value, index) => value - (lab(b)[index] ?? 0)));
+			return gap >= 0.1 ? [] : [`${a}/${b} ${gap.toFixed(3)}`];
+		});
+		expect(close).toEqual([]);
 	});
 
 	it("keeps inline code off the accent colour", () => {

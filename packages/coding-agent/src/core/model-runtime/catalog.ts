@@ -23,6 +23,8 @@ import {
 	type ProviderConfigInput,
 	resolveCompatibilityRequestConfig,
 } from "../provider-composer.ts";
+import type { CatalogUpdate } from "../model-catalog/merge.ts";
+import { catalogUpdateOf } from "../model-catalog/provider.ts";
 import { allowsUnattended, isSubscriptionBilled } from "../subscription.ts";
 import type { ModelAvailability } from "./availability.ts";
 import type { ProviderLayers } from "./provider-layers.ts";
@@ -84,7 +86,7 @@ export abstract class ModelCatalog {
 	assertModelAccess(model: { provider: string; id: string }): void {
 		if (this.isModelAccessRejected(model)) {
 			throw new Error(
-				`The provider recently refused ${model.provider}/${model.id}. Choose another model in /models or recheck access in /providers.`,
+				`The provider recently refused ${model.provider}/${model.id}. Choose another model in /model or recheck access in /providers.`,
 			);
 		}
 	}
@@ -291,6 +293,20 @@ export abstract class ModelCatalog {
 			subscription: this.isUsingSubscription(providerId),
 			oauth: this.isUsingOAuth(providerId),
 		};
+	}
+
+	/**
+	 * What the models.dev catalog update changed for a built-in model: `deprecated` (dim it, never route or fall back to
+	 * it), `source: "models.dev"` (added at runtime, not shipped: the picker's "new" mark), `repriced`. Undefined for a
+	 * model it left as bundled, a models.json model, or before the first catalog refresh. Reads memory only.
+	 */
+	getCatalogUpdate(model: { provider: string; id: string }): CatalogUpdate | undefined {
+		return catalogUpdateOf(this.layers.builtins.get(model.provider), model.id);
+	}
+
+	/** True when models.dev lists the built-in model as deprecated (`getCatalogUpdate`): skip it in fallback and choice. */
+	isModelDeprecated(model: { provider: string; id: string }): boolean {
+		return this.getCatalogUpdate(model)?.deprecated === true;
 	}
 
 	/** True when the user unticked the model on its provider's page. */

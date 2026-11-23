@@ -18,6 +18,8 @@ import { continueLine, nextArchiveCursor, nextPage, readArchiveCursor } from "..
 import { createHistoryTool, pattern } from "./history.ts";
 import { scheduleArchiveIndexSync } from "../../../history/index/startup.ts";
 import { getRecord, MAX_RECORDS, OVERVIEW_RECORDS, readRecords } from "../../../archive/reads.ts";
+import { evidenceText, readEvidence } from "../../../archive/evidence.ts";
+import { parseAnchor } from "@octocodeai/octocode-contracts/evidence";
 import { readProfile } from "../../../archive/profile-read.ts";
 import { sessionMirrorSettled } from "../../../../core/session-manager/mirror.ts";
 
@@ -173,6 +175,11 @@ export function registerArchiveTool(api: FeatureSetup, options: { isSubagent?: b
 				] as const)
 					if (time && !Number.isFinite(Date.parse(time))) throw new Error(`${key} must be an ISO date or time.`);
 				if (op === "get" && !input.id && !input.file) throw new Error("get requires a record id or file.");
+				// A search hit's anchor (`archive:…`, `transcript:…`) is a get id; record ids are `compaction:` or `session:`.
+				const anchorId = input.id && /^(archive|transcript):/.test(input.id.trim()) ? input.id.trim() : undefined;
+				const anchor = anchorId === undefined ? undefined : parseAnchor(anchorId);
+				if (anchorId !== undefined && !anchor)
+					throw new Error("An anchor id looks like archive:<session>/<segment>/<entry> (copy it from a search hit).");
 				// Every source reads query as a regular expression: an invalid one names the fix before any search runs.
 				if (input.query?.trim()) pattern(input.query.trim());
 				const from = readArchiveCursor(input.cursor);
@@ -199,9 +206,11 @@ export function registerArchiveTool(api: FeatureSetup, options: { isSubagent?: b
 					});
 				}
 				const coverage: string[] = [];
-				const needsHistory = input.id
-					? /^(compaction|session):/.test(input.id)
-					: !input.source || ["all", "sessions", "compactions"].includes(input.source);
+				const needsHistory = anchor
+					? false
+					: input.id
+						? /^(compaction|session):/.test(input.id)
+						: !input.source || ["all", "sessions", "compactions"].includes(input.source);
 				// This session's newest records reach the database after its file (`session-manager/mirror.ts`): wait for
 				// their acknowledgement, bounded, so a search or an error scan reads them.
 				if ((needsHistory || input.errors) && !(await sessionMirrorSettled(MIRROR_WAIT_MS)))
@@ -224,6 +233,17 @@ export function registerArchiveTool(api: FeatureSetup, options: { isSubagent?: b
 							signal,
 						)),
 					);
+				}
+				if (op === "get" && anchor) {
+					const evidence = await readEvidence(ctx.cwd, anchor, {
+						cursor: input.cursor,
+						signal,
+					});
+					return textResult([evidenceText(evidence), continueLine(evidence.nextCursor)].filter(Boolean).join("\n\n"), {
+						mode: "evidence",
+						evidence,
+						reason: input.reason,
+					});
 				}
 				if (op === "get" && input.id) {
 					const text = getRecord(ctx.cwd, input.id);

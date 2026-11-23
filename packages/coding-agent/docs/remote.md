@@ -16,17 +16,63 @@ flowchart LR
 
 ## Commands
 
-| Command                                                 | Effect                                                                                                                               |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `/remote`                                               | Publish a control link: the full page, including commands and answers to dialogs.                                                    |
-| `/remote view`                                          | Publish a view-only link: it follows every session and sends nothing.                                                                |
-| `/remote status`                                        | Links published since the daemon started (by fingerprint) and, with a relay, its connection.                                         |
-| `/remote stop`                                          | Stop publishing. Every link, view and control, stops working at once.                                                                |
-| `octocode remote list [--json]`                         | Sessions the daemon reaches (`busy`, `needsYou`) and the published links. Needs a running daemon; never starts one.                  |
-| `octocode remote link [view] [--relay <url>] [--no-qr]` | Publish a link and print it in full. Always `ssh` unless `--relay <url>` is given; ignores `remote.transport` and `remote.relayUrl`. |
-| `octocode remote stop`                                  | Stop publishing.                                                                                                                     |
+| Command                                                 | Effect                                                                                                                                                                                          |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/remote`                                               | Publish a control link: the full page, including commands and answers to dialogs.                                                                                                               |
+| `/remote view`                                          | Publish a view-only link: it follows every session and sends nothing.                                                                                                                           |
+| `/remote status`                                        | Links published since the daemon started (by fingerprint) and, with a relay, its connection.                                                                                                    |
+| `/remote stop`                                          | Stop publishing. Every link, view and control, stops working at once. The daemon keeps running; `/web stop` ends it.                                                                            |
+| `octocode remote list [--json]`                         | Sessions the daemon reaches, ordered by what needs you, each with its activity light's word, and the published links ([output](#remote-list-output)). Needs a running daemon; never starts one. |
+| `octocode remote link [view] [--relay <url>] [--no-qr]` | Publish a link and print it in full. Always `ssh` unless `--relay <url>` is given; ignores `remote.transport` and `remote.relayUrl`.                                                            |
+| `octocode remote stop`                                  | Stop publishing.                                                                                                                                                                                |
 
-A link is printed once, when published, with what it allows and (in a terminal) a QR code. The secret sits after `#`, which browsers never send to a server. Listings show only an 8-character fingerprint, the access, the transport and the issue time.
+A link is printed once, when published, with what it allows and (in a terminal) a QR code. The secret sits after `#`, which browsers never send to a server. Only the terminal shows it: the copy of that notice the session's pages and the devices following it receive reads `[redacted]`, so a view link never hands out a control link. Listings show only an 8-character fingerprint, the access, the transport and the issue time.
+
+### `remote list` output
+
+The text form starts with a header, then one tab-separated row per session:
+
+| Column       | Holds                                                                                                                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ACTIVITY`   | The light's word, as the terminal footer prints it: `needs you`, `working`, `compacting`, `retrying`, `failed`, `stopped`, `idle`, `done` and the rest ([activity light](tui-design.md#activity-light)) |
+| `SESSION`    | The session id                                                                                                                                                                                          |
+| `REPOSITORY` | The repository name                                                                                                                                                                                     |
+| `FOLDER`     | The session's working folder                                                                                                                                                                            |
+| `DIALOG`     | The title of the dialog it waits on; empty when none waits                                                                                                                                              |
+
+The published links follow, one line each. `--json` prints one object instead:
+
+```json
+{
+	"daemon": { "pid": 4016, "port": 50902 },
+	"sessions": [
+		{
+			"id": "01a2089e-…",
+			"repoId": "…",
+			"repoName": "project",
+			"cwd": "/work/project",
+			"startedAt": 1795443017000,
+			"attached": true,
+			"busy": false,
+			"activity": { "tone": "idle", "state": "pending", "label": "idle" }
+		}
+	],
+	"unavailable": [],
+	"remote": {
+		"links": [{ "access": "view", "transport": "ssh", "issuedAt": 1795443020000, "fingerprint": "3f9c2b7d" }]
+	}
+}
+```
+
+`activity.tone` is `working`, `waiting`, `error` or `idle`; `label` is the word the text form prints. A session waiting on a dialog also has `needsYou` (its title); `busy` and `activity` are absent until the daemon has seen the session's state. `unavailable` lists live sessions the daemon could not attach (`id`, `repoName`, `cwd`, `message`). `truncated: true` says more than 200 sessions exist. `remote.relay` appears when a relay is dialed (`url`, `state`, `peers`, `error`).
+
+| Exit status | Means                                                                                                             |
+| ----------- | ----------------------------------------------------------------------------------------------------------------- |
+| `0`         | The daemon answered                                                                                               |
+| `1`         | Usage error, or the daemon refused or did not answer (the reason is on stderr)                                    |
+| `2`         | No web daemon is running; with `--json` stdout still holds the object above with `"daemon": null` and no sessions |
+
+Scripts read sessions and links through this command. The daemon's HTTP routes serve its page and change with it; they are not an interface.
 
 ## Settings
 

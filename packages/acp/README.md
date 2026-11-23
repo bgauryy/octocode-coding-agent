@@ -38,7 +38,7 @@ coding-agent imports five source files by relative path, not by package name: `h
 
 ```sh
 yarn workspace @octocodeai/octocode-acp test
-yarn node --test scripts/acp-workspace.test.mjs   # ownership: one source owner, no private runtime dependency, staging of entries
+yarn node --test scripts/check/acp-workspace.test.mjs   # ownership: one source owner, no private runtime dependency, staging of entries
 yarn run check
 yarn run build:offline
 ```

@@ -49,6 +49,9 @@ process.env.OCTOCODE_MCP_DESKTOP = "0";
 // only the servers it configures. Real-process cases (`e2e-real-process-harness.ts`) build their own environment, so the
 // browser tests there keep the server.
 process.env.OCTOCODE_MCP_BROWSER = "0";
+// Nor a browser window: `/web`, `/backlog` and an item link give the page's address (`browser/app-window.ts`), in this
+// process and in every process it starts with this environment. A test of the real launch passes its own launchers.
+process.env.OCTOCODE_OPEN_BROWSER = "0";
 // Every process a test starts boots the CLI from TypeScript source, about 2 s of CPU each with nothing cached. Node's compile
 // cache (keyed by file content and Node version, so a changed file is never served stale) halves that, and the folder sits
 // beside the per-run temporary directory so later runs start warm too. Processes read it from the environment they are given.

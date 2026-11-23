@@ -5,6 +5,7 @@ import { currentMutationRevision, mutationEpoch } from "../feedback/revisions.ts
 import type { BashJob, JobExit, VerificationReceipt } from "../bash-jobs/types.ts";
 import { logTail, TAIL_BYTES } from "../bash-jobs/tail.ts";
 import type { BashDetails } from "../outcome.ts";
+import { shortHash } from "@octocodeai/octocode-common/atomic-file";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Public tool schema for the receipt's stable, JSON-only fields. */
@@ -36,6 +37,14 @@ export const verificationSchema = Type.Object({
 	revisionAtCompletion: Type.Optional(Type.Number()),
 	stale: Type.Boolean(),
 });
+
+/**
+ * A receipt's identity: the session, the launch time and the command, so it needs no stored counter and names the same
+ * receipt after a restart. The session's saved bash results hold the receipt, so a reader finds it by this id.
+ */
+export function receiptId(receipt: Pick<VerificationReceipt, "sessionId" | "startedAt" | "command">): string {
+	return `${receipt.sessionId}:${receipt.startedAt}:${shortHash(receipt.command)}`;
+}
 
 export function beginVerification(
 	command: string,
@@ -150,7 +159,7 @@ export function verificationLine(receipt: VerificationReceipt): string {
 	const revision =
 		`mutation revision ${receipt.revisionAtLaunch}` +
 		(receipt.revisionAtCompletion !== undefined ? ` → ${receipt.revisionAtCompletion}` : "");
-	return `Verification: ${outcome}; ${revision}${differentProcess ? "; process changed; this check cannot validate the current state" : laterEdit || receipt.stale ? "; later agent edits invalidate this check for the current state" : ""}${receipt.output.tailIncomplete ? "; output tail incomplete; inspect full log" : ""}${receipt.output.complete || (receipt.state === "running" && !receipt.output.tailIncomplete) ? "" : "; full output incomplete or unavailable"}`;
+	return `Verification: ${outcome}; ${revision}${differentProcess ? "; process changed; this check cannot validate the current state" : laterEdit || receipt.stale ? "; later agent edits invalidate this check for the current state" : ""}${receipt.output.tailIncomplete ? "; output tail incomplete; inspect full log" : ""}${receipt.state === "running" ? "" : `; receipt ${receiptId(receipt)}`}${receipt.output.complete || (receipt.state === "running" && !receipt.output.tailIncomplete) ? "" : "; full output incomplete or unavailable"}`;
 }
 
 /** Serialize an immutable snapshot for tool result contracts; later job completion creates a new receipt. */

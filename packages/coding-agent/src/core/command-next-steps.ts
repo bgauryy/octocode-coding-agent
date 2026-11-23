@@ -2,7 +2,8 @@
  * The one registry of next-step hints, for built-in and native feature commands. A finished command shows its entry
  * as one dim line (`/fork  branch from an earlier message`); the interactive terminal applies it, command files add no
  * prose. A key is a command name or a command and its first argument (`trust list`), which wins over the name alone.
- * A command that opens a page or picker with its own key bar has no entry and names why in `NO_NEXT_STEP`.
+ * A command that opens a page or picker with its own key bar has no entry and names why in `NO_NEXT_STEP`; when only its
+ * bare form opens one (`/permissions`), it is in both: the exception covers the bare form, the entry its arguments.
  */
 
 /** A command to type and what it does. */
@@ -11,7 +12,6 @@ export type NextStep = readonly [command: string, verb: string];
 const NEXT_STEPS: Readonly<Record<string, NextStep>> = {
 	permissions: ["/permissions log", "review recent decisions"],
 	agents: ["/agents stats", "see usage per agent"],
-	messages: ["/agents", "see who is running"],
 	cron: ["/help cron", "see how to schedule"],
 	loop: ["/help loop", "see how to repeat a prompt"],
 	realm: ["/help realm", "see the options"],
@@ -29,6 +29,7 @@ const NEXT_STEPS: Readonly<Record<string, NextStep>> = {
 	links: ["/copy", "copy the last reply"],
 	rename: ["/resume", "find it again later"],
 	status: ["/debug", "write diagnostics"],
+	usage: ["/usage 30d", "see the last 30 days"],
 	changelog: ["/keys", "see shortcuts"],
 	keys: ["/help", "find a command"],
 	fork: ["/tree", "browse branches"],
@@ -66,12 +67,19 @@ export const NO_NEXT_STEP: Readonly<Record<string, string>> = {
 	tree: "opens a selector with its own key bar",
 	resume: "opens a selector with its own key bar",
 	providers: "opens a manage page with its own key bar",
+	models: "opens a manage page with its own key bar",
 	monitor: "opens a page with its own key bar",
 	settings: "opens a selector with its own key bar; a verb prints its own result and when it applies",
 	find: "opens the transcript search with its own key bar",
+	mouse: "its notice says what the mouse does now and the key that switches it back",
 	queue: "opens a list with its own key bar; empty, it says how to queue",
 	quit: "leaves the app",
+	// Bare, these open a page or picker; typed with arguments they print a result and get their entry.
+	permissions: "bare, opens a page with its own key bar",
+	realm: "bare, opens a picker with its own key bar",
+	modelsettings: "bare, opens a menu with its own choices",
 	// Native feature commands.
+	messages: "opens a page with its own key bar",
 	"backlog tui": "opens a board with its own key bar",
 	harness: "opens a switch list with its own key bar",
 	mcp: "opens a manager with its own key bar",
@@ -85,17 +93,23 @@ export const NO_NEXT_STEP: Readonly<Record<string, string>> = {
 
 /**
  * The next-step hint for a command and its arguments, if it has one: the entry for the command and its first argument,
- * else none when that pair is a stated exception, else the command's own entry.
+ * else none when that pair is a stated exception, else the command's own entry; typed bare, none when the command is a
+ * stated exception.
  */
 export function nextStepFor(name: string, args = ""): NextStep | undefined {
-	const word = args.trim().split(/\s+/u)[0];
+	const typed = args.trim();
+	const word = typed.split(/\s+/u)[0];
 	const pair = word ? `${name} ${word}` : undefined;
-	if (pair && NEXT_STEPS[pair]) return NEXT_STEPS[pair];
-	if (pair && NO_NEXT_STEP[pair]) return undefined;
-	return NEXT_STEPS[name];
+	const step = pair
+		? (NEXT_STEPS[pair] ?? (NO_NEXT_STEP[pair] ? undefined : NEXT_STEPS[name]))
+		: NO_NEXT_STEP[name]
+			? undefined
+			: NEXT_STEPS[name];
+	// A hint never repeats the line just typed: `/usage 30d` after `/usage 30d` adds nothing.
+	return step && step[0] !== `/${name}${typed ? ` ${typed}` : ""}` ? step : undefined;
 }
 
-/** Every registry key, for tests that tie the entries to registered commands. */
-export function nextStepKeys(): string[] {
-	return Object.keys(NEXT_STEPS);
+/** Every registry entry by its key, for tests that tie the entries to registered commands. */
+export function nextStepEntries(): Array<[key: string, step: NextStep]> {
+	return Object.entries(NEXT_STEPS);
 }

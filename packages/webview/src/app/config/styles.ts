@@ -1,6 +1,6 @@
 /** Settings view: rows of a name, a value or state, and source badges. Colours come from the shared tokens. */
 export const CONFIG_CSS = `/* Settings view */
-.config-view { display: grid; gap: 16px; max-width: 880px; }
+.config-view { display: grid; gap: 16px; max-width: 880px; width: 100%; margin-inline: auto; }
 .config-view .view-actions { justify-content: space-between; }
 .config-keychain { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
 .config-group > summary { display: flex; align-items: center; gap: 8px; padding: 10px 16px; cursor: pointer; border-bottom: 1px solid var(--border-soft); }
@@ -12,6 +12,13 @@ export const CONFIG_CSS = `/* Settings view */
 .config-sources { display: grid; gap: 4px; padding-left: 12px; }
 .config-source { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
 .config-source .badge code { font-size: 11px; }
+.config-stack { display: grid; gap: 6px; }
+/* A provider's closed controls share a line; a list, an open editor or an error takes the whole width. */
+.config-row-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 8px; }
+.config-row-actions:empty { display: none; }
+.config-row-actions > * { flex: 0 1 auto; min-width: 0; }
+.config-row-actions > :is(form, fieldset), .config-row-actions > :has(form, fieldset, ul, .callout) { flex-basis: 100%; }
+.panel > .config-edit { padding: 10px 16px 0; }
 .config-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 fieldset.config-edit { min-width: 0; margin: 0; padding: 0; border: 0; }
 .config-edit input { flex: 1 1 200px; min-width: 0; padding: 6px 10px; }

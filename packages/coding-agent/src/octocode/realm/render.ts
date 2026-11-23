@@ -1,7 +1,7 @@
 import path from "node:path";
 import { plural } from "@octocodeai/octocode-common/clip";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { type BadgeState, badge, legend } from "../../theme/page-kit.ts";
+import { activityBadge, type BadgeState, badge, legend } from "../../theme/page-kit.ts";
 import { shortDuration } from "../sessions/brief.ts";
 import { shownLine } from "../sessions/store.ts";
 import { formatCost, formatTokens } from "../shared/format.ts";
@@ -87,11 +87,15 @@ function agentLine(agent: Member, now: number): string {
 	].join(" · ");
 }
 
-/** `● name or id · 5m ago · 3f9a2c` (`(current)` for this session). */
+/** `live`, `live (needs you)` with the light another live session's process wrote, or `saved`. */
+export const sessionState = (session: RealmSession): string =>
+	session.live ? (session.activity ? `live (${activityBadge(session.activity).word})` : "live") : "saved";
+
+/** `live (needs you) name or id · 5m ago · 3f9a2c` (`(current)` for this session). */
 function sessionLine(session: RealmSession, now: number): string {
 	const shortId = session.id.replace(/[^\w]/g, "").slice(-6);
 	const title = shownLine(session.name || "(unnamed)", 60);
-	return `${session.live ? "live" : "saved"} ${title} · ${shortDuration(now - session.modified)} ago · ${shortId}${session.current ? " (current)" : ""}`;
+	return `${sessionState(session)} ${title} · ${shortDuration(now - session.modified)} ago · ${shortId}${session.current ? " (current)" : ""}`;
 }
 
 /** The page behind a realm row: facts, its agents and sessions, and the actions that apply. */

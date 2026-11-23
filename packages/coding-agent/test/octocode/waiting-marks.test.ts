@@ -34,10 +34,10 @@ describe("waiting on you: the ask tool", () => {
 	it("draws an open question as a still ⏺ in warning when motion is reduced", () => {
 		animationClock.setReducedMotion(true);
 		const open = row({ isPartial: true, executionStarted: true });
-		expect(first(tool.renderCall(args, tagged, open))).toMatch(/^<warning>⏺ /);
+		expect(first(tool.renderCall(args, tagged, open))).toMatch(/^<warning>◇ /);
 	});
 
-	it("shows answered ⏺ in success, declined ⏺ in error and interrupted ⏺ in warning, on the header and the result", () => {
+	it("shows answered ✓ in success, declined ✗ in error and interrupted ◼ in warning, on the header and the result", () => {
 		const cases = [
 			{
 				details: { cancelled: false, answers: [{ question: "Keep it?", answer: "Yes", custom: false }] },
@@ -51,10 +51,9 @@ describe("waiting on you: the ask tool", () => {
 			const context = row();
 			const result = tool.renderResult({ content: [], details }, {}, tagged, context);
 			expect(result.render(120).join("\n")).toContain(mark);
-			// The header reads the same state back from the row, as the light: red when stopped.
-			expect(first(tool.renderCall(args, tagged, context))).toContain(
-				`${mark === "<warning>◼" ? "<error>" : mark.slice(0, mark.indexOf(">") + 1)}⏺`,
-			);
+			// The header reads the same state back from the row, as the light: its state's glyph (⏺ means running only),
+			// red when stopped.
+			expect(first(tool.renderCall(args, tagged, context))).toContain(mark === "<warning>◼" ? "<error>◼" : mark);
 		}
 	});
 });
@@ -148,7 +147,8 @@ describe("agent rows", () => {
 			tagged,
 			working,
 		);
-		expect(call(working)).toContain("<accent>◒");
+		// A working light is green (contract change: status dots, wave C); the accent spinner is the main working line's.
+		expect(call(working)).toContain("<success>⏺");
 		const asking = row({ isPartial: true, executionStarted: true });
 		renderAgentResult(
 			{ content, details: details({ status: "running", waiting: true }) },
@@ -156,13 +156,14 @@ describe("agent rows", () => {
 			tagged,
 			asking,
 		);
-		expect(call(asking)).toBe("<warning>⏺ <toolTitle>Agent<muted>(<muted>audit auth<muted>)");
+		expect(call(asking)).toBe("<warning>◇ <toolTitle>Agent<muted>(<muted>audit auth<muted>)");
 	});
 
 	it.each([
-		["done", {}, "<success>⏺"],
-		["blocked", { outcome: "blocked" as const }, "<warning>⏺"],
-		["failed", { outcome: "failed" as const }, "<error>⏺"],
+		// A finished run draws its state's glyph: ⏺ means running only.
+		["done", {}, "<success>✓"],
+		["blocked", { outcome: "blocked" as const }, "<warning>◇"],
+		["failed", { outcome: "failed" as const }, "<error>✗"],
 	])("draws a finished %s foreground run's header mark", (_name, extra, mark) => {
 		animationClock.setReducedMotion(true);
 		const context = row();
@@ -173,9 +174,9 @@ describe("agent rows", () => {
 	});
 
 	it.each([
-		["done", "<success>⏺"],
-		["failed", "<error>⏺"],
-		["stopped", "<error>⏺"],
+		["done", "<success>✓"],
+		["failed", "<error>✗"],
+		["stopped", "<error>◼"],
 	])("draws a background report that %s with its mark", (status, mark) => {
 		const message = renderAgentMessage(
 			{ content: "Done", details: { id: "general-0001", status, summary: "x" } } as never,

@@ -503,4 +503,10 @@ describe("timeout retries", () => {
 		expect(describeRetryOutcome("boom", 3, 905_400)).toBe("boom (3 attempts over 905s)");
 		expect(describeRetryOutcome("boom", 1, 1000)).toBe("boom (1 attempt over 1s)");
 	});
+
+	it("keeps the attempts note on the error's first line, before a fix line", () => {
+		expect(describeRetryOutcome("p/m: invalid_api_key\nFix: /providers → P", 2, 3000)).toBe(
+			"p/m: invalid_api_key (2 attempts over 3s)\nFix: /providers → P",
+		);
+	});
 });

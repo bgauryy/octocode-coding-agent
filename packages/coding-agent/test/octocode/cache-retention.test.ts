@@ -1,10 +1,8 @@
 import type { Api, AssistantMessage, Model, RequestLayer, RequestTrace, Usage } from "@octocodeai/octocode-ai";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { describe, expect, it } from "vitest";
-import { compactionCost } from "../../src/core/cache-warmer/compaction-cost.ts";
 import { getPromptCacheTtlMs } from "../../src/core/cache-warmer/economics.ts";
 import { firstChangedArea, formatLayerChange } from "../../src/core/cache-warmer/first-change.ts";
-import { planRetention } from "../../src/core/cache-warmer/retention.ts";
 import { turnCosts } from "../../src/core/cache-warmer/turn-costs.ts";
 import { usageRecord } from "../../src/core/cache-warmer/usage-record.ts";
 import type { SessionEntry } from "../../src/core/session-manager.ts";
@@ -21,7 +19,6 @@ const gateway: Model<Api> = {
 	baseUrl: "https://gateway.example.com",
 	compat: { supportsLongCacheRetention: false },
 };
-const MIN = 60_000;
 
 function usage(fields: Partial<Usage>): Usage {
 	return {
@@ -213,80 +210,15 @@ describe("$/turn", () => {
 			prices: { getModel: () => undefined },
 			selectedModelKey: "x/y",
 		});
-		expect(text).toContain("$/turn: $0.2350 average over 2 turns (at least)");
-		expect(text).toContain("Turn 1: $0.1200 (2 requests, first change: cold)");
-		expect(text).toContain("Turn 2: $0.3500 (1 request, first change: system[0])");
+		expect(text).toContain("$/turn: ≈$0.2350 average over 2 turns (at least)");
+		expect(text).toContain("Turn 1: ≈$0.1200 (2 requests, first change: cold)");
+		expect(text).toContain("Turn 2: ≈$0.3500 (1 request, first change: system[0])");
 	});
 });
 
-describe("retention calculator", () => {
-	const span = { model: opus, prefixTokens: 100_000, turnTokens: 5_000 };
-	it("prefers 5m refreshes over the 1h premium for a short gap (RFC F6 example)", () => {
-		const plan = planRetention({ ...span, gapsMs: [20 * MIN] });
-		expect(plan.choice).toBe("short");
-		// Four refreshes at $0.02 (plus one output token each) against $0.30 once and $0.015 per turn.
-		expect(plan.costs.short).toBeCloseTo(0.08 + 4 * 0.00002, 6);
-		expect(plan.costs.long).toBeCloseTo(0.33, 6);
-	});
-	it("prefers 1h past the idle warming limit, where six refreshes are followed by a miss", () => {
-		const plan = planRetention({ ...span, gapsMs: [40 * MIN] });
-		expect(plan.costs.short).toBeCloseTo(0.12 + 6 * 0.00002 + 0.48, 6);
-		expect(plan.choice).toBe("long");
-	});
-	it("never assumes a long tier the adapter does not send (a gateway host)", () => {
-		const plan = planRetention({ ...span, model: gateway, gapsMs: [40 * MIN] });
-		expect(plan).toMatchObject({ choice: "short", shortTtl: "5m" });
-		expect(plan.costs.long).toBeUndefined();
-		expect(plan.longTtl).toBeUndefined();
-	});
-	it("takes the longest retention where writes cost no premium (OpenAI before explicit caching)", () => {
-		const free: Model<"openai-responses"> = {
-			...getBuiltinModel("openai", "gpt-5"),
-			baseUrl: "https://api.openai.com/v1",
-			cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0 },
-			compat: { supportsExplicitPromptCacheMode: false, supportsLongCacheRetention: true },
-		};
-		expect(planRetention({ ...span, model: free, gapsMs: [20 * MIN] })).toMatchObject({
-			choice: "long",
-			longTtl: "24h",
-		});
-	});
-	it("leaves retention to the provider and the warmer idle where the TTL is not controllable (Gemini, xAI)", () => {
-		for (const model of [getBuiltinModel("google", "gemini-2.5-pro"), getBuiltinModel("xai", "grok-4.3")]) {
-			expect(planRetention({ ...span, model, gapsMs: [20 * MIN] }).choice).toBe("provider");
+describe("provider-managed retention", () => {
+	it("gives the warmer no lifetime to plan with where the TTL is not controllable (Gemini, xAI)", () => {
+		for (const model of [getBuiltinModel("google", "gemini-2.5-pro"), getBuiltinModel("xai", "grok-4.3")])
 			expect(getPromptCacheTtlMs(model, {})).toBeUndefined();
-		}
-	});
-	it("refreshes only when the measured idle probability makes a refresh pay", () => {
-		// A small prefix: q × miss (q at the seed's 41% for 5m) stays under the warmer's $0.05 minimum, so a gap past
-		// 5m is a miss.
-		const small = planRetention({ ...span, prefixTokens: 10_000, gapsMs: [20 * MIN] });
-		expect(small.costs.short).toBeCloseTo(0.048, 6);
-	});
-	it("plans OpenAI explicit-mode history at its 30m request TTL: the 12h tier is for instructions", () => {
-		const explicit = getBuiltinModel("openai", "gpt-6.1-sol");
-		const plan = planRetention({ ...span, model: explicit, gapsMs: [40 * MIN] });
-		expect(plan.longTtl).toBeUndefined();
-		expect(plan.costs.long).toBeUndefined();
-		expect(plan.shortTtl).toBe("30m");
-	});
-});
-
-describe("compaction cost check", () => {
-	const base = { model: opus, contextTokens: 150_000, keptTokens: 30_000, summaryTokens: 2_000 };
-	it("compacts early only when the read saving over the remaining requests beats the summary and cold write", () => {
-		const ten = compactionCost({ ...base, remainingRequests: 10, rewriteAnyway: false });
-		expect(ten.oneTime).toBeCloseTo(0.03 + 0.04 + 0.15, 6);
-		expect(ten.savingPerRequest).toBeCloseTo(0.024, 6);
-		expect(ten.pays).toBe(true);
-		expect(compactionCost({ ...base, remainingRequests: 5, rewriteAnyway: false }).pays).toBe(false);
-	});
-	it("credits the rewrite a cold cache pays anyway", () => {
-		const cold = compactionCost({ ...base, remainingRequests: 5, rewriteAnyway: true });
-		expect(cold.oneTime).toBeCloseTo(0.6 + 0.04 + 0.15 - 0.75, 6);
-		expect(cold.pays).toBe(true);
-		expect(compactionCost({ ...base, keptTokens: 200_000, remainingRequests: 99, rewriteAnyway: true }).pays).toBe(
-			false,
-		);
 	});
 });

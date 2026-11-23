@@ -26,7 +26,6 @@ import {
 	type ModelsDeferredCancelOptions,
 	type ModelsDeferredFetchOptions,
 	type ModelsImagesOptions,
-	type ModelsRefreshOptions,
 	type ModelsRefreshResult,
 	type ModelThinkingLevel,
 	type MutableModels,
@@ -43,7 +42,7 @@ import { loadModelRuntimeParts, type ModelRuntimeParts, refreshOnCreate } from "
 import { CredentialOperations } from "./model-runtime/credential-operations.ts";
 import { CredentialNetworkRefresh } from "./model-runtime/credential-refresh.ts";
 import { RuntimeLiveReload } from "./model-runtime/live-reload.ts";
-import { refreshModelRuntime } from "./model-runtime/refresh.ts";
+import { refreshModelRuntime, type RuntimeRefreshOptions } from "./model-runtime/refresh.ts";
 import { ReloadErrors } from "./model-runtime/reload-errors.ts";
 import { ProviderRegistrations } from "./model-runtime/registrations.ts";
 import { type ModelOrigin, ProviderLayers } from "./model-runtime/provider-layers.ts";
@@ -332,11 +331,11 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		return this.credentialOperations.logout(providerId, options);
 	}
 
-	refresh(options: ModelsRefreshOptions = {}): Promise<ModelsRefreshResult> {
+	refresh(options: RuntimeRefreshOptions = {}): Promise<ModelsRefreshResult> {
 		return this.applyRefresh(options);
 	}
 
-	private applyRefresh(options: ModelsRefreshOptions, config?: ModelConfig): Promise<ModelsRefreshResult> {
+	private applyRefresh(options: RuntimeRefreshOptions, config?: ModelConfig): Promise<ModelsRefreshResult> {
 		const { models, layers, availability, modelsPath, project, modelNetworkEnabled, pins } = this;
 		return refreshModelRuntime(
 			{ models, layers, availability, modelsPath, project, modelNetworkEnabled, pins },

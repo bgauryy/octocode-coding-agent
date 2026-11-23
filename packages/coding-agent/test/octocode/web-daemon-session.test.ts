@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerSessionAttach } from "../../src/octocode/web-daemon/attach-register.ts";
+import { stopWebDaemon } from "../../src/octocode/web-daemon/launcher.ts";
 import { daemonOpener } from "../../src/octocode/web-daemon/open.ts";
 import { attachRecordPath, webDaemonPaths } from "../../src/octocode/web-daemon/paths.ts";
 import { readAttachRecord, readDaemonRecord } from "../../src/octocode/web-daemon/records.ts";
@@ -67,9 +68,10 @@ describe("/web with the daemon", () => {
 	it("uses the daemon when it opens, and falls back with a visible warning when it fails", async () => {
 		const open = vi.fn(async () => {});
 		const ctx = fakeCtx({ cwd: "/tmp" });
+		// The daemon opener answers with what it did and the daemon's idle limit, which the notice repeats.
 		await command(
 			open,
-			vi.fn(async () => {}),
+			vi.fn(async () => ({ opened: true, pid: 1, idleMinutes: 10 })),
 		).handler("", ctx);
 		expect(open).not.toHaveBeenCalled();
 		expect(ctx.ui.notes.at(-1)?.message).toMatch(
@@ -137,5 +139,45 @@ describe("/web with the daemon", () => {
 		await handler.handler("", ctx);
 		expect(new URL(opened[1]).origin).toBe(url.origin);
 		expect(readDaemonRecord(webDaemonPaths(env).record)!.nonce).toBe(record.nonce);
+	});
+
+	it("/web names the daemon's process and its idle limit, and /web stop ends it (or says none runs)", async () => {
+		const { env } = isolatedEnv({ OCTOCODE_WEB_DAEMON_IDLE_MINUTES: "7" });
+		const { fake, ctx, attach } = session(env);
+		await fake.fire("session_start", {}, ctx);
+		const open = daemonOpener(attach, {
+			env,
+			invocation: { command: process.execPath, prefix: ["--import", resolver, entry] },
+			open: async () => undefined,
+		});
+		const handler = webCommand(
+			async () => "http://127.0.0.1/",
+			open,
+			() => stopWebDaemon(env),
+		);
+		await handler.handler("", ctx);
+		const record = readDaemonRecord(webDaemonPaths(env).record)!;
+		const alive = () => {
+			try {
+				process.kill(record.pid, 0);
+				return true;
+			} catch {
+				return false;
+			}
+		};
+		cleanup.push(() => {
+			if (alive()) process.kill(record.pid, "SIGKILL");
+			return attach.ensure(ctx).then((endpoint) => endpoint?.close());
+		});
+		expect(ctx.ui.notes.at(-1)!.message).toContain(`/processes lists it as octocode-agent-web-${record.pid}`);
+		// The daemon reports the limit it enforces, so the notice never says the default for a changed setting.
+		expect(ctx.ui.notes.at(-1)!.message).toContain("stops by itself after 7 minutes");
+		await handler.handler("stop", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toContain(`Stopped the web daemon (pid ${record.pid})`);
+		// The record goes at once, so the next /web starts a new daemon; with no page open the process exits.
+		expect(readDaemonRecord(webDaemonPaths(env).record)).toBeUndefined();
+		await vi.waitFor(() => expect(alive()).toBe(false), { timeout: 10_000 });
+		await handler.handler("stop", ctx);
+		expect(ctx.ui.notes.at(-1)).toEqual({ message: "No web daemon is running.", type: "info" });
 	});
 });

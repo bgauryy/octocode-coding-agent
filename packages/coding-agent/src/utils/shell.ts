@@ -2,7 +2,7 @@ import { spawnRegistered } from "./registered-spawn.ts";
 import { accessSync, constants } from "node:fs";
 import { delimiter, join, win32 } from "node:path";
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { findEnvKeys } from "@octocodeai/octocode-ai/compat";
+import { findEnvKeys, PROVIDER_TOKEN_ENV_VARS } from "@octocodeai/octocode-ai/compat";
 import { processLifetime } from "@octocodeai/octocode-common/process-lifetime";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { builtinProviders } from "@octocodeai/octocode-ai/providers/all";
@@ -276,7 +276,8 @@ export function setShellKeepsProviderKeys(keep: boolean): void {
 /**
  * The environment every shell command starts from: this process's, with the `setShellPathEntries` folders and then
  * Octocode's `bin` first on the path, and without the
- * provider API keys it found, including those custom providers in `models.json` name (`bash.inheritProviderKeys` keeps them). A command's output reaches the model and a build
+ * provider API keys it found, including those custom providers in `models.json` name, and provider tokens that are no API
+ * key (`PROVIDER_TOKEN_ENV_VARS`: Bedrock's bearer token) (`bash.inheritProviderKeys` keeps them). A command's output reaches the model and a build
  * script reads its environment, while the session itself already holds what it needs. Same-user `auth.json` reads remain
  * possible, so this is defence in depth, as `web-daemon/spawn-env.ts` is for the daemon and the MCP transport's filter for
  * servers. A tool's own token (`GH_TOKEN`) is the user's tool working, and stays.
@@ -289,7 +290,7 @@ export function getShellEnv(): NodeJS.ProcessEnv {
 	const updatedPath = [...missing, currentPath].filter(Boolean).join(delimiter);
 
 	const env: NodeJS.ProcessEnv = { ...process.env, [pathKey]: updatedPath };
-	if (!keepProviderKeys) for (const name of providerKeyNames(env)) delete env[name];
+	if (!keepProviderKeys) for (const name of [...providerKeyNames(env), ...PROVIDER_TOKEN_ENV_VARS]) delete env[name];
 	return env;
 }
 

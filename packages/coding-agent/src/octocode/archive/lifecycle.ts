@@ -8,7 +8,7 @@ import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { notify } from "../shared/commands.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
-import { projectAgents } from "./projection.ts";
+import { ForeignViewError, projectAgents, viewSignature } from "./projection.ts";
 import { saveCompaction, writeSummaryLibrary } from "./summaries.ts";
 
 /** How long to wait before projecting again while another process rewrites the view, and how many times. */
@@ -25,7 +25,8 @@ export function registerArchiveLifecycle(
 	},
 ): () => void {
 	let unsubscribe: (() => void) | undefined;
-	let lastProblem: string | undefined;
+	/** Each distinct problem warns once per session. */
+	const reported = new Set<string>();
 	let retry: ReturnType<typeof setTimeout> | undefined;
 	let queued: { timer: ReturnType<typeof setImmediate>; project: () => Promise<void> } | undefined;
 	/** Moves at each session start and stop: a projection of an ended session schedules no retry. */
@@ -60,13 +61,14 @@ export function registerArchiveLifecycle(
 	const report = (ctx: FeatureContext, error: unknown) => {
 		if (!live(ctx)) return;
 		const message = `Archive persistence: ${errorMessage(error)}`;
-		if (message === lastProblem) return;
-		lastProblem = message;
+		if (reported.has(message)) return;
+		reported.add(message);
 		if (ctx.hasUI) notify(ctx.ui, message, "warning");
 		else process.stderr.write(`${message}\n`);
 	};
 	api.bus.on("session_start", async (event, ctx) => {
 		stop();
+		reported.clear();
 		const id = activate(ctx.sessionManager, event);
 		const file = ctx.sessionManager.getSessionFile();
 		if (!file) return;
@@ -74,6 +76,8 @@ export function registerArchiveLifecycle(
 			const agent = sharedAgentDb();
 			const workspace = registeredWorkspace(ctx.cwd, agent);
 			let busy = 0;
+			/** The view file as it was when it proved unusable: no projection until it changes. */
+			let foreign: { file: string; signature: string | undefined } | undefined;
 			let projectedSequence: number | undefined;
 			// At most one projection writes at a time; a request meanwhile runs once after it, with the newest events.
 			let running: Promise<void> | undefined;
@@ -81,11 +85,13 @@ export function registerArchiveLifecycle(
 			const run = (): Promise<void> => {
 				running = (async () => {
 					try {
+						if (foreign && (await viewSignature(foreign.file)) === foreign.signature) return;
+						foreign = undefined;
 						const sequence = agentEvents.latestSequence(agent.db, workspace.id);
 						if (sequence === projectedSequence) return;
 						await projectAgents(agent, workspace.root, workspace);
 						projectedSequence = sequence;
-						lastProblem = undefined;
+						reported.clear();
 						busy = 0;
 					} catch (error) {
 						// The session ended or was replaced while this ran (its last projection runs at stop): its ctx is stale
@@ -102,6 +108,10 @@ export function registerArchiveLifecycle(
 							retry.unref?.();
 							return;
 						}
+						if (error instanceof ForeignViewError)
+							foreign = { file: error.file, signature: await viewSignature(error.file) };
+						// A lock that never frees warns once; later commits get a fresh quiet retry budget.
+						else busy = 0;
 						report(ctx, error);
 					}
 				})().finally(() => {

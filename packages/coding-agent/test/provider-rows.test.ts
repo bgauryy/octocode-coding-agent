@@ -49,7 +49,9 @@ describe("provider row sources", () => {
 		const file = join(getAgentDir(), "models.json");
 		const detail = (await rowFor({ status: { configured: true, source: "models_json_key" }, file })).detail;
 		expect(detail).toContain(`apiKey in ${homeTilde(file)}`);
-		expect(detail).toContain(`defined in ${homeTilde(file)}`);
+		// The key's file is the definition file: the path is named once (it wraps on a narrow page).
+		expect(detail).toContain(`apiKey in ${homeTilde(file)} · defined there`);
+		expect(detail?.split(homeTilde(file))).toHaveLength(2);
 	});
 
 	it("says built-in and names the auth file, keychain or variable", async () => {
@@ -102,7 +104,7 @@ describe("provider row sources", () => {
 
 	it("puts a disabled provider under Off", async () => {
 		const row = await rowFor({ status: { configured: true, source: "environment", label: "K" }, disabled: true });
-		expect(row.badge).toBe("○ off");
+		expect(row.badge).toBe("∅ off");
 		expect(row.keys).toEqual({ e: "enable" });
 	});
 
@@ -115,5 +117,10 @@ describe("provider row sources", () => {
 		const { groups } = await groupsFor({ status: { configured: false, source: "none" } as never, saved: false });
 		expect(groups.available.map((row) => row.name)).toEqual(["P"]);
 		expect([...groups.ready, ...groups.attention, ...groups.off]).toEqual([]);
+		// Nobody set it up, so nothing needs action: no warning badge and no legend entry.
+		expect(groups.available[0]?.badge).toBeUndefined();
+		expect(groups.states).toEqual([]);
+		// Every Available row needs a key (its group says so): the row names only its next step, not `needs key` again.
+		expect(groups.available[0]?.detail).toBe("add a key, or set its environment variable");
 	});
 });

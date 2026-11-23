@@ -1,6 +1,6 @@
 import type { ProviderPlan } from "@octocodeai/octocode-ai";
 import { clampThinkingLevel } from "@octocodeai/octocode-ai/compat";
-import type { Catalog } from "./catalog.ts";
+import type { Catalog } from "../../core/model-catalog/index-shape.ts";
 import { closeModels } from "./close-models.ts";
 import { type ConfiguredModels, settingKey } from "./configured-models.ts";
 import { routeThinking, THINKING_LEVELS, thinkingSuffix, withThinking } from "../render/route-thinking.ts";

@@ -1,6 +1,8 @@
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
+import { KIND_WORDS } from "./report.ts";
 import type { GateResult } from "./store.ts";
 import type { Review, ReviewKind } from "./types.ts";
+import { visible } from "./visible.ts";
 
 /**
  * What the loaders found this process, kind by kind: the reviews `/security`, `/harness` and the web list without loading
@@ -46,7 +48,8 @@ export function isWithheld(review: Review): boolean {
  */
 export function guardNotices(): Array<{ text: string; level: "info" | "warning" }> {
 	const states = [...found.values()];
-	const off = knownReviews().filter(isWithheld).length;
+	const withheld = knownReviews().filter(isWithheld);
+	const off = withheld.length;
 	const imported = states.reduce((sum, state) => sum + state.result.imported, 0);
 	const notices: Array<{ text: string; level: "info" | "warning" }> = [];
 	for (const state of states) if (state.result.warning) notices.push({ text: state.result.warning, level: "warning" });
@@ -57,10 +60,20 @@ export function guardNotices(): Array<{ text: string; level: "info" | "warning" 
 		});
 	if (off)
 		notices.push({
-			text: `${off} item${off === 1 ? " is" : "s are"} off until you check ${off === 1 ? "it" : "them"}: /security`,
+			text: `${off} item${off === 1 ? " is" : "s are"} off until you check ${off === 1 ? "it" : "them"} in /security: ${withheldNames(withheld)}`,
 			level: "warning",
 		});
 	return notices;
+}
+
+/** How many withheld items the start-up line names; the rest are counted. */
+const NAMED_OFF = 3;
+
+/** `MCP server demo, skill lint and 2 more`: the first withheld items by kind and name, so the line says what is off. */
+function withheldNames(reviews: readonly Review[]): string {
+	const names = reviews.slice(0, NAMED_OFF).map(({ item }) => `${KIND_WORDS[item.kind]} ${visible(item.label)}`);
+	const more = reviews.length - names.length;
+	return more > 0 ? `${names.join(", ")} and ${more} more` : names.join(", ");
 }
 
 /** Forgets everything recorded (tests). */

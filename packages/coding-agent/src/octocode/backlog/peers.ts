@@ -79,7 +79,7 @@ export function startBacklogFeed(
 		now: Date.now,
 	});
 	const bus = new BacklogBus({
-		head: () => backlogQueries.snapshot(db(), backlog.store.repo).cursor,
+		head: () => backlogQueries.cursor(db(), backlog.store.repo),
 		after: (cursor, limit) => backlogQueries.auditAfter(db(), backlog.store.repo, cursor, limit),
 		follow: (poke) => follower.subscribe(poke),
 		own: (by) => by === me.session || by === me.agent,

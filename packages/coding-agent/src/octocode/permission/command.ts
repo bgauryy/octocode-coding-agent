@@ -87,7 +87,7 @@ export function registerPermissionCommand(
 ): void {
 	const select = async (mode: PermissionMode, ctx: FeatureContext): Promise<void> => {
 		if (!(await permission.chooseMode(mode, ctx))) return say(ctx, `Permission mode stays ${permission.mode}.`);
-		if (!ctx.hasUI) say(ctx, `Permission mode: ${mode}. ${modeSummary(mode)}`);
+		if (!ctx.hasUI) say(ctx, `Permission mode: ${mode} — ${modeSummary(mode)}`);
 	};
 
 	const handle = async (args: string, ctx: CommandContext): Promise<void> => {

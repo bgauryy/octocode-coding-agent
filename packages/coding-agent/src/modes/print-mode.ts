@@ -97,10 +97,14 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 				},
 			},
 			onError: (err) => {
-				// A command that failed is what this run was asked to do; a feature's handler failing on an event fails open.
+				// A command that failed, or a message one sent that could not go out (`/plan add ...` with no model), is what
+				// this run was asked to do; a feature's handler failing on an event fails open.
 				if (err.event === "command") {
 					exitCode = 1;
 					console.error(`Command ${err.source.replace(/^command:/, "/")} failed: ${err.error}`);
+				} else if (err.event === "send_message" || err.event === "send_user_message") {
+					exitCode = 1;
+					console.error(err.error);
 				} else console.error(`Feature error (${err.source}): ${err.error}`);
 			},
 		});
@@ -144,7 +148,8 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 		const reason = (outcome: RunOutcome): string =>
 			outcome.status === "truncated"
 				? outcome.errorMessage || "Response was truncated: the model reached its output token limit."
-				: outcome.errorMessage || `Request ${outcome.stopReason ?? outcome.status}`;
+				: // A provider failure names what failed and where, as the retry lines above it do.
+					outcome.failureText || outcome.errorMessage || `Request ${outcome.stopReason ?? outcome.status}`;
 		const reported = new WeakSet<RunOutcome>();
 		const report = (outcome: RunOutcome | undefined, show: boolean): void => {
 			if (!outcome || outcome.status === "completed") return;

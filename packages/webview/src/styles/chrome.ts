@@ -55,8 +55,10 @@ select { min-height: 34px; padding: 4px 28px 4px 10px; font-size: var(--fs-sm); 
 .state-mark { flex-shrink: 0; color: var(--mark, currentColor); vertical-align: -2px; }
 .mark-pending { --mark: var(--state-pending); } .mark-running { --mark: var(--state-running); } .mark-waiting { --mark: var(--state-waiting); }
 .mark-done { --mark: var(--state-done); } .mark-failed { --mark: var(--state-failed); } .mark-stopped { --mark: var(--state-failed); }
-.badge.tone-warning .mark-running { --mark: var(--warning); }
-.mark-spinner { transform-origin: 7px 7px; animation: spin .8s steps(4) infinite; }
+.badge.tone-warning .mark-running { --mark: var(--warning); } .badge.tone-success .mark-running { --mark: var(--success); }
+.mark-track { opacity: .3; } .mark-still { display: none; }
+.mark-spinner { transform-origin: 7px 7px; animation: spin .8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .mark-running .mark-track, .mark-running .mark-spinner { display: none; } .mark-running .mark-still { display: inline; } }
 .mark-waiting { animation: breathe 2s ease-in-out 2; }
 @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }

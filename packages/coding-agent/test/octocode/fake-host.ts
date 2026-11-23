@@ -341,6 +341,7 @@ export function fakeCtx(options: {
 			| "allowsUnattendedUse"
 		>,
 		getContextUsage: () => undefined,
+		getCacheWarmingReport: () => [],
 	} as never;
 }
 

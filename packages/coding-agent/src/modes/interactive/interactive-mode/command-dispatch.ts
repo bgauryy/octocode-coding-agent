@@ -14,6 +14,7 @@ import { handleInputDuringCompaction } from "./message-queue.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { handleForkLaunchCommand } from "./fork-launch.ts";
 import { unknownCommandWarning } from "./command-suggestion.ts";
+import { mouseCommand } from "./mouse-command.ts";
 import {
 	argumentWordRefusal,
 	clearRefused,
@@ -24,7 +25,7 @@ import {
 } from "./refused-input.ts";
 import { interruptKey } from "../../../theme/theme-tui-helpers.ts";
 import { isViewportTUI } from "@octocodeai/octocode-tui";
-import { showNextStep } from "./next-step-hint.ts";
+import { hintAfterRun } from "./next-step-hint.ts";
 import { showFooterStatusReport } from "./footer-status-report.ts";
 
 /** Interactive-mode members used by the editor submit handler and command dispatch. */
@@ -58,8 +59,6 @@ type CommandDispatchHost = ConfigurationHost &
 		| "handleShareCommand"
 		| "handleThinkingCommand"
 		| "isFeatureCommand"
-		| "onInputCallback"
-		| "pendingUserInputs"
 		| "queueCompactionMessage"
 		| "queueInteractiveMessage"
 		| "runtimeHost"
@@ -244,6 +243,9 @@ export async function runBuiltinCommand(host: CommandDispatchHost, name: string,
 			if (isViewportTUI(host.ui)) host.ui.openSearch();
 			else host.showWarning("Transcript search needs fullscreen mode (/settings, or start with fullscreen enabled).");
 			return;
+		case "mouse":
+			mouseCommand(host, args.trim());
+			return;
 		case "fork":
 			if (args.trim()) await handleForkLaunchCommand(host, args);
 			else host.showUserMessageSelector();
@@ -338,10 +340,14 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 		if (refusal) return handleRefused(input, text, refusal);
 		clearRefused(input);
 		if (builtin) {
-			host.editor.setText("");
+			const { editor } = host;
+			editor.setText("");
+			// Up recalls a built-in like any other submitted line (feature commands reach history through the prompt).
+			editor.addToHistory?.(text);
+			const hint = hintAfterRun(host);
 			try {
 				await runBuiltinCommand(host, builtin.name, parsed.args);
-				showNextStep(host, builtin.name, parsed.args);
+				hint(builtin.name, parsed.args);
 			} catch (error) {
 				host.showError(errorMessage(error));
 			}
@@ -377,11 +383,7 @@ export function setupEditorSubmitHandler(host: CommandDispatchHost): void {
 		// A run can take seconds to start (pasted images are resized first): show it is working from Enter on.
 		const { activeStatusIndicator } = host;
 		if (!activeStatusIndicator) host.showWorkingStatusIndicator();
-		if (host.onInputCallback) {
-			host.onInputCallback(text);
-		} else {
-			host.pendingUserInputs.push(text);
-		}
+		host.uiStore.getState().submitInput(text);
 		host.editor.addToHistory?.(text);
 	};
 }

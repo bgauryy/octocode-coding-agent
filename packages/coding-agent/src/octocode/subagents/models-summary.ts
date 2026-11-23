@@ -3,7 +3,7 @@ import { deriveAgentRoute } from "@octocodeai/octocode-contracts/config";
 import type { ProviderKind } from "../../core/model-runtime/catalog.ts";
 import { credentialSourceLabel } from "../../core/provider-composer/types.ts";
 import type { FeatureContext } from "../../core/features/index.ts";
-import type { Catalog } from "./catalog.ts";
+import type { Catalog } from "../../core/model-catalog/index-shape.ts";
 import { type ModelRef } from "./model.ts";
 import { modelLine, modelCost, priceRank, priceText } from "./models-command.ts";
 import { describeHealth, providerHealth } from "./provider-health.ts";

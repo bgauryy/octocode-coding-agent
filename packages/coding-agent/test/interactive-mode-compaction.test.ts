@@ -16,6 +16,7 @@ import {
 import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 import { createFakeHost, heldStore, renderPendingMessages } from "./interactive-mode-host.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
 /** Accepts the partial events these tests send. */
 const handleEvent = agentEvents.handleEvent as (host: object, event: object) => Promise<void>;
@@ -136,7 +137,7 @@ describe("InteractiveMode compaction events", () => {
 			usage,
 		};
 		const fakeThis = {
-			isInitialized: true,
+			uiStore: createUiStore({ lifecycle: { initialized: true } }),
 			programStatus: { handleEvent: vi.fn(), setPhase: vi.fn() },
 			autoCompactionEscapeHandler: undefined as (() => void) | undefined,
 			autoCompactionLoader: undefined,
@@ -209,7 +210,7 @@ describe("InteractiveMode compaction events", () => {
 
 	test("shows the working indicator when the same agent run resumes after compaction", async () => {
 		const fakeThis = {
-			isInitialized: true,
+			uiStore: createUiStore({ lifecycle: { initialized: true } }),
 			programStatus: { handleEvent: vi.fn(), setPhase: vi.fn() },
 			activeStatusIndicator: undefined,
 			showWorkingStatusIndicator: vi.fn(),

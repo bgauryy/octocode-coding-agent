@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { grantFolder } from "../../coding-agent/src/octocode/trust/grants.ts";
 import { approveFixtureMcp } from "../../coding-agent/test/octocode/guard-helpers.ts";
 import { runMcpCommand } from "../src/cli.ts";
@@ -12,6 +12,8 @@ import { presetEntries } from "../src/preset.ts";
 import type { McpServerPreset } from "../src/preset.ts";
 
 const FIXTURE = resolve(import.meta.dirname, "./client/fixtures/stdio-server.mjs");
+/** What `mcp add` writes besides the definition: a new server is saved off and unassigned. */
+const off = { enabled: false, defaultActive: false };
 
 describe("octocode mcp", () => {
 	const dirs: string[] = [];
@@ -67,12 +69,14 @@ describe("octocode mcp", () => {
 		writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { octocode: { enabled: false } } }));
 		output.length = 0;
 		expect(await runMcpCommand(["list", "--json"], options)).toBe(0);
+		// In the order of the `/mcp` page (`compareServerOrder`): switched-on servers first, then by name. FreeLlama is
+		// off by default (`enabledByDefault: false`).
 		expect(JSON.parse(output.join("\n")).servers).toMatchObject([
-			{ name: "octocode", state: "disabled", scope: "default" },
-			{ name: "freellama", scope: "default" },
 			{ name: "browser", scope: "default" },
 			// Disabled for every test (`vitest.config.ts`): a developer's installed Cua Driver is never started.
 			{ name: "desktop", state: "disabled", scope: "default" },
+			{ name: "freellama", state: "disabled", scope: "default" },
+			{ name: "octocode", state: "disabled", scope: "default" },
 		]);
 	});
 
@@ -94,8 +98,9 @@ describe("octocode mcp", () => {
 		expect(existsSync(join(agentDir, "mcp.json"))).toBe(false);
 	});
 
-	it("lists servers with their state, tools, and errors, and fails while anything is wrong", async () => {
-		const { exitCode, output, agentDir } = await run(["list"], servers);
+	// `--check` connects: `list` alone reads the configuration (O12: a server's start can start an app that keeps running).
+	it("lists servers with their state, tools, and errors with --check, and fails while anything is wrong", async () => {
+		const { exitCode, output, agentDir } = await run(["list", "--check"], servers);
 		expect(exitCode).toBe(1);
 		expect(output).toContain("fixture: connected, 1 tool (direct, global) · enabled\n");
 		expect(output).toContain("  tools: echo");
@@ -106,11 +111,67 @@ describe("octocode mcp", () => {
 		expect(output).toContain("config error: ");
 		expect(output).toContain('server "bad" needs either "command"');
 
-		const ok = await run(["list"], { fixture: servers.fixture });
+		const ok = await run(["list", "--check"], { fixture: servers.fixture });
 		expect(ok.exitCode).toBe(0);
 	});
 
-	it("lists a server that waits for approval as enabled with state not checked, and does not start it", async () => {
+	it("lists from the configuration without starting a server unless --check asks (O12)", async () => {
+		const agentDir = mkdtempSync(join(tmpdir(), "octocode-mcp-command-"));
+		dirs.push(agentDir);
+		const marker = join(agentDir, "started");
+		const starts = {
+			command: process.execPath,
+			args: ["-e", `require("fs").writeFileSync(${JSON.stringify(marker)}, "1")`],
+		};
+		const { exitCode, output } = await run(
+			["list"],
+			{ starts, broken: servers.broken, parked: servers.parked },
+			agentDir,
+		);
+		expect(existsSync(marker)).toBe(false);
+		// Nothing was tried, so nothing failed: only configuration errors fail a plain listing.
+		expect(exitCode).toBe(0);
+		expect(output).toContain("starts: not connected (direct, global) · enabled\n");
+		expect(output).toContain("broken: not connected (direct, global) · enabled\n");
+		expect(output).toContain("parked: disabled (direct, global)");
+		expect(output).toContain("mcp list --check connects them");
+		const checked = await run(["list", "--check"], { starts }, agentDir);
+		expect(existsSync(marker)).toBe(true);
+		expect(checked.exitCode).toBe(1);
+	});
+
+	it("connects a server whose start starts more only when the command names it (O12)", async () => {
+		const agentDir = mkdtempSync(join(tmpdir(), "octocode-mcp-command-"));
+		dirs.push(agentDir);
+		const marker = join(agentDir, "app-started");
+		const app = {
+			name: "app",
+			config: {
+				command: process.execPath,
+				args: ["-e", `require("fs").writeFileSync(${JSON.stringify(marker)}, "1")`],
+			},
+			startsOutsideServer: "Starting it starts an app",
+		};
+		const output: string[] = [];
+		const options = {
+			presets: [app],
+			cwd: agentDir,
+			agentDir,
+			log: (line: string) => output.push(line),
+			error: (line: string) => output.push(line),
+		};
+		for (const args of [["list", "--check"], ["tools"]]) {
+			output.length = 0;
+			expect(await runMcpCommand(args, options)).toBe(0);
+			expect(output.join("\n")).toContain("app: not checked (direct, default) · enabled");
+			expect(output.join("\n")).toContain("Starting it starts an app; check it with: octocode mcp tools app");
+		}
+		expect(existsSync(marker)).toBe(false);
+		expect(await runMcpCommand(["tools", "app"], options)).toBe(1);
+		expect(existsSync(marker)).toBe(true);
+	});
+
+	it("lists a server that waits for approval as off until approved, and does not start it", async () => {
 		const agentDir = mkdtempSync(join(tmpdir(), "octocode-mcp-command-"));
 		dirs.push(agentDir);
 		const marker = join(agentDir, "started");
@@ -133,7 +194,10 @@ describe("octocode mcp", () => {
 			log: (line) => output.push(line),
 			error: (line) => output.push(line),
 		});
-		expect(output.join("\n")).toContain("waiting: not checked (direct, global) · enabled\n");
+		// Worded as `/mcp` and `/mcp list` word it: off until approved, with no "enabled" beside it (its switch is on).
+		expect(output.join("\n")).toContain(
+			"waiting: not checked: off until you approve it in /security (direct, global)\n",
+		);
 		expect(existsSync(marker)).toBe(false);
 		expect(exitCode).toBe(0);
 	});
@@ -152,7 +216,7 @@ describe("octocode mcp", () => {
 		writeFileSync(join(agentDir, "auth.json"), JSON.stringify({ anthropic: { type: "api_key", key: "stored-token" } }));
 		try {
 			const result = await run(
-				["list", "--json"],
+				["list", "--check", "--json"],
 				{ gateway: { url: `http://127.0.0.1:${port}/mcp`, auth: { provider: "anthropic" } } },
 				agentDir,
 			);
@@ -166,7 +230,7 @@ describe("octocode mcp", () => {
 
 	it("launches a replacement of the default server with the roots the default's template gives it", async () => {
 		const result = await run(
-			["list", "--json"],
+			["list", "--check", "--json"],
 			{
 				octocode: {
 					command: process.execPath,
@@ -181,7 +245,10 @@ describe("octocode mcp", () => {
 	});
 
 	it("prints JSON for scripts", async () => {
-		const { exitCode, output } = await run(["list", "--json"], { fixture: servers.fixture, parked: servers.parked });
+		const { exitCode, output } = await run(["list", "--check", "--json"], {
+			fixture: servers.fixture,
+			parked: servers.parked,
+		});
 		expect(exitCode).toBe(0);
 		const parsed = JSON.parse(output) as { servers: { name: string; state: string; tools: string[] }[] };
 		expect(parsed.servers.map(({ name, state, tools }) => ({ name, state, tools }))).toEqual([
@@ -284,24 +351,77 @@ describe("octocode mcp", () => {
 		expect(result.exitCode).toBe(0);
 	});
 
+	it("saves a new server off and unassigned, as Add MCP does, and says how to approve and switch it on", async () => {
+		const added = await run(["add", "demo", "--", "node", "-e", "setInterval(()=>{},1e9)"], undefined);
+		expect(added.exitCode).toBe(0);
+		expect(readConfig(join(added.agentDir, "mcp.json"))).toEqual({
+			mcpServers: {
+				demo: { command: "node", args: ["-e", "setInterval(()=>{},1e9)"], enabled: false, defaultActive: false },
+			},
+		});
+		expect(added.output).toContain('Saved global MCP server "demo" off and unassigned');
+		expect(added.output).toContain("security approve mcp:demo");
+		expect(added.output).toContain("configuration enable mcp:demo");
+	});
+
+	it("keeps a server added before the security review first ran out of its one-time import of older servers", async () => {
+		// A fresh home: its own agent database, which no security check has seen yet.
+		const agentDir = mkdtempSync(join(tmpdir(), "octocode-mcp-fresh-"));
+		dirs.push(agentDir);
+		vi.stubEnv("OCTOCODE_AGENT_DB", join(agentDir, "state", "workspaces.db"));
+		try {
+			const marker = join(agentDir, "started");
+			const options = {
+				presets: [{ ...defaultPreset(), config: undefined }],
+				cwd: agentDir,
+				agentDir,
+				log: () => {},
+				error: () => {},
+			};
+			const script = `require("fs").writeFileSync(${JSON.stringify(marker)}, "1")`;
+			expect(await runMcpCommand(["add", "demo", "--", process.execPath, "-e", script], options)).toBe(0);
+			// The first check (as a session's start runs it): the new server is not checked, not imported as approved.
+			const output: string[] = [];
+			expect(await runMcpCommand(["list", "--check"], { ...options, log: (line) => output.push(line) })).toBe(0);
+			expect(output.find((line) => line.startsWith("demo:"))).toMatch(/^demo: not checked: off until you approve it/);
+			expect(existsSync(marker)).toBe(false);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it("lists a server the security review holds back as off until approved, not as enabled", async () => {
+		const { agentDir } = await run(["list"], { fixture: servers.fixture });
+		// Added after the review approved the others: the review holds it back.
+		writeFileSync(
+			join(agentDir, "mcp.json"),
+			JSON.stringify({ mcpServers: { fixture: servers.fixture, demo: { command: "node", args: ["-e", "0"] } } }),
+		);
+		const listed = await run(["list"], undefined, agentDir);
+		const line = listed.output.split("\n").find((row) => row.startsWith("demo:"));
+		expect(line).toMatch(/^demo: not checked: off until you approve it in \/security \(\w+, global\)$/);
+	});
+
 	it("adds stdio servers and passes options after the command through", async () => {
 		const added = await run(
 			["add", "--env", "A=1", "--env", "B=x=y", "files", "--", "npx", "-y", "server", "--root", "."],
 			undefined,
 		);
 		expect(added.exitCode).toBe(0);
-		expect(added.output).toContain('Added global MCP server "files"');
+		expect(added.output).toContain('Saved global MCP server "files" off and unassigned');
+		// Saved off and unassigned (`off`), as mcp.md says of every new definition; the gate keeps it off until approved.
 		expect(readConfig(join(added.agentDir, "mcp.json"))).toEqual({
 			mcpServers: {
-				files: { command: "npx", args: ["-y", "server", "--root", "."], env: { A: "1", B: "x=y" } },
+				files: { command: "npx", args: ["-y", "server", "--root", "."], env: { A: "1", B: "x=y" }, ...off },
 			},
 		});
 
 		// Without `--`, options after the command belong to the command too.
 		const replaced = await run(["add", "files", "node", "server.js", "--port", "1"], undefined, added.agentDir);
-		expect(replaced.output).toContain('Replaced global MCP server "files"');
+		expect(replaced.output).toContain('Saved global MCP server "files" off and unassigned');
+		expect(replaced.output).toContain("(replacing the earlier one)");
 		expect(readConfig(join(added.agentDir, "mcp.json"))).toEqual({
-			mcpServers: { files: { command: "node", args: ["server.js", "--port", "1"] } },
+			mcpServers: { files: { command: "node", args: ["server.js", "--port", "1"], ...off } },
 		});
 	});
 
@@ -334,6 +454,7 @@ describe("octocode mcp", () => {
 					headers: { "X-Team": "core", Authorization: "Bearer ${DOCS_TOKEN}" },
 					exposure: "direct",
 					description: "Product docs",
+					...off,
 				},
 			},
 		});
@@ -380,7 +501,9 @@ describe("octocode mcp", () => {
 		const added = await run(["add", "-l", "local", "--", "node", "server.js"], undefined);
 		expect(added.output).toContain("The folder is not trusted");
 		const projectConfig = join(added.agentDir, ".octocode", "mcp.json");
-		expect(readConfig(projectConfig)).toEqual({ mcpServers: { local: { command: "node", args: ["server.js"] } } });
+		expect(readConfig(projectConfig)).toEqual({
+			mcpServers: { local: { command: "node", args: ["server.js"], ...off } },
+		});
 
 		const wrongScope = await run(["remove", "local"], undefined, added.agentDir);
 		expect(wrongScope.exitCode).toBe(1);

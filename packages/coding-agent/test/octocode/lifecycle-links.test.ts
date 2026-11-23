@@ -112,6 +112,25 @@ describe("the text of /agents", () => {
 	});
 });
 
+describe("recent runs that have not ended", () => {
+	const run = (agentId: string, kind: "main" | "child") =>
+		({ agentId, kind, profile: undefined, startedAt: 0, endedAt: undefined, cost: 0, unpriced: false }) as never;
+
+	it("say what a live agent is doing in the light's words, so an idle main session never reads running", () => {
+		const words: Record<string, string> = { "main-aaaa": "idle", "kid-0001": "needs you" };
+		const text = recentRunsText(
+			[run("main-aaaa", "main"), run("kid-0001", "child"), run("gone-0002", "child")],
+			1000,
+			(r) => words[r.agentId],
+		);
+		expect(text).toContain("main-aaaa (main) idle ·");
+		expect(text).toContain("kid-0001 (child) needs you ·");
+		// A run nothing live answers for keeps the run record's word.
+		expect(text).toContain("gone-0002 (child) running ·");
+		expect(text).not.toContain("main-aaaa (main) running");
+	});
+});
+
 describe("the AgentOn and AgentOff input, with what the run recorded", () => {
 	const notice = (extra: Partial<AgentLifecycleNotice> = {}): AgentLifecycleNotice => ({
 		seq: 5,

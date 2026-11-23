@@ -121,6 +121,44 @@ describe("model selector", () => {
 		expect(select).toHaveBeenCalledWith(harness.getModel("model-14"));
 	});
 
+	it("marks a model models.dev added as new and dims a deprecated one, with the word beside it", async () => {
+		harness = await createHarness({
+			models: [
+				{ id: "added-model", name: "Added" },
+				{ id: "old-model", name: "Old" },
+				{ id: "plain-model", name: "Plain" },
+			],
+		});
+		const runtime = harness.session.modelRuntime;
+		vi.spyOn(runtime, "getCatalogUpdate").mockImplementation((model) =>
+			model.id === "added-model"
+				? { source: "models.dev" }
+				: model.id === "old-model"
+					? { deprecated: true }
+					: undefined,
+		);
+		vi.spyOn(runtime, "isModelDeprecated").mockImplementation((model) => model.id === "old-model");
+		vi.spyOn(runtime, "refresh").mockResolvedValue({ aborted: false, errors: new Map() });
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			harness.getModel("plain-model"),
+			runtime,
+			[],
+			vi.fn(),
+			vi.fn(),
+		);
+		const raw = selector.render(80);
+		const row = (id: string) => raw.find((line) => stripAnsi(line).includes(id)) ?? "";
+		expect(stripAnsi(row("added-model")).trimEnd()).toMatch(/added-model · new$/);
+		expect(stripAnsi(row("old-model")).trimEnd()).toMatch(/old-model · deprecated$/);
+		expect(stripAnsi(row("plain-model")).trimEnd()).toMatch(/plain-model$/);
+		// Dimmed: the deprecated id is painted in the theme's dim colour, the others are not.
+		const { theme } = await import("../src/theme/theme.ts");
+		expect(row("old-model")).toContain(theme.fg("dim", "old-model"));
+		expect(row("added-model")).not.toContain(theme.fg("dim", "added-model"));
+		selector.dispose();
+	});
+
 	it("clips Unicode model rows and their provider heading", async () => {
 		harness = await createHarness({ models: [{ id: "命令👩‍💻", name: "Unicode" }] });
 		const model = harness.getModel("命令👩‍💻")!;
@@ -190,10 +228,10 @@ describe("model selector", () => {
 		selector.handleInput("\x13");
 		expect(saveDefault).not.toHaveBeenCalled();
 		selector.handleInput("\x12");
-		expect(saveDefault).toHaveBeenCalledWith(currentModel);
+		expect(saveDefault).toHaveBeenCalledWith(currentModel, "both");
 	});
 
-	it("saves the highlighted row as default only with the save key", async () => {
+	it("switches to the highlighted row and saves it as default only with the save key", async () => {
 		harness = await createHarness({
 			models: [
 				{ id: "alpha-model", name: "Alpha", reasoning: true },
@@ -212,12 +250,13 @@ describe("model selector", () => {
 			saveDefault,
 		);
 		expect(stripAnsi(selector.render(120).join("\n"))).toContain(
-			`enter select · ctrl+s set default · ${keyText("app.models.details")} details · esc/ctrl+c cancel`,
+			`enter switch · ctrl+s set default · ${keyText("app.models.details")} details · esc/ctrl+c cancel`,
 		);
 		selector.handleInput("\x1b[B");
 		selector.handleInput("\x13");
 		expect(saveDefault).toHaveBeenCalledTimes(1);
 		expect(saveDefault.mock.calls[0][0].id).toBe("beta-model");
+		expect(saveDefault.mock.calls[0][1]).toBe("both");
 	});
 
 	it("treats a bare d as filter text, also from an empty filter", async () => {
@@ -365,16 +404,20 @@ describe("model selector", () => {
 			vi.fn(),
 			vi.fn(),
 		);
-		expect(stripAnsi(selector.render(120).join("\n"))).toContain("plan billing");
+		// The compact line says "billed by plan", as the details and /providers do (was "plan billing").
+		expect(stripAnsi(selector.render(120).join("\n"))).toContain("billed by plan");
 		selector.handleInput("\x1bi");
 		expect(stripAnsi(selector.render(120).join("\n"))).toContain("Billing: billed by plan");
-		expect(stripAnsi(selector.render(120).join("\n"))).not.toContain("Billing: metered");
+		expect(stripAnsi(selector.render(120).join("\n"))).not.toContain("Billing: billed per token");
 		selector.dispose();
 	});
 
 	describe("Enter with a default callback", () => {
 		const ENTER = "\r";
 		const DOWN = "\x1b[B";
+		const SAVE = "\x13";
+		const PREFER = "\x10";
+		const DETAILS = "\x1bi";
 		const open = async (withDefault = true) => {
 			harness = await createHarness({
 				models: [
@@ -391,49 +434,53 @@ describe("model selector", () => {
 				(m) => calls.push(`chat:${m.id}`),
 				() => calls.push("cancel"),
 				undefined,
-				withDefault ? (m, choice = "default") => calls.push(`${choice}:${m.id}`) : undefined,
+				withDefault ? (m, save) => calls.push(`${save}:${m.id}`) : undefined,
 			);
 			selector.handleInput(DOWN);
-			selector.handleInput(ENTER);
 			return { selector, calls };
 		};
 		const screen = (selector: ModelSelectorComponent) => stripAnsi(selector.render(120).join("\n"));
 
-		it("asks first and switches this chat by default", async () => {
+		it("switches this chat at once, with no question", async () => {
 			const { selector, calls } = await open();
-			expect(calls).toEqual([]);
-			expect(screen(selector)).toContain("Switch this chat");
-			expect(screen(selector)).toContain("Set as default for new chats");
+			selector.handleInput(ENTER);
+			expect(calls).toEqual(["chat:beta-model"]);
+			expect(screen(selector)).not.toContain("Switch this chat");
 			selector.handleInput(ENTER);
 			expect(calls).toEqual(["chat:beta-model"]);
 		});
 
-		it("sets the default only", async () => {
+		it("switches and saves the default with the save key", async () => {
 			const { selector, calls } = await open();
-			selector.handleInput(DOWN);
-			selector.handleInput(ENTER);
-			expect(calls).toEqual(["default:beta-model"]);
-		});
-
-		it("requests a single switch-and-save operation", async () => {
-			const { selector, calls } = await open();
-			selector.handleInput(DOWN);
-			selector.handleInput(DOWN);
-			selector.handleInput(ENTER);
+			selector.handleInput(SAVE);
 			expect(calls).toEqual(["both:beta-model"]);
 		});
 
-		it("returns to the list on escape, and a second escape closes the picker", async () => {
+		it("offers the provider's preferred model only while the details are open", async () => {
 			const { selector, calls } = await open();
-			selector.handleInput("\x1b");
+			selector.handleInput(PREFER);
 			expect(calls).toEqual([]);
-			expect(screen(selector)).not.toContain("Switch this chat");
+			expect(screen(selector)).not.toContain("preferred model");
+			selector.handleInput(DETAILS);
+			expect(screen(selector)).toContain(`${keyText("app.models.preferred")} set as this provider’s preferred model`);
+			selector.handleInput(PREFER);
+			expect(calls).toEqual(["provider:beta-model"]);
+		});
+
+		it("closes on escape", async () => {
+			const { selector, calls } = await open();
 			selector.handleInput("\x1b");
 			expect(calls).toEqual(["cancel"]);
 		});
 
-		it("switches immediately without a default callback", async () => {
-			const { calls } = await open(false);
+		it("switches immediately without a default callback, and the save keys do nothing", async () => {
+			const { selector, calls } = await open(false);
+			selector.handleInput(SAVE);
+			selector.handleInput(DETAILS);
+			selector.handleInput(PREFER);
+			expect(screen(selector)).not.toContain("preferred model");
+			expect(calls).toEqual([]);
+			selector.handleInput(ENTER);
 			expect(calls).toEqual(["chat:beta-model"]);
 		});
 	});

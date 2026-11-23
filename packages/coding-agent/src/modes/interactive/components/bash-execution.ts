@@ -4,10 +4,12 @@
  */
 
 import {
+	animationClock,
 	Container,
 	GLYPH,
 	linkPath,
 	Loader,
+	MOTION,
 	MouseRegion,
 	renderChanged,
 	Spacer,
@@ -29,6 +31,7 @@ import { OutputPreview, outcomeParts } from "./bash-execution-parts.ts";
 import { hintText, interruptKey } from "../../../theme/theme-tui-helpers.ts";
 import { STOPPED_COLOR } from "../../../octocode/render/types.ts";
 import { expandHint } from "../../../octocode/shared/text.ts";
+import { formatDuration } from "../../../utils/duration.ts";
 
 // Last lines of a user `!` command shown while collapsed: more than an agent's tool row, since the user asked for this
 // output and reads it directly.
@@ -65,6 +68,9 @@ export class BashExecutionComponent extends Container {
 	private expandable = false;
 	/** Output arrived since the last layout: rebuilt once per frame in render(), not once per streamed chunk. */
 	private layoutStale = false;
+	private readonly startedAt = Date.now();
+	/** The 1 s tick that keeps the running time current; gone once the command ends or the row leaves. */
+	private stopClock: (() => void) | undefined;
 
 	constructor(command: string, ui: TUI, excludeFromContext = false, outputPad = 1) {
 		super();
@@ -89,10 +95,26 @@ export class BashExecutionComponent extends Container {
 			ui,
 			(spinner) => theme.fg(STATE_COLOR.running, spinner),
 			(text) => theme.fg("muted", text),
-			`Running… · ${hintText([[interruptKey(), "cancel"]])}`, // Plain text for loader
+			this.runningMessage(),
+		);
+		let shown = this.runningMessage();
+		this.stopClock = animationClock.subscribe(
+			() => {
+				const next = this.runningMessage();
+				if (next === shown) return;
+				shown = next;
+				this.loader.setMessage(next);
+			},
+			{ everyMs: MOTION.tickMs, kind: "info" },
 		);
 
 		this.updateDisplay();
+	}
+
+	/** `Running… 12s · esc cancel`: the time from 1s on, as the title shows it once the command ends. */
+	private runningMessage(): string {
+		const elapsed = Date.now() - this.startedAt;
+		return `Running…${elapsed >= 1000 ? ` ${formatDuration(elapsed)}` : ""} · ${hintText([[interruptKey(), "cancel"]])}`;
 	}
 
 	/**
@@ -200,14 +222,20 @@ export class BashExecutionComponent extends Container {
 		this.fullOutputPath = fullOutputPath;
 		this.header = header;
 
-		this.loader.stop();
+		this.stopRunning();
 
 		this.updateDisplay();
 	}
 
 	/** Stops the running loader when the row leaves the transcript before the command finished. */
 	dispose(): void {
+		this.stopRunning();
+	}
+
+	private stopRunning(): void {
 		this.loader.stop();
+		this.stopClock?.();
+		this.stopClock = undefined;
 	}
 
 	/** The state of a finished command (undefined while it runs): the one source of its mark and outcome colour. */

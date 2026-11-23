@@ -41,12 +41,14 @@ import fs from "node:fs";
 import { reapWithParent } from ${JSON.stringify(treeModule)};
 const cli = spawn(process.execPath, [${JSON.stringify(stubborn(dir))}], { stdio: ["pipe", "pipe", "pipe"], detached: true });
 const watcher = reapWithParent(cli.pid);
-fs.writeFileSync(${JSON.stringify(report)}, JSON.stringify({ cli: cli.pid, watcher }));
+// Published whole by a rename: the test waits for the file, and a file it sees is the complete record.
+fs.writeFileSync(${JSON.stringify(`${report}.tmp`)}, JSON.stringify({ cli: cli.pid, watcher }));
+fs.renameSync(${JSON.stringify(`${report}.tmp`)}, ${JSON.stringify(report)});
 setInterval(() => {}, 1000);
 `,
 		);
 		const host = spawn(process.execPath, [parent], { stdio: "ignore" });
-		await until(() => fs.existsSync(report), 10_000);
+		expect(await until(() => fs.existsSync(report), 10_000)).toBe(true);
 		const { cli, watcher } = JSON.parse(fs.readFileSync(report, "utf8")) as { cli: number; watcher: number };
 		try {
 			expect(processAlive(cli)).toBe(true);

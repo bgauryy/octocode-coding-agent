@@ -68,7 +68,13 @@ describe("/settings text verbs", () => {
 	it("adds and removes an MCP server with the arguments of `octocode mcp add`", async () => {
 		expect((await run("add mcp docs -- docs-server --flag")).ok).toBe(true);
 		const file = join(sandbox.home, ".octocode", "mcp.json");
-		expect(readJson(file)?.mcpServers.docs).toEqual({ command: "docs-server", args: ["--flag"] });
+		// Saved off and unassigned, as `octocode mcp add` saves it (was: as given).
+		expect(readJson(file)?.mcpServers.docs).toEqual({
+			command: "docs-server",
+			args: ["--flag"],
+			enabled: false,
+			defaultActive: false,
+		});
 		expect((await run("add mcp web --url https://example.com/mcp --header A=b")).ok).toBe(true);
 		expect(readJson(file)?.mcpServers.web).toMatchObject({ url: "https://example.com/mcp", headers: { A: "b" } });
 		expect((await run("add mcp broken")).ok).toBe(false);

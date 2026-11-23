@@ -73,6 +73,8 @@ export interface ManagePageOptions {
 	/** Called with the row's id when the selection moves, so a page rebuilt later can reopen on it. */
 	onHighlight?(id: string): void;
 	onKey?(key: string, id: string): void;
+	/** Sees each key before the page does; true when it took the key (a page that closes on a typed `/`). */
+	onInput?(data: string): boolean;
 	onCancel(): void;
 }
 
@@ -96,7 +98,8 @@ interface Item {
 type Line = { heading: string } | { note: string };
 
 const MAX_ROWS = 14;
-const MAX_NAME_WIDTH = 24;
+/** The name column's cap: 24 columns, or a third of a wider terminal so long ids (model ids) stay aligned. */
+const nameCap = (width: number) => Math.max(24, Math.floor(width / 3));
 
 function pad(text: string, width: number): string {
 	return text + " ".repeat(Math.max(0, width - visibleWidth(text)));
@@ -136,7 +139,7 @@ export class ManagePageComponent implements Component, Focusable {
 			}
 		}
 		this.trailing = pending;
-		const nameWidth = Math.min(MAX_NAME_WIDTH, Math.max(1, ...this.selectable.map((row) => visibleWidth(row.name))));
+		const longestName = Math.max(1, ...this.selectable.map((row) => visibleWidth(row.name)));
 		this.list = new ListView<Item>({
 			items,
 			maxRows: MAX_ROWS,
@@ -149,7 +152,7 @@ export class ManagePageComponent implements Component, Focusable {
 			},
 			row: (item, { selected, width }) => [
 				...item.above.map((line) => this.renderLine(line, width)),
-				...this.renderRow(item.row, width, nameWidth, selected),
+				...this.renderRow(item.row, width, Math.min(nameCap(width), longestName), selected),
 			],
 		});
 		const initial = items.findIndex((item) => item.row.id === options.initialId);
@@ -268,6 +271,7 @@ export class ManagePageComponent implements Component, Focusable {
 	}
 
 	handleInput(data: string): void {
+		if (this.options.onInput?.(data)) return;
 		const row = this.list.getSelectedItem()?.row;
 		const kb = getKeybindings();
 		const page = kb.matches(data, "tui.select.pageUp") ? -1 : kb.matches(data, "tui.select.pageDown") ? 1 : 0;

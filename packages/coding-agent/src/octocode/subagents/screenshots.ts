@@ -1,7 +1,7 @@
-import fs from "node:fs";
-import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
+import fs from "node:fs/promises";
+import { atomicWriteFileUnlocked } from "@octocodeai/octocode-common/atomic-file";
 import path from "node:path";
-import { sessionFolder, privateDir } from "../shared/home.ts";
+import { sessionFolder } from "../shared/home.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
 
@@ -11,8 +11,11 @@ import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
  */
 
 /** Largest screenshot (base64 chars) drawn inline in the tool row; bigger ones are only saved. */
-export const INLINE_MAX_CHARS = 700_000;
+export const INLINE_MAX_CHARS = 256 * 1024;
 const KEEP_FILES = 30;
+// Live previews are best effort. A single large original still gets a turn even when it exceeds the waiting budget.
+const QUEUED_SHOT_CHARS = 2 * 1024 * 1024;
+const PRUNE_EVERY = 8;
 
 export interface Shot {
 	path: string;
@@ -35,23 +38,101 @@ export function shotsDir(env: NodeJS.ProcessEnv = process.env): string {
 	return path.join(sessionFolder("output", undefined, env), "shots");
 }
 
-/** Write one screenshot (owner-only) and keep only the newest few files; the session sweep also removes old ones (`OCTOCODE_CLEANUP_DAYS`). */
-export function saveShot(dir: string, agentId: string, index: number, image: { data: string; mimeType: string }): Shot {
-	if (fs.lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink())
-		throw new Error("Screenshot directory is a symlink");
-	privateDir(dir);
+type ImagePart = { data: string; mimeType: string };
+
+/** Publish the path only after the atomic rename. Each run writes its numbered screenshots in order. */
+export async function saveShot(dir: string, agentId: string, index: number, image: ImagePart): Promise<Shot> {
+	await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+	const stat = await fs.lstat(dir);
+	if (!stat.isDirectory()) throw new Error("Screenshot storage requires a real directory");
+	// A shared folder owned by another user keeps its mode, like privateDir. New files are always owner-only.
+	if ((stat.mode & 0o777) !== 0o700 && (!process.getuid || stat.uid === process.getuid())) await fs.chmod(dir, 0o700);
 	const extension = image.mimeType.includes("jpeg") ? "jpg" : "png";
 	const file = path.join(dir, `${agentId}-${index}.${extension}`);
-	atomicWriteFileSync(file, Buffer.from(image.data, "base64"), { mode: PRIVATE_FILE_MODE });
-	const files = fs
-		.readdirSync(dir)
-		// Another Octocode process may prune the shared folder meanwhile: a vanished file simply sorts last.
-		.map((name) => ({ name, mtime: fs.statSync(path.join(dir, name), { throwIfNoEntry: false })?.mtimeMs ?? 0 }))
-		.sort((a, b) => b.mtime - a.mtime);
-	for (const old of files.slice(KEEP_FILES)) fs.rmSync(path.join(dir, old.name), { force: true });
+	await atomicWriteFileUnlocked(file, Buffer.from(image.data, "base64"), { mode: PRIVATE_FILE_MODE });
 	return {
 		path: file,
 		mimeType: image.mimeType,
 		...(image.data.length <= INLINE_MAX_CHARS ? { data: image.data } : {}),
 	};
+}
+
+async function pruneShots(dir: string): Promise<void> {
+	const names = (await fs.readdir(dir)).filter((name) => /-\d+\.(?:png|jpg)$/.test(name));
+	if (names.length <= KEEP_FILES) return;
+	const files = await Promise.all(
+		names.map(async (name) => {
+			const file = path.join(dir, name);
+			try {
+				return { file, mtime: (await fs.lstat(file)).mtimeMs };
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+				return { file, mtime: -Infinity };
+			}
+		}),
+	);
+	files.sort((a, b) => b.mtime - a.mtime);
+	await Promise.all(files.slice(KEEP_FILES).map(({ file }) => fs.rm(file, { force: true })));
+}
+
+/** One writer per child. Under disk pressure coalesce older queued previews. The tool results stay in the child session. */
+export class ShotWriter {
+	private readonly queue: Array<{ index: number; image: ImagePart; saved: (shot: Shot) => void }> = [];
+	private index = 0;
+	private pending?: Promise<void>;
+	private unpruned = 0;
+	private queuedChars = 0;
+
+	private readonly dir: string;
+	private readonly agentId: string;
+
+	constructor(dir: string, agentId: string) {
+		this.dir = dir;
+		this.agentId = agentId;
+	}
+
+	add(image: ImagePart, saved: (shot: Shot) => void): void {
+		while (
+			this.queue.length &&
+			(this.queue.length >= KEEP_FILES || this.queuedChars + image.data.length > QUEUED_SHOT_CHARS)
+		) {
+			this.queuedChars -= this.queue.shift()!.image.data.length;
+		}
+		this.queuedChars += image.data.length;
+		this.queue.push({ index: ++this.index, image, saved });
+		this.pending ??= this.write();
+	}
+
+	private async write(): Promise<void> {
+		try {
+			while (this.queue.length) {
+				const { index, image, saved } = this.queue.shift()!;
+				this.queuedChars -= image.data.length;
+				try {
+					const shot = await saveShot(this.dir, this.agentId, index, image);
+					this.unpruned++;
+					saved(shot);
+					if (this.unpruned >= PRUNE_EVERY) await this.prune();
+				} catch (error) {
+					this.warn(error);
+				}
+			}
+		} finally {
+			this.pending = undefined;
+		}
+	}
+
+	private async prune(): Promise<void> {
+		await pruneShots(this.dir);
+		this.unpruned = 0;
+	}
+
+	private warn(error: unknown): void {
+		process.stderr.write(`Subagent screenshot: ${String(error)}\n`);
+	}
+
+	async finish(): Promise<void> {
+		await this.pending;
+		if (this.unpruned) await this.prune().catch((error) => this.warn(error));
+	}
 }

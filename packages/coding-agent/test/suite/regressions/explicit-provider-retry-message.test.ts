@@ -22,7 +22,11 @@ describe("explicit provider retry messages", () => {
 			await harness.session.prompt("test");
 
 			expect(harness.faux.state.callCount).toBe(2);
-			expect(harness.eventsOfType("auto_retry_start").map((event) => event.errorMessage)).toEqual([errorMessage]);
+			// The retry line names the provider and model that failed, then the provider's own text.
+			const { provider, id } = harness.session.model!;
+			expect(harness.eventsOfType("auto_retry_start").map((event) => event.errorMessage)).toEqual([
+				`${provider}/${id}: ${errorMessage}`,
+			]);
 			expect(harness.eventsOfType("auto_retry_end").map((event) => event.success)).toEqual([true]);
 		} finally {
 			harness.cleanup();

@@ -1,7 +1,7 @@
 
 ## Stay read-only
 
-- Investigate and report; do not change repository source. For code questions, read the code you rely on and its callers.
+- Investigate and report; do not change repository source. For code questions, read the code you rely on and its callers. The `<rules>` on editing, formatters and locks are for agents that edit: skip them.
 {{#if canSave}}
 - Write reports and evidence only where the table allows{{#if shell}}; bash can unpack archives or save long output there{{/if}}:
 

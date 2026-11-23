@@ -3,6 +3,7 @@
  * scroll window with its position label, and the named-outcome prompt. Pure functions: no I/O, no page state.
  */
 
+import { GLYPH } from "@octocodeai/octocode-tui";
 import { keyText, type RankedHint } from "./theme-tui-helpers.ts";
 
 // ── Status badge ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -22,7 +23,8 @@ const BADGES: Record<BadgeState, { glyph: string; word: string; tone: BadgeTone 
 	ready: { glyph: "✓", word: "ready", tone: "success" },
 	attention: { glyph: "⚠", word: "needs action", tone: "warning" },
 	broken: { glyph: "✗", word: "broken", tone: "error" },
-	off: { glyph: "○", word: "off", tone: "muted" },
+	// Not `○`: that is the idle and queued state's glyph without colour, and a page badge never shares a light's glyph.
+	off: { glyph: "∅", word: "off", tone: "muted" },
 };
 
 /** The one state → glyph, word and tone table. Throws on a state it does not know. */
@@ -30,6 +32,26 @@ export function badge(state: BadgeState): Badge {
 	const entry = BADGES[state];
 	if (!entry) throw new Error(`Unknown badge state: ${state}`);
 	return { ...entry, text: `${entry.glyph} ${entry.word}` };
+}
+
+/** An agent's or session's activity (the tones of the application projections' `activity`). */
+export type ActivityBadgeTone = "working" | "waiting" | "error" | "idle";
+
+/** The activity lights as page badges: each tone its light's colour and its state's own glyph, with a word. */
+const ACTIVITY_BADGES: Record<ActivityBadgeTone, { glyph: string; word: string; tone: BadgeTone }> = {
+	// A list is still: a working light is the full ⏺, never a spinner frame held still.
+	working: { glyph: GLYPH.light, word: "working", tone: "success" },
+	waiting: { glyph: GLYPH.waiting, word: "needs you", tone: "warning" },
+	error: { glyph: GLYPH.failed, word: "failed", tone: "error" },
+	idle: { glyph: GLYPH.pending, word: "idle", tone: "muted" },
+};
+
+/** The badge of an activity: `⏺ working`, `◇ needs you`, `✗ failed`, `○ idle`. `word` replaces the default word. */
+export function activityBadge(tone: ActivityBadgeTone, word?: string): Badge {
+	const entry = ACTIVITY_BADGES[tone];
+	if (!entry) throw new Error(`Unknown activity: ${tone}`);
+	const shown = word ?? entry.word;
+	return { ...entry, word: shown, text: `${entry.glyph} ${shown}` };
 }
 
 /** One plain line naming only the states on screen, once each, in the order given: `✓ ready  ⚠ needs action`. */

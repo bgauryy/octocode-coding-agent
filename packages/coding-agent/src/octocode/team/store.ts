@@ -285,9 +285,9 @@ export class TeamStore {
 		return deliveries.countWaiting(this.db, id, after);
 	}
 
-	/** The ids of the messages up to `through` that still wait undelivered for `id`: the inbox handed those over, or its mark ran ahead of this database. */
-	waitingThrough(id: string, through: number): number[] {
-		return deliveries.waitingIds(this.db, id, through);
+	/** The ids of the messages up to `through` that still wait undelivered for `id` (at most `limit`, oldest first, `skip` left out): the inbox handed those over, or its mark ran ahead of this database. */
+	waitingThrough(id: string, through: number, skip: ReadonlySet<number>, limit: number): number[] {
+		return deliveries.waitingIds(this.db, id, through, skip, limit);
 	}
 
 	/** One bounded batch of messages newer than `after` waiting for `id`, oldest first. `ack` marks the ones the model saw. */

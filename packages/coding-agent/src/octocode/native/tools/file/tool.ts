@@ -24,7 +24,6 @@ import { parsePatch } from "../../../tool-input/codex-patch/patch.ts";
 import { FILE_TOOL_EFFECT, patchChanges, validateFileInput } from "../../../tool-input/file-input.ts";
 import { askReview } from "../../../files/review.ts";
 import { bashReads } from "../../../files/bash-reads.ts";
-import { shellWrittenFiles } from "../../../files/bash-writes.ts";
 import { expiredHandleReply } from "../../../files/expired-handles.ts";
 import { sessionHeap } from "../../../shared/session-heap.ts";
 import { repeatReadNotes } from "../../../files/repeat-reads.ts";
@@ -354,10 +353,9 @@ export function registerFileTool(
 			const details = asRecord(event.details);
 			const cut = details.truncation !== undefined || details.fullOutputPath !== undefined;
 			if (typeof command === "string" && background !== true) {
+				// A file the command only wrote is not read: what it holds now (an append, `sed -i`, `cmd > f`) was never shown.
 				for (const read of bashReads(command, ctx.cwd, cut))
 					guard.record(read.file, undefined, !read.whole, read.lines);
-				// A file this command wrote is known to this session as of now; a later change by another writer shows in its stat.
-				for (const file of await shellWrittenFiles(command, ctx.cwd)) guard.record(file);
 			}
 		}
 		// Once the guard has credited the read: a repeated whole read of an unchanged file becomes a note pointing at the first.

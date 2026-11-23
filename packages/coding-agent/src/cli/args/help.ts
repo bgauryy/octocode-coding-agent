@@ -4,7 +4,125 @@
 
 import { cliStyle } from "../../utils/cli-style.ts";
 import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR } from "../../config.ts";
-import { flagHelpRows } from "./flags.ts";
+import { flagHelpRows, HELP_COLUMN } from "./flags.ts";
+
+const COMMANDS: ReadonlyArray<readonly [string, string]> = [
+	["install <source> [-l]", "Install a package (skills, prompts, themes) and add it to settings"],
+	["remove <source> [-l]", "Remove a package from settings"],
+	["update [source|self]", "Update Octocode, packages, or model catalogs"],
+	["list", "List installed packages from settings"],
+	["configuration [verb]", "List, enable, disable, set or add configuration (--local, --json)"],
+	["auth <command>", "Print credentials or check provider readiness"],
+	["models discover", "Compare vendor model IDs with the local catalog"],
+	["mcp <command>", "Configure MCP servers, check status, or sign in"],
+	["trust <list|add|remove>", "Show, grant or revoke folder trust"],
+	["security <list|check|approve|deny>", "Review the hooks, MCP servers and skills a folder would load"],
+	["profile [--insights]", "Show where a session's requests, cache and waits went"],
+	["backlog <get|list|export>", "Read this folder's backlog board without changing it"],
+	["remote <list|link|stop>", "List sessions the web daemon reaches; publish or stop a remote link"],
+	["context <command>", "Show and store the skill descriptions agents read"],
+	["marketplace <command>", "Add, list, update or remove plugin marketplaces (path, owner/repo, git URL)"],
+	["plugin <command>", "Install, update or remove plugins from a marketplace (plugin@marketplace)"],
+	["completion <bash|zsh|fish>", "Print shell completion setup"],
+	["<command> --help", "Show command-specific help"],
+];
+
+/** Executables installed beside `octocode`, listed under the commands with their own names. */
+const SEPARATE_EXECUTABLES: ReadonlyArray<readonly [string, string]> = [
+	[
+		`${APP_NAME}-api <command>`,
+		"Reach sessions already running here: list, status, send, watch, abort (its own executable)",
+	],
+];
+
+const ENVIRONMENT: ReadonlyArray<readonly [string, string]> = [
+	["ANTHROPIC_AUTH_TOKEN", "Anthropic bearer auth token"],
+	["ANTHROPIC_API_KEY", "Anthropic Claude API key"],
+	["ANTHROPIC_OAUTH_TOKEN", "Claude subscription token: refused (connect Claude Code in /providers)"],
+	["ANT_LING_API_KEY", "Ant Ling API key"],
+	["OPENAI_API_KEY", "OpenAI GPT API key"],
+	["AZURE_OPENAI_API_KEY", "Azure OpenAI API key"],
+	["AZURE_OPENAI_BASE_URL", "Azure OpenAI/Cognitive Services base URL (e.g. https://{resource}.openai.azure.com)"],
+	["AZURE_OPENAI_RESOURCE_NAME", "Azure OpenAI resource name (alternative to base URL)"],
+	["AZURE_OPENAI_API_VERSION", "Azure OpenAI API version (default: v1)"],
+	["AZURE_OPENAI_DEPLOYMENT_NAME_MAP", "Azure OpenAI model=deployment map (comma-separated)"],
+	["DEEPSEEK_API_KEY", "DeepSeek API key"],
+	["NVIDIA_API_KEY", "NVIDIA NIM API key"],
+	["GEMINI_API_KEY", "Google Gemini API key"],
+	["GROQ_API_KEY", "Groq API key"],
+	["CEREBRAS_API_KEY", "Cerebras API key"],
+	["XAI_API_KEY", "xAI Grok API key"],
+	["FIREWORKS_API_KEY", "Fireworks API key"],
+	["TOGETHER_API_KEY", "Together AI API key"],
+	["BASETEN_API_KEY", "Baseten API key"],
+	["OPENROUTER_API_KEY", "OpenRouter API key"],
+	["AI_GATEWAY_API_KEY", "Vercel AI Gateway API key"],
+	["ZAI_API_KEY", "ZAI Coding Plan API key (Global)"],
+	["ZAI_CODING_CN_API_KEY", "ZAI Coding Plan API key (China)"],
+	["MISTRAL_API_KEY", "Mistral API key"],
+	["MINIMAX_API_KEY", "MiniMax API key"],
+	["MOONSHOT_API_KEY", "Moonshot AI API key"],
+	["OPENCODE_API_KEY", "OpenCode Zen/OpenCode Go API key"],
+	["KIMI_API_KEY", "Kimi For Coding API key"],
+	["META_API_KEY", "Meta Model API key"],
+	["CLOUDFLARE_API_KEY", "Cloudflare API token (Workers AI and AI Gateway)"],
+	["CLOUDFLARE_ACCOUNT_ID", "Cloudflare account id (required for both)"],
+	["CLOUDFLARE_GATEWAY_ID", "Cloudflare AI Gateway slug (required for AI Gateway)"],
+	["QWEN_TOKEN_PLAN_API_KEY", "Qwen Token Plan API key (international region)"],
+	["QWEN_TOKEN_PLAN_CN_API_KEY", "Qwen Token Plan API key (China region)"],
+	["XIAOMI_API_KEY", "Xiaomi MiMo API key (api.xiaomimimo.com billing)"],
+	["XIAOMI_TOKEN_PLAN_CN_API_KEY", "Xiaomi MiMo Token Plan API key (China region)"],
+	["XIAOMI_TOKEN_PLAN_AMS_API_KEY", "Xiaomi MiMo Token Plan API key (Amsterdam region)"],
+	["XIAOMI_TOKEN_PLAN_SGP_API_KEY", "Xiaomi MiMo Token Plan API key (Singapore region)"],
+	["AWS_PROFILE", "AWS profile for Amazon Bedrock"],
+	["AWS_ACCESS_KEY_ID", "AWS access key for Amazon Bedrock"],
+	["AWS_SECRET_ACCESS_KEY", "AWS secret key for Amazon Bedrock"],
+	["AWS_BEARER_TOKEN_BEDROCK", "Bedrock API key (bearer token)"],
+	["AWS_REGION", "AWS region for Amazon Bedrock (e.g., us-east-1)"],
+	[ENV_AGENT_DIR, `Config directory (default: ~/${CONFIG_DIR_NAME}/octocodecode)`],
+	[ENV_SESSION_DIR, "Session storage directory (overridden by --session-dir)"],
+	["OCTOCODE_PACKAGE_DIR", "Override package directory (for Nix/Guix store paths)"],
+	["OCTOCODE_OFFLINE", "Skip automatic network activity when set to 1/true/on/yes (same as --offline)"],
+	["OCTOCODE_TELEMETRY", "Override install telemetry when set to 1/true/yes or 0/false/no"],
+	["OCTOCODE_SHARE_VIEWER_URL", "Base URL for /share command (default: GitHub gist)"],
+];
+
+const TOOL_NAMES: ReadonlyArray<readonly [string, string]> = [
+	["bash", "Execute commands (type: bash or powershell)"],
+	["file", "Guarded file edits, writes and deletions"],
+	["backlog", "Work a backlog item: read, claim, note, finish, close"],
+	["backlogPlan", "Add, edit and list backlog items"],
+	["archive", "Recall session history, compaction summaries and lifecycle events"],
+	["memory", "Save, search and read workspace memories"],
+	["web", "Search and fetch public web content"],
+	["agent", "Task, external-agent, coordination and message modes"],
+	["askUser", "Ask structured questions"],
+	["skill", "Load a listed skill's instructions"],
+	["compact", "Ask for the conversation to be summarized (main session)"],
+	["models", "Show the session model, providers and the models a task can run on (main session)"],
+	["mcp", "Inspect, stop or restart MCP servers"],
+];
+
+/** Rows of `name<sep>text`, every name padded to the longest so the texts start in one column. */
+function table(rows: ReadonlyArray<readonly [string, string]>, separator = "  "): string {
+	const width = Math.max(...rows.map(([name]) => name.length));
+	return rows.map(([name, text]) => `  ${name.padEnd(width)}${separator}${text}`).join("\n");
+}
+
+/**
+ * The Commands section: each text starts in the Options column; a command too long for it puts its text on the next
+ * row, in that column, rather than run into it.
+ */
+function commandRows(): string {
+	const indent = " ".repeat(HELP_COLUMN + 4);
+	const rows = [...COMMANDS.map(([usage, text]) => [`${APP_NAME} ${usage}`, text]), ...SEPARATE_EXECUTABLES];
+	return rows
+		.map(([usage, text]) => {
+			const head = `  ${usage}`;
+			return head.length < indent.length ? `${head.padEnd(indent.length)}${text}` : `${head}\n${indent}${text}`;
+		})
+		.join("\n");
+}
 
 export function printHelp(): void {
 	console.log(`${cliStyle.heading(APP_NAME)} - AI coding assistant with native Octocode tools
@@ -15,28 +133,11 @@ ${cliStyle.heading("Usage:")}
 Inside a session, ${cliStyle.heading("/help")} lists the slash commands.
 
 ${cliStyle.heading("Commands:")}
-  ${APP_NAME} install <source> [-l]     Install a package (skills, prompts, themes) and add it to settings
-  ${APP_NAME} remove <source> [-l]      Remove a package from settings
-  ${APP_NAME} update [source|self]      Update Octocode, packages, or model catalogs
-  ${APP_NAME} list                      List installed packages from settings
-  ${APP_NAME} configuration [verb]      List, enable, disable, set or add configuration (--local, --json)
-  ${APP_NAME} auth <command>            Print credentials or check provider readiness
-  ${APP_NAME} models discover           Compare vendor model IDs with the local catalog
-  ${APP_NAME} mcp <command>             Configure MCP servers, check status, or sign in
-  ${APP_NAME} trust <list|add|remove>   Show, grant or revoke folder trust
-  ${APP_NAME} security <list|check|approve|deny> Review the hooks, MCP servers and skills a folder would load
-  ${APP_NAME} profile [--insights]      Show where a session's requests, cache and waits went
-  ${APP_NAME} backlog <get|list|export> Read this folder's backlog board without changing it
-  ${APP_NAME} remote <list|link|stop>   List sessions the web daemon reaches; publish or stop a remote link
-  ${APP_NAME} context <command>         Show and store the skill descriptions agents read
-  ${APP_NAME} marketplace <command>     Add, list, update or remove plugin marketplaces (path, owner/repo, git URL)
-  ${APP_NAME} plugin <command>          Install, update or remove plugins from a marketplace (plugin@marketplace)
-  ${APP_NAME} completion <bash|zsh|fish> Print shell completion setup
-  ${APP_NAME} <command> --help          Show command-specific help
+${commandRows()}
 
 ${cliStyle.heading("Options:")}
 ${flagHelpRows().join("\n")}
-${"  --".padEnd(33)}End option parsing; treat remaining arguments as messages/files
+${"  --".padEnd(HELP_COLUMN)}End option parsing; treat remaining arguments as messages/files
 
 
 ${cliStyle.heading("Examples:")}
@@ -81,7 +182,7 @@ ${cliStyle.heading("Examples:")}
   ${APP_NAME} --model openai/gpt-4o "Help me refactor this code"
 
   # Use model with thinking level shorthand
-  ${APP_NAME} --model sonnet:high "Solve this complex problem"
+  ${APP_NAME} --model anthropic/sonnet:high "Solve this complex problem"
 
   # Limit model cycling to specific models
   ${APP_NAME} --models claude-sonnet,claude-haiku,gpt-4o
@@ -115,70 +216,10 @@ ${cliStyle.heading("Examples:")}
   ${APP_NAME} --export session.jsonl output.html
 
 ${cliStyle.heading("Environment Variables:")}
-  ANTHROPIC_AUTH_TOKEN             - Anthropic bearer auth token
-  ANTHROPIC_API_KEY                - Anthropic Claude API key
-  ANTHROPIC_OAUTH_TOKEN            - Claude subscription token: refused (connect Claude Code in /providers)
-  ANT_LING_API_KEY                 - Ant Ling API key
-  OPENAI_API_KEY                   - OpenAI GPT API key
-  AZURE_OPENAI_API_KEY             - Azure OpenAI API key
-  AZURE_OPENAI_BASE_URL            - Azure OpenAI/Cognitive Services base URL (e.g. https://{resource}.openai.azure.com)
-  AZURE_OPENAI_RESOURCE_NAME       - Azure OpenAI resource name (alternative to base URL)
-  AZURE_OPENAI_API_VERSION         - Azure OpenAI API version (default: v1)
-  AZURE_OPENAI_DEPLOYMENT_NAME_MAP - Azure OpenAI model=deployment map (comma-separated)
-  DEEPSEEK_API_KEY                 - DeepSeek API key
-  NVIDIA_API_KEY                   - NVIDIA NIM API key
-  GEMINI_API_KEY                   - Google Gemini API key
-  GROQ_API_KEY                     - Groq API key
-  CEREBRAS_API_KEY                 - Cerebras API key
-  XAI_API_KEY                      - xAI Grok API key
-  FIREWORKS_API_KEY                - Fireworks API key
-  TOGETHER_API_KEY                 - Together AI API key
-  BASETEN_API_KEY                  - Baseten API key
-  OPENROUTER_API_KEY               - OpenRouter API key
-  AI_GATEWAY_API_KEY               - Vercel AI Gateway API key
-  ZAI_API_KEY                      - ZAI Coding Plan API key (Global)
-  ZAI_CODING_CN_API_KEY            - ZAI Coding Plan API key (China)
-  MISTRAL_API_KEY                  - Mistral API key
-  MINIMAX_API_KEY                  - MiniMax API key
-  MOONSHOT_API_KEY                 - Moonshot AI API key
-  OPENCODE_API_KEY                 - OpenCode Zen/OpenCode Go API key
-  KIMI_API_KEY                     - Kimi For Coding API key
-  META_API_KEY                     - Meta Model API key
-  CLOUDFLARE_API_KEY               - Cloudflare API token (Workers AI and AI Gateway)
-  CLOUDFLARE_ACCOUNT_ID            - Cloudflare account id (required for both)
-  CLOUDFLARE_GATEWAY_ID            - Cloudflare AI Gateway slug (required for AI Gateway)
-  QWEN_TOKEN_PLAN_API_KEY          - Qwen Token Plan API key (international region)
-  QWEN_TOKEN_PLAN_CN_API_KEY       - Qwen Token Plan API key (China region)
-  XIAOMI_API_KEY                   - Xiaomi MiMo API key (api.xiaomimimo.com billing)
-  XIAOMI_TOKEN_PLAN_CN_API_KEY     - Xiaomi MiMo Token Plan API key (China region)
-  XIAOMI_TOKEN_PLAN_AMS_API_KEY    - Xiaomi MiMo Token Plan API key (Amsterdam region)
-  XIAOMI_TOKEN_PLAN_SGP_API_KEY    - Xiaomi MiMo Token Plan API key (Singapore region)
-  AWS_PROFILE                      - AWS profile for Amazon Bedrock
-  AWS_ACCESS_KEY_ID                - AWS access key for Amazon Bedrock
-  AWS_SECRET_ACCESS_KEY            - AWS secret key for Amazon Bedrock
-  AWS_BEARER_TOKEN_BEDROCK         - Bedrock API key (bearer token)
-  AWS_REGION                       - AWS region for Amazon Bedrock (e.g., us-east-1)
-  ${ENV_AGENT_DIR.padEnd(32)} - Config directory (default: ~/${CONFIG_DIR_NAME}/octocodecode)
-  ${ENV_SESSION_DIR.padEnd(32)} - Session storage directory (overridden by --session-dir)
-  OCTOCODE_PACKAGE_DIR                   - Override package directory (for Nix/Guix store paths)
-  OCTOCODE_OFFLINE                       - Disable startup network operations when set to 1/true/on/yes
-  OCTOCODE_TELEMETRY                     - Override install telemetry when set to 1/true/yes or 0/false/no
-  OCTOCODE_SHARE_VIEWER_URL              - Base URL for /share command (default: GitHub gist)
+${table(ENVIRONMENT, " - ")}
 
 ${cliStyle.heading("Built-in Tool Names:")}
-  bash       - Execute commands (type: bash or powershell)
-  file       - Guarded file edits, writes and deletions
-  backlog    - Work a backlog item: read, claim, note, finish, close
-  backlogPlan - Add, edit and list backlog items
-  archive    - Recall session history, compaction summaries and lifecycle events
-  memory     - Save, search and read workspace memories
-  web        - Search and fetch public web content
-  agent      - Task, external-agent, coordination and message modes
-  askUser    - Ask structured questions
-  skill      - Load a listed skill's instructions
-  compact    - Ask for the conversation to be summarized (main session)
-  models     - Show the session model, providers and the models a task can run on (main session)
-  mcp        - Inspect, stop or restart MCP servers
+${table(TOOL_NAMES, " - ")}
 
 Tool availability follows session mode and selection. Enabled MCP servers provide
 additional tools; mcp manages servers.

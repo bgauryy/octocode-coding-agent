@@ -2,7 +2,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { cachedPercent } from "../shared/format.ts";
 import type { EntrySource } from "../shared/entry-cursor.ts";
 import { SpendScan } from "../shared/spend.ts";
-import { addReply, emptyTotals, type ModelLookup, spendOf, unpricedModel, type UsageTotals } from "../shared/util.ts";
+import { addReply, emptyTotals, type ModelLookup, spendOf, unpricedModel, type TokenTotals } from "../shared/util.ts";
 
 /** What one settled run adds up to; the fields of the `octocode-turn` entry besides its duration. */
 export interface TurnTotals {
@@ -20,8 +20,8 @@ export interface TurnTotals {
  */
 export class TurnRun {
 	private tools = 0;
-	private all: UsageTotals = emptyTotals();
-	private main: UsageTotals = emptyTotals();
+	private all: TokenTotals = emptyTotals();
+	private main: TokenTotals = emptyTotals();
 	private readonly agents = new Set<string>();
 	private anonymousAgents = 0;
 	private readonly scan = new SpendScan();

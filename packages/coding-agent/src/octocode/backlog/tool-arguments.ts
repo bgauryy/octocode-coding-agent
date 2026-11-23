@@ -53,7 +53,7 @@ export function splitIds(text: string): string[] {
 	return text.split(/[\s,]+/).filter(Boolean);
 }
 
-const COMPLETION_KEYS = ["summary", "verification", "files", "lesson", "operationKey", "replaces"];
+const COMPLETION_KEYS = ["summary", "verification", "files", "lesson", "operationKey", "replaces", "receipt"];
 const STATUSES = ["passed", "failed", "not_run", "not_applicable", "not_stated"];
 type Status = "passed" | "failed" | "not_run" | "not_applicable" | "not_stated";
 const NEEDS =
@@ -80,6 +80,12 @@ function statusOf(text: string): Status {
 
 const text = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
 
+const receiptRef = (value: unknown): string => {
+	if (!text(value))
+		throw new Error('completion.receipt must be a receipt id from a verify: true bash result, or "latest".');
+	return value.trim();
+};
+
 /**
  * A completion as the model may write it, mapped to the stored shape (`CompletionSchema`). Light form: `verification` is
  * one sentence whose status `statusOf` reads (not stated when it names none) and `files` are paths (role
@@ -92,7 +98,9 @@ export function completionInput(value: unknown): CompletionArgument {
 	const given = value as Record<string, unknown>;
 	const unknown = Object.keys(given).filter((key) => !COMPLETION_KEYS.includes(key));
 	if (unknown.length)
-		throw new Error(`Unknown completion fields: ${unknown.join(", ")}. Use summary, verification, files, lesson.`);
+		throw new Error(
+			`Unknown completion fields: ${unknown.join(", ")}. Use summary, verification, files, lesson, receipt.`,
+		);
 	if (!text(given.summary)) throw new Error(`completion.summary is missing: ${NEEDS}.`);
 	const check = given.verification;
 	let verification: CompletionArgument["verification"];
@@ -119,6 +127,7 @@ export function completionInput(value: unknown): CompletionArgument {
 		...(given.lesson !== undefined ? { lesson: given.lesson as string } : {}),
 		...(given.operationKey !== undefined ? { operationKey: given.operationKey as string } : {}),
 		...(given.replaces !== undefined ? { replaces: given.replaces as number } : {}),
+		...(given.receipt !== undefined ? { receipt: receiptRef(given.receipt) } : {}),
 	};
 }
 

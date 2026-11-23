@@ -5,6 +5,7 @@ import { openAgentDb } from "../../../src/storage/database.ts";
 import { registerProcesses } from "../../../src/octocode/processes/register.ts";
 import type { ProcessRow } from "../../../src/octocode/processes/table.ts";
 import { Subcommands } from "../../../src/octocode/shared/commands.ts";
+import { processStartTime } from "../../../src/octocode/shared/process.ts";
 import { fakeCtx, fakeHost } from "../fake-host.ts";
 import { tmp } from "../helpers.ts";
 
@@ -241,5 +242,44 @@ describe("/processes", () => {
 		expect((context as unknown as { ui: { notes: Array<{ message: string }> } }).ui.notes[0].message).toContain(
 			"Usage: /processes",
 		);
+	});
+});
+
+describe("an MCP server that starts after the session's first sample", () => {
+	it("is recorded and listed as mcp, not as a child", async () => {
+		let changed: () => void = () => {};
+		const mcp: number[] = [];
+		const host = live(
+			{},
+			{
+				mcpPids: () => mcp,
+				onMcpServersChange: (listener) => {
+					changed = listener;
+					return () => {
+						changed = () => {};
+					};
+				},
+			},
+		);
+		const context = ctx("1-aaaaaaaa");
+		await host.emit("session_start", { reason: "startup" }, context);
+		// The server starts after the first sample read the table.
+		await vi.waitFor(() => expect(processSamples.since(agent.db, 0)).toHaveLength(1));
+		const self = processStartTime(process.pid)!;
+		const server = { pid: 7001, ppid: process.pid, started: self, command: "node server.mjs", rssKb: 1 };
+		table = [{ pid: process.pid, ppid: 1, started: self, command: process.title, rssKb: 1 }, server];
+		mcp.push(server.pid);
+		changed();
+		await vi.waitFor(() =>
+			expect(processSamples.since(agent.db, 0).at(-1)?.children).toEqual([
+				expect.objectContaining({ pid: 7001, kind: "mcp" }),
+			]),
+		);
+		await host.commands.get("processes")!.handler("", context);
+		const text = (context as unknown as { ui: { notes: Array<{ message: string }> } }).ui.notes
+			.map((n) => n.message)
+			.join("\n");
+		expect(text).toMatch(/mcp\s+pid 7001/);
+		await host.emit("session_shutdown", {}, context);
 	});
 });

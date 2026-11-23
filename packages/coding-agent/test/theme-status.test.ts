@@ -55,7 +55,9 @@ describe("stateMark", () => {
 describe("the state light", () => {
 	afterEach(() => animationClock.setReducedMotion(false));
 	const light = (state: UiState, options = {}) => stateMark(tagged, state, { light: true, ...options });
-	const frames = ["◒", "◐", "◓", "◑"];
+	// The user asked for a running light that animates or shows its state, never a half-filled circle: the frames are
+	// the working spinner's.
+	const frames = [...SPINNER.braille];
 	const frameMs = markFrameMs("running", { light: true });
 
 	it("measures one cell wide", () => {
@@ -64,32 +66,34 @@ describe("the state light", () => {
 		for (const frame of frames) expect(visibleWidth(frame)).toBe(1);
 	});
 
-	it("draws ⏺ steady in each settled state's colour: green done, red failed or stopped, yellow waiting, grey idle", () => {
+	// The user asked for "animation OR state": ⏺ means running only, so a settled light draws its state's own glyph.
+	it("draws each settled state's own glyph steady in its colour: green ✓, red ✗ or ◼, yellow ◇, grey ○", () => {
 		for (const reduced of [true, false]) {
 			animationClock.setReducedMotion(reduced);
 			for (const now of [0, 1_234, 99_999]) {
-				expect(light("pending", { now })).toBe("<dim>⏺");
-				expect(light("done", { now, since: 0 })).toBe("<success>⏺");
-				expect(light("failed", { now })).toBe("<error>⏺");
-				expect(light("stopped", { now })).toBe("<error>⏺");
-				expect(light("waiting", { now, since: 0 })).toBe("<warning>⏺");
+				expect(light("pending", { now })).toBe("<dim>○");
+				expect(light("done", { now, since: 0 })).toBe("<success>✓");
+				expect(light("failed", { now })).toBe("<error>✗");
+				expect(light("stopped", { now })).toBe("<error>◼");
+				expect(light("waiting", { now, since: 0 })).toBe("<warning>◇");
 			}
 		}
 		expect(LIGHT_COLOR.done).toBe("success");
 		expect(LIGHT_COLOR.stopped).toBe("error");
 	});
 
-	it("spins ◒◐◓◑ in one colour while running, without a colour pulse", () => {
-		const seen = Array.from({ length: 8 }, (_, i) => light("running", { now: i * frameMs }));
+	it("spins the working spinner's frames in one colour while running, without a colour pulse", () => {
+		const seen = Array.from({ length: 2 * frames.length }, (_, i) => light("running", { now: i * frameMs }));
 		expect(seen.map((mark) => mark.replace(/^<\w+>/, ""))).toEqual([...frames, ...frames]);
+		expect(seen.join("")).not.toMatch(/[◒◐◓◑]/);
 		expect(new Set(seen.map((mark) => mark.match(/^<\w+>/)?.[0])).size).toBe(1);
 		expect(seen.join("")).not.toContain("rgb");
 	});
 
-	it("shows a running light as a steady glyph in reduced motion", () => {
+	it("shows a running light as a full steady ⏺ in green in reduced motion, never a frame held still", () => {
 		animationClock.setReducedMotion(true);
 		expect(light("running", { now: 0 })).toBe(light("running", { now: 5 * frameMs }));
-		expect(light("running", { now: 0 })).not.toContain("⏺");
+		expect(light("running", { now: 0 })).toBe("<success>⏺");
 	});
 
 	it("repaints only while a spinner runs", () => {

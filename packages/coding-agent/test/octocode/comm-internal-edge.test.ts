@@ -299,6 +299,9 @@ describe("a headless child holding for its own background job", () => {
 		try {
 			await octocode(fake.api);
 			await fake.emit("session_start", { type: "session_start" }, ctx);
+			// The run whose answer settles below is in progress: mail steers into it at once, where an idle session's wake
+			// waits out `subagents.wakeHoldSeconds` (2 s by default).
+			await fake.emit("agent_start", { type: "agent_start" }, ctx);
 			await fake.tools
 				.get("bash")
 				.execute("t1", { command: "sleep 20", background: true, timeout: 60 }, undefined, undefined, ctx);

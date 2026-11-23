@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -36,6 +36,21 @@ describe("models.json through discovery", () => {
 		write(join(sandbox.piAgentDir, "models.json"), provider("acme-pi"));
 		expect(listModels({})).toContain("acme-pi-model");
 		expect(listModels({ OCTOCODE_HOME: join(sandbox.home, "isolated") })).not.toContain("acme-pi");
+	});
+
+	it("--list-models names an ignored field and a provider without a credential, as the terminal start does", () => {
+		const file = join(sandbox.agentDir, "models.json");
+		const models = [{ id: "gw-model" }];
+		const gw = { baseUrl: "http://localhost:1/v1", api: "openai-completions", apikey: "k", models };
+		write(file, JSON.stringify({ providers: { gw } }));
+		const run = spawnSync(process.execPath, ["--import", resolver, cli, "--list-models"], {
+			cwd: sandbox.cwd,
+			env: { PATH: process.env.PATH ?? "", HOME: sandbox.home, USERPROFILE: sandbox.home, OCTOCODE_OFFLINE: "1" },
+			encoding: "utf8",
+		});
+		expect(run.status).toBe(0);
+		expect(run.stderr).toContain(`${file}: providers.gw.apikey is not a models.json field and is ignored.`);
+		expect(run.stderr).toContain('models.json provider "gw" has no credential, so its models cannot run.');
 	});
 
 	it("reads Octocode's file first: its provider wins a clash, a Pi-only provider is added", async () => {

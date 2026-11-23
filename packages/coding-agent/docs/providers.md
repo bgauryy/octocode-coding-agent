@@ -2,7 +2,7 @@
 
 ## Connect what you have
 
-`/providers` is where you sign in: `/providers <provider>` opens one provider, and **+ Add a provider** lists every sign-in (type `chatgpt`, `copilot` or `subscription` to search). `/login` was renamed `/providers`; typing it points there.
+`/providers` is where you sign in: `/providers <provider>` opens one provider, and **+ Provider** lists every sign-in (type `chatgpt`, `copilot` or `subscription` to search). `/login` was renamed `/providers`; typing it points there.
 
 | You have                                            | Do this                                                                                                                                                                                                 | Models appear as                   |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -15,7 +15,7 @@
 | OpenCode Zen or Go                                  | `/providers opencode` or `/providers opencode-go` → **Add API key**: the OpenCode Console opens; subscribe to Go there, copy the key, paste it ([details](#use-opencode-and-choose-a-model))            | `opencode/…`, `opencode-go/…`      |
 | An API key (Anthropic, OpenAI, OpenRouter…)         | `/providers <provider>` → **Add API key** (keychain when available; OpenAI and OpenCode open their key page first), or export the provider's variable ([below](#use-an-api-key-from-the-environment))   | `<provider>/…`                     |
 | A gateway, proxy or self-hosted endpoint            | Add `baseUrl`, `api` and `apiKey` in `models.json` ([compatible endpoint](models.md#configure-a-compatible-endpoint); the **Custom OpenAI-compatible host** template adds one without editing the file) | `<your id>/…`                      |
-| A local server (llama.cpp, Ollama, LM Studio, vLLM) | `/providers` → **Add from a template** ([local models](models.md#connect-local-models)), or `models.json`                                                                                               | `llama.cpp/…` or your id           |
+| A local server (llama.cpp, Ollama, LM Studio, vLLM) | `/providers` → **+ From template** ([local models](models.md#connect-local-models)), or `models.json`                                                                                                   | `llama.cpp/…` or your id           |
 | Pi already set up                                   | Nothing: Pi's keys, the Pi sign-ins Octocode supports and Pi's `models.json` load beside Octocode's; a Pi Claude Pro/Max sign-in does not ([Use Pi configuration](#use-pi-configuration))               | the Pi provider ids                |
 
 Then switch freely: `/model` picks this chat's model (`/model openai/` limits it to one provider, `Ctrl+S` saves the default), `Ctrl+P` and `Shift+Ctrl+P` cycle models, `octocode --model <provider>/<id>` starts on one, and `e` on a provider in `/providers` hides or restores it. To check a credential without starting a chat, run `octocode auth check --provider <provider>` or `/modelsettings check`.
@@ -26,13 +26,13 @@ Then switch freely: `/model` picks this chat's model (`/model openai/` limits it
 
 `ready` from `auth check` establishes local credential readiness, not provider reachability, model access, quota or billing. **Test** on a provider page sends one small model request and can consume provider usage. Login's free endpoint check is narrower: HTTP 401 refuses the key; HTTP 403 saves it with a permission warning because access to model listings and model requests can differ. Custom gateway definitions do not inherit upstream key checks.
 
-In `/models`, highlight a model and press **Enter** to choose where to use it. Press **Ctrl+S** to save it as the startup default. See [saved defaults and connection limits](models.md#save-a-startup-default).
+In `/model`, **Enter** switches this chat to the highlighted model and **Ctrl+S** also saves it as the startup default. See [saved defaults and connection limits](models.md#save-a-startup-default).
 
 ### Choose the models the agent may use
 
 Open `/providers`, pick a provider and choose **Choose models**. Tick the models you want to offer. The same controls are in web Settings. Open `/models` to see selections across providers, including custom providers from Octocode and Pi `models.json`. The coordinator uses the same enabled inventory. It can start a task on any enabled chat model with credentials the child can access, using its exact `provider/id`.
 
-To make a provider the startup choice, select **Set as default provider for new chats** on its page. To set its preferred model, highlight that model in `/models`, press Enter and choose **Set as this provider’s preferred model**. These preferences take effect in new chats. [Model selection and startup defaults](models.md#save-a-startup-default)
+To make a provider the startup choice, select **Set as default provider for new chats** on its page. To set its preferred model, highlight that model in `/model`, open its details with **Alt+I** and press **Ctrl+P**. These preferences take effect in new chats. [Model selection and startup defaults](models.md#save-a-startup-default)
 
 ### Check Amazon Bedrock model access
 
@@ -52,7 +52,7 @@ On Bedrock, Kimi K3 and K3.1 accept off, low, medium, high, xhigh and max. GLM 5
 
 A subscription pays for requests by plan; everything else is billed per token. `/providers`, the footer (`(sub)`) and the `models` tool show the same answer. A plan's cost is shown as an estimate.
 
-Without a saved or explicit model choice, startup prefers an available subscription model before a metered model, including subscription providers without a catalog default. Restrictions on unattended use still apply.
+Without a saved or explicit model choice, startup prefers an available subscription model before a model billed per token, including subscription providers without a catalog default. Restrictions on unattended use still apply.
 
 | Provider                                                                  | Billed by   | Used                                                                                                                                                                                                                                                                     |
 | ------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -80,7 +80,7 @@ GitHub Copilot identifies as the VS Code Copilot client unless `OCTOCODE_COPILOT
 A plan or key runs in one of two places:
 
 - **Octocode's harness**: Octocode sends each model request itself, with its own tools, prompt, permissions, hooks, memory and subagents. Every provider in `/providers` (and in `models.json`) runs here.
-- **An external agent**: the vendor's own CLI runs the task in its own harness (its loop, tools and sign-in) as a separate process. Octocode starts the task, passes the goal, shows the CLI's tool calls and receives its report, but does not control that harness. External agents appear in `/providers` under **External agents** and in **+ Add a provider** labeled `external agent`.
+- **An external agent**: the vendor's own CLI runs the task in its own harness (its loop, tools and sign-in) as a separate process. Octocode starts the task, passes the goal, shows the CLI's tool calls and receives its report, but does not control that harness. External agents appear in `/providers` under **External agents**, and **+ External agent CLI** adds one.
 
 A plan whose vendor reserves it for its own apps can only be used as an external agent.
 
@@ -125,14 +125,16 @@ For instruction and conversation retention, see [Prompt caching](prompt-caching.
 
 `/providers` separates managing providers from signing in. Its sections, in order:
 
-- **Model files**: the `models.json` files Octocode reads, first: Octocode's and Pi's, global and project, each with its path and the providers it defines (a project file also lists the global providers it replaces). A project file of a folder you have not trusted is shown as not read; run `octocode trust add <folder>` and start a new session to use it ([project models.json](configuration.md#project-modelsjson)).
-- **Needs attention** (shown only when there is something): missing provider definitions, unavailable credentials, paused plans and providers with no available models. A saved credential alone never means signed in or verified.
-- **Ready**: providers with credentials and available models, showing access method and credential source (a label or variable name, never a value). Enter opens the provider's model chooser; its page has the other actions. **Test** on the provider's page sends a small request to check access. Subscription plan keys are labeled **subscription**, including keys read from a keychain, command reference or environment; their values are never shown.
+- **Ready**: providers with credentials and available models, showing access method and credential source (a label or variable name, never a value). Enter opens the provider's model chooser; its page has the other actions. **Test** on the provider's page sends a small request to check access. Subscription plan keys are labeled **subscription**, including keys read from a keychain, command reference or environment; their values are never shown. With none yet, the section says to choose **+ Provider**.
+- **Needs attention** (shown only when there is something): missing provider definitions, unavailable credentials, paused plans and providers with no available models. A saved credential alone never means signed in or verified. The cursor starts on the first of these.
+- **Add**: **+ Provider** opens supported subscription, account or API-key setup methods; **+ From template** adds another API-key host, a gateway or a local server to `models.json`; **+ External agent CLI** adds a vendor CLI that runs tasks in its own harness. A pasted key is checked before saving: Claude subscription tokens are refused, and a key whose prefix belongs to another provider asks first, naming that provider. Successful sign-in opens `/model`; Enter switches this chat and Ctrl+S also saves the startup default.
 - **Available**: every catalog provider you have not set up yet. Enter opens its page to add a key or sign in.
 - **Off**: providers you turned off, hidden from `/model`.
-- **Connect**: **+ Add a provider** opens supported subscription, account or credential setup methods; **+ Add from a template** adds a compatible endpoint. A pasted key is checked before saving: Claude subscription tokens are refused, and a key whose prefix belongs to another provider asks first, naming that provider. Successful sign-in opens `/model`; Enter changes this chat and Ctrl+S saves the global startup default.
-- **External agents**: vendor CLIs that run tasks in their own harness, with their own sign-in and tools ([harness or external agent](#octocodes-harness-or-an-external-agent)). **+ Add a provider** lists them too, labeled `external agent`; choosing one opens its page. Open a CLI, sign in if needed, choose **Enable this CLI for agent tasks**, then `/reload`. Installed CLIs are off until selected; signing in alone changes no task or model defaults.
-- **Advanced** → **Sources and custom models**: Octocode, Pi and environment sources, detected tools and their setup actions, and model definition files with paths and provider IDs. Missing files are marked `not found`. See [Sources](#sources).
+- **External agents**: vendor CLIs that run tasks in their own harness, with their own sign-in and tools ([harness or external agent](#octocodes-harness-or-an-external-agent)). Open a CLI, sign in if needed, choose **Enable this CLI for agent tasks**, then `/reload`. Installed CLIs are off until selected; signing in alone changes no task or model defaults.
+- **Test**: **Test all** ([below](#test-and-test-all)).
+- **Advanced**: first the `models.json` files Octocode reads (Octocode's and Pi's, global and project, each with its path and the providers it defines; a project file also lists the global providers it replaces). A project file of a folder you have not trusted is shown as not read; run `octocode trust add <folder>` and start a new session to use it ([project models.json](configuration.md#project-modelsjson)). Then **Sources and custom models**: Octocode, Pi and environment sources, detected tools and their setup actions, and model definition files with paths and provider IDs. Missing files are marked `not found`. See [Sources](#sources).
+
+An interactive start with no usable model opens this page by itself, titled `AI providers · no usable model yet — add a provider to start`, with the cursor on **+ Provider**. Typing `/` there closes it and starts a command in the editor, so `/status` or `/help` typed at start runs. Print and JSON runs exit with command-line guidance instead, and RPC reports no model.
 
 `/models` opens a page with every enabled provider as a heading and its models beneath: Enter turns a model on or off (off models leave `/model`, `Ctrl+P` and subagent routing) and `d` makes it the default for new chats. `/model` stays the quick picker.
 
@@ -180,9 +182,23 @@ Before an API key is saved, in `/providers` or on the configuration page, Octoco
 
 Providers without a key check, and custom providers, save the key as entered.
 
+### When a request's credential is refused
+
+A request that fails on a refused or missing credential names its provider and model (`<provider>/<model>: …`) and ends with a `Fix:` line:
+
+| Provider                                             | `Fix:` says                                                                                                             |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| One that runs through its vendor's CLI (Claude Code) | run `claude auth login`                                                                                                 |
+| Amazon Bedrock signed in through an AWS profile      | run `aws sso login --profile <name>` (or `aws sso login`), switch model with `/model`, or `/providers → Amazon Bedrock` |
+| Any other                                            | `/providers → <Provider>`                                                                                               |
+
+In a print, JSON or RPC run the line is written for a shell: run `octocode` and open `/providers → <Provider>`, and pick another model with `--model`. With [`retry.fallbackModels`](configuration.md#when-a-model-keeps-failing) set, the turn first continues on the next listed model of another provider.
+
+A failure that is retried names its provider and model on each retry line and in the final retry error, and a request that never reached its endpoint adds the endpoint's host: `Retrying in 2s (attempt 1 of 3): local-gateway/fake-model at 127.0.0.1:9: fetch failed`.
+
 ## Enable or disable a provider
 
-Press `e` on a provider in `/providers`, or choose **Disable provider** on its page, to hide its models everywhere: the `/model` picker, model cycling, subagent routing, the `models` tool and `/modelsettings`. The provider moves to **Disabled**, and **Enable provider** brings it back. Disabling saves the provider id in the global [`disabledProviders`](settings.md) setting and never touches saved credentials. A session already running on the provider keeps working and shows a warning naming how to switch; project settings cannot disable providers. The running agent learns about availability changes through its routing notice; no other notification is sent.
+Press `e` on a provider in `/providers`, or choose **Disable provider** on its page, to hide its models everywhere: the `/model` picker, model cycling, subagent routing, the `models` tool and `/modelsettings`. The provider moves to **Off**, and **Enable provider** brings it back. Disabling saves the provider id in the global [`disabledProviders`](settings.md) setting and never touches saved credentials. A session already running on the provider keeps working and shows a warning naming how to switch; project settings cannot disable providers. The running agent learns about availability changes through its routing notice; no other notification is sent.
 
 ### Test and Test all
 
@@ -204,7 +220,7 @@ Open a source (or press `e` on it) to turn it on or off. The choice is saved in 
 
 The web Settings page (opened with `/web`) shows the same sources and each provider's origin (Octocode or Pi, `auth.json` or `models.json`; never a value) and has the same switches for the Pi source and for each provider. The terminal and the page write the same settings; a running session applies a provider switch (a provider or the Pi source) saved on the page or in another terminal within a second or two, without `/reload`. Other settings still need `/reload`.
 
-In `/providers`, **+ Provider** creates a custom connection and **+ From template** starts with a supported host configuration. Open a connected provider and choose **Set as default provider for new chats**. In `/models`, choose a model and select **Set as this provider’s preferred model**. Provider and model preferences are independent, and an explicit startup model takes precedence until you choose a startup provider again.
+In `/providers`, **+ Provider** creates a custom connection and **+ From template** starts with a supported host configuration. Open a connected provider and choose **Set as default provider for new chats**. In `/model`, highlight a model, open its details with **Alt+I** and press **Ctrl+P** to make it the provider's preferred model. Provider and model preferences are independent, and an explicit startup model takes precedence until you choose a startup provider again.
 
 ### Detected tools
 
@@ -422,7 +438,7 @@ The `/providers` sign-in for Bedrock offers a bearer token, an AWS profile or th
 
 See [Amazon Bedrock endpoints](https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html). A provider's page shows the effective base URL and where it comes from. For a host that is not Bedrock, add the **Custom OpenAI-compatible host** template instead. Other official providers whose API takes a base URL (OpenAI, Anthropic) ask for the same optional host at sign-in.
 
-`models.json` is for custom providers only. An entry whose id is an official provider (for example `amazon-bedrock`) is refused with a message naming the file and id, and the rest of the file still loads: rename the entry (for example `bedrock-mantle`) for a custom endpoint, or set the host and key here in `/providers`. Per-model tuning, such as `compat.supportsLongCacheRetention: false` on a Bedrock model, stays in `modelOverrides` under the official id. Pi's `models.json` entries with an official id are skipped with a warning; Pi's files are never modified.
+`models.json` is for custom providers only. An entry whose id is an official provider (for example `amazon-bedrock`) loads only when it holds nothing but per-model tuning in `modelOverrides`, such as `compat.supportsLongCacheRetention: false` on a Bedrock model or a negotiated `cost` ([fields it may set](models-configuration.md#providers)). Any other field refuses the whole entry, its `modelOverrides` included, with a message naming the file, id and fields, and the rest of the file still loads: rename the entry (for example `bedrock-mantle`) for a custom endpoint, or set the host and key here in `/providers`. Pi's `models.json` entries with an official id are skipped with a warning; Pi's files are never modified.
 
 ### Cloudflare AI Gateway
 

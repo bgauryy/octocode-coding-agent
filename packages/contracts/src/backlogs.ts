@@ -99,6 +99,21 @@ export const LinkSchema = Type.Object(
 	},
 	{ additionalProperties: false },
 );
+/** What a shell receipt showed when a completion cited it: facts about one command, not a claim that the goal is met. */
+export const CompletionReceiptSchema = Type.Object(
+	{
+		id: Type.String(),
+		command: Type.String(),
+		state: StringEnum(["running", "finished", "failed", "stopped"] as const),
+		exitCode: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+		/** A later edit, or a different process, made the check say nothing about the current state. */
+		stale: Type.Boolean(),
+		mutationEpoch: Type.String(),
+		revisionAtLaunch: Type.Number(),
+		revisionAtCompletion: Type.Optional(Type.Number()),
+	},
+	{ additionalProperties: false },
+);
 export const CompletionSchema = Type.Object(
 	{
 		summary: Type.String(),
@@ -123,6 +138,10 @@ export const CompletionSchema = Type.Object(
 		lesson: Type.Optional(Type.String()),
 		operationKey: Type.String(),
 		replaces: Type.Optional(Type.Number()),
+		/** The shell receipt the completion cites, as it stood when the completion was written. */
+		receipt: Type.Optional(CompletionReceiptSchema),
+		/** Set when the QA review the item called for did not run. */
+		qa: Type.Optional(StringEnum(["skipped"] as const)),
 	},
 	{ additionalProperties: false },
 );

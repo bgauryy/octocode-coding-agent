@@ -14,7 +14,6 @@ type Host = Pick<
 	| "editor"
 	| "getMarkdownThemeWithSettings"
 	| "getMarkdownTransformers"
-	| "outputPad"
 	| "session"
 	| "settingsManager"
 	| "uiStore"
@@ -37,21 +36,22 @@ export function addApplicationUserMessage(
 			.join("") ?? message.text;
 	if (!message.content?.length && !text) return;
 	if (host.chatContainer.children.length) host.chatContainer.addChild(new Spacer(1));
+	const { view } = host.uiStore.getState();
 	const skill = message.content?.some((block) => block.type !== "text")
 		? undefined
 		: parseSkillBlock(sanitizeTerminalText(text));
 	const addUser = (component: UserMessageComponent) => {
-		component.setExpanded(host.uiStore.getState().view.toolsExpanded);
+		component.setExpanded(view.toolsExpanded);
 		host.chatContainer.addChild(component);
 	};
 	if (skill) {
 		const component = new SkillInvocationMessageComponent(
 			skill,
 			host.getMarkdownThemeWithSettings(),
-			host.outputPad,
+			view.outputPad,
 			host.ui,
 		);
-		component.setExpanded(host.uiStore.getState().view.toolsExpanded);
+		component.setExpanded(view.toolsExpanded);
 		host.chatContainer.addChild(component);
 		if (skill.userMessage) {
 			host.chatContainer.addChild(new Spacer(1));
@@ -59,7 +59,7 @@ export function addApplicationUserMessage(
 				new UserMessageComponent(
 					skill.userMessage,
 					host.getMarkdownThemeWithSettings(),
-					host.outputPad,
+					view.outputPad,
 					host.getMarkdownTransformers(),
 				),
 			);
@@ -69,7 +69,7 @@ export function addApplicationUserMessage(
 			new UserMessageComponent(
 				message,
 				host.getMarkdownThemeWithSettings(),
-				host.outputPad,
+				view.outputPad,
 				host.getMarkdownTransformers(),
 				{
 					readAsset,

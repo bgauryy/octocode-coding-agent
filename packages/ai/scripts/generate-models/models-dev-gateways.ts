@@ -1,4 +1,11 @@
-import { modelsDevLimits } from "./models-dev-limits.ts";
+import {
+	getEffortThinkingLevelMap,
+	getModelsDevCost,
+	modelsDevInput,
+	modelsDevLimits,
+	modelsDevReasoning,
+	modelsDevToolCall,
+} from "../../src/catalog/models-dev-fields.ts";
 import { getOpenCodeBaseUrl } from "../../src/providers/opencode-endpoints.ts";
 import type {
 	AnthropicMessagesCompat,
@@ -8,14 +15,12 @@ import type {
 	OpenAICompletionsCompat,
 	OpenAIResponsesCompat,
 } from "../../src/types.ts";
-import { getEffortThinkingLevelMap } from "../models-dev-reasoning-options.ts";
 import { getAnthropicMessagesCompat } from "./anthropic.ts";
 import {
 	COPILOT_STATIC_HEADERS,
 	OPENCODE_OPENAI_COMPLETIONS_LONG_CACHE_RETENTION_UNSUPPORTED_MODELS,
 } from "./constants.ts";
 import { getOpenCodeAnthropicCacheMetadata } from "./opencode.ts";
-import { getModelsDevCost } from "./pricing.ts";
 import { getGoogleThinkingLevelMap, recordModelsDevReasoningOptions } from "./thinking-levels.ts";
 import type { ModelsDevCatalog } from "./types.ts";
 
@@ -38,7 +43,7 @@ export function addModelsDevGatewayModels(data: ModelsDevCatalog, models: Model<
 
 		for (const [modelId, model] of Object.entries(variantModels)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 			if (m.status === "deprecated") continue;
 
 			const npm = m.provider?.npm;
@@ -108,9 +113,9 @@ export function addModelsDevGatewayModels(data: ModelsDevCatalog, models: Model<
 				api,
 				provider: variant.provider,
 				baseUrl: getOpenCodeBaseUrl(variant.provider, api),
-				reasoning: m.reasoning === true,
+				reasoning: modelsDevReasoning(m),
 				...(thinkingLevelMap ? { thinkingLevelMap } : {}),
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				...(compat ? { compat } : {}),
 				...(promptCache ? { promptCache } : {}),
@@ -124,7 +129,7 @@ export function addModelsDevGatewayModels(data: ModelsDevCatalog, models: Model<
 	if (data["github-copilot"]?.models) {
 		for (const [modelId, model] of Object.entries(data["github-copilot"].models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 			if (m.status === "deprecated") continue;
 
 			// Claude 4.x and 5.x models route to Anthropic Messages API
@@ -152,8 +157,8 @@ export function addModelsDevGatewayModels(data: ModelsDevCatalog, models: Model<
 				api,
 				provider: "github-copilot",
 				baseUrl: "https://api.individual.githubcopilot.com",
-				reasoning: m.reasoning === true,
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: modelsDevReasoning(m),
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				...modelsDevLimits(m.limit, { contextWindow: 128000, maxTokens: 8192 }),
 				headers: { ...COPILOT_STATIC_HEADERS },

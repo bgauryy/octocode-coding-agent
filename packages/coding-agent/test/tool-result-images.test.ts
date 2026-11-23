@@ -1,39 +1,10 @@
-import { crc32, deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import type { ToolResultContent } from "../src/utils/tool-result-images.ts";
 import { normalizeToolResultImages } from "../src/utils/tool-result-images.ts";
-import { createTinyBmp1x1Red24bpp } from "./image-fixtures.ts";
+import { createPng, createTinyBmp1x1Red24bpp } from "./image-fixtures.ts";
 
 const TINY_PNG_BASE64 =
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
-
-function pngChunk(type: string, body: Buffer): Buffer {
-	const header = Buffer.alloc(8);
-	header.writeUInt32BE(body.length, 0);
-	header.write(type, 4, "ascii");
-	const checksum = Buffer.alloc(4);
-	checksum.writeUInt32BE(crc32(Buffer.concat([header.subarray(4), body])), 0);
-	return Buffer.concat([header, body, checksum]);
-}
-
-/** Build an 8-bit grayscale PNG of arbitrary dimensions without pulling in an encoder. */
-function createPng(width: number, height: number): Buffer {
-	const ihdr = Buffer.alloc(13);
-	ihdr.writeUInt32BE(width, 0);
-	ihdr.writeUInt32BE(height, 4);
-	ihdr[8] = 8; // bit depth
-	ihdr[9] = 0; // color type: grayscale
-	const raw = Buffer.alloc((width + 1) * height);
-	for (let row = 0; row < height; row++) {
-		raw.fill(row % 256, row * (width + 1) + 1, (row + 1) * (width + 1));
-	}
-	return Buffer.concat([
-		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-		pngChunk("IHDR", ihdr),
-		pngChunk("IDAT", deflateSync(raw)),
-		pngChunk("IEND", Buffer.alloc(0)),
-	]);
-}
 
 function readPngDimensions(base64Data: string): { width: number; height: number } {
 	const buffer = Buffer.from(base64Data, "base64");

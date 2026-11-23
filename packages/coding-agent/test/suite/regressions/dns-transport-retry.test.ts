@@ -17,8 +17,10 @@ describe("DNS transport failure retry", () => {
 			await harness.session.prompt("test");
 
 			expect(harness.faux.state.callCount).toBe(2);
+			// The retry line names what failed and, for a request that never arrived, the endpoint's host.
+			const { provider, id, baseUrl } = harness.session.model!;
 			expect(harness.eventsOfType("auto_retry_start").map((event) => event.errorMessage)).toEqual([
-				wrappedDnsLookupError,
+				`${provider}/${id} at ${new URL(baseUrl).host}: ${wrappedDnsLookupError}`,
 			]);
 			expect(harness.eventsOfType("auto_retry_end").map((event) => event.success)).toEqual([true]);
 		} finally {

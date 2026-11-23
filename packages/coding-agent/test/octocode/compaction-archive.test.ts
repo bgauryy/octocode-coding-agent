@@ -369,6 +369,39 @@ describe("hostile message text in the archive", () => {
 		expect(fs.readFileSync(segmentPath(1)!, "utf8")).toContain("- Branch leaf: m1\n");
 	});
 
+	it("files each message under its own session entry id, even for clones with the same role and time", () => {
+		const a = user("same", 0);
+		const b = { ...a };
+		const prefix = { ...a };
+		const archive = new ArchiveCapture();
+		archive.capture({
+			preparation: {
+				...preparation([a, b], [prefix]),
+				messageEntryIds: ["e1", "e2"],
+				turnPrefixEntryIds: ["e3"],
+			},
+			branchEntries: entriesOf([a]),
+		} as never);
+		archive.write(compactionEntry({ id: "cX" }), "s", summaryLabel(""), "octocode-default");
+		const text = fs.readFileSync(segmentPath(1)!, "utf8");
+		expect(text.match(/^### user .*$/gm)).toEqual([
+			"### user · 2026-05-01T10:00:00Z · entry e1",
+			"### user · 2026-05-01T10:00:00Z · entry e2",
+			"### user · 2026-05-01T10:00:00Z · entry e3",
+		]);
+		expect(text).toContain("- Message entry ids: session-entries\n");
+		expect(readSegments()[0]).toMatchObject({ entry: "cX", leaf: "m0", entryIds: "session-entries" });
+	});
+
+	it("still reads a segment written without entry ids", () => {
+		const messages = [user("old", 0)];
+		const archive = new ArchiveCapture();
+		archive.capture({ preparation: preparation(messages), branchEntries: entriesOf(messages) } as never);
+		archive.write(compactionEntry(), "s", summaryLabel(""), "octocode-default");
+		expect(readSegments()[0]?.entryIds).toBeUndefined();
+		expect(fs.readFileSync(segmentPath(1)!, "utf8")).not.toContain("Message entry ids");
+	});
+
 	it("does not file an earlier compaction's pointer message again", () => {
 		const pointer = {
 			role: "custom",
@@ -667,18 +700,46 @@ describe("/archive", () => {
 			type: "warning",
 		});
 		expect((await run("two"))[0]).toEqual({
-			message: "Usage: /archive [<segment number>]",
+			message: "Usage: /archive [<segment number>], /archive search <words> or /archive open <anchor> [<cursor>]",
 			type: "warning",
 		});
+	});
+
+	it("searches the archive: ranked hits, a bounded page, and plain notes for none", async () => {
+		expect((await run("search work"))[0].message).toMatch(/^No archive to search/);
+		segments(8);
+		const [hits] = await run("search work");
+		const lines = hits.message.split("\n");
+		expect(lines[0]).toMatch(/^Archive search "work"/);
+		expect(lines.length).toBeGreaterThan(1);
+		expect(lines.length).toBeLessThanOrEqual(1 + 2 * 5);
+		expect(lines[1]).toMatch(/^\d+\. segment \d+ · lines \d+–\d+ · .*\.md$/);
+		expect(lines[2]).toMatch(/^ {3}>/);
+		expect((await run("search zzzunmatched"))[0].message).toMatch(/^No passage matches "zzzunmatched"/);
+		expect((await run("search"))[0]).toMatchObject({
+			type: "warning",
+			message: expect.stringContaining("Usage: /archive"),
+		});
+		expect((await run("1"))[0]).toEqual({ message: segmentPath(1), type: "info" });
+	});
+
+	it("completes search beside the segment numbers", () => {
+		segments(1);
+		const commands = new Subcommands();
+		registerArchiveCommand(commands);
+		const values = (prefix: string) =>
+			(commands.get("archive")!.complete!(prefix) as Array<{ value: string }> | null)?.map((item) => item.value);
+		expect(values("")).toEqual(["search", "open", "1"]);
+		expect(values("se")).toEqual(["search"]);
 	});
 
 	it("is listed with the other subcommands", () => {
 		const commands = new Subcommands();
 		registerArchiveCommand(commands);
-		expect(commands.help()).toMatch(/archive \[<n>\]/);
+		expect(commands.help()).toMatch(/archive \[<n> \| search <words> \| open <anchor>\]/);
 		expect(commands.get("archive")).toMatchObject({
 			description: "Browse the history that compaction summarized",
-			argumentHint: "[<n>]",
+			argumentHint: "[<n> | search <words> | open <anchor>]",
 		});
 	});
 });

@@ -11,7 +11,7 @@ import { FILE_TOOL } from "../core/tools/tool-names.ts";
 import { leanPromptSections } from "./native/prompts/lean.ts";
 import { octocodePromptSections, type ResearchContext } from "./native/prompts/policy.ts";
 import { readRolePrompt } from "./native/prompts/role.ts";
-import { getMcpSessionStatus, currentToolRoles } from "../../../mcp/src/api.ts";
+import { getMcpSessionStatus, currentToolRoles, mcpServerMayRun } from "../../../mcp/src/api.ts";
 import { envFlag, LEAN_ENV, READ_ONLY_ENV } from "@octocodeai/octocode-common/env";
 import type { SkillCatalog } from "./skill/catalog.ts";
 import { promptRootsFromEnv, rebasePath } from "./worktree-paths/prompt-root.ts";
@@ -40,6 +40,17 @@ function environmentSurface(api: FeatureSetup, ctx: FeatureContext, isSubagent: 
 		host: host || undefined,
 		mermaid,
 	};
+}
+
+/**
+ * Whether the selected `agent` tool declares `runner`: an installed vendor CLI can take a task. Fixed for the session
+ * (runners are discovered when it starts), so it keeps the policy bytes stable.
+ */
+function declaresRunner(api: FeatureSetup, selected: readonly string[]): boolean {
+	if (!selected.includes("agent") || typeof api.tools.getAll !== "function") return false;
+	const agent = api.tools.getAll().find((tool) => tool.name === "agent");
+	const properties = isRecord(agent?.parameters) ? agent.parameters.properties : undefined;
+	return isRecord(properties) && properties.runner !== undefined;
 }
 
 /** Adds the cached native prompt section without changing the session's selected tools. */
@@ -82,7 +93,7 @@ export function registerTurnSetup(
 		// browser subagent selects it.
 		const browserServer = servers.find((server) => server.name === BROWSER_SERVER);
 		const browserMcp =
-			(browserServer?.enabled === true && browserServer.state !== "unselected") ||
+			(browserServer !== undefined && mcpServerMayRun(browserServer) && browserServer.state !== "unselected") ||
 			selected.some((name) => browserMcpTool(name) !== undefined);
 		// Only enablement and selection count, never connection state, so a server that is still connecting, or that
 		// failed or stopped later, keeps the same policy bytes and the cached prefix. The `mcp_status` section carries the
@@ -91,7 +102,7 @@ export function registerTurnSetup(
 		const research: ResearchContext | undefined =
 			roles &&
 			(selected.some((name) => name.startsWith(roles.prefix)) ||
-				(server?.enabled === true && server.state !== "unselected" && canReachMcp(selected)))
+				(server !== undefined && mcpServerMayRun(server) && server.state !== "unselected" && canReachMcp(selected)))
 				? {
 						prefix: roles.prefix,
 						reader: roles.reader,
@@ -137,6 +148,7 @@ export function registerTurnSetup(
 					: [],
 			canDelegate: !options.isSubagent,
 			canUseAgent: selected.includes("agent"),
+			canStartRunner: declaresRunner(api, selected),
 			readOnly,
 			// A read-only role keeps `file` for its reports; its profile, not its tools, says it leaves source unchanged.
 			canSave: selected.includes(FILE_TOOL),

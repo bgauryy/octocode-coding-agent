@@ -8,6 +8,8 @@ import type { Theme } from "../../../theme/theme.ts";
 import { CHIPS, type ChipParts, chipLabel, chipShortLabel } from "../../permission/mode.ts";
 import { cachedPercent, formatCost, formatTokens, newPromptTokens } from "../../shared/format.ts";
 import { totalSpend } from "../../shared/team-spend.ts";
+import { resetClock } from "@octocodeai/octocode-common/time";
+import { QUOTA_ALARM } from "../../shared/quota-text.ts";
 import type { FooterPaint, FooterPart } from "./fit.ts";
 import type { FooterState } from "./state.ts";
 
@@ -31,7 +33,10 @@ export const PRIORITY = {
 	/** At 50% and over the gauge holds until H's floor. */
 	ctxBarHalf: 69,
 	tokens: 62,
+	/** A plan window from 70 %: its reset time goes early, the figure holds until zone H's floor. */
+	quota: 60,
 	cached: 66,
+	quotaShort: 86,
 	whereBasename: 88,
 	/**
 	 * Floors, in the order the last pass cuts them on a very narrow row: zone A's work marks first, then the plan mark, the
@@ -42,8 +47,11 @@ export const PRIORITY = {
 	queued: 91,
 	runningFloor: 92,
 	plan: 93,
+	quotaFloor: 93,
 	ctxFloor: 94,
 	whereFloor: 95,
+	/** From 90 % a plan window outlasts the location: the next requests may be refused. */
+	quotaAlarm: 96,
 	sigma: 97,
 	chipFloor: 98,
 	/** Past the alarm point (80% of the auto-compact point) the context gauge holds its bar and percent through every other step. */
@@ -171,16 +179,57 @@ export function healthParts(state: FooterState, theme: FooterPaint): FooterPart[
 }
 
 /**
- * The one total, `Σ`: the ledger plus the live agents that have not reported yet. `Σ (sub)` when every priced reply of
- * this session was billed by a plan and nothing else spent; a mixed session shows the money with no suffix.
+ * A plan window near its cap: `quota 5h 92% · resets 14:20` in the warning colour from 70 %, the error colour from 90 %,
+ * then `quota 5h 92%`, then `5h 92%`; never cut (a cut figure misreads). Nothing below 70 % (`FooterState.quota`).
+ */
+export function quotaPart(state: FooterState, theme: FooterPaint, now = Date.now()): FooterPart {
+	const quota = state.quota;
+	if (!quota) return { text: "", priority: PRIORITY.quota };
+	const alarm = quota.usedFraction >= QUOTA_ALARM;
+	const tone: Color = alarm ? "error" : "warning";
+	const figure = `${quota.label} ${Math.round(quota.usedFraction * 100)}%`;
+	const named = theme.fg(tone, `quota ${figure}`);
+	const reset =
+		quota.resetsAt !== undefined && quota.resetsAt > now
+			? theme.fg("dim", ` · resets ${resetClock(quota.resetsAt, now)}`)
+			: "";
+	return {
+		text: `${named}${reset}`,
+		...(reset ? { middle: named } : {}),
+		short: theme.fg(tone, figure),
+		priority: alarm ? PRIORITY.quotaAlarm : PRIORITY.quota,
+		later: alarm ? PRIORITY.quotaAlarm : PRIORITY.quotaShort,
+		floor: alarm ? PRIORITY.quotaAlarm : PRIORITY.quotaFloor,
+		keep: true,
+		whole: true,
+		details: true,
+	};
+}
+
+/** A plan's share as an estimate, never money: `~$3.10 plan`. */
+const planEstimate = (cost: number) => `~$${cost < 0.01 ? "<0.01" : cost.toFixed(2)} plan`;
+
+/**
+ * The one total, `Σ`: the ledger plus the live agents that have not reported yet, money apart from what the spend a plan
+ * paid for (`FooterState.planBilled`, and each live agent whose `billing` is `plan`) would have cost at list price:
+ * `Σ ≈$1.24`, `Σ ~$3.10 plan`, `Σ ≈$1.24 · ~$3.10 plan`. `Σ (sub)` when a plan paid for all of it and nothing priced it.
  */
 export function sigmaText(state: FooterState, theme: FooterPaint): string {
-	const total = totalSpend(state.usage, state.live ?? [], state.reported ?? new Set());
+	const live = state.live ?? [];
+	const reported = state.reported ?? new Set<string>();
+	const total = totalSpend(state.usage, live, reported);
+	// The live agents' plan share: the total with and without their plan-billed spend (`totalSpend` decides who is held).
+	const unplanned = live.map((agent) => (agent.billing === "plan" ? { ...agent, cost: 0 } : agent));
+	const livePlan = total.cost - totalSpend(state.usage, unplanned, reported).cost;
 	const plan = state.planBilled;
-	if (plan && plan.replies > 0 && !total.unpriced && total.cost - plan.cost <= 1e-9) return theme.fg("text", "Σ (sub)");
-	const money = formatCost(total);
-	if (!money) return "";
-	const [priced, unpriced] = money.split(" + ");
-	const head = priced === "cost n/a" ? theme.fg("warning", priced) : theme.fg("text", priced);
-	return `${theme.fg("text", "Σ")} ${head}${unpriced ? theme.fg("warning", ` + ${unpriced}`) : ""}`;
+	const planReplies = (plan?.replies ?? 0) + (livePlan > 1e-9 ? 1 : 0);
+	const planCost = planReplies > 0 ? Math.max(0, (plan?.cost ?? 0) + livePlan) : 0;
+	const metered = total.cost - planCost > 1e-9 ? total.cost - planCost : 0;
+	const money = formatCost({ cost: metered, unpriced: total.unpriced });
+	const estimate = planCost > 0 ? theme.fg("muted", planEstimate(planCost)) : "";
+	if (!money && !estimate) return planReplies > 0 && total.cost <= 1e-9 ? theme.fg("text", "Σ (sub)") : "";
+	const [priced = "", unpriced] = money.split(" + ");
+	const head = priced === "cost n/a" ? theme.fg("warning", priced) : priced ? theme.fg("text", priced) : "";
+	const shown = `${head}${unpriced ? theme.fg("warning", ` + ${unpriced}`) : ""}`;
+	return `${theme.fg("text", "Σ")} ${[shown, estimate].filter(Boolean).join(theme.fg("dim", " · "))}`;
 }

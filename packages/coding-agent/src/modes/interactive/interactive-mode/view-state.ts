@@ -4,7 +4,13 @@ import { captureCommandDialog } from "./web-command-context.ts";
  * the editor border color, and the selector shown in place of the editor.
  */
 
-import { type Component, type TuiAltScreen, TuiMainScreen } from "@octocodeai/octocode-tui";
+import {
+	type Component,
+	type Terminal,
+	type TuiAltScreen,
+	TuiMainScreen,
+	type TuiMainScreenRenderState,
+} from "@octocodeai/octocode-tui";
 import * as TuiLayouts from "@octocodeai/octocode-tui";
 import { getAgentDir } from "../../../config.ts";
 import type { FullscreenExitOutput, TuiMode } from "../../../core/settings-manager.ts";
@@ -25,7 +31,6 @@ type ViewStateHost = Pick<
 	| "footerDataProvider"
 	| "fullscreenLayoutRoot"
 	| "uiStore"
-	| "mainScreenRenderState"
 	| "mountInteractiveTui"
 	| "onRightClickPaste"
 	| "options"
@@ -62,6 +67,13 @@ export function stopInteractiveTui(host: ViewStateHost, fullscreenExitOutput: Fu
 	host.ui.stop({ preserveScreen: host.renderer.mode === "fullscreen" });
 }
 
+/**
+ * The main-screen renderer's diff state (the rows it last drew, its cursor and viewport) while a fullscreen renderer
+ * holds the terminal, by terminal: the main-screen renderer created on the way back continues from it instead of
+ * redrawing over rows it does not know. Renderers are replaced on each switch, so the terminal is the owner that lasts.
+ */
+const mainScreenStates = new WeakMap<Terminal, TuiMainScreenRenderState>();
+
 export function switchTuiMode(
 	host: ViewStateHost,
 	mode: TuiMode,
@@ -80,9 +92,7 @@ export function switchTuiMode(
 	const clearOnShrink = previousUi.getClearOnShrink();
 	const onDebug = previousUi.onDebug;
 	const onRenderError = previousUi.onRenderError;
-	if (previousUi instanceof TuiMainScreen) {
-		host.mainScreenRenderState = previousUi.captureRenderState();
-	}
+	if (previousUi instanceof TuiMainScreen) mainScreenStates.set(terminal, previousUi.captureRenderState());
 
 	previousUi.stop({ preserveScreen: true });
 	previousUi.setFocus(null);
@@ -105,9 +115,8 @@ export function switchTuiMode(
 	nextUi.setClearOnShrink(clearOnShrink);
 	nextUi.onDebug = onDebug;
 	nextUi.onRenderError = onRenderError;
-	if (nextUi instanceof TuiMainScreen && host.mainScreenRenderState) {
-		nextUi.restoreRenderState(host.mainScreenRenderState);
-	}
+	const mainScreenState = mainScreenStates.get(terminal);
+	if (nextUi instanceof TuiMainScreen && mainScreenState) nextUi.restoreRenderState(mainScreenState);
 	host.renderer = nextUi;
 	host.options.tuiMode = mode;
 	host.mountInteractiveTui(nextUi, components);

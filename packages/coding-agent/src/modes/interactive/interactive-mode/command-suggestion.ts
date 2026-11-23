@@ -55,8 +55,11 @@ function closestCommand(name: string, commands: readonly CommandEntry[]): string
 	return nearest?.command.name;
 }
 
+const COMMAND_NAME = /^[a-z][a-z0-9-]*$/i;
+
 /**
  * The warning for `text`, whose command `name` no command owns: the closest command, or /help when none is close.
+ * A doubled slash (`//status`) is a command typed twice, refused like any unknown name; a path (`/tmp/x`) is not.
  * Undefined when `name` is not command-shaped or exists.
  */
 export function unknownCommandWarning(
@@ -64,11 +67,13 @@ export function unknownCommandWarning(
 	name: string,
 	commands: readonly CommandEntry[],
 ): string | undefined {
-	if (!/^[a-z][a-z0-9-]*$/i.test(name)) return undefined;
+	const doubled = name.startsWith("/") && COMMAND_NAME.test(name.slice(1));
+	if (!doubled && !COMMAND_NAME.test(name)) return undefined;
 	const names = commands.map((command) => command.name);
 	if (names.includes(name)) return undefined;
-	const suggestion = closestCommand(name, commands);
+	const meant = doubled ? name.slice(1) : name;
+	const suggestion = names.includes(meant) ? meant : closestCommand(meant, commands);
 	return suggestion
 		? `Unknown command /${name}. Did you mean /${suggestion}?`
-		: `Unknown command /${name}. Search commands with /help ${name}.`;
+		: `Unknown command /${name}. Search commands with /help ${meant}.`;
 }

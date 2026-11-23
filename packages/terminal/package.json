@@ -17,8 +17,8 @@
 		"@octocodeai/octocode-common": "1.3.0"
 	},
 	"devDependencies": {
-		"@types/node": "24.19.2",
-		"vite": "8.3.5",
-		"vitest": "5.1.0"
+		"@types/node": "^24.19.2",
+		"vite": "^8.3.8",
+		"vitest": "^5.1.1"
 	}
 }

@@ -17,9 +17,13 @@ interface WebServer {
  * opener (the page fell back to the default browser) is shown to the session.
  */
 export function webLauncher(api: FeatureSetup, open?: (url: string) => Promise<string | void>) {
-	const appWindow = createAppWindow({ mode: () => api.settings.get().web?.window ?? "app" });
-	const opener = open ?? appWindow.open;
 	let context: FeatureContext | undefined;
+	// A warning written to stderr would paint inside the terminal's prompt row: say it as a session notice.
+	const appWindow = createAppWindow({
+		mode: () => api.settings.get().web?.window ?? "app",
+		onError: (message) => (context ? context.ui.notify(message, "warning") : void process.stderr.write(`${message}\n`)),
+	});
+	const opener = open ?? appWindow.open;
 	api.bus.on("session_start", (_event, ctx) => {
 		context = ctx;
 	});

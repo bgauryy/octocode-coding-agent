@@ -3,10 +3,10 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { CommandContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { hasTmuxSession } from "@octocodeai/octocode-tui";
-import { type Subcommand, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
+import { cancelledText, type Subcommand, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { gitQuiet } from "../../utils/git-run.ts";
 import type { TmuxPane } from "../terminal-launch/tmux.ts";
-import { worktreeTrustTitle } from "./approval.ts";
+import { WorktreeDeclinedError, worktreeTrustTitle } from "./approval.ts";
 import { describeWorktree, ensureWorktree } from "./create.ts";
 import { worktreeNames } from "./names.ts";
 import { recordWorktreeOpening } from "./openings.ts";
@@ -189,6 +189,8 @@ export function worktreeCommand(deps: WorktreeCommandDependencies = {}): Subcomm
 				}
 				say(ctx, USAGE, "warning");
 			} catch (error) {
+				// A no to the trust question is the user's choice, said as every declined confirmation says it.
+				if (error instanceof WorktreeDeclinedError) return say(ctx, cancelledText("created"));
 				say(ctx, errorMessage(error), "error");
 			}
 		},

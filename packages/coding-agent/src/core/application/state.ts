@@ -16,6 +16,10 @@ export interface ApplicationRuntimeState {
 	revision: number;
 	sessionId: string;
 	model?: ApplicationSnapshot["model"];
+	/** The session's spend, quota windows and the models `setModel` accepts, as last published. */
+	usage?: ApplicationSnapshot["usage"];
+	quota?: ApplicationSnapshot["quota"];
+	models?: ApplicationSnapshot["models"];
 	messages: ReadonlyMap<string, ApplicationMessage>;
 	tools: ReadonlyMap<string, ApplicationTool>;
 	activities: ReadonlyMap<string, ApplicationActivity>;
@@ -73,6 +77,15 @@ export function acceptApplicationEvent(store: ApplicationStateStore, event: Appl
 	switch (event.type) {
 		case "session.model":
 			store.setState({ model: event.model ? structuredClone(event.model) : undefined });
+			break;
+		case "session.usage":
+			store.setState({ usage: { ...event.usage } });
+			break;
+		case "session.quota":
+			store.setState({ quota: structuredClone(event.quota) });
+			break;
+		case "session.models":
+			store.setState({ models: structuredClone(event.models) });
 			break;
 		case "run.started":
 			store.setState({ runId: event.runId, streaming: true });

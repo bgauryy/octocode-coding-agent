@@ -9,10 +9,15 @@ export function SessionRequests({ sessionId, receipts }: { sessionId: string; re
 	const drafts = useStore(workspace, (state) => state.drafts);
 	const draftKey = `session-command:${sessionId}`;
 	const hasDraft = Boolean(drafts[draftKey]?.text.trim() || drafts[draftKey]?.attachments?.length);
-	if (!receipts.length) return null;
+	// A wordless receipt of a request this tab did not send (another tab, a model command, whose chip shows its state)
+	// would be a bare "Handled": only messages this tab sent and receipts with the host's words are listed.
+	const shown = receipts.filter(
+		(receipt) => Boolean(receipt.message) || Boolean(drafts[`session-sent:${sessionId}:${receipt.id}`]),
+	);
+	if (!shown.length) return null;
 	return (
 		<ul className="receipts" aria-label="Recent session requests" aria-live="polite">
-			{receipts
+			{shown
 				.slice(-3)
 				.reverse()
 				.map((receipt) => {

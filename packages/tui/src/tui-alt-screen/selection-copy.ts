@@ -1,5 +1,6 @@
 import type { Terminal } from "../terminal.ts";
 import { COPY_ERROR_FLASH_DURATION_MS } from "./constants.ts";
+import { dedentSelectedLines, type SelectedLine } from "./selection-lines.ts";
 
 /** 100,000 base64 characters: the fallback terminal clipboard's existing transfer limit. */
 export const TERMINAL_CLIPBOARD_BYTES = 75_000;
@@ -16,15 +17,16 @@ const EXTRACTION_CLOCK_ROWS = 64;
  * Stops as soon as the byte total passes `limitBytes`, and reports a superseded run instead of dropping it.
  */
 export async function collectSelectionText(
-	rows: Iterable<string>,
+	rows: Iterable<SelectedLine>,
 	limitBytes: number,
 	isSuperseded: () => boolean,
 ): Promise<{ text?: string; error?: string }> {
-	const lines: string[] = [];
+	const lines: SelectedLine[] = [];
 	let bytes = 0;
 	let sliceStart = performance.now();
 	for (const line of rows) {
-		bytes += Buffer.byteLength(line) + (lines.length > 0 ? 1 : 0);
+		// Counted before dedenting: dropping padding only shrinks the text.
+		bytes += Buffer.byteLength(line.text) + (lines.length > 0 ? 1 : 0);
 		if (bytes > limitBytes) {
 			return {
 				error:
@@ -40,7 +42,7 @@ export async function collectSelectionText(
 			sliceStart = performance.now();
 		}
 	}
-	return { text: lines.join("\n") };
+	return { text: dedentSelectedLines(lines).join("\n") };
 }
 
 /** What copying needs from the screen: an optional native clipboard, the terminal for OSC 52, and the flash line. */
@@ -48,6 +50,45 @@ interface ClipboardHost {
 	readonly copySelection?: (text: string) => Promise<boolean | string>;
 	flash(message: string, durationMs?: number): void;
 	getTerminal(): Terminal;
+	/** A hint to add to this confirmation, e.g. how to select with the terminal instead; shown once. */
+	copyHint?(): string | undefined;
+}
+
+/** How long the hint after a confirmation stays up: long enough to read. */
+const HINT_FLASH_DURATION_MS = 4000;
+
+/** Code points in `text`, without building an array of them: a selection may be megabytes. */
+function countCharacters(text: string): number {
+	let count = text.length;
+	for (let index = 0; index < text.length; index++) {
+		const code = text.charCodeAt(index);
+		if (code >= 0xdc00 && code <= 0xdfff && index > 0) {
+			const previous = text.charCodeAt(index - 1);
+			if (previous >= 0xd800 && previous <= 0xdbff) count -= 1;
+		}
+	}
+	return count;
+}
+
+/** How much text there is, as a copy confirmation says it: "3 lines · 1,204 chars", or "12 chars" for one line. */
+export function copiedAmount(text: string): string {
+	const characters = countCharacters(text);
+	const chars = `${characters.toLocaleString("en-US")} ${characters === 1 ? "char" : "chars"}`;
+	let lines = 1;
+	for (let at = text.indexOf("\n"); at !== -1; at = text.indexOf("\n", at + 1)) lines += 1;
+	return lines > 1 ? `${lines.toLocaleString("en-US")} lines · ${chars}` : chars;
+}
+
+/** The confirmation for copied text: how much went to the clipboard, e.g. "Copied 3 lines · 1,204 chars". */
+export function copiedMessage(text: string): string {
+	return `Copied ${copiedAmount(text)}`;
+}
+
+/** The confirmation, then (once) the hint on a row of its own, which stays longer: two short rows cover less. */
+function flashCopied(host: ClipboardHost, text: string): void {
+	host.flash(copiedMessage(text));
+	const hint = host.copyHint?.();
+	if (hint) host.flash(hint, HINT_FLASH_DURATION_MS);
 }
 
 /**
@@ -64,10 +105,8 @@ export async function copyTextToClipboard(host: ClipboardHost, text: string): Pr
 			result = error instanceof Error ? error.message : "Copy failed";
 		}
 		const ok = result === true;
-		host.flash(
-			ok ? "Copied!" : typeof result === "string" ? result : "Copy failed",
-			ok ? undefined : COPY_ERROR_FLASH_DURATION_MS,
-		);
+		if (ok) flashCopied(host, text);
+		else host.flash(typeof result === "string" ? result : "Copy failed", COPY_ERROR_FLASH_DURATION_MS);
 		return ok;
 	}
 	if (Buffer.byteLength(text) > TERMINAL_CLIPBOARD_BYTES) {
@@ -75,6 +114,6 @@ export async function copyTextToClipboard(host: ClipboardHost, text: string): Pr
 		return false;
 	}
 	host.getTerminal().write(`\x1b]52;c;${Buffer.from(text).toString("base64")}\x07`);
-	host.flash("Copied!");
+	flashCopied(host, text);
 	return true;
 }

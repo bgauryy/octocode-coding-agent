@@ -57,6 +57,14 @@ export interface McpPathsPort {
 	 * environment, whose `ALLOWED_PATHS` counts as one). A host without user-added folders omits it.
 	 */
 	researchRoots?(env?: NodeJS.ProcessEnv): McpResearchRoots;
+	/**
+	 * Every skill folder the host adds when it discovers the resources of a session in `cwd` (`resources_discover`), as
+	 * absolute realpaths, known before then: only folders the session loads (a skill the user switched off stays out). A
+	 * `${researchRoots}` launch names each whole, in place of the loaded skill folders inside it, so the launch is the
+	 * same before and after discovery and starts with the session (`startup-gate.ts`). A host that omits it keeps such
+	 * launches waiting for discovery.
+	 */
+	announcedSkillRoots?(context: { cwd: string; projectTrusted: boolean }): string[];
 	/** Where running stdio servers' owner records live, so a later start can stop the groups of a dead owner; omitted: none are kept. */
 	serverRecordsDir?(): string;
 	/** The host's MCP configuration page, shown in Add MCP; a host without shipped docs omits it. */

@@ -1,18 +1,25 @@
 import {
+	type Activity,
 	type ApplicationConnection,
 	type ApplicationFrame,
-	type ApplicationPhase,
 	type ApplicationPort,
+	type ApplicationSnapshot,
 	isPendingApplicationPhase,
 } from "@octocodeai/octocode-contracts";
+import { activity } from "@octocodeai/octocode-projections";
 
-/** What a session list needs to know about a session: whether it is working, and the dialog it is blocked on. */
+/** What a session list needs to know about a session: whether it is working, the dialog it is blocked on, and its light. */
 export interface SessionState {
 	/** A run is going, or the job waits on its background agents, jobs, a wake or a timer: the session is not done. */
 	busy: boolean;
 	/** The title of the open dialog, when the session waits for the user (a run, or a background subagent, is blocked on it). */
 	needsYou?: string;
+	/** The light every surface shows for these facts (`activity`): failed, stopped, compacting and retrying included. */
+	activity: Activity;
 }
+
+/** The snapshot facts the light reads, kept from the snapshot and updated by the events that change them. */
+type Facts = Partial<Pick<ApplicationSnapshot, "streaming" | "status" | "awaiting" | "phase">>;
 
 const RECONNECT_MS = 1000;
 /** The longest wait between attempts while each one fails. */
@@ -20,8 +27,10 @@ const RECONNECT_MAX_MS = 60_000;
 const TITLE_MAX = 300;
 
 /**
- * Follows one attached session's application stream for the two facts the daemon's session list and `remote list` show:
- * `busy` (a run is in progress, or the session's phase still waits on background work) and `needsYou` (the session is blocked on a dialog). One stream per attached session; a
+ * Follows one attached session's application stream for what the daemon's session list and `remote list` show: `busy` (a
+ * run is in progress, or the session's phase still waits on background work), `needsYou` (the session is blocked on a
+ * dialog) and `activity`, the shared light of the snapshot facts it keeps (`streaming`, `status`, `awaiting`, `phase`).
+ * One stream per attached session; a
  * resync or a dropped stream reconnects after a short wait while the session stays attached; while attempts keep failing
  * the wait doubles, up to a minute, and a failure that repeats is reported once. `state` is undefined until the first
  * snapshot arrived, so a list never claims a session is idle before it heard from it.
@@ -34,9 +43,8 @@ export class SessionWatch {
 	private readonly port: ApplicationPort;
 	private readonly sessionId: string;
 	private readonly changed: () => void;
-	/** The two facts `busy` combines: a run is going, and the phase waits on work that continues the job. */
-	private running = false;
-	private waiting = false;
+	/** The snapshot's facts as the stream has changed them since; `busy`, `needsYou` and `activity` are read from them. */
+	private facts: Facts = {};
 	/** Attempts that failed in a row, and the last failure reported; a stream that ends normally clears both. */
 	private failures = 0;
 	private reported: string | undefined;
@@ -112,26 +120,32 @@ export class SessionWatch {
 
 	private apply(frame: ApplicationFrame): void {
 		const previous = this.state;
-		// An open dialog with a title is a wait whether or not a run is going: a background subagent asks after its parent's
-		// turn ended. A run's start or end leaves the dialog as it is; `session.awaiting` opens and closes it.
-		const needs = (title: string | undefined) => (title ? { needsYou: title.slice(0, TITLE_MAX) } : {});
-		const pending = (phase: ApplicationPhase | undefined) => phase !== undefined && isPendingApplicationPhase(phase);
 		if (frame.type === "snapshot") {
-			this.running = frame.snapshot.streaming;
-			this.waiting = pending(frame.snapshot.phase);
-			this.state = { busy: this.running || this.waiting, ...needs(frame.snapshot.awaiting?.title) };
+			const { streaming, status, awaiting, phase } = frame.snapshot;
+			this.facts = { streaming, status, awaiting, phase };
 		} else if (frame.type === "event") {
 			if (!previous) return;
+			// A run's start or end leaves the dialog as it is; `session.awaiting` opens and closes it.
 			const event = frame.event;
-			let needsYou = previous.needsYou;
-			if (event.type === "run.started") this.running = true;
-			else if (event.type === "run.settled") this.running = false;
-			else if (event.type === "session.phase") this.waiting = pending(event.phase);
-			else if (event.type === "session.awaiting") needsYou = needs(event.awaiting?.title).needsYou;
+			if (event.type === "run.started") this.facts.streaming = true;
+			else if (event.type === "run.settled") this.facts.streaming = false;
+			else if (event.type === "session.phase") this.facts.phase = event.phase;
+			else if (event.type === "session.status") this.facts.status = event.status;
+			else if (event.type === "session.awaiting") this.facts.awaiting = event.awaiting;
 			else return;
-			this.state = { busy: this.running || this.waiting, ...(needsYou === undefined ? {} : { needsYou }) };
 		} else return;
-		if (previous?.busy !== this.state?.busy || previous?.needsYou !== this.state?.needsYou) this.changed();
+		const { streaming, phase, awaiting } = this.facts;
+		// An open dialog with a title is a wait whether or not a run is going: a background subagent asks after its parent's
+		// turn ended.
+		const title = awaiting?.title?.slice(0, TITLE_MAX);
+		this.state = {
+			busy: Boolean(streaming) || (phase !== undefined && isPendingApplicationPhase(phase)),
+			...(title ? { needsYou: title } : {}),
+			activity: activity(this.facts),
+		};
+		const shown = (state: SessionState | undefined) =>
+			state && `${state.busy}\0${state.needsYou ?? ""}\0${state.activity.tone}\0${state.activity.label}`;
+		if (shown(previous) !== shown(this.state)) this.changed();
 	}
 
 	close(): void {
@@ -142,8 +156,18 @@ export class SessionWatch {
 	}
 }
 
-/** Sessions that need the user first, then the ones working, then the rest; newest first within each group. */
-export function byAttention<T extends { startedAt: number; busy?: boolean; needsYou?: string }>(a: T, b: T): number {
-	const rank = (session: T) => (session.needsYou ? 0 : session.busy ? 1 : 2);
+/** The rank of each light in a list: the user's attention first, then work, then a failure, then rest. */
+const RANK: Record<Activity["tone"], number> = { waiting: 0, working: 1, error: 2, idle: 3 };
+
+/**
+ * Sessions that need the user first, then the ones working, then the failed ones, then the rest; newest first within each.
+ * A row without a light (the daemon has not seen its state yet) ranks by `needsYou` and `busy`.
+ */
+export function byAttention<T extends { startedAt: number; busy?: boolean; needsYou?: string; activity?: Activity }>(
+	a: T,
+	b: T,
+): number {
+	const rank = (session: T) =>
+		session.activity ? RANK[session.activity.tone] : session.needsYou ? 0 : session.busy ? 1 : 3;
 	return rank(a) - rank(b) || b.startedAt - a.startedAt;
 }

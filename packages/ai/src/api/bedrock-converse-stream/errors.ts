@@ -47,7 +47,11 @@ export function formatBedrockError(error: unknown): string {
 	return core;
 }
 
-/** Appended after formatting so headerless rejections and OpenAI-compatible Bedrock endpoints get the same guidance. */
+/**
+ * Appended after formatting so headerless rejections and OpenAI-compatible Bedrock endpoints get the same guidance.
+ * Credential failures get none here: the host knows how Bedrock signs in and names the fix (`aws sso login` or its own
+ * commands), so this package never names terminal commands.
+ */
 export function bedrockErrorHint(message: string): string {
 	if (/data retention mode/i.test(message))
 		return ` See ${BEDROCK_DATA_RETENTION_DOCS_URL} for supported data retention modes.`;

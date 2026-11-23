@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import * as schemaVersion from "./queries/schema-version.ts";
 import { ENSURED_OBJECTS, FTS, SCHEMA } from "./schema-sql.ts";
+import { ensureAddedColumns } from "./schema-columns.ts";
 
 /** A foreign file or unsupported schema. Retrying the same file cannot fix it. */
 export class AgentDbError extends Error {}
@@ -25,7 +26,10 @@ export const COORDINATION_FILE: FileKind = {
 	applicationId: AGENT_APPLICATION_ID,
 	name: "Octocode agent database",
 	version: 10,
-	ensure: (db) => db.exec(ENSURED_OBJECTS),
+	ensure: (db) => {
+		db.exec(ENSURED_OBJECTS);
+		ensureAddedColumns(db);
+	},
 	create: (db) => {
 		db.exec(SCHEMA);
 		try {

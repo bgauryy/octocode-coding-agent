@@ -441,6 +441,40 @@ describe("SettingsManager", () => {
 		});
 	});
 
+	describe("global-only keys", () => {
+		it("warns once about every global-only key a project file sets, naming the keys and the file", () => {
+			const projectFile = join(projectDir, ".octocode", "settings.json");
+			writeFileSync(
+				projectFile,
+				JSON.stringify({
+					theme: "dark",
+					sandbox: { mode: "auto" },
+					bash: { inheritProviderKeys: true, spillMaxBytes: 1024 },
+					cacheWarming: "off",
+					retention: { days: 5 },
+				}),
+			);
+			const warnings = SettingsManager.create(projectDir, agentDir, { projectTrusted: true }).drainWarnings();
+			expect(warnings).toEqual([
+				{
+					scope: "project",
+					path: projectFile,
+					message:
+						'Settings "sandbox", "bash.inheritProviderKeys", "retention" and "cacheWarming" are global only; a project settings file cannot set them, so they do nothing.',
+				},
+			]);
+		});
+
+		it("says nothing about keys a project may set, nor about the same keys in the global file", () => {
+			writeFileSync(
+				join(agentDir, "settings.json"),
+				JSON.stringify({ sandbox: { mode: "auto" }, cacheWarming: "off" }),
+			);
+			writeFileSync(join(projectDir, ".octocode", "settings.json"), JSON.stringify({ bash: { spillMaxBytes: 1024 } }));
+			expect(SettingsManager.create(projectDir, agentDir, { projectTrusted: true }).drainWarnings()).toEqual([]);
+		});
+	});
+
 	describe("externalEditor", () => {
 		const originalVisual = process.env.VISUAL;
 		const originalEditor = process.env.EDITOR;

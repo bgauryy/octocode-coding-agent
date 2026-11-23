@@ -462,6 +462,19 @@ describe("Permission modes over a session", () => {
 		expect(ctx.ui.notes.filter((note) => note.message.includes("loose"))).toHaveLength(1);
 	});
 
+	it("says on stderr, once, that an invalid OCTOCODE_PERMISSION starts a run with no UI in manual", () => {
+		const stderr: string[] = [];
+		const env = { [PERMISSION_ENV]: "loose" };
+		const permission = new Permission({ api: fakeHost().api, env, isSubagent: false, stderr: (t) => stderr.push(t) });
+		const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
+		permission.start(ctx);
+		permission.start(ctx, "new");
+		expect(permission.mode).toBe("manual");
+		expect(stderr.filter((line) => line.includes("OCTOCODE_PERMISSION=loose"))).toEqual([
+			"octocode: OCTOCODE_PERMISSION=loose is not manual, workspace, full or bypass; starting in manual.\n",
+		]);
+	});
+
 	it("tells the model once per change, hidden and without starting a turn", () => {
 		const { permission, ctx, fake } = setup();
 		permission.setMode("manual", ctx);

@@ -65,6 +65,7 @@ export function userBashGate({ permission, preToolUse, clientPermission }: UserB
 			title: destructive ? "Run this destructive command?" : "Run this command?",
 			what: [event.command, `cwd: ${ctx.cwd}`],
 			purpose: "",
+			byUser: true,
 			cwd: ctx.cwd,
 			...(hook ? { reasons: ["hook.ask" as const], reason: hook } : {}),
 			...(ctx.signal ? { signal: ctx.signal } : {}),

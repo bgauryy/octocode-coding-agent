@@ -24,7 +24,6 @@ type SettingsSelectorHost = Pick<
 	| "defaultEditor"
 	| "editor"
 	| "uiStore"
-	| "outputPad"
 	| "pendingMessagesContainer"
 	| "rebuildChatFromMessages"
 	| "renderer"
@@ -212,15 +211,8 @@ export function createLiveSettingsSelector(host: SettingsSelectorHost, done: () 
 			},
 			onOutputPadChange: (padding) => {
 				host.settingsManager.setOutputPad(padding);
-				host.outputPad = padding;
-				for (const container of [host.chatContainer, host.pendingMessagesContainer]) {
-					for (const child of container.children) {
-						if ("setOutputPad" in child && typeof child.setOutputPad === "function") {
-							child.setOutputPad(padding);
-						}
-					}
-				}
-				host.ui.requestRender();
+				// The view binder pads the live rows; `bindRender` asks for the frame.
+				host.uiStore.getState().setOutputPad(padding);
 			},
 			onAutocompleteMaxVisibleChange: (maxVisible) => {
 				host.settingsManager.setAutocompleteMaxVisible(maxVisible);

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { OPEN_BROWSER_ENV } from "./env.ts";
 
 /** What `openTarget` needs of the host; replaceable so a test never opens a real application. */
 export interface OpenTargetOptions {
@@ -41,9 +42,13 @@ export function openTargetCommand(
 /**
  * Opens a URL or file with the system's default handler (`open`, `xdg-open` or the Windows URL handler), detached so
  * it outlives this process. Resolves once the opener started; rejects with the spawn error (a missing `xdg-open`, for
- * one). Whether the handler then succeeds is not reported: callers that need the target used also show it.
+ * one), or at once when `OPEN_BROWSER_ENV` is `0`. Whether the handler then succeeds is not reported: callers that
+ * need the target used also show it.
  */
 export function openTarget(target: string, options: OpenTargetOptions = {}): Promise<void> {
+	// A caller's own `spawn` (a test's) is not the system's: only the system opener is turned off.
+	if (!options.spawn && (options.env ?? process.env)[OPEN_BROWSER_ENV] === "0")
+		return Promise.reject(new Error(`Opening an application is turned off (${OPEN_BROWSER_ENV}=0): ${target}`));
 	const { command, args } = openTargetCommand(target, options.platform, options.env);
 	return new Promise((resolve, reject) => {
 		const child = (options.spawn ?? spawn)(command, args, { detached: true, stdio: "ignore", windowsHide: true });

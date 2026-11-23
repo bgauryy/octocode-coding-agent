@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { keepOwnStart, keptOwnStart, ownStartAsync } from "@octocodeai/octocode-common/own-start";
 import { validPid } from "../../utils/process-id.ts";
 import { killWindowsTree, signalTree, taskkillTree } from "../../utils/process-tree.ts";
 import {
@@ -45,7 +46,7 @@ export function parentGone(parentPid: number): boolean {
 	return (loadedPpid === parentPid && process.ppid !== loadedPpid) || !processAlive(parentPid);
 }
 
-const startTimes = new Map<number, string | undefined>();
+/** Reads of other processes' start times in flight, shared by concurrent askers. This process's is `own-start.ts`'s. */
 const starting = new Map<number, Promise<string | undefined>>();
 
 export { PS_UTC_ENV, utcSeconds } from "./process-table.ts";
@@ -79,25 +80,31 @@ const askable = (pid: number): boolean => process.platform !== "win32" && Number
  */
 export function processStartTime(pid: number): string | undefined {
 	if (!askable(pid)) return undefined;
-	if (pid === process.pid && startTimes.has(pid)) return startTimes.get(pid);
+	const kept = pid === process.pid ? keptOwnStart() : undefined;
+	if (kept) return kept.started;
 	const lstart = psStart(pid, PS_UTC_ENV());
 	const started = lstart === undefined ? undefined : utcSeconds(lstart);
-	if (pid === process.pid) startTimes.set(pid, started);
+	if (pid === process.pid) keepOwnStart(started);
 	return started;
+}
+
+/**
+ * Starts reading this process's start time in the background, so the first `processStartTime(process.pid)` (a session
+ * start records it) finds the value kept instead of running `ps` on the calling thread. The read is the one
+ * `processStartTimeAsync` shares; it never rejects, and a caller that asks before it answers runs its own `ps`.
+ */
+export function warmProcessStartTime(): Promise<string | undefined> {
+	return processStartTimeAsync(process.pid);
 }
 
 /** `processStartTime` without blocking: one asynchronous `ps` (this process's own value is read once and kept). */
 export async function processStartTimeAsync(pid: number): Promise<string | undefined> {
 	if (!askable(pid)) return undefined;
-	if (startTimes.has(pid)) return startTimes.get(pid);
+	if (pid === process.pid) return ownStartAsync();
 	let pending = starting.get(pid);
 	if (!pending) {
 		pending = psAsync(["-o", "lstart=", "-p", String(pid)], PS_UTC_ENV())
-			.then((lstart) => {
-				const started = lstart?.trim() ? utcSeconds(lstart) : undefined;
-				if (pid === process.pid) startTimes.set(pid, started);
-				return started;
-			})
+			.then((lstart) => (lstart?.trim() ? utcSeconds(lstart) : undefined))
 			.finally(() => starting.delete(pid));
 		starting.set(pid, pending);
 	}
@@ -146,7 +153,7 @@ const verdicts = new Map<string, { at: number; match: "same" | "other" | "unknow
 /** A verdict the shared table or an earlier comparison gives without running `ps`; undefined when neither can tell. */
 function knownVerdict(pid: number, started: string, now: number): "same" | "other" | "unknown" | undefined {
 	// This process's identity cannot change during its lifetime; registration may already have captured it.
-	const self = pid === process.pid ? startTimes.get(pid) : undefined;
+	const self = pid === process.pid ? keptOwnStart()?.started : undefined;
 	const seconds = self === undefined ? undefined : startSeconds(started);
 	if (seconds !== undefined) return Number(self) === seconds ? "same" : "other";
 	const table = memoTable();

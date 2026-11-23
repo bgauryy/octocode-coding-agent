@@ -655,9 +655,9 @@ describe("askUser tool", () => {
 	});
 
 	it("renders the call and the answers", () => {
-		expect(rendered(tool.renderCall(params, theme, {}))).toBe("⏺ Ask(A very long header, Extras)");
-		expect(rendered(tool.renderCall({ questions: [{ header: "bad\u001b[31m\nnext" }] }, theme, {}))).toBe("⏺ Ask(bad)");
-		expect(rendered(tool.renderCall({}, theme, {}))).toBe("⏺ Ask");
+		expect(rendered(tool.renderCall(params, theme, {}))).toBe("○ Ask(A very long header, Extras)");
+		expect(rendered(tool.renderCall({ questions: [{ header: "bad\u001b[31m\nnext" }] }, theme, {}))).toBe("○ Ask(bad)");
+		expect(rendered(tool.renderCall({}, theme, {}))).toBe("○ Ask");
 		// Without headers the row names the first question's first line, and how many more follow.
 		expect(
 			rendered(
@@ -672,7 +672,7 @@ describe("askUser tool", () => {
 					{},
 				),
 			),
-		).toBe("⏺ Ask(Implement fixes 1-3? +1 more)");
+		).toBe("○ Ask(Implement fixes 1-3? +1 more)");
 		expect(rendered(tool.renderResult({ content: [] }, {}, theme, {}))).toBe("");
 		const answered = {
 			content: [],

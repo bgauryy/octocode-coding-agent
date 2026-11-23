@@ -81,7 +81,11 @@ describe("a provider another process disables", () => {
 
 		let models: ToolDefinition | undefined;
 		registerModelsTool(
-			asSetup({ registerTool: (definition: ToolDefinition) => void (models = definition) }) as never,
+			asSetup({
+				registerTool: (definition: ToolDefinition) => void (models = definition),
+				// The quota notice registers with the tool (`models-quota-notice.ts`); no event fires here.
+				on: () => () => undefined,
+			}) as never,
 			() => new Map(),
 		);
 		const listed = async () => {
@@ -141,7 +145,13 @@ describe("Claude Code as the session's model", () => {
 		fake.api.tools.setActive(["bash", "file", "agent"]);
 		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
 		const turn = async (model: typeof groq) => {
-			const ctx = { hasUI: true, model, modelRegistry: registry };
+			// A session model change reads the branch for a `retry.fallbackModels` switch behind it: this one records none.
+			const ctx = {
+				hasUI: true,
+				model,
+				modelRegistry: registry,
+				sessionManager: { getBranch: () => [], getEntries: () => [] },
+			};
 			const event = { systemPromptOptions: { sections: {} as Record<string, string>, baseSections: {} } };
 			const [result] = (await fake.emit("before_agent_start", event, ctx)) as Array<
 				{ message?: { customType: string; content: string } } | undefined

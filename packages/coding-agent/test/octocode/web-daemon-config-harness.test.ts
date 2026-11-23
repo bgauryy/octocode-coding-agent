@@ -74,6 +74,23 @@ describe("Harness panel rows", () => {
 		]);
 	});
 
+	it("says a server the security review holds back is off until approved, beside its switch", async () => {
+		await switchHarness({ id: "harness:claude", on: true, scope: "global" }, options());
+		approveFixtureMcp(root, agentDir);
+		// Added after the review approved the servers it found: not checked, so it does not start though it is on.
+		write(
+			path.join(home, ".claude.json"),
+			JSON.stringify({ mcpServers: { "claude-mcp": { command: "node" }, fresh: { command: "fresh-server" } } }),
+		);
+		const list = await listHarness({ agentDir, home });
+		expect(Value.Check(HarnessListSchema, list)).toBe(true);
+		expect(row(list, "mcp:fresh")).toMatchObject({
+			on: true,
+			state: "not checked: off until you approve it in /security",
+		});
+		expect(row(list, "mcp:claude-mcp")?.state).toBeUndefined();
+	});
+
 	it("keeps file paths out of audit rows", async () => {
 		await switchHarness({ id: "harness:claude", on: true, scope: "global" }, options());
 		await switchHarness({ id: "skill:claude-demo", on: false, scope: "global" }, options());

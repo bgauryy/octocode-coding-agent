@@ -1,7 +1,7 @@
 import { type Completion, EntityFields, type EntityInput } from "@octocodeai/octocode-contracts/backlogs";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { exclusive } from "../shared/locks.ts";
-import { withOperationKey } from "./completion-key.ts";
+import { type KeyedCompletion, withOperationKey } from "./completion-key.ts";
 import type { Item } from "./item.ts";
 import { completionInput } from "./tool-arguments.ts";
 
@@ -13,6 +13,28 @@ const queued = exclusive((run: () => Promise<unknown>) => run());
  * written after a write sees it.
  */
 export const oneWrite = <R>(run: () => Promise<R>): Promise<R> => queued(run) as Promise<R>;
+
+/** Thrown to roll a rehearsal back; it never leaves `rehearse`. */
+class Rehearsal extends Error {}
+
+/**
+ * Runs one store write in a transaction and rolls it back: the store's refusal (a stale version, open steps, a child's
+ * done) arrives before anything slower or paid runs, and nothing is written. Costs one short write transaction.
+ */
+export async function rehearse(
+	store: { transactionWhenReady<T>(write: () => T, signal?: AbortSignal): Promise<T> },
+	write: () => unknown,
+	signal?: AbortSignal,
+): Promise<void> {
+	try {
+		await store.transactionWhenReady(() => {
+			write();
+			throw new Rehearsal("rolled back");
+		}, signal);
+	} catch (error) {
+		if (!(error instanceof Rehearsal)) throw error;
+	}
+}
 
 /** An operationKey names one completion: its replay says it was applied before, and whether the item moved on since. */
 export function replayText(item: Item, done: Completion): string {
@@ -26,7 +48,7 @@ export function replayText(item: Item, done: Completion): string {
 /** The call with its completion mapped to the stored shape and its retry key filled in: an explicit one wins, else derived from item and content. */
 export function keyed<P extends { id?: string; completion?: unknown }>(
 	p: P,
-): Omit<P, "completion"> & { completion?: NonNullable<EntityInput["completion"]> } {
+): Omit<P, "completion"> & { completion?: KeyedCompletion } {
 	const { completion, ...rest } = p;
 	return completion === undefined ? rest : { ...rest, completion: withOperationKey(completionInput(completion), p.id) };
 }

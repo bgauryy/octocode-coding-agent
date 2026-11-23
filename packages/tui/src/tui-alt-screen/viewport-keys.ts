@@ -22,6 +22,7 @@ export interface AltScreenViewportKeysHost {
 	scrollBy(lines: number): void;
 	scrollToTop(): void;
 	scrollToBottom(): void;
+	toggleMouseCapture(): void;
 }
 
 function scrollToPrompt(host: AltScreenViewportKeysHost, direction: -1 | 1): void {
@@ -62,8 +63,14 @@ export function handleViewportKeys(host: AltScreenViewportKeysHost, data: string
 		}
 	}
 	if (host.shouldDeferViewportInputToOverlay()) return undefined;
-	// Arrow bursts are a wheel only where arrows recall history: the editor. A selector or dialog keeps its arrows.
-	if (!(host.getFocusedComponent() instanceof Editor)) host.arrowBurst.flush();
+	if (keybindings.matches(data, "tui.altScreen.toggleMouse")) {
+		if (!isRelease) host.toggleMouseCapture();
+		return { consume: true };
+	}
+	// Arrow bursts are a wheel only where arrows recall history: the editor. A selector or dialog keeps its arrows, and
+	// so does the editor's open completion list (the `/` menu), where arrows move the selection.
+	const focused = host.getFocusedComponent();
+	if (!(focused instanceof Editor) || focused.isShowingAutocomplete()) host.arrowBurst.flush();
 	else if (host.arrowBurst.handle(data)) return { consume: true };
 	if (keybindings.matches(data, "tui.altScreen.pageUp")) {
 		if (!isRelease) {

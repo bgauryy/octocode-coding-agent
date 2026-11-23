@@ -34,6 +34,8 @@ interface PromptInputs {
 	canDelegate: boolean;
 	/** Whether the current request exposes the agent tool. */
 	canUseAgent?: boolean;
+	/** Whether the agent tool declares `runner`: an installed vendor CLI can take a task. */
+	canStartRunner?: boolean;
 	/** Profile-level read-only role of a subagent (the main session never is one), enforced separately by the permission layer. */
 	readOnly?: boolean;
 	/** Whether a file-writing tool is active (default true): a read-only agent may still save permitted reports and evidence. */
@@ -96,6 +98,7 @@ function policyFlags(input: PromptInputs) {
 		desktopControl: input.desktopControl === true,
 		canSave: input.canSave !== false,
 		agentTool: input.canUseAgent !== false,
+		runner: input.canStartRunner === true,
 		childStarted: input.childStarted === true,
 		// Combinations a template reads by name.
 		gitState: !main && shell,

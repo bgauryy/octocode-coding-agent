@@ -323,7 +323,9 @@ describe("AgentSession virtual models", () => {
 
 		await harness.session.prompt("hello");
 
-		// One per request, one between the turns, and one for the compaction check after the run, none of them copied.
+		// One per request, one between the turns and one for the compaction check after the run, none of them copied. The
+		// web view's context meter (`application/service/facts.ts`) reads none: nothing follows the session's facts here,
+		// and they are checked only for a view or listener that does (`application-facts-deferred`).
 		expect(projections).toHaveBeenCalledTimes(4);
 		expect(copies).not.toHaveBeenCalled();
 	});

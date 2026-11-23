@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { runSecurityCommand } from "../../src/cli/security-command.ts";
 import { mergeScopedSettings } from "../../src/core/settings-manager/merge.ts";
-import { enforces, resetGateRecords } from "../../src/octocode/guard/registry.ts";
+import { enforces, guardNotices, resetGateRecords } from "../../src/octocode/guard/registry.ts";
 import { loadHooks } from "../../src/octocode/hooks/config.ts";
 import { grantFolder } from "../../src/octocode/trust/grants.ts";
 import { tmp } from "./helpers.ts";
@@ -82,6 +82,15 @@ describe("hook gate", () => {
 		writeHook("echo two");
 		expect(commands()).toEqual([]);
 		expect((await cli(["check"])).out).toContain("changed");
+	});
+
+	it("names what is off in the start-up line, so the user knows what /security will show", () => {
+		writeHook("echo one");
+		gated();
+		expect(guardNotices()).toContainEqual({
+			text: "1 item is off until you check it in /security: hook PreToolUse [Bash] echo one",
+			level: "warning",
+		});
 	});
 
 	it("loads every hook when hooks are not enforced", () => {

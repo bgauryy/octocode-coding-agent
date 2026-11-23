@@ -2,12 +2,13 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { backgroundError, isLeakedFileHandleError } from "../src/modes/interactive/interactive-mode/crash-reporting.ts";
 import * as lifecycle from "../src/modes/interactive/interactive-mode/lifecycle.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
 type Host = Parameters<typeof backgroundError>[0];
 
 function createHost() {
 	return {
-		isShuttingDown: false,
+		uiStore: createUiStore(),
 		showWarning: vi.fn(),
 		suggestBugReport: vi.fn(),
 		uncaughtCrash: vi.fn((error: Error): never => {
@@ -65,7 +66,8 @@ describe("background errors in an interactive session", () => {
 	});
 
 	test("nothing is shown once the session is shutting down", () => {
-		const host = { ...createHost(), isShuttingDown: true };
+		const host = createHost();
+		host.uiStore.getState().beginShutdown();
 
 		backgroundError(host as unknown as Host, "unhandledRejection", new Error("late"));
 

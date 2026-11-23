@@ -78,7 +78,7 @@ export const FEEDBACK_CSS = `/* Loaders and run state */
 	.header-row .tab { flex-shrink: 0; min-height: 40px; }
 	.header-row .brand { max-width: 100%; min-width: 0; }
 	.board-view > .view-heading, .backlog-view > .view-heading { flex-basis: 100%; }
-	.board-view > .toolbar, .backlog-view > .toolbar { flex-basis: 100%; }
+	.board-view > .toolbar, .backlog-view > .toolbar { flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
 	.board-view > .view-heading > *, .backlog-view > .view-heading > * { max-width: 100%; }
 	main { padding: 16px 16px 40px; }
 	.palette-trigger { justify-content: center; min-width: 32px; padding-inline: 6px; }

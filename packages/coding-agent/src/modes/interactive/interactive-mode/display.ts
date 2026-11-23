@@ -22,7 +22,6 @@ type DisplayHost = Pick<
 	| "editor"
 	| "mermaidMarkdownTransformer"
 	| "options"
-	| "outputPad"
 	| "session"
 	| "settingsManager"
 	| "uiStore"
@@ -110,17 +109,37 @@ export function noticeLine(kind: NoticeKind, message: string, pad: number, expan
 	// An error must stand out whole; elsewhere the mark carries the state, so a long warning is no wall of amber.
 	const paint = () =>
 		kind === "error" ? theme.fg(color, `${glyph} ${text}`) : `${theme.fg(color, glyph)} ${theme.fg("text", text)}`;
-	return new LongResponse(new ThemedText(paint, pad, 0), expanded);
+	// A wrapped line keeps the indent of the line it continues: a report's indented rows (`/usage`, `/status`) stay
+	// readable at any width, and a marked first line hangs under its text.
+	const body = new ThemedText(paint, pad, 0);
+	body.setHangingIndent(true);
+	return new LongResponse(body, expanded);
 }
 
+/**
+ * Warnings, errors and cancellations shown per host: a command that showed one did not do what was asked
+ * (`problemsShown`).
+ */
+const problems = new WeakMap<object, number>();
+
+/** How many warnings, errors and cancellations `host` has shown; a command compares it before and after it runs. */
+export function problemsShown(host: object): number {
+	return problems.get(host) ?? 0;
+}
+
+/** Counts a notice that says the command did not do its job; warnings and errors count themselves. */
+export const countProblem = (host: object) => void problems.set(host, problemsShown(host) + 1);
+
 export function showError(host: DisplayHost, errorMessage: string): void {
+	countProblem(host);
 	host.chatContainer.addChild(new Spacer(1));
-	host.chatContainer.addChild(noticeLine("error", errorMessage, host.outputPad));
+	host.chatContainer.addChild(noticeLine("error", errorMessage, host.uiStore.getState().view.outputPad));
 	host.ui.requestRender();
 }
 
 export function showWarning(host: DisplayHost, warningMessage: string): void {
+	countProblem(host);
 	host.chatContainer.addChild(new Spacer(1));
-	host.chatContainer.addChild(noticeLine("warning", warningMessage, host.outputPad));
+	host.chatContainer.addChild(noticeLine("warning", warningMessage, host.uiStore.getState().view.outputPad));
 	host.ui.requestRender();
 }

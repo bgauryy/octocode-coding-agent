@@ -43,7 +43,7 @@ describe("team panel: one grid row per agent", () => {
 			expect(row).not.toContain(hidden);
 		expect(lines).toHaveLength(3);
 		// An idle agent's mark says it: no state word.
-		expect(strip(lines[2])).toMatch(/^ └ ⏺ wily-kelp/);
+		expect(strip(lines[2])).toMatch(/^ └ ○ wily-kelp/);
 		expect(strip(lines[2])).not.toContain("idle");
 	});
 

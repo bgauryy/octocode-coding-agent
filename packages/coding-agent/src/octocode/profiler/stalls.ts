@@ -1,5 +1,6 @@
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import type { FeatureSetup } from "../../core/features/index.ts";
+import { isStaleSessionError } from "../shared/util.ts";
 
 /** The session entry (`api.session.appendEntry`, never sent to the model) for a window in which the event loop was blocked. */
 export const STALL_ENTRY = "octocode-stall";
@@ -49,7 +50,12 @@ export function registerStallRecorder(api: FeatureSetup): void {
 	const flush = (): void => {
 		const records = pending;
 		pending = [];
-		for (const record of records) api.session.appendEntry(STALL_ENTRY, record);
+		try {
+			for (const record of records) api.session.appendEntry(STALL_ENTRY, record);
+		} catch (error) {
+			// The run's session can be disposed before this immediate fires. Its samples belong only to that session.
+			if (!isStaleSessionError(error)) throw error;
+		}
 	};
 	const stop = (): void => {
 		histogram?.disable();

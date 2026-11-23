@@ -63,12 +63,34 @@ describe("overlapping startup and replacement session rebinds", () => {
 		await startupRebind;
 
 		expect(subscribeToAgent).toHaveBeenCalledTimes(1);
-		expect(updateTerminalTitle).not.toHaveBeenCalled();
+		// Contract change (wave E): each rebind writes the plain title before its features bind (see below), so the stale
+		// startup rebind wrote it while its session was still current, and writes nothing once it was replaced.
+		expect(updateTerminalTitle).toHaveBeenCalledTimes(2);
 
 		resolveReplacementBind();
 		await replacementRebind;
 
 		expect(subscribeToAgent).toHaveBeenCalledTimes(1);
-		expect(updateTerminalTitle).toHaveBeenCalledTimes(1);
+		expect(updateTerminalTitle).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("the terminal title after a rebind", () => {
+	it("is the state title the features paint at session start, not the host's plain title over it", async () => {
+		const titles: string[] = [];
+		const context: RebindContext = {
+			session: {},
+			applyRuntimeSettings: () => {},
+			programStatus: { reset: () => {} },
+			renderCurrentSessionState: () => {},
+			// The notifier paints its state title when the features see session_start.
+			bindCurrentSessionFeatures: async () => void titles.push("◈ Idle - proj"),
+			subscribeToAgent: () => {},
+			updateAvailableProviderCount: async () => {},
+			updateEditorBorderColor: () => {},
+			updateTerminalTitle: () => void titles.push("Octocode · proj"),
+		};
+		await rebindCurrentSession(createFakeHost(context));
+		expect(titles.at(-1)).toBe("◈ Idle - proj");
 	});
 });

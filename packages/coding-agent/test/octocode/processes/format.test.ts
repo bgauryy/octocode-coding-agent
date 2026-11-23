@@ -87,6 +87,15 @@ describe("/processes layout", () => {
 		expect(orphan).toContain("…");
 	});
 
+	it("names the web daemon's row without an agent mark and says what it is", () => {
+		const daemon = entry(300, { role: "web", id: "300", title: "octocode-agent-web-300", apiId: undefined });
+		const row = formatReport({ processes: [daemon], orphans: [] })
+			.split("\n")
+			.find((line) => line.includes("octocode-agent-web-300"))!;
+		expect(row).toMatch(/^ {3}octocode-agent-web-300 /);
+		expect(row).toContain("← web daemon for every session; /web stop ends it");
+	});
+
 	it("says how many processes of other sessions the listing leaves out", () => {
 		expect(formatReport(report, { hidden: 3 })).toContain("3 processes outside this folder not shown: /processes all");
 		expect(formatReport(report)).not.toContain("not shown");
@@ -112,6 +121,15 @@ describe("/processes scope", () => {
 		expect(scoped.report.processes.map((each) => each.pid)).toEqual([1, 2, 3, 4]);
 		expect(scoped.hidden).toBe(4);
 		expect(scoped.report.orphans).toEqual(report.orphans);
+	});
+
+	it("lists the user-level web daemon in every folder: it serves every session there", () => {
+		const daemon = entry(300, { role: "web", id: "300", title: "octocode-agent-web-300" });
+		// A subagent that happens to be called `web` carries its agent id, not its pid: it stays with its owner's folder.
+		const namesake = entry(301, { role: "web", id: "brisk-otter", title: "octocode-agent-web-brisk-otter" });
+		const scoped = scopeToWorkspace({ processes: [entry(1, { self: true }), daemon, namesake], orphans: [] }, "/w", 1);
+		expect(scoped.report.processes.map((each) => each.pid)).toEqual([1, 300]);
+		expect(scoped.hidden).toBe(1);
 	});
 
 	it("does not loop on an owner cycle", () => {

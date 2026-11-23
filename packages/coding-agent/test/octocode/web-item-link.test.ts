@@ -10,6 +10,7 @@ import {
 	setItemClicksIntercepted,
 	setItemLinkHandler,
 } from "../../src/octocode/shared/item-ref.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { daemonOpener } from "../../src/octocode/web-daemon/open.ts";
 import { parseWebArgs } from "../../src/octocode/workspace/command.ts";
 
@@ -83,9 +84,27 @@ it("prints the item address instead of opening a browser over SSH", async () => 
 		{ ensure: async () => ({ sessionId: "s1", port: 1, close: async () => undefined }) },
 		{ env: { SSH_CONNECTION: "1 2 3 4" }, open },
 	);
-	await opener({ hasUI: true, ui: { notify } } as never, "board", "B90");
+	const result = await opener({ hasUI: true, ui: { notify } } as never, "board", "B90");
 	expect(open).not.toHaveBeenCalled();
 	expect(notify.mock.calls[0]?.[0]).toContain("/open/one-time");
+	expect(result).toMatchObject({ opened: false });
+});
+
+it("gives a printed address to the terminal only: every redacted copy hides the one-time code", async () => {
+	const notify = vi.fn();
+	// What app-window.ts answers with OCTOCODE_OPEN_BROWSER=0: nothing opened, here is the address.
+	const opener = daemonOpener(
+		{ ensure: async () => ({ sessionId: "s1", port: 1, close: async () => undefined }) },
+		{ open: async (url) => `Opening a browser is turned off (OCTOCODE_OPEN_BROWSER=0). Open this link: ${url}` },
+	);
+	const result = await opener({ hasUI: true, ui: { notify } } as never, "activity");
+	const said = String(notify.mock.calls[0]?.[0]);
+	expect(said).toContain("/open/one-time?s=s1&view=activity");
+	expect(said).toContain("The link works once, within 5 minutes.");
+	expect(result).toMatchObject({ opened: false });
+	// The session's pages, the devices following it, the session file and the model get the redacted text.
+	expect(redactSecrets(said)).not.toContain("one-time");
+	expect(redactSecrets(said)).toContain("/open/[redacted]");
 });
 
 it("draws a backlog id as an OSC 8 link, and as plain text without hyperlink support", () => {

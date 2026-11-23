@@ -1,3 +1,4 @@
+import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { ApplicationService } from "./service.ts";
 import type { ApplicationSession } from "./session-port.ts";
 
@@ -6,9 +7,9 @@ const registered = new Set<ApplicationService>();
 const openedListeners = new Set<(service: ApplicationService) => void>();
 
 /**
- * Calls `listener` each time a port is opened, after it is registered and started, so a feature that publishes domain
- * events can give a port that appears later (a host attaching to a running session) what it published before.
- * Returns the function that removes the listener.
+ * Calls `listener` each time a port is opened, after it is registered and started (a subagent's: registered), so a
+ * feature that publishes domain events can give a port that appears later (a host attaching to a running session)
+ * what it published before. Returns the function that removes the listener.
  */
 export function onApplicationPortOpened(listener: (service: ApplicationService) => void): () => void {
 	openedListeners.add(listener);
@@ -24,7 +25,10 @@ export function getApplicationPort(session: ApplicationSession): ApplicationServ
 		});
 		services.set(session, service);
 		registered.add(service);
-		if (typeof session.subscribe === "function") service.start();
+		// A view may attach to a running session (every other session has an attach endpoint), and then sees the
+		// streamed text and tool progress so far: the port follows from the start. A subagent's session has no endpoint,
+		// so its port follows from its first observer, if one ever comes (`ApplicationService.attach`).
+		if (typeof session.subscribe === "function" && !envFlag(process.env, SUBAGENT_ENV)) service.start();
 		for (const listener of openedListeners) listener(service);
 	}
 	return service;

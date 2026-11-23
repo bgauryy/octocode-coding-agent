@@ -16,6 +16,7 @@ import {
 import setup from "../../../../vitest.tmp.global.ts";
 import { readProcessRows } from "../../../../test-process-list.ts";
 import { processAlive } from "../../src/octocode/shared/process.ts";
+import { OPEN_BROWSER_ENV } from "../../src/octocode/browser/app-window.ts";
 
 const child = fileURLToPath(new URL("./real-home-guard-child.ts", import.meta.url));
 const resolver = pathToFileURL(fileURLToPath(new URL("../../scripts/source-resolver.ts", import.meta.url))).href;
@@ -62,6 +63,7 @@ describe("the test runs' temporary root", () => {
 		const live = root("vt-live", process.pid);
 		const unrelated = path.join(parent, "other");
 		fs.mkdirSync(unrelated);
+		delete process.env[OPEN_BROWSER_ENV];
 
 		const teardown = await setup();
 		const own = process.env.TMPDIR as string;
@@ -76,6 +78,8 @@ describe("the test runs' temporary root", () => {
 		expect(fs.existsSync(unrelated)).toBe(true);
 		expect(fs.readFileSync(path.join(own, ".owner-pid"), "utf8")).toBe(String(process.pid));
 		expect(process.env[GUARD_FILE_ENV]).toBe(path.join(own, "real-home-opens.log"));
+		// Every process of the run inherits the browser off switch.
+		expect(process.env[OPEN_BROWSER_ENV]).toBe("0");
 
 		await teardown();
 		expect(fs.existsSync(own)).toBe(false);

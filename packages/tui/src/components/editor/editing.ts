@@ -110,11 +110,15 @@ export function typingTriggersAutocomplete(
 	return false;
 }
 
-/** The marker a large text (> 10 lines or > 1000 characters) shows as, `[paste #1 +123 lines]` or `[paste #1 1234 chars]`. */
+/**
+ * The marker a large text (> 10 lines or > 1000 characters) shows as, `[paste #1 +123 lines]` or `[paste #1 1234 chars]`.
+ * A newline that ends the text ends its last line: it starts no line of its own, so a copied 40-line file reads `+40`.
+ */
 export function largePasteMarker(id: number, text: string): string | undefined {
+	const body = text.endsWith("\n") ? text.slice(0, -1) : text;
 	let lines = 1;
-	for (let i = text.indexOf("\n"); i !== -1 && lines <= 10; i = text.indexOf("\n", i + 1)) lines++;
-	if (lines > 10) return `[paste #${id} +${text.split("\n").length} lines]`;
+	for (let i = body.indexOf("\n"); i !== -1 && lines <= 10; i = body.indexOf("\n", i + 1)) lines++;
+	if (lines > 10) return `[paste #${id} +${body.split("\n").length} lines]`;
 	return text.length > 1000 ? `[paste #${id} ${text.length} chars]` : undefined;
 }
 

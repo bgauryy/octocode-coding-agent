@@ -199,16 +199,17 @@ export class AuditLog {
 		this.#ran = { actions: 0, warnings: 0 };
 	}
 
-	/** Calls full mode ran this session. */
+	/** Agent calls full mode ran this session; the user's own commands are recorded but not counted. */
 	get count(): ActionCount {
 		return this.#ran;
 	}
 
-	record(entry: AuditEntry): void {
+	/** `agentRan` false: the user's own command (`!cmd`), which `count` leaves out. */
+	record(entry: AuditEntry, agentRan = true): void {
 		const warn = WARN_ACTIONS.has(entry.action);
 		if (isCall(entry) && entry.allowed) {
 			this.#byAction.set(entry.action, (this.#byAction.get(entry.action) ?? 0) + 1);
-			if (runsUnasked(entry.mode))
+			if (agentRan && runsUnasked(entry.mode))
 				this.#ran = { actions: this.#ran.actions + 1, warnings: this.#ran.warnings + (warn ? 1 : 0) };
 			if (warn) {
 				if (this.#warned.length < this.ceiling) this.#warned.push(`${entry.action}: ${entry.what[0] ?? ""}`);

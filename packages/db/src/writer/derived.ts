@@ -1,7 +1,9 @@
 import type { AgentDb } from "../db.ts";
 import * as memories from "../queries/memories.ts";
 import * as providerCooldowns from "../queries/provider-cooldowns.ts";
+import * as providerQuota from "../queries/provider-quota.ts";
 import * as sessions from "../queries/sessions.ts";
+import * as usageDaily from "../queries/usage-daily.ts";
 import { withBusyTimeout } from "../sqlite.ts";
 import { runTranscriptCommand, type TranscriptCommand, type TranscriptResult } from "./transcript-mirror.ts";
 import type { SaveSteps } from "./transcript-save.ts";
@@ -10,9 +12,10 @@ import { archivedAudits, type HistoryWindows, type ArchiveAuditQuery, type Archi
 
 /**
  * Bookkeeping writes the interactive thread makes on every prompt or turn and never reads back at once: when a memory
- * was last handed to the model, a session's usage, catalog row, git state, name and end. Each is one statement in one
+ * was last handed to the model, a session's usage, catalog row, git state, name, light and end. Each is one statement in one
  * transaction of the writer (`client.ts`), in submission order, so a later `session-end` cannot land before the stats
- * of the turn that preceded it. Plain data only: every value was taken by the caller when it asked.
+ * of the turn that preceded it (a light posted after the end changes nothing: the row has no pid). Plain data only:
+ * every value was taken by the caller when it asked.
  */
 export type DerivedCommand =
 	| { kind: "memory-used"; context: memories.MemoryContext; ids: number[]; now: number }
@@ -28,8 +31,14 @@ export type DerivedCommand =
 			owner: { cwd: string; file: string };
 	  }
 	| { kind: "session-end"; id: string; pid: number }
+	/** The light of a session this process has open, written when its tone changes (`sessions.setActivity`). */
+	| { kind: "session-activity"; id: string; pid: number; activity: sessions.SessionExtra["activity"] }
 	/** A provider's rate-limit cool-down, which peers read at the start of their next model request. */
-	| { kind: "provider-cooldown"; provider: string; cooldown: providerCooldowns.ProviderCooldown };
+	| { kind: "provider-cooldown"; provider: string; cooldown: providerCooldowns.ProviderCooldown }
+	/** A provider's latest quota readings, one per window, which every process's quota views read. */
+	| { kind: "provider-quota"; readings: providerQuota.ProviderQuota[] }
+	/** A turn's model spend, added to its day's rows (`/usage`). */
+	| { kind: "usage-daily"; rows: usageDaily.UsageDailyRow[] };
 
 /** Every command a database writer runs: the session mirror's and the bookkeeping ones. */
 export type DbWriterCommand =
@@ -47,7 +56,10 @@ const DERIVED = new Set<DerivedCommand["kind"]>([
 	"session-git",
 	"session-title",
 	"session-end",
+	"session-activity",
 	"provider-cooldown",
+	"provider-quota",
+	"usage-daily",
 ]);
 
 const isDerived = (command: DbWriterCommand): command is DerivedCommand =>
@@ -102,7 +114,14 @@ function runDerived(agent: AgentDb, command: DerivedCommand): void {
 			return sessions.saveTitle(db, command.id, command.title, command.source, command.fileMtime, command.owner);
 		case "session-end":
 			return sessions.clearPid(db, command.id, command.pid);
+		case "session-activity":
+			return sessions.setActivity(db, command.id, command.pid, command.activity);
 		case "provider-cooldown":
 			return providerCooldowns.record(db, command.provider, command.cooldown);
+		case "provider-quota":
+			for (const reading of command.readings) providerQuota.upsert(db, reading);
+			return;
+		case "usage-daily":
+			return usageDaily.add(db, command.rows);
 	}
 }

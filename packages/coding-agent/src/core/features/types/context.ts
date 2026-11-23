@@ -86,6 +86,8 @@ export interface FeatureContext {
 	shutdown(): void;
 	/** Get current context usage for the active model. */
 	getContextUsage(): ContextUsage | undefined;
+	/** The Cache Warming section `/status` shows: requested and effective cache lifetimes, warming mode and status, as plain lines. */
+	getCacheWarmingReport(): string[];
 	/** Current logical user turn, shared by its tool calls, steering and retries. */
 	getTurnId(): string | undefined;
 	/** Trigger compaction without awaiting completion. */

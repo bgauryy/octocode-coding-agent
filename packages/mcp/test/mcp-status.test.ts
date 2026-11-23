@@ -63,16 +63,17 @@ describe("formatStatus", () => {
 			{ entry: entry("ended"), connection: connection("connected", { isStopped: true }) },
 			{ entry: entry("broken"), connection: connection("failed", { error: "first\nsecond" }) },
 		]).split("\n");
+		// In the `/mcp` page's order (`compareServerOrder`): servers that need the user first, then by name.
 		expect(lines).toEqual([
-			"browser: enabled · not selected · 0 tools · direct · every agent · Global · test",
-			"pending: enabled · starting · 0 tools · direct · every agent · Global · test",
-			"off: disabled · 0 tools · direct · every agent · Global · test",
-			"live: enabled · connected · 1 tool · direct · every agent · Global · test",
-			"dropped: enabled · disconnected, reconnects on next call · 0 tools · direct · every agent · Global · test",
-			"ended: enabled · stopped · 1 tool · direct · every agent · Global · test",
 			"broken: enabled · failed · 0 tools · direct · every agent · Global · test",
 			"    first",
 			"    second",
+			"dropped: enabled · disconnected, reconnects on next call · 0 tools · direct · every agent · Global · test",
+			"browser: enabled · not selected · 0 tools · direct · every agent · Global · test",
+			"pending: enabled · starting · 0 tools · direct · every agent · Global · test",
+			"ended: enabled · stopped · 1 tool · direct · every agent · Global · test",
+			"live: enabled · connected · 1 tool · direct · every agent · Global · test",
+			"off: disabled · 0 tools · direct · every agent · Global · test",
 		]);
 	});
 });

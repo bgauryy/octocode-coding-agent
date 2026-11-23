@@ -26,6 +26,7 @@ async function select(
 ) {
 	const modelRuntime = {
 		getAvailableSnapshot: () => models,
+		isModelDeprecated: () => false,
 		getProviderBilling: (provider: string) => (provider === metered.provider ? "metered" : "plan"),
 		allowsUnattendedUse: (provider: string) => !interactiveOnly.includes(provider),
 		getModel: (provider: string, id: string) => models.find((model) => model.provider === provider && model.id === id),

@@ -15,7 +15,9 @@ import { agentStats, renderStats } from "./stats.ts";
 import { discardChild, landChild } from "./merge-child.ts";
 import { pendingRefs } from "./worktree.ts";
 import { findMember } from "./detail/lookup.ts";
-import { openAgent, pickAgent } from "./detail/page.ts";
+import { memberTone, openAgent, pickAgent } from "./detail/page.ts";
+import { activityBadge } from "../../theme/page-kit.ts";
+import { currentActivity } from "../activity/session-activity.ts";
 
 /** Running subagents by id (background, or foreground for `/agents kill`). `stoppedBy`: who stopped it (`user`, or the id of the agent that started it). */
 export interface BackgroundRun {
@@ -260,7 +262,12 @@ export function agentsCommand(
 				team.stalled(),
 				team.audit.details(members),
 			);
-			const recent = recentRunsText(team.audit.recent());
+			// A run that has not ended says what its agent does now: this session by its own light, a member by its row.
+			const recent = recentRunsText(team.audit.recent(), Date.now(), (run) => {
+				if (run.agentId === team.id) return currentActivity(ctx.sessionManager.getSessionId()).label;
+				const member = members.find((candidate) => candidate.id === run.agentId);
+				return member && activityBadge(memberTone(member)).word;
+			});
 			say(ctx, error ? `${error}\n${listing}` : `${listing}${recent}`, error ? "warning" : "info");
 		},
 	};

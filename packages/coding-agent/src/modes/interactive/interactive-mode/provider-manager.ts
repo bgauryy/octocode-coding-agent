@@ -34,12 +34,26 @@ export interface ProviderManagerOptions {
 	sourceEnvironment?: ProviderSourceEnvironment;
 	/** Close after the named provider's page instead of continuing to the list; the caller shows its own list. */
 	detailOnly?: boolean;
+	/** Why the page opened by itself (no usable model at start): shown in the title, with `+ Provider` focused. */
+	intro?: string;
+	/** Keys that close the page that opened by itself, each handed on (a `/` typed at start goes to the editor); `note` says so on the page. */
+	introClosesOn?: { test(data: string): boolean; onClosed(data: string): void; note: string };
+}
+
+/** Opens `/providers` from outside a command (a reopen, the start with no model): a failure is shown, and the session stays usable. */
+export function openProviderManager(
+	host: ProviderManagerHost,
+	query = "",
+	options: ProviderManagerOptions = {},
+): Promise<void> {
+	return showProviderManager(host, query, options).catch((error: unknown) => host.showError(errorMessage(error)));
 }
 
 /**
- * `/providers`: the models.json files, Needs attention, Ready, Available (built-ins not set up yet), Off, then the
- * Add rows and Advanced. All provider state comes from one snapshot, rebuilt each time the list shows. `query`
- * opens a provider's page when it names one (Escape then returns to the list), `pi` the Pi import list, and anything else the sign-in picker filtered by it.
+ * `/providers`: Ready, Needs attention, the Add rows, Available (built-ins not set up yet), Off, external agents, Test,
+ * then Advanced (the models.json files and the sources page). All provider state comes from one snapshot, rebuilt each
+ * time the list shows. `query` opens a provider's page when it names one (Escape then returns to the list), `pi` the Pi
+ * import list, and anything else the sign-in picker filtered by it.
  */
 export async function showProviderManager(
 	host: ProviderManagerHost,
@@ -49,9 +63,7 @@ export async function showProviderManager(
 	const wanted = query.trim().toLowerCase();
 	const ctx: PageContext = {
 		host,
-		reopen: (id) => {
-			showProviderManager(host, id ?? "", options).catch((error: unknown) => host.showError(errorMessage(error)));
-		},
+		reopen: (id) => void openProviderManager(host, id ?? "", options),
 	};
 	if (wanted === "pi") {
 		const pi = describeProviderSources(
@@ -71,6 +83,8 @@ export async function showProviderManager(
 	const refresh = (): Promise<ProviderSnapshot> =>
 		buildProviderSnapshot({ runtime, disabledProviders: settingsManager.getDisabledProviders() });
 	let initialId: string | undefined;
+	// The explanation belongs to the page that opened by itself, not to the list the user returns to.
+	let intro = options.intro;
 	for (;;) {
 		let snapshot: ProviderSnapshot;
 		try {
@@ -109,12 +123,8 @@ export async function showProviderManager(
 		const runnerStates: BadgeState[] = runners.length ? ["ready", "off"] : [];
 		const { files } = await loadModelFiles(ctx, options.sourceEnvironment);
 		const sections: PageSection[] = [
-			{ heading: "Model files", rows: modelFileRows(files), empty: "no models.json found" },
-			...(rows.attention.length ? [{ heading: "Needs attention", rows: rows.attention }] : []),
 			{ heading: "Ready", rows: rows.ready, empty: "none yet — choose + Provider" },
-			...(rows.available.length ? [{ heading: "Available", rows: rows.available }] : []),
-			...(rows.off.length ? [{ heading: "Off", rows: rows.off }] : []),
-			runnerSection(runners, settingsManager.getExternalAgents(), settingsManager.getEnabledExternalAgents()),
+			...(rows.attention.length ? [{ heading: "Needs attention", rows: rows.attention }] : []),
 			{
 				heading: "Add",
 				rows: [
@@ -135,6 +145,9 @@ export async function showProviderManager(
 					},
 				],
 			},
+			...(rows.available.length ? [{ heading: "Available", rows: rows.available }] : []),
+			...(rows.off.length ? [{ heading: "Off", rows: rows.off }] : []),
+			runnerSection(runners, settingsManager.getExternalAgents(), settingsManager.getEnabledExternalAgents()),
 			{
 				heading: "Test",
 				rows: [
@@ -148,6 +161,7 @@ export async function showProviderManager(
 			{
 				heading: "Advanced",
 				rows: [
+					...modelFileRows(files),
 					{
 						id: ADVANCED_ROW,
 						name: "Sources and custom models",
@@ -157,21 +171,31 @@ export async function showProviderManager(
 			},
 		];
 		const reloadError = runtime.getReloadError();
-		// The files lead the page, but the cursor starts on the first provider: that is what Enter is for.
-		initialId ??= [...rows.attention, ...rows.ready, ...rows.off, ...rows.available][0]?.id;
-		const choice = await showPage(host, {
-			title: "AI providers",
-			notes: [
-				...(reloadError
-					? [`Changes to models.json or auth.json were not applied; the previous providers stay loaded. ${reloadError}`]
-					: []),
-				"Ready means configured, not verified. Open a provider to test access.",
-				"Providers run in Octocode's harness; external agents are vendor CLIs that run their own. Enable each agent for tasks.",
-			],
-			sections,
-			initialId,
-			legend: [...rows.states, ...runnerStates],
-		});
+		// The cursor starts on the first provider, one that needs attention first: that is what Enter is for. The page
+		// that opened by itself starts on + Provider.
+		initialId ??= intro ? SIGN_IN_ROW : [...rows.attention, ...rows.ready, ...rows.off, ...rows.available][0]?.id;
+		const closesOn = intro ? options.introClosesOn : undefined;
+		const choice = await showPage(
+			host,
+			{
+				title: intro ? `AI providers · ${intro}` : "AI providers",
+				notes: [
+					...(reloadError
+						? [
+								`Changes to models.json or auth.json were not applied; the previous providers stay loaded. ${reloadError}`,
+							]
+						: []),
+					"Ready means configured, not verified. Open a provider to test access.",
+					"Providers run in Octocode's harness; external agents are vendor CLIs that run their own. Enable each agent for tasks.",
+					...(closesOn ? [closesOn.note] : []),
+				],
+				sections,
+				initialId,
+				legend: [...rows.states, ...runnerStates],
+			},
+			closesOn,
+		);
+		intro = undefined;
 		if (!choice) return;
 		initialId = choice.id;
 		try {

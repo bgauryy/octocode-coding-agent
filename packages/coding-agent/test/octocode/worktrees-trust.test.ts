@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { grantFolder } from "../../src/octocode/trust/grants.ts";
 import { resolveFolderTrust } from "../../src/octocode/trust/resolve.ts";
+import type { CommandContext } from "../../src/core/features/index.ts";
 import { allowWorktreeGrants, worktreeTrustTitle } from "../../src/octocode/worktrees/approval.ts";
+import { worktreeCommand } from "../../src/octocode/worktrees/command.ts";
 import { ensureWorktree } from "../../src/octocode/worktrees/create.ts";
 import { removeWorktree } from "../../src/octocode/worktrees/remove.ts";
 import { GIT_TEST_ENV, makeRepo, type TestRepo } from "./worktree-fixture.ts";
@@ -69,6 +71,20 @@ describe("trust for worktrees Octocode creates", () => {
 		expect(existsSync(target())).toBe(true);
 	});
 
+	it("does not ask again, in a session, for a worktree of a checkout trusted as a folder, and records its grant", async () => {
+		// A folder grant covers the checkout only, not its subfolders; the worktree holds that checkout's contents at HEAD.
+		grantFolder(repo.root, "folder", { source: "command", surface: "cli" });
+		const ask = vi.fn(async () => false);
+		const info = await ensureWorktree(repo.root, "feat", ask);
+		expect(ask).not.toHaveBeenCalled();
+		expect(info.created).toBe(true);
+		const state = trustOf(target());
+		expect(state.state).toBe("trusted");
+		if (state.state === "trusted") expect(state.grant.source).toBe("worktree");
+		// With nobody to ask (a headless run) recording that grant still takes --trust.
+		await expect(ensureWorktree(repo.root, "other")).rejects.toThrow(/Run again with --trust/u);
+	});
+
 	it("removing the worktree revokes its grant", async () => {
 		await ensureWorktree(repo.root, "feat", async () => true);
 		expect(trustOf(target()).state).toBe("trusted");
@@ -84,5 +100,23 @@ describe("trust for worktrees Octocode creates", () => {
 		const again = await ensureWorktree(repo.root, "feat", ask);
 		expect(again.created).toBe(false);
 		expect(ask).not.toHaveBeenCalled();
+	});
+});
+
+describe("/worktree new when the user declines the trust question", () => {
+	it("says it was cancelled, as every declined confirmation does, not that something failed", async () => {
+		const notices: Array<{ text: string; level: string }> = [];
+		const ctx = {
+			cwd: repo.root,
+			hasUI: true,
+			sessionManager: { getSessionId: () => "sess-1" },
+			ui: {
+				notify: (text: string, level = "info") => void notices.push({ text, level }),
+				confirm: async () => false,
+			},
+		} as unknown as CommandContext;
+		await worktreeCommand().handler("new feat", ctx);
+		expect(notices).toEqual([{ text: "Cancelled: nothing was created.", level: "info" }]);
+		expect(existsSync(target())).toBe(false);
 	});
 });

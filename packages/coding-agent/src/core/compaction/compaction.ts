@@ -85,6 +85,14 @@ function getMessagesFromProjectedEntryForCompaction(entry: ProjectedSessionEntry
 	return entry.messages.filter((message) => message.role !== "system");
 }
 
+/** The messages of `entries` as `getMessagesFromProjectedEntryForCompaction` yields them, each with its session entry's id. */
+function messagesWithEntryIds(entries: ProjectedSessionEntry[]): { messages: AgentMessage[]; entryIds: string[] } {
+	const picked = entries.flatMap((entry) =>
+		getMessagesFromProjectedEntryForCompaction(entry).map((message) => ({ message, id: entry.sourceEntry.id })),
+	);
+	return { messages: picked.map((item) => item.message), entryIds: picked.map((item) => item.id) };
+}
+
 // Types
 // ============================================================================
 
@@ -134,6 +142,10 @@ export interface CompactionPreparation {
 	messagesToSummarize: AgentMessage[];
 	/** Messages that will be turned into turn prefix summary (if splitting) */
 	turnPrefixMessages: AgentMessage[];
+	/** The persisted session entry id of each of `messagesToSummarize`, index for index. */
+	messageEntryIds?: string[];
+	/** The persisted session entry id of each of `turnPrefixMessages`, index for index. */
+	turnPrefixEntryIds?: string[];
 	/** Whether this is a split turn (cut point in middle of turn) */
 	isSplitTurn: boolean;
 	tokensBefore: number;
@@ -189,14 +201,12 @@ export function prepareCompaction(
 	const firstKeptEntryId = firstKeptEntry.id;
 	const historyEnd = cutPoint.isSplitTurn ? cutPoint.turnStartIndex : cutPoint.firstKeptEntryIndex;
 
-	const messagesToSummarize = projectedEntries
-		.slice(boundaryStart, historyEnd)
-		.flatMap(getMessagesFromProjectedEntryForCompaction);
-	const turnPrefixMessages = cutPoint.isSplitTurn
-		? projectedEntries
-				.slice(cutPoint.turnStartIndex, cutPoint.firstKeptEntryIndex)
-				.flatMap(getMessagesFromProjectedEntryForCompaction)
-		: [];
+	const { messages: messagesToSummarize, entryIds: messageEntryIds } = messagesWithEntryIds(
+		projectedEntries.slice(boundaryStart, historyEnd),
+	);
+	const { messages: turnPrefixMessages, entryIds: turnPrefixEntryIds } = messagesWithEntryIds(
+		cutPoint.isSplitTurn ? projectedEntries.slice(cutPoint.turnStartIndex, cutPoint.firstKeptEntryIndex) : [],
+	);
 
 	if (messagesToSummarize.length === 0 && turnPrefixMessages.length === 0) return undefined;
 
@@ -214,6 +224,8 @@ export function prepareCompaction(
 		firstKeptEntryId,
 		messagesToSummarize,
 		turnPrefixMessages,
+		messageEntryIds,
+		turnPrefixEntryIds,
 		isSplitTurn: cutPoint.isSplitTurn,
 		tokensBefore,
 		previousSummary,

@@ -5,7 +5,7 @@ import {
 	KeybindingsManager as TuiKeybindingsManager,
 } from "@octocodeai/octocode-tui";
 import { existsSync } from "node:fs";
-import { Compile } from "typebox/compile";
+import { compileLazily } from "../utils/compile-lazily.ts";
 import { getAgentDir } from "../config.ts";
 import { configDiscovery, discoveryInput } from "./discovery/service.ts";
 import { KeybindingValueSchema } from "./key-id-schema.ts";
@@ -144,6 +144,10 @@ const APP_KEYBINDINGS = {
 		defaultKeys: "alt+i",
 		description: "Show or hide model pricing and cache details",
 	},
+	"app.models.preferred": {
+		defaultKeys: "ctrl+p",
+		description: "Set the highlighted model as its provider's preferred model (model details open)",
+	},
 	"app.models.enableAll": {
 		defaultKeys: "ctrl+a",
 		description: "Enable all models",
@@ -222,13 +226,13 @@ export const KEYBINDINGS = {
 	...APP_KEYBINDINGS,
 } as const satisfies KeybindingDefinitions;
 
-const validateKeybindingValue = Compile(KeybindingValueSchema);
+const validateKeybindingValue = compileLazily(KeybindingValueSchema);
 
 function toKeybindingsConfig(value: Record<string, unknown>): KeybindingsConfig {
 	const config: KeybindingsConfig = {};
 	for (const [key, binding] of Object.entries(value)) {
 		if (key === "$schema") continue;
-		if (validateKeybindingValue.Check(binding)) config[key] = binding;
+		if (validateKeybindingValue().Check(binding)) config[key] = binding;
 	}
 	return config;
 }
@@ -275,7 +279,7 @@ export function keybindingProblems(agentDir: string = getAgentDir()): Keybinding
 		const reasons = Object.entries(parsed).flatMap(([action, binding]) => {
 			if (action === "$schema") return [];
 			if (!Object.hasOwn(KEYBINDINGS, action)) return [`unknown action ${action}`];
-			return validateKeybindingValue.Check(binding) ? [] : [`invalid keys for ${action}`];
+			return validateKeybindingValue().Check(binding) ? [] : [`invalid keys for ${action}`];
 		});
 		if (reasons.length === 0) return [];
 		const count = `${reasons.length} ${reasons.length === 1 ? "entry" : "entries"}`;

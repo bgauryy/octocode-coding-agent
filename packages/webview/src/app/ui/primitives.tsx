@@ -108,7 +108,6 @@ export function StatusIcon({ state, size = 14 }: { state: State; size?: number }
 			width={size}
 			height={size}
 			viewBox="0 0 14 14"
-			// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- inline SVG needs role="img" to be announced as one labelled image.
 			role="img"
 			aria-label={STATE_TITLES[state]}
 		>
@@ -148,7 +147,6 @@ export function PriorityIcon({ priority, size = 14 }: { priority: string; size?:
 				width={size}
 				height={size}
 				viewBox="0 0 14 14"
-				// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- inline SVG needs role="img" to be announced as one labelled image.
 				role="img"
 				aria-label={label}
 			>
@@ -163,7 +161,6 @@ export function PriorityIcon({ priority, size = 14 }: { priority: string; size?:
 			width={size}
 			height={size}
 			viewBox="0 0 14 14"
-			// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- inline SVG needs role="img" to be announced as one labelled image.
 			role="img"
 			aria-label={label}
 		>

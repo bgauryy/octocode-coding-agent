@@ -12,6 +12,9 @@ import { apiDir, describeInstance, type InstanceRecord, listInstances, selectIns
 import { fenceUntrusted } from "../shared/fence.ts";
 import { innermostWorktree } from "../worktrees/occupants.ts";
 import { ReadWatch } from "./read-watch.ts";
+import { activityBadge } from "../../theme/page-kit.ts";
+import { liveSessionActivity } from "../activity/session-activity.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
 import { canonical, locateRepo } from "../worktrees/repo.ts";
 
 /** The `to` of a worktree session's merge request: the session in the repository's main checkout. */
@@ -150,7 +153,7 @@ export class Peers {
 		);
 	}
 
-	/** The other sessions on this machine: name, busy state, folder, and which one is this repository's coordinator. */
+	/** The other sessions on this machine: name, what each is doing (its light, else busy or idle), folder, and the coordinator. */
 	async list(cwd: string): Promise<string> {
 		const probed = await probeInstances(this.instances());
 		const own = probed.find(({ instance }) => instance.pid === process.pid)?.instance;
@@ -164,16 +167,34 @@ export class Peers {
 			({ coordinators: found }) => found,
 			(): InstanceRecord[] => [],
 		);
+		const doing = this.doing();
 		return visibleControls(
 			[
 				...(own ? [`You are ${own.name ?? own.id}.`] : []),
 				"Other Octocode sessions, reached by `agent` type `message` to the name:",
 				...others.map(
 					({ instance, state }) =>
-						`${instance.name ?? instance.id} · ${state} · ${instance.cwd}${coordinators.includes(instance) ? ` · ${COORDINATOR} of this repository` : ""}`,
+						`${instance.name ?? instance.id} · ${(state !== "not answering" && doing(instance)) || state} · ${instance.cwd}${coordinators.includes(instance) ? ` · ${COORDINATOR} of this repository` : ""}`,
 				),
 			].join("\n"),
 		);
+	}
+
+	/**
+	 * What each listed session's own process last wrote of its light (needs you, working, failed, idle), read from the
+	 * agent database while that process owns the session's row. Without the database the list keeps the API's busy/idle.
+	 */
+	private doing(): (instance: InstanceRecord) => string | undefined {
+		let agent: ReturnType<typeof sharedAgentDb>;
+		try {
+			agent = sharedAgentDb(this.env);
+		} catch {
+			return () => undefined;
+		}
+		return (instance) => {
+			const tone = instance.session ? liveSessionActivity(agent, instance.session, instance.pid) : undefined;
+			return tone && activityBadge(tone).word;
+		};
 	}
 
 	/** The one session in the main checkout; no such session, or several, is a refusal saying what to do. */

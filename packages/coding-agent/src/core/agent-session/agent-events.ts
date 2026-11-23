@@ -15,6 +15,7 @@ import type {
 } from "../features/index.ts";
 import { releaseSavedOutput } from "../tools/bash/stored-result.ts";
 import type { SessionBoundaries } from "./boundaries.ts";
+import { explainCredentialError } from "./credential-error-context.ts";
 import type { SessionInternals } from "./host.ts";
 import type { SessionInputQueue } from "./input-queue.ts";
 import { replaceMessageInPlace } from "./messages.ts";
@@ -60,6 +61,8 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent,
 	// programmatic callers (up to 1 MiB) is read from its saved file when read, as after a resume.
 	if (event.type === "message_start" && event.message.role === "toolResult") releaseSavedOutput(event.message);
 
+	if (event.type === "message_end" && event.message.role === "assistant")
+		await explainCredentialError(event.message, session.modelRuntime);
 	if (event.type === "message_end" && event.message.role === "assistant" && !signal?.aborted) {
 		session.modelRuntime.observeModelAccess(event.message, run.modelAccessGeneration);
 		host.observeContextCapacity(event.message);
@@ -75,7 +78,8 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent,
 	// Handle session persistence
 	if (event.type === "message_end") {
 		// Before the append, which can throw: the run's outcome must not depend on the disk.
-		if (event.message.role === "assistant") recordRunMessage(run.outcome, event.message);
+		if (event.message.role === "assistant")
+			recordRunMessage(run.outcome, event.message, (message) => host.retry.failureText(message));
 		let entryId: string | undefined;
 		if (event.message.role === "custom") {
 			entryId = session.sessionManager.appendCustomMessageEntry(

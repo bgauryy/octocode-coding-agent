@@ -67,10 +67,18 @@ export const RetrySettingsSchema = Type.Object({
 			default: SETTINGS_DEFAULTS.retry.fallbackCooldownMs,
 		}),
 	),
+	maxUsageWaitMs: Type.Optional(
+		Type.Number({
+			minimum: 0,
+			description:
+				"Unattended runs (print mode, RPC and ACP hosts, subagents): how long to wait, in milliseconds, for a usage limit with a known reset time when no `fallbackModels` entry is left, then resume. A later reset, or 0, fails the run with an error that names the reset time. Interactive sessions (the terminal and /web) ask instead: wait and resume at the reset, switch to a connected model (optionally saved to `fallbackModels`), pick one, or stop.",
+			default: SETTINGS_DEFAULTS.retry.maxUsageWaitMs,
+		}),
+	),
 	fallbackModels: Type.Optional(
 		Type.Array(Type.String(), {
 			description:
-				'Models to continue on when the current one fails on a usage limit (quota, billing or plan limit), a refused credential (401, 403, an expired sign-in) or an outage that outlasts the retries, tried in order, each as `provider/id` with an optional `:thinking` level, for example `["openrouter/some-model", "openai/other-model:high"]`. After a refused credential, entries of the same provider are skipped. The first one with credentials becomes the session model with a notice, which names a change between plan and per-token billing, and stays selected; `/model` switches back. Empty: such a failure ends the turn.',
+				'Models to continue on when the current one fails on a usage limit (quota, billing or plan limit), a refused credential (401; an invalid, expired or revoked key or token; a 403 naming a key, token or authentication), a model unavailable for the account, or an outage that outlasts the retries, tried in order, each as `provider/id` with an optional `:thinking` level, for example `["openrouter/some-model", "openai/other-model:high"]`. A rate limit never switches the model: it is retried on the same one. After a refused credential, entries of the same provider are skipped; entries models.dev lists as deprecated are skipped too. The first one with credentials becomes the session model with a notice, which names a change between plan and per-token billing, and stays selected; `/model` switches back. Empty: such a failure ends the turn.',
 			default: SETTINGS_DEFAULTS.retry.fallbackModels,
 		}),
 	),
@@ -118,7 +126,8 @@ export const TerminalSettingsSchema = Type.Object({
 	),
 	showTerminalProgress: Type.Optional(
 		Type.Boolean({
-			description: "Show OSC 9;4 terminal progress indicators.",
+			description:
+				"Show OSC 9;4 terminal progress: on while the session's activity light is working, off while it waits for you or only a timer is pending.",
 			default: SETTINGS_DEFAULTS.terminal.showTerminalProgress,
 		}),
 	),

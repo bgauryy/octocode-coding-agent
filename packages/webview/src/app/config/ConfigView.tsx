@@ -84,7 +84,10 @@ function Providers({
 	signIn,
 	onSignedIn,
 	setProvider,
+	focus,
 }: {
+	/** Scroll here once loaded: the page was opened to fix a provider (a credential error's link). */
+	focus?: boolean;
 	setProvider?: SetProvider;
 	snapshot: ConfigSnapshot;
 	save?: SaveCredential;
@@ -93,8 +96,12 @@ function Providers({
 }) {
 	const configured = snapshot.providers.filter((row) => row.configured);
 	const missing = snapshot.providers.filter((row) => !row.configured);
+	const ref = useRef<HTMLElement>(null);
+	useEffect(() => {
+		if (focus) ref.current?.scrollIntoView?.({ block: "start" });
+	}, [focus]);
 	return (
-		<section className="panel" aria-labelledby="config-providers">
+		<section className="panel" aria-labelledby="config-providers" ref={ref}>
 			<div className="panel-header">
 				<h2 id="config-providers">Provider credentials</h2>
 				<p className="muted">
@@ -236,6 +243,8 @@ export interface ConfigViewProps {
 	tools?: ToolsApi;
 	/** Repositories that can be chosen as the workspace whose trust and settings file are shown. */
 	repos?: readonly { id: string; name: string }[];
+	/** The panel to scroll to once loaded (`#settings?section=providers`). */
+	section?: string;
 }
 
 /**
@@ -258,6 +267,7 @@ export function ConfigView(props: ConfigViewProps) {
 		mcpAddStatus,
 		tools,
 		repos,
+		section,
 	} = props;
 	const [state, setState] = useState<LoadState>({ status: "loading" });
 	const [attempt, setAttempt] = useState(0);
@@ -351,6 +361,7 @@ export function ConfigView(props: ConfigViewProps) {
 					save={snapshot.writable ? saveKey : undefined}
 					signIn={snapshot.writable ? signIn : undefined}
 					onSignedIn={reload}
+					focus={section === "providers"}
 				/>
 			</ProviderTestProvider>
 			<SettingsPanel

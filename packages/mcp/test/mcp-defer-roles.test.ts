@@ -75,7 +75,10 @@ describe("mcpDefer roles", () => {
 		expect(plain.mcps).toContain("function shout(");
 		expect(deferred.mcps).not.toContain("function shout(");
 		expect(deferred.mcps).toContain("function localFetch(");
-		expect(deferred.mcps.length).toBeLessThan(plain.mcps.length);
+		// Deferral shrinks the server's block. The section's guidance for deferred tools is one line per prompt whatever
+		// their number (`sections/mcps.md`, lengthened on purpose), more than this fixture's two small schemas save.
+		const block = (mcps: string) => mcps.slice(mcps.indexOf('<mcp name="docs"'));
+		expect(block(deferred.mcps).length).toBeLessThan(block(plain.mcps).length);
 		const shout = deferred.h.tools.get("mcp__docs__shout");
 		expect(shout.description).toBe("Uppercase the given text");
 		expect(text(await deferred.h.call("mcp__docs__shout", { text: "hi" }))).toContain("HI");

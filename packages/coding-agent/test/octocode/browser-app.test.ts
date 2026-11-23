@@ -20,6 +20,7 @@ import {
 	appWindowArgs,
 	createAppWindow,
 	findChromium,
+	OPEN_BROWSER_ENV,
 } from "../../src/octocode/browser/app-window.ts";
 
 // The daemon and the system opener are external boundaries of the daemon-path test below.
@@ -34,7 +35,10 @@ let root: string;
 beforeEach(() => {
 	root = mkdtempSync(join(tmpdir(), "browser-app-test-"));
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => {
+	vi.unstubAllEnvs();
+	rmSync(root, { recursive: true, force: true });
+});
 
 function touch(file: string, mode = 0o755): string {
 	mkdirSync(dirname(file), { recursive: true });
@@ -242,6 +246,8 @@ it("uses the default browser without a notice when the setting says browser", as
 });
 
 it("opens the daemon page in the default browser when web.window is browser", async () => {
+	// The run turns browser opening off; this case exercises the real default opener, whose boundary is mocked above.
+	vi.stubEnv(OPEN_BROWSER_ENV, "1");
 	const ctx = { hasUI: true, ui: { notify: vi.fn() } } as never;
 	const opener = daemonOpener(
 		{ ensure: async () => ({ sessionId: "s1", port: 1, close: async () => undefined }) },

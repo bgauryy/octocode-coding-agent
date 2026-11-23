@@ -1,14 +1,11 @@
 import { refuseRealProviderFile } from "../../storage/state-paths.ts";
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { Compile } from "typebox/compile";
 import { atomicWriteFile, sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { hasJsonComments, stripJsonComments } from "@octocodeai/octocode-common/json";
 import { stripBom } from "@octocodeai/octocode-common/text";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { ModelConfig, type ModelsJsonModel, type ModelsJsonProvider, ModelsConfigSchema } from "../model-config.ts";
-
-const validateModelsConfig = Compile(ModelsConfigSchema);
+import { ModelConfig, type ModelsJsonModel, type ModelsJsonProvider, modelsConfigValidator } from "../model-config.ts";
 
 /**
  * Change the `providers` of a models.json: the rest of the file is kept, the write is atomic (and fails when the
@@ -42,7 +39,7 @@ export async function rewriteProviders(
 	const providers = config.providers ?? {};
 	if (!isRecord(providers)) throw new Error(`${file}: "providers" must be an object.`);
 	const next = { ...config, providers: change(providers) };
-	if (!validateModelsConfig.Check(next)) throw new Error(`The change does not fit models.json:\n${snippet}`);
+	if (!modelsConfigValidator().Check(next)) throw new Error(`The change does not fit models.json:\n${snippet}`);
 	await mkdir(dirname(file), { recursive: true, mode: 0o700 });
 	await atomicWriteFile(file, `${JSON.stringify(next, null, "\t")}\n`, text === undefined ? null : sha256(text), {
 		mode: 0o600,

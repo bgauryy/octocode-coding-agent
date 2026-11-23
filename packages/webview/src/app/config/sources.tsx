@@ -14,6 +14,14 @@ import { ModelChoiceControls } from "./ModelChoiceControls.tsx";
 import { ProviderSwitch, type SetProvider } from "./ProviderControls.tsx";
 import { SignInControl, type SignInRequest } from "./SignIn.tsx";
 
+/** Who runs a provider's requests and how they are billed (`AgentRoute`), in words. */
+const ROUTE_WORDS = {
+	config: "Octocode runs the agent; billed per token",
+	subscription: "Octocode runs the agent on your plan",
+	remote: "A hosted agent runs it",
+	external: "The vendor's CLI runs the agent",
+} as const;
+
 /** What a source is called on the page. Environment variables and expiry are added by `SourceBadge`. */
 const SOURCE_LABELS = {
 	keychain: "OS keychain",
@@ -104,7 +112,7 @@ function Methods({ row }: { row: ProviderCredentialStatus }) {
 					</a>
 				</>
 			)}
-			{row.route && <p>Route: {row.route}</p>}
+			{row.route && <p title={`Route: ${row.route}`}>{ROUTE_WORDS[row.route]}</p>}
 			{plan && (
 				<p>
 					{plan.billing === "plan" ? "Billed by plan" : "Billed per token"}.{" "}
@@ -166,10 +174,12 @@ export function ProviderRow({
 				</p>
 			)}
 			<BaseUrlLine row={row} />
-			<ProviderSwitch row={row} set={setProvider} />
-			<RowTest row={row} />
-			{setProvider && <ModelChoiceControls row={row} set={setProvider} />}
-			{setProvider && row.customEdit && <CustomProviderControls row={row} set={setProvider} />}
+			<div className="config-row-actions">
+				<ProviderSwitch row={row} set={setProvider} />
+				<RowTest row={row} />
+				{setProvider && <ModelChoiceControls row={row} set={setProvider} />}
+				{setProvider && row.customEdit && <CustomProviderControls row={row} set={setProvider} />}
+			</div>
 			<Methods row={row} />
 			{signIn && row.auth?.oauth && <SignInControl row={row} signIn={signIn} onSignedIn={onSignedIn ?? (() => {})} />}
 			{save && row.editable !== false && (

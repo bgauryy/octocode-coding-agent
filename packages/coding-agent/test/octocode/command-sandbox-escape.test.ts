@@ -82,6 +82,8 @@ function fakeStore() {
 			for (const listener of listeners) listener(events);
 		},
 		getViolationsForCommand: (command: string) => events.filter((event) => event.command === command),
+		getCount: () => events.length,
+		getTotalCount: () => events.length,
 		subscribe(listener: (violations: unknown[]) => void) {
 			listeners.add(listener);
 			listener(events);
@@ -240,6 +242,7 @@ describe("a sandbox that cannot start", () => {
 		const prompts = {
 			host: async () => ({ allow: false as const, reason: "" }),
 			unavailable: async () => (asks++, false),
+			weaker: async () => false,
 		};
 		const policy = (cwd: string) => ({ allowWrite: [cwd], denyWrite: [], denyRead: [] });
 		setCommandSandbox(new SrtCommandSandbox(policy, { prompts }));

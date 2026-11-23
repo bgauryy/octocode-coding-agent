@@ -214,7 +214,16 @@ describe("backlog store", () => {
 		store.update(mine.ref, { state: "ongoing" }, { id: "parent" });
 		const sub = { id: "sub-1", owners: new Set(["parent"]) };
 		expect(() => store.update(other.ref, { state: "ongoing" }, sub)).toThrow(BacklogError);
-		expect(store.update(mine.ref, { state: "done", completion: completed(), note: "did it" }, sub).state).toBe("done");
+		expect(store.update(mine.ref, { note: "did it" }, sub).state).toBe("ongoing");
+		// Contract change: a child no longer finishes its coordinator's item, so its done cannot skip the coordinator's
+		// QA review and merge gate; it reports, and the coordinator completes or closes the item.
+		expect(() => store.update(mine.ref, { state: "done", completion: completed(), note: "did it" }, sub)).toThrow(
+			/A subagent does not finish its coordinator's items/,
+		);
+		expect(() => store.update(mine.ref, { close: { kind: "wont_do", text: "skip" } }, sub)).toThrow(
+			/A subagent does not finish its coordinator's items/,
+		);
+		expect(store.update(mine.ref, { state: "done", completion: completed() }, { id: "parent" }).state).toBe("done");
 	});
 
 	it("links an item to the one it came from, lists those derived from it, and refuses unknown, self and loop links", () => {
@@ -568,17 +577,20 @@ describe("backlog tool", () => {
 			/only the state and notes/,
 		);
 		await expect(sub.call({ op: "edit", items: [{ id: "B1", state: "todo" }] })).rejects.toThrow(
-			/sets only ongoing or done/,
+			/leaves the state to its coordinator/,
 		);
 		expect(workspaceStore(sub.cwd).get("B1")!.state).toBe("ongoing");
-		expect(
-			await sub.text({
+		// Contract change: a child reports instead of finishing its coordinator's item, so the coordinator's QA review
+		// and merge gate run on every completion.
+		await expect(
+			sub.call({
 				op: "done",
 				id: "B1",
 				completion: completed(),
 				note: "done; verified",
 			}),
-		).toMatch(/^Updated B1 \[done p2\] v\d+$/);
+		).rejects.toThrow(/A subagent does not finish its coordinator's items/);
+		expect(workspaceStore(sub.cwd).get("B1")!.state).toBe("ongoing");
 		await expect(sub.call({ op: "close", id: "B3", close: { kind: "obsolete", text: "not needed" } })).rejects.toThrow(
 			/not claimed by your coordinator/,
 		);
@@ -763,13 +775,13 @@ describe("backlog tool", () => {
 		expect(ctx.ui.widgets.has("octocode-backlog")).toBe(false);
 		await t.call({ op: "done", id: "B1", completion: completed(), note: "ok" }, ctx);
 		expect(ctx.ui.statuses.get("octocode-backlog")).toBe("/web · backlogs & activity");
-		expect(rendered(t.tool.renderCall({ op: "done", id: "B1" }, theme, {}))).toBe("⏺ Backlog(done B1)");
+		expect(rendered(t.tool.renderCall({ op: "done", id: "B1" }, theme, {}))).toBe("○ Backlog(done B1)");
 		// A call stored before the tool was split (`op` update with a state) still draws as it did.
 		expect(rendered(t.tool.renderCall({ op: "update", id: "B1", state: "done" }, theme, {}))).toBe(
-			"⏺ Backlog(update B1 → done)",
+			"○ Backlog(update B1 → done)",
 		);
 		expect(rendered(t.plan.renderCall({ op: "edit", id: "B1", state: "todo" }, theme, {}))).toBe(
-			"⏺ Backlog plan(edit B1 → todo)",
+			"○ Backlog plan(edit B1 → todo)",
 		);
 		const row = async (params: Record<string, unknown>) =>
 			rendered(

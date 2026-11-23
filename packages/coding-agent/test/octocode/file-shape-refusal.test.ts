@@ -1,5 +1,13 @@
+import fs from "node:fs";
+import path from "node:path";
+import type { JsonObject } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
-import { renameReasoning } from "../../src/octocode/files/tool/queries.ts";
+import { validateToolArguments } from "../../../ai/src/utils/validation.ts";
+import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
+import { Params, renameReasoning } from "../../src/octocode/files/tool/queries.ts";
+import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
+import { asSetup, fakeCtx, fakePermission } from "./fake-host.ts";
+import { tmp } from "./helpers.ts";
 
 const change = { type: "edit", path: "/work/a.ts", edits: [{ oldText: "a", newText: "b" }] };
 
@@ -58,6 +66,55 @@ describe("file tool: refusal for a call with both or neither of queries and patc
 			thrown = error;
 		}
 		expect(echoed(thrown)).toEqual({ reason: "Fix a.", queries: [change] });
+	});
+
+	it("reads a flat edit's op and oldText/newText into a corrected call that applies as sent", async () => {
+		// A small model's first guess, verbatim from a cold interview: one edit's fields at the top level, `op` for `type`.
+		const naive = {
+			reason: "Change a + b to a + b + 0",
+			path: "index.ts",
+			op: "edit",
+			oldText: "a + b",
+			newText: "a + b + 0",
+		};
+		let thrown: unknown;
+		try {
+			renameReasoning(naive);
+		} catch (error) {
+			thrown = error;
+		}
+		const corrected = echoed(thrown) as Record<string, unknown>;
+		expect(corrected).toEqual({
+			reason: naive.reason,
+			queries: [{ type: "edit", path: "index.ts", edits: [{ oldText: "a + b", newText: "a + b + 0" }] }],
+		});
+		// Copying the corrected call back passes the declared schema and the tool, and makes the edit.
+		const valid = validateToolArguments(
+			{ name: "file", description: "", parameters: Params },
+			{ type: "toolCall", id: "c", name: "file", arguments: corrected as JsonObject },
+		);
+		let tool: { execute: (...args: unknown[]) => Promise<unknown> } | undefined;
+		registerFileTool(
+			asSetup({ registerTool: (registered: typeof tool) => (tool = registered), on: () => undefined }) as never,
+			new FileGuard(),
+			fakePermission(),
+		);
+		const cwd = tmp();
+		fs.writeFileSync(path.join(cwd, "index.ts"), "export const add = (a: number, b: number) => a + b;\n");
+		await tool!.execute("c", renameReasoning(valid), undefined, undefined, fakeCtx({ cwd, hasUI: false }));
+		expect(fs.readFileSync(path.join(cwd, "index.ts"), "utf8")).toBe(
+			"export const add = (a: number, b: number) => a + b + 0;\n",
+		);
+	});
+
+	it("names an edit for a top-level oldText/newText pair without op or type", () => {
+		let thrown: unknown;
+		try {
+			renameReasoning({ reason: "Fix a", path: "/work/a.ts", oldText: "a", newText: "b" });
+		} catch (error) {
+			thrown = error;
+		}
+		expect(echoed(thrown)).toEqual({ reason: "Fix a", queries: [change] });
 	});
 
 	it("still accepts the valid forms", () => {

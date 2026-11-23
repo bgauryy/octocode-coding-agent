@@ -40,6 +40,8 @@ export interface CommandSandbox {
 	wrap(request: CommandSandboxRequest): Promise<SandboxedLaunch | undefined>;
 	/** Whether the agent may ask to run a command outside the sandbox (`sandbox: false`): the `sandbox.allowUnsandboxed` setting. */
 	readonly allowsUnsandboxed: boolean;
+	/** The session ended: release what the sandbox holds for the process (a proxy, a log monitor), now or once its last command ends; the next `wrap` starts it again. */
+	close?(): Promise<void>;
 }
 
 let active: CommandSandbox | undefined;

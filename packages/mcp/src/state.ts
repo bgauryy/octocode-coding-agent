@@ -300,9 +300,14 @@ export class McpFeatureState {
 		return typeof this.api.settings.get === "function" ? this.api.settings.get() : undefined;
 	}
 
-	readonly prepareLaunch = (entry: McpServerEntry, cwd: string): McpServerEntry => {
+	/** The launch the preset and the host prepare, its templates not yet expanded. */
+	readonly unexpandedLaunch = (entry: McpServerEntry, cwd: string): McpServerEntry => {
 		const prepared = this.preset(entry)?.prepareLaunch?.(entry, cwd, this.projectTrusted) ?? entry;
-		const launched = this.options.prepareLaunch?.(prepared, cwd) ?? prepared;
+		return this.options.prepareLaunch?.(prepared, cwd) ?? prepared;
+	};
+
+	readonly prepareLaunch = (entry: McpServerEntry, cwd: string): McpServerEntry => {
+		const launched = this.unexpandedLaunch(entry, cwd);
 		const skillDirectories =
 			typeof this.api.resources.getSkillDirectories === "function" ? this.api.resources.getSkillDirectories() : [];
 		return expandLaunchTemplates(launched, { cwd, projectTrusted: this.projectTrusted, skillDirectories });

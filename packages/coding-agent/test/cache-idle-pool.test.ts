@@ -123,6 +123,7 @@ describe("the warmer's idle gaps and phase", () => {
 							timestamp: Date.now(),
 						}),
 					}) as unknown as AssistantMessageEventStream,
+				getProviderBilling: () => "metered",
 			},
 			{
 				captureUsageWriter: () => (_kind, _provider, _model, _usage, note) => {

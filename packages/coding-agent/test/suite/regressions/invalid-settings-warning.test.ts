@@ -30,7 +30,6 @@ describe("invalid settings warning", () => {
 				init: vi.fn(async () => {}),
 				options: { startupDiagnostics },
 				chatContainer,
-				outputPad: 1,
 				ui: { requestRender: vi.fn() },
 				version: "test",
 				session: harness.session,

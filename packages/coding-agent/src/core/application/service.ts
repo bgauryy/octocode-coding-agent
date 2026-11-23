@@ -24,7 +24,8 @@ import { acceptApplicationCommand, type RecordingCommand } from "./service/accep
 import { ApplicationTranscript } from "./transcript.ts";
 import { applicationSnapshot } from "./snapshot.ts";
 import { publishLifecycle, SessionStatusTracker } from "./service/lifecycle.ts";
-import { applicationModel, publishModelChange } from "./service/model.ts";
+import { applicationModel } from "./service/model.ts";
+import { SessionFacts } from "./service/facts.ts";
 import { acceptApplicationEvent, createApplicationState, initialApplicationState } from "./state.ts";
 import { readOnlyApplicationState } from "./service/state-source.ts";
 import { ApplicationActivities } from "./service/activities.ts";
@@ -43,12 +44,16 @@ type Args<K extends Method> = ApplicationOperationArgs<ApplicationOperations, K>
 type Result<K extends Method> = ApplicationOperationResult<ApplicationOperations, K>;
 export class ApplicationService implements LocalApplicationPort<AgentSessionEvent, ApplicationOperations> {
 	private readonly state = createApplicationState();
-	readonly stateSource = readOnlyApplicationState(this.state);
+	/** The state a view follows; reading it attaches the port like any other observer. */
+	readonly stateSource = readOnlyApplicationState(this.state, () => {
+		if (!this.disposed) this.attach();
+	});
 	private readonly transcript = new ApplicationTranscript(this.state, () => this.session);
 	private readonly activities = new ApplicationActivities(this.transcript.assets, this.state);
 	private readonly delivery = new ApplicationDelivery(this.state, () => this.snapshot());
 	private readonly source = new ContextSource();
 	private readonly status = new SessionStatusTracker();
+	private readonly facts = new SessionFacts(() => this.session, this.state);
 	setToolOutputProjector(project: ToolOutputProjector): () => void {
 		this.assertOpen();
 		let active = true;
@@ -82,6 +87,8 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 		return this.state.getState().sessionId;
 	}
 	private unsubscribe?: () => void;
+	/** Whether the projection follows the session: from the first observer on (`attach`). */
+	private following = false;
 	private readonly replay = new ReplayBuffer();
 	private readonly stream = new ApplicationFrameStream(() => this.currentSession, this.replay);
 	private disposed = false;
@@ -100,20 +107,31 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	start(): void {
 		this.attach();
 	}
+	/**
+	 * Follow the session from `start` or the first observer on (a view, a subscriber, a command, a snapshot): until then
+	 * session events project nothing (a subagent's port, which the registry does not start), and attaching builds the
+	 * projection from the session as it is then, as for a port opened on a running session.
+	 */
 	private attach(): void {
 		if (this.disposed) throw new Error("Application service is closed");
 		if (!this.unsubscribe) {
 			this.delivery.run(() => {
+				if (this.following || this.disposed) return;
+				this.checkSession();
+				this.source.reset(this.session);
 				this.seedActivities();
 				if (this.session.isStreaming && !this.state.getState().runId)
 					this.state.setState({ runId: randomUUID(), streaming: true });
 				this.hydrate(true);
+				this.following = true;
+				this.syncFacts();
 			});
 		}
 		this.unsubscribe ??= this.session.subscribe((event) =>
 			this.delivery.runForSession(this.session, () => {
 				if (this.disposed) return;
 				this.checkSession();
+				this.syncFacts(event);
 				this.safely(() => this.project(event));
 				this.delivery.notifyNative(event);
 			}),
@@ -153,6 +171,11 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	}
 	private checkSession(): void {
 		const changedSession = this.currentSession !== this.session.sessionId;
+		if (!this.following) {
+			// Nothing is projected before the first observer: a new session only drops what the last one published.
+			if (changedSession) this.forgetSession();
+			return;
+		}
 		const unseen = changedSession ? undefined : this.source.adopt(this.session, this.transcript);
 		if (unseen) {
 			// The context grew by messages nothing announced (a boundary draft): show them without rebuilding the rest.
@@ -161,6 +184,10 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			return;
 		}
 		this.state.setState({ sessionId: this.session.sessionId, model: applicationModel(this.session) });
+		if (changedSession) {
+			this.state.setState({ usage: undefined, quota: undefined, models: undefined });
+			this.facts.reset();
+		}
 		this.source.reset(this.session);
 		this.stream.restart(true);
 		this.transcript.clear();
@@ -178,6 +205,31 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			...this.transcript.window(),
 			...this.activities.window(),
 			errors: cloneDisplay(this.state.getState().errors),
+		});
+		this.syncFacts();
+	}
+	/** Before the first observer: the published domain events and notices of the session that ended are dropped. */
+	private forgetSession(): void {
+		this.stream.restart(true);
+		this.activities.clear();
+		this.facts.reset();
+		this.state.setState({
+			...initialApplicationState(this.session.sessionId),
+			revision: this.state.getState().revision,
+			model: applicationModel(this.session),
+		});
+	}
+	/** Publish changed facts (model, spend, quota, models) while a listener or view follows them; else the check waits. */
+	private syncFacts(event?: AgentSessionEvent): void {
+		if (this.disposed) return;
+		if (this.delivery.followed() || this.stream.open)
+			this.safely(() => this.facts.sync((change) => this.publish(change), event));
+		else this.facts.hold(event);
+	}
+	/** Before a view reads or starts following the facts: the check they waited for (`syncFacts`). */
+	private catchUpFacts(): void {
+		this.delivery.run(() => {
+			if (!this.disposed) this.safely(() => this.facts.catchUp((change) => this.publish(change)));
 		});
 	}
 	publishDomain(event: ApplicationEvent): void {
@@ -215,16 +267,19 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	getSnapshot(): ApplicationSnapshot {
 		this.assertOpen();
 		this.attach();
+		this.catchUpFacts();
 		return this.snapshot();
 	}
 	subscribeState(listener: (snapshot: ApplicationSnapshot) => void, onError?: ListenerErrorHandler): () => void {
 		this.assertOpen();
 		this.attach();
+		this.catchUpFacts();
 		return this.delivery.subscribeState(listener, onError);
 	}
 	connect(options: { sessionId?: string; cursor?: ApplicationCursor } = {}): ApplicationConnection {
 		this.attach();
 		this.delivery.run(() => this.checkSession());
+		this.catchUpFacts();
 		if (options.sessionId && options.sessionId !== this.currentSession) throw new Error("Session changed");
 		const boundSession = this.currentSession;
 		const connection = this.stream.connect(options.cursor, () => this.snapshot());
@@ -242,6 +297,7 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 	/** The same semantic events consumed by remote interfaces, delivered synchronously for terminal rendering. */
 	subscribe(listener: (event: ApplicationEvent) => void, onError?: ListenerErrorHandler): () => void {
 		this.attach();
+		this.catchUpFacts();
 		return this.delivery.subscribe(listener, onError);
 	}
 	normalizeMessage(message: unknown, id?: string): ApplicationMessage {
@@ -302,10 +358,10 @@ export class ApplicationService implements LocalApplicationPort<AgentSessionEven
 			publish: (event) => this.publish(event),
 			publishDomain: (event) => this.publishDomain(event),
 			reportFailure: (error) => this.delivery.reportFailure(error),
+			syncFacts: () => this.delivery.run(() => this.syncFacts()),
 		});
 	}
 	private project(event: AgentSessionEvent): void {
-		publishModelChange(this.session, this.state, (change) => this.publish(change));
 		switch (event.type) {
 			case "message_start":
 			case "message_end":

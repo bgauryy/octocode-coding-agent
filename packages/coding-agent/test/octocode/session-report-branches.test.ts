@@ -42,8 +42,8 @@ describe("/session $/turn after a branch", () => {
 			prices: { getModel: () => undefined },
 			selectedModelKey: "x/y",
 		});
-		expect(text).toContain("Turn 1: $0.1000");
-		expect(text).toContain("Turn 2: $0.3000");
+		expect(text).toContain("Turn 1: ≈$0.1000");
+		expect(text).toContain("Turn 2: ≈$0.3000");
 		expect(text).not.toContain("Turn 3");
 		expect(text).not.toContain("$5.0000");
 	});

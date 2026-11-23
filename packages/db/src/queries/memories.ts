@@ -69,6 +69,15 @@ export function list(
 		.all(...where.params, limit);
 }
 
+/** The id and title of every memory `repoKey` sees, with no body and no limit. */
+export function titles(db: DatabaseSync, repoKey: MemoryContext): Array<{ id: number; title: string }> {
+	const scope = scopeSql(repoKey, "all");
+	return db
+		.prepare(`SELECT m.id, m.title FROM memories m WHERE ${scope.sql}`)
+		.all(...scope.params)
+		.map((row) => ({ id: num(row.id), title: String(row.title) }));
+}
+
 /** The `updatedAt` of each of `ids` that still exists, in one query. */
 export function updatedAt(db: DatabaseSync, context: MemoryContext, ids: readonly number[]): Map<number, number> {
 	const scope = scopeSql(context, "all");

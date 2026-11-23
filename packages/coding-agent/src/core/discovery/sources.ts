@@ -49,16 +49,17 @@ export function withinTrust(input: DiscoverInput, dir: string): boolean {
 /**
  * Skills in `dirs`, all from `root`. `skipSynced` drops a Claude folder's `synced/` subtree (claude.ai skills that need
  * connectors Octocode does not have, whose broad triggers would win over local skills), unless the folder is a skill.
+ * `collect` lists a folder's skill files in place of `collectSkillEntries` (the collection's own listing).
  */
 export function skillItemsIn(
 	dirs: readonly string[],
 	root: Pick<ConfigRoot, "product" | "scope" | "origin" | "vendor">,
 	input: DiscoverInput,
-	options: { mode?: "octocode" | "agents"; skipSynced?: boolean } = {},
+	options: { mode?: "octocode" | "agents"; skipSynced?: boolean; collect?: (dir: string) => string[] } = {},
 ): ConfigItem[] {
 	return dirs.flatMap((dir) => {
 		const synced = join(dir, "synced") + sep;
-		return collectSkillEntries(dir, options.mode ?? "octocode")
+		return (options.collect?.(dir) ?? collectSkillEntries(dir, options.mode ?? "octocode"))
 			.filter((file) => !options.skipSynced || !file.startsWith(synced))
 			.map((file) => makeItem("skill", skillName(file), root, file, input, { baseDir: dirname(dir) }));
 	});

@@ -25,24 +25,30 @@ const KIND_LABEL: Record<PurgeKind, string> = {
 	transcript: "session transcripts",
 	"session-data": "session data folders",
 	temp: "temp entries",
-	scratch: "<root>/.octocode/agent/tmp entries",
+	scratch: ".octocode/agent/tmp entries",
 };
 
 /** What the plan would remove, one line per kind with counts and sizes, then the database and what stays. */
 export function previewLines(plan: PurgePlan, dbBytes: number): string[] {
 	const lines: string[] = [];
+	const none: string[] = [];
 	for (const kind of Object.keys(KIND_LABEL) as PurgeKind[]) {
 		const items = plan.items.filter((item) => item.kind === kind);
-		if (items.length === 0) continue;
+		if (items.length === 0) {
+			none.push(KIND_LABEL[kind]);
+			continue;
+		}
 		const bytes = items.reduce((sum, item) => sum + item.bytes, 0);
 		lines.push(`  ${items.length} ${KIND_LABEL[kind]} (${formatBytes(bytes)})`);
 	}
+	// Every kind the purge removes is named: one with nothing to remove says so, rather than going unmentioned.
+	if (none.length > 0) lines.push(`  none found: ${none.join(", ")}`);
 	const where =
 		plan.scope === "all"
 			? "every registered workspace"
 			: plan.workspaces.map((w) => w.root).join(", ") || "this workspace";
 	lines.push(
-		`  database rows of ${where}${plan.scope === "all" ? " (schema, trusted folders and settings kept)" : ""} (database ${formatBytes(dbBytes)}; compacted afterwards)`,
+		`  database rows of ${where}${plan.scope === "all" ? " (schema, trusted folders and settings kept)" : ""} (database ${formatBytes(dbBytes)}, shrunk afterwards)`,
 	);
 	if (plan.skipped.length > 0)
 		lines.push(`  skipped: ${plan.skipped.map((s) => `${s.path} (${s.reason})`).join("; ")}`);

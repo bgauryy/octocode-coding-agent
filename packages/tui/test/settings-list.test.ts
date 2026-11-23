@@ -35,7 +35,7 @@ describe("SettingsList", () => {
 		assert.ok(lines.every((line) => visibleWidth(line) <= 48));
 		assert.match(lines.join("\n"), /type to search/);
 		assert.match(lines.join("\n"), /enter\/space change/);
-		assert.match(lines.join("\n"), /escape\/ctrl\+c cancel/);
+		assert.match(lines.join("\n"), /esc\/ctrl\+c cancel/);
 	});
 
 	it("shows configured keys and omits Space while filtering", () => {

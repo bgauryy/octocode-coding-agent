@@ -32,6 +32,9 @@ import { copiedElision, type FileQuery } from "./queries.ts";
 
 /** One query of the `file` tool, run against the disk: the guard's checks, the checkpoint, and the change itself. */
 
+/** The refusal when the path resolves elsewhere than where it was checked or approved (a folder on the way became a link). */
+const TARGET_MOVED = "File target identity changed after approval; no changes applied";
+
 const warnedCheckpoints = new WeakSet<Checkpoints>();
 
 /**
@@ -180,6 +183,8 @@ export async function runQuery(
 	const mode = prepared?.mode ?? query.type;
 	const base = { type: mode, path: query.path, reason: query.reason };
 	const file = resolveToolPath(ctx.cwd, query.path);
+	// Where every check below is made: the change lands only there (`reserved`, inside the write lock).
+	const target = approvedTarget ?? canonicalPath(file);
 	// Capture before any await: the live feature context may be retired during a committed write's cleanup.
 	const sessionId = ctx.sessionManager?.getSessionId?.() ?? `standalone:${id}`;
 	let capture: Capture | undefined;
@@ -211,8 +216,7 @@ export async function runQuery(
 		const { current } = inspection;
 		// Checked again right before the write: a peer may reserve the file while the change is prepared (asks, reads, checkpoint).
 		const reserved = () => {
-			if (approvedTarget && canonicalPath(file) !== approvedTarget)
-				throw new Error("File target identity changed after approval");
+			if (canonicalPath(file) !== target) throw new Error(TARGET_MOVED);
 			const now = guard.reservedBy?.(file);
 			if (now) throw new Error(now);
 		};
@@ -371,10 +375,7 @@ export async function workspaceRefusal(
 		permission.refused([`${query.type} ${real}`], home, "file");
 		return home;
 	}
-	if (approvedTarget) {
-		if (real !== approvedTarget) return "File target identity changed after approval; no changes applied";
-		return undefined;
-	}
+	if (approvedTarget) return real === approvedTarget ? undefined : TARGET_MOVED;
 	const root = workspaceRoot(ctx.cwd);
 	const inside = root !== undefined && changesOnlyWorkspace(real, root);
 	if (inside && !runsLater(real, root)) return undefined;
@@ -389,7 +390,8 @@ export async function workspaceRefusal(
 		grant: { key: dir, label: `file changes under ${dir}` },
 		...(signal ? { signal } : {}),
 	});
-	return verdict.allowed
-		? undefined
-		: `${query.path} is ${inside ? "a file that runs in later sessions" : root ? `outside the workspace (${root})` : "outside any workspace (the home folder is not one)"}. ${verdict.message}`;
+	if (!verdict.allowed)
+		return `${query.path} is ${inside ? "a file that runs in later sessions" : root ? `outside the workspace (${root})` : "outside any workspace (the home folder is not one)"}. ${verdict.message}`;
+	// The answer is for the place the dialog named: a folder on the way swapped for a link while it was open moves the change.
+	return canonicalPath(file) === real ? undefined : TARGET_MOVED;
 }

@@ -2,16 +2,16 @@
 	"$schema": "https://unpkg.com/knip@6.45.1/schema.json",
 	"workspaces": {
 		".": {
-			// `scripts/build-workspace-state.mjs` reads Mermaid from the webview workspace's dependency (listed there).
+			// `scripts/build/build-workspace-state.mjs` reads Mermaid from the webview workspace's dependency (listed there).
 			"ignoreDependencies": ["mermaid"],
 			// Build inputs and developer commands invoked by path rather than static imports.
 			"entry": [
 				"scripts/agent-eval/{run,compare}.mjs",
 				"scripts/agent-eval/fixtures/checks/*.mjs",
-				"scripts/agent-treeshake-smoke-entry.ts",
-				"scripts/browser-smoke-entry.ts",
-				"scripts/stage-registry-release.mjs",
-				"scripts/use-local-packages.mjs",
+				"scripts/check/agent-treeshake-smoke-entry.ts",
+				"scripts/check/browser-smoke-entry.ts",
+				"scripts/release/stage-registry-release.mjs",
+				"scripts/release/use-local-packages.mjs",
 				// `node --test --test-global-setup` (root and tui test scripts).
 				"node-test.global.ts",
 			],
@@ -54,8 +54,7 @@
 			// Platform commands and optional test prerequisites, not npm packages.
 			// `sqlite3` reads Cursor's chat databases in the `resume-external-harness` skill script and its test.
 			// `lldb` and `go` run the `octocode-debugging` skill's commands in its test, skipped where absent.
-			// `mkfifo` makes the named pipes the stdin tests read from.
-			"ignoreBinaries": ["perl", "pwsh", "where", "trash", "uv", "sqlite3", "lldb", "go", "mkfifo"],
+			"ignoreBinaries": ["perl", "pwsh", "where", "trash", "uv", "sqlite3", "lldb", "go"],
 			// Bundler/worker inputs and shipped extensions are selected by path at runtime.
 			"entry": [
 				"src/index.ts",
@@ -82,7 +81,7 @@
 		},
 		"packages/tui": {
 			// Linux clipboard integration tests use a system compiler and X11 clipboard tool.
-			"ignoreBinaries": ["cc", "xclip"],
+			"ignoreBinaries": ["cc"],
 		},
 		"packages/webview": {
 			// The offline bundle substitutes its own entry through a Rolldown resolver.

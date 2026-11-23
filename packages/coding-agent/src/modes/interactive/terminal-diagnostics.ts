@@ -10,6 +10,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { SettingsManager } from "../../core/settings-manager.ts";
+import type { UiStore } from "./state/store.ts";
 
 interface DiagnosticHost {
 	ui: Pick<TUI, "terminal" | "mode" | "requestRender">;
@@ -23,7 +24,7 @@ interface DiagnosticHost {
 		| "isLatencyFenceActive"
 		| "getFullscreenCopyOnSelect"
 	>;
-	outputPad: number;
+	uiStore: Pick<UiStore, "getState">;
 }
 
 /**
@@ -109,6 +110,8 @@ export function showTerminalDiagnostics(host: DiagnosticHost): void {
 		"Counters cover this renderer since metrics were enabled; zero can mean no sample yet.",
 		"Use /links for references without a mouse or hyperlink support.",
 	];
-	host.chatContainer.addChild(new Text(rows.map(sanitizeTerminalText).join("\n"), host.outputPad, 1));
+	host.chatContainer.addChild(
+		new Text(rows.map(sanitizeTerminalText).join("\n"), host.uiStore.getState().view.outputPad, 1),
+	);
 	host.ui.requestRender();
 }

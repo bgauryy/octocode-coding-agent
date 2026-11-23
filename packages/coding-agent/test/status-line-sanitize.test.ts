@@ -7,6 +7,7 @@ import * as agentEvents from "../src/modes/interactive/interactive-mode/agent-ev
 import { footerLines } from "../src/octocode/ui/footer/rows.ts";
 import { initTheme, theme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
 const HOSTILE = "go\u001b]0;pwned\u0007 \u001b]8;;https://evil\u001b\\link\u001b]8;;\u001b\\ \u009b2J\u202eend";
 
@@ -61,7 +62,7 @@ describe("compaction end", () => {
 	test("sends the messages held for compaction even when redrawing the compaction fails", async () => {
 		const handleEvent = agentEvents.handleEvent as (host: object, event: object) => Promise<void>;
 		const host = {
-			isInitialized: true,
+			uiStore: createUiStore({ lifecycle: { initialized: true } }),
 			programStatus: { handleEvent: vi.fn(), setPhase: vi.fn() },
 			autoCompactionEscapeHandler: undefined,
 			defaultEditor: {},

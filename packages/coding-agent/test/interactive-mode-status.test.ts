@@ -220,7 +220,7 @@ describe("InteractiveMode.showManagedToolStatus", () => {
 		const fakeThis: any = {
 			chatContainer: new Container(),
 			ui: { requestRender: vi.fn() },
-			managedToolStatusStarted: false,
+			uiStore: createUiStore(),
 			lastStatusSpacer: undefined,
 			lastStatusText: undefined,
 		};
@@ -611,7 +611,6 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 			settingsManager: { getEnableSkillCommands: () => boolean };
 			skillCommands: Map<string, string>;
 			sessionManager: { getCwd: () => string };
-			fdPath: null;
 		};
 
 		const models = [
@@ -629,7 +628,6 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 			settingsManager: { getEnableSkillCommands: () => false },
 			skillCommands: new Map(),
 			sessionManager: { getCwd: () => "/tmp" },
-			fdPath: null,
 		};
 
 		const provider = autocomplete.createBaseAutocompleteProvider(createFakeHost(fakeThis));
@@ -656,7 +654,6 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 			settingsManager: { getEnableSkillCommands: () => boolean };
 			skillCommands: Map<string, string>;
 			sessionManager: { getCwd: () => string };
-			fdPath: null;
 			getLoginProviderOptions: () => AuthSelectorProvider[];
 		};
 
@@ -671,7 +668,6 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 			settingsManager: { getEnableSkillCommands: () => false },
 			skillCommands: new Map(),
 			sessionManager: { getCwd: () => "/tmp" },
-			fdPath: null,
 			getLoginProviderOptions: () => [
 				{ id: "anthropic", name: "Anthropic", authType: "oauth", subscription: true },
 				{ id: "anthropic", name: "Anthropic", authType: "api_key", subscription: true },
@@ -950,7 +946,8 @@ describe("InteractiveMode.showLoadedResources", () => {
 		expect(output).toMatch(/Skills\s+⚠/);
 		expect(output).toContain("/2 chars");
 		expect(output).not.toMatch(/Skill list too long|Context files too long/);
-		expect(output).toContain("test-model · 1 providers · 1 models · /model · /providers");
+		// Counts read as words: one provider and one model are singular.
+		expect(output).toContain("test-model · 1 provider · 1 model · /model · /providers");
 		expect(output).toContain("(ctrl+o to toggle details)");
 		expect(output).not.toMatch(/Hooks|Plugins/);
 	});

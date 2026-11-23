@@ -11,6 +11,8 @@ try {
 }
 
 const args = process.argv.slice(2);
+// `--version` and `--help` alone load only their own modules. The bundle's `cli.js` launcher makes the same choice
+// before it loads the bundle (`FAST_COMMANDS` in `scripts/build/bundle-layout.mjs`).
 const only = args.length === 1 ? args[0] : undefined;
 if (only === "--version" || only === "-v") {
 	const { printVersionOnly } = await import("./cli/version-only.ts");

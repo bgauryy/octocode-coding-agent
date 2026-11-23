@@ -11,6 +11,8 @@ import { findFeatureStackMatches, recordCrash as writeCrashRecord } from "../../
 import { killTrackedDetachedChildren } from "../../../utils/shell.ts";
 import { endIfStalled } from "../../../utils/stall-guard.ts";
 import { stopThemeWatcher, theme } from "../../../theme/theme.ts";
+import { selectShuttingDown } from "../state/lifecycle-slice.ts";
+import { isNoticeShown } from "../state/notices-slice.ts";
 import { isDeadTerminalError, formatCrashFeatureHint, formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -18,16 +20,12 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 /** Interactive-mode members used by crash reporting. */
 type CrashReportingHost = Pick<
 	InteractiveModeHost,
-	| "bugReportHintShown"
 	| "chatContainer"
 	| "uncaughtCrash"
 	| "crashReportInstructions"
 	| "emergencyTerminalExit"
 	| "getCrashFeatureHint"
-	| "installChangeWarningShown"
-	| "isShuttingDown"
 	| "maybeShowInstallChangeWarning"
-	| "outputPad"
 	| "recordCrash"
 	| "session"
 	| "sessionManager"
@@ -36,6 +34,7 @@ type CrashReportingHost = Pick<
 	| "stop"
 	| "suggestBugReport"
 	| "ui"
+	| "uiStore"
 	| "unregisterSignalHandlers"
 >;
 
@@ -46,13 +45,14 @@ export async function handleFatalRuntimeError(
 ): Promise<never> {
 	const message = errorMessage(error);
 	host.showError(`${prefix}: ${message}`);
+	const pad = host.uiStore.getState().view.outputPad;
 	const featureHint = host.getCrashFeatureHint(error);
 	if (featureHint) {
-		host.chatContainer.addChild(new ThemedText(() => theme.fg("warning", featureHint), host.outputPad, 0));
+		host.chatContainer.addChild(new ThemedText(() => theme.fg("warning", featureHint), pad, 0));
 	}
 	if (host.recordCrash("fatal_error", error)) {
 		const instructions = host.crashReportInstructions();
-		host.chatContainer.addChild(new ThemedText(() => theme.fg("muted", instructions), host.outputPad, 0));
+		host.chatContainer.addChild(new ThemedText(() => theme.fg("muted", instructions), pad, 0));
 	}
 	stopThemeWatcher();
 	host.stop("transcript");
@@ -99,12 +99,11 @@ export function crashReportInstructions(host: CrashReportingHost): string {
 }
 
 export function suggestBugReport(host: CrashReportingHost): void {
-	if (host.bugReportHintShown) return;
-	host.bugReportHintShown = true;
+	if (!host.uiStore.getState().claimNotice("bugReportHint")) return;
 	host.chatContainer.addChild(
 		new ThemedText(
 			() => theme.fg("muted", `If this looks like a ${APP_NAME} bug, /bug sends a report to the developers.`),
-			host.outputPad,
+			host.uiStore.getState().view.outputPad,
 			0,
 		),
 	);
@@ -129,10 +128,11 @@ export function maybeSuggestBugReport(host: CrashReportingHost, message: Assista
  * the install changed.
  */
 export function maybeShowInstallChangeWarning(host: CrashReportingHost): boolean {
-	if (host.installChangeWarningShown) return true;
+	const notices = host.uiStore.getState();
+	if (isNoticeShown(notices, "installChange")) return true;
 	const change = detectInstallChange();
 	if (!change) return false;
-	host.installChangeWarningShown = true;
+	notices.claimNotice("installChange");
 	const cause =
 		change.kind === "updated"
 			? `${APP_NAME} was updated to ${change.version} while this session was running (${VERSION})`
@@ -146,7 +146,7 @@ export function maybeShowInstallChangeWarning(host: CrashReportingHost): boolean
 }
 
 export function emergencyTerminalExit(host: CrashReportingHost): never {
-	host.isShuttingDown = true;
+	host.uiStore.getState().beginShutdown();
 	host.unregisterSignalHandlers();
 	killTrackedDetachedChildren();
 	// The terminal is gone. Do not run normal shutdown because TUI and
@@ -183,7 +183,7 @@ export function backgroundError(
 ): void {
 	const crash = (): never => host.uncaughtCrash(error instanceof Error ? error : new Error(errorMessage(error)));
 	if (kind === "uncaughtException" && !isLeakedFileHandleError(error)) crash();
-	if (host.isShuttingDown) return;
+	if (selectShuttingDown(host.uiStore.getState())) return;
 	const now = Date.now();
 	const recent = [...(survivedAt.get(host) ?? []).filter((at) => now - at < SURVIVED_WINDOW_MS), now];
 	survivedAt.set(host, recent);
@@ -213,10 +213,9 @@ export function uncaughtCrash(host: CrashReportingHost, error: Error): never {
 	if (isDeadTerminalError(error)) {
 		host.emergencyTerminalExit();
 	}
-	if (host.isShuttingDown) {
+	if (!host.uiStore.getState().beginShutdown()) {
 		process.exit(1);
 	}
-	host.isShuttingDown = true;
 	// Each step is best effort: the process is exiting on a crash, and a failure in one must not skip the next or hide the crash report below.
 	try {
 		host.unregisterSignalHandlers();

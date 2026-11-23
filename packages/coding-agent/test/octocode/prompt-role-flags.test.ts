@@ -69,6 +69,24 @@ describe("policy flags derived from profiles and servers", () => {
 		expect(inspector.work).not.toBe(browser.work);
 	});
 
+	it("names a vendor runner to a child only while its agent tool declares one", async () => {
+		const subagent = async (properties: Record<string, unknown>) => {
+			const fake = fakeHost();
+			fake.tools.set("agent", { name: "agent", exposure: "direct", parameters: { type: "object", properties } });
+			Object.assign(fake.api, { channels: createEventBus() });
+			setMcpSessionStatus(fake.api.channels, []);
+			registerTurnSetup(fake.api, { isSubagent: true, profiles: () => PROFILES });
+			const event = { systemPromptOptions: { sections: {}, baseSections: {}, selectedTools: ["bash", "agent"] } };
+			await fake.emit("before_agent_start", event, {});
+			return allSections(event).subagent;
+		};
+		const runner = { type: "string", enum: ["claude-code"] };
+		expect(await subagent({ type: {}, runner })).toContain("vendor runner");
+		const without = await subagent({ type: {} });
+		expect(without).toContain("you cannot start native Octocode subagents.");
+		expect(without).not.toContain("vendor runner");
+	});
+
 	it("updates research policy for an unavailable server", async () => {
 		const natives = ["bash", "file", "mcp"];
 		publishRoles([{ ...RESEARCH_ENTRY, name: "octocode" }]);

@@ -40,7 +40,6 @@ type SessionBindingHost = Pick<
 	| "handleResumeSession"
 	| "uiStore"
 	| "loadedResourcesContainer"
-	| "outputPad"
 	| "pendingMessagesContainer"
 	| "pendingTools"
 	| "programStatus"
@@ -59,10 +58,8 @@ type SessionBindingHost = Pick<
 	| "showStartupNoticesIfNeeded"
 	| "showStatus"
 	| "shutdown"
-	| "shutdownRequested"
 	| "statusContainer"
 	| "streamingComponent"
-	| "streamingMessage"
 	| "subscribeToAgent"
 	| "ui"
 	| "unsubscribe"
@@ -127,7 +124,7 @@ export async function bindCurrentSessionFeatures(host: SessionBindingHost): Prom
 			},
 		},
 		shutdownHandler: () => {
-			host.shutdownRequested = true;
+			host.uiStore.getState().requestShutdown();
 			if (host.session.isIdle) {
 				void host.shutdown();
 			}
@@ -162,8 +159,9 @@ export function applyRuntimeSettings(host: SessionBindingHost): void {
 		host.renderer.setFrameOutputCap(host.settingsManager.getFullscreenFrameQueueLimitBytes());
 	}
 	host.footerDataProvider.setCwd(host.sessionManager.getCwd());
-	host.uiStore.getState().setHideThinking(host.settingsManager.getHideThinkingBlock());
-	host.outputPad = host.settingsManager.getOutputPad();
+	const view = host.uiStore.getState();
+	view.setHideThinking(host.settingsManager.getHideThinkingBlock());
+	view.setOutputPad(host.settingsManager.getOutputPad());
 	host.ui.setShowHardwareCursor(host.settingsManager.getShowHardwareCursor());
 	const clearOnShrink = host.settingsManager.getClearOnShrink();
 	host.ui.setClearOnShrink(clearOnShrink);
@@ -196,6 +194,8 @@ export async function rebindCurrentSession(
 		host.subscribeToAgent();
 	}
 
+	// The plain title first: the notifier paints its state title over it when the features see session_start.
+	host.updateTerminalTitle();
 	await host.bindCurrentSessionFeatures();
 
 	if (host.session !== session) {
@@ -208,7 +208,6 @@ export async function rebindCurrentSession(
 
 	host.updateAvailableProviderCount();
 	host.updateEditorBorderColor();
-	host.updateTerminalTitle();
 }
 
 export function renderCurrentSessionState(host: SessionBindingHost): void {
@@ -219,7 +218,6 @@ export function renderCurrentSessionState(host: SessionBindingHost): void {
 	host.chatContainer.clear();
 	host.pendingMessagesContainer.clear();
 	host.streamingComponent = undefined;
-	host.streamingMessage = undefined;
 	host.pendingTools.clear();
 	host.renderInitialMessages();
 }

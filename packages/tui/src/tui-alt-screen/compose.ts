@@ -58,7 +58,10 @@ export function compositeScrollToEndIndicator(
 	return { screen: result, rect: { row, column, width: textWidth } };
 }
 
-/** Right-align flash lines over the top rows of the screen. */
+/**
+ * Right-align flash lines over the top rows of the screen, by the jump-to-end label's rule: text that ends at least one
+ * cell before a flash stays beside it; a row the flash would cut mid-word is blanked, so no fragment shows.
+ */
 export function compositeFlashLines(screen: string[], flashLines: string[], width: number, height: number): string[] {
 	if (flashLines.length === 0) return screen;
 	const result = [...screen];
@@ -67,7 +70,11 @@ export function compositeFlashLines(screen: string[], flashLines: string[], widt
 		const line = flashLines[row];
 		const flashWidth = visibleWidth(line);
 		if (flashWidth === 0) continue;
-		result[row] = compositeTuiLine(result[row] ?? "", line, width - flashWidth, flashWidth, width);
+		const column = width - flashWidth;
+		const base = result[row] ?? "";
+		const text = stripTerminalSequences(sliceByColumn(base, 0, width)).trimEnd();
+		const beside = isImageLine(base) || visibleWidth(text) <= column - 1;
+		result[row] = compositeTuiLine(beside ? base : "", line, column, flashWidth, width);
 	}
 	return result;
 }

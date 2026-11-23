@@ -66,7 +66,7 @@ export async function getMemory(store: MemoryStore, id: string): Promise<string>
 	const memory = store.get(parsed);
 	if (!memory) throw noMemory(parsed);
 	await markUsedQuietly(store, [memory.id]);
-	return describeMemory(memory);
+	return describeMemory(memory, Date.now(), store.sourcesOf(memory));
 }
 
 /**

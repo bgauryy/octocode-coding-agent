@@ -38,7 +38,9 @@ export async function effectiveBaseUrl(
 	return { url, source: runtime.getProviderDefinitionFile(id) ? "models.json" : "provider default" };
 }
 
-export async function refreshAfterChange(ui: EditHost): Promise<void> {
+export async function refreshAfterChange(
+	ui: Pick<ProviderManagerHost, "session" | "updateAvailableProviderCount">,
+): Promise<void> {
 	await ui.session.modelRuntime.refresh({ allowNetwork: false });
 	ui.updateAvailableProviderCount();
 }

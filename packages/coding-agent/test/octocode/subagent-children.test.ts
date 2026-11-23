@@ -431,4 +431,24 @@ describe("the task a continued child runs", () => {
 		// A recorded model no longer configured is not forced on the run: the profile or parent routing applies.
 		expect(resumedTask(again, child, []).model).toBeUndefined();
 	});
+
+	it("keeps the request limit the child's call named unless the resume names its own", () => {
+		const { file } = scratch("research-cap");
+		const entries = agentCall(
+			"call-cap",
+			{ profile: "researcher", goal: "Find callers", maxRequests: 30 },
+			{
+				id: "research-cap",
+				profile: "researcher",
+				goal: "Find callers",
+				status: "done",
+				session: { id: "research-cap", file },
+			},
+		);
+		const { child } = resumableChild(entries, "research-cap", new Set());
+		expect(child.maxRequests).toBe(30);
+		type Task = { goal: string; resume?: string; maxRequests?: number };
+		expect(resumedTask<Task>({ goal: "Again", resume: "research-cap" }, child, []).maxRequests).toBe(30);
+		expect(resumedTask<Task>({ goal: "Again", maxRequests: 10 }, child, []).maxRequests).toBe(10);
+	});
 });

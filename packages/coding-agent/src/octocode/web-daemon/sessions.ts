@@ -155,7 +155,7 @@ export class SessionRegistry {
 				void link.client.boardChanged().catch(() => undefined);
 	}
 
-	/** Sessions with a live attach connection: the ones that need the user first, then the busy ones, newest first. */
+	/** Sessions with a live attach connection, by attention (`byAttention`): needs you, working, failed, idle; newest first. */
 	list(): DaemonSession[] {
 		return [...this.links.values()]
 			.filter((link) => link.client?.connected)
@@ -166,7 +166,7 @@ export class SessionRegistry {
 				cwd: record.cwd.slice(0, 4096),
 				startedAt: record.startedAt,
 				attached: true,
-				...(watch?.state ? { busy: watch.state.busy } : {}),
+				...(watch?.state ? { busy: watch.state.busy, activity: { ...watch.state.activity } } : {}),
 				...(watch?.state?.needsYou ? { needsYou: watch.state.needsYou } : {}),
 			}))
 			.sort(byAttention);

@@ -17,6 +17,8 @@ import { SYSTEM_PROMPT_SECTIONS, systemPromptSectionSpec } from "../../src/core/
 import { ensureMemoryDir } from "../../src/octocode/memory/file/paths.ts";
 import { globalMemoryFile, workspaceMemoryFile } from "../../src/octocode/permission/memory-files.ts";
 import { MEMORY_SECTION, registerMemorySection } from "../../src/octocode/memory/file/section.ts";
+import { normalizeTitle } from "../../src/octocode/memory/query.ts";
+import { fileMemberIds } from "../../src/octocode/memory/file/sync.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import { memoryStore } from "../../src/octocode/memory/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -268,6 +270,18 @@ describe("the memory tool and MEMORY.md", () => {
 		// A project note has no file line.
 		await run({ op: "set", title: "Project only note", scope: "project" });
 		expect(readWorkspace()).toBe("");
+	});
+
+	it("matches a file line to its note however many notes are visible", () => {
+		const store = memoryStore(cwd);
+		const oldest = store.set({ title: "Ünïcode ＦＵＬＬ Width", author: "user" }).memory;
+		for (let i = 0; i < 600; i++) store.set({ title: `Filler note ${i}`, author: "user" });
+		const other = path.join(path.dirname(cwd), "other");
+		fs.mkdirSync(other);
+		const foreign = memoryStore(other).set({ title: "Foreign scope note", scope: "project", author: "user" }).memory;
+		const keys = new Set([normalizeTitle("ünïcode full width"), normalizeTitle("Foreign scope note")]);
+		expect(fileMemberIds(store, keys)).toEqual([oldest.id]);
+		expect(fileMemberIds(store, keys)).not.toContain(foreign.id);
 	});
 
 	it("does not recall a pinned note whose line the prompt already carries", async () => {

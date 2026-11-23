@@ -5,7 +5,7 @@ import {
 	type ApplicationCursor,
 } from "@octocodeai/octocode-contracts";
 import { sameSecret } from "@octocodeai/octocode-common/env";
-import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
+import { redactData, redactSecrets, registerSecretValue } from "@octocodeai/octocode-common/sanitize";
 import { livePageHeaderPolicy, renderBacklogHtml, WEB_PAGE_ASSETS } from "@octocodeai/octocode-webview";
 import {
 	handleWebPrefsRequest,
@@ -39,6 +39,7 @@ import { handleReportsRequest } from "./reports.ts";
 import { workspaceChanges, type RevisedWorkspace } from "./revision.ts";
 import { readerStalled } from "./socket-pressure.ts";
 import type { SessionConfig } from "./session-config-port.ts";
+import { handleEvidenceRequest, localEvidence } from "./evidence-route.ts";
 import { BacklogProjection } from "./backlog-projection.ts";
 
 /** A loopback board with a per-launch capability; the general session API stays browser-inaccessible. */
@@ -51,6 +52,9 @@ export async function startWorkspaceWeb(
 	sessionConfig?: SessionConfig,
 ): Promise<BacklogWeb> {
 	const token = randomBytes(32).toString("hex");
+	// The page's address carries it (`url`), and `/web` says that address in a notice the session's pages and an attached
+	// daemon's tabs (a view link's included) receive: registered, every redacted copy reads `[redacted]`.
+	registerSecretValue(token);
 	const page = () =>
 		renderBacklogHtml(
 			{ repo: backlog.repoName, generatedAt: Date.now(), states: STATES, idleMs: 604800000, items: [] },
@@ -181,6 +185,7 @@ export async function startWorkspaceWeb(
 			const requestUrl = new URL(req.url ?? "/", origin);
 			if (await handleWebPrefsRequest(req, requestUrl.pathname, webPrefs, reply, WEB_PAGE_ASSETS)) return;
 			if (await handleApplicationDataRequest(req, requestUrl, workspace?.application, backlog.session, reply)) return;
+			if (await handleEvidenceRequest(req, requestUrl, localEvidence(backlog.repoRoot), backlog.session, reply)) return;
 			if (
 				await handleTerminalCommands(
 					req,

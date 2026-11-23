@@ -3,6 +3,10 @@ import { EVENTS_SCHEMA } from "./schema-events.ts";
 import { ITEM_HANDOFFS_SCHEMA } from "./schema-handoffs.ts";
 import { MACHINE_ALERTS_SCHEMA, SAMPLES_SCHEMA } from "./schema-samples.ts";
 import { PROVIDER_COOLDOWNS_SCHEMA } from "./schema-cooldowns.ts";
+import { MEMORY_SOURCES_SCHEMA } from "./schema-memory-sources.ts";
+import { PROVIDER_QUOTA_SCHEMA } from "./schema-quota.ts";
+import { USAGE_DAILY_SCHEMA } from "./schema-usage-daily.ts";
+import { SESSION_ACTIVITY_BY_COLUMN, SESSION_ACTIVITY_COLUMN } from "./schema-columns.ts";
 
 /** The statuses an agent row may hold; `settled`: a headless child whose run ended and whose parent still holds its reservations. */
 const AGENT_STATUS_CHECK = "CHECK(status IN ('idle','working','settled'))";
@@ -18,7 +22,7 @@ const AGENT_RUNS_PARENT_INDEX =
 	"CREATE INDEX IF NOT EXISTS agent_runs_parent_session ON agent_runs(parent_session_id);";
 
 /** The objects an existing file of this version may lack; run each time the coordination file is opened. */
-export const ENSURED_OBJECTS = `${AGENT_RUNS_PARENT_INDEX}\n${ITEM_HANDOFFS_SCHEMA}\n${EVENTS_SCHEMA}\n${MACHINE_ALERTS_SCHEMA}\n${PROVIDER_COOLDOWNS_SCHEMA}`;
+export const ENSURED_OBJECTS = `${AGENT_RUNS_PARENT_INDEX}\n${ITEM_HANDOFFS_SCHEMA}\n${EVENTS_SCHEMA}\n${MACHINE_ALERTS_SCHEMA}\n${PROVIDER_COOLDOWNS_SCHEMA}\n${PROVIDER_QUOTA_SCHEMA}\n${USAGE_DAILY_SCHEMA}\n${MEMORY_SOURCES_SCHEMA}`;
 
 /** `shell_history`: the commands the user ran with `!`, one row per folder and command, for the editor's suggestions. */
 const SHELL_HISTORY_SCHEMA = `
@@ -141,7 +145,8 @@ CREATE TABLE sessions (
   cost REAL NOT NULL DEFAULT 0, tokens INTEGER NOT NULL DEFAULT 0, files_changed INTEGER NOT NULL DEFAULT 0, pid INTEGER,
   pid_started TEXT, unpriced INTEGER NOT NULL DEFAULT 0, dir TEXT,
   title TEXT, title_source TEXT, cwd TEXT, file TEXT, parent_file TEXT, created_at INTEGER, last_active INTEGER,
-  message_count INTEGER, first_prompt TEXT, file_mtime INTEGER, UNIQUE(id, workspace_id));
+  message_count INTEGER, first_prompt TEXT, file_mtime INTEGER, ${SESSION_ACTIVITY_COLUMN},
+  ${SESSION_ACTIVITY_BY_COLUMN}, UNIQUE(id, workspace_id));
 CREATE INDEX sessions_workspace ON sessions(workspace_id);
 CREATE INDEX sessions_catalog ON sessions(cwd) WHERE file IS NOT NULL;
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolDefinition } from "../../src/core/features/index.ts";
-import { MODELS_DEV_ENV } from "../../src/octocode/subagents/catalog.ts";
+import { MODELS_DEV_ENV } from "../../src/core/model-catalog/index-store.ts";
 import type { ModelRef } from "../../src/octocode/subagents/model.ts";
 import { registerModelsTool } from "../../src/octocode/native/tools/models/tool.ts";
 import { meteredBilling, asSetup } from "./fake-host.ts";
@@ -19,7 +19,11 @@ const zen = m("opencode", "qwen-coder", 0.5, 2);
 
 function mode(profiles = new Map()) {
 	let tool: ToolDefinition | undefined;
-	const api = asSetup({ registerTool: (definition: ToolDefinition) => void (tool = definition) });
+	const api = asSetup({
+		registerTool: (definition: ToolDefinition) => void (tool = definition),
+		// The quota notice registers with the tool (`models-quota-notice.ts`); no event fires here.
+		on: () => () => undefined,
+	});
 	registerModelsTool(api, () => profiles);
 	if (!tool) throw new Error("not registered");
 	const streamSimple = vi.fn((model: ModelRef) => ({

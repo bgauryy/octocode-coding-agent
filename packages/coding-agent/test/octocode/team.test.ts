@@ -12,7 +12,7 @@ import { reservationPath } from "../../src/octocode/shared/home.ts";
 import { PERMISSION_NONCE_FILE_ENV, takeNonce, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 import { nonceFile } from "./nonce-file.ts";
 
-// Reduced motion pins a running light to its first frame, ◒.
+// Reduced motion draws a running light as a full ⏺: an animation or a state, never a half-filled circle held still.
 beforeEach(() => animationClock.setReducedMotion(true));
 afterEach(() => animationClock.setReducedMotion(false));
 import * as importedModule4 from "../../src/octocode/native/tools/file/tool.ts";
@@ -331,9 +331,9 @@ describe("agents view", () => {
 		expect(lines.join("\n")).not.toMatch(/main-cccccc|c-0003/);
 		// The root row carries no tally; the marks say who works. A grandchild sits under its parent.
 		expect(lines).toHaveLength(3);
-		expect(lines[0]).toMatch(/^ 🦑 main-aaaaaa ⏺ · main +1m39s$/);
-		expect(lines[1]).toMatch(/^ └ ⏺ a-0001 +· a-0001 +10s$/);
-		expect(lines[2]).toMatch(/^ {3}└ ◒ b-0002 +· b-0002 +· › → localSearch foo +1m$/);
+		expect(lines[0]).toMatch(/^ 🦑 main-aaaaaa ○ · main +1m39s$/);
+		expect(lines[1]).toMatch(/^ └ ○ a-0001 +· a-0001 +10s$/);
+		expect(lines[2]).toMatch(/^ {3}└ ⏺ b-0002 +· b-0002 +· › → localSearch foo +1m$/);
 		expect(
 			widgetLines(
 				[

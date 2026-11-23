@@ -36,11 +36,14 @@ export function create(db: DatabaseSync): { fts: boolean } {
 	}
 }
 
-/** Whether this file has its full-text table (it was created where SQLite had FTS5). */
+/** Whether this file has its full-text tables (it was created where SQLite had FTS5 and they are still there). */
 export function hasFts(db: DatabaseSync): boolean {
 	return Boolean(
-		db.prepare("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='passages_fts') AS fts").get()
-			?.fts,
+		db
+			.prepare(
+				"SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='passages_fts') AND EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='passages_terms') AS fts",
+			)
+			.get()?.fts,
 	);
 }
 
@@ -146,17 +149,21 @@ export type TermCount = [
 	length: number,
 ];
 
-/** How often each of `terms` occurs in each passage holding it, with what scoring needs of the passage. */
-export function termCounts(db: DatabaseSync, terms: readonly string[]): TermCount[] {
-	if (terms.length === 0) return [];
+/**
+ * How often each of `terms` occurs in each passage of the files `fileIds` holding it, with what scoring needs of the
+ * passage. The files are one JSON array parameter, so a long list is no limit; no files or no terms read nothing.
+ */
+export function termCounts(db: DatabaseSync, terms: readonly string[], fileIds: readonly number[]): TermCount[] {
+	if (terms.length === 0 || fileIds.length === 0) return [];
 	const statement = db.prepare(
 		`SELECT v.doc, p.file, v.term, count(*), p.start, p.end, p.length
 		FROM passages_terms v JOIN passages p ON p.id = v.doc
 		WHERE v.term IN (${terms.map(() => "?").join(", ")})
+			AND p.file IN (SELECT value FROM json_each(?))
 		GROUP BY v.doc, v.term`,
 	);
 	statement.setReturnArrays(true);
-	return statement.all(...terms) as unknown as TermCount[];
+	return statement.all(...terms, JSON.stringify(fileIds)) as unknown as TermCount[];
 }
 
 export interface PassageRange {

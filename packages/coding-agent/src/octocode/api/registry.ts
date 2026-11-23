@@ -281,8 +281,10 @@ export async function sweepSocketFolders(
 		let base: string;
 		let names: string[];
 		try {
-			base = fs.realpathSync(root);
-			names = fs.readdirSync(base);
+			// Off the event loop: a temp directory can hold thousands of entries (about 17 ms for 11k on macOS), and the
+			// start that calls this would otherwise wait for them before its MCP servers launch.
+			base = await fs.promises.realpath(root);
+			names = await fs.promises.readdir(base);
 		} catch {
 			continue;
 		}

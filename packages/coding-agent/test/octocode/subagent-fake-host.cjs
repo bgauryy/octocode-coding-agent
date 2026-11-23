@@ -588,6 +588,29 @@ async function scenario() {
 			message: "Loop guard ended this run: 8 identical bash calls with the same outcome.",
 			notifyType: "error",
 		});
+	} else if (task.startsWith("fell back")) {
+		// `retry.fallbackModels` moved the child off faux/model (its credential refused) to alt/shared, which answered.
+		const fallback = { from: "faux/model", to: "alt/shared", reason: "refused the credential", billingChanged: false };
+		const entry = { type: "custom", customType: "octocode-fallback", id: "f1", parentId: null, data: fallback };
+		emit({ type: "entry_appended", entry: { ...entry, timestamp: "2026-11-23T00:00:00.000Z" } });
+		const failure = command.endsWith(" and failed")
+			? { stopReason: "error", errorMessage: "401 invalid x-api-key" }
+			: {};
+		emit(say("done: answered on the fallback", { provider: "alt", model: "shared", ...failure }));
+	} else if (task.startsWith("credential fix")) {
+		// A credential failure as the child's session shows it to its user: the provider's error, then the `Fix:` line.
+		const fix = "Fix: run `aws sso login --profile dev`, switch model with /model, or /providers → Amazon Bedrock";
+		const errorMessage = `amazon-bedrock/claude: The security token included in the request is expired\n${fix}`;
+		emit({
+			type: "message_end",
+			message: { role: "assistant", content: [], usage, stopReason: "error", errorMessage },
+		});
+	} else if (task.startsWith("spent then deaf")) {
+		// One priced reply, then a tool that ignores the abort: only a closed input or a signal ends it (a stop's slow path).
+		emit(say("checking first", { stopReason: "toolUse" }));
+		emit({ type: "tool_execution_start", toolName: "bash", args: { command: "sleep 60" } });
+		end = "hold";
+		setTimeout(() => undefined, 60_000);
 	} else if (task.startsWith("slow")) {
 		emit({ type: "tool_execution_start", toolName: "bash", args: { command: "sleep 60" } });
 		end = "hold";

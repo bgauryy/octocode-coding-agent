@@ -59,14 +59,17 @@ function runHelp(path: readonly string[]): { status: number | null; stdout: stri
 
 /**
  * The help of `octocode <path>`, read once per path and cached for the process; empty when the CLI does not resolve or
- * its help cannot be read.
+ * its help cannot be read. Only a help the CLI was run for is cached: while it does not resolve (a linked build being
+ * rewritten), the next call looks again, which costs a few file checks, not a run. A run that failed or timed out stays
+ * cached, so a CLI that hangs never blocks completion once per keystroke.
  */
 function cliHelp(path: readonly string[]): CliHelp {
 	const key = path.join(" ");
 	const cached = helps.get(key);
 	if (cached) return cached;
-	const parsed = parseCliHelp(runHelp(path)?.stdout ?? "");
-	helps.set(key, parsed);
+	const run = runHelp(path);
+	const parsed = parseCliHelp(run?.stdout ?? "");
+	if (run) helps.set(key, parsed);
 	return parsed;
 }
 

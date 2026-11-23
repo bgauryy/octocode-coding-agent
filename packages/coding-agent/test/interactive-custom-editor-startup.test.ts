@@ -15,6 +15,7 @@ import { bindEditorState } from "../src/modes/interactive/state/bind-editor.ts";
 import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { getEditorTheme, initTheme, theme } from "../src/theme/theme.ts";
 import { createFakeHost, heldStore } from "./interactive-mode-host.ts";
+import { selectSubmittedInputs } from "../src/modes/interactive/state/input-slice.ts";
 
 function createStartupHost() {
 	const keybindings = new KeybindingsManager();
@@ -33,7 +34,6 @@ function createStartupHost() {
 		toggleToolOutputExpansion: vi.fn(),
 		flushPendingBashComponents: vi.fn(),
 		showWorkingStatusIndicator: vi.fn(),
-		pendingUserInputs: [] as string[],
 		session: { isStreaming: false, isBashRunning: false, isCompacting: false, getQueuedInputs: () => [] },
 		uiStore: createUiStore(),
 		editorChangeListeners: new Set<(text: string) => void>(),
@@ -118,7 +118,7 @@ describe("Enter during startup", () => {
 		typeText(host, "first");
 		host.editor.handleInput("\r");
 		expect(host.editor.getText()).toBe("first");
-		expect(host.pendingUserInputs).toEqual([]);
+		expect(selectSubmittedInputs(host.uiStore.getState())).toEqual([]);
 		// A second Enter replaces the queued submit instead of adding one.
 		host.editor.handleInput("\r");
 
@@ -126,7 +126,7 @@ describe("Enter during startup", () => {
 		dispatchStartupSubmit(host);
 		await settle();
 
-		expect(host.pendingUserInputs).toEqual(["first"]);
+		expect(selectSubmittedInputs(host.uiStore.getState())).toEqual(["first"]);
 		expect(host.editor.getText()).toBe("");
 	});
 
@@ -139,7 +139,7 @@ describe("Enter during startup", () => {
 
 		await finishStartup(host);
 
-		expect(host.pendingUserInputs).toEqual([]);
+		expect(selectSubmittedInputs(host.uiStore.getState())).toEqual([]);
 		expect(host.editor.getText()).toBe("draft");
 	});
 
@@ -149,7 +149,7 @@ describe("Enter during startup", () => {
 		edited.editor.handleInput("\r");
 		typeText(edited, " more");
 		await finishStartup(edited);
-		expect(edited.pendingUserInputs).toEqual([]);
+		expect(selectSubmittedInputs(edited.uiStore.getState())).toEqual([]);
 		expect(edited.editor.getText()).toBe("half more");
 
 		const cleared = createStartupHost();
@@ -157,7 +157,7 @@ describe("Enter during startup", () => {
 		cleared.editor.handleInput("\r");
 		cleared.editor.setText("");
 		await finishStartup(cleared);
-		expect(cleared.pendingUserInputs).toEqual([]);
+		expect(selectSubmittedInputs(cleared.uiStore.getState())).toEqual([]);
 	});
 
 	it("sends a prompt an editor submitted untrimmed, and says why a changed one stays", () => {
@@ -205,13 +205,13 @@ describe("Enter during startup", () => {
 
 		await finishStartup(host);
 
-		expect(host.pendingUserInputs).toEqual([`see ${pasted}`]);
+		expect(selectSubmittedInputs(host.uiStore.getState())).toEqual([`see ${pasted}`]);
 		// The prompt history keeps the marker; recalling it submits the same text.
 		host.editor.handleInput("\x1b[A");
 		expect(host.editor.getText()).toBe("see [paste #1 +20 lines]");
 		host.editor.handleInput("\r");
 		await settle();
-		expect(host.pendingUserInputs).toEqual([`see ${pasted}`, `see ${pasted}`]);
+		expect(selectSubmittedInputs(host.uiStore.getState())).toEqual([`see ${pasted}`, `see ${pasted}`]);
 	});
 });
 

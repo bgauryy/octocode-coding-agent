@@ -24,6 +24,19 @@ export class ImageRowsMemo {
 	}
 }
 
+/**
+ * Where the last frame left the hardware cursor. A frame that rewrites no row and leaves the cursor as it was writes
+ * nothing: a render the screen asked for without a visible change (a token streamed below a reader scrolled up, a
+ * pointer move) costs the terminal no write and no wakeup. A forced repaint resets it.
+ */
+export class FrameCursorMemo {
+	last: string | undefined;
+
+	reset(): void {
+		this.last = undefined;
+	}
+}
+
 /** What one alternate-screen frame write depends on. */
 interface AltScreenFrame {
 	screen: string[];
@@ -46,6 +59,7 @@ interface AltScreenFrame {
 	height: number;
 	cursorPos: { row: number; col: number } | null;
 	showHardwareCursor: boolean;
+	cursorMemo: FrameCursorMemo;
 }
 
 /**
@@ -89,8 +103,10 @@ function buildAltScreenFrame(frame: AltScreenFrame): string {
 		height,
 		cursorPos,
 		showHardwareCursor,
+		cursorMemo,
 	} = frame;
-	let buffer = synchronized ? BEGIN_SYNCHRONIZED_OUTPUT : "";
+	const begin = synchronized ? BEGIN_SYNCHRONIZED_OUTPUT : "";
+	let buffer = begin;
 	if (fullRedraw) {
 		const clearImages =
 			imageProtocol === "kitty" && hadUploadedKittyImages
@@ -135,12 +151,12 @@ function buildAltScreenFrame(frame: AltScreenFrame): string {
 		}
 	}
 
-	if (cursorPos) {
-		buffer += `\x1b[${cursorPos.row + 1};${Math.min(width, cursorPos.col) + 1}H`;
-		buffer += showHardwareCursor ? "\x1b[?25h" : "\x1b[?25l";
-	} else {
-		buffer += "\x1b[?25l";
-	}
+	const cursor = cursorPos
+		? `\x1b[${cursorPos.row + 1};${Math.min(width, cursorPos.col) + 1}H${showHardwareCursor ? "\x1b[?25h" : "\x1b[?25l"}`
+		: "\x1b[?25l";
+	if (buffer.length === begin.length && cursor === cursorMemo.last) return "";
+	cursorMemo.last = cursor;
+	buffer += cursor;
 	if (synchronized) buffer += END_SYNCHRONIZED_OUTPUT;
 	return buffer;
 }
@@ -203,6 +219,8 @@ export function renderAltScreenOutput(options: {
 	imageRowsMemo?: ImageRowsMemo;
 	/** The terminal confirmed synchronized output (DECRQM 2026). */
 	synchronized?: boolean;
+	/** The screen's own cursor memo: a frame with nothing to change writes nothing. */
+	cursorMemo?: FrameCursorMemo;
 }): { buffer: string; fullRedraw: boolean } {
 	const { screen, imageProtocol, uploadedKittyImages } = options;
 	const memo = options.imageRowsMemo ?? new ImageRowsMemo();
@@ -240,8 +258,14 @@ export function renderAltScreenOutput(options: {
 		height: options.height,
 		cursorPos: options.cursorPos,
 		showHardwareCursor: options.showHardwareCursor,
+		cursorMemo: options.cursorMemo ?? new FrameCursorMemo(),
 	});
 	return { buffer, fullRedraw };
+}
+
+/** What stopping writes before the screen is left: images deleted, mouse off, autowrap on. */
+export function buildAltScreenStop(deleteImages: string, mouseEnabled: boolean): string {
+	return `${BEGIN_SYNCHRONIZED_OUTPUT}${deleteImages}${mouseEnabled ? DISABLE_MOUSE : ""}${ENABLE_AUTOWRAP}${END_SYNCHRONIZED_OUTPUT}`;
 }
 
 /** What a process that ends without stopping the UI must still write: mouse off, autowrap on, leave the alternate screen, show the cursor. */

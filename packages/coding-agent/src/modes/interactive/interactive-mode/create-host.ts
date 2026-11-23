@@ -46,49 +46,29 @@ export function createInteractiveModeHost(
 		get settingsManager() {
 			return host.session.settingsManager;
 		},
-		mainScreenRenderState: undefined,
 		transcriptScrollView: undefined,
 		fullscreenLayoutRoot: undefined,
 		editorComponentFactory: undefined,
 		autocompleteProvider: undefined,
 		autocompleteProviderWrappers: [],
 		editorChangeListeners: new Set(),
-		fdPath: undefined,
 		activeSelectorDispose: undefined,
-		isInitialized: false,
-		onInputCallback: undefined,
-		pendingUserInputs: [],
 		activeStatusIndicator: undefined,
-		activeWorkingIndicatorEmbedded: false,
 		idleStatus: new IdleStatus(),
-		workingMessage: undefined,
-		workingIndicatorOptions: undefined,
-		defaultWorkingMessage: "Working",
-
-		lastSigintTime: 0,
-		lastEscapeTime: 0,
-		escapeQuietUntil: 0,
-		escapeAbortedRun: false,
-		changelogMarkdown: undefined,
-		startupNoticesShown: false,
-		anthropicSubscriptionWarningShown: false,
 
 		// Status line tracking (for mutating immediately-sequential status updates)
 		lastStatusSpacer: undefined,
 		lastStatusText: undefined,
-		managedToolStatusStarted: false,
 
 		// Streaming message tracking
 		streamingComponent: undefined,
 		entriesRenderedByRebuild: new Set<string>(),
-		streamingMessage: undefined,
 
 		// Tool execution tracking: toolCallId -> component
 		pendingTools: new Map(),
 
 		// Tool output expansion, thinking visibility and the footer notice
 		uiStore: createUiStore(),
-		outputPad: 1,
 		mermaidMarkdownTransformer: createMermaidMarkdownTransformer({
 			getMode: () => host.settingsManager.getMermaidRenderingMode(),
 			theme,
@@ -109,18 +89,12 @@ export function createInteractiveModeHost(
 
 		autoCompactionEscapeHandler: undefined,
 
-		// Shutdown state
-		shutdownRequested: false,
-
 		/** Reports working, blocked, done, and error states to terminals that support OSC 7501. */
 		programStatus: new SessionStatusReporter(
 			() => host.ui.terminal,
 			() => host.sessionManager.getSessionName(),
+			() => host.settingsManager.getShowTerminalProgress(),
 		),
-
-		/** The `/bug` hint is shown at most once per session so error output stays readable. */
-		bugReportHintShown: false,
-		installChangeWarningShown: false,
 
 		// Feature UI state
 		selectorDialog: undefined,
@@ -144,7 +118,6 @@ export function createInteractiveModeHost(
 		onRightClickPaste: (): void => {
 			void handleRightClickPaste(host);
 		},
-		isShuttingDown: false,
 	} satisfies Partial<WritableHost> as unknown as WritableHost;
 	bindInteractiveModeMethods(host);
 
@@ -219,8 +192,9 @@ export function createInteractiveModeHost(
 	host.footerDataProvider = new FooterDataProvider(host.sessionManager.getCwd());
 	host.footerContainer = new Container();
 
-	host.uiStore.getState().setHideThinking(host.settingsManager.getHideThinkingBlock());
-	host.outputPad = host.settingsManager.getOutputPad();
+	const view = host.uiStore.getState();
+	view.setHideThinking(host.settingsManager.getHideThinkingBlock());
+	view.setOutputPad(host.settingsManager.getOutputPad());
 
 	setRegisteredThemes(host.session.resourceLoader.getThemes().themes);
 	host.themeController = new InteractiveThemeController(host.ui, {

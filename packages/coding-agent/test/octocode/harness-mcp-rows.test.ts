@@ -92,11 +92,12 @@ describe("one row formatter for /mcp list, /harness and /settings list mcp", () 
 			expect(tokens(config.get(name)!.detail ?? "")).toEqual(tokens(item.detail ?? ""));
 			expect(tokens(listed.get(name)!)).toEqual(tokens(item.detail ?? ""));
 			expect(config.get(name)!.value).toBe(item.on);
-			expect(listed.get(name)!.startsWith("enabled · ")).toBe(item.on);
+			// `/mcp list` says "enabled" only for a server that can run: a held-back one (tracker) is off until approved.
+			expect(listed.get(name)!.startsWith("enabled · ")).toBe(item.on && !(item.detail ?? "").includes("not checked"));
 		}
 		expect(harness.get("docs")?.detail).toMatch(/^Global · connected · 2 tools · direct · every agent · .*mcp\.json$/);
 		expect(harness.get("tracker")?.detail).toMatch(
-			/^Workspace · not checked · 2 tools · deferred · every agent · .*mcp\.json$/,
+			/^Workspace · not checked: off until you approve it in \/security · 2 tools · deferred · every agent · .*mcp\.json$/,
 		);
 		expect(harness.get("idle")?.detail).toContain("not selected · 0 tools · direct · only agents that name it");
 		expect(harness.get("off")?.detail).toContain("disabled · 0 tools");

@@ -43,11 +43,8 @@ import { bashDescription, bashOutputSchema, bashParameters } from "../../../file
 import { capturePipeStatus } from "./pipe-status.ts";
 import { ownerSpawnHook, runOwner, withRunOwner } from "./owner-env.ts";
 import { agentNameOf } from "../../../shared/agent-name.ts";
+import { refuseUnsandboxed } from "./unsandboxed.ts";
 import { activeCommandSandbox } from "../../../../utils/command-sandbox.ts";
-
-/** The refusal of `sandbox: false` when the `sandbox.allowUnsandboxed` setting is false. */
-const UNSANDBOXED_REFUSED =
-	"sandbox: false is refused: the sandbox.allowUnsandboxed setting is false, so every agent command runs sandboxed. Change the command to fit the sandbox, or ask the user to change that setting.";
 
 /**
  * Octocode's `bash`, with two changes: a waited-for command has a deadline when the call names none (Octocode's has none, so a
@@ -185,6 +182,8 @@ export function registerBashTool(
 		// A job that exited just before reports its own status once its last output drained (within the drain time).
 		const ending = [...jobs.jobs.values()].filter((job) => job.exited).map((job) => job.done);
 		await Promise.all([jobs.stopAll(reason), ...ending]);
+		// With its commands stopped, the sandbox's proxy and log monitor would keep a finished print run alive.
+		await activeCommandSandbox()?.close?.();
 		rows.stop();
 		current = undefined;
 	});
@@ -216,12 +215,13 @@ export function registerBashTool(
 			prepareArguments(args) {
 				const misuse = shellTypeMisuse(args, () => api.tools.getAll().map((tool) => tool.name));
 				if (misuse) throw new Error(misuse);
-				if (isRecord(args) && args.sandbox === false && activeCommandSandbox()?.allowsUnsandboxed === false)
-					throw new Error(UNSANDBOXED_REFUSED);
+				// Before the permission gate could ask: `sandbox: "false"` or `0` is coerced to false only after this runs.
+				if (isRecord(args)) refuseUnsandboxed(args.sandbox);
 				return args as never;
 			},
 			async execute(toolCallId, params, signal, onUpdate, ctx) {
 				signal?.throwIfAborted();
+				refuseUnsandboxed(params.sandbox);
 				current = ctx;
 				const settings = { ...settingsFor(ctx), type: params.type ?? "bash" };
 				const sessionId = ctx.sessionManager?.getSessionId?.() ?? "standalone:bash";

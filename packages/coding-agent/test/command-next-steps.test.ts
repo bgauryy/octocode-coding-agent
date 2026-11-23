@@ -26,6 +26,20 @@ describe("next-step hints", () => {
 		expect(nextStepFor("backlog", "tui")).toBeUndefined();
 	});
 
+	it("never repeats the line just typed, and leaves a bare page opener to its own key bar", () => {
+		expect(nextStepFor("usage", " 30d ")).toBeUndefined();
+		expect(nextStepFor("usage", "7d")?.[0]).toBe("/usage 30d");
+		expect(nextStepFor("agents", "stats")).toBeUndefined();
+		expect(nextStepFor("permissions", "log")).toBeUndefined();
+		// Bare, these open a page or picker; with arguments they print a result and get their entry.
+		expect(nextStepFor("permissions")).toBeUndefined();
+		expect(nextStepFor("permissions", "workspace")?.[0]).toBe("/permissions log");
+		expect(nextStepFor("realm")).toBeUndefined();
+		expect(nextStepFor("realm", "zz-none")?.[0]).toBe("/help realm");
+		expect(nextStepFor("modelsettings")).toBeUndefined();
+		expect(nextStepFor("messages")).toBeUndefined();
+	});
+
 	it("points each hint at a command that exists", () => {
 		const names = new Set(BUILTIN_SLASH_COMMANDS.map((command) => command.name));
 		for (const command of BUILTIN_SLASH_COMMANDS) {

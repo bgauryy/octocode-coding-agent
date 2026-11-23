@@ -7,6 +7,7 @@
 
 import type { ContentSettler, ScrollLayoutNode } from "../layout-node.ts";
 import { bindRenderIsolation, renderIsolated } from "../tui/render-isolation.ts";
+import { withSoftWrapMarks } from "../utils/row-marks.ts";
 import { intersect, type LayoutContext } from "./context.ts";
 import type { LayoutBox, LayoutRect } from "./types.ts";
 import type { VirtualDocument } from "./virtual-document.ts";
@@ -219,7 +220,7 @@ function buildLayout(
 	 */
 	const materialize = bindRenderIsolation((): readonly string[] => {
 		if (full) return full;
-		full = renderIsolated(node.component, contentWidth);
+		full = withSoftWrapMarks(() => renderIsolated(node.component, contentWidth));
 		settleAll();
 		return full;
 	});

@@ -226,14 +226,22 @@ describe("dialogs relayed from a subagent", () => {
 		const changed = vi.fn();
 		const watch = new SessionWatch(service, "session-test", changed);
 		watches.push(watch);
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false }));
+		// The list row carries the shared light too (contract change, RFC app-state T3).
+		const idle = { tone: "idle", state: "pending", label: "idle" };
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, activity: idle }));
 		ask(relay, { approval: true });
 		await vi.waitFor(() => expect(service.getSnapshot().awaiting).toBeDefined());
 		const awaiting = service.getSnapshot().awaiting!;
 		expect(awaiting).toMatchObject({ kind: "approval" });
 		// The child's identity comes from the process (the relay's label), and rides on the question.
 		expect(JSON.stringify(awaiting)).toContain("child-1 asks");
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, needsYou: awaiting.title }));
+		await vi.waitFor(() =>
+			expect(watch.state).toEqual({
+				busy: false,
+				needsYou: awaiting.title,
+				activity: { tone: "waiting", state: "waiting", label: "needs you" },
+			}),
+		);
 		expect(tracker.answer(awaiting.id!, { replies: [{ id: "permission", picks: ["allow_once"] }] })).toEqual({
 			ok: true,
 		});
@@ -247,7 +255,7 @@ describe("dialogs relayed from a subagent", () => {
 			]),
 		);
 		await vi.waitFor(() => expect(service.getSnapshot().awaiting).toBeUndefined());
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, activity: idle }));
 	});
 
 	it("keeps a relayed question a question, and keeps the wait after the parent's run settles", async () => {

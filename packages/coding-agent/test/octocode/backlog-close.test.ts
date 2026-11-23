@@ -108,7 +108,9 @@ describe("closing a backlog item", () => {
 		expect(trail).toMatch(/closed/);
 	});
 
-	it("audits a close from the web command as the user", async () => {
+	// Contract change: a web command acts as the person under the id of the session whose page sent it, as `/backlog`
+	// and the page's field edits already did, so a claim from the page is that session's live claim.
+	it("audits a close from the web command as the user on the page's session", async () => {
 		const { store } = await setup();
 		const before = store.get("B2")!;
 		const { item } = applyBacklogCommand(
@@ -116,19 +118,24 @@ describe("closing a backlog item", () => {
 			{ command: "item.close", id: "B2", version: before.version, kind: "obsolete", text: "superseded by plan" },
 			"session",
 		);
-		expect(item?.closed).toMatchObject({ kind: "obsolete", text: "superseded by plan", by: "user" });
+		expect(item?.closed).toMatchObject({ kind: "obsolete", text: "superseded by plan", by: "session" });
 		const row = store.audit("B2").find((e) => (e.after as { closed?: string } | null)?.closed);
-		expect(row?.actor).toMatchObject({ id: "user", kind: "human", surface: "web" });
+		expect(row?.actor).toMatchObject({ id: "session", kind: "human", surface: "web" });
 	});
 
-	it("lets a subagent close only its parent's claimed item, like done", async () => {
+	// Contract change: a child no longer closes its coordinator's item, like done; it reports and the coordinator closes.
+	it("refuses a subagent's close, like its done, and names the parent's claim first", async () => {
 		const { store } = await setup();
 		store.update("B3", { state: "ongoing" }, { id: "parent-session" });
 		const child = { id: "child", owners: new Set(["parent-session"]), item: "B3", surface: "tool" as const };
 		expect(() => store.update("B1", { close: { kind: "obsolete", text: "x" } }, child)).toThrow(
 			/not claimed by your coordinator/,
 		);
-		expect(store.update("B3", { close: { kind: "obsolete", text: "obsolete" } }, child).closed?.by).toBe("child");
+		expect(() => store.update("B3", { close: { kind: "obsolete", text: "obsolete" } }, child)).toThrow(
+			/A subagent does not finish its coordinator's items/,
+		);
+		const closed = store.update("B3", { close: { kind: "obsolete", text: "obsolete" } }, { id: "parent-session" });
+		expect(closed.closed?.by).toBe("parent-session");
 	});
 });
 

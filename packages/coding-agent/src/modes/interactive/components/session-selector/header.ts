@@ -14,6 +14,8 @@ export interface SessionCounts {
 	total: number;
 	/** Rows marked for deletion. */
 	marked?: number;
+	/** A search is typed: Esc clears it before it closes the picker. */
+	searching?: boolean;
 }
 
 const sep = () => theme.fg("muted", " · ");
@@ -143,6 +145,15 @@ export class SessionSelectorHeader implements Component {
 			const color = this.statusMessage.type === "error" ? "error" : "accent";
 			return [theme.fg(color, truncateToWidth(this.statusMessage.message, width, "…"))];
 		}
+		const { marked = 0, searching = false } = this.counts();
+		// What Esc does now, in the order the list handles it: the preview, then the marks, then the search, then the picker.
+		const cancel = this.previewOpen
+			? "close preview"
+			: marked > 0
+				? "clear marks"
+				: searching
+					? "clear search"
+					: "close";
 		return [
 			renderHintLine(
 				[
@@ -157,7 +168,7 @@ export class SessionSelectorHeader implements Component {
 					[keyText("app.session.toggleSort"), "sort", 8],
 					[keyText("app.session.toggleNamedFilter"), "named", 9],
 					[keyText("app.session.togglePath"), `path ${this.showPath ? "(on)" : "(off)"}`, 10],
-					[keyText("tui.select.cancel"), "close", 1],
+					[keyText("tui.select.cancel"), cancel, 1],
 				],
 				width,
 				1,

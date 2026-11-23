@@ -8,6 +8,7 @@ import { showTreeSelector } from "../src/modes/interactive/interactive-mode/sess
 import { initTheme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 import { assistantMsg, userMsg } from "./utilities.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
 const busyMessage = "Wait for the current compaction or tree navigation to finish before navigating the session tree.";
 
@@ -35,7 +36,7 @@ function createTreeUI() {
 		defaultEditor: { onEscape },
 		editor: { getText: () => "", setText: vi.fn() },
 		chatContainer: new Container(),
-		isInitialized: true,
+		uiStore: createUiStore({ lifecycle: { initialized: true } }),
 		ui: { terminal: { rows: 24, setProgress: vi.fn() }, requestRender: vi.fn() },
 		showSelector: (
 			create: (done: () => void) => { component: TreeSelectorComponent; focus: TreeSelectorComponent },

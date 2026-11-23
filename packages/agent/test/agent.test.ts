@@ -13,6 +13,7 @@ import {
 	type AgentEvent,
 	type AgentTool,
 	type AgentToolUpdateCallback,
+	isUnsetModel,
 	type StreamFn,
 	setDefaultStreamFn,
 } from "../src/index.ts";
@@ -137,7 +138,18 @@ describe("Agent", () => {
 
 		expect(agent.state.messages).toEqual([{ role: "system", content: "You are a helpful assistant.", timestamp: 0 }]);
 		expect(agent.state.model).toBe(customModel);
+		expect(isUnsetModel(agent.state.model)).toBe(false);
 		expect(agent.state.thinkingLevel).toBe("low");
+	});
+
+	it("marks the placeholder it holds when no model was given, also for an explicit undefined", () => {
+		for (const initialState of [undefined, { model: undefined }]) {
+			const agent = new Agent({ streamFn: unusedStreamFunction, initialState });
+			expect(isUnsetModel(agent.state.model)).toBe(true);
+		}
+		// A copy is a model someone chose, not the placeholder.
+		const agent = new Agent({ streamFn: unusedStreamFunction });
+		expect(isUnsetModel({ ...agent.state.model })).toBe(false);
 	});
 
 	it("converts initial prompt and tools into transcript state", () => {

@@ -14,7 +14,7 @@ type BashCommandHost = Pick<
 	InteractiveModeHost,
 	| "bashComponent"
 	| "chatContainer"
-	| "outputPad"
+	| "uiStore"
 	| "pendingBashComponents"
 	| "pendingMessagesContainer"
 	| "session"
@@ -29,7 +29,12 @@ export async function handleBashCommand(
 ): Promise<void> {
 	// While a run streams, the command waits with the pending messages; otherwise it joins the chat.
 	const show = (): BashExecutionComponent => {
-		const component = new BashExecutionComponent(command, host.ui, excludeFromContext, host.outputPad);
+		const component = new BashExecutionComponent(
+			command,
+			host.ui,
+			excludeFromContext,
+			host.uiStore.getState().view.outputPad,
+		);
 		host.bashComponent = component;
 		if (host.session.isStreaming) {
 			host.pendingMessagesContainer.addChild(component);

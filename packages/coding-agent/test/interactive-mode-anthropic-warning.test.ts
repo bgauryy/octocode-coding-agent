@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { CLAUDE_SUBSCRIPTION_TOKEN_REFUSAL } from "@octocodeai/octocode-ai/api/anthropic-messages/token";
 import * as modelControls from "../src/modes/interactive/interactive-mode/model-controls.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 function createSettingsManager(warnings: { anthropicExtraUsage?: boolean } = {}) {
@@ -26,7 +27,7 @@ describe("InteractiveMode.maybeWarnAboutAnthropicSubscriptionAuth", () => {
 	test("names the external agent once when a saved Claude subscription token is found", async () => {
 		const modelRuntime = createModelRuntime(SUBSCRIPTION);
 		const fakeThis: any = {
-			anthropicSubscriptionWarningShown: false,
+			uiStore: createUiStore(),
 			settingsManager: createSettingsManager(),
 			session: { modelRuntime },
 			showWarning: vi.fn(),
@@ -49,7 +50,7 @@ describe("InteractiveMode.maybeWarnAboutAnthropicSubscriptionAuth", () => {
 		// The token configures nothing, so the initial model is never Anthropic; the notice still says why once.
 		const modelRuntime = createModelRuntime(SUBSCRIPTION);
 		const fakeThis: any = {
-			anthropicSubscriptionWarningShown: false,
+			uiStore: createUiStore(),
 			settingsManager: createSettingsManager(),
 			session: { modelRuntime, model: { provider: "openai", id: "gpt" } },
 			showWarning: vi.fn(),
@@ -64,7 +65,7 @@ describe("InteractiveMode.maybeWarnAboutAnthropicSubscriptionAuth", () => {
 	test("warns for a subscription token sent as a bearer Authorization header", async () => {
 		const modelRuntime = createModelRuntime({ headers: { Authorization: "Bearer sk-ant-oat01-test" } });
 		const fakeThis: any = {
-			anthropicSubscriptionWarningShown: false,
+			uiStore: createUiStore(),
 			settingsManager: createSettingsManager(),
 			session: { modelRuntime },
 			showWarning: vi.fn(),
@@ -84,7 +85,7 @@ describe("InteractiveMode.maybeWarnAboutAnthropicSubscriptionAuth", () => {
 			undefined,
 		]) {
 			const fakeThis: any = {
-				anthropicSubscriptionWarningShown: false,
+				uiStore: createUiStore(),
 				settingsManager: createSettingsManager(),
 				session: { modelRuntime: createModelRuntime(auth) },
 				showWarning: vi.fn(),
@@ -97,7 +98,7 @@ describe("InteractiveMode.maybeWarnAboutAnthropicSubscriptionAuth", () => {
 	test("does not warn for non-Anthropic models", async () => {
 		const modelRuntime = createModelRuntime({ apiKey: "sk-ant-api03-test" });
 		const fakeThis: any = {
-			anthropicSubscriptionWarningShown: false,
+			uiStore: createUiStore(),
 			settingsManager: createSettingsManager(),
 			session: { modelRuntime },
 			showWarning: vi.fn(),
@@ -114,7 +115,7 @@ describe("InteractiveMode.maybeWarnAboutAnthropicSubscriptionAuth", () => {
 	test("does not warn when Anthropic extra usage warning is disabled", async () => {
 		const modelRuntime = createModelRuntime({ apiKey: "sk-ant-api03-test" });
 		const fakeThis: any = {
-			anthropicSubscriptionWarningShown: false,
+			uiStore: createUiStore(),
 			settingsManager: createSettingsManager({ anthropicExtraUsage: false }),
 			session: { modelRuntime },
 			showWarning: vi.fn(),

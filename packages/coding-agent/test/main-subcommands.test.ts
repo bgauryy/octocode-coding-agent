@@ -45,6 +45,36 @@ describe("one-shot subcommands", () => {
 		expect(process.exitCode).toBeUndefined();
 	});
 
+	it("refuse a command name after session options instead of sending it to the model, and keep `--` messages", async () => {
+		const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+		try {
+			for (const [args, fixed] of [
+				[["--offline", "mcp", "list"], "octocode mcp list"],
+				[["--set", "retry.maxRetries=4", "configuration", "get", "retry.maxRetries"], "octocode configuration get"],
+				[["-p", "backlog", "list"], "octocode backlog list"],
+				[["--name", "trust", "trust", "list"], "octocode trust list"],
+				[["--offline", "remote", "list"], "octocode remote list"],
+			] as const) {
+				stderr.mockClear();
+				process.exitCode = undefined;
+				await expect(runSubcommand([...args], { cwd: "/work", agentDir: "/agent" })).resolves.toBe(true);
+				expect(process.exitCode).toBe(2);
+				expect(String(stderr.mock.calls[0]?.[0])).toContain(`is a command, so it goes first: ${fixed}`);
+			}
+			expect(trust.runTrustCommand).not.toHaveBeenCalledWith(["list"], expect.anything());
+			process.exitCode = undefined;
+			for (const args of [
+				["--offline", "--", "mcp", "list"],
+				["-p", "list the files"],
+				["--name", "mcp", "hi"],
+			])
+				await expect(runSubcommand(args, { cwd: "/work", agentDir: "/agent" })).resolves.toBe(false);
+			expect(process.exitCode).toBeUndefined();
+		} finally {
+			stderr.mockRestore();
+		}
+	});
+
 	it("reject a lone word no command claims at a terminal, listing the commands, and leave piped input alone", async () => {
 		const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
 		const original = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");

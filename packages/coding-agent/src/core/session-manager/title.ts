@@ -2,7 +2,9 @@ import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { parseSkillBlock } from "../skill-block.ts";
 import type { SessionInfo } from "./types.ts";
 
-const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+let graphemesCache: Intl.Segmenter | undefined;
+/** Made on first use: a segmenter loads ICU data (about 10 ms), which a process that never needs it should not pay at load. */
+const graphemes = (): Intl.Segmenter => (graphemesCache ??= new Intl.Segmenter(undefined, { granularity: "grapheme" }));
 
 /** Most characters a session title shows. */
 export const SESSION_TITLE_MAX = 60;
@@ -17,7 +19,7 @@ export function cleanTitle(text: string, max = SESSION_TITLE_MAX): string {
 	const raw = skill ? (skill.userMessage ? `${skill.name}: ${skill.userMessage}` : skill.name) : text;
 	const flat = sanitizeTerminalText(raw).replace(/\s+/g, " ").trim();
 	// Graphemes, so an emoji or a combined character is never cut in half.
-	const line = Array.from(graphemes.segment(flat), (part) => part.segment);
+	const line = Array.from(graphemes().segment(flat), (part) => part.segment);
 	return line.length > max ? `${line.slice(0, max - 1).join("")}…` : flat;
 }
 

@@ -3,7 +3,7 @@ import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import type { WorkspaceEvent, WorkspaceSnapshot } from "@octocodeai/octocode-contracts/workspace";
 import { stripTerminalSequences } from "@octocodeai/octocode-common/ansi";
 import type { FeedEvent } from "@octocodeai/octocode-projections";
-import { type JobPhase, jobPhaseOf, jobWords } from "./phase-words.ts";
+import { type JobPhase, jobPhaseOf } from "./phase-words.ts";
 export { ApplicationProjection, type FeedEvent } from "@octocodeai/octocode-projections";
 
 export type Tone = "success" | "danger" | "accent" | "warning" | "agent" | "neutral";
@@ -18,7 +18,7 @@ interface ActivityCard {
 	body: string;
 	files: string[];
 	failed: boolean;
-	/** How long the run thought before this answer, on the first answer of a run. */
+	/** How long the run thought before this answer, on the first answer of a run; absent under a second. */
 	thoughtMs?: number;
 	/** Whether the body is Markdown to render (messages, reports) rather than literal tool output. */
 	markdown: boolean;
@@ -133,7 +133,8 @@ export function activityCard(event: FeedEvent): ActivityCard {
 		goal: details.goal ? scalarText(details.goal) : undefined,
 		body: prose || longActivityTitle ? event.text : structured ? (scalarText(details.body) ?? "") : rest.join("\n"),
 		files: structured && Array.isArray(details.files) ? details.files.map(String) : [],
-		thoughtMs: typeof details.thoughtMs === "number" ? details.thoughtMs : undefined,
+		// Under a second reads as "Thought for 0s" on a model that answered at once: not shown.
+		thoughtMs: typeof details.thoughtMs === "number" && details.thoughtMs >= 1000 ? details.thoughtMs : undefined,
 		// A subagent's report is the agent tool's output: Markdown, like any other answer.
 		markdown: !event.type.startsWith("tool.") || firstLine === "agent",
 	};
@@ -265,18 +266,7 @@ export function runPhase(snapshot: ApplicationSnapshot | undefined): RunPhase {
 	return { kind: "thinking" };
 }
 
-/** The session panel's badge: the shared run state and its label, or nothing while the session is idle. */
-export function sessionBadge(
-	snapshot: Pick<ApplicationSnapshot, "streaming" | "status" | "awaiting" | "phase"> | undefined,
-): { state: UiState; label: string; warn: boolean } | undefined {
-	if (snapshot?.awaiting) return { state: "waiting", label: "Waiting for you", warn: true };
-	if (snapshot?.status === "compacting") return { state: "running", label: "Compacting", warn: false };
-	if (snapshot?.status === "retrying") return { state: "running", label: "Retrying", warn: true };
-	if (snapshot?.status === "stalled") return { state: "running", label: "Not answering", warn: true };
-	if (snapshot?.streaming) return { state: "running", label: "Running", warn: false };
-	const job = jobPhaseOf(snapshot?.phase);
-	return job ? { state: "running", label: jobWords(job, Date.now()), warn: false } : undefined;
-}
+export { ACTIVITY_BADGE_TONE, sessionBadge } from "./session-badge.ts";
 
 export const stripAnsi = stripTerminalSequences;
 

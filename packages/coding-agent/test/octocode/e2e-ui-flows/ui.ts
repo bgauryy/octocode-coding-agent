@@ -54,7 +54,7 @@ export async function startUi(options: Omit<InteractiveOptions, "terminal"> = {}
 	const t = (await startInteractive({ ...options, terminal })) as UiHarness;
 	t.shutdowns = 0;
 	// `startup.run` (skipped by the harness) resolves fd for `@` completion; do the same.
-	t.host.fdPath = await ensureTool("fd");
+	t.host.uiStore.getState().setFdPath(await ensureTool("fd"));
 	t.host.setupAutocompleteProvider();
 	(t.host as { shutdown: unknown }).shutdown = async () => {
 		t.shutdowns++;

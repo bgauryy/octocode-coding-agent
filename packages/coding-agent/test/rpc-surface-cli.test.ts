@@ -3,13 +3,14 @@ import { once } from "node:events";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getCliInvocation, VERSION } from "../src/config.ts";
+import { APP_NAME, getCliInvocation, VERSION } from "../src/config.ts";
 import { RpcClient } from "../src/modes/rpc/rpc-client.ts";
 import { RPC_PROTOCOL_VERSION } from "../src/modes/rpc/session-identity.ts";
 import { leadsProcessGroup } from "../src/utils/shell.ts";
 import {
 	createSandbox,
 	observeSessions,
+	runCli,
 	stopChildTree,
 	QUIET_ARGS,
 	SCRIPTED_MODEL_ARGS,
@@ -131,12 +132,19 @@ describe("RPC startup records", () => {
 	it("marks a prompt refused for missing credentials, for a raw driver and for RpcClient", async () => {
 		sandbox = createSandbox();
 		const rpc = cli(sandbox, ["--mode", "rpc", ...QUIET_ARGS]);
+		rpc.send({ id: "s", type: "get_state" });
 		rpc.send({ id: "p", type: "prompt", message: "hello" });
 		await vi.waitFor(() => expect(response(rpc.records, "p"), rpc.stderr()).toBeDefined(), { timeout: 45_000 });
+		// Nothing is connected, so the session starts with no model (not a placeholder named "unknown").
+		const state = response(rpc.records, "s")?.data as Strings | undefined;
+		expect(state?.sessionId).toBeDefined();
+		expect(state?.model).toBeUndefined();
+		// The error names the missing model, where the agent's placeholder used to say "No usable credentials for the
+		// selected model"; an RPC client's user reads it outside a session, so it says how to reach /providers.
 		expect(response(rpc.records, "p")).toMatchObject({
 			success: false,
 			authRequired: true,
-			error: expect.stringContaining("No usable credentials"),
+			error: expect.stringContaining(`No model selected. Run \`${APP_NAME}\` and type /providers`),
 		});
 		rpc.child.stdin.end();
 		await rpc.closed();
@@ -155,6 +163,46 @@ describe("RPC startup records", () => {
 		} finally {
 			await client.stop();
 		}
+	}, 90_000);
+});
+
+describe("headless runs without usable credentials", () => {
+	it.each(["text", "json"])(
+		"%s mode with nothing connected exits with command-line guidance",
+		async (mode) => {
+			sandbox = createSandbox();
+			const result = await runCli(sandbox, ["--mode", mode, ...QUIET_ARGS, "-p", "hello"]);
+			expect(result.code).toBe(1);
+			expect(result.stderr).toContain(`No AI provider connected yet. Run \`${APP_NAME}\` and type /providers`);
+			expect(result.stderr).not.toContain("Type /providers");
+		},
+		90_000,
+	);
+
+	it.each(["text", "json"])(
+		"%s mode runs a command line with nothing connected; a prompt among them still needs a provider",
+		async (mode) => {
+			sandbox = createSandbox();
+			const commands = await runCli(sandbox, ["--mode", mode, ...QUIET_ARGS, "-p", "/backlog", "/archive"]);
+			expect(commands.stderr).not.toContain("No AI provider connected yet");
+			expect(commands.stderr).toContain("The backlog is empty");
+			expect(commands.stderr).toContain("No compacted history is archived yet");
+			expect(commands.code).toBe(0);
+			const mixed = await runCli(sandbox, ["--mode", mode, ...QUIET_ARGS, "-p", "/backlog", "hello"]);
+			expect(mixed.code).toBe(1);
+			expect(mixed.stderr).toContain("No AI provider connected yet");
+			expect(mixed.stderr).not.toContain("The backlog is empty");
+		},
+		90_000,
+	);
+
+	it("names the provider and how to fix it from a shell when its model has no credentials", async () => {
+		sandbox = createSandbox();
+		const result = await runCli(sandbox, [...QUIET_ARGS, "--model", "anthropic/claude-sonnet-4-5", "-p", "hello"]);
+		expect(result.code).toBe(1);
+		expect(result.stderr).toContain("No usable credentials for anthropic. Set its API key environment variable");
+		expect(result.stderr).toContain(`${APP_NAME} auth check --provider anthropic`);
+		expect(result.stderr).not.toContain("Type /providers");
 	}, 90_000);
 });
 

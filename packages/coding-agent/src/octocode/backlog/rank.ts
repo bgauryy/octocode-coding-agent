@@ -49,7 +49,8 @@ function renumber(db: Db, rows: Row<string>[], from = 1): void {
 /**
  * Places an item between two cards of its column by giving it a rank between theirs, so a move writes one row. A card that
  * was never ordered has no rank: the first time a neighbour lacks one, the column's unranked cards get ranks in the order the
- * page shows them. Ordering is neither a claim nor a state change: it needs only the item's version and files a change note.
+ * page shows them. Ordering is neither a claim, an edit nor a state change: it checks the item's version but changes no
+ * card's version, announces no change (`auditAfter`) and files a change note on the moved card.
  */
 export function rankItem(
 	agentDb: AgentDb,

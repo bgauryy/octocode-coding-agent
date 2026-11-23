@@ -50,7 +50,10 @@ function branch(cacheRead: number): SessionEntry[] {
 
 function warmer(cacheRead: number) {
 	return new CacheWarmer(
-		{ streamSimple: () => ({ result: async () => undefined }) as unknown as AssistantMessageEventStream },
+		{
+			streamSimple: () => ({ result: async () => undefined }) as unknown as AssistantMessageEventStream,
+			getProviderBilling: () => "metered",
+		},
 		{ captureUsageWriter: () => vi.fn(), getSessionId: () => "s", getBranch: () => branch(cacheRead) },
 		() => "streaming",
 	);

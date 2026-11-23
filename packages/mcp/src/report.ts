@@ -10,7 +10,7 @@ import {
 	mcpServerState,
 	mcpServerToolCount,
 } from "./row.ts";
-import { describeState, type McpServer } from "./server.ts";
+import { describeState, inServerOrder, type McpServer } from "./server.ts";
 import type { McpFeatureState } from "./state.ts";
 
 /**
@@ -36,25 +36,23 @@ export function formatStatus(state: McpFeatureState): string {
 	if (servers.length === 0 && configErrors.length === 0 && overridden.length === 0) {
 		return `No MCP servers configured. Add them to ${state.configLocations().globalWrite} or ${state.configLocations().projectWrite}.`;
 	}
-	const lines = servers.map((server) => {
+	const lines = inServerOrder(servers).map((server) => {
 		const { name } = server.entry;
 		const connection = server.connection;
 		const facts = mcpRowFacts(
 			mcpEntryRowInput(server.entry, { state: mcpServerState(server), toolCount: mcpServerToolCount(server) }),
 			(file) => homeTilde(file),
 		);
-		const next =
-			connection?.state === "needs-auth"
-				? ` — run /mcp login ${name}`
-				: server.entry.withheld
-					? " — approve it in /security"
-					: "";
+		// A held-back server's state already says to approve it in /security.
+		const next = connection?.state === "needs-auth" ? ` — run /mcp login ${name}` : "";
 		// The full error follows on its own lines.
 		const error =
 			connection?.error && connection.state !== "connected"
 				? `\n    ${connection.error.split("\n").join("\n    ")}`
 				: "";
-		return `${name}: ${facts.on ? "enabled · " : ""}${mcpRowSummary(facts)} · ${mcpRowOrigin(facts)}${next}${error}`;
+		// A held-back server is off until approved, whatever its switch: its state says so, and no "enabled" beside it.
+		const on = facts.on && !server.entry.withheld;
+		return `${name}: ${on ? "enabled · " : ""}${mcpRowSummary(facts)} · ${mcpRowOrigin(facts)}${next}${error}`;
 	});
 	for (const error of configErrors) lines.push(`config error: ${error}`);
 	for (const line of overridden) lines.push(`overridden: ${line}`);

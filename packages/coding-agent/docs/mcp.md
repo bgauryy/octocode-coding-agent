@@ -44,7 +44,7 @@ Environment and header values are saved to the configuration file but are not re
 
 If audit recording fails after a save, the page still reports **Saved** and shows an audit warning. The definition is on disk; do not retry it as a failed save.
 
-**Saved does not mean applied.** New definitions are saved disabled and unassigned by default. Saving does not launch a process, connect, sign in or approve anything. Run `/reload` in the session that should use the server, review it in `/security` (not checked/off until approved), then switch it on in `/harness mcp` (or the web Harness panel) and choose which agents get it on the `/mcp` → server → **Tools** page.
+**Saved does not mean applied.** New definitions are saved disabled and unassigned by default, from Add MCP, `/settings add mcp` and `octocode mcp add` alike. Saving does not launch a process, connect, sign in or approve anything, and a server `octocode mcp add` saves before Octocode's first security check stays not checked too. From a shell, approve it with `octocode security approve mcp:<name>` and switch it on with `octocode configuration enable mcp:<name>`. Run `/reload` in the session that should use the server, review it in `/security` (not checked/off until approved), then switch it on in `/harness mcp` (or the web Harness panel) and choose which agents get it on the `/mcp` → server → **Tools** page.
 
 ### Command-line configuration
 
@@ -52,7 +52,7 @@ The existing command-line path is also available:
 
 ```bash
 octocode mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem .
-octocode mcp list
+octocode mcp list --check
 octocode
 ```
 
@@ -106,8 +106,8 @@ To change an inherited server in one workspace only, write a control-only overri
 
 Octocode also reads `.agents/mcp.json`, the workspace `.mcp.json` and Pi's `mcp.json` files. Claude Code, Codex and Cursor servers stay off until you enable that harness, and then connect in the running session without a reload:
 
-| Harness     | Enable                                 | Reads                                              |
-| ----------- | -------------------------------------- | -------------------------------------------------- |
+| Harness     | Enable                            | Reads                                              |
+| ----------- | --------------------------------- | -------------------------------------------------- |
 | Claude Code | `/settings enable harness:claude` | `~/.claude.json` (user and this project's servers) |
 | Codex       | `/settings enable harness:codex`  | `~/.codex/config.toml`, `.codex/config.toml`       |
 | Cursor      | `/settings enable harness:cursor` | `~/.cursor/mcp.json`, `.cursor/mcp.json`           |
@@ -118,22 +118,22 @@ Add `--local` to enable for this workspace only. A same-named server in an Octoc
 
 ## Manage servers
 
-| Need                      | In a session                                                          | In the shell                                                        |
-| ------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Browse state and tools    | `/mcp`, `/mcp list`, `/mcp tools`                                     | `octocode mcp list`, `octocode mcp tools [server] [tool]`           |
-| Turn a server on or off   | `/settings enable\|disable mcp:docs`                             | `octocode configuration enable\|disable mcp:docs`                   |
-| Add a definition          | `/settings add mcp`, or edit `mcp.json` and `/reload`            | `octocode mcp add <server> -- <command> [args]` or `--url <url>`    |
-| Remove a definition       | `/settings remove`, or edit `mcp.json`                           | `octocode mcp remove <server> [-l]`                                 |
-| Sign in or out, reconnect | `/mcp login docs`, `/mcp logout docs`, `/mcp reconnect docs`          | `octocode mcp login docs [--timeout s]`, `octocode mcp logout docs` |
-| Exposure and assignment   | `/mcp` → server → **Tools** → **Available to**, **Default for tools** | `octocode mcp exposure <server> <mode> [-l]`                        |
-| Show resolved config      | `/mcp config`                                                         | `octocode mcp config [--json]`                                      |
+| Need                      | In a session                                                          | In the shell                                                                             |
+| ------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Browse state and tools    | `/mcp`, `/mcp list`, `/mcp tools`                                     | `octocode mcp list [--check]` (`--check` connects), `octocode mcp tools [server] [tool]` |
+| Turn a server on or off   | `/settings enable\|disable mcp:docs`                                  | `octocode configuration enable\|disable mcp:docs`                                        |
+| Add a definition          | `/settings add mcp`, or edit `mcp.json` and `/reload`                 | `octocode mcp add <server> -- <command> [args]` or `--url <url>`                         |
+| Remove a definition       | `/settings remove`, or edit `mcp.json`                                | `octocode mcp remove <server> [-l]`                                                      |
+| Sign in or out, reconnect | `/mcp login docs`, `/mcp logout docs`, `/mcp reconnect docs`          | `octocode mcp login docs [--timeout s]`, `octocode mcp logout docs`                      |
+| Exposure and assignment   | `/mcp` → server → **Tools** → **Available to**, **Default for tools** | `octocode mcp exposure <server> <mode> [-l]`                                             |
+| Show resolved config      | `/mcp config`                                                         | `octocode mcp config [--json]`                                                           |
 
 `mcp add` options: `--env KEY=VALUE`, `--cwd`, `--header KEY=VALUE`, `--bearer-token-env-var`, `--oauth-client-id`, `--oauth-client-secret`, `--oauth-callback-port`, `--oauth-client-name`, `--exposure direct|hidden`, `--description`. `/mcp enable|disable` and `octocode mcp enable|disable` are retired and print a hint to `/settings`; `/mcp assign` and `/mcp exposure` are retired and print where to go on the `/mcp` tools page. A server that is off shows `Off · turn on in /harness mcp` in `/mcp`.
 
 ### Default servers
 
-| Server      | Default                                                                                                                       | Turn off                                                                                                             | Turn on again                                                                        |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Server      | Default                                                                                                                       | Turn off                                                                                                        | Turn on again                                                                   |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | `octocode`  | on                                                                                                                            | `/settings disable mcp:octocode`, `OCTOCODE_MCP=0`, or `{ "mcpServers": { "octocode": { "enabled": false } } }` | `/settings enable mcp:octocode`; a file definition overrides `OCTOCODE_MCP=0`   |
 | `browser`   | on, on demand in the main session; a subagent gets it only through the bundled `browser` role or a task's `mcp` list          | `/settings disable mcp:browser`                                                                                 | `/settings enable mcp:browser`                                                  |
 | `desktop`   | on while `cua-driver` is found (on `PATH`, or at `OCTOCODE_CUA_DRIVER_PATH`), assigned only to the bundled `desktop` subagent | `/settings disable mcp:desktop`, or `OCTOCODE_MCP_DESKTOP=0`                                                    | `/settings enable mcp:desktop`                                                  |

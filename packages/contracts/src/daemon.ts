@@ -54,6 +54,8 @@ export const DaemonStatusSchema = Type.Object(
 		tabs: Type.Integer({ minimum: 0 }),
 		sessions: Type.Integer({ minimum: 0 }),
 		draining: Type.Boolean(),
+		/** Minutes with no tab, attached session or relay device after which it exits; absent from an older daemon. */
+		idleMinutes: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
 	},
 	{ additionalProperties: false },
 );
@@ -124,6 +126,11 @@ export const AttachRequestSchema = Type.Union([
 			},
 			{ additionalProperties: false },
 		),
+	}),
+	Type.Object({
+		...requestId,
+		method: Type.Literal("application.evidence"),
+		params: Type.Object({ anchor: Text(1200), cursor: Type.Optional(Text(64)) }, { additionalProperties: false }),
 	}),
 	Type.Object({ ...requestId, method: Type.Literal("workspace.snapshot") }),
 	Type.Object({ ...requestId, method: Type.Literal("workspace.revision") }),
@@ -261,120 +268,8 @@ export const AttachEventSchema = Type.Union([
 	Type.Object({ event: Type.Literal("session.closed") }),
 ]);
 
-/** A session the daemon lists: live and attachable, or recently seen. `repoId` names its repository in routes. */
-export const DaemonSessionSchema = Type.Object(
-	{
-		id: Text(),
-		repoId: Text(64),
-		repoName: Type.String({ maxLength: 256 }),
-		cwd: Type.String({ maxLength: 4096 }),
-		startedAt: Type.Number(),
-		/** The daemon holds an authenticated attach connection to it right now. */
-		attached: Type.Boolean(),
-		/** A run is in progress (absent when the daemon has not seen the session's state yet). */
-		busy: Type.Optional(Type.Boolean()),
-		/** The run is blocked on a dialog: its title, so a list can show what is being asked. Absent when nothing waits. */
-		needsYou: Type.Optional(Type.String({ maxLength: 300 })),
-	},
-	{ additionalProperties: false },
-);
-/** A live session the daemon could not attach, with the reason to show (for example "restart this session"). */
-export const DaemonUnavailableSessionSchema = Type.Object(
-	{
-		id: Text(),
-		repoName: Type.String({ maxLength: 256 }),
-		cwd: Type.String({ maxLength: 4096 }),
-		message: Type.String({ maxLength: 300 }),
-	},
-	{ additionalProperties: false },
-);
-/** At most 200 sessions; `truncated` says more exist. */
-export const DaemonSessionsSchema = Type.Object(
-	{
-		sessions: Type.Array(DaemonSessionSchema, { maxItems: 200 }),
-		unavailable: Type.Optional(Type.Array(DaemonUnavailableSessionSchema, { maxItems: 50 })),
-		truncated: Type.Optional(Type.Boolean()),
-	},
-	{ additionalProperties: false },
-);
-
-/** A workspace in the persistent catalog or a live session. Its UUID also identifies its web routes. */
-export const DaemonRepoSchema = Type.Object(
-	{
-		id: Text(64),
-		name: Type.String({ maxLength: 256 }),
-		sessions: Type.Integer({ minimum: 0 }),
-		hasReports: Type.Boolean(),
-	},
-	{ additionalProperties: false },
-);
-/** At most 200 repositories; `truncated` says more exist. */
-export const DaemonReposSchema = Type.Object(
-	{ repos: Type.Array(DaemonRepoSchema, { maxItems: 200 }), truncated: Type.Optional(Type.Boolean()) },
-	{ additionalProperties: false },
-);
-
-/** How a remote link reaches the daemon: a port forward the user runs (`ssh`), or a content-blind `relay` the daemon dials. */
-export const RemoteTransportSchema = Type.Union([Type.Literal("ssh"), Type.Literal("relay")]);
-/** What a remote link may do: `view` reads everything and sends nothing; `control` is the page's full surface. */
-export const RemoteAccessSchema = Type.Union([Type.Literal("view"), Type.Literal("control")]);
-
-/** `POST /api/admin/remote`: publish one link. The relay address comes from settings; a request may name it. */
-export const RemotePublishSchema = Type.Object(
-	{
-		transport: RemoteTransportSchema,
-		access: RemoteAccessSchema,
-		relayUrl: Type.Optional(Type.String({ minLength: 1, maxLength: 512 })),
-	},
-	{ additionalProperties: false },
-);
-
-/** One published link. The URL carries the capability (a token or a key) in its fragment, never in a server-visible part. */
-export const RemoteLinkSchema = Type.Object(
-	{
-		transport: RemoteTransportSchema,
-		access: RemoteAccessSchema,
-		url: Type.String({ minLength: 1, maxLength: 2048 }),
-		issuedAt: Type.Number(),
-		/** `ssh` only: the port forward to run on the other device before opening the link. */
-		forward: Type.Optional(Type.String({ maxLength: 512 })),
-	},
-	{ additionalProperties: false },
-);
-
-/**
- * One published link as `GET /api/admin/remote` lists it: no URL, token or key, only a short fingerprint of the
- * capability to tell links apart. The full link is shown once, when it is published.
- */
-export const RemoteLinkStatusSchema = Type.Object(
-	{
-		transport: RemoteTransportSchema,
-		access: RemoteAccessSchema,
-		issuedAt: Type.Number(),
-		fingerprint: Type.String({ pattern: "^[0-9a-f]{8}$" }),
-	},
-	{ additionalProperties: false },
-);
-
-/** `GET /api/admin/remote`: every link published since the daemon started, and the relay connection when one is dialed. */
-export const RemoteStatusSchema = Type.Object(
-	{
-		links: Type.Array(RemoteLinkStatusSchema, { maxItems: 50 }),
-		relay: Type.Optional(
-			Type.Object(
-				{
-					url: Type.String({ maxLength: 512 }),
-					state: Type.Union([Type.Literal("connecting"), Type.Literal("connected"), Type.Literal("closed")]),
-					/** Peers the relay has joined to this daemon right now. */
-					peers: Type.Integer({ minimum: 0 }),
-					error: Type.Optional(Type.String({ maxLength: 300 })),
-				},
-				{ additionalProperties: false },
-			),
-		),
-	},
-	{ additionalProperties: false },
-);
+export * from "./daemon-lists.ts";
+export * from "./daemon-remote.ts";
 
 export type DaemonRecord = Static<typeof DaemonRecordSchema>;
 export type DaemonHealth = Static<typeof DaemonHealthSchema>;
@@ -385,14 +280,3 @@ export type AttachResponse = Static<typeof AttachResponseSchema>;
 export type AttachHelloResult = Static<typeof AttachHelloResultSchema>;
 export type AttachToolStates = Static<typeof AttachToolStatesSchema>;
 export type AttachEvent = Static<typeof AttachEventSchema>;
-export type DaemonSession = Static<typeof DaemonSessionSchema>;
-export type DaemonUnavailableSession = Static<typeof DaemonUnavailableSessionSchema>;
-export type DaemonSessions = Static<typeof DaemonSessionsSchema>;
-export type DaemonRepo = Static<typeof DaemonRepoSchema>;
-export type DaemonRepos = Static<typeof DaemonReposSchema>;
-export type RemoteTransport = Static<typeof RemoteTransportSchema>;
-export type RemoteAccess = Static<typeof RemoteAccessSchema>;
-export type RemotePublish = Static<typeof RemotePublishSchema>;
-export type RemoteLink = Static<typeof RemoteLinkSchema>;
-export type RemoteLinkStatus = Static<typeof RemoteLinkStatusSchema>;
-export type RemoteStatus = Static<typeof RemoteStatusSchema>;

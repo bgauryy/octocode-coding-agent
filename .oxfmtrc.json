@@ -11,6 +11,7 @@
 		"**/node_modules/",
 		"**/coverage/",
 		"**/*.generated.ts",
+		"packages/coding-agent/schemas/",
 		"packages/ai/src/providers/*.models.ts",
 		"packages/ai/src/providers/data/",
 		"packages/coding-agent/src/core/export-html/vendor/",

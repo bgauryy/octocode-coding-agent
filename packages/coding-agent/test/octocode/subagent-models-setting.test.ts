@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ENV_AGENT_DIR } from "../../src/config.ts";
 import type { ToolDefinition } from "../../src/core/features/index.ts";
 import { planRun } from "../../src/octocode/subagents/claim.ts";
-import { MODELS_DEV_ENV } from "../../src/octocode/subagents/catalog.ts";
+import { MODELS_DEV_ENV } from "../../src/core/model-catalog/index-store.ts";
 import { configuredSubagentModels } from "../../src/octocode/subagents/configured-models.ts";
 import { type ModelRef, type Refused, routeModel } from "../../src/octocode/subagents/model.ts";
 import { routingFacts } from "../../src/octocode/subagents/models-command.ts";
@@ -145,7 +145,11 @@ describe("subagents.models: the global setting and its surfaces", () => {
 
 		let tool: ToolDefinition | undefined;
 		registerModelsTool(
-			asSetup({ registerTool: (definition: ToolDefinition) => void (tool = definition) }) as never,
+			asSetup({
+				registerTool: (definition: ToolDefinition) => void (tool = definition),
+				// The quota notice registers with the tool (`models-quota-notice.ts`); no event fires here.
+				on: () => () => undefined,
+			}) as never,
 			() => new Map(),
 		);
 		const result = await tool!.execute("c", { routes: true }, undefined, undefined, {

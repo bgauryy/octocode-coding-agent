@@ -12,6 +12,10 @@ export interface Draft {
 	key: string;
 	breakpoint?: boolean;
 	entry?: number;
+	/** How the layer's structure is known: recorded from the request, estimated from the transcript, or not at all. */
+	structure?: "observed" | "estimated" | "unavailable";
+	/** How the layer ties to a transcript entry: by a recorded identity, by a role-consistent guess (no source shown), or not. */
+	link?: "linked" | "inferred" | "unavailable";
 	/** Set by the comparison with the previous request. */
 	changed?: boolean;
 	broke?: boolean;
@@ -158,23 +162,43 @@ function traceDrafts(trace: Record<string, unknown>, head: Head, past: Draft[]):
 	const layers = Array.isArray(trace.layers) ? trace.layers.map(asRecord) : [];
 	if (!layers.length) return undefined;
 	const names = headDrafts({ ...head, tools: new Map() }).map((draft) => draft.label);
+	const sources = new Map(past.map((draft) => [draft.key, draft]));
+	// Past entries a role could stand for, in order: a layer with no recorded identity is only ever `inferred`.
 	const wire = layers.filter((layer) => layer.kind === "message").length;
-	const join = wire === past.length;
+	const aligned = wire === past.length;
 	let systems = 0;
 	let messages = 0;
 	return layers.map((layer): Draft => {
 		const chars = num(layer.chars);
 		const key = str(layer.hash, "");
 		const breakpoint = layer.breakpoint === true ? { breakpoint: true } : {};
+		const structure = { structure: "observed" } as const;
 		if (layer.kind === "tools")
-			return { kind: "tools", label: `tools (${head.tools.size})`, chars, key, ...breakpoint };
+			return { kind: "tools", label: `tools (${head.tools.size})`, chars, key, ...structure, ...breakpoint };
 		if (layer.kind === "system")
-			return { kind: "system", label: names[systems++] ?? `system ${systems}`, chars, key, ...breakpoint };
-		const joined = join ? past[messages] : undefined;
-		messages++;
+			return {
+				kind: "system",
+				label: names[systems++] ?? `system ${systems}`,
+				chars,
+				key,
+				...structure,
+				...breakpoint,
+			};
+		const at = messages++;
 		const role = str(layer.role, "message");
-		return { ...(joined ?? { kind: "message", label: role }), chars, key, ...breakpoint };
+		// Identity the recording side stored with the layer: the only way to name its source entry.
+		const recorded = typeof layer.entryKey === "string" ? sources.get(layer.entryKey) : undefined;
+		if (recorded) return { ...recorded, chars, key, ...structure, link: "linked", ...breakpoint };
+		const candidate = aligned ? past[at] : undefined;
+		const link = candidate && roleMatches(candidate, role) ? "inferred" : "unavailable";
+		return { kind: "message", label: role, chars, key, ...structure, link, ...breakpoint };
 	});
+}
+
+/** The wire role a transcript layer would be sent as. */
+function roleMatches(draft: Draft, role: string): boolean {
+	if (draft.kind === "tool-result") return ["toolResult", "tool", "function_call_output"].includes(role);
+	return draft.label === "assistant" ? role === "assistant" : role === "user";
 }
 
 /** The tool definitions (name to JSON) the transcript says were active for the request at `position`. */
@@ -195,5 +219,6 @@ export function requestLayers(prepared: Prepared, position: number): RequestLaye
 		return { drafts: exact, historyStart: start < 0 ? exact.length : start, estimated: false };
 	}
 	const drafts = headDrafts(head);
-	return { drafts: [...drafts, ...past], historyStart: drafts.length, estimated: true };
+	const estimated = (draft: Draft): Draft => ({ ...draft, structure: "estimated", link: "unavailable" });
+	return { drafts: [...drafts, ...past].map(estimated), historyStart: drafts.length, estimated: true };
 }

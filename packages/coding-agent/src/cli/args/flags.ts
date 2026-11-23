@@ -2,11 +2,11 @@ import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { TuiMode } from "../../core/settings-schema.ts";
 import { getToolListError } from "../../core/settings-manager/tool-list.ts";
 import { VALID_THINKING_LEVELS } from "../../core/thinking-level.ts";
-import { CHOOSABLE_MODES, type PermissionMode } from "../../octocode/permission/mode.ts";
 import type { Args, FlagSpec, Mode } from "./types.ts";
 import { MODEL_LIST_FLAGS } from "./model-list-flags.ts";
 import { API_KEY_FLAGS } from "./api-key-flags.ts";
 import { CONFIGURATION_FLAGS } from "./configuration-flags.ts";
+import { PERMISSION_FLAGS } from "./permission-flags.ts";
 import { RESUME_FLAG } from "./resume-flag.ts";
 import { WORKTREE_FLAG } from "./worktree-flag.ts";
 
@@ -18,13 +18,6 @@ const csv = (value: string) =>
 const push = (list: string[] | undefined, value: string) => [...(list ?? []), value];
 const set = (apply: (args: Args) => void) => (args: Args) => {
 	apply(args);
-	return undefined;
-};
-/** `--permission-mode` and `--dangerously-skip-permissions` name one start mode; two different ones are an error. */
-const startIn = (args: Args, mode: PermissionMode) => {
-	if (args.permissionMode && args.permissionMode !== mode)
-		return `conflicts with the start mode ${args.permissionMode} given earlier`;
-	args.permissionMode = mode;
 	return undefined;
 };
 
@@ -223,24 +216,7 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 		help: [`Set thinking level: ${VALID_THINKING_LEVELS.join(", ")}`],
 		apply: (a, v) => void (a.thinking = v as ThinkingLevel),
 	},
-	{
-		name: "--permission-mode",
-		kind: "value",
-		arg: "<mode>",
-		values: CHOOSABLE_MODES,
-		label: "permission mode",
-		help: ["Start in this permission mode: manual, workspace or full (default); subagents inherit it"],
-		apply: (a, v) => startIn(a, v as PermissionMode),
-	},
-	{
-		name: "--dangerously-skip-permissions",
-		kind: "boolean",
-		help: [
-			"Start in bypass mode: nothing asks, not even what full asks about, and subagents inherit it",
-			"Every call is still recorded (/permissions log); invariants and hook denies still refuse",
-		],
-		apply: (a) => startIn(a, "bypass"),
-	},
+	...PERMISSION_FLAGS,
 	{
 		name: "--no-mcp",
 		kind: "boolean",
@@ -343,13 +319,19 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 	{
 		name: "--trust",
 		kind: "boolean",
-		help: ["Trust this folder: record your grant, then run (an untrusted folder otherwise stops headless runs)"],
+		help: [
+			"Trust this folder: record your grant, then run (an untrusted folder otherwise stops headless runs)",
+			"The grant stays: later runs need no flag until `octocode trust remove`",
+		],
 		apply: set((a) => (a.trust = true)),
 	},
 	{
 		name: "--offline",
 		kind: "boolean",
-		help: ["Disable startup network operations (same as OCTOCODE_OFFLINE=1)"],
+		help: [
+			"Skip automatic network activity: catalog refreshes, version check, downloads (same as OCTOCODE_OFFLINE=1)",
+			"MCP commands you run still connect (mcp list --check, mcp login); update and models discover stay offline",
+		],
 		apply: set((a) => (a.offline = true)),
 	},
 	{ name: "--help", short: "-h", kind: "boolean", help: ["Show this help"], apply: set((a) => (a.help = true)) },
@@ -384,11 +366,16 @@ export const invalidValue = (spec: FlagSpec, value: string): string | undefined 
 /** A word that cannot be a flag's value: another flag. A lone dash or text such as "- be brief" still can. */
 export const looksLikeFlag = (word: string): boolean => word.startsWith("--") || flagSpec(word) !== undefined;
 
+/** Where `--help` starts each option's text; a longer flag puts its text on the next row, in this column. */
+export const HELP_COLUMN = 33;
+
 /** The Options section of `--help`, one row per flag in table order. */
 export function flagHelpRows(): string[] {
+	const indent = " ".repeat(HELP_COLUMN);
 	return FLAG_SPECS.filter((spec) => !spec.hidden).flatMap((spec) => {
 		const head = `  ${spec.name}${spec.short ? `, ${spec.short}` : ""}${spec.arg ? ` ${spec.arg}` : ""}`;
 		const [first, ...rest] = spec.help;
-		return [`${head.padEnd(33)}${first}`, ...rest.map((line) => `${" ".repeat(33)}${line}`)];
+		const lead = head.length < HELP_COLUMN ? [`${head.padEnd(HELP_COLUMN)}${first}`] : [head, `${indent}${first}`];
+		return [...lead, ...rest.map((line) => `${indent}${line}`)];
 	});
 }

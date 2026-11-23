@@ -165,3 +165,20 @@ describe("command pages name their keys in the footer hint", () => {
 		for (const key of keys) expect(text, text).toMatch(key);
 	});
 });
+
+describe("a narrow command page keeps what Enter does", () => {
+	beforeAll(() => {
+		initTheme("dark");
+		setKeybindings(new KeybindingsManager());
+	});
+
+	test("at 40 columns /help drops the arrows before Enter's verb", () => {
+		const page = new CommandSelectorComponent("Commands", [{ name: "help", description: "Find" }], noop, noop);
+		const hint = page
+			.render(40)
+			.map(stripAnsi)
+			.find((line) => line.includes("close"));
+		expect(hint).toContain("enter insert command");
+		expect(hint).not.toContain("move");
+	});
+});

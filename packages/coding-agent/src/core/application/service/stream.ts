@@ -30,6 +30,11 @@ export class ApplicationFrameStream {
 		return { sessionId: this.sessionId(), epoch: this.epoch, sequence: this.sequence };
 	}
 
+	/** Whether a view is connected now. */
+	get open(): boolean {
+		return this.sinks.size > 0;
+	}
+
 	frame(payload: ApplicationFramePayload): ApplicationFrame {
 		return createApplicationFrame(this.cursor(), payload);
 	}

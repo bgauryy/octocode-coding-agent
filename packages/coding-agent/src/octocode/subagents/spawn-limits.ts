@@ -1,4 +1,5 @@
-import { entryUsage } from "../../core/usage-totals.ts";
+import { type BillingFacts, billingFacts, meteredCost, runBilling } from "../../core/usage-totals.ts";
+import type { SessionEntry } from "../../core/session-manager.ts";
 import type { FeatureContext, FeatureSetup } from "../../core/features/index.ts";
 import type { Settings } from "../../core/settings-schema.ts";
 import { sessionChildren } from "../child-sessions/session-children.ts";
@@ -28,13 +29,14 @@ const stillRunning = (runs: RunningChildren): string =>
 /**
  * Why a new subagent may not start under the opt-in `subagents` limits, or undefined. Off unless configured, and a refusal
  * only: what runs keeps running and its report still arrives. `maxChildren` counts the children this session started,
- * a resume of one of them being no new child; `maxCost` is the session's recorded spend, its own and its finished
- * children's, plus what the running ones spent so far.
+ * a resume of one of them being no new child; `maxCost` is the money the session spent, its own and its finished
+ * children's, plus what the running ones spent so far: what a plan paid for is an estimate, not money, and never counts.
  */
 function spawnRefusal(
 	limits: Settings["subagents"],
-	entries: readonly Parameters<typeof entryUsage>[0][],
+	entries: readonly SessionEntry[],
 	runs: RunningChildren,
+	facts: BillingFacts,
 	resuming?: string,
 ): SpawnRefusal | undefined {
 	const { maxChildren, maxCost } = limits ?? {};
@@ -49,8 +51,8 @@ function spawnRefusal(
 	}
 	if (maxCost !== undefined) {
 		let spent = 0;
-		for (const entry of entries) spent += entryUsage(entry)?.usage.cost.total ?? 0;
-		for (const details of runs.live.values()) spent += details.cost;
+		for (const entry of entries) spent += meteredCost(entry, facts);
+		for (const details of runs.live.values()) if (runBilling(details, facts) === "metered") spent += details.cost;
 		if (spent >= maxCost)
 			return {
 				key: `maxCost=${maxCost}`,
@@ -71,12 +73,12 @@ const told = new WeakMap<object, Set<string>>();
  */
 export function refuseOverLimit(
 	api: Pick<FeatureSetup, "session" | "settings" | "channels">,
-	ctx: Pick<FeatureContext, "sessionManager">,
+	ctx: Pick<FeatureContext, "sessionManager" | "modelRegistry" | "model">,
 	runs: RunningChildren,
 	resuming?: string,
 ): void {
 	const entries = ctx.sessionManager.getEntries();
-	const refusal = spawnRefusal(api.settings.get().subagents, entries, runs, resuming);
+	const refusal = spawnRefusal(api.settings.get().subagents, entries, runs, billingFacts(ctx), resuming);
 	if (!refusal) return;
 	const seen = told.get(api) ?? new Set<string>();
 	told.set(api, seen);

@@ -39,6 +39,8 @@ export const HarnessRowSchema = Type.Object(
 		/** Group, state and where it is defined, as `/harness` shows it. */
 		detail: Type.Optional(Type.String({ maxLength: 1024 })),
 		on: Type.Boolean(),
+		/** What the row is in effect, in words, when `on` alone would say otherwise (an MCP server held back until approved); shown in place of on or off. */
+		state: Type.Optional(Type.String({ maxLength: 512 })),
 		setBy: StringEnum(HARNESS_SET_BY),
 		/** Why the row cannot be switched (an always-on built-in). */
 		locked: Type.Optional(Type.String({ maxLength: 512 })),

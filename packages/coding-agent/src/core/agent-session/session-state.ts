@@ -6,7 +6,13 @@
  */
 
 import { inputRoomTokens } from "../compaction/settings.ts";
-import type { AgentMessage, AgentState, Agent, ThinkingLevel } from "@octocodeai/octocode-agent-core";
+import {
+	type AgentMessage,
+	type AgentState,
+	type Agent,
+	isUnsetModel,
+	type ThinkingLevel,
+} from "@octocodeai/octocode-agent-core";
 import type { Model } from "@octocodeai/octocode-ai/compat";
 import type { CacheWarmingStatus } from "../cache-warmer.ts";
 import type {
@@ -86,8 +92,10 @@ export abstract class AgentSessionState {
 		this.settingsManager.setCacheWarmingMode(mode);
 		this._cacheWarmer?.onModeChanged();
 	}
+	/** The selected model; undefined while the agent holds the placeholder it was created with because none was available. */
 	get model(): Model<any> | undefined {
-		return this.agent.state.model;
+		const model = this.agent.state.model;
+		return isUnsetModel(model) ? undefined : model;
 	}
 	get thinkingLevel(): ThinkingLevel {
 		return this.agent.state.thinkingLevel;

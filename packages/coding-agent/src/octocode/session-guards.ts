@@ -1,6 +1,6 @@
 // Wiring for the file guard's reader role and the confirmation before a session switch, fork or quit stops running work.
 import type { FeatureSetup, FeatureContext } from "../core/features/index.ts";
-import { MCP_STATUS_EVENT, getMcpSessionStatus, currentToolRoles } from "../../../mcp/src/api.ts";
+import { MCP_STATUS_EVENT, getMcpSessionStatus, currentToolRoles, mcpServerMayRun } from "../../../mcp/src/api.ts";
 import type { BashJobs } from "./files/bash-jobs.ts";
 import { BASH_READER, type FileGuard, mcpReader } from "./files/tool/guard.ts";
 import type { ExternalAgents } from "./external/manager.ts";
@@ -15,7 +15,7 @@ export function registerReaderRole(api: FeatureSetup, guard: FileGuard): void {
 		const research = currentToolRoles().research;
 		const server = research && getMcpSessionStatus(api.channels).find((server) => server.name === research.server);
 		guard.reader =
-			research && server?.enabled && !["failed", "stopped", "disabled"].includes(server.state)
+			research && server && mcpServerMayRun(server) && !["failed", "stopped", "disabled"].includes(server.state)
 				? mcpReader(research.reader)
 				: BASH_READER;
 	};

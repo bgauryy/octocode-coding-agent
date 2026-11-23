@@ -69,6 +69,18 @@ describe("models.json is for custom providers only", () => {
 		expect(config.getError()).toContain("modelOverrides.m.baseUrl");
 	});
 
+	test("one refused field refuses the whole entry, its allowed overrides included, and the message says so", async () => {
+		const path = write("models.json", {
+			anthropic: { apiKey: "k", modelOverrides: { m: { cost: { input: 1 }, input: ["text", "image"] } } },
+		});
+		const config = await ModelConfig.loadFile(path);
+		expect(config.getProviderIds()).toEqual([]);
+		const error = config.getError() ?? "";
+		expect(error).toContain("blocked: apiKey, modelOverrides.m.input");
+		expect(error).toContain("its modelOverrides included");
+		expect(error).toMatch(/keep only "modelOverrides" in this entry/);
+	});
+
 	test("Pi's models.json: the entry is skipped with a warning, there is no error and Pi's file is not changed", async () => {
 		const piPath = write("pi/models.json", { "amazon-bedrock": custom, "pi-only": custom });
 		const before = readFileSync(piPath, "utf8");

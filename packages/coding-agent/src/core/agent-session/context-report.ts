@@ -213,7 +213,7 @@ export function renderContextReport(report: ContextReport, all = false): string 
 		declaredToolsLine(report.declaredTools ?? [], number),
 		report.compaction ? renderContextLifecycle(report.compaction, report.threshold) : "",
 		[
-			"| What uses it | Estimated tokens | Share |\n| --- | ---: | ---: |",
+			"**Current context estimate** (projection of the committed transcript, not a recorded request)\n\n| What uses it | Estimated tokens | Share |\n| --- | ---: | ---: |",
 			...visible.map((row) => `| ${row.name.replaceAll("|", "\\|")} | ${number(row.tokens)} | ${share(row.tokens)} |`),
 			rows.length > visible.length ? `| Other contributors | ${number(rest)} | ${share(rest)} |` : "",
 			`| **Total** | **${number(report.estimatedTotal)}** | ${report.estimatedTotal > 0 ? "100%" : ""} |`,
@@ -221,11 +221,11 @@ export function renderContextReport(report: ContextReport, all = false): string 
 			.filter(Boolean)
 			.join("\n"),
 		`Model: ${report.model}\nSnapshot: ${report.at}`,
-		`Latest valid provider receipt: ${number(report.reportedTokens)} tokens\nCurrent estimate: ${number(report.currentTokens)} / ${number(report.capacity)} tokens\nOutput reserve: ${number(report.reserve)}\nCompaction threshold: ${number(report.threshold)}`,
+		`**Last request** (from the recorded provider receipt): ${number(report.reportedTokens)} tokens\n**Current context estimate** (projection): ${number(report.currentTokens)} / ${number(report.capacity)} tokens\nOutput reserve: ${number(report.reserve)}\nCompaction threshold: ${number(report.threshold)}`,
 		report.catalogCapacity === null
 			? "Select a physical model with /model before choosing a context budget."
 			: `Catalog capacity: ${number(report.catalogCapacity)} tokens. /context size chooses a smaller working budget for this session; /context reset restores full capacity.`,
-		`Contents total: ${number(report.estimatedTotal)}. Difference from current estimate: ${number(report.difference)} (signed, unattributed).`,
+		`Contents total: ${number(report.estimatedTotal)}. Difference from the current context estimate: ${number(report.difference)} (signed, unattributed).`,
 		report.note,
 		report.currentTokens !== null && report.threshold !== null && report.currentTokens >= report.threshold
 			? "Consider /compact to free context."

@@ -15,6 +15,15 @@ interface SettingsCoreApi {
 	isProjectTrusted(): boolean;
 	setProjectTrusted(trusted: boolean): void;
 	reload(): Promise<void>;
+	/**
+	 * Rewrites one scope's settings through this manager's own storage (the same file, lock and atomic write its saves
+	 * use; memory for an in-memory manager) after its queued writes, then reloads, so it reads back what was written.
+	 * `rewrite` gets the stored text and returns the new text, or undefined to leave it.
+	 */
+	rewriteScope(
+		scope: "global" | "project",
+		rewrite: (current: string | undefined) => string | undefined,
+	): Promise<void>;
 
 	/**
 	 * Apply additional overrides on top of current settings, without writing them anywhere. A plain override lasts until

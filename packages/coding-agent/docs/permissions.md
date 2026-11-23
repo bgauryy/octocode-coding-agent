@@ -1,6 +1,6 @@
 # Permissions
 
-Octocode decides, for every action an agent takes, whether to allow it, ask you, or refuse. This is a guard against mistakes, not an operating-system sandbox: modes never change the process's filesystem or network privileges. The optional [shell sandbox](configuration.md#shell-sandbox) (`sandbox.mode`, off by default) adds one around the agent's shell commands.
+Octocode decides, for every action an agent takes, whether to allow it, ask you, or refuse. This is a guard against mistakes, not an operating-system sandbox: modes never change the process's filesystem or network privileges. The optional [shell sandbox](sandbox.md) (`sandbox.mode`, off by default) adds one around the agent's shell commands.
 
 ```mermaid
 flowchart LR
@@ -24,7 +24,9 @@ Later checks, in order: read-only and isolated-tree refusals, the state-folder r
 | `full` (default) | No routine asks; a few classes still ask, and so do reads of another tool's credential store  | default; `/permissions full`                                          |
 | `bypass`         | Allows every class and ask reason, including those `full` asks about; invariants still refuse | `--dangerously-skip-permissions` or `OCTOCODE_PERMISSION=bypass` only |
 
-An invalid `OCTOCODE_PERMISSION` starts in `manual`. In a session: `/permissions manual|workspace|full`; `/permissions` shows the state; `/permissions grants` lists session grants, `/permissions grants clear` removes them, `/permissions grants clear messages` removes only external-message grants; `/permissions log` shows decisions; `/permissions plan` and `/permissions plan off` enter and leave [plan mode](#plan-mode).
+The footer names the mode, marked by how much runs without asking: `⏸ permission: manual`, `permission: workspace` (no mark), `⏵⏵ permission: full` and `⏵⏵⏵ permission: bypass`, followed by the key that cycles full, workspace and manual (`shift+tab`).
+
+An invalid `OCTOCODE_PERMISSION` starts in `manual` and says so once (a notice in the terminal, a stderr line in a run with no UI). In a session: `/permissions manual|workspace|full`; `/permissions` shows the state; `/permissions grants` lists session grants, `/permissions grants clear` removes them, `/permissions grants clear messages` removes only external-message grants; `/permissions log` shows decisions; `/permissions plan` and `/permissions plan off` enter and leave [plan mode](#plan-mode).
 
 | Action class                                                                                                                                                                                                                                                                                           | `manual` | `workspace` | `full` |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ----------- | ------ |
@@ -60,11 +62,12 @@ flowchart LR
 | Other agents' stores     | Reads ask in every mode, `full` included; once per store with the session answer          |
 | Browser cookies          | Ask in every mode; dialog offers "Allow all browser cookie access for this session"       |
 | Destructive shell        | Asks outside `full`; always takes a restore point. Applies to `!` commands you type       |
-| Octocode state folder    | Known writes into the Octocode home are refused                                           |
+| Octocode state folder    | Known writes into Octocode's state and credential files are refused (list below)          |
 | MEMORY.md files          | `file` and known shell writes refuse the global and workspace files; `memory` writes them |
 | Reservations             | Another agent's reserved paths are refused ([below](#reservations-and-the-shell))         |
 | Provider keys            | `bash` starts without them; `bash.inheritProviderKeys` (global settings) keeps them       |
 
+- Octocode state folder: writes into the Octocode home, the agent directory, the global agent state, the agents-communication folder and a workspace's `.octocode/agent/` state, and to the `auth.json`, `mcp-auth.json`, `models.json` and `settings.json` of `~/.octocode` and Pi's folders, are refused for `file` and for the writes a shell command names, under every spelling the file system treats as the same name (letter case, NFKC, `ſ`, `ß`, the Kelvin sign). An isolated subagent's own worktree is the one exception.
 - Credential store: Octocode's and Pi's `auth.json`, `mcp-auth.json`, OS keychain print commands and `octocode auth print-api-key`/`print-bearer-token`, read through `bash`, `powershell` or an MCP tool naming the file. A computed path is not seen.
 - Other agents' stores: Claude Code, Codex, OpenCode and the Copilot CLI ([below](#credential-files)).
 - Destructive shell: wiping `/`, home or a system folder, `git reset --hard`, `git clean -f`, `git checkout .`, `git restore .`, forced `git push`, `rm -r` at or above the checkout root, changes under `~/.ssh`.
@@ -141,7 +144,7 @@ A read of another coding agent's credential store asks in `full` too. This is a 
 | `auth.json` of the agent directory, the Octocode home and, when Pi's folders are a fallback, Pi's | Also the folders that hold one, and `mcp-auth.json`                                                                                                                                |
 | `models.json`                                                                                     | Only when it holds a literal `apiKey`; a `$NAME` or `!command` reference holds no secret                                                                                           |
 | Other tools' files under the home folder                                                          | `~/.aws/credentials`, `~/.config/gh/hosts.yml`, gcloud and Azure token files, `~/.docker/config.json`, `~/.kube/config`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`, `~/.git-credentials` |
-| Keychain read commands                                                                            | `security find-generic-password`, `secret-tool lookup`, a PowerShell run with `-EncodedCommand` (Windows Credential Manager) and similar                                                                                                                 |
+| Keychain read commands                                                                            | `security find-generic-password`, `secret-tool lookup`, a PowerShell run with `-EncodedCommand` (Windows Credential Manager) and similar                                           |
 | Octocode's print commands                                                                         | `octocode auth print-api-key`, `octocode auth print-bearer-token`                                                                                                                  |
 
 | Another coding agent's store (asks in every mode) | Covered                                                                                                |
@@ -152,18 +155,19 @@ A read of another coding agent's credential store asks in `full` too. This is a 
 | Copilot CLI                                       | the `~/.copilot` folder and `~/.copilot/config.json`                                                   |
 | Gemini CLI                                        | the `~/.gemini` folder and `~/.gemini/oauth_creds.json`                                                |
 
-At startup, a loose-permission or in-git-work-tree warning also covers each `auth.json` the session loads and a `models.json` with a literal key. Shell commands start without the provider keys of built-in providers and without the variables a custom provider's `apiKey` names in `models.json`; `bash.inheritProviderKeys` keeps them.
+At startup, a loose-permission or in-git-work-tree warning also covers each `auth.json` the session loads and a `models.json` with a literal key. Shell commands start without the provider keys of built-in providers, Amazon Bedrock's bearer token (`AWS_BEARER_TOKEN_BEDROCK`), `OPENAI_CUSTOM_HEADERS` and the variables a custom provider's `apiKey` names in `models.json`; `bash.inheritProviderKeys` keeps them.
 
 ### Shell sandbox read denials
 
 While the shell sandbox is on (`sandbox.mode`), a sandboxed command cannot read these, in any permission mode and for read-only subagents too:
 
-| Denied                                      | Where it comes from                                                       |
-| ------------------------------------------- | ------------------------------------------------------------------------- |
-| `auth.json`                                 | the agent directory (`OCTOCODE_CODING_AGENT_DIR`, else the Octocode home) |
-| `.ssh`, `.aws`, `.gnupg` and their contents | your home folder (`HOME`)                                                 |
+| Denied                                                          | Where it comes from                                                                            |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `auth.json`, `mcp-auth.json`, and a `models.json` holding a key | the agent directory (`OCTOCODE_CODING_AGENT_DIR`), the Octocode home and Pi's fallback folders |
+| `web/`, `api/` and `child-credentials/`                         | the Octocode home: session and daemon tokens, subagent handoffs                                |
+| `.ssh`, `.aws`, `.gnupg` and their contents                     | your home folder (`HOME`)                                                                      |
 
-The read fails inside the command and the result names the refused path. A command that really needs one (for example `git push` over SSH) runs outside the sandbox only through the usual `shell.unsandboxed` approval: the agent retries it with `sandbox: false` and you are asked. With the sandbox off, or in `bypass` mode with `sandbox.mode` at `auto`, this list does not apply.
+On macOS the read fails inside the command and the result names the refused path; on Linux a denied folder looks empty and a denied file is missing, with no error and no note ([sandbox reads](sandbox.md#reads)). A command that really needs one (for example `git push` over SSH) runs outside the sandbox only through the usual `shell.unsandboxed` approval: the agent retries it with `sandbox: false` and you are asked. With the sandbox off, or in `bypass` mode with `sandbox.mode` at `auto`, this list does not apply.
 
 ## Subagent permission asks
 
@@ -246,7 +250,7 @@ A subagent whose profile sets `readOnly: true` (bundled `reviewer`, `researcher`
 
 | Tool                    | The role may                                                                                                                                                                                                                                                                                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `file`, `edit`, `write` | Change only its scratch folder, `.octocode/agent/temp/`, `.octocode/agent/<topic>/tmp/` and Markdown under `.octocode/`, except files a later session loads (`skills/`, `agents/`, `prompts/`, `hooks.json`, `settings.json`, `mcp.json`, `SYSTEM.md`, `AGENTS.md`, `CLAUDE.md`) and `.octocode/agent/` outside `temp/`                                                 |
+| `file`, `edit`, `write` | Change only its scratch folder, `.octocode/agent/temp/`, `.octocode/agent/<topic>/tmp/` and Markdown under `.octocode/`, except files a later session loads (`skills/`, `agents/`, `prompts/`, `hooks.json`, `settings.json`, `mcp.json`, `SYSTEM.md`, `AGENTS.md`, `CLAUDE.md`) and `.octocode/agent/` outside `temp/`                                         |
 | `bash`                  | Run commands that write nothing outside those places; refused when a write is seen or cannot be placed (`sqlite3` open for writing, awk with its own output or `system()`), or when a variable may swap the program run (`PATH=/tmp/x cat f`, `export X=1`, `[[ -v 'a[$(cmd)]' ]]`, as in the reservation table below)                                          |
 | `git`                   | Read only: `status`, `log`, `diff`, `show`, `blame`, `grep`, `ls-files`, `ls-tree`, `rev-parse`, `rev-list`, `describe`, `shortlog`, `cat-file`, `show-ref`, `format-patch --stdout`; `branch`, `tag`, `remote`, `stash`, `worktree`, `notes` only to list. No `-c`, `--git-dir`, `--work-tree`, program-setting variables, or words that may expand to options |
 | `octocode`              | Nothing: any run is refused (plan mode too)                                                                                                                                                                                                                                                                                                                     |
@@ -341,7 +345,7 @@ Redirects, `tee` and the operands of `cat`, `head`, `tail`, `wc` are checked bef
 | Broad `Bash` allow             | Covers ordinary targets; matching denies still win |
 | Scoped Bash allow              | Still needs target approval or a file allow        |
 
-Every agent `bash` call is also checked against the writes Octocode finds (`cp`, `mv`, `rm`, `touch`, `dd of=`, `curl -o`, `tar`, `sed -i`, `git -C`, `find -delete`/`-exec`, `bash -c` scripts…). A write outside the repository, or to a file a later session runs or loads (hooks, `.git`, instruction files), asks as `file.outside` in `manual` and `workspace`. Unresolvable targets are refused under a scoped restriction; otherwise `manual` and `workspace` ask and `full` proceeds. The `file` tools refuse a file that is not valid UTF-8: replace it whole with `write`. This is a policy adapter, not a filesystem sandbox.
+Every agent `bash` call is also checked against the writes Octocode finds (`cp`, `mv`, `rm`, `touch`, `dd of=`, `curl -o`, `tar`, `sed -i`, `git -C`, `find -delete`/`-exec`, `bash -c` scripts…). A write outside the repository, or to a file a later session runs or loads, asks as `file.outside` in `manual` and `workspace`: git hooks and config, `.git`, `.pi`, `.claude`, `.codex`, `.cursor` and `.agents` at the root, instruction files at any depth (`AGENTS.md`, `AGENTS.override.md`, `CLAUDE.md`), and what `.octocode/` loads (`SYSTEM.md`, `APPEND_SYSTEM.md`, `models.json`, settings, hooks, skills and the rest), compared under the same spellings as above. The `file` tool asks the same way. Unresolvable targets are refused under a scoped restriction; otherwise `manual` and `workspace` ask and `full` proceeds. The `file` tools refuse a file that is not valid UTF-8: replace it whole with `write`. This is a policy adapter, not a filesystem sandbox.
 
 ## Plan mode
 

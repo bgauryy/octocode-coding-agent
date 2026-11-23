@@ -1,5 +1,6 @@
 import { renderPrompt } from "../../core/prompt-template.ts";
 import type { FeatureContext } from "../../core/features/index.ts";
+import { captureSpend } from "../../core/spend-capture.ts";
 import type { HookEvent } from "./catalog.ts";
 import { type HookPrompt, type HookRun, HOOK_OUTPUT_MAX_BYTES, type HookVerdict } from "./contracts.ts";
 import { INTERACTIVE_RETRY, retrySideCall } from "../shared/side-retry.ts";
@@ -13,9 +14,10 @@ const HOOK_EVALUATION_SYSTEM_PROMPT = renderPrompt("hooks/evaluation.md");
 
 /**
  * Evaluates a prompt hook on its model (the session's when it names none). The turn waits on it, so a rate limit or
- * transient failure gets a short retry within the hook's own timeout; a failure that remains throws.
+ * transient failure gets a short retry within the hook's own timeout; a failure that remains throws. No session entry
+ * carries these requests, so each one's spend goes to `/usage` (`captureSpend`), a retried attempt included.
  */
-export function createPromptEvaluator(ctx: Pick<FeatureContext, "model" | "modelRegistry">): PromptEvaluator {
+export function createPromptEvaluator(ctx: Pick<FeatureContext, "cwd" | "model" | "modelRegistry">): PromptEvaluator {
 	return async (request) => {
 		const candidates = request.model
 			? ctx.modelRegistry
@@ -28,11 +30,20 @@ export function createPromptEvaluator(ctx: Pick<FeatureContext, "model" | "model
 			systemPrompt: HOOK_EVALUATION_SYSTEM_PROMPT,
 			messages: [{ role: "user" as const, content: request.prompt, timestamp: Date.now() }],
 		};
-		const response = await retrySideCall(
-			() => ctx.modelRegistry.streamSimple(model, context, { signal: request.signal, maxTokens: 1024 }).result(),
-			INTERACTIVE_RETRY,
-			request.signal,
-		);
+		const send = async () => {
+			const reply = await ctx.modelRegistry
+				.streamSimple(model, context, { signal: request.signal, maxTokens: 1024 })
+				.result();
+			captureSpend({
+				cwd: ctx.cwd,
+				kind: "prompt_hook",
+				provider: model.provider,
+				model: model.id,
+				usage: reply.usage,
+			});
+			return reply;
+		};
+		const response = await retrySideCall(send, INTERACTIVE_RETRY, request.signal);
 		if (response.stopReason === "error" || response.stopReason === "aborted")
 			throw new Error(response.errorMessage || "Prompt evaluation failed");
 		return response.content

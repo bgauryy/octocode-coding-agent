@@ -181,7 +181,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		const badge = provider ? providerBadge(plainText(provider), this.providerKind?.(provider)) : "[unavailable]";
 		const providerText = theme.fg("muted", ` ${badge}`);
 		const status = item.model && item.enabled ? theme.fg("accent", "✓ ") : "  ";
-		const badgeRoom = item.model ? Math.min(24, Math.floor(state.width / 3)) : visibleWidth(providerText);
+		const badgeRoom = item.model ? Math.min(40, Math.floor(state.width / 3)) : visibleWidth(providerText);
 		const clippedBadge = truncateToWidth(providerText, Math.max(0, Math.min(state.width - 2, badgeRoom)), "…");
 		const label = truncateToWidth(modelText, Math.max(0, state.width - 2 - visibleWidth(clippedBadge)), "…");
 		return truncateToWidth(`${status}${label}${clippedBadge}`, state.width, "…");

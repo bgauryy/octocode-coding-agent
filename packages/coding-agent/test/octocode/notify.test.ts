@@ -11,7 +11,26 @@ import {
 	notifyMethod,
 	registerNotify,
 } from "../../src/octocode/ui/notify.ts";
+import type { AgentSession } from "../../src/core/agent-session.ts";
+import { getApplicationPort } from "../../src/core/application/registry.ts";
+import type { ApplicationService } from "../../src/core/application/service.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
+
+/** Application ports the tests opened, disposed after each. */
+const ports: ApplicationService[] = [];
+
+/**
+ * The session's application port, as the host opens it: the feature's phase reaches it (`registerPhasePort`) and the tab
+ * title follows the light it shows (contract change, RFC app-state T2: the title reads the light, not its own events).
+ */
+function openPort(sessionId: string) {
+	const open = ports.find((port) => port.sessionId === sessionId);
+	if (open) return open;
+	const session = { sessionId, messages: [], isStreaming: false, subscribe: () => () => {} };
+	const port = getApplicationPort(session as unknown as AgentSession);
+	ports.push(port);
+	return port;
+}
 
 function setup(env: NodeJS.ProcessEnv, mode = "tui", hasUI = true) {
 	const fake = fakeHost();
@@ -35,7 +54,8 @@ function setup(env: NodeJS.ProcessEnv, mode = "tui", hasUI = true) {
 			},
 		} as never,
 	});
-	return { fake, ctx, writes, notices, type: (data: string) => input?.(data), unsubscribed: () => unsubscribed };
+	const port = openPort(ctx.sessionManager.getSessionId());
+	return { fake, ctx, writes, notices, port, type: (data: string) => input?.(data), unsubscribed: () => unsubscribed };
 }
 
 const answer = (text: string, stopReason = "stop", errorMessage?: string) => ({
@@ -53,6 +73,7 @@ async function run(s: ReturnType<typeof setup>, text = "All done.\nMore", stopRe
 
 let fakeTmux: FakeTmux | undefined;
 afterEach(() => {
+	for (const port of ports.splice(0)) port.dispose();
 	vi.useRealTimers();
 	fakeTmux?.restore();
 	fakeTmux = undefined;
@@ -311,7 +332,12 @@ describe("registerNotify", () => {
 		expect(s.ctx.ui.title).toBe("◈⠋ Running - repo");
 		await s.fake.fire("tool_execution_end", { toolCallId: "b", toolName: "bash" }, s.ctx);
 		await s.fake.fire("agent_end", answer("", "error", "rate limited"), s.ctx);
-		await s.fake.fire("agent_settled", { aborted: false }, s.ctx);
+		// The title reads the light, whose failed job comes from the settled run's outcome.
+		await s.fake.fire(
+			"agent_settled",
+			{ aborted: false, outcome: { status: "failed", errorMessage: "rate limited" } },
+			s.ctx,
+		);
 		expect(s.ctx.ui.title).toBe("◈🔴 Error - repo");
 		s.type("k");
 		expect(s.ctx.ui.title).toBe("◈ Idle - repo");

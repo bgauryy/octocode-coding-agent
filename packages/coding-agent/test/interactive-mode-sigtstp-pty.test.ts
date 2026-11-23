@@ -3,6 +3,7 @@ import { expect, it } from "vitest";
 
 const lifecycle = new URL("../src/modes/interactive/interactive-mode/lifecycle.ts", import.meta.url).href;
 const tuiModule = new URL("../../tui/src/index.ts", import.meta.url).href;
+const uiStoreModule = new URL("../src/modes/interactive/state/store.ts", import.meta.url).href;
 
 /**
  * Runs `NODE --eval SOURCE` in its own session on a PTY slave, reads the PTY and the result fd, and sends the signals:
@@ -79,6 +80,7 @@ const CHILD = `
 import { writeSync } from "node:fs";
 const lifecycle = await import(${JSON.stringify(lifecycle)});
 const { ProcessTerminal, TuiAltScreen } = await import(${JSON.stringify(tuiModule)});
+const { createUiStore } = await import(${JSON.stringify(uiStoreModule)});
 const report = (event) => writeSync(Number(process.env.RESULT_FD), JSON.stringify(event) + "\\n");
 const ui = new TuiAltScreen(new ProcessTerminal());
 let starts = 0;
@@ -90,7 +92,7 @@ ui.start = () => {
 const host = {
 	ui,
 	signalCleanupHandlers: [],
-	isShuttingDown: false,
+	uiStore: createUiStore(),
 	showStatus: () => undefined,
 	shutdown: async () => undefined,
 	emergencyTerminalExit: () => process.exit(9),

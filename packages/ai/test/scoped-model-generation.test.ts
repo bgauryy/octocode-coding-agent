@@ -29,6 +29,7 @@ globalThis.fetch = async (input) => {
 				"--import",
 				pathToFileURL(preload).href,
 				"scripts/generate-models.ts",
+				"--live",
 				"--providers",
 				"opencode",
 				"--json-only",

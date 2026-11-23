@@ -32,6 +32,35 @@ export { type ParsedSkillBlock, parseSkillBlock } from "../skill-block.ts";
 
 export type ExpansionHost = Pick<SessionInternals, "session" | "cwd">;
 
+type CommandLookup = Pick<FeatureHost, "getCommand">;
+
+/** The registered command a slash line names, with the name and arguments it runs under; `command` is absent when none does. */
+function lookUpFeatureCommand(runner: CommandLookup, text: string) {
+	const parsed = parseSlashCommand(text);
+	if (!parsed) return undefined;
+	const command = runner.getCommand(parsed.name);
+	if (command) return { command, ...parsed };
+	// A retired form the terminal resolves to a built-in (`/mcp disable x` runs `/settings`) still reaches its
+	// own handler where that built-in is not available, so the handler can say where the command moved.
+	const typed = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim());
+	const typedCommand = typed && typed[1] !== parsed.name ? runner.getCommand(typed[1]) : undefined;
+	if (typed && typedCommand) return { command: typedCommand, name: typed[1], args: typed[2] ?? "" };
+	return { command: undefined, ...parsed };
+}
+
+/**
+ * Whether `prompt()` settles `text` without the model: a registered command runs, and a built-in or a switched-off
+ * feature's command is refused with its reason. Skill commands, prompt templates and other text become a model prompt.
+ */
+export function isCommandLine(runner: CommandLookup, text: string): boolean {
+	if (!text.startsWith("/")) return false;
+	const found = lookUpFeatureCommand(runner, text);
+	return (
+		found !== undefined &&
+		(found.command !== undefined || getBuiltinCommand(found.name) !== undefined || !!featureOfCommand(found.name))
+	);
+}
+
 /**
  * Try to execute a feature command. Returns true if command was found and executed, whether or not it succeeded;
  * `onFailure` hears a handler's failure, which is also emitted as a feature error.
@@ -41,23 +70,9 @@ export async function tryExecuteFeatureCommand(
 	text: string,
 	onFailure?: (message: string) => void,
 ): Promise<boolean> {
-	// Parse command name and args
-	const parsed = parseSlashCommand(text);
-	if (!parsed) return false;
-	let { name: commandName, args } = parsed;
-
-	let command = runner.getCommand(commandName);
-	if (!command) {
-		// A retired form the terminal resolves to a built-in (`/mcp disable x` runs `/settings`) still reaches its
-		// own handler where that built-in is not available, so the handler can say where the command moved.
-		const typed = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(text.trim());
-		const typedCommand = typed && typed[1] !== commandName ? runner.getCommand(typed[1]) : undefined;
-		if (typed && typedCommand) {
-			commandName = typed[1];
-			args = typed[2] ?? "";
-			command = typedCommand;
-		}
-	}
+	const found = lookUpFeatureCommand(runner, text);
+	if (!found) return false;
+	const { command, name: commandName, args } = found;
 	if (!command) {
 		if (getBuiltinCommand(commandName)?.requiresNative) throw new Error(`/${commandName} requires native features.`);
 		if (getBuiltinCommand(commandName))

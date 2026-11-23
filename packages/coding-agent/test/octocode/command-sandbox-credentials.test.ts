@@ -1,8 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ENV_AGENT_DIR } from "../../src/config.ts";
+import { ENV_AGENT_DIR, getOctocodeHome } from "../../src/config.ts";
+import { apiDir } from "../../src/octocode/api/registry.ts";
 import { sandboxPolicy } from "../../src/octocode/permission/sandbox/policy.ts";
+import { outputDir } from "../../src/octocode/shared/home.ts";
+import { attachRecordPath, webDaemonPaths } from "../../src/octocode/web-daemon/paths.ts";
 import { SrtCommandSandbox } from "../../src/octocode/permission/sandbox/srt.ts";
 import { setCommandSandbox } from "../../src/utils/command-sandbox.ts";
 import { getShellEnv, resolveBashShell, spawnShell } from "../../src/utils/shell.ts";
@@ -40,9 +43,18 @@ afterEach(() => {
 const context = (setting: "on" | "auto", mode: "manual" | "full", env = mainEnv()) => ({ setting, mode, env });
 
 describe("the sandbox policy's read denials", () => {
-	it("names the agent directory's auth.json and the home credential folders, in every sandboxed mode and for a read-only child", () => {
+	// S1 widened the list (an intended contract change): a sandboxed command read the web daemon's and each session's attach
+	// token, and with it drove the session over loopback. Octocode's stores and token folders are denied with the rest.
+	it("names Octocode's credential stores and token folders and the home credential folders, in every sandboxed mode and for a read-only child", () => {
+		const octocodeHome = getOctocodeHome();
 		const expected = [
 			path.join(agentDir, "auth.json"),
+			path.join(agentDir, "mcp-auth.json"),
+			path.join(octocodeHome, "auth.json"),
+			path.join(octocodeHome, "mcp-auth.json"),
+			path.join(octocodeHome, "web"),
+			path.join(octocodeHome, "api"),
+			path.join(octocodeHome, "child-credentials"),
 			path.join(home, ".ssh"),
 			path.join(home, ".aws"),
 			path.join(home, ".gnupg"),
@@ -51,6 +63,28 @@ describe("the sandbox policy's read denials", () => {
 			expect(sandboxPolicy(workspace, context("on", mode))?.denyRead).toEqual(expected);
 		const readOnly = sandboxPolicy(workspace, context("on", "manual", mainEnv({ OCTOCODE_READ_ONLY: "1" })));
 		expect(readOnly?.denyRead).toEqual(expected);
+	});
+
+	it("covers every token file the web daemon, the API registry and a subagent handoff write", () => {
+		const denied = sandboxPolicy(workspace, context("on", "manual"))?.denyRead ?? [];
+		const covered = (file: string) => denied.some((entry) => file === entry || file.startsWith(`${entry}${path.sep}`));
+		for (const file of [
+			webDaemonPaths().record,
+			attachRecordPath(process.env, "session-1"),
+			path.join(apiDir(), "instances", "a.json"),
+			path.join(outputDir("child-credentials"), "nonce-x"),
+			path.join(agentDir, "mcp-auth.json"),
+		])
+			expect(covered(file), file).toBe(true);
+	});
+
+	it("names a models.json only while it holds a literal apiKey", () => {
+		const models = path.join(agentDir, "models.json");
+		const denied = () => sandboxPolicy(workspace, context("on", "manual"))?.denyRead ?? [];
+		fs.writeFileSync(models, JSON.stringify({ providers: { p: { apiKey: "$P_KEY" } } }));
+		expect(denied()).not.toContain(models);
+		fs.writeFileSync(models, JSON.stringify({ providers: { p: { apiKey: "sk-literal" } } }));
+		expect(denied()).toContain(models);
 	});
 
 	it("follows the agent directory and home folder in effect, not fixed paths", () => {
@@ -76,8 +110,16 @@ describe.runIf(process.platform === "darwin")("a sandboxed command reading crede
 	it("is refused for auth.json and each credential folder, and still reads an ordinary file", async () => {
 		const ok = await run("cat plain.txt");
 		expect(ok).toEqual({ output: "plain", code: 0 });
+		const attach = attachRecordPath(process.env, "session-1");
+		fs.mkdirSync(path.dirname(attach), { recursive: true });
+		fs.writeFileSync(attach, SECRET);
+		fs.writeFileSync(webDaemonPaths().record, SECRET);
+		fs.writeFileSync(path.join(agentDir, "mcp-auth.json"), SECRET);
 		for (const target of [
 			path.join(agentDir, "auth.json"),
+			path.join(agentDir, "mcp-auth.json"),
+			attach,
+			webDaemonPaths().record,
 			...[".ssh", ".aws", ".gnupg"].map((f) => path.join(home, f, "secret")),
 		]) {
 			const refused = await run(`cat '${target}'`);

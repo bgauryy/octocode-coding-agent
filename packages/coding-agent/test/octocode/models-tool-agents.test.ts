@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ToolDefinition } from "../../src/core/features/index.ts";
-import { MODELS_DEV_ENV } from "../../src/octocode/subagents/catalog.ts";
+import { MODELS_DEV_ENV } from "../../src/core/model-catalog/index-store.ts";
 import type { ModelRef } from "../../src/octocode/subagents/model.ts";
 import { runnerRows } from "../../src/octocode/external/connected.ts";
 import type { RunnerState } from "../../src/octocode/external/runner-status.ts";
@@ -21,7 +21,11 @@ function run(
 ) {
 	let tool: ToolDefinition | undefined;
 	registerModelsTool(
-		asSetup({ registerTool: (definition: ToolDefinition) => void (tool = definition) }) as never,
+		asSetup({
+			registerTool: (definition: ToolDefinition) => void (tool = definition),
+			// The quota notice registers with the tool (`models-quota-notice.ts`); no event fires here.
+			on: () => () => undefined,
+		}) as never,
 		() => new Map(),
 		// `octocode/index.ts` composes the external listing; the models tool imports nothing of `external/`.
 		async (ctx, _signal, filters) => [

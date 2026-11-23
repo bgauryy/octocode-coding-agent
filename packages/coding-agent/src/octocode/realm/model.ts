@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { ActivityTone } from "@octocodeai/octocode-contracts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { memberWorktree } from "../worktree-paths/member-worktree.ts";
 import { innermostWorktree } from "../worktrees/occupants.ts";
@@ -36,6 +37,8 @@ export interface RealmSession {
 	modified: number;
 	/** Its process is running now. */
 	live: boolean;
+	/** What that process last said it is doing (its light's tone); only for a live session other than this one. */
+	activity?: ActivityTone;
 	current: boolean;
 	file: string;
 }

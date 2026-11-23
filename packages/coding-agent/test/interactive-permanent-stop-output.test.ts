@@ -9,6 +9,8 @@ import { createInteractiveTui } from "../src/modes/interactive/tui-renderer.ts";
 import { resultBlock, toolHeader } from "../src/octocode/render/tool.ts";
 import { initTheme, theme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
+import { selectInitialized } from "../src/modes/interactive/state/lifecycle-slice.ts";
 
 const ENTER_ALT_SCREEN = "\x1b[?1049h";
 const EXIT_ALT_SCREEN = "\x1b[?1049l";
@@ -81,7 +83,6 @@ describe("permanent stop from fullscreen writes the transcript and then stops li
 			chatContainer: chat,
 			loadedResourcesContainer: new Container(),
 			fullscreenLayoutRoot: chat as Component,
-			mainScreenRenderState: undefined,
 			options: { tuiMode: "fullscreen" },
 			settingsManager: {
 				getShowTerminalProgress: () => false,
@@ -97,7 +98,7 @@ describe("permanent stop from fullscreen writes the transcript and then stops li
 			rebindFeatureTerminalInputListeners: vi.fn(),
 			footerDataProvider: { dispose: vi.fn() },
 			unsubscribe,
-			isInitialized: true,
+			uiStore: createUiStore({ lifecycle: { initialized: true } }),
 			unregisterSignalHandlers: vi.fn(),
 			onRightClickPaste: undefined,
 			mountInteractiveTui: (tui: any, components: readonly Component[]) => mountInteractiveTui(host, tui, components),
@@ -122,7 +123,7 @@ describe("permanent stop from fullscreen writes the transcript and then stops li
 		// The transcript goes to the regular screen, so it follows the alternate-screen exit.
 		expect(stopOutput.indexOf(EXIT_ALT_SCREEN)).toBeLessThan(stopOutput.indexOf("LAST-BASH-OUTPUT"));
 		expect(unsubscribe).toHaveBeenCalledTimes(1);
-		expect(host.isInitialized).toBe(false);
+		expect(selectInitialized(host.uiStore.getState())).toBe(false);
 
 		// Afterwards the shared clock is stopped and nothing asks for a render.
 		expect(animationClock.isRunning()).toBe(false);

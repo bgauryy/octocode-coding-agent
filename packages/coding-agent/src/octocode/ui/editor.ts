@@ -7,6 +7,7 @@ import {
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
+import { onPromptNote, promptNote } from "./prompt-note.ts";
 import { skillWordHighlight, skillWordSources } from "./skill-words.ts";
 import { CustomEditor } from "../../theme/custom-editor.ts";
 import type { Theme } from "../../theme/theme.ts";
@@ -117,7 +118,11 @@ export function decorateEditor(
 	editor.borderDecorator = (edge, width, hidden, standard) => {
 		if (!boxed || hidden > 0 || (edge === "top" && working)) return standard();
 		const cursor = editor.getCursor();
-		const word = edge === "bottom" ? wordHint(editor.getText().split("\n")[cursor.line] ?? "", cursor.col) : undefined;
+		// A passing note (`ctrl+c again to exit`) takes the bottom rule over the word hint while it shows.
+		const word =
+			edge === "bottom"
+				? (promptNote() ?? wordHint(editor.getText().split("\n")[cursor.line] ?? "", cursor.col))
+				: undefined;
 		const label =
 			edge === "top" ? promptLabel(editor.getText(), theme()) : word ? theme().fg("muted", ` ${word} `) : "";
 		return labelledRule(width, label, "", rule);
@@ -165,6 +170,9 @@ export function registerEditor(api: FeatureSetup, permission: EditorPermission):
 	let installed: EditorFactory | undefined;
 	let context: FeatureContext;
 	let started = false;
+	// A passing note in the bottom rule (`prompt-note.ts`) repaints the prompt when it comes and goes.
+	let repaint: (() => void) | undefined;
+	onPromptNote(() => repaint?.());
 	const sample = (ctx: FeatureContext) => {
 		started = ctx.sessionManager.getBranch().some((entry) => entry.type === "message");
 	};
@@ -180,6 +188,7 @@ export function registerEditor(api: FeatureSetup, permission: EditorPermission):
 		// Replacing an editor closes its active selector. Session switches only need to update the callback's context.
 		if (installed && previous === installed) return;
 		installed = (tui, theme, keybindings) => {
+			repaint = () => tui.requestRender();
 			const editor = previous?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
 			const inner = editor.handleInput;
 			const handleInput = inner?.bind(editor);

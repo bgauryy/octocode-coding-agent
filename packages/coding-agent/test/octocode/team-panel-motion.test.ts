@@ -1,11 +1,11 @@
-import { animationClock, MOTION, visibleWidth } from "@octocodeai/octocode-tui";
+import { animationClock, GLYPH, MOTION, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { collapsedRows } from "../../src/octocode/team/panel/rows.ts";
 import { type Moving, PanelMotion } from "../../src/octocode/team/panel/motion.ts";
 import { panelMark, panelState } from "../../src/octocode/team/panel/state.ts";
 import { AgentsView } from "../../src/octocode/team/panel.ts";
-import { LIGHT_SPINNER, markFrameMs } from "../../src/theme/status.ts";
+import { LIGHT_FRAMES, markFrameMs } from "../../src/theme/status.ts";
 import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
 import { fakeCtx, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -42,7 +42,8 @@ describe("panel state", () => {
 		expect(panelState(gone, NOW)).toEqual({ state: "pending", label: "left" });
 	});
 
-	const spin = LIGHT_SPINNER[Math.floor(NOW / markFrameMs("running", { light: true })) % LIGHT_SPINNER.length];
+	// A working agent spins the working spinner's frames (braille), never a half-filled circle.
+	const spin = LIGHT_FRAMES[Math.floor(NOW / markFrameMs("running", { light: true })) % LIGHT_FRAMES.length];
 
 	it("draws the state marks: a spinner for a working agent, the steady light for every other state", () => {
 		const team = [
@@ -55,10 +56,11 @@ describe("panel state", () => {
 		// The elapsed time ends each row at the terminal's edge.
 		const edge = (left: string, right: string) =>
 			`${left}${" ".repeat(120 - visibleWidth(left) - visibleWidth(right))}${right}`;
+		// Idle rows draw ○: ⏺ means running only.
 		expect(rows).toEqual([
-			edge(" 🦑 main-aaaaaa ⏺ · general", "1m"),
+			edge(" 🦑 main-aaaaaa ○ · general", "1m"),
 			edge(` ├ ${spin} busy-aaaa    · general`, "1m"),
-			edge(" └ ⏺ rest-bbbb    · general", "1m"),
+			edge(" └ ○ rest-bbbb    · general", "1m"),
 		]);
 		const tree = [
 			{ member: team[1], depth: 0 },
@@ -66,14 +68,14 @@ describe("panel state", () => {
 			{ member: team[2], depth: 0, doneAt: NOW - 20_000 },
 		];
 		const compact = collapsedRows(tree, NOW, theme, 120).map((row) => row.slice(0, 5));
-		expect(compact).toEqual([` ├ ${spin} `, " ├ ⏺ ", " └ ⏺ "]);
+		expect(compact).toEqual([` ├ ${spin} `, " ├ ○ ", " └ ○ "]);
 	});
 
-	it("holds a still spinner frame in reduced motion", () => {
+	it("holds a full ⏺ in reduced motion, never a spinner frame held still", () => {
 		animationClock.setReducedMotion(true);
 		const state = panelState({ member: member("a", { status: "working" }), depth: 0 }, NOW);
-		expect(panelMark(theme, state, NOW + 80)).toBe(LIGHT_SPINNER[0]);
-		expect(panelMark(theme, state, NOW + 800)).toBe(LIGHT_SPINNER[0]);
+		expect(panelMark(theme, state, NOW + 80)).toBe(GLYPH.light);
+		expect(panelMark(theme, state, NOW + 800)).toBe(GLYPH.light);
 	});
 
 	it("keeps the root row free of a tally: each agent's mark says it works, and `left` is on the ↳ line", () => {
@@ -85,10 +87,10 @@ describe("panel state", () => {
 		const done = [{ member: member("c-3333", { parentId: "main-aaaaaa" }), at: NOW - 1_000 }];
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 120, [], undefined, done);
 		expect(lines).toEqual([
-			" 🦑 main-aaaaaa ⏺ · general                                                                                           1m",
+			" 🦑 main-aaaaaa ○ · general                                                                                           1m",
 			` ├ ${spin} a-1111       · general                                                                                           1m`,
 			` ├ ${spin} b-2222       · general                                                                                           1m`,
-			" └ ⏺ c-3333       · general                                                                                          59s",
+			" └ ○ c-3333       · general                                                                                          59s",
 			"     ↳ left",
 		]);
 	});

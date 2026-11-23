@@ -243,7 +243,7 @@ describe("provider setup flow", () => {
 			output += `\n${textOf(page)}`;
 		}
 		page.handleInput("\x1b[A".repeat(60));
-		const at = ["Ready", "External agents", "Add", "Advanced"].map((heading) =>
+		const at = ["Ready", "Add", "External agents", "Advanced"].map((heading) =>
 			output.search(new RegExp(`^ ${heading}$`, "m")),
 		);
 		expect(at.every((position) => position >= 0)).toBe(true);
@@ -278,7 +278,7 @@ describe("provider setup flow", () => {
 		const run = showProviderManager(host, "", { sourceEnvironment: sourceEnvironment() });
 		const first = await pageAt(value, 0);
 		expect(textOf(first)).toMatch(/^ Off$/m);
-		expect(textOf(first)).toMatch(/OpenAI .* ○ off/);
+		expect(textOf(first)).toMatch(/OpenAI .* ∅ off/);
 		first.handleInput("e");
 		const second = await pageAt(value, 1);
 		expect(runtime.setDisabledProviders).toHaveBeenLastCalledWith([]);
@@ -756,7 +756,7 @@ describe("provider setup flow", () => {
 		expect(output).toMatch(/^ External agents$/m);
 		// The list starts nothing: the runner is checked when its own page opens.
 		expect(output).toMatch(/Claude Code +not ready · CLI · not checked · open to check +⚠ needs action/);
-		expect(output).toMatch(/Codex CLI +CLI · not installed · codex not on PATH +○ off/);
+		expect(output).toMatch(/Codex CLI +CLI · not installed · codex not on PATH +∅ off/);
 		page.handleInput(ENTER);
 		await vi.waitFor(() => expect(value.showSelector.mock.calls.length).toBeGreaterThan(1), { timeout: 15_000 });
 		const detail = await pageAt(value, 1);
@@ -774,7 +774,7 @@ describe("provider setup flow", () => {
 		const again = await pageAt(value, 2);
 		for (let step = 0; step < 40 && !selectedLine(again).includes("Claude Code"); step++) again.handleInput(DOWN);
 		expect(textOf(again)).toMatch(
-			/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan · off for tasks +○ off/,
+			/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan · off for tasks +∅ off/,
 		);
 		expect(setExternalAgents).not.toHaveBeenCalled();
 		again.handleInput(ENTER);
@@ -830,7 +830,7 @@ describe("provider setup flow", () => {
 			const again = await pageAt(value, 2);
 			for (let step = 0; step < 40 && !selectedLine(again).includes("Claude Code"); step++) again.handleInput(DOWN);
 			expect(textOf(again)).toMatch(
-				/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan · off for tasks +○ off/,
+				/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan · off for tasks +∅ off/,
 			);
 			again.handleInput(ESC);
 			await run;
@@ -849,7 +849,7 @@ describe("provider setup flow", () => {
 		(await pageAt(value, 1)).handleInput(ESC);
 		const list = await pageAt(value, 2);
 		for (let step = 0; step < 40 && !selectedLine(list).includes("Claude Code"); step++) list.handleInput(DOWN);
-		expect(textOf(list)).toMatch(/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan · off for tasks +○ off/);
+		expect(textOf(list)).toMatch(/Claude Code +CLI · 2\.1\.400 · signed in · claude\.ai · plan · off for tasks +∅ off/);
 		list.handleInput(ESC);
 		await first;
 	});

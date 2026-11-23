@@ -61,8 +61,14 @@ function Row({
 		<li className="config-row">
 			<div className="config-row-head">
 				<span className="config-name">{row.label}</span>
-				<Badge tone={row.on ? "success" : "neutral"} icon={<StateMark state={row.on ? "done" : "stopped"} size={12} />}>
-					{row.locked ? "Always on" : row.on ? "On" : "Off"}
+				{/* A row's `state` (a server held back until approved) is what it is in effect: shown in place of On or Off. */}
+				<Badge
+					tone={row.locked ? "success" : row.state ? "warning" : row.on ? "success" : "neutral"}
+					icon={
+						<StateMark state={row.locked ? "done" : row.state ? "waiting" : row.on ? "done" : "stopped"} size={12} />
+					}
+				>
+					{row.locked ? "Always on" : (row.state ?? (row.on ? "On" : "Off"))}
 				</Badge>
 				{row.setBy !== "default" && (
 					<Badge tone={row.setBy === "workspace" ? "accent" : "neutral"}>

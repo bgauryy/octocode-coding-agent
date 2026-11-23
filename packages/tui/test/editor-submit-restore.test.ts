@@ -85,7 +85,8 @@ describe("prompt history with pastes", () => {
 
 		editor.handleInput(UP);
 		editor.handleInput(UP);
-		assert.strictEqual(editor.getText(), "fix [paste #1 +32 lines]");
+		// 30 rows and one blank line: the newline that ends the paste starts no line of its own.
+		assert.strictEqual(editor.getText(), "fix [paste #1 +31 lines]");
 		editor.handleInput("\r");
 		assert.strictEqual(submitted[1], submitted[0]);
 

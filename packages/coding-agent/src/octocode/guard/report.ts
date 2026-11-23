@@ -8,7 +8,8 @@ import { badge, RATINGS, type Review, type ReviewWord } from "./types.ts";
  * model. It says what was checked and never calls an item safe. Hidden characters in item text are shown as `[U+XXXX]`.
  */
 
-const KIND_WORDS = { hook: "hook", mcp: "MCP server", skill: "skill" } as const;
+/** What each kind is called in user text. */
+export const KIND_WORDS = { hook: "hook", mcp: "MCP server", skill: "skill" } as const;
 
 /** The report of one item: what it is, its state and rating, the findings worst first, and what approval grants. */
 export function renderReport(review: Review): string {

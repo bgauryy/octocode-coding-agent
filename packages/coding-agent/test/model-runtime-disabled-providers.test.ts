@@ -131,6 +131,8 @@ describe("disabled providers", () => {
 			});
 			expect(registry.isModelAccessRejected(denied)).toBe(true);
 			expect(() => runtime.assertModelAccess(denied)).toThrow(/alpha\/m/);
+			// The advice names the picker (`/model`); `/models` only turns models on or off.
+			expect(() => runtime.assertModelAccess(denied)).toThrow(/Choose another model in \/model /);
 			expect(registry.isModelAccessRejected(model("alpha", "sibling"))).toBe(false);
 			expect(ids(registry.getAvailable())).toEqual(["beta"]);
 			expect(await runtime.getAvailable("alpha")).toEqual([]);

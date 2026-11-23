@@ -16,56 +16,68 @@ export interface BacklogCommandResult {
 	task?: BacklogTask;
 }
 
-/** The webview acts as the user: the host checks every depth, version and ownership rule in the store, never the page. */
-const HUMAN: Actor = { id: USER_AUTHOR, kind: "human", surface: "web" };
+/**
+ * The webview acts as the user under the id of the session whose page sent the write, as `/backlog` does in that
+ * session's terminal: a claim from the page is that session's, held while it runs. A repository page has no session and
+ * writes as the user alone. The host checks every depth, version and ownership rule in the store, never the page.
+ */
+const webActor = (session: string | undefined): Actor => ({
+	id: session || USER_AUTHOR,
+	kind: "human",
+	surface: "web",
+});
+
+/** A comment is the person's words, whichever page they typed it on. */
+const HUMAN: Actor = webActor(undefined);
 
 /**
- * Applies one typed hierarchy command from the web page with the human actor. `session` is the session that owns a task
- * added without an owner. Refusals throw the store's one-line `BacklogError`; a version conflict carries the current copy.
+ * Applies one typed hierarchy command from the web page as the user (`webActor`). `session` is the session that owns a
+ * task added without an owner. Refusals throw the store's one-line `BacklogError`; a version conflict carries the current copy.
  */
 export function applyBacklogCommand(
 	store: BacklogStore,
 	command: BacklogCommand,
 	session: string,
 ): BacklogCommandResult {
+	const actor = webActor(session);
 	switch (command.command) {
 		case "task.add": {
 			if (command.item && command.session) throw new BacklogError("A task belongs to an item or a session, not both.");
 			const { command: _kind, ...input } = command;
-			return { task: store.tasks.add(command.item ? input : { ...input, session: command.session ?? session }, HUMAN) };
+			return { task: store.tasks.add(command.item ? input : { ...input, session: command.session ?? session }, actor) };
 		}
 		case "task.update": {
 			const { command: _kind, task, ...changes } = command;
-			return { task: store.tasks.update(task, changes, HUMAN) };
+			return { task: store.tasks.update(task, changes, actor) };
 		}
 		case "task.move":
-			return { task: store.tasks.move(command.task, command.position, HUMAN, command.version) };
+			return { task: store.tasks.move(command.task, command.position, actor, command.version) };
 		case "task.reparent": {
 			if (!command.item === !command.session) throw new BacklogError("Name one new owner: an item or a session.");
 			const to = command.item ? { item: command.item } : { session: command.session };
-			return { task: store.tasks.reparent(command.task, to, HUMAN, command.version) };
+			return { task: store.tasks.reparent(command.task, to, actor, command.version) };
 		}
 		case "task.promote": {
 			const { command: _kind, task, ...input } = command;
-			return store.tasks.promote(task, input, HUMAN);
+			return store.tasks.promote(task, input, actor);
 		}
 		case "item.reparent":
-			return { item: store.update(command.id, { parentId: command.parentId, version: command.version }, HUMAN) };
+			return { item: store.update(command.id, { parentId: command.parentId, version: command.version }, actor) };
 		case "item.close":
 			return {
 				item: store.update(
 					command.id,
 					{ close: { kind: command.kind, text: command.text, of: command.of }, version: command.version },
-					HUMAN,
+					actor,
 				),
 			};
 		case "item.rank":
 			return {
-				item: store.rank(command.id, { version: command.version, before: command.before, after: command.after }, HUMAN),
+				item: store.rank(command.id, { version: command.version, before: command.before, after: command.after }, actor),
 			};
 		case "item.state":
 			return {
-				item: store.update(command.id, { state: command.state, version: command.version, note: command.note }, HUMAN),
+				item: store.update(command.id, { state: command.state, version: command.version, note: command.note }, actor),
 			};
 	}
 }
@@ -87,7 +99,7 @@ function applyBacklogMutation(
 	input: BacklogMutation,
 	session: string | undefined,
 ): { item: Item } {
-	const actor: Actor = { id: session ?? USER_AUTHOR, kind: "human", surface: "web" };
+	const actor = webActor(session);
 	const { op, id, ...fields } = input;
 	const shapeError = mutationShapeError(input);
 	if (shapeError) throw new BacklogError(shapeError);

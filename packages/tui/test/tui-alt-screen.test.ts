@@ -1371,7 +1371,8 @@ describe("TuiAltScreen", () => {
 	});
 
 	it("selects visible text with the mouse and copies it with OSC 52 after a generic release", async () => {
-		const terminal = new RecordingTerminal(20, 4);
+		// Wide enough that the copy confirmation and its hint (top-right rows) leave the selected text in view.
+		const terminal = new RecordingTerminal(60, 4);
 		const tui = new TuiAltScreen(terminal);
 		tui.addChild(new Text("\x1b[1mal\x1b[0mpha\nbeta\ngamma\ndelta", 0, 0));
 		tui.start();
@@ -1395,13 +1396,14 @@ describe("TuiAltScreen", () => {
 			terminal.events.some((event) => event.type === "write" && event.data.includes("al\x1b[0m\x1b[7mpha")),
 			"selection inverse must be reapplied after a reset inside the selection",
 		);
-		assert.ok(terminal.getViewport().some((line) => line.includes("Copied!")));
+		assert.ok(terminal.getViewport().some((line) => line.includes("Copied 2 lines")));
 
 		tui.stop();
 	});
 
 	it("keeps the selection highlight after a fake cursor cell", async () => {
-		const terminal = new RecordingTerminal(20, 4);
+		// Wide enough that the copy confirmation and its hint (top-right rows) leave the selected text in view.
+		const terminal = new RecordingTerminal(60, 4);
 		const tui = new TuiAltScreen(terminal);
 		tui.addChild(new Text(`> ${renderFakeCursor("a")}bcd`, 0, 0));
 		tui.start();
@@ -1443,7 +1445,7 @@ describe("TuiAltScreen", () => {
 			terminal.events.every((event) => event.type !== "write" || !event.data.includes("\x1b]52;c;")),
 			"must not emit OSC 52 when a copySelection handler is provided",
 		);
-		assert.ok(terminal.getViewport().some((line) => line.includes("Copied!")));
+		assert.ok(terminal.getViewport().some((line) => line.includes("Copied 2 lines")));
 
 		tui.stop();
 	});
@@ -1470,7 +1472,7 @@ describe("TuiAltScreen", () => {
 		assert.deepStrictEqual(copied, []);
 		assert.strictEqual(tui.hasActiveSelection(), true);
 		assert.ok(terminal.events.some((event) => event.type === "write" && event.data.includes("\x1b[7m")));
-		assert.ok(terminal.getViewport().every((line) => !line.includes("Copied!")));
+		assert.ok(terminal.getViewport().every((line) => !line.includes("Copied")));
 
 		tui.stop();
 	});
@@ -1504,7 +1506,7 @@ describe("TuiAltScreen", () => {
 		await terminal.waitForRender();
 
 		assert.deepStrictEqual(copied, ["alpha\nbeta"]);
-		assert.ok(terminal.getViewport().some((line) => line.includes("Copied!")));
+		assert.ok(terminal.getViewport().some((line) => line.includes("Copied 2 lines")));
 
 		tui.stop();
 	});
@@ -1763,7 +1765,8 @@ describe("TuiAltScreen", () => {
 	});
 
 	it("retains a completed visible selection across focus changes", async () => {
-		const terminal = new RecordingTerminal(20, 4);
+		// Wide enough that the copy confirmation and its hint (top-right rows) leave the selected text in view.
+		const terminal = new RecordingTerminal(60, 4);
 		const tui = new TuiAltScreen(terminal);
 		tui.addChild(new Text("alpha\nbeta\ngamma\ndelta", 0, 0));
 		tui.start();
@@ -1811,6 +1814,26 @@ describe("TuiAltScreen", () => {
 		viewport = terminal.getViewport();
 		assert.ok(viewport[0]?.endsWith(" Second "));
 		assert.ok(!viewport.some((line) => line.includes("First")));
+
+		tui.stop();
+	});
+
+	it("draws a flash beside text that ends before it, and blanks a row it would cut", async () => {
+		const terminal = new VirtualTerminal(30, 4);
+		const tui = new TuiAltScreen(terminal);
+		tui.addChild(new Text("abc\nthe quick brown fox jumps over\nx\ny", 0, 0));
+		tui.start();
+		await terminal.waitForRender();
+
+		tui.flash("Saved", 500);
+		tui.flash("Copied", 500);
+		await terminal.waitForRender();
+		const viewport = terminal.getViewport().map((line) => line.trimEnd());
+		// Text that ends at least one cell before the flash stays beside it.
+		assert.strictEqual(viewport[0], `abc${" ".repeat(20)} Saved`);
+		// A row the flash would cut mid-word shows no fragment: the flash has the row to itself.
+		assert.strictEqual(viewport[1], `${" ".repeat(22)} Copied`);
+		assert.strictEqual(viewport[2], "x");
 
 		tui.stop();
 	});

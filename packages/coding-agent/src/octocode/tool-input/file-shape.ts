@@ -32,10 +32,21 @@ function decode(name: string, value: string): unknown {
 	}
 }
 
+/**
+ * The change fields of `source`, with the flat edit a model tries first read into the declared shape: `op` names the
+ * `type`, and a top-level `oldText`/`newText` pair becomes one `edits` entry (an edit when no type is named).
+ */
 function pickChange(source: Record<string, unknown>): Record<string, unknown> {
-	return Object.fromEntries(
-		CHANGE_FIELDS.filter((name) => source[name] !== undefined).map((name) => [name, source[name]]),
-	);
+	const edits =
+		source.edits === undefined && typeof source.oldText === "string" && typeof source.newText === "string"
+			? [{ oldText: source.oldText, newText: source.newText }]
+			: source.edits;
+	const read: Record<string, unknown> = {
+		...source,
+		type: source.type ?? source.op ?? (edits ? "edit" : undefined),
+		edits,
+	};
+	return Object.fromEntries(CHANGE_FIELDS.filter((name) => read[name] !== undefined).map((name) => [name, read[name]]));
 }
 
 /** The refusal for a call whose change-carrying fields are wrong, or undefined when the shape is right. */

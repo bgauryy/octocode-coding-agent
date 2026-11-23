@@ -20,6 +20,12 @@ export interface LiveReloadOptions {
 	readonly onError: (error: unknown) => void;
 }
 
+/** The models.json files a runtime follows: its own, and the project's (Pi's too while that source is on). */
+export function followedModelsFiles(modelsPath: string | undefined, project: ModelsProject | undefined): string[] {
+	const projectFiles = project ? projectModelsPaths(project.cwd, providerSourceGate.isEnabled("pi")) : [];
+	return modelsPath ? [modelsPath, ...projectFiles] : projectFiles;
+}
+
 /**
  * Follows models.json and auth.json while the runtime lives. Either file changing, alone or both together,
  * schedules one full reload: the debounce merges a burst, and a change during a running reload queues exactly one
@@ -36,10 +42,7 @@ export class RuntimeLiveReload {
 	constructor(options: LiveReloadOptions) {
 		this.options = options;
 		this.stops.push(options.credentials.watch(() => this.schedule()));
-		const projectFiles = options.project
-			? projectModelsPaths(options.project.cwd, providerSourceGate.isEnabled("pi"))
-			: [];
-		for (const file of [options.modelsPath, ...projectFiles]) if (file) this.follow(file);
+		for (const file of followedModelsFiles(options.modelsPath, options.project)) this.follow(file);
 	}
 
 	/** Schedules a reload when `file`'s revision changes. */

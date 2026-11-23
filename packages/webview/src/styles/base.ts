@@ -4,7 +4,7 @@ const LIGHT_TOKENS = `
 	--border: #d0d7de; --border-soft: #eaeef2;
 	--text: #24292f; --text-2: #4b5563; --text-3: #5b6472;
 	--accent: #6d28d9; --accent-strong: #5b21b6; --accent-soft: #f3e8ff; --accent-line: #ddd6fe; --on-accent: #ffffff;
-	--success: #166534; --danger: #b91c1c; --warning: #92400e; --tool: #0369a1; --agent: #6d28d9; --teal: #0d9488; --coral: #c2410c; --lav: #4f46e5;
+	--success: #166534; --danger: #b91c1c; --warning: #855c00; --tool: #0369a1; --agent: #6d28d9; --teal: #0d9488; --coral: #c2410c; --lav: #4f46e5;
 	--shadow-sm: 0 1px 2px rgb(31 35 40 / .06); --shadow-md: 0 4px 12px rgb(31 35 40 / .08); --shadow-lg: 0 24px 64px rgb(31 35 40 / .22);
 `;
 const DARK_TOKENS = `

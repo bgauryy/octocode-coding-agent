@@ -40,9 +40,10 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 			searchMatchStyle: (text) => theme.underline(styleSearchMatch(text)),
 			searchCurrentMatchStyle: (text) => theme.bold(theme.inverse(styleSearchMatch(text))),
 			searchNavigationButtonStyle: (text, hovered) => (hovered ? theme.underline(text) : text),
-			scrollToEndIndicator: (rowsBelow, percent) => {
+			scrollToEndIndicator: (rowsBelow, percent, newRows) => {
 				const shortcut = keyText("tui.altScreen.bottom");
-				const label = ` ↓ ${rowsBelow} rows below · ${percent}% · Jump to latest message${shortcut ? ` · ${shortcut}` : ""} `;
+				const arrived = newRows > 0 ? "New output · " : "";
+				const label = ` ↓ ${arrived}${rowsBelow} rows below · ${percent}% · Jump to latest message${shortcut ? ` · ${shortcut}` : ""} `;
 				return theme.bg("selectedBg", theme.fg("text", label));
 			},
 			openUrl: (url) =>

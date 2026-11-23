@@ -15,12 +15,12 @@ import { pendingReportsDir, type Report, savePendingReport } from "./handoff/pen
 import { parentGoneReportId } from "./handoff/parent-gone.ts";
 import type { LingerWindow } from "./linger.ts";
 import { awaitedReply, closeAnswered, readMailFirst } from "./report-steps.ts";
-import { providerHealth, spentNothing } from "./provider-health.ts";
+import { healthModel, providerHealth, spentNothing } from "./provider-health.ts";
 import type { runSubagent } from "./process.ts";
 import { USER_STOP } from "./process/outcome.ts";
 import { capitalize, compactionLabel, deniedLabel, doneSummary, noticeLines } from "./render.ts";
 import {
-	failedNext,
+	failedAdvice,
 	foregroundExtras,
 	PERMISSION_STOP,
 	ranOn,
@@ -34,6 +34,7 @@ import { beginRun, endRun, type RunEnd } from "./run-audit.ts";
 import { typedResultFailure } from "./typed-result.ts";
 import { stopFacts } from "./stop-facts.ts";
 import { evidenceNotes } from "./evidence.ts";
+import { bookkeepingFailed } from "./child-tasks.ts";
 import { type AgentUpdate, reportFacts, runFooter, withShot } from "./tracking.ts";
 
 type Outcome = Awaited<ReturnType<typeof runSubagent>>;
@@ -44,6 +45,9 @@ const evidenceFor = (details: RunDetails, text: string): string[] =>
 
 /** ` · cite as report:<id>`: how a later task or external prompt passes this report on without retyping it. */
 const citable = (id: string): string => ` · cite as ${reportRef(id)}`;
+
+/** The parent's own bookkeeping after a run: the child's report does not depend on it, so a failure rides in the footer. */
+const noted = (bookkeeping: Promise<string>): Promise<string> => bookkeeping.catch(bookkeepingFailed);
 
 /** A background child settled: its report is in flight until its run ends, and its siblings' reports wait for it. */
 export function reportInFlight(runs: AgentRuns, id: string): void {
@@ -100,14 +104,11 @@ export function startBackground(
 	entry.done = (async () => {
 		try {
 			const outcome = withStopFacts(await launch(controller.signal).finally(exited), details, runs.team);
-			providerHealth.noteRun(run.route.model, outcome.error, spentNothing(outcome.usage));
+			providerHealth.noteRun(healthModel(run.route.model, details.ran), outcome.error, spentNothing(outcome.usage));
 			if (outcome.error) hintEnd(runs, identity.id, "failed");
 			const awaited = linger && !outcome.error ? awaitedReply(runs, identity.id, details) : undefined;
 			// Asked before the footer is written: a child that stays reachable has not ended, and its item's graph line says so.
-			// The child's report does not depend on the parent's own bookkeeping: a failure there rides in the footer.
-			const note = await finish(outcome, !outcome.error && (linger?.stays(outcome.outcome, awaited) ?? false)).catch(
-				(error: unknown) => `\n\n(The parent's record of this run could not be updated: ${errorMessage(error)}.)`,
-			);
+			const note = await noted(finish(outcome, !outcome.error && (linger?.stays(outcome.outcome, awaited) ?? false)));
 			// The latest report determines the outcome; a failed follow-up overrides earlier success.
 			const reported = outcome.error ? "failed" : outcome.outcome;
 			if (reported) details.outcome = reported;
@@ -144,9 +145,7 @@ export function startBackground(
 				headline: firstLine(outcome.error ?? outcome.text),
 			};
 			const alreadyRead = read.consume(identity.id, outcome.reportArtifact);
-			const next = outcome.error
-				? failedNext(run.route, outcome.error, Boolean(outcome.text), spentNothing(outcome.usage), details.ran)
-				: "";
+			const next = outcome.error ? failedAdvice(run.route, outcome.error, outcome, details) : "";
 			const notices = noticeLines(details).join("\n");
 			// A successful run that lingers stays reachable: the report says for how long and how to use or end it. One with an unanswered ask to its parent or a peer lingers whatever it reported.
 			// A plan's turns have no price to weigh: the line names the requests alone.
@@ -186,10 +185,12 @@ export function startBackground(
 			});
 		} catch (error) {
 			if (identity.resultContract) details.structured = unavailableResult(identity.resultContract);
-			const note = await finish(
-				undefined,
-				entry.stoppedBy === PERMISSION_STOP && (linger?.stays() ?? false),
-				Boolean(entry.stoppedBy) || controller.signal.aborted,
+			const note = await noted(
+				finish(
+					undefined,
+					entry.stoppedBy === PERMISSION_STOP && (linger?.stays() ?? false),
+					Boolean(entry.stoppedBy) || controller.signal.aborted,
+				),
 			);
 			read.consume(identity.id);
 			const by = entry.stoppedBy;
@@ -301,15 +302,16 @@ export async function runForeground(
 			return handOver.takeOver(running, controller);
 		}
 		outcome = withStopFacts(first === SPENT ? await running : first, details, runs.team);
-		providerHealth.noteRun(run.route.model, outcome.error, spentNothing(outcome.usage));
+		providerHealth.noteRun(healthModel(run.route.model, details.ran), outcome.error, spentNothing(outcome.usage));
 		if (outcome.error) hintEnd(runs, identity.id, "failed");
 	} catch (error) {
 		// An Esc aborts the controller without `stoppedBy`: that stop already left its hint.
 		if (!entry.stoppedBy && !controller.signal.aborted) hintEnd(runs, identity.id, "failed");
-		const note = `${entry.stoppedBy === PERMISSION_STOP ? stopFacts(details, runs.team) : ""}${await finish(undefined, false, Boolean(entry.stoppedBy) || controller.signal.aborted)}${entry.stoppedBy ? "" : foregroundExtras(details, true)}`;
+		const stopped = Boolean(entry.stoppedBy) || controller.signal.aborted;
+		const note = `${entry.stoppedBy === PERMISSION_STOP ? stopFacts(details, runs.team) : ""}${await noted(finish(undefined, false, stopped))}${entry.stoppedBy ? "" : foregroundExtras(details, true)}`;
 		const reason = entry.stoppedBy ? stoppedError(identity.id, entry.stoppedBy) : error;
 		endRun(runs, identity.id, {
-			reason: entry.stoppedBy || controller.signal.aborted ? stopReason(entry.stoppedBy) : "failed",
+			reason: stopped ? stopReason(entry.stoppedBy) : "failed",
 			error: entry.stoppedBy ? undefined : errorMessage(error),
 			outcome: entry.stoppedBy ? undefined : "failed",
 		});
@@ -318,10 +320,16 @@ export async function runForeground(
 			outcome: entry.stoppedBy ? "stopped" : "failed",
 			headline: firstLine(errorMessage(reason)),
 		});
-		// The result keeps the run's details, so the session records the child (its folder, a startup failure) for `resume`.
+		// The result keeps the run's details, so the session records the child (its folder, a startup failure) for `resume`,
+		// and what it spent until it stopped, so this session's totals count it.
 		details.status = "failed";
 		if (!entry.stoppedBy) details.outcome = "failed";
-		throw new AgentToolExecutionError(text, { content: [{ type: "text", text }], details });
+		const { usage } = reportFacts(details);
+		throw new AgentToolExecutionError(text, {
+			content: [{ type: "text", text }],
+			details,
+			...(usage ? { usage } : {}),
+		});
 	} finally {
 		signal?.removeEventListener("abort", abort);
 		runs.foreground.delete(identity.id);
@@ -331,7 +339,7 @@ export async function runForeground(
 			runs.reports.reportingChanged();
 		}
 	}
-	const note = `${await finish(outcome)}${warning}${foregroundExtras(details, Boolean(outcome.error))}`;
+	const note = `${await noted(finish(outcome))}${warning}${foregroundExtras(details, Boolean(outcome.error))}`;
 	if (!outcome.error) await closeAnswered(runs, identity.id);
 	if (outcome.structured) details.structured = outcome.structured;
 	if (outcome.reportArtifact) details.reportArtifact = outcome.reportArtifact;
@@ -353,7 +361,7 @@ export async function runForeground(
 		const text = reportMessage(
 			`Subagent ${identity.id} failed${citable(identity.id)}`,
 			`${outcome.error}${outcome.text ? `\n\nPartial answer:\n${outcome.text}` : ""}`,
-			[failedNext(run.route, outcome.error, Boolean(outcome.text), spentNothing(outcome.usage), details.ran), note],
+			[failedAdvice(run.route, outcome.error, outcome, details), note],
 		);
 		return { isError: true, content: [{ type: "text" as const, text }], details, usage: outcome.usage };
 	}

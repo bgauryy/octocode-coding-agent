@@ -137,6 +137,32 @@ describe("--rpc-lean-events", () => {
 		expect(finished[0].message).not.toHaveProperty("requestTrace");
 	});
 
+	it("sends tool liveness from a native child and delivers its result before the answer and settlement", async () => {
+		const run = await rpc(
+			["--rpc-lean-events"],
+			[{ tool: "bash", args: { command: "echo child-output" } }, { text: "done after the tool" }],
+			{ OCTOCODE_SUBAGENT: "1", OCTOCODE_PERMISSION: "workspace" },
+		);
+		run.send({ type: "prompt", message: "run the command" });
+		await run.settled();
+		const updates = run.records.filter((r) => r.type === "tool_execution_update");
+		expect(updates.length).toBeGreaterThan(0);
+		for (const update of updates) {
+			expect(update).toMatchObject({ toolName: "bash", toolCallId: expect.any(String) });
+			expect(update).not.toHaveProperty("partialResult");
+			expect(update).not.toHaveProperty("args");
+		}
+		const end = run.records.findIndex((r) => r.type === "tool_execution_end");
+		expect(end).toBeGreaterThan(run.records.indexOf(updates.at(-1)!));
+		expect(run.records[end].isError).toBe(false);
+		expect(JSON.stringify(run.records[end].result)).toContain("child-output");
+		const answer = run.records.findIndex(
+			(r) => r.type === "message_end" && JSON.stringify(r.message).includes("done after the tool"),
+		);
+		expect(answer).toBeGreaterThan(end);
+		expect(run.records.findIndex((r) => r.type === "agent_settled")).toBeGreaterThan(answer);
+	});
+
 	it("without it agent_end repeats each message whole", async () => {
 		const records = await finish([]);
 		const end = { messages: records.find((r) => r.type === "agent_end")?.messages as Array<Record<string, unknown>> };

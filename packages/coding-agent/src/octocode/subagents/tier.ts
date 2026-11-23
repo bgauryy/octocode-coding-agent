@@ -1,7 +1,7 @@
 import { activeRates } from "@octocodeai/octocode-ai";
 import { DAY_MS } from "../shared/util.ts";
 import { formatTokens } from "../shared/format.ts";
-import { type Catalog, listedCost, lookup } from "./catalog.ts";
+import { type Catalog, listedCost, lookup } from "../../core/model-catalog/index-shape.ts";
 import { guessSizeClass, SIZE_RANK, type SizeClass } from "./size-class.ts";
 
 /** A model the parent can use, as Octocode's model registry lists it (prices per million tokens). */
@@ -155,8 +155,9 @@ const firstNonEmpty = (...groups: Facts[][]): Facts[] => groups.find((group) => 
 /**
  * The model a tier resolves to among `available`, or undefined to stay on the parent's. Works for any list: one model,
  * a few, or a router's hundreds. Candidates call tools, hold `MIN_SUBAGENT_CONTEXT`, take images when the parent does,
- * are not deprecated, cost less than the parent, and are their family's current generation; ones not much older than
- * the parent come first. The parent's provider ranks before its lab: only that provider's auth and endpoint are proven
+ * are not deprecated, cost less than the parent, and are their family's current generation among priced models; ones
+ * not much older than the parent come first. The parent's provider ranks before its lab: only that provider's auth and
+ * endpoint are proven
  * (another provider counts as available once a key is configured, even an expired one). So the order is the parent's
  * provider and lab, its provider, its lab elsewhere, then anything. `small` is the cheapest; `medium` the dearest
  * between `MEDIUM_MIN_SHARE` and `MEDIUM_MAX_SHARE` of the parent's price. A model the user's plan pays for costs
@@ -212,9 +213,12 @@ export function resolveTierChoice(
 		return { model, guessed: model !== undefined };
 	}
 	const cheaper = (model: Facts) => model.price !== undefined && model.price < top.price!;
+	// The newest generation is judged among priced models: an unpriced newer sibling (a listing models.dev has not priced
+	// yet) cannot be chosen, so it must not push its priced family out and leave the child on the parent's model.
+	const priced = capable.filter((model) => model.price !== undefined);
 	const eligible = currentGeneration(
-		capable.filter((model) => model.price !== undefined && (cheaper(model) || onPlan(model))),
-		[...capable, top],
+		priced.filter((model) => cheaper(model) || onPlan(model)),
+		[...priced, top],
 	);
 	const parentReleased = time(top.released);
 	const recent = Number.isNaN(parentReleased)

@@ -6,6 +6,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { handleProfilerRequest } from "../profiler/route.ts";
 import { handleApplicationDataRequest } from "../workspace/application-data.ts";
+import { handleEvidenceRequest } from "../workspace/evidence-route.ts";
 import type { AttachClient } from "./attach-client.ts";
 import { readJsonBody } from "../shared/json-body.ts";
 import type { Reply } from "./http-util.ts";
@@ -23,6 +24,7 @@ export async function handleSessionRequest(
 	changed: () => void,
 ): Promise<boolean> {
 	if (await handleApplicationDataRequest(req, url, client.application, sessionId, reply)) return true;
+	if (await handleEvidenceRequest(req, url, client.evidence, sessionId, reply)) return true;
 	try {
 		if (await handleProfilerRequest(req, url, client.profiler, reply)) return true;
 	} catch (error) {

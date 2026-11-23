@@ -35,6 +35,10 @@ export interface RuntimeSettingsApi {
 	getRetryFallbackModels(): string[];
 	/** `retry.fallbackCooldownMs`: how long a model that failed on a usage limit or refused credential is skipped. */
 	getRetryFallbackCooldownMs(): number;
+	/** Appends a `provider/id[:thinking]` selector to the global `retry.fallbackModels` (a usage-limit switch saved). */
+	addRetryFallbackModel(selector: string): void;
+	/** `retry.maxUsageWaitMs`: how long an unattended run waits for a usage limit's known reset; 0 fails at once. */
+	getRetryMaxUsageWaitMs(): number;
 	getToolExecutionEarlyStart(): boolean;
 	getHttpIdleTimeoutMs(): number;
 	/** `runtime.eventLoop`: the scheduler mode. `new` also compacts at 95% of the limit and keeps peer interrupts off a compaction. */

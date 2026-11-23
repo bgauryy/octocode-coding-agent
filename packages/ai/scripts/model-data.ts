@@ -2,15 +2,26 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { type ModelsDevSources, parseModelsDevSources } from "../src/catalog/models-dev-sources.ts";
 
 export const MODEL_DATA_SCHEMA_VERSION = 6;
 export const MODEL_DATA_MANIFEST_FILE = ".manifest.json";
 
 export type ModelDataStructure = Record<string, Record<string, string>>;
 
+/** Where the bundled models.dev listings came from: when the data was taken, and each provider's listing (see `sources`). */
+export interface ModelsDevStamp {
+	generatedAt: string;
+	sources: ModelsDevSources;
+}
+
 interface ModelDataManifest {
 	schemaVersion: number;
 	generatedAt: string;
+	/** When the models.dev data behind the catalog was taken (the pinned snapshot's stamp, or a `--live` fetch). */
+	modelsDevGeneratedAt?: string;
+	/** Each provider built from a models.dev listing of its own ids: that listing and the ids left out (runtime updates). */
+	modelsDevSources?: ModelsDevSources;
 	structureHash: string;
 	files: Record<string, string>;
 }
@@ -132,10 +143,21 @@ export function createModelDataManifest(
 	structure: ModelDataStructure,
 	fileContents: Readonly<Record<string, string>>,
 	generatedAt: string,
+	modelsDev?: ModelsDevStamp,
 ): ModelDataManifest {
 	return {
 		schemaVersion: MODEL_DATA_SCHEMA_VERSION,
 		generatedAt,
+		...(modelsDev
+			? {
+					modelsDevGeneratedAt: modelsDev.generatedAt,
+					modelsDevSources: sortedRecord(
+						Object.entries(modelsDev.sources).map(
+							([provider, source]) => [provider, { ...source, excluded: [...source.excluded].sort() }] as const,
+						),
+					),
+				}
+			: {}),
 		structureHash: modelDataStructureHash(structure),
 		files: sortedRecord(Object.entries(fileContents).map(([file, content]) => [file, sha256(content)] as const)),
 	};
@@ -232,6 +254,7 @@ export function validateModelDataDirectory(structure: ModelDataStructure, dataDi
 	if (typeof manifest?.generatedAt !== "string" || Number.isNaN(Date.parse(manifest.generatedAt))) {
 		errors.push("model data manifest has an invalid generation timestamp");
 	}
+	if (manifest) errors.push(...modelsDevStampErrors(manifest));
 	const expectedStructureHash = modelDataStructureHash(structure);
 	if (manifest?.structureHash !== expectedStructureHash) {
 		errors.push("model data generation stamp does not match the generated catalog");
@@ -297,6 +320,34 @@ export function validateModelDataDirectory(structure: ModelDataStructure, dataDi
 	}
 
 	if (errors.length > 0) throwValidationErrors(errors);
+}
+
+/**
+ * The manifest's models.dev fields are optional (a hydrated catalog may have none, and an earlier one may carry the
+ * retired `modelsDevOwners`, which nothing reads); present, they must be well formed.
+ */
+function modelsDevStampErrors(manifest: Record<string, unknown>): string[] {
+	const { modelsDevGeneratedAt: at, modelsDevSources: sources } = manifest;
+	return [
+		...(at !== undefined && (typeof at !== "string" || Number.isNaN(Date.parse(at)))
+			? ["model data manifest has an invalid models.dev timestamp"]
+			: []),
+		...(sources !== undefined && !parseModelsDevSources(sources)
+			? ["model data manifest has invalid models.dev sources"]
+			: []),
+	];
+}
+
+/** The models.dev stamp of the data in `dataDir`, so a run that reads no models.dev data keeps it. */
+export function readModelsDevStamp(dataDir: string): ModelsDevStamp | undefined {
+	const path = join(dataDir, MODEL_DATA_MANIFEST_FILE);
+	if (!existsSync(path)) return undefined;
+	const errors: string[] = [];
+	const manifest = readJsonObject(path, "model data manifest", errors);
+	if (!manifest || modelsDevStampErrors(manifest).length > 0) return undefined;
+	const generatedAt = manifest.modelsDevGeneratedAt;
+	const sources = parseModelsDevSources(manifest.modelsDevSources);
+	return typeof generatedAt === "string" && sources ? { generatedAt, sources } : undefined;
 }
 
 export function validateGeneratedModelData(packageRoot: string): void {

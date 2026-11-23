@@ -1,12 +1,9 @@
+import { formatEstimate } from "@octocodeai/octocode-common/money";
 import type { UsageEntry } from "../session-manager.ts";
 import { CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS } from "./economics.ts";
 import { formatLayerChange } from "./first-change.ts";
 import type { TurnCost } from "./turn-costs.ts";
 import type { CacheWarmingDecision, CacheWarmingStatus } from "./types.ts";
-
-function formatDollars(value: number): string {
-	return value < 0 ? `-$${Math.abs(value).toFixed(3)}` : `$${value.toFixed(3)}`;
-}
 
 function formatCacheWarmingEconomics(decision: CacheWarmingDecision): string {
 	if (!decision.economicsAvailable) return "cache economics unavailable";
@@ -16,7 +13,8 @@ function formatCacheWarmingEconomics(decision: CacheWarmingDecision): string {
 			? `${probability}% continuation probability while agent is running`
 			: `${probability}% continuation probability`;
 	const comparison = decision.action === "warm" ? ">=" : "<";
-	return `${probabilityText}, expected savings ${formatDollars(decision.expectedSavings)} ${comparison} $${CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS.toFixed(3)}`;
+	// The saving is an estimate; the threshold it is compared with is a fixed amount.
+	return `${probabilityText}, expected savings ${formatEstimate(decision.expectedSavings, 3)} ${comparison} $${CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS.toFixed(3)}`;
 }
 
 function formatCacheWarmingDecisionTime(nextWarmAt: number | undefined, now: number): string {
@@ -54,24 +52,25 @@ const SHOWN_TURNS = 5;
 
 /**
  * The `$/turn` lines of `/session`: the average over the branch's turns, then the latest turns with their cost, request
- * count and first changed payload area. Empty without a turn that sent a request.
+ * count and first changed payload area. Empty without a turn that sent a request. Money is an estimate at list prices,
+ * marked `≈` as everywhere, with four decimals so cheap turns still compare.
  */
 export function formatTurnCosts(turns: readonly TurnCost[], dim: (text: string) => string = (text) => text): string {
 	if (turns.length === 0) return "";
 	const total = turns.reduce((sum, turn) => sum + turn.cost, 0);
 	const floor = turns.some((turn) => turn.lowerBound) ? " (at least)" : "";
-	let text = `${dim("$/turn:")} $${(total / turns.length).toFixed(4)} ${dim(`average over ${turns.length} turns${floor}`)}\n`;
+	let text = `${dim("$/turn:")} ${formatEstimate(total / turns.length, 4)} ${dim(`average over ${turns.length} turn${turns.length === 1 ? "" : "s"}${floor}`)}\n`;
 	for (const turn of turns.slice(-SHOWN_TURNS)) {
 		const change = turn.firstChange ? `, first change: ${formatLayerChange(turn.firstChange)}` : "";
 		const requests = turn.requests === 1 ? "1 request" : `${turn.requests} requests`;
-		text += `  ${dim(`Turn ${turn.turn}:`)} $${turn.cost.toFixed(4)} ${dim(`(${requests}${change})`)}\n`;
+		text += `  ${dim(`Turn ${turn.turn}:`)} ${formatEstimate(turn.cost, 4)} ${dim(`(${requests}${change})`)}\n`;
 	}
 	return text;
 }
 
-/** One-line transcript text for persisted cache-warming usage. */
+/** One-line transcript text for persisted cache-warming usage: the refresh's estimated cost, to six decimals at most. */
 export function formatCacheWarmingUsage(entry: UsageEntry): string {
 	const note = entry.note ? ` (${entry.note})` : "";
-	const cost = entry.usage.cost.total.toFixed(6).replace(/(\.\d{3}\d*?)0+$/, "$1");
-	return `${entry.usage.cacheRead > 0 ? "Cache warmed" : "Cache refresh (no hit)"}${note}: $${cost}`;
+	const cost = formatEstimate(entry.usage.cost.total, 6).replace(/(\.\d{3}\d*?)0+$/, "$1");
+	return `${entry.usage.cacheRead > 0 ? "Cache warmed" : "Cache refresh (no hit)"}${note}: ${cost}`;
 }

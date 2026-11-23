@@ -3,6 +3,7 @@ import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { refText } from "./row.ts";
 import { type BacklogStore, type Item, priorityName } from "./store.ts";
 import { type Note, STATES, type State } from "@octocodeai/octocode-contracts/snapshot";
+import { evidenceLine } from "./receipts.ts";
 import type { BacklogTask, TaskTally, WorkLink } from "@octocodeai/octocode-contracts/backlogs";
 import { taskBlock, taskLine } from "./task-format.ts";
 import { refuseExportSecrets } from "./export-secrets.ts";
@@ -124,6 +125,7 @@ function itemFields(item: Item): string[] {
 		lines.push(
 			`Result (completion ${completion.id}): ${visibleControls(completion.summary)}`,
 			`Verification: ${completion.verification.status} — ${visibleControls(completion.verification.summary)}`,
+			visibleControls(evidenceLine(completion)),
 			`Files: ${completion.files.map((file) => visibleControls(file.path)).join(", ") || "none"}`,
 		);
 	if (completion?.lesson) lines.push(`Lesson: ${visibleControls(completion.lesson)}`);

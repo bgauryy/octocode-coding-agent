@@ -1,9 +1,14 @@
-import type { AssistantMessage } from "@octocodeai/octocode-ai";
+import type { ActivityFacts } from "@octocodeai/octocode-projections";
 import type { ProgramStatus, Terminal } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
-import type { AgentSessionEvent } from "../src/core/agent-session.ts";
 import { SessionStatusReporter } from "../src/modes/interactive/program-status-reporter.ts";
 
+/**
+ * Contract change (RFC 2026-11-23-app-state, T2): the reporter keeps no run or compaction state machine of its own. It
+ * reports the activity light of the session's application state facts, which carry the run (`streaming`), compaction
+ * and retries (`status`), the dialog (`awaiting`) and the job's outcome (`phase`). The outcomes below are the ones the
+ * event-driven reporter gave, now read from those facts.
+ */
 function setup(sessionName?: string) {
 	const reports: ProgramStatus[] = [];
 	const terminal = { setProgramStatus: (status: ProgramStatus) => reports.push(status) } as unknown as Terminal;
@@ -12,122 +17,68 @@ function setup(sessionName?: string) {
 		() => terminal,
 		() => session.name,
 	);
-	const send = (...events: AgentSessionEvent[]) => {
-		for (const event of events) reporter.handleEvent(event);
-	};
+	const facts = (next: ActivityFacts) => reporter.setPhase({ status: "idle", streaming: false, ...next });
 	const last = () => {
 		const { app: _app, ...status } = reports.at(-1)!;
 		return Object.fromEntries(Object.entries(status).filter(([, value]) => value !== undefined));
 	};
-	return { reporter, reports, session, send, last };
+	return { reporter, reports, session, facts, last };
 }
-
-function assistantEnd(stopReason: AssistantMessage["stopReason"], errorMessage?: string): AgentSessionEvent {
-	const message = {
-		role: "assistant",
-		content: [{ type: "text", text: "secret assistant output" }],
-		stopReason,
-		errorMessage,
-	} as AssistantMessage;
-	return { type: "message_end", message };
-}
-
-const settled: AgentSessionEvent = { type: "agent_settled", aborted: false };
-
-const compactionEnd = (
-	reason: "manual" | "threshold" | "overflow",
-	options: { aborted?: boolean; errorMessage?: string } = {},
-): AgentSessionEvent => ({
-	type: "compaction_end",
-	reason,
-	result: undefined,
-	aborted: options.aborted ?? false,
-	willRetry: false,
-	errorMessage: options.errorMessage,
-});
 
 describe("SessionStatusReporter", () => {
-	it("reports idle, working during a run, and done once it settles", () => {
-		const { reporter, reports, send, last } = setup("Fix login");
+	it("reports idle before any facts, working during a run, and done once the job ended well", () => {
+		const { reporter, reports, facts, last } = setup("Fix login");
 		reporter.report();
 		expect(reports.at(-1)).toEqual({ state: "idle", app: "octocode" });
-
-		send({ type: "agent_start" });
+		facts({ streaming: true, phase: { state: "working" } });
 		expect(last()).toEqual({ state: "working", message: "Fix login" });
-
-		send(assistantEnd("toolUse"), assistantEnd("stop"));
-		expect(last()).toEqual({ state: "working", message: "Fix login" });
-
-		send(settled);
+		facts({ phase: { state: "done" } });
 		expect(last()).toEqual({ state: "done", message: "Fix login" });
-		expect(JSON.stringify(reports)).not.toContain("secret assistant output");
 	});
 
-	it("reports only the outcome of the run: retried errors, final errors, and aborts", () => {
-		const { send, last } = setup();
-		send({ type: "agent_start" }, assistantEnd("error", "overloaded"), assistantEnd("stop"), settled);
-		expect(last()).toEqual({ state: "done" });
-
-		send({ type: "agent_start" }, assistantEnd("error", "Invalid API key\n{details}"), settled);
+	it("reports a failed job's first error line, a stopped job's open items, and an aborted one as idle", () => {
+		const { facts, last } = setup();
+		facts({ phase: { state: "failed", error: "Invalid API key\n{details}" } });
 		expect(last()).toEqual({ state: "error", message: "Invalid API key" });
-
-		send({ type: "agent_start" }, assistantEnd("aborted"), { type: "agent_settled", aborted: true });
-		expect(last()).toEqual({ state: "idle" });
-
-		// Aborted after a successful response, for example in an agent_before_settle hook or a retry delay.
-		send({ type: "agent_start" }, assistantEnd("stop"), { type: "agent_settled", aborted: true });
+		facts({ phase: { state: "stopped", open: ["B1", "B2"] } });
+		expect(last()).toEqual({ state: "error", message: "Stopped: B1, B2 still open" });
+		facts({ phase: { state: "idle" } });
 		expect(last()).toEqual({ state: "idle" });
 	});
 
-	it("reports a failed recovery compaction as the run's error unless a later response succeeds", () => {
-		const { send, last } = setup();
-		send(
-			{ type: "agent_start" },
-			assistantEnd("length"),
-			{ type: "compaction_start", reason: "overflow" },
-			compactionEnd("overflow", { errorMessage: "Compaction failed\nstack" }),
-			settled,
-		);
-		expect(last()).toEqual({ state: "error", message: "Compaction failed" });
-
-		send(
-			{ type: "agent_start" },
-			{ type: "compaction_start", reason: "threshold" },
-			compactionEnd("threshold", { errorMessage: "Compaction failed" }),
-			assistantEnd("stop"),
-			settled,
-		);
-		expect(last()).toEqual({ state: "done" });
-	});
-
-	it("reports compaction inside a run and the result of a manual compaction", () => {
-		const { send, last } = setup("Session");
-		send({ type: "agent_start" }, { type: "compaction_start", reason: "threshold" });
+	it("reports compaction as compacting context, and a retry or a quiet model as the session working", () => {
+		const { facts, last } = setup("Session");
+		facts({ streaming: true, status: "compacting" });
 		expect(last()).toEqual({ state: "working", message: "Compacting context" });
-		send(compactionEnd("threshold"));
+		facts({ status: "compacting" });
+		expect(last()).toEqual({ state: "working", message: "Compacting context" });
+		facts({ streaming: true, status: "retrying" });
 		expect(last()).toEqual({ state: "working", message: "Session" });
-		send(assistantEnd("stop"), settled);
+		facts({ streaming: true, status: "stalled" });
+		expect(last()).toEqual({ state: "working", message: "Session" });
+	});
 
-		send({ type: "compaction_start", reason: "manual" }, compactionEnd("manual"));
-		expect(last()).toEqual({ state: "done", message: "Session" });
-		send({ type: "compaction_start", reason: "manual" }, compactionEnd("manual", { errorMessage: "No model" }));
-		expect(last()).toEqual({ state: "error", message: "No model" });
-		send({ type: "compaction_start", reason: "manual" }, compactionEnd("manual", { aborted: true }));
+	it("reports the session's dialog with its kind, and a pending timer alone as idle (decision Q1)", () => {
+		const { facts, last } = setup();
+		facts({ streaming: true, awaiting: { kind: "approval", title: "Run bash?" } });
+		expect(last()).toEqual({ state: "blocked", kind: "permission", message: "Run bash?" });
+		facts({ awaiting: { kind: "question", title: "Which branch?" } });
+		expect(last()).toEqual({ state: "blocked", kind: "question", message: "Which branch?" });
+		facts({ phase: { state: "blocked", title: "child asks" } });
+		expect(last()).toEqual({ state: "blocked", kind: "question", message: "child asks" });
+		facts({ phase: { state: "scheduled", timers: 1, id: "t1", dueAt: 10 } });
 		expect(last()).toEqual({ state: "idle" });
 	});
 
-	it("reports the most recent open dialog and the underlying state once all close", () => {
-		const { reporter, send, last } = setup();
-		send({ type: "agent_start" });
+	it("reports the most recent open host dialog over the facts, and the facts once all close", () => {
+		const { reporter, facts, last } = setup();
+		facts({ streaming: true });
 		reporter.setBlocked("feature-dialog", { kind: "permission", message: "Allow bash?" });
 		reporter.setBlocked("login", { kind: "auth", message: "Log in to Anthropic" });
 		expect(last()).toEqual({ state: "blocked", kind: "auth", message: "Log in to Anthropic" });
-
-		// The run settles while the selector is still open.
 		reporter.setBlocked("login", undefined);
-		send(assistantEnd("stop"), settled);
+		facts({ phase: { state: "done" } });
 		expect(last()).toEqual({ state: "blocked", kind: "permission", message: "Allow bash?" });
-
 		// Reopening a source replaces its dialog instead of stacking a second one.
 		reporter.setBlocked("feature-dialog", { kind: "question", message: "Pick one" });
 		expect(last()).toEqual({ state: "blocked", kind: "question", message: "Pick one" });
@@ -136,19 +87,19 @@ describe("SessionStatusReporter", () => {
 	});
 
 	it("sends each status once and follows session name changes", () => {
-		const { reporter, reports, session, send, last } = setup("Old");
-		send({ type: "agent_start" }, { type: "turn_start" }, assistantEnd("toolUse"));
+		const { reporter, reports, session, facts, last } = setup("Old");
+		facts({ streaming: true });
+		facts({ streaming: true, phase: { state: "working", activity: "Reading files" } });
 		reporter.report();
 		expect(reports).toHaveLength(1);
-
 		session.name = "New";
-		send({ type: "session_info_changed", name: "New" });
+		reporter.handleEvent({ type: "session_info_changed", name: "New" });
 		expect(last()).toEqual({ state: "working", message: "New" });
 	});
 
 	it("returns to idle when the session is replaced", () => {
-		const { reporter, send, last } = setup();
-		send({ type: "agent_start" }, assistantEnd("stop"), settled);
+		const { reporter, facts, last } = setup();
+		facts({ phase: { state: "done" } });
 		reporter.reset();
 		expect(last()).toEqual({ state: "idle" });
 	});

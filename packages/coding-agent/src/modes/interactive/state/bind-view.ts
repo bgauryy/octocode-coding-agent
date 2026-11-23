@@ -1,5 +1,5 @@
 /**
- * Binds the view slice to the component tree: expansion and thinking visibility reach the live rows, and each
+ * Binds the view slice to the component tree: expansion, thinking visibility and padding reach the live rows, and each
  * notice becomes a status line in the messages list (the footer shows state only). Writers only dispatch actions;
  * `bindRender` requests the frame.
  */
@@ -8,11 +8,18 @@ import { type Component, watchSelection } from "@octocodeai/octocode-tui";
 import { isExpandable } from "../interactive-mode/helpers.ts";
 import type { InteractiveModeHost } from "../interactive-mode/host.ts";
 import { forEachAssistantMessage } from "./assistant-messages.ts";
-import { selectHideThinking, selectNotice, selectToolsExpanded } from "./view-slice.ts";
+import { selectHideThinking, selectNotice, selectOutputPad, selectToolsExpanded } from "./view-slice.ts";
 
 type BindViewHost = Pick<
 	InteractiveModeHost,
-	"builtInHeader" | "chatContainer" | "customHeader" | "loadedResourcesContainer" | "showStatus" | "uiStore" | "ui"
+	| "builtInHeader"
+	| "chatContainer"
+	| "customHeader"
+	| "loadedResourcesContainer"
+	| "pendingMessagesContainer"
+	| "showStatus"
+	| "uiStore"
+	| "ui"
 >;
 
 /** Starts following the view slice; returns the function that stops it. */
@@ -31,6 +38,11 @@ export function bindViewState(host: BindViewHost): () => void {
 		}),
 		watchSelection(store, selectHideThinking, (hide) => {
 			forEachAssistantMessage(host.chatContainer, (message) => message.setHideThinkingBlock(hide));
+		}),
+		watchSelection(store, selectOutputPad, (pad) => {
+			for (const container of [host.chatContainer, host.pendingMessagesContainer])
+				for (const child of container.children)
+					if ("setOutputPad" in child && typeof child.setOutputPad === "function") child.setOutputPad(pad);
 		}),
 		watchSelection(store, selectNotice, (notice) => {
 			if (notice) host.showStatus(notice.text);

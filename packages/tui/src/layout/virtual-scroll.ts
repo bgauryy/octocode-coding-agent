@@ -3,6 +3,7 @@ import { getLayoutNode, type ScrollLayoutNode } from "../layout-node.ts";
 import type { Component } from "../tui/component.ts";
 import { renderRowFrame } from "../tui/container-walk.ts";
 import { renderIsolatedWith } from "../tui/render-isolation.ts";
+import { withSoftWrapMarks } from "../utils/row-marks.ts";
 import { frameLines, isRowFrame, type RowSource, rowCount } from "../tui/row-source.ts";
 import { intersect, type LayoutContext, renderCached, translateBox, updateClips } from "./context.ts";
 import { rowAt, rowsBetween } from "./row-window.ts";
@@ -149,8 +150,18 @@ function layoutExact(
 	});
 }
 
-/** Lay out a scroll view: its content, the scroll position and the rows in view. */
+/** Lay out a scroll view: its content (soft wraps marked for copy), the scroll position and the rows in view. */
 export function layoutScroll(
+	context: LayoutContext,
+	node: ScrollLayoutNode,
+	component: Component,
+	frame: { x: number; y: number; width: number; height: number | undefined; clip: LayoutRect },
+	layoutChild: LayoutChild,
+): LayoutBox {
+	return withSoftWrapMarks(() => layoutScrollContent(context, node, component, frame, layoutChild));
+}
+
+function layoutScrollContent(
 	context: LayoutContext,
 	node: ScrollLayoutNode,
 	component: Component,

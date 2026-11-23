@@ -267,6 +267,15 @@ const referenceCases: ReferenceCase[] = [
 		expected: { ambiguous: ["anthropic/claude-opus-4-8", "gw-b/claude-opus-4-8"], usableCount: 2 },
 	},
 	{
+		// Without a usable provider an id sort would choose the provider (a region-prefixed Bedrock id sorts last).
+		name: "fuzzy matches on several providers with none usable are ambiguous",
+		text: "opus",
+		expected: {
+			ambiguous: ["anthropic/claude-opus-4-8", "gw-a/anthropic/claude-opus-4.8", "gw-b/claude-opus-4-8"],
+			usableCount: 0,
+		},
+	},
+	{
 		name: "fuzzy id tie resolves to the sole usable provider",
 		text: "opus",
 		usable: ["anthropic"],
@@ -738,6 +747,7 @@ describe("default model selection", () => {
 
 		const registry = {
 			getAvailableSnapshot: () => [aiGatewayModel],
+			isModelDeprecated: () => false,
 			getProviderBilling: () => "metered",
 		} as unknown as Parameters<typeof findInitialModel>[0]["modelRuntime"];
 
@@ -774,7 +784,12 @@ describe("default model selection", () => {
 				provider === savedDeepSeekModel.provider && modelId === savedDeepSeekModel.id ? savedDeepSeekModel : undefined,
 			hasConfiguredAuth: (provider: string) => provider === "spark-two",
 			getAvailableSnapshot: () => [localDeepSeekModel],
+			isModelDeprecated: () => false,
 			getProviderBilling: () => "metered",
+			getProvider: (provider: string) => ({ id: provider }),
+			isProviderDisabled: () => false,
+			getPlanDisabledReason: () => undefined,
+			isModelHidden: () => false,
 		} as unknown as Parameters<typeof findInitialModel>[0]["modelRuntime"];
 
 		const result = await findInitialModel({
@@ -787,6 +802,9 @@ describe("default model selection", () => {
 
 		expect(result.model?.provider).toBe("spark-two");
 		expect(result.model?.id).toBe("deepseek-v4-flash");
+		expect(result.fallbackMessage).toBe(
+			"Saved default deepseek/deepseek-v4-flash not used: no credentials. Using spark-two/deepseek-v4-flash (billed per token).",
+		);
 	});
 
 	describe("per-provider default models", () => {
@@ -813,6 +831,7 @@ describe("default model selection", () => {
 			getModel: () => undefined,
 			hasConfiguredAuth: () => true,
 			getAvailableSnapshot: () => available,
+			isModelDeprecated: () => false,
 			getProviderBilling: (provider: string) => (planBilled.has(provider) ? "plan" : "metered"),
 		} as unknown as Parameters<typeof findInitialModel>[0]["modelRuntime"];
 		const start = (options: Partial<Parameters<typeof findInitialModel>[0]>) =>
@@ -853,6 +872,7 @@ describe("default model selection", () => {
 				const withDefault = {
 					...runtime,
 					getAvailableSnapshot: () => [...available, openaiDefault],
+					isModelDeprecated: () => false,
 				} as unknown as typeof runtime;
 				const result = await start({ modelRuntime: withDefault });
 				expect(`${result.model?.provider}/${result.model?.id}`).toBe(`openai/${openaiDefault.id}`);
@@ -892,6 +912,7 @@ describe("default model selection", () => {
 					getModel: (provider: string, id: string) => models.find((m) => m.provider === provider && m.id === id),
 					hasConfiguredAuth: () => true,
 					getAvailableSnapshot: () => models,
+					isModelDeprecated: () => false,
 					getProviderBilling: () => "metered",
 					allowsUnattendedUse: (provider: string) => provider !== qwen.provider,
 				}) as unknown as Parameters<typeof findInitialModel>[0]["modelRuntime"];

@@ -29,13 +29,14 @@ describe("/model", () => {
 		await t.until(shows("Model catalogs refreshed"), "catalog refresh finished");
 		t.press(KEY.down);
 		await t.until(shows(/›\s+faux-2/), "cursor on faux-2");
+		// Enter switches this chat at once: no question comes first.
 		t.press(KEY.enter);
-		await t.until(shows("Switch this chat"), "switch-or-default choice");
-		expect(t.host.session.model?.id).toBe("faux-1");
-		t.press(KEY.enter);
-		await t.until(shows(/^faux-2 · local\b/m), "footer shows faux-2 and its kind");
+		// The session's activity light leads the model (contract change: status dots, wave C): idle, the light alone.
+		// An idle session's light is ○ (⏺ means running only: the user asked for an animation or a state).
+		await t.until(shows(/^○ faux-2 · local\b/m), "footer shows faux-2 and its kind");
+		expect(await t.text()).not.toContain("Switch this chat");
 		expect(t.host.session.model?.id).toBe("faux-2");
-		expect(await t.text()).toMatch(/^faux-2 · local\b/m);
+		expect(await t.text()).toMatch(/^○ faux-2 · local\b/m);
 		expect(t.host.sessionManager.getEntries().some((e) => e.type === "model_change" && e.modelId === "faux-2")).toBe(
 			true,
 		);

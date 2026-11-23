@@ -31,6 +31,11 @@ export interface RequestLayer {
 	 * none. Each breakpoint keeps its own: a request with long instructions and short history marks both tiers.
 	 */
 	ttl?: string;
+	/**
+	 * The session entry this layer was built from (`message:<entry id>`), stamped by the host that holds the entries
+	 * and only where it can show the layer is that entry's message unchanged. Absent: identity unknown.
+	 */
+	entryKey?: string;
 }
 
 export interface RequestTrace {

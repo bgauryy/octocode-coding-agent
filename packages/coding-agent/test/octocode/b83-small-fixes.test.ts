@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChainQueue, openPrerequisites } from "../../src/octocode/subagents/chain.ts";
 import { PrerequisiteGate } from "../../src/octocode/subagents/prerequisites.ts";
 import { endRun } from "../../src/octocode/subagents/run-audit.ts";
-import { readCatalog } from "../../src/octocode/subagents/catalog.ts";
+import { readCatalog } from "../../src/core/model-catalog/index-store.ts";
 
 describe("a foreground child's end", () => {
 	it("reaches the prerequisite gate, so `after: agent:<id>` accepts it", () => {

@@ -34,6 +34,8 @@ export interface CompletionsState extends StreamedReasoningDetails {
 	streamStarted?: boolean;
 	blockedPrompt?: string;
 	usage?: Chunk["usage"];
+	/** Every cache marker the request carried was a 1h marker, so its reported writes are 1h writes (`parseChunkUsage`). */
+	longCacheWrites?: boolean;
 	reasoningField?: string;
 	emptyToolInputs?: Set<string>;
 }

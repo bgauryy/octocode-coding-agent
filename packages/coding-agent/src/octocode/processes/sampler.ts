@@ -99,6 +99,8 @@ export interface SamplerOptions {
 }
 
 export interface ProcessSampler {
+	/** Records a sample soon (one `ps`, coalesced with one already running): what owns this process's children changed. */
+	sampleNow(): void;
 	/**
 	 * Clears the timer and records the final sample (`ended`) at once, with the children of the last table read: a process
 	 * that shuts down never waits for a `ps`. A table read still running is dropped, so the final sample stays the last.
@@ -164,17 +166,29 @@ export function startProcessSampler(options: SamplerOptions): ProcessSampler {
 		lastTable = table;
 		record(false);
 	};
-	const sample = () => {
-		if (stopped || sampling) return;
+	/** Asked for (`sampleNow`) while a read ran: that read's table may predate the change, so one more follows it. */
+	let again = false;
+	// A periodic round that comes due while a read runs is dropped; a requested one is not.
+	const sample = (requested = false) => {
+		if (stopped) return;
+		if (sampling) {
+			again ||= requested;
+			return;
+		}
 		sampling = true;
 		queue = queue.then(sampleOnce).finally(() => {
 			sampling = false;
+			if (again) {
+				again = false;
+				sample(true);
+			}
 		});
 	};
 	sample();
-	const timer = options.intervalMs > 0 ? setInterval(sample, boundedIntervalMs(options.intervalMs)) : undefined;
+	const timer = options.intervalMs > 0 ? setInterval(() => sample(), boundedIntervalMs(options.intervalMs)) : undefined;
 	timer?.unref();
 	return {
+		sampleNow: () => sample(true),
 		stop() {
 			if (stopped) return;
 			stopped = true;

@@ -1,1 +1,1 @@
-Your coordinator handed you {{ref}} ({{title}}) as well: done means {{goal}}. You may update it like your own item: claim steps, note progress, and record its completion when its goal holds.
+Your coordinator handed you {{ref}} ({{title}}) as well: done means {{goal}}. You may update it like your own item: claim steps and note progress, then report.

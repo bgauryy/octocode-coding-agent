@@ -1,18 +1,24 @@
-import { modelsDevLimits } from "./models-dev-limits.ts";
+import {
+	getEffortThinkingLevelMap,
+	getModelsDevCost,
+	modelsDevInput,
+	modelsDevLimits,
+	modelsDevReasoning,
+	modelsDevToolCall,
+} from "../../src/catalog/models-dev-fields.ts";
 import type { Model, OpenAICompletionsCompat } from "../../src/types.ts";
 import { assertExactModelIds } from "../model-data.ts";
-import { getEffortThinkingLevelMap } from "../models-dev-reasoning-options.ts";
 import {
 	KIMI_K3_COST,
 	KIMI_K3_OPENAI_COMPAT,
 	KIMI_OPENAI_COMPAT,
+	MINIMAX_HIDDEN_MODEL_IDS,
 	QWEN_TOKEN_PLAN_EXCLUDED_MODEL_IDS,
 	QWEN_TOKEN_PLAN_FALLBACK_THINKING_LEVEL_MAP,
 	QWEN_TOKEN_PLAN_INDIVIDUAL_MODEL_IDS,
 	QWEN_TOKEN_PLAN_REASONING_EFFORT_FALLBACK_MODEL_IDS,
 } from "./constants.ts";
 import { refreshesProvider } from "./options.ts";
-import { getModelsDevCost } from "./pricing.ts";
 import { createKimiCodingModels } from "./processors.ts";
 import { recordModelsDevReasoningOptions } from "./thinking-levels.ts";
 import type { ModelsDevCatalog, ModelsDevModel } from "./types.ts";
@@ -24,14 +30,12 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 		{ key: "minimax", provider: "minimax", baseUrl: "https://api.minimax.io/anthropic" },
 		{ key: "minimax-cn", provider: "minimax-cn", baseUrl: "https://api.minimax.cn/anthropic" },
 	] as const;
-	// MiniMax asked to hide older models from its direct providers (#2596).
-	const minimaxHiddenIds = new Set(["MiniMax-M2", "MiniMax-M2.1", "MiniMax-M2.5", "MiniMax-M2.5-highspeed"]);
 
 	for (const { key, provider, baseUrl } of minimaxVariants) {
 		if (data[key]?.models) {
 			for (const [modelId, model] of Object.entries(data[key].models)) {
 				const m = model;
-				if (m.tool_call !== true || minimaxHiddenIds.has(modelId)) continue;
+				if (!modelsDevToolCall(m) || MINIMAX_HIDDEN_MODEL_IDS.has(modelId)) continue;
 				// Models with effort levels (e.g. MiniMax-M3.1-Flash) take adaptive thinking with
 				// output_config.effort and reject thinking.type="disabled" (no "none" effort, so off is null).
 				const thinkingLevelMap = getEffortThinkingLevelMap(m.reasoning_options ?? []);
@@ -43,8 +47,8 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 					provider,
 					// MiniMax's Anthropic-compatible API - SDK appends /v1/messages
 					baseUrl,
-					reasoning: m.reasoning === true,
-					input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+					reasoning: modelsDevReasoning(m),
+					input: modelsDevInput(m.modalities),
 					cost: getModelsDevCost(m.cost),
 					...modelsDevLimits(m.limit),
 					...(thinkingLevelMap ? { thinkingLevelMap, compat: { forceAdaptiveThinking: true } } : {}),
@@ -74,7 +78,7 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 
 	for (const { key, provider, baseUrl } of moonshotVariants) {
 		for (const [modelId, m] of Object.entries(moonshotModels[key])) {
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 
 			const isKimiK3 = modelId === "kimi-k3";
 			const compat = { ...(isKimiK3 ? KIMI_K3_OPENAI_COMPAT : KIMI_OPENAI_COMPAT) };
@@ -84,8 +88,8 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 				api: "openai-completions",
 				provider,
 				baseUrl,
-				reasoning: isKimiK3 || m.reasoning === true,
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: isKimiK3 || modelsDevReasoning(m),
+				input: modelsDevInput(m.modalities),
 				// Moonshot does not bill cache writes; models.dev lists the input rate as cache_write for Kimi K3.
 				cost: isKimiK3
 					? { ...KIMI_K3_COST }
@@ -148,7 +152,7 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 
 		for (const [modelId, model] of Object.entries(providerModels)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 			if (m.status === "deprecated") continue;
 
 			models.push({
@@ -158,9 +162,9 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 				provider,
 				baseUrl,
 				compat: xiaomiCompat,
-				reasoning: m.reasoning === true,
-				...(m.reasoning === true ? { thinkingLevelMap: xiaomiThinkingLevelMap } : {}),
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: modelsDevReasoning(m),
+				...(modelsDevReasoning(m) ? { thinkingLevelMap: xiaomiThinkingLevelMap } : {}),
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				...modelsDevLimits(m.limit),
 			});
@@ -205,7 +209,7 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 
 		for (const [modelId, model] of Object.entries(providerModels ?? {})) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 			if (QWEN_TOKEN_PLAN_EXCLUDED_MODEL_IDS.has(modelId)) continue;
 			if (modelIds && !modelIds.has(modelId)) continue;
 			const thinkingLevelMap =
@@ -222,8 +226,8 @@ export function addModelsDevPlanModels(data: ModelsDevCatalog, models: Model<any
 				baseUrl,
 				compat: thinkingLevelMap ? qwenTokenPlanCompat : { ...qwenTokenPlanCompat, supportsReasoningEffort: false },
 				...(thinkingLevelMap ? { thinkingLevelMap } : {}),
-				reasoning: m.reasoning === true,
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: modelsDevReasoning(m),
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				...modelsDevLimits(m.limit),
 			});

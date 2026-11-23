@@ -125,6 +125,10 @@ export function createFeatureContext(host: RunnerHost): FeatureContext {
 			host.assertActive();
 			return host.bindings.getContextUsageFn();
 		},
+		getCacheWarmingReport: () => {
+			host.assertActive();
+			return host.bindings.getCacheWarmingReportFn();
+		},
 		compact: (options) => {
 			host.assertActive();
 			host.bindings.compactFn(options);

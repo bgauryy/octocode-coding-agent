@@ -13,7 +13,6 @@ import { registerMcpReload, registerMcpSwitch, switchMcpServer } from "./switch.
 import { reportProblems } from "./report.ts";
 import { say, sayUntrustedProject } from "./notice.ts";
 import { loadMcpRuntime } from "./runtime.lazy.ts";
-import { envFlag, SKILL_SNAPSHOT_FILE_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { isSelected } from "./exposure.ts";
 import { serverListings } from "./listings.ts";
@@ -35,6 +34,19 @@ import type { McpFeatureState } from "./state.ts";
 import { loadOnDemand, registerTools } from "./tool-registry.ts";
 import { preparedCallOf } from "./tool-definition.ts";
 import { takeLaunchWarnings } from "./warnings.ts";
+import { waitsForDiscoveredFolders } from "./launch-templates.ts";
+
+/**
+ * Whether the server's launch names folders the host adds at resource discovery and did not announce before it. A
+ * launch that cannot be prepared waits as well: its connection reports the failure when it starts.
+ */
+function waitsForDiscovery(state: McpFeatureState, server: McpServer): boolean {
+	try {
+		return waitsForDiscoveredFolders(state.unexpandedLaunch(server.entry, state.sessionCwd));
+	} catch {
+		return true;
+	}
+}
 
 /** Whether the launch the server would get now differs from the one it got; a launch that cannot be prepared does not count. */
 function launchChanged(state: McpFeatureState, server: McpServer, launched: McpServerEntry): boolean {
@@ -106,9 +118,6 @@ export function registerSessionEvents(state: McpFeatureState): void {
 		sayUntrustedProject(ctx);
 		state.waitedForStartup = false;
 		state.startupGate.close();
-		// A subagent that runs on its coordinator's skill snapshot has its skill folders already: discovery cannot change
-		// its servers' launches, so they start now instead of after every other start handler.
-		if (envFlag(process.env, SUBAGENT_ENV) && process.env[SKILL_SNAPSHOT_FILE_ENV]) state.startupGate.open();
 		state.sessionCwd = ctx.cwd;
 		// The recent-tool set is read per folder, so it is dropped once the new folder is set; a session that saved the
 		// set it declared declares it again (`recent-session.ts`), so a resume keeps the provider's cached prompt.
@@ -186,12 +195,16 @@ export function registerSessionEvents(state: McpFeatureState): void {
 			reportProblems(state, ctx);
 			return;
 		}
-		// The MCP client loads only now, so sessions without servers never pay for it. Waiting for the session's
-		// resources (`startup-gate.ts`) also lets the first render happen before loading and connecting.
-		const runtime = state.startupGate.ready.then(() => loadMcpRuntime());
+		// The MCP client loads only now, so sessions without servers never pay for it. A launch that names skill folders
+		// the host adds at discovery without announcing them waits for the session's resources (`startup-gate.ts`); any
+		// other launch is the same now, so it starts at once, in parallel with the other start handlers, and the first
+		// prompt waits less for it. A folder a feature's own discovery adds restarts it at the first prompt (`launchChanged`).
+		const gated = state.startupGate.ready.then(() => loadMcpRuntime());
+		let now: Promise<unknown> | undefined;
 		state.pending = Promise.all(
 			enabled.map((server) => {
 				const handed = taken.get(server.entry.name);
+				const runtime = waitsForDiscovery(state, server) ? gated : (now ??= loadMcpRuntime());
 				const start = startConnection(state, server, runtime, true, handed);
 				// The session's end waits for a handed connection to be adopted or closed.
 				return handed ? state.track(start) : start;
@@ -263,10 +276,13 @@ export function registerSessionEvents(state: McpFeatureState): void {
 			await waitForServers(state, changed, ctx.signal);
 		}
 		await waitForDirectServers(state, ctx);
-		// Launch warnings (an allowed folder that was refused, say): tell the user, never the model.
+		// Launch warnings (an allowed folder that was refused, say): tell the user, never the model. A preset checks its
+		// server (the desktop's runs Cua Driver probes) only when this session runs that server.
+		const runs = (name: string) =>
+			state.servers.some((server) => server.entry.name === name && isEnabled(server) && !server.unselected);
 		const warnings = [
 			...takeLaunchWarnings(),
-			...(state.options.presets ?? []).flatMap((preset) => preset.takeWarnings?.() ?? []),
+			...(state.options.presets ?? []).flatMap((preset) => (runs(preset.name) ? (preset.takeWarnings?.() ?? []) : [])),
 		];
 		for (const warning of warnings) say(ctx, warning, "warning");
 		describeServers(state, event.systemPromptOptions);

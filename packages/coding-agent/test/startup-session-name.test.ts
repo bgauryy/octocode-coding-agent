@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { ENV_AGENT_DIR } from "../src/config.ts";
+import { trustFolder } from "./octocode/helpers.ts";
 
 const cliPath = resolve(__dirname, "../src/cli.ts");
 // --import takes a module specifier, not a filesystem path.
@@ -66,15 +67,17 @@ function readSessionInfoNames(sessionFile: string): string[] {
 		.map((entry) => entry.name ?? "");
 }
 
+const cliEnv = (dirs: CliDirs): NodeJS.ProcessEnv => ({
+	...process.env,
+	[ENV_AGENT_DIR]: dirs.agentDir,
+	OCTOCODE_OFFLINE: "1",
+});
+
 async function runCli(args: string[], dirs: CliDirs): Promise<CliResult> {
 	let stderr = "";
 	const child = spawn(process.execPath, ["--import", sourceResolverUrl, cliPath, ...args], {
 		cwd: dirs.projectDir,
-		env: {
-			...process.env,
-			[ENV_AGENT_DIR]: dirs.agentDir,
-			OCTOCODE_OFFLINE: "1",
-		},
+		env: cliEnv(dirs),
 		stdio: ["ignore", "ignore", "pipe"],
 	});
 	child.stderr.on("data", (chunk) => {
@@ -110,15 +113,36 @@ function setup(): CliDirs {
 }
 
 describe("startup session name", () => {
+	const args = (dirs: CliDirs) => [
+		"--session",
+		dirs.sessionFile,
+		"--name",
+		"  CLI Named Session  ",
+		"--model",
+		"missing-model",
+		"-p",
+		"hi",
+	];
+
+	// The folder is trusted so the run reaches model validation: a refused (untrusted) run now writes nothing, the name
+	// included (the second case), where it used to append the name before the trust gate refused.
 	it("sets --name on the selected session before runtime model validation", async () => {
 		const dirs = setup();
-		const result = await runCli(
-			["--session", dirs.sessionFile, "--name", "  CLI Named Session  ", "--model", "missing-model", "-p", "hi"],
-			dirs,
-		);
+		trustFolder(dirs.projectDir, cliEnv(dirs));
+		const result = await runCli(args(dirs), dirs);
 
 		expect(result.code).toBe(1);
 		expect(result.signal).toBeNull();
+		expect(result.stderr).not.toContain("is not trusted");
 		expect(readSessionInfoNames(dirs.sessionFile)).toEqual(["CLI Named Session"]);
+	});
+
+	it("writes no name into the session when the trust gate refuses the run", async () => {
+		const dirs = setup();
+		const result = await runCli(args(dirs), dirs);
+
+		expect(result.code).toBe(1);
+		expect(result.stderr).toContain("is not trusted");
+		expect(readSessionInfoNames(dirs.sessionFile)).toEqual([]);
 	});
 });

@@ -1,12 +1,12 @@
 import { truncateToWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui/text";
 import { styledLine } from "@octocodeai/octocode-common/sanitize";
 import type { StatusEntry } from "../../../core/footer-data-provider.ts";
-import { paintStatus } from "../../../theme/status.ts";
+import { activityMark, activityWord, paintStatus } from "../../../theme/status.ts";
 import { PERMISSION_ID } from "../../permission/mode.ts";
 import { STATUS } from "../../shared/status.ts";
 import { STEP_SEPARATOR } from "../../backlog/progress.ts";
 import { fitFooterLine, fitFooterZones, type FooterPaint, type FooterPart } from "./fit.ts";
-import { chipPart, healthParts, plainRow, PRIORITY, sigmaText, wherePart } from "./parts.ts";
+import { chipPart, healthParts, plainRow, PRIORITY, quotaPart, sigmaText, wherePart } from "./parts.ts";
 import type { FooterState } from "./state.ts";
 
 export { contextBar } from "./parts.ts";
@@ -39,6 +39,8 @@ const OWN = {
 /** Commands worth knowing, shown last and only when the line has room. */
 const HINTS = "/providers · /model · /resume";
 const HINTS_PRIORITY = 2;
+/** The activity light's word gives way before the session name; the light itself stays (`keep`). */
+const ACTIVITY_WORD_PRIORITY = 45;
 /** Line-1 details moved to line 2 rank just above the hints, below every detail of line 2's own. */
 const MOVED = HINTS_PRIORITY + 1;
 
@@ -101,6 +103,8 @@ export function footerLines(
 					spills: isAlert(statuses.get(OWN.wakeRetry)),
 					details: true,
 				},
+				// A plan window near its cap, beside the spend: the limit a plan-billed session runs into.
+				quotaPart(state, theme),
 				{ text: sigma, priority: PRIORITY.sigma, keep: true, details: true },
 			],
 		},
@@ -111,12 +115,21 @@ export function footerLines(
 	// `model:effort`, the spelling the agents panel uses for `name:effort`; the short form cuts it to a third of the row.
 	const model = plainRow(`${state.model ?? "no model"}${state.thinking ? `:${state.thinking}` : ""}`);
 	const shortModel = plainRow(truncateToWidth(model, Math.max(1, Math.floor(width / 3)), "…"));
+	// The session's light leads the agent's line, as the model's status lamp: `⏺ needs you · model:effort`, then
+	// `⏺ model:effort` (the word gives way before the session name), then the cut model. Idle shows the light alone.
+	const light = state.activity ? `${activityMark(theme, state.activity, false)} ` : "";
+	const word =
+		state.activity && state.activity.tone !== "idle"
+			? `${activityWord(theme, state.activity)}${theme.fg("dim", " · ")}`
+			: "";
 	const identity: FooterPart[] = [
 		{
-			text: theme.fg("accent", model),
-			priority: 94,
+			text: `${light}${word}${theme.fg("accent", model)}`,
+			...(word ? { middle: `${light}${theme.fg("accent", model)}` } : {}),
+			...(shortModel !== model || word ? { short: `${light}${theme.fg("accent", shortModel)}` } : {}),
+			priority: word ? ACTIVITY_WORD_PRIORITY : 94,
+			later: 94,
 			keep: true,
-			...(shortModel !== model ? { short: theme.fg("accent", shortModel) } : {}),
 		},
 		// The provider's kind beside the model: the first part to go on a narrow terminal.
 		{ text: state.kind ? theme.fg("muted", state.kind) : "", priority: 5 },

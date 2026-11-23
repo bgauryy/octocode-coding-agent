@@ -33,6 +33,8 @@ interface SessionEntryBase {
 	id: string;
 	parentId: string | null;
 	timestamp: string;
+	/** Who paid for the spend the entry carries, resolved when it was appended (`spend-capture.ts`); absent on older entries. */
+	billing?: "plan" | "metered";
 }
 
 /** How a user message entered the agent. Stored on the entry, never sent to the model. */

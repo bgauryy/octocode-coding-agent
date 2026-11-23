@@ -5,7 +5,7 @@ import * as importedModule1 from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type SessionInfo, SessionManager } from "../../src/core/session-manager.ts";
 import type { SessionPickerOptions } from "../../src/core/session-picker.ts";
-import { agents, closeSharedAgentDb } from "../../../db/src/api.ts";
+import { agents, closeSharedAgentDb, sessions } from "../../../db/src/api.ts";
 import { sharedAgentDb, sharedAgentDbWriter } from "../../src/storage/database.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { resumeBrief, shortDuration } from "../../src/octocode/sessions/brief.ts";
@@ -157,6 +157,8 @@ describe("session extras", () => {
 			pid_started: processStartTime(process.pid) ?? null,
 			unpriced: 0,
 			dir: path.dirname(file),
+			// The light of the process that has it open (contract change, RFC app-state T4): idle at the start.
+			activity: "idle",
 		});
 		// Totals are read once at start, then each reply adds its usage: agent_end does not rescan the session.
 		await fire("message_end", { type: "message_end", message: { role: "assistant", usage: usage(0.5, 25) } }, ctx);
@@ -245,6 +247,8 @@ describe("session extras", () => {
 		requests[0]({ branch: "old" });
 		await written();
 		expect(row(host.id)?.branch).toBe("new");
+		// A turn that moved nothing in git runs no git: the folder becomes a repository, so this one asks again.
+		execFileSync("git", ["init", "-q"], { cwd, stdio: "pipe" });
 		await host.fire("agent_end", { type: "agent_end" }, host.ctx);
 		await host.fire("session_shutdown", { type: "session_shutdown" }, host.ctx);
 		const write = vi.spyOn(SessionIndex.prototype, "gitLater");
@@ -765,6 +769,25 @@ describe("/resume", () => {
 		expect(ctx.ui.notes.at(-1)!.message).not.toMatch(/Current work/);
 		expect(ctx.ui.notes.at(-1)!.message).toMatch(/Old task/);
 		expect(current.commands.get("resume")!.complete!("a")).toEqual([{ value: "all", label: "all" }]);
+	});
+
+	it("shows what another live session is doing from the light its process wrote, and nothing once that process is gone", async () => {
+		const { current } = await withSessions();
+		const agent = sharedAgentDb();
+		// `other` is open in a live process (this test's own pid stands in for it) that is waiting for its user.
+		agent.db.prepare("UPDATE sessions SET pid = ? WHERE id = 'other'").run(process.pid);
+		sessions.setActivity(agent.db, "other", process.pid, "waiting");
+		const ctx = Object.assign(current.ctx, { hasUI: false });
+		await current.commands.get("resume")!.handler("", ctx);
+		expect(ctx.ui.notes.at(-1)!.message).toMatch(/◇ Old task · needs you · feat\/x · 2h ago/);
+		const calls = stubPicker(current.ctx, async () => undefined);
+		await current.commands.get("resume")!.handler("", Object.assign(current.ctx, { hasUI: true }));
+		expect(calls[0].options.extras!(["other"]).get("other")).toMatchObject({ live: true, activity: "waiting" });
+		// A dead pid's light is stale: the row is a saved session again, with no activity.
+		agent.db.prepare("UPDATE sessions SET pid = 2147483646 WHERE id = 'other'").run();
+		expect(calls[0].options.extras!(["other"]).get("other")).not.toHaveProperty("activity");
+		await current.commands.get("resume")!.handler("", Object.assign(current.ctx, { hasUI: false }));
+		expect(ctx.ui.notes.at(-1)!.message).toMatch(/○ Old task · feat\/x · 2h ago/);
 	});
 
 	it("still lists without the agent database, and says when Octocode cannot list", async () => {

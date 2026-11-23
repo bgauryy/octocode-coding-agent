@@ -23,7 +23,7 @@ import type { agentToolSpec } from "../native/tools/agent/spec.ts";
 import { resumeChild, resumedTask, resumeText } from "./children.ts";
 import { Isolation } from "./isolation.ts";
 import { nestingRefusal } from "./process/child-env.ts";
-import { finishChildNotes } from "./child-tasks.ts";
+import { bookkeepingFailed, finishChildNotes } from "./child-tasks.ts";
 import { delegatedCostNote } from "./delegated-cost.ts";
 import {
 	chainHandoff,
@@ -208,10 +208,11 @@ export async function spawnAgent(
 				// A run that reported may take delegated cost past a new multiple of this session's own: its report says so.
 				const cost =
 					outcome && current()
-						? delegatedCostNote(runs, ctx.sessionManager.getEntries(), outcome.usage.cost.total)
+						? delegatedCostNote(runs, ctx, outcome.usage.cost.total, runs.live.get(run.identity.id))
 						: "";
 				return `${note}${lateNote}${cost}`;
 			})
+			.catch(bookkeepingFailed) // a failure here rides in the report's footer: the report goes out either way
 			.finally(() => {
 				runs.live.delete(run.identity.id);
 				run.release();
@@ -241,7 +242,7 @@ export async function spawnAgent(
 		const details = runDetails(run, session);
 		run.identity.runId = details.runId;
 		runs.live.set(run.identity.id, details);
-		const track = tracker(run.identity, details, modelLookup(ctx), ctx);
+		const tracking = tracker(run.identity, details, modelLookup(ctx), ctx);
 		// Only a background run that is not isolated can stay reachable for a follow-up; a runner's conversation lives in its own CLI.
 		const isolated = params.isolate === true || resumed?.worktree !== undefined;
 		const lingers = !runner && params.background === true && !isolated;
@@ -263,7 +264,7 @@ export async function spawnAgent(
 			const task = withIdentity(`${mail ? "" : told.prefix}${childTaskInput(told.text, parts)}`, assigned, archive);
 			run.identity.assignment = assignmentText(assigned, archive, parts, skillPlan.inline); // re-read after compacting
 			const launch = (runSignal: AbortSignal | undefined, update: AgentUpdate | undefined, turn: StaggerTurn) => {
-				const tracked = track(update);
+				const tracked = tracking(update);
 				const progress: typeof tracked = (change) => {
 					if (!current()) return;
 					if (change.responding) turn.warm();
@@ -308,7 +309,7 @@ export async function spawnAgent(
 							working: (probe) => runs.groups.working(run.identity.id, probe),
 							workingChanged: () => runs.reports.reportingChanged(),
 						});
-				return env.record(run, details, session, work);
+				return env.record(run, details, session, tracking.withScreenshots(work));
 			};
 			return {
 				staggered: staggeredLaunch(prefix, run.identity.cacheTtlMs, launch, run.identity.staggers === true && !runner),
@@ -369,6 +370,7 @@ export async function spawnAgent(
 			const call = { runs, run, details, task: params.task, finish, sessionId, warning, onUpdate };
 			const handing = foregroundHandOver(call, holdTurn);
 			const launch = started.staggered(handing?.onUpdate ?? onUpdate);
+			// A handed-over child still runs: its background run keeps the slot and worktree, and calls `finish` when it ends.
 			return await runForeground(
 				runs,
 				run,
@@ -379,7 +381,7 @@ export async function spawnAgent(
 				launchSignal,
 				onUpdate,
 				handing?.handOver,
-			);
+			).finally(() => (handedOff = details.status === "background"));
 		}
 		startBackground(runs, run, details, params.task, started.staggered(), finish, sessionId, window);
 		handedOff = true;

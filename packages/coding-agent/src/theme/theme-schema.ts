@@ -8,7 +8,7 @@
  */
 
 import { type Static, type TProperties, Type } from "typebox";
-import { Compile } from "typebox/compile";
+import { compileLazily } from "../utils/compile-lazily.ts";
 import { THEME_TOKENS, type ThemeColorValues, type ThemeTokenDescriptors } from "./theme-tokens.ts";
 
 function colorValue(description?: string) {
@@ -88,7 +88,7 @@ export const ThemeJsonSchema = Type.Object(
 	},
 );
 
-const compiledThemeSchema = Compile(ThemeJsonSchema);
+const compiledThemeSchema = compileLazily(ThemeJsonSchema);
 
 export type ValidatedThemeJson = Static<typeof ThemeJsonSchema>;
 
@@ -106,8 +106,9 @@ export function validateThemeJson(label: string, json: unknown): ValidatedThemeJ
 		);
 	}
 
-	if (!compiledThemeSchema.Check(json)) {
-		const errors = Array.from(compiledThemeSchema.Errors(json));
+	const validator = compiledThemeSchema();
+	if (!validator.Check(json)) {
+		const errors = Array.from(validator.Errors(json));
 		const missingColors = new Set<string>();
 		const otherErrors: string[] = [];
 

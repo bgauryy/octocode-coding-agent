@@ -14,6 +14,7 @@ type Inputs = Parameters<typeof octocodePromptSections>[0];
 const FLAGS = [
 	"canDelegate",
 	"canUseAgent",
+	"canStartRunner",
 	"readOnly",
 	"canSave",
 	"canShell",

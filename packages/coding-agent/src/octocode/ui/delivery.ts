@@ -16,9 +16,9 @@ type Options = Parameters<Send>[1];
  * While a run is active, a message that may start a turn joins Octocode's steering or follow-up queue. Octocode shows only the
  * user's own queued text, and when the user presses Esc (or dequeues) it clears the whole queue but puts back only
  * that text. This ledger records each queued message by its `details` object, which Octocode keeps on the message it later
- * starts. A message still unstarted when the run settles was dropped. In the TUI, the only place that clears the
- * queue, it is appended to the conversation without starting a turn: the user interrupted, so nothing restarts, but
- * nothing is lost. A status segment shows how many messages wait meanwhile.
+ * starts. A message still unstarted when the run settles was dropped: a user Stop or a dequeue cleared the queue, from
+ * any interface. It is appended to the conversation without starting a turn: the user interrupted, so nothing restarts,
+ * but nothing is lost. A status segment shows how many messages wait meanwhile.
  *
  * Installed on `api` itself, before any feature registers, so every `api.session.sendMessage` call goes through it. Messages
  * without a details object, `nextTurn` messages and `triggerTurn: false` messages are not queued this way and pass
@@ -109,15 +109,15 @@ export class Delivery {
 		const generation = this.generation;
 		const dropped: Array<{ message: Message; accepted?: Promise<void> }> = [];
 		for (const [details, entry] of this.waiting) {
-			// An interrupt that does not clear the agent's queue (the application or RPC abort) leaves the message there:
-			// the next run delivers it, so it stays counted and is not appended a second time.
+			// An abort that leaves the agent's queue (a peer's held mail, a compaction, a replacement) leaves the message
+			// there: the next run delivers it, so it stays counted and is not appended a second time.
 			if (stillQueued(ctx, details)) continue;
 			this.waiting.delete(details);
 			dropped.push(entry);
 		}
 		this.paint();
-		// Whatever cleared the queue (Esc in the TUI, `clear_queue` over RPC or the application port), these are verifiably
-		// no longer in it: without the re-append a report waits for shutdown and handed mail blocks the inbox.
+		// Whatever cleared the queue (a user Stop or a dequeue, from the TUI, RPC or the application port), these are
+		// verifiably no longer in it: without the re-append a report waits for shutdown and handed mail blocks the inbox.
 		if (dropped.length === 0) return;
 		let kept = 0;
 		const failures: string[] = [];

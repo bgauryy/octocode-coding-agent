@@ -51,6 +51,36 @@ const full: SessionExtras = {
 	children: 2,
 };
 
+const rowLines = (extras: SessionExtras, width = 100): string[] =>
+	renderSessionRow({
+		node: { session: info(), depth: 0, isLast: true, ancestorContinues: [] },
+		width,
+		selected: false,
+		current: false,
+		confirmingDelete: false,
+		showPath: false,
+		extras,
+		transcriptMatch: false,
+	}).map(stripAnsi);
+
+describe("a live session's activity in its row", () => {
+	it("shows what another live session is doing as the activity badge, not only the presence dot", () => {
+		const [title, line2] = rowLines({ live: true, activity: "waiting", cost: "≈$1.84" });
+		expect(title).toContain("◇ hello");
+		expect(line2.trimStart().startsWith("needs you · ")).toBe(true);
+		expect(rowLines({ live: true, activity: "error" })[1]).toContain("failed");
+		expect(rowLines({ live: true, activity: "working" })[1]).toContain("working");
+		// The word stays when the line narrows: it is what the row is for.
+		expect(rowLines({ live: true, activity: "waiting", ...full }, 40)[1]).toContain("needs you");
+	});
+
+	it("keeps the presence dot alone for a live session whose light is unknown (an older Octocode has it open)", () => {
+		const [title, line2] = rowLines({ live: true });
+		expect(title).toContain("● hello");
+		expect(line2).not.toMatch(/needs you|working|idle|failed/);
+	});
+});
+
 describe("session row line 2", () => {
 	it("shows the child-agent count, singular and plural", () => {
 		expect(detail({ children: 2 }, 120)).toContain("2 agents");

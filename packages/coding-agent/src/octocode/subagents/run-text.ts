@@ -5,12 +5,22 @@ import { formatDuration } from "../shared/format.ts";
 const cost = (run: Pick<AgentRun, "cost" | "unpriced">): string =>
 	`$${run.cost.toFixed(run.cost < 1 ? 3 : 2)}${run.unpriced ? "+" : ""}`;
 
-/** One line per past or running run: agent, profile, how it ended, what it cost and how long it took. */
-export function recentRunsText(runs: readonly AgentRun[], now = Date.now()): string {
+/**
+ * One line per past or running run: agent, profile, how it ended (or what it is doing), what it cost and how long it
+ * took. `doing` names what a run that has not ended is doing now, in the activity light's words (`idle`, `needs you`),
+ * for an agent something live answers for; a run it does not know keeps `running`.
+ */
+export function recentRunsText(
+	runs: readonly AgentRun[],
+	now = Date.now(),
+	doing?: (run: AgentRun) => string | undefined,
+): string {
 	if (runs.length === 0) return "";
 	const lines = runs.map((run) => {
 		const how =
-			run.endedAt === undefined ? "running" : `${run.endReason ?? "ended"}${run.outcome ? `, ${run.outcome}` : ""}`;
+			run.endedAt === undefined
+				? (doing?.(run) ?? "running")
+				: `${run.endReason ?? "ended"}${run.outcome ? `, ${run.outcome}` : ""}`;
 		const took = formatDuration((run.endedAt ?? now) - run.startedAt);
 		return `  ${run.agentId} (${run.profile ?? run.kind}) ${how} · ${took} · ${cost(run)}${run.goal ? ` · ${run.goal}` : ""}`;
 	});

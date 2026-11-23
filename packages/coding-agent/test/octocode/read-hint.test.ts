@@ -92,18 +92,19 @@ describe("createReadHint", () => {
 		const hint = createReadHint(active);
 		for (let i = 0; i < READ_HINT_LIMIT; i++)
 			expect(hint("rg foo", cwd, "s1")).toBe(
-				"Hint: search source with `mcp__research__search_code`; use bash for source only after they refuse the path or fail. Bash is for builds, tests, scripts and git.",
+				// The research route keeps quick exact lookups in the shell (`shared/research-routes.md`), so the hint names the tools without forbidding bash.
+				"Hint: search source with `mcp__research__search_code`, as the research server routes it; quick exact lookups (a known spelling, a line range) stay in the shell.",
 			);
 		expect(hint("rg foo", cwd, "s1")).toBeUndefined();
 	});
 
-	it("routes a print to the reader and a search to the search tools, bash only after they refuse or fail", () => {
+	it("routes a print to the reader and a search to the search tools, as the research server routes", () => {
 		const hint = createReadHint(active);
 		expect(hint("cat src/a.ts", cwd, "s1")).toContain(
-			`read source with \`${RESEARCH.reader}\`; use bash for source only after`,
+			`read source with \`${RESEARCH.reader}\`, as the research server routes it`,
 		);
 		expect(hint("rg foo src", cwd, "s1")).toContain(
-			`search source with \`${RESEARCH.search}\`; use bash for source only after`,
+			`search source with \`${RESEARCH.search}\`, as the research server routes it`,
 		);
 	});
 

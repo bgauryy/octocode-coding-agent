@@ -24,7 +24,8 @@ import {
 } from "../../../core/provider-templates/models.ts";
 import { removeTemplateKey, saveTemplateKey } from "../../../core/provider-templates/key-store.ts";
 import { PROVIDER_TEMPLATES, type ProviderTemplate } from "../../../core/provider-templates/templates.ts";
-import { type Catalog, loadCatalog, modelsDevEnabled } from "../../../octocode/subagents/catalog.ts";
+import { type Catalog, providerListing } from "../../../core/model-catalog/index-shape.ts";
+import { loadCatalog, modelsDevEnabled } from "../../../core/model-catalog/index-store.ts";
 import type { ModelsJsonModel } from "../../../core/model-config.ts";
 import { parseContextSize } from "../../../utils/token-count.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
@@ -62,10 +63,7 @@ function templateLabel(template: ProviderTemplate): string {
 
 /** The models.dev listing of one provider, from the saved index (refreshed when stale; off with OCTOCODE_MODELS_DEV=0). */
 function catalogListing(catalog: Catalog | undefined): (provider: string) => ListedModel[] {
-	return (provider) =>
-		Object.entries(catalog?.models ?? {})
-			.filter(([key]) => key.startsWith(`${provider}/`))
-			.map(([key, model]) => ({ ...model, id: key.slice(provider.length + 1) }));
+	return (provider) => providerListing(catalog, provider);
 }
 
 const contextText = (model: TemplateModel) =>

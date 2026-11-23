@@ -16,7 +16,7 @@ import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { getModelSelectorSearchText } from "../model-search.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { HintBar, keyHint, keyText, moveHint, type RankedHint } from "../../../theme/theme-tui-helpers.ts";
+import { HintBar, keyHint, keyText } from "../../../theme/theme-tui-helpers.ts";
 import {
 	type DefaultModelReference,
 	type DefaultModelContext,
@@ -28,12 +28,12 @@ import {
 	sortModelItems,
 	groupModelItems,
 } from "./model-selector/model-items.ts";
-import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { filterByProvider, providerLine, providersOf, stepProvider } from "./model-selector/provider-filter.ts";
 import { ModelDetailPanel } from "./model-selector/detail-panel.ts";
 import { emptyModelListText } from "./model-selector/empty-state.ts";
+import { pickerHints } from "./model-selector/hints.ts";
+import { type RefreshStatus, refreshFailure, refreshStatus } from "./model-selector/refresh-status.ts";
 import { modelRowLines } from "./model-selector/rows.ts";
-import { type SwitchChoice, SwitchChoiceSlot } from "./model-selector/switch-choice.ts";
 import { listRows, listTheme } from "./list-kit.ts";
 
 /** Lines around the list: borders, title, default, scope and provider lines, the panel, hints. */
@@ -42,8 +42,15 @@ const CHROME_ROWS = 18;
 const DETAIL_LIST_ROWS = 3;
 
 /**
- * The /model picker: a `⌕` search line over the models grouped by provider, the highlighted model's facts under it,
- * and the switch question after Enter when a default can be saved. Printable keys always search (a bare `d` too).
+ * What a save key asks of the highlighted model: `both` switches this chat and saves it as the default for new chats;
+ * `provider` makes it its provider's preferred model and leaves the chat as it is.
+ */
+export type ModelSave = "both" | "provider";
+
+/**
+ * The /model picker: a `⌕` search line over the models grouped by provider and the highlighted model's facts under it.
+ * Enter switches this chat; the save key also saves the default; the open details offer the provider's preferred
+ * model. Printable keys always search (a bare `d` too).
  */
 export class ModelSelectorComponent extends Container implements Focusable {
 	private readonly list: ListView<ModelItem>;
@@ -59,7 +66,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private currentModel?: Model<any>;
 	private modelRuntime: ModelRuntime;
 	private onSelectCallback: (model: Model<any>) => void;
-	private onSelectAsDefaultCallback?: (model: Model<any>, choice?: Exclude<SwitchChoice, "chat">) => void;
+	private onSelectAsDefaultCallback?: (model: Model<any>, save: ModelSave) => void;
 	private onCancelCallback: () => void;
 	private errorMessage?: string;
 	private refreshStatusMessage = "Refreshing model catalogs…";
@@ -78,7 +85,6 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private details = false;
 	private readonly panel: ModelDetailPanel;
 	private readonly hints = new HintBar([]);
-	private choiceSlot = new SwitchChoiceSlot();
 
 	constructor(
 		tui: TUI,
@@ -88,7 +94,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		onSelect: (model: Model<any>) => void,
 		onCancel: () => void,
 		initialSearchInput?: string,
-		onSelectAsDefault?: (model: Model<any>, choice?: Exclude<SwitchChoice, "chat">) => void,
+		onSelectAsDefault?: (model: Model<any>, save: ModelSave) => void,
 		defaultModel?: DefaultModelReference,
 		defaultContext?: DefaultModelContext,
 	) {
@@ -116,7 +122,10 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			},
 			row: (item, state) => this.row(item, state),
 		});
-		this.list.onSelect = (item) => this.handleSelect(item.model);
+		this.list.onSelect = (item) => {
+			this.dispose();
+			this.onSelectCallback(item.model);
+		};
 		this.list.onCancel = () => {
 			this.dispose();
 			this.onCancelCallback();
@@ -125,6 +134,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			selected: this.list.getSelectedItem(),
 			runtime: this.modelRuntime,
 			details: this.details,
+			canPrefer: this.onSelectAsDefaultCallback !== undefined,
 			error: this.errorMessage,
 			refresh: this.refreshStatusMessage,
 			refreshed: this.refreshStatusSuccess,
@@ -147,7 +157,6 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		this.addChild(new Spacer(1));
 		this.addChild(this.list);
 		this.addChild(this.panel);
-		this.addChild(this.choiceSlot);
 		this.addChild(this.hints);
 		this.addChild(new DynamicBorder());
 
@@ -194,6 +203,8 @@ export class ModelSelectorComponent extends Container implements Focusable {
 				current: modelsAreEqual(this.currentModel, item.model),
 				isDefault: this.isDefaultModel(item.model),
 				kind: providerAccessLabel(this.modelRuntime, item.provider),
+				added: this.modelRuntime.getCatalogUpdate(item.model)?.source === "models.dev",
+				deprecated: this.modelRuntime.isModelDeprecated(item.model),
 			},
 		);
 	}
@@ -229,20 +240,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		try {
 			const result = await refreshModelCatalogs(this.modelRuntime, this.refreshAbortController.signal);
 			if (this.closed) return;
-			this.refreshStatusMessage = "";
-			if (result.aborted && timedOut) {
-				this.errorMessage = "Model refresh timed out; showing cached models.";
-			} else if (result.errors.size === 1) {
-				this.errorMessage = `Could not refresh ${result.errors.keys().next().value}; showing cached models.`;
-			} else if (result.errors.size > 1) {
-				this.errorMessage = `Could not refresh ${result.errors.size} model catalogs (${[...result.errors.keys()].join(", ")}); showing cached models.`;
-			} else {
-				this.errorMessage = this.modelRuntime.getError();
-				if (!this.errorMessage) {
-					this.refreshStatusMessage = "Model catalogs refreshed.";
-					this.refreshStatusSuccess = true;
-				}
-			}
+			this.showRefreshStatus(refreshStatus(result, timedOut, this.modelRuntime));
 			// Catalog refresh keeps the browsed model when it remains available.
 			const selected = this.list.getSelectedItem()?.model;
 			this.loadModelsFromSnapshot();
@@ -252,14 +250,17 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			this.tui.requestRender();
 		} catch (error) {
 			if (this.closed) return;
-			this.refreshStatusMessage = "";
-			this.errorMessage = timedOut
-				? "Model refresh timed out; showing cached models."
-				: `Could not refresh model catalogs: ${errorMessage(error)}`;
+			this.showRefreshStatus(refreshFailure(error, timedOut));
 			this.tui.requestRender();
 		} finally {
 			if (this.refreshTimeout) clearTimeout(this.refreshTimeout);
 		}
+	}
+
+	private showRefreshStatus(status: RefreshStatus): void {
+		this.errorMessage = status.error;
+		this.refreshStatusMessage = status.message;
+		this.refreshStatusSuccess = status.refreshed;
 	}
 
 	dispose(): void {
@@ -315,15 +316,9 @@ export class ModelSelectorComponent extends Container implements Focusable {
 				recover: [keyText("tui.input.tab"), "all models"],
 			});
 		else this.list.setEmpty({ message: emptyModelListText(this.modelRuntime) });
-		const hints: RankedHint[] = [];
-		if (!empty) {
-			// A narrow line keeps the save key over Enter: it is the one key the picker cannot be used without knowing.
-			hints.push(moveHint(1), [keyText("tui.select.confirm"), "select", 1]);
-			if (this.onSelectAsDefaultCallback) hints.push([keyText("app.models.save"), "set default", 0]);
-			hints.push([keyText("app.models.details"), this.details ? "hide details" : "details", 2]);
-		}
-		hints.push([keyText("tui.select.cancel"), "cancel", 0]);
-		this.hints.setHints(hints);
+		this.hints.setHints(
+			pickerHints({ empty, canSave: this.onSelectAsDefaultCallback !== undefined, details: this.details }),
+		);
 	}
 
 	override render(width: number): string[] {
@@ -333,10 +328,6 @@ export class ModelSelectorComponent extends Container implements Focusable {
 
 	handleInput(keyData: string): void {
 		if (this.closed) return;
-		if (this.choiceSlot.active) {
-			this.choiceSlot.handleInput(keyData);
-			return this.tui.requestRender();
-		}
 		const kb = getKeybindings();
 		const pageUp = kb.matches(keyData, "tui.select.pageUp");
 		if (this.details && (pageUp || kb.matches(keyData, "tui.select.pageDown"))) {
@@ -354,30 +345,21 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			this.list.setSelectedIndex(0);
 			this.showModels();
 		} else if (this.onSelectAsDefaultCallback && kb.matches(keyData, "app.models.save")) {
-			const selected = this.list.getSelectedItem();
-			if (selected) {
-				this.dispose();
-				this.onSelectAsDefaultCallback(selected.model);
-			}
-			return;
+			return this.save("both");
+		} else if (this.onSelectAsDefaultCallback && this.details && kb.matches(keyData, "app.models.preferred")) {
+			return this.save("provider");
 		} else {
 			this.list.handleInput(keyData);
 		}
 		if (!this.closed) this.syncChrome();
 	}
 
-	/** Enter: ask what to do when a default can be saved, otherwise switch this chat. */
-	private handleSelect(model: Model<any>): void {
-		const asDefault = this.onSelectAsDefaultCallback;
-		if (!asDefault) return this.finish(model, "chat");
-		this.choiceSlot.open(model, (choice) => this.finish(model, choice));
-		this.tui.requestRender();
-	}
-
-	private finish(model: Model<any>, choice: SwitchChoice): void {
+	/** A save key closes the picker with the highlighted model; with no model shown it does nothing. */
+	private save(save: ModelSave): void {
+		const selected = this.list.getSelectedItem();
+		if (!selected || !this.onSelectAsDefaultCallback) return;
 		this.dispose();
-		if (choice === "chat") this.onSelectCallback(model);
-		else this.onSelectAsDefaultCallback?.(model, choice);
+		this.onSelectAsDefaultCallback(selected.model, save);
 	}
 
 	/** The search text the list filters by. */

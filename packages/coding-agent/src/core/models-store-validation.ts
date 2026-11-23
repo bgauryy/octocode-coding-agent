@@ -8,7 +8,7 @@ import {
 } from "@octocodeai/octocode-ai/providers/model-schema";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { Type } from "typebox";
-import { Compile } from "typebox/compile";
+import { compileLazily } from "../utils/compile-lazily.ts";
 
 const positiveTokens = Type.Number({ exclusiveMinimum: 0 });
 const base = {
@@ -22,8 +22,8 @@ const base = {
 	cost: ModelCostSchema,
 	headers: Type.Optional(Type.Record(Type.String(), Type.String())),
 };
-const validateBase = Compile(Type.Object(base));
-const validateKnown = Compile(
+const validateBase = compileLazily(Type.Object(base));
+const validateKnown = compileLazily(
 	Type.Union([
 		Type.Object({
 			...base,
@@ -44,7 +44,7 @@ const validateKnown = Compile(
 export function isStoredModel(value: unknown): boolean {
 	if (!isRecord(value)) return false;
 	if (value.type !== undefined && !["chat", "image", "classifier"].includes(value.type as string)) {
-		return typeof value.type === "string" && validateBase.Check(value);
+		return typeof value.type === "string" && validateBase().Check(value);
 	}
-	return validateKnown.Check(value);
+	return validateKnown().Check(value);
 }

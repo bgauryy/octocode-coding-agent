@@ -1,6 +1,7 @@
+import type { ActivityTone } from "@octocodeai/octocode-contracts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { CommandContext } from "../../../core/features/index.ts";
-import { badge } from "../../../theme/page-kit.ts";
+import { activityBadge, badge } from "../../../theme/page-kit.ts";
 import { say } from "../../shared/commands.ts";
 import { showCommandPage } from "../../shared/page.ts";
 import { firstLine } from "../../shared/util.ts";
@@ -8,6 +9,13 @@ import type { Team } from "../../team/session.ts";
 import { type AgentDetail, agentDetail, agentDetailPageText } from "./content.ts";
 import { recentCalls } from "./recent-calls.ts";
 import { findMember } from "./lookup.ts";
+
+/** A live agent's activity tone, as the agents panel draws it: what waits on someone first. */
+export function memberTone(member: Pick<Member, "outcome" | "waiting" | "status">): ActivityTone {
+	if (member.outcome === "failed") return "error";
+	if (member.waiting) return "waiting";
+	return member.status === "working" ? "working" : "idle";
+}
 
 /** The page of one live agent, read fresh from the team. */
 function read(team: Team, member: Member): AgentDetail {
@@ -58,7 +66,7 @@ export async function pickAgent(team: Team, ctx: CommandContext): Promise<void> 
 				{
 					heading: "Pick one to see what it does",
 					rows: members.map((member) => {
-						const shown = badge(member.status === "working" ? "ready" : "off");
+						const shown = activityBadge(memberTone(member));
 						return {
 							id: member.id,
 							name: member.id,

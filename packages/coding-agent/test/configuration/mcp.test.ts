@@ -2,6 +2,7 @@ import { join } from "node:path";
 import "../../src/octocode/mcp-host/core-install.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Sandbox, createSandbox, write } from "../discovery/fixtures.ts";
+import { runConfigWords } from "../../src/configuration/command.ts";
 import { configuration, readJson } from "./helpers.ts";
 
 let sandbox: Sandbox;
@@ -60,12 +61,52 @@ describe("mcp:<name>", () => {
 		const catalog = configuration(sandbox);
 		const added = await catalog.apply({ verb: "add", id: "mcp:fresh", value: { command: "fresh", args: ["--x"] } });
 		expect(added.status).toBe("applied");
-		expect(readJson(globalFile)?.mcpServers.fresh).toEqual({ command: "fresh", args: ["--x"] });
+		// A new definition is saved off and unassigned, as `octocode mcp add` and Add MCP save it (was: as given).
+		const off = { enabled: false, defaultActive: false };
+		expect(readJson(globalFile)?.mcpServers.fresh).toEqual({ command: "fresh", args: ["--x"], ...off });
 		await catalog.apply({ verb: "add", id: "mcp:local", value: { url: "https://example.com/mcp" }, scope: "project" });
-		expect(readJson(projectFile)?.mcpServers.local).toEqual({ url: "https://example.com/mcp" });
+		expect(readJson(projectFile)?.mcpServers.local).toEqual({ url: "https://example.com/mcp", ...off });
 		expect((await catalog.apply({ verb: "remove", id: "mcp:fresh" })).status).toBe("applied");
 		expect(readJson(globalFile)?.mcpServers.fresh).toBeUndefined();
 		expect(await catalog.apply({ verb: "remove", id: "mcp:fresh" })).toMatchObject({ status: "refused" });
+	});
+
+	it("says a new server was saved off and unassigned, and where to approve it", async () => {
+		const added = await configuration(sandbox).apply({ verb: "add", id: "mcp:fresh", value: { command: "fresh" } });
+		expect(added).toMatchObject({ status: "applied" });
+		const message = added.status === "applied" ? added.message : "";
+		expect(message).toMatch(/^Saved global MCP server "fresh" off and unassigned in /);
+		expect(message).toContain("approve it in /security");
+		expect(message).not.toContain("Added");
+	});
+
+	it("shows a server the security review holds back as off until approved, whatever its switch", async () => {
+		// The first load records the servers already configured as approved; one added after it is reviewed as new.
+		await configuration(sandbox).list({ kinds: ["mcp"] });
+		const servers = readJson(globalFile)?.mcpServers;
+		write(globalFile, JSON.stringify({ mcpServers: { ...servers, fresh: { command: "fresh-server" } } }));
+		const catalog = configuration(sandbox);
+		const held = "not checked: off until you approve it in /security";
+		expect(await catalog.get("mcp:fresh")).toMatchObject({ value: true, state: held });
+		expect((await catalog.get("mcp:docs"))?.state).toBeUndefined();
+		const got = (await runConfigWords(catalog, ["get", "mcp:fresh"], "/settings")).lines.join("\n");
+		expect(got).toContain(`value: ${held} (set by global`);
+		const listed = (await runConfigWords(catalog, ["list", "mcp"], "/settings")).lines.join("\n");
+		expect(listed).toMatch(new RegExp(`mcp:fresh\\s+${held}`));
+		expect(listed).toMatch(/mcp:docs\s+on\s/);
+		const enabled = await catalog.apply({ verb: "enable", id: "mcp:fresh" });
+		expect(enabled.status === "applied" && enabled.message).toContain("approve it in /security");
+	});
+
+	it("reviews the servers already configured before an add in a fresh home, so the new one is not approved with them", async () => {
+		// No session has run the security review yet: `docs` is the user's older server, `demo` is added now.
+		const catalog = configuration(sandbox);
+		await catalog.apply({ verb: "add", id: "mcp:demo", value: { command: "demo-server" } });
+		await catalog.apply({ verb: "enable", id: "mcp:demo" });
+		expect(await catalog.get("mcp:demo")).toMatchObject({
+			state: "not checked: off until you approve it in /security",
+		});
+		expect((await catalog.get("mcp:docs"))?.state).toBeUndefined();
 	});
 
 	it("refuses an invalid definition, unknown names, untrusted project and run scope", async () => {

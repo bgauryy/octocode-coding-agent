@@ -16,7 +16,8 @@ import { declaredTimeout, describeToolCall, replySteps, assistantText } from "./
 import { noteWaits, type ReplyWait, type WorkWait } from "./pending-waits.ts";
 import { MODEL_EVENTS } from "./liveness.ts";
 import { type ChildNotices, NoticeLog, NOTICES_INLINE, NOTICES_INLINE_CHARS } from "./notices.ts";
-import { fallbackSwitch, ranModel, type RanModel } from "./event-ran.ts";
+import { fallbackSwitch, ranModel, type RanModel, type UsageLimitRecord, usageLimitRecord } from "./event-ran.ts";
+import type { FallbackSwitch } from "../../core/agent-session/fallback-switch.ts";
 
 export type { Compactions };
 
@@ -46,8 +47,10 @@ export interface ChildProgress {
 	usage: Usage;
 	/** The assistant reply that just ended (with its `provider`, `model` and `usage`): its model may have no pricing. */
 	reply?: Record<string, unknown>;
-	/** The model of that reply and, after a `retry.fallbackModels` switch to it, the cause the child stated. */
+	/** The model of that reply and, after a `retry.fallbackModels` switch to it, that switch. */
 	ran?: RanModel;
+	/** A usage limit ended its turn (its `USAGE_LIMIT_ENTRY`): the provider and when the limit resets. */
+	usageLimit?: UsageLimitRecord;
 	/** The latest screenshot a tool returned. */
 	image?: { data: string; mimeType: string };
 	/** A tool call the child could not run without the user's approval (it has no one to ask). */
@@ -114,8 +117,8 @@ export interface ChildState {
 	notices: ChildNotices;
 	/** The run's distinct notices, the source of the saved log; `notices.kept` shares its first entries. */
 	noticeLog: NoticeLog;
-	/** The last `retry.fallbackModels` switch the child announced: the model it continued on and why. */
-	switched?: { to: string; cause: string };
+	/** The last `retry.fallbackModels` switch the child recorded: the model it continued on, why, and the billing change. */
+	switched?: FallbackSwitch;
 	/** Its last `bash verify` run passed and covers its edits so far (`current`), or it has edited since (`stale`). */
 	verification?: "current" | "stale";
 }
@@ -229,7 +232,6 @@ function noteNotice(state: ChildState, event: Record<string, unknown>): boolean 
 		if (room) kept.push(notice);
 		else state.notices.more += 1;
 	}
-	if (level === "warning") state.switched = fallbackSwitch(text) ?? state.switched;
 	if (level === "error") state.notices.lastError = text;
 	return true;
 }
@@ -284,6 +286,9 @@ export function reduceEvent(
 	const effects: ChildEffect[] = [];
 	const progress = (update: Omit<ChildProgress, "usage">) =>
 		effects.push({ kind: "progress", update: { ...update, usage: state.usage } });
+	if (type === "entry_appended") state.switched = fallbackSwitch(event.entry) ?? state.switched;
+	const usageLimit = type === "entry_appended" ? usageLimitRecord(event.entry) : undefined;
+	if (usageLimit) progress({ usageLimit });
 	if (type === "entry_appended" && isRecord(event.entry) && event.entry.type === "usage") {
 		const entry = event.entry;
 		if (typeof entry.id !== "string" || state.usageEntryIds.has(entry.id)) return effects;

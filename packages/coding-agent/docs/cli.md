@@ -1,6 +1,6 @@
 # CLI modes and flags
 
-`octocode [options] [--] [@files...] [messages...]` starts Octocode. `octocode --help` lists every flag; `octocode completion bash|zsh|fish` prints shell completion. Subcommands (`install`, `configuration`, `mcp`, `trust`, ...) are in [commands](commands.md#shell-entry-points).
+`octocode [options] [--] [@files...] [messages...]` starts Octocode. `octocode --help` lists every flag; `octocode completion bash|zsh|fish` prints shell completion. Subcommands (`install`, `configuration`, `mcp`, `trust`, ...) are in [commands](commands.md#shell-entry-points); a subcommand's name comes first and it takes only its own options, so `octocode --offline mcp list` exits `2` naming `octocode mcp list` instead of sending `mcp` to the model.
 
 For another agent, script or CI job, start with the [external-agent guide](external-agents.md): setup, safe subprocess invocation, permissions and completion handling.
 
@@ -35,7 +35,7 @@ octocode --mode json --no-session "Summarize README.md" > events.jsonl
 
 ### Text mode
 
-Sends the first message and any further positional messages as separate prompts, then prints the text of the last assistant message. Exit code `1` when a prompt ends in an error or abort or the reply was cut at the model's output limit; the reason goes to stderr (including an unrecoverable context overflow). Exit code `2` when text or JSON mode gets no prompt (no message, `@file` or piped stdin). A provider retry writes one stderr line with the wait.
+Sends the first message and any further positional messages as separate prompts, then prints the text of the last assistant message. A message that is a slash command runs as it would in the terminal and prints its result on stderr; a run whose messages are all commands needs no provider (`octocode -p "/backlog"`), and a command that needs the terminal, or a model it cannot reach (`/plan add ...`), says so and exits `1`. Exit code `1` when a prompt ends in an error or abort or the reply was cut at the model's output limit; the reason goes to stderr (including an unrecoverable context overflow); a provider failure names the provider and model, and for a request that never reached its endpoint the host (`openai/gpt-5 at llm.example:8080: fetch failed`), as the retry lines do, never the URL's credentials, path or query. Exit code `2` when text or JSON mode gets no prompt (no message, `@file` or piped stdin). A provider retry writes one stderr line with the wait.
 
 ### JSON mode
 
@@ -51,7 +51,7 @@ Every flag has one long name; the only short forms are `-p -c -r -n -t -h -v`. A
 
 | Flag                                  | Does                                                                                                                                                                                                                   |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--model <pattern>`                   | Model pattern or id: `provider/id`, optional `:<thinking>` suffix (`sonnet:high`)                                                                                                                                      |
+| `--model <pattern>`                   | Model pattern or id: `provider/id`, optional `:<thinking>` suffix (`anthropic/sonnet:high`); a bare name several connected providers serve is refused, naming them                                                     |
 | `--provider <name>`                   | Provider for a bare `--model` id, `--list-models`, and the `auth` commands                                                                                                                                             |
 | `--models <patterns>`                 | Comma-separated patterns for Ctrl+P cycling; globs (`anthropic/*`) and fuzzy match; `sonnet:high,haiku:low` fixes levels                                                                                               |
 | `--thinking <level>`                  | Thinking level (the accepted levels print in an error for a bad value)                                                                                                                                                 |
@@ -93,26 +93,26 @@ flowchart TD
 
 ### Permissions, trust and planning
 
-| Flag                                        | Does                                                                                                                                                   |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--permission-mode manual\|workspace\|full` | Start mode (default `full`); subagents inherit it ([permissions](permissions.md#modes))                                                                |
-| `--dangerously-skip-permissions`            | Start in `bypass`: nothing asks, every call is still recorded, hook denies and invariants still refuse. Conflicts with a different `--permission-mode` |
-| `--trust`                                   | Record your trust of this folder, then run. A text, JSON or RPC run in an untrusted folder exits with an error without it (not for `--mode acp`)       |
-| `--plan`                                    | Start with the planning constraint on ([planning](native-features.md#native-planning-constraint))                                                      |
-| `--offline`                                 | Skip startup network operations (same as `OCTOCODE_OFFLINE=1`)                                                                                         |
+| Flag                                        | Does                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--permission-mode manual\|workspace\|full` | Start mode (default `full`); subagents inherit it ([permissions](permissions.md#modes))                                                                                                                                                                                                                                |
+| `--dangerously-skip-permissions`            | Start in `bypass`: nothing asks, every call is still recorded, hook denies and invariants still refuse. Conflicts with a different `--permission-mode`                                                                                                                                                                 |
+| `--trust`                                   | Record your trust of this folder, then run; the grant stays, so later runs need no flag until `octocode trust remove`. A text, JSON or RPC run in an untrusted folder exits with an error without it, before it writes anything there; with no provider connected the error names that step too (not for `--mode acp`) |
+| `--plan`                                    | Start with the planning constraint on ([planning](native-features.md#native-planning-constraint))                                                                                                                                                                                                                      |
+| `--offline`                                 | Skip the network work Octocode starts by itself: catalog refreshes, the version check, package refreshes and tool downloads (same as `OCTOCODE_OFFLINE=1`). MCP commands you run still connect (`mcp list --check`, `mcp login`); `update` and `models discover` stay offline                                          |
 
 ### Tools and configuration
 
-| Flag                     | Does                                                                                                                                                       |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--tools <list>`, `-t`   | Allowlist of tool names or patterns (`*`); keeps MCP tools unless an entry starts with `mcp__`; `+name`/`-name` entries adjust the defaults instead        |
-| `--exclude-tools <list>` | Denylist; applies to all tools, MCP included, and to subagents                                                                                             |
-| `--no-tools`             | No tools by default (native and MCP)                                                                                                                       |
-| `--no-builtin-tools`     | No native tools; MCP tools stay                                                                                                                            |
-| `--no-mcp`               | No MCP servers or tools; also binds subagents                                                                                                              |
-| `--enable <id>`          | Enable a tool, MCP server, skill, harness or boolean setting for this run (repeatable; ids as in [configuration](configuration.md#changing-configuration)) |
-| `--disable <id>`         | Disable one for this run (repeatable)                                                                                                                      |
-| `--set <key>=<value>`    | Set a settings key for this run (repeatable)                                                                                                               |
+| Flag                     | Does                                                                                                                                                                                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--tools <list>`, `-t`   | Allowlist of tool names or patterns (`*`); keeps MCP tools unless an entry starts with `mcp__`; `+name`/`-name` entries adjust the defaults instead                                                                                                                 |
+| `--exclude-tools <list>` | Denylist; applies to all tools, MCP included, and to subagents                                                                                                                                                                                                      |
+| `--no-tools`             | No tools by default (native and MCP)                                                                                                                                                                                                                                |
+| `--no-builtin-tools`     | No native tools; MCP tools stay                                                                                                                                                                                                                                     |
+| `--no-mcp`               | No MCP servers or tools; also binds subagents                                                                                                                                                                                                                       |
+| `--enable <id>`          | Enable a tool, skill, harness or boolean setting for this run (repeatable; ids as in [configuration](configuration.md#changing-configuration)). `mcp:` ids have no run form: `--no-mcp` runs without MCP, `octocode configuration enable mcp:<name>` saves a switch |
+| `--disable <id>`         | Disable one for this run (repeatable)                                                                                                                                                                                                                               |
+| `--set <key>=<value>`    | Set a settings key for this run (repeatable)                                                                                                                                                                                                                        |
 
 `--tools` is this session's allowlist; a subagent keeps its profile's tools. Tool selection: [native features](native-features.md#tool-selection-and-migration). Octocode has no extensions: `--extension`, `-e` and `--no-extensions` are unknown. MCP is always on unless `--no-mcp`.
 

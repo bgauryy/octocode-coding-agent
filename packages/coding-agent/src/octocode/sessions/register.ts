@@ -35,9 +35,11 @@ import {
 	teamBrief,
 } from "./brief.ts";
 import { recordSession, recordSessionLater, recordTitle } from "./catalog.ts";
+import { SessionActivityRecord } from "./activity-record.ts";
 import { registerSessionsCommand } from "./command.ts";
 import { registerPurgeCommand } from "./purge-command.ts";
 import { gitCommitsBetween, gitDirty, gitState, SessionIndex } from "./store.ts";
+import { gitHeadStamp } from "./git-stamp.ts";
 import { type CompleteTitle, createAutoTitler } from "./title.ts";
 import { sweepSessions } from "./sweep.ts";
 import { RUNNING_WORK_TYPE } from "../shared/context-notices.ts";
@@ -179,12 +181,26 @@ export function registerSessions(api: FeatureSetup, options: SessionsOptions): v
 			warn(ctx, error);
 		}
 	};
-	/** Records where git stands now, without waiting for it. */
+	/** The context of the session the light follows: the tone it writes goes through that session's writer. */
+	let lightCtx: FeatureContext | undefined;
+	const light = new SessionActivityRecord((id, tone) => {
+		if (lightCtx) void later(lightCtx, (sessions) => sessions.activityLater(id, tone));
+	});
+	/** The session, folder and git metadata of the last recorded git state: an unchanged turn runs no git. */
+	let gitRecorded: string | undefined;
+	/** Records where git stands now, without waiting for it; nothing runs when HEAD and its branch did not move. */
 	const recordGit = (ctx: FeatureContext, id: string) => {
 		const revision = ++gitRevision;
+		const stamp = gitHeadStamp(ctx.cwd);
+		const key = stamp === undefined ? undefined : `${id}\0${stamp}`;
+		if (key !== undefined && key === gitRecorded) return Promise.resolve();
 		return gitState(ctx.cwd).then(async (state) => {
 			// A newer request or session shutdown makes this result stale, including its Octocode context.
-			if (revision === gitRevision) await later(ctx, (sessions) => sessions.gitLater(id, state));
+			if (revision !== gitRevision) return;
+			await later(ctx, async (sessions) => {
+				await sessions.gitLater(id, state);
+				gitRecorded = key;
+			});
 		});
 	};
 
@@ -258,6 +274,9 @@ export function registerSessions(api: FeatureSetup, options: SessionsOptions): v
 			});
 		});
 		void recordGit(ctx, id);
+		// After the start above, which made the row this process's and its light idle: only a change is written.
+		lightCtx = ctx;
+		light.follow(id, "idle");
 	});
 
 	const add = (spend: Spend | undefined, ctx: FeatureContext) => {
@@ -334,6 +353,8 @@ export function registerSessions(api: FeatureSetup, options: SessionsOptions): v
 	api.bus.on("session_shutdown", async (_event, ctx) => {
 		gitRevision++;
 		titler.cancel();
+		// No tone after the end below, which clears the row's light with its pid.
+		light.close();
 		// After the turn's writes still queued, so the row cannot be marked live again once it ended.
 		await later(ctx, (sessions) => sessions.endLater(ctx.sessionManager.getSessionId()));
 	});

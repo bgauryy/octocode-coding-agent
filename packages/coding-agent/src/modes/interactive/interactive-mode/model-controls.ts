@@ -13,6 +13,7 @@ import { showModelSelector } from "../model-picker.ts";
 import { ScopedModelsSelectorComponent } from "../components/scoped-models-selector.ts";
 import { ThinkingSelectorComponent } from "../components/thinking-selector.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
+import { isNoticeShown } from "../state/notices-slice.ts";
 import { confirmUnlistedModel } from "./unlisted-model.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { claudeSubscriptionRefusal } from "./provider-actions.ts";
@@ -22,7 +23,6 @@ import { providerAccessLabel } from "../../../core/provider-label.ts";
 /** Interactive-mode members used by the model and thinking controls. */
 type ModelControlsHost = Pick<
 	InteractiveModeHost,
-	| "anthropicSubscriptionWarningShown"
 	| "findExactModelMatch"
 	| "maybeWarnAboutAnthropicSubscriptionAuth"
 	| "session"
@@ -35,6 +35,7 @@ type ModelControlsHost = Pick<
 	| "showStatus"
 	| "showWarning"
 	| "ui"
+	| "uiStore"
 	| "updateAvailableProviderCount"
 	| "updateEditorBorderColor"
 >;
@@ -68,15 +69,16 @@ export async function cycleModel(host: ModelControlsHost, direction: "forward" |
 }
 
 export function handleThinkingCommand(host: ModelControlsHost, searchTerm?: string): void {
-	const availableLevels = host.session.getAvailableThinkingLevels();
+	const { session } = host;
+	const availableLevels = session.getAvailableThinkingLevels();
 	if (availableLevels.length === 0) {
 		host.showStatus("This provider manages reasoning for this model. It exposes no selectable effort on this route.");
 		return;
 	}
 	if (!searchTerm) {
 		const saved = host.settingsManager.getDefaultThinkingLevel();
-		if (saved && saved !== host.session.thinkingLevel)
-			host.showStatus(`Saved default thinking level: ${saved}; this session runs at ${host.session.thinkingLevel}`);
+		if (saved && saved !== session.thinkingLevel)
+			host.showStatus(`Saved default thinking level: ${saved}; this session runs at ${session.thinkingLevel}`);
 		showThinkingSelector(host);
 		return;
 	}
@@ -84,7 +86,14 @@ export function handleThinkingCommand(host: ModelControlsHost, searchTerm?: stri
 	const normalized = searchTerm.trim().toLowerCase();
 	const level = availableLevels.find((candidate) => candidate.toLowerCase() === normalized);
 	if (!level) {
-		host.showError(`Unknown thinking level "${searchTerm}". Available levels: ${availableLevels.join(", ")}.`);
+		// A typed level the model lacks is a usage slip, not a failure: say what this model offers.
+		const { model } = session;
+		const name = model ? model.name || model.id : "This model";
+		host.showWarning(
+			availableLevels.length === 1 && availableLevels[0] === "off"
+				? `${name} has no reasoning effort to set: its only level is off. /model switches to a model that reasons.`
+				: `Unknown thinking level "${searchTerm}". ${name} takes ${availableLevels.join(", ")}.`,
+		);
 		return;
 	}
 
@@ -214,7 +223,8 @@ export async function maybeWarnAboutAnthropicSubscriptionAuth(
 	if (host.settingsManager.getWarnings().anthropicExtraUsage === false) {
 		return;
 	}
-	if (host.anthropicSubscriptionWarningShown) {
+	const notices = host.uiStore.getState();
+	if (isNoticeShown(notices, "anthropicSubscription")) {
 		return;
 	}
 	if (model && model.provider !== "anthropic") {
@@ -223,7 +233,7 @@ export async function maybeWarnAboutAnthropicSubscriptionAuth(
 
 	const refusal = await claudeSubscriptionRefusal(host, "anthropic");
 	if (!refusal) return;
-	host.anthropicSubscriptionWarningShown = true;
+	notices.claimNotice("anthropicSubscription");
 	host.showWarning(refusal);
 }
 

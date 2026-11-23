@@ -16,6 +16,11 @@
 			"types": "./dist/backlogs.d.ts",
 			"import": "./dist/backlogs.js"
 		},
+		"./evidence": {
+			"source": "./src/evidence.ts",
+			"types": "./dist/evidence.d.ts",
+			"import": "./dist/evidence.js"
+		},
 		"./snapshot": {
 			"source": "./src/snapshot.ts",
 			"types": "./dist/snapshot.d.ts",
@@ -90,12 +95,12 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"typebox": "1.4.7"
+		"typebox": "^1.4.7"
 	},
 	"devDependencies": {
-		"shx": "0.4.0",
-		"typescript": "7.0.2",
-		"vite": "8.3.5",
-		"vitest": "5.1.0"
+		"shx": "^0.4.0",
+		"typescript": "^7.0.2",
+		"vite": "^8.3.8",
+		"vitest": "^5.1.1"
 	}
 }

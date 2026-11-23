@@ -5,8 +5,20 @@ import { getSlashCommands } from "../src/modes/interactive/interactive-mode/auto
 import { setupEditorSubmitHandler } from "../src/modes/interactive/interactive-mode/command-dispatch.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+import { selectSubmittedInputs } from "../src/modes/interactive/state/input-slice.ts";
+import type { UiState } from "../src/modes/interactive/state/store.ts";
 
 const HINT = " Enter again sends it as a message.";
+
+/** The prompts the submit handler handed to the main loop. */
+const submitted = (instance: any): readonly string[] => selectSubmittedInputs(instance.uiStore.getState());
+
+/** Records each prompt handed to the main loop as `prompt:<text>` in `effects`, in order with the other effects. */
+function recordPrompts(instance: any, effects: string[]): void {
+	instance.uiStore.subscribe((state: UiState, previous: UiState) => {
+		for (const text of state.input.submitted.slice(previous.input.submitted.length)) effects.push(`prompt:${text}`);
+	});
+}
 
 function mode(commands: any[] = []) {
 	const instance: any = {};
@@ -68,10 +80,27 @@ describe("built-in slash commands", () => {
 	it("runs Claude Code aliases as their Octocode command", async () => {
 		const instance = mode();
 		const effects: string[] = [];
-		for (const method of ["shutdown", "handleProvidersCommand"]) instance[method] = () => effects.push(method);
+		for (const method of ["shutdown", "handleProvidersCommand", "handleHotkeysCommand"])
+			instance[method] = () => effects.push(method);
 		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
-		for (const alias of ["/exit", "/login"]) await instance.defaultEditor.onSubmit(alias);
-		expect(effects).toEqual(["shutdown", "handleProvidersCommand"]);
+		// `/hotkeys` is the name Pi users type for /keys.
+		for (const alias of ["/exit", "/login", "/hotkeys"]) await instance.defaultEditor.onSubmit(alias);
+		expect(effects).toEqual(["shutdown", "handleProvidersCommand", "handleHotkeysCommand"]);
+		expect(instance.showWarning).not.toHaveBeenCalled();
+	});
+
+	it("keeps a doubled slash before a command name, like any unknown command, and names the command", async () => {
+		const instance = mode();
+		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
+		await instance.defaultEditor.onSubmit("//status");
+		expect(instance.prompts).toEqual([]);
+		expect(instance.editor.setText).toHaveBeenLastCalledWith("//status");
+		expect(instance.showWarning).toHaveBeenLastCalledWith(`Unknown command //status. Did you mean /status?${HINT}`);
+		await instance.defaultEditor.onSubmit("//status");
+		expect(instance.prompts.map(([text]: [string]) => text)).toEqual(["//status"]);
+		// A path is not command-shaped, and is sent as typed.
+		await instance.defaultEditor.onSubmit("//server/share/notes.txt explain this");
+		expect(submitted(instance)).toContain("//server/share/notes.txt explain this");
 	});
 
 	it("does not dispatch removed command names and hints at the closest canonical command", async () => {
@@ -87,7 +116,7 @@ describe("built-in slash commands", () => {
 			"handleSessionCommand",
 		])
 			instance[method] = () => effects.push(method);
-		instance.onInputCallback = (text: string) => effects.push(`prompt:${text}`);
+		recordPrompts(instance, effects);
 		instance.getSlashCommands = () => BUILTIN_SLASH_COMMANDS;
 		await instance.defaultEditor.onSubmit("/models");
 		expect(effects.splice(0)).toEqual(["handleModelsCommand"]);
@@ -107,7 +136,7 @@ describe("built-in slash commands", () => {
 		const effects: string[] = [];
 		for (const method of ["handleClearCommand", "handleBugCommand", "shutdown"])
 			instance[method] = () => effects.push(method);
-		instance.onInputCallback = (text: string) => effects.push(`prompt:${text}`);
+		recordPrompts(instance, effects);
 		const web = { name: "web", description: "Open the web workspace" };
 		const skills = ["octocode-agentic-prompts", "octocode-research"].map((name) => ({ name, description: "Skill" }));
 		instance.getSlashCommands = () => [...BUILTIN_SLASH_COMMANDS, web, ...skills];
@@ -205,13 +234,12 @@ describe("built-in slash commands", () => {
 	it("asks again after other input, and still runs declared first words", async () => {
 		const instance = mode([{ name: "harness", argumentWords: ["list"], handler: vi.fn(), sourceInfo: {} }]);
 		instance.getSlashCommands = () => [...BUILTIN_SLASH_COMMANDS, { name: "harness" }];
-		instance.onInputCallback = vi.fn();
 		await instance.defaultEditor.onSubmit("/harness is slow");
 		await instance.defaultEditor.onSubmit("/harness List");
 		await instance.defaultEditor.onSubmit("/harness is slow");
 		expect(instance.prompts).toEqual([]);
 		expect(instance.showWarning).toHaveBeenCalledTimes(2);
-		expect(instance.onInputCallback).toHaveBeenCalledWith("/harness List");
+		expect(submitted(instance)).toContain("/harness List");
 		// Input handed to the run shows it is working from Enter on.
 		expect(instance.showWorkingStatusIndicator).toHaveBeenCalled();
 	});

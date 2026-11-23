@@ -1,8 +1,34 @@
 import type { CommandContext } from "../../core/features/index.ts";
+import type { SessionInfo } from "../../core/session-manager.ts";
+import { liveActivityOf } from "../activity/session-activity.ts";
 import { listingScope, quickList } from "../sessions/catalog.ts";
-import type { SessionIndex } from "../sessions/store.ts";
+import type { SessionExtra, SessionIndex } from "../sessions/store.ts";
 import { liveProcess } from "../shared/process.ts";
 import type { RealmSession } from "./model.ts";
+
+/**
+ * One catalogued session as `/realm` shows it: live from its row's pid, and for another live session the light its
+ * process wrote (this session's own state is the screen the realm is shown on).
+ */
+export function realmSession(
+	info: Pick<SessionInfo, "id" | "name" | "cwd" | "modified" | "path">,
+	extra: SessionExtra | undefined,
+	currentId: string,
+	root: string,
+): RealmSession {
+	const current = info.id === currentId;
+	const activity = current ? undefined : liveActivityOf(extra);
+	return {
+		id: info.id,
+		...(info.name ? { name: info.name } : {}),
+		cwd: info.cwd || root,
+		modified: info.modified.getTime(),
+		live: current || liveProcess(extra?.pid, extra?.pid_started),
+		...(activity ? { activity } : {}),
+		current,
+		file: info.path,
+	};
+}
 
 /** Where `/realm` reads sessions: those started in each of `roots`, the current one included. */
 export type SessionSource = (roots: readonly string[], ctx: CommandContext) => Promise<RealmSession[]>;
@@ -19,18 +45,7 @@ export function catalogSessions(index: () => SessionIndex): SessionSource {
 		for (const root of roots) {
 			const infos = await quickList(db, listingScope(ctx.sessionManager, root, false));
 			const extras = db.extras(infos.map((info) => info.id));
-			for (const info of infos) {
-				const extra = extras.get(info.id);
-				found.set(info.id, {
-					id: info.id,
-					...(info.name ? { name: info.name } : {}),
-					cwd: info.cwd || root,
-					modified: info.modified.getTime(),
-					live: info.id === currentId || liveProcess(extra?.pid, extra?.pid_started),
-					current: info.id === currentId,
-					file: info.path,
-				});
-			}
+			for (const info of infos) found.set(info.id, realmSession(info, extras.get(info.id), currentId, root));
 		}
 		// A session has no file before its first reply.
 		if (!found.has(currentId))

@@ -1,3 +1,4 @@
+import { FALLBACK_ENTRY } from "../../agent-session/fallback-switch.ts";
 import type { AgentSessionEvent } from "../../agent-session/types.ts";
 import { compactionSummaryDisplay } from "../../messages.ts";
 import { readWakeLines, WAKE_TYPE } from "../../wake-entry.ts";
@@ -124,6 +125,8 @@ export function entryActivity(entry: SessionEntry): ActivityData | undefined {
 				data: { targetId: entry.targetId, operation: entry.replacement === null ? "omit" : "replace" },
 			};
 		case "custom": {
+			// A `retry.fallbackModels` switch: its notice already said it; the entry is for a parent reading its child.
+			if (entry.customType === FALLBACK_ENTRY) return undefined;
 			// Octocode records a refused or cancelled compaction as a note (`octocode/compaction/record.ts`); it is a failure.
 			const note = asRecord(entry.data);
 			if (

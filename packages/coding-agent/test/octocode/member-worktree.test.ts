@@ -16,7 +16,7 @@ import { detailLine } from "../../src/octocode/team/panel/grid.ts";
 import { rendered, theme } from "./fake-host.ts";
 import { GIT_TEST_ENV, makeRepo } from "./worktree-fixture.ts";
 
-// Reduced motion pins a running light to its first frame, ◒.
+// Reduced motion draws a running light as a full ⏺: an animation or a state, never a half-filled circle held still.
 beforeEach(() => animationClock.setReducedMotion(true));
 
 const ROOT = "/r";
@@ -148,7 +148,7 @@ describe("worktree root and compact rows", () => {
 	it("collapsed panel rows mark the worktree; the opened stats line names the folder", () => {
 		const entry = { member: isolated, depth: 0, isolated: { folder: isolated.cwd! } };
 		const [row] = collapsedRows([entry], 10, theme, 120);
-		expect(row).toMatch(/^ └ ◒ iso-1 · general · worktree +0s$/);
+		expect(row).toMatch(/^ └ ⏺ iso-1 · general · worktree +0s$/);
 		expect(visibleWidth(row)).toBe(120);
 		const { agents } = gridRows(main, "main", [entry], [], 10, theme);
 		expect(detailLine(theme, agents[0], 120)).toBe(

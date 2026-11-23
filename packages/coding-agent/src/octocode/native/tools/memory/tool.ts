@@ -158,6 +158,11 @@ export function createMemoryTool(
 							description: "set: always inject (keep pins few, short)",
 						}),
 					),
+					sources: Type.Optional(
+						Type.Array(Type.String(), {
+							description: "set: ≤8 anchors",
+						}),
+					),
 				}),
 		limit: Type.Optional(Type.Integer({ description: "1–50 (default 10)" })),
 		cursor: Type.Optional(Type.String({ description: "search/list: next page" })),

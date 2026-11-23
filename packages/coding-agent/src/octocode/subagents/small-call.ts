@@ -4,7 +4,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { FeatureContext } from "../../core/features/index.ts";
 import { retrySideCall, type SideRetry } from "../shared/side-retry.ts";
 import type { SmallCallResult } from "../shared/small-model.ts";
-import { currentCatalog } from "./catalog.ts";
+import { currentCatalog } from "../../core/model-catalog/index-store.ts";
 import { resolveTierChoice } from "./model.ts";
 
 export type CompleteSmall = (

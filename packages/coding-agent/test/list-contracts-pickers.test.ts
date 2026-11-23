@@ -3,7 +3,7 @@ import { setKeybindings, visibleWidth, type TUI } from "@octocodeai/octocode-tui
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import type { ModelRuntime } from "../src/core/model-runtime.ts";
-import { ModelSelectorComponent } from "../src/modes/interactive/components/model-selector.ts";
+import { type ModelSave, ModelSelectorComponent } from "../src/modes/interactive/components/model-selector.ts";
 import { QueueListComponent } from "../src/modes/interactive/components/queue-list.ts";
 import { ScopedModelsSelectorComponent } from "../src/modes/interactive/components/scoped-models-selector.ts";
 import { initTheme } from "../src/theme/theme.ts";
@@ -45,6 +45,9 @@ const runtime = {
 	getModel: (provider: string, id: string) => models.find((m) => m.provider === provider && m.id === id),
 	getProviderKind: () => "subscription",
 	getProviderBilling: () => "plan",
+	getModelOrigin: () => "built-in",
+	getCatalogUpdate: () => undefined,
+	isModelDeprecated: () => false,
 	getProvider: () => undefined,
 	getDefinedProviderIds: () => [],
 	hasConfiguredAuth: () => true,
@@ -59,7 +62,7 @@ beforeEach(() => {
 });
 
 describe("model picker contract", () => {
-	const picker = (select = vi.fn(), cancel = vi.fn(), asDefault?: (model: Model<any>) => void) =>
+	const picker = (select = vi.fn(), cancel = vi.fn(), asDefault?: (model: Model<any>, save: ModelSave) => void) =>
 		new ModelSelectorComponent(tui, models[0], runtime, [], select, cancel, undefined, asDefault);
 
 	it("⌕ search line, › cursor, a–b/total foot, page by visible rows, stops at the ends", () => {
@@ -94,7 +97,7 @@ describe("model picker contract", () => {
 		expect(save).not.toHaveBeenCalled();
 		const empty = screen(view);
 		expect(empty).toContain('No models match "dzz" · esc clears');
-		expect(empty).not.toContain("enter select");
+		expect(empty).not.toContain("enter switch");
 		view.handleInput(ESC);
 		expect(cancel).not.toHaveBeenCalled();
 		expect(view.getQuery()).toBe("");
@@ -120,20 +123,20 @@ describe("model picker contract", () => {
 		view.dispose();
 	});
 
-	it("switch choice: › cursor on the first answer, stops at the last, esc returns to the list", () => {
+	it("enter switches with no question; the open details offer the provider's preferred model", () => {
 		const select = vi.fn();
 		const save = vi.fn();
 		const view = picker(select, vi.fn(), save);
-		view.handleInput("\r");
-		expect(screen(view)).toContain("› Switch this chat");
-		view.handleInput(ESC);
-		expect(screen(view)).not.toContain("Switch this chat");
-		view.handleInput("\r");
-		for (let i = 0; i < 4; i++) view.handleInput(DOWN);
-		expect(screen(view)).toContain("› Set as this provider’s preferred model");
-		view.handleInput("\r");
+		view.handleInput("\x1bi");
+		expect(screen(view, 120)).toContain("set as this provider’s preferred model");
+		expectFits(view, 40);
+		view.handleInput("\x10");
 		expect(select).not.toHaveBeenCalled();
 		expect(save).toHaveBeenCalledWith(models[0], "provider");
+		const again = picker(select, vi.fn(), save);
+		again.handleInput("\r");
+		expect(select).toHaveBeenCalledWith(models[0]);
+		expect(screen(again)).not.toContain("Switch this chat");
 	});
 });
 

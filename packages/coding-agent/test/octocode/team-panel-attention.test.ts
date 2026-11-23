@@ -54,7 +54,8 @@ describe("agents panel: the agent that needs you", () => {
 		expect(out.join("\n")).not.toContain("→ you");
 		// The marks say the states: no tally of words on this session's row.
 		expect(out[0]).not.toMatch(/working|idle|asks parent/);
-		const row = out.findIndex((line) => /^ [├└] ⏺ plucky-otter/.test(line));
+		// The agent that asks draws the waiting glyph ◇: ⏺ means running only.
+		const row = out.findIndex((line) => /^ [├└] ◇ plucky-otter/.test(line));
 		// After busy-0001 and quiet-0002, each with its detail line: the order they joined in.
 		expect(row).toBe(5);
 		// The parent agent owns this answer, not the user: the reason, then the question, follow the open detail line.
@@ -65,7 +66,7 @@ describe("agents panel: the agent that needs you", () => {
 
 	it("treats a member waiting for an approval as needing the user", () => {
 		const out = lines([member("calm-heron", { waiting: "approval" }), member("swift-lynx")]);
-		expect(out[1]).toContain("⏺ calm-heron");
+		expect(out[1]).toContain("◇ calm-heron");
 		expect(out[3]).toContain("↳ waits for your approval");
 	});
 
@@ -120,7 +121,8 @@ describe("agents panel: the agent that needs you", () => {
 				);
 				expect(at, `${width}x${rows}`).toBeGreaterThan(0);
 				// The mark and the count stay on the row; the reason on its ↳ line outlasts every other line.
-				expect(out[at]).toContain("⏺");
+				// The agent that needs you draws the waiting glyph: ⏺ means running only.
+				expect(out[at]).toContain("◇");
 				expect(out[at]).toContain("✉ 2");
 				expect(out.join("\n")).toContain("↳ asks parent");
 				for (const line of out) expect(visibleWidth(line), `${width}x${rows}: ${line}`).toBeLessThanOrEqual(width);
@@ -133,7 +135,7 @@ describe("agents panel: the agent that needs you", () => {
 		const out = lines([...agents, member("plucky-otter", { joinedAt: NOW - 5_000 })], [ask("plucky-otter")], 80, 24);
 		expect(out.length).toBeLessThanOrEqual(8);
 		expect(out.join("\n")).toContain("plucky-otter");
-		expect(out.join("\n")).toContain("⏺ plucky-otter");
+		expect(out.join("\n")).toContain("◇ plucky-otter");
 	});
 
 	it("keeps the parent as reply owner on narrow lines", () => {
@@ -197,23 +199,24 @@ describe("agents panel: finished rows", () => {
 	];
 
 	it("shows the outcome, a headline and the tally; unknown outcomes stay neutral", () => {
+		// Each outcome draws its state's glyph (✓ done, ✗ failed, ◼ stopped, ◇ blocked, ○ left): ⏺ means running only.
 		const done = lines([], [], 120, undefined, finished("done", "## 3 gaps found; fix plan in report") as never);
-		expect(done[1]).toMatch(/⏺ old-gecko/);
+		expect(done[1]).toMatch(/✓ old-gecko/);
 		expect(done[1]).toContain("1m39s");
 		expect(done[3]).toContain("↳ 3 gaps found; fix plan in report");
 		expect(done[0]).not.toContain("done");
 		const failed = lines([], [], 120, undefined, finished("failed", "vitest: 4 failures") as never);
-		expect(failed[1]).toMatch(/⏺ old-gecko/);
+		expect(failed[1]).toMatch(/✗ old-gecko/);
 		expect(failed[3]).toContain("↳ vitest: 4 failures");
 		const stopped = lines([], [], 120, undefined, finished("stopped") as never);
-		expect(stopped[1]).toMatch(/⏺ old-gecko/);
+		expect(stopped[1]).toMatch(/◼ old-gecko/);
 		expect(stopped.join("\n")).not.toContain("↳");
 		const blocked = lines([], [], 120, undefined, finished("blocked", "needs a decision") as never);
 		expect(blocked.join("\n")).not.toContain("needs you");
-		expect(blocked[1]).toMatch(/⏺ old-gecko/);
+		expect(blocked[1]).toMatch(/◇ old-gecko/);
 		expect(blocked[3]).toContain("↳ blocked: needs a decision");
 		const unknown = lines([], [], 120, undefined, [{ member: gone, at: NOW - 1_000 }] as never);
-		expect(unknown[1]).toMatch(/⏺ old-gecko/);
+		expect(unknown[1]).toMatch(/○ old-gecko/);
 		expect(unknown[3]).toContain("↳ left");
 	});
 
@@ -235,6 +238,6 @@ describe("agents panel: finished rows", () => {
 	it("keeps the outcome label in the collapsed row of a short terminal", () => {
 		const agents = Array.from({ length: 4 }, (_, i) => member(`w-000${i}`));
 		const out = lines(agents, [], 80, 12, finished("failed", "boom") as never);
-		expect(out.join("\n")).toMatch(/⏺ old-gecko|\+\d more · .*⏺ 1/);
+		expect(out.join("\n")).toMatch(/✗ old-gecko|\+\d more · .*✗ 1/);
 	});
 });

@@ -18,7 +18,8 @@ class ModelCatalogRefreshCoordinator {
 		let active = this.activeByRuntime.get(modelRuntime);
 		if (!active) {
 			const controller = new AbortController();
-			const operation = modelRuntime.refresh({ signal: controller.signal });
+			// An open within the reuse window answers from the last clean refresh; availability is still re-checked.
+			const operation = modelRuntime.refresh({ signal: controller.signal, reuse: true });
 			const created: ActiveModelCatalogRefresh = {
 				controller,
 				// The cleanup runs asynchronously, after `created` is initialized.

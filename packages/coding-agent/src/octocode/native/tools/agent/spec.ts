@@ -4,6 +4,7 @@ import { HOOK_MODES } from "../../../shared/hook-mode.ts";
 import { CACHE_CHOICES } from "../../../subagents/process/env.ts";
 import { reasonSchema } from "../../../shared/reason.ts";
 import { GOAL_DESCRIPTION } from "../../../team/identity.ts";
+import { maxRequests } from "../../../subagents/budget.ts";
 import { maxSubagents } from "../../../subagents/claim.ts";
 import { runnerField } from "../../../subagents/runner-task.ts";
 
@@ -12,6 +13,8 @@ import { runnerField } from "../../../subagents/runner-task.ts";
  * names the subagent limit in force for that session, and `runner` is declared only when `runners` names an installed runnable CLI.
  */
 export function agentToolSpec(runners: readonly string[] = [], desktop = false) {
+	// The default the description names: a profile without its own `maxRequests` has it (`budget.ts`).
+	const requests = maxRequests() || "off";
 	const spec = {
 		name: "agent",
 		roleVariant: true,
@@ -36,7 +39,7 @@ export function agentToolSpec(runners: readonly string[] = [], desktop = false) 
 				}),
 			),
 			task: Type.String({
-				description: "Brief: goal, proof of done, files. Required, also on resume",
+				description: "Brief: goal, proof of done, files, facts it cannot find. Required, also on resume",
 			}),
 			item: Type.Optional(
 				Type.String({
@@ -51,7 +54,7 @@ export function agentToolSpec(runners: readonly string[] = [], desktop = false) 
 			),
 			resume: Type.Optional(
 				Type.String({
-					description: "Continue a finished or stopped child (needs task)",
+					description: "Continue a finished or stopped child",
 				}),
 			),
 			profile: Type.Optional(
@@ -75,6 +78,12 @@ export function agentToolSpec(runners: readonly string[] = [], desktop = false) 
 						"provider/id, id, small|medium|large; optional :off|minimal|low|medium|high|xhigh|max. Default: profile, else medium",
 				}),
 			),
+			// Checked against the profile's limit when the task is planned (`taskRequestLimit`); a resume keeps it.
+			maxRequests: Type.Optional(
+				Type.Integer({
+					description: `Soft request limit, at most the profile's (default ${requests}); stops at 1.5×`,
+				}),
+			),
 			resultSchema: Type.Optional(
 				// A plain object schema: `Type.Record` would add a `patternProperties` block to every request for the same meaning.
 				Type.Unsafe<Record<string, unknown>>({
@@ -82,11 +91,8 @@ export function agentToolSpec(runners: readonly string[] = [], desktop = false) 
 					description: "JSON Schema of the verdict; every node needs type",
 				}),
 			),
-			background: Type.Optional(
-				Type.Boolean({
-					description: "Return at once",
-				}),
-			),
+			// The description says what it returns: "background its id".
+			background: Type.Optional(Type.Boolean()),
 			hooks: Type.Optional(StringEnum(HOOK_MODES, { description: "User hooks (default off)" })),
 			cache: Type.Optional(StringEnum(CACHE_CHOICES, { description: "History cache tier" })),
 			context: Type.Optional(
@@ -106,7 +112,7 @@ export function agentToolSpec(runners: readonly string[] = [], desktop = false) 
 			),
 			paths: Type.Optional(
 				Type.Array(Type.String(), {
-					description: 'Files or "dir/" reserved till the report',
+					description: "Reserved till the report",
 				}),
 			),
 			runner: runnerField(runners),

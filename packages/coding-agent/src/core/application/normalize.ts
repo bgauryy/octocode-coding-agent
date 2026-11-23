@@ -17,6 +17,7 @@ import {
 import { compactionSummaryDisplay } from "../messages.ts";
 import type { ApplicationAssets } from "./assets.ts";
 import { rememberJsonLength } from "@octocodeai/octocode-common/json-length";
+import { isCredentialError } from "@octocodeai/octocode-ai";
 
 const string = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 /** Public display values must not retain references to provider objects mutated by later stream chunks. */
@@ -255,6 +256,7 @@ export function normalizeApplicationMessage(value: unknown, id: string, assets: 
 			...(message.errorMessage !== undefined && message.errorMessage.length <= 1000
 				? { errorMessage: message.errorMessage }
 				: {}),
+			...(message.errorKind ? { errorKind: message.errorKind } : {}),
 			text: "[Full message available]",
 			content: [
 				{ id: `${id}:full`, type: "unsupported", providerType: "large-message", text: "Full message available" },
@@ -283,6 +285,9 @@ export function applyMessageFields(source: Record<string, unknown>, message: App
 		"customType",
 	] as const)
 		if (typeof source[key] === "string") message[key] = source[key];
+	// A refused credential: clients point at the provider settings (the one classifier, `isCredentialError`, decides).
+	if (message.stopReason === "error" && message.errorMessage && isCredentialError(message.errorMessage))
+		message.errorKind = "credential";
 	for (const key of ["timestamp", "durationMs"] as const)
 		if (typeof source[key] === "number" && Number.isFinite(source[key])) message[key] = source[key];
 	if (source.usage && typeof source.usage === "object") message.usage = cloneDisplay(asRecord(source.usage));

@@ -4,11 +4,13 @@ import { join } from "node:path";
 import { Agent } from "@octocodeai/octocode-agent-core";
 import { type AssistantMessage, createAssistantMessageEventStream } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
+import { FALLBACK_ENTRY } from "../src/core/agent-session/fallback-switch.ts";
+import { entryActivity } from "../src/core/application/service/activity-data.ts";
 import { resetFallbackExhaustion } from "../src/core/agent-session/retry-fallback.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
-import { SessionManager } from "../src/core/session-manager.ts";
+import { type SessionEntry, SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createModelRegistry, getModelRuntime } from "./model-runtime-test-utils.ts";
 import { createTestResourceLoader } from "./utilities.ts";
@@ -127,6 +129,31 @@ describe("AgentSession retry.fallbackModels", () => {
 		expect(projected.some((m) => m.role === "assistant" && m.stopReason === "error")).toBe(false);
 	});
 
+	it("records the switch as a session entry a parent reads from its child", async () => {
+		const created = await createSession([`anthropic/${FALLBACK}`]);
+		const appended: unknown[] = [];
+		created.session.subscribe((event) => {
+			if (event.type === "entry_appended" && event.entry.type === "custom") appended.push(event.entry);
+		});
+		await created.session.prompt("Test");
+		const record = {
+			from: `anthropic/${PRIMARY}`,
+			to: `anthropic/${FALLBACK}`,
+			reason: "hit a usage limit",
+			billingChanged: false,
+		};
+		expect(appended).toContainEqual(expect.objectContaining({ customType: FALLBACK_ENTRY, data: record }));
+		// Its notice already tells the user; the entry adds no activity row of its own.
+		for (const entry of appended) expect(entryActivity(entry as SessionEntry)).toBeUndefined();
+		const entries = created.session.sessionManager.getEntries();
+		expect(entries).toContainEqual(
+			expect.objectContaining({ type: "custom", customType: FALLBACK_ENTRY, data: record }),
+		);
+		expect(created.session.lastRunOutcome?.warning).toBe(
+			`anthropic/${PRIMARY} hit a usage limit; continuing on anthropic/${FALLBACK} (retry.fallbackModels). /model switches back.`,
+		);
+	});
+
 	it("closes a backoff retry series that ends in a usage limit before switching", async () => {
 		const created = await createSession(
 			[`anthropic/${FALLBACK}`],
@@ -196,9 +223,37 @@ describe("AgentSession retry.fallbackModels", () => {
 		expect(created.session.lastRunOutcome?.warning).toContain("billed by plan instead of per token");
 	});
 
-	it("does not switch on an ordinary rate limit", async () => {
+	it("skips a fallback models.dev lists as deprecated", async () => {
+		const created = await createSession([`anthropic/${FALLBACK}`, "openai/gpt-4.1-mini"]);
+		const runtime = created.session.modelRuntime;
+		const update = runtime.getCatalogUpdate.bind(runtime);
+		vi.spyOn(runtime, "getCatalogUpdate").mockImplementation((model) =>
+			model.id === FALLBACK ? { deprecated: true } : update(model),
+		);
+		await created.session.prompt("Test");
+		expect(created.calls).toEqual([PRIMARY, "gpt-4.1-mini"]);
+		expect(created.session.model?.provider).toBe("openai");
+	});
+
+	it("does not switch on a rejected request", async () => {
 		const created = await createSession([`anthropic/${FALLBACK}`], "400 invalid_request_error: bad field");
 		await created.session.prompt("Test");
 		expect(created.calls).toEqual([PRIMARY]);
+	});
+
+	it("does not switch on an ordinary rate limit that outlasts the retries", async () => {
+		const created = await createSession(
+			[`anthropic/${FALLBACK}`],
+			'429 {"type":"error","error":{"type":"rate_limit_error","message":"Number of request tokens has exceeded your per-minute rate limit"}}',
+		);
+		await created.session.prompt("Test");
+		// A per-minute limit clears by waiting: the retries wait on the same model, and the turn ends with the error.
+		expect(created.retries.length).toBeGreaterThan(0);
+		expect(new Set(created.calls)).toEqual(new Set([PRIMARY]));
+		expect(created.session.model?.id).toBe(PRIMARY);
+		expect(created.session.lastRunOutcome?.warning ?? "").not.toContain("retry.fallbackModels");
+		// No switch is recorded.
+		const entries = created.session.sessionManager.getEntries();
+		expect(entries.some((entry) => entry.type === "custom" && entry.customType === FALLBACK_ENTRY)).toBe(false);
 	});
 });

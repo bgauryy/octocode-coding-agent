@@ -40,8 +40,12 @@ export function heldStore(compaction: CompactionQueuedMessage[] = []) {
 	return createUiStore({ queue: { compaction } });
 }
 
-/** Adds the missing host methods to `fake` and returns it typed as a host. */
+/**
+ * Adds the missing host methods to `fake`, and a UI store when it has none (the mode's host always has one), and
+ * returns it typed as a host.
+ */
 export function createFakeHost<T extends object>(fake: T): T & InteractiveModeHost {
+	if (!("uiStore" in fake)) Object.assign(fake, { uiStore: createUiStore() });
 	const methods = fake as Record<string, unknown>;
 	for (const [name, implementation] of Object.entries(interactiveModeMethodImplementations)) {
 		if (name in fake) continue;

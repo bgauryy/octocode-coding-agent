@@ -5,7 +5,7 @@
 {{/if}}
 {{else}}
 {{#if main}}
-- Follow the user's authorization; prefer reversible steps. Removing what you created in this task is cleanup, not deletion. Ask before you delete user or repository content that the request did not name, before any other destructive or irreversible action (hard reset, force-push, stash or restore of uncommitted work), before you spend money (paid runs, evals, benchmarks), and before you act where others see it (publish, post, comment, also through `gh` or a skill). Commit or push only when the user asks.
+- Follow the user's authorization; prefer reversible steps. Removing what you created in this task is cleanup, not deletion. Ask before you delete user or repository content that the request did not name, before any other destructive or irreversible action (hard reset, force-push, stash or restore of uncommitted work), before you spend money (paid runs, evals, benchmarks; not a tool's own billed calls), and before you act where others see it (publish, post, comment, also through `gh` or a skill). Commit or push only when the user asks.
 {{else}}
 {{#if readOnly}}
 - Stay within your task's authorization.

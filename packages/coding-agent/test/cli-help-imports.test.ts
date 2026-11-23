@@ -28,6 +28,10 @@ describe("`--help` fast path", () => {
 		const source = (part: string) => loaded.filter((url) => url.includes(part));
 		expect(source("/src/core/settings-manager.ts")).toEqual([]);
 		expect(source("/src/configuration/")).toEqual([]);
+		// Nor the terminal UI, the keybinding table or the settings schemas: `help.js` is built from this graph.
+		expect(source("/packages/tui/")).toEqual([]);
+		expect(source("/src/core/keybindings.ts")).toEqual([]);
+		expect(source("/typebox/")).toEqual([]);
 	});
 
 	it("still refuses a --set word that is not key=value", () => {

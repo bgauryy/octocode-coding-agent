@@ -2,7 +2,7 @@
 
 Octocode exposes named actions, such as `app.session.new`, that can be assigned keybindings. You can change default assignments or bind unassigned actions in Octocode's user configuration.
 
-Run `/keys`, or type `?` in an empty editor, to see the active shortcuts for the main editor and application. In fullscreen mode, `/find` opens transcript search from the editor, for terminals that report `ctrl+shift+f` as `ctrl+f`.
+Run `/keys`, or type `?` in an empty editor, to see the active shortcuts for the main editor and application: navigation, editing, sessions, the fullscreen transcript (in fullscreen mode) and the rest, each with the key in force and without actions that have none. Keys that act only inside a list or picker (the session, tree and model selectors, the queue list) are listed on this page only. In fullscreen mode, `/find` opens transcript search from the editor, for terminals that report `ctrl+shift+f` as `ctrl+f`.
 
 ## Assign keybindings
 
@@ -50,6 +50,8 @@ Write a key as `modifier+key`. Modifiers are `ctrl`, `shift`, `alt`, and `super`
 
 Examples: `ctrl+shift+x`, `alt+ctrl+x`, `ctrl+shift+alt+x`, `super+k`, `ctrl+super+k`, and `ctrl+1`.
 
+This page and `keybindings.json` always write `alt`. On macOS, `/keys` and every on-screen hint show it as `option` (the name on that key), so `alt+m` here is `option+m` there; elsewhere they show `alt`. They also write `escape` as `esc`.
+
 `super` bindings require a terminal that reports the modifier separately, typically through the Kitty keyboard protocol. They may not work in terminals without that support.
 
 `shift+ctrl+<letter>` bindings such as `shift+ctrl+t` need a terminal that reports Shift together with Ctrl, typically through the Kitty keyboard protocol; other terminals send them as `ctrl+<letter>`. `alt` bindings such as Windows' `alt+t` need the terminal to send Alt as Meta.
@@ -87,22 +89,22 @@ For VS Code, add to `keybindings.json`:
 
 #### Cursor movement
 
-| Keybinding id                | Default                            | Description                                            |
-| ---------------------------- | ---------------------------------- | ------------------------------------------------------ |
-| `tui.editor.cursorUp`        | `up`                               | Move cursor up, browsing older history at the top      |
-| `tui.editor.cursorDown`      | `down`                             | Move cursor down, browsing newer history at the bottom |
-| `tui.editor.historyPrevious` | None                               | Select the previous prompt history entry               |
-| `tui.editor.historyNext`     | None                               | Select the next prompt history entry                   |
-| `tui.editor.cursorLeft`      | `left`, `ctrl+b`                   | Move cursor left                                       |
-| `tui.editor.cursorRight`     | `right`, `ctrl+f`                  | Move cursor right                                      |
-| `tui.editor.cursorWordLeft`  | `alt+left`, `ctrl+left`, `alt+b`   | Move cursor word left                                  |
-| `tui.editor.cursorWordRight` | `alt+right`, `ctrl+right`, `alt+f` | Move cursor word right                                 |
-| `tui.editor.cursorLineStart` | `home`, `ctrl+a`                   | Move to line start                                     |
-| `tui.editor.cursorLineEnd`   | `end`, `ctrl+e`                    | Move to line end                                       |
-| `tui.editor.jumpForward`     | `ctrl+]`                           | Jump forward to character                              |
-| `tui.editor.jumpBackward`    | `ctrl+alt+]`                       | Jump backward to character                             |
-| `tui.editor.pageUp`          | `pageUp`, `ctrl+pageUp`            | Scroll up by page                                      |
-| `tui.editor.pageDown`        | `pageDown`, `ctrl+pageDown`        | Scroll down by page                                    |
+| Keybinding id                | Default                            | Description                                                                          |
+| ---------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------ |
+| `tui.editor.cursorUp`        | `up`                               | Move cursor up; on the first line, to its start, and from there browse older history |
+| `tui.editor.cursorDown`      | `down`                             | Move cursor down, browsing newer history at the bottom                               |
+| `tui.editor.historyPrevious` | None                               | Select the previous prompt history entry                                             |
+| `tui.editor.historyNext`     | None                               | Select the next prompt history entry                                                 |
+| `tui.editor.cursorLeft`      | `left`, `ctrl+b`                   | Move cursor left                                                                     |
+| `tui.editor.cursorRight`     | `right`, `ctrl+f`                  | Move cursor right                                                                    |
+| `tui.editor.cursorWordLeft`  | `alt+left`, `ctrl+left`, `alt+b`   | Move cursor word left                                                                |
+| `tui.editor.cursorWordRight` | `alt+right`, `ctrl+right`, `alt+f` | Move cursor word right                                                               |
+| `tui.editor.cursorLineStart` | `home`, `ctrl+a`                   | Move to line start                                                                   |
+| `tui.editor.cursorLineEnd`   | `end`, `ctrl+e`                    | Move to line end                                                                     |
+| `tui.editor.jumpForward`     | `ctrl+]`                           | Jump forward to character                                                            |
+| `tui.editor.jumpBackward`    | `ctrl+alt+]`                       | Jump backward to character                                                           |
+| `tui.editor.pageUp`          | `pageUp`, `ctrl+pageUp`            | Scroll up by page                                                                    |
+| `tui.editor.pageDown`        | `pageDown`, `ctrl+pageDown`        | Scroll down by page                                                                  |
 
 The dedicated history actions browse prompt history regardless of cursor position and take precedence over application actions using the same key.
 
@@ -145,29 +147,30 @@ These keys drive every picker, dialog and page. Up and Down stop at the ends; Pg
 
 In fullscreen mode, these actions control the transcript and take precedence over editor actions using the same key.
 
-| Keybinding id                  | Default                                                              | Description                                        |
-| ------------------------------ | -------------------------------------------------------------------- | -------------------------------------------------- |
-| `tui.altScreen.pageUp`         | `pageUp`                                                             | Scroll the transcript up by one page               |
-| `tui.altScreen.pageDown`       | `pageDown`                                                           | Scroll the transcript down by one page             |
-| `tui.altScreen.halfPageUp`     | `shift+pageUp`                                                       | Scroll the transcript up by half a page            |
-| `tui.altScreen.halfPageDown`   | `shift+pageDown`                                                     | Scroll the transcript down by half a page          |
-| `tui.altScreen.lineUp`         | None                                                                 | Scroll the transcript up by one line               |
-| `tui.altScreen.lineDown`       | None                                                                 | Scroll the transcript down by one line             |
-| `tui.altScreen.previousPrompt` | `ctrl+shift+up`, `ctrl+up` (`ctrl+up` only on Windows and WSL)       | Jump to the previous marked message                |
-| `tui.altScreen.nextPrompt`     | `ctrl+shift+down`, `ctrl+down` (`ctrl+down` only on Windows and WSL) | Jump to the next marked message                    |
-| `tui.altScreen.search`         | `ctrl+shift+f` (`ctrl+f` on Windows and WSL)                         | Search the rendered transcript                     |
-| `tui.altScreen.searchNext`     | `enter`, `ctrl+g`                                                    | Select the next search match while searching       |
-| `tui.altScreen.searchPrevious` | `shift+enter`, `ctrl+shift+g`                                        | Select the previous search match while searching   |
-| `tui.altScreen.searchClose`    | `escape`                                                             | Close transcript search                            |
-| `tui.altScreen.top`            | `ctrl+home`                                                          | Scroll to the beginning of the transcript          |
-| `tui.altScreen.bottom`         | `ctrl+end`                                                           | Scroll to the transcript end and follow new output |
+| Keybinding id                  | Default                                                              | Description                                                                                                                                                                                                                                                         |
+| ------------------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tui.altScreen.pageUp`         | `pageUp`                                                             | Scroll the transcript up by one page                                                                                                                                                                                                                                |
+| `tui.altScreen.pageDown`       | `pageDown`                                                           | Scroll the transcript down by one page                                                                                                                                                                                                                              |
+| `tui.altScreen.halfPageUp`     | `shift+pageUp`                                                       | Scroll the transcript up by half a page                                                                                                                                                                                                                             |
+| `tui.altScreen.halfPageDown`   | `shift+pageDown`                                                     | Scroll the transcript down by half a page                                                                                                                                                                                                                           |
+| `tui.altScreen.lineUp`         | None                                                                 | Scroll the transcript up by one line                                                                                                                                                                                                                                |
+| `tui.altScreen.lineDown`       | None                                                                 | Scroll the transcript down by one line                                                                                                                                                                                                                              |
+| `tui.altScreen.previousPrompt` | `ctrl+shift+up`, `ctrl+up` (`ctrl+up` only on Windows and WSL)       | Jump to the previous marked message                                                                                                                                                                                                                                 |
+| `tui.altScreen.nextPrompt`     | `ctrl+shift+down`, `ctrl+down` (`ctrl+down` only on Windows and WSL) | Jump to the next marked message                                                                                                                                                                                                                                     |
+| `tui.altScreen.search`         | `ctrl+shift+f` (`ctrl+f` on Windows and WSL)                         | Search the rendered transcript                                                                                                                                                                                                                                      |
+| `tui.altScreen.searchNext`     | `enter`, `ctrl+g`                                                    | Select the next search match while searching                                                                                                                                                                                                                        |
+| `tui.altScreen.searchPrevious` | `shift+enter`, `ctrl+shift+g`                                        | Select the previous search match while searching                                                                                                                                                                                                                    |
+| `tui.altScreen.searchClose`    | `escape`                                                             | Close transcript search                                                                                                                                                                                                                                             |
+| `tui.altScreen.top`            | `ctrl+home`                                                          | Scroll to the beginning of the transcript                                                                                                                                                                                                                           |
+| `tui.altScreen.bottom`         | `ctrl+end`                                                           | Scroll to the transcript end and follow new output                                                                                                                                                                                                                  |
+| `tui.altScreen.toggleMouse`    | `alt+m`                                                              | Hand the mouse to the terminal's own selection, or take it back. A notice at the top right says which for 4 s: `Mouse off: select, copy and scroll with your terminal · alt+m turns it back on`, or `Mouse on: the wheel scrolls here, dragging selects and copies` |
 
 ### Application
 
 | Keybinding id              | Default                               | Description                                                                                                                                                                                                                                                                                     |
 | -------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `app.interrupt`            | `escape`                              | Cancel / abort                                                                                                                                                                                                                                                                                  |
-| `app.clear`                | `ctrl+c`                              | Clear editor (first) / exit (second)                                                                                                                                                                                                                                                            |
+| `app.clear`                | `ctrl+c`                              | Stop a running turn, `!` command or compaction as `escape` does, keeping the draft; with nothing running, clear the editor. Either way the prompt shows `ctrl+c again to exit`, and a second press within 1 s exits                                                                             |
 | `app.exit`                 | `ctrl+d`                              | Exit (when editor empty)                                                                                                                                                                                                                                                                        |
 | `app.suspend`              | `ctrl+z` (None on Windows)            | Suspend to background                                                                                                                                                                                                                                                                           |
 | `app.permission.cycle`     | `shift+tab`                           | Cycle the permission mode (full → workspace → manual) in native sessions; handled before other editor actions                                                                                                                                                                                   |
@@ -200,16 +203,17 @@ On native Windows, `app.suspend` has no default because Windows terminals do not
 
 ### Models and Thinking
 
-| Keybinding id             | Default                                     | Description                                                                    |
-| ------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------ |
-| `app.model.select`        | `ctrl+l`                                    | Open model selector                                                            |
-| `app.model.cycleForward`  | `ctrl+p`                                    | Cycle to next model                                                            |
-| `app.model.cycleBackward` | `shift+ctrl+p` (`alt+p` on Windows and WSL) | Cycle to previous model                                                        |
-| `app.models.save`         | `ctrl+s`                                    | Save the global default model or model shortcuts after storage succeeds        |
-| `app.models.details`      | `alt+i`                                     | Toggle model identifiers, billing, pricing and cache details; PgUp/PgDn scroll |
-| `app.thinking.cycle`      | `shift+ctrl+t` (`alt+t` on Windows and WSL) | Cycle thinking level (`shift+tab` cycles the permission mode instead)          |
-| `app.thinking.save`       | `ctrl+s`                                    | Save current thinking level to settings                                        |
-| `app.thinking.toggle`     | `ctrl+t`                                    | Collapse or expand thinking blocks                                             |
+| Keybinding id             | Default                                     | Description                                                                                                                                     |
+| ------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app.model.select`        | `ctrl+l`                                    | Open model selector                                                                                                                             |
+| `app.model.cycleForward`  | `ctrl+p`                                    | Cycle to next model                                                                                                                             |
+| `app.model.cycleBackward` | `shift+ctrl+p` (`alt+p` on Windows and WSL) | Cycle to previous model                                                                                                                         |
+| `app.models.save`         | `ctrl+s`                                    | In `/model`: switch this chat and save the model as the default (a trusted project asks: this project or global). In model shortcuts: save them |
+| `app.models.details`      | `alt+i`                                     | Toggle model identifiers, billing, pricing and cache details; PgUp/PgDn scroll                                                                  |
+| `app.models.preferred`    | `ctrl+p` (model details open)               | Set the highlighted model as its provider's preferred model                                                                                     |
+| `app.thinking.cycle`      | `shift+ctrl+t` (`alt+t` on Windows and WSL) | Cycle thinking level (`shift+tab` cycles the permission mode instead)                                                                           |
+| `app.thinking.save`       | `ctrl+s`                                    | Save current thinking level to settings                                                                                                         |
+| `app.thinking.toggle`     | `ctrl+t`                                    | Collapse or expand thinking blocks                                                                                                              |
 
 In the model selector, `tui.editor.cursorLeft` and `tui.editor.cursorRight` (`left`/`right`, `ctrl+b`/`ctrl+f`) switch the shown provider: all providers, then each provider in turn. The line under the search box names the provider shown.
 
@@ -240,7 +244,7 @@ While you edit a message it is held out of delivery, so the agent cannot send it
 
 **Up arrow and queued messages.**
 
-- Up in an empty editor opens the queue list while anything is queued; with an empty queue it browses prompt history as before. In a draft it moves the cursor or browses history as usual.
+- Up in an empty editor opens the queue list while anything is queued; with an empty queue it browses prompt history as before. In a draft Up moves the cursor up, on the first line to its start; Up from there browses history, and Down past the newest prompt brings the draft back.
 - The dequeue key (`app.message.dequeue`) recalls only the last queued message, placing it before your current draft, so repeated presses walk backwards through the queue without duplicating or dropping anything. A message with attachments stays queued, because the editor holds text only; edit or remove it from the queue list.
 - `Escape` while the agent works aborts the run and restores every queued message, steering first and then follow-ups, ahead of your draft. Attachments on those messages are not restored.
 - Replacing the session (`/new`, `/resume`, fork, clone) restores queued text to the editor before the old session is discarded; fork and clone then replace the editor text with their own.

@@ -2,6 +2,7 @@ import { envChoice, PERMISSION_ENV, PERMISSION_GRANTS_ENV } from "@octocodeai/oc
 import { shortcutText } from "../shared/keys.ts";
 import { plural } from "../shared/text.ts";
 import { ACTION_CLASSES, type ActionClass, MATRIX, type Rule } from "./action-classes.ts";
+import { PERMISSION_MODES, type PermissionMode } from "./mode-names.ts";
 
 export { ACTION_CLASSES, type ActionClass } from "./action-classes.ts";
 
@@ -14,12 +15,7 @@ export { ACTION_CLASSES, type ActionClass } from "./action-classes.ts";
  * sandbox: they decide what Octocode asks about, while the OS user's rights stay what they are.
  */
 
-/** From the strictest to the widest: an index comparison says which of two modes asks about more. */
-export const PERMISSION_MODES = ["manual", "workspace", "full", "bypass"] as const;
-export type PermissionMode = (typeof PERMISSION_MODES)[number];
-
-/** The modes `/permissions`, the editor shortcut and `--permission-mode` choose; `bypass` has its own start flag. */
-export const CHOOSABLE_MODES = ["manual", "workspace", "full"] as const satisfies readonly PermissionMode[];
+export { CHOOSABLE_MODES, PERMISSION_MODES, type PermissionMode } from "./mode-names.ts";
 
 /** Whether `mode` runs every routine action unasked (`full` and `bypass`): the counter, the warning colour and the run summary follow it. */
 export const runsUnasked = (mode: PermissionMode): boolean => mode === "full" || mode === "bypass";

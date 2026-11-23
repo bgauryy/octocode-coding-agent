@@ -21,6 +21,8 @@ process.env.HOME = home;
 process.env.USERPROFILE = home;
 // The offline check after a network failure would send DNS lookups: tests answer it as online unless they set it.
 process.env.OCTOCODE_NETWORK_PROBE ??= "online";
+// No test opens a browser window: `/web` and an item link give the page's address (`browser/app-window.ts`).
+process.env.OCTOCODE_OPEN_BROWSER = "0";
 delete process.env.CLAUDE_CONFIG_DIR;
 delete process.env.CODEX_HOME;
 process.on("exit", () => rmSync(home, { recursive: true, force: true }));

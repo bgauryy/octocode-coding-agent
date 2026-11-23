@@ -1,5 +1,5 @@
 import type { ThinkingLevel, ThinkingLevelMap } from "../src/types.ts";
-import { getEffortThinkingLevelMap } from "./models-dev-reasoning-options.ts";
+import { getEffortThinkingLevelMap } from "../src/catalog/models-dev-fields.ts";
 
 export interface OpenRouterReasoningMetadata {
 	mandatory?: boolean;

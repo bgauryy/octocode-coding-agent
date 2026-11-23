@@ -95,6 +95,46 @@ it("shows unattended delegation and persistent RPC examples in help", async () =
 	}
 });
 
+it("lists every executable the package installs in help", async () => {
+	const { readFileSync } = await import("node:fs");
+	const { printHelp } = await import("../src/cli/args.ts");
+	const bins = Object.keys(JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).bin);
+	const log = vi.spyOn(console, "log").mockImplementation(() => {});
+	try {
+		printHelp();
+		const text = log.mock.calls.map((call) => String(call[0])).join("\n");
+		for (const bin of bins) expect(text, bin).toMatch(new RegExp(`^ {2}${bin} `, "m"));
+	} finally {
+		log.mockRestore();
+	}
+});
+
+it("names a --model example in help that picks one model whichever providers are signed in", async () => {
+	const { printHelp } = await import("../src/cli/args.ts");
+	const { resolveCliModel } = await import("../src/core/model-resolver.ts");
+	const { getBuiltinModels, getBuiltinProviders } = await import("@octocodeai/octocode-ai/providers/all");
+	const log = vi.spyOn(console, "log").mockImplementation(() => {});
+	try {
+		printHelp();
+		const text = log.mock.calls.map((call) => String(call[0])).join("\n");
+		// The example command lines (`  octocode ... --model <x> ...`), not prose that names the flag.
+		const examples = [...text.matchAll(/^ {2}octocode\b.*? --model (\S+)/gm)].map((match) => match[1]);
+		expect(examples.length).toBeGreaterThan(1);
+		const models = getBuiltinProviders().flatMap((provider) => getBuiltinModels(provider));
+		for (const cliModel of examples) {
+			const picked = [false, true].map((signedIn) => {
+				const modelRuntime = { getModels: () => models, hasConfiguredAuth: () => signedIn };
+				const result = resolveCliModel({ cliModel, modelRuntime: modelRuntime as never });
+				expect(result.error, cliModel).toBeUndefined();
+				return `${result.model?.provider}/${result.model?.id}`;
+			});
+			expect(picked[0], cliModel).toBe(picked[1]);
+		}
+	} finally {
+		log.mockRestore();
+	}
+});
+
 it("completes catalog providers and models without resolving credentials", () => {
 	expect(completeCli(["--provider", "openai"])).toContain("openai");
 	expect(completeCli(["--provider", "openai", "--model", ""])).not.toHaveLength(0);

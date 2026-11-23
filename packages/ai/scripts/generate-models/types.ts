@@ -1,10 +1,7 @@
 import type { AiGatewayPricing } from "../ai-gateway-pricing.ts";
-import type { Model } from "@opencode-ai/models";
 
-/** The converters accept sparse provider rows; the SDK owns the types of their fields. */
-export type ModelsDevModel = Pick<Model, "id" | "name"> & Partial<Model>;
-export type ModelsDevProvider = { models?: Record<string, ModelsDevModel> };
-export type ModelsDevCatalog = Record<string, ModelsDevProvider>;
+/** The converters accept sparse provider rows; the shared field mappers own their shape. */
+export type { ModelsDevCatalog, ModelsDevModel, ModelsDevProvider } from "../../src/catalog/models-dev-fields.ts";
 
 export interface NvidiaNimModelListItem {
 	id: string;

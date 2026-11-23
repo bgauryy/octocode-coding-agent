@@ -29,7 +29,7 @@ import { agentState, headerOverride } from "./render-state.ts";
 
 import { backgroundSummary } from "./background-summary.ts";
 import type { RunDetails, ResultDetails } from "./run-types.ts";
-import { bodyLines, clip, plural } from "../shared/text.ts";
+import { bodyLines, clip, linkPath, plural } from "../shared/text.ts";
 import { itemTitle, withItemTitles, withItemTitlesIn } from "../render/item-titles.ts";
 import type { RenderContext } from "../render/types.ts";
 import { ReportView } from "../render/report.ts";
@@ -267,12 +267,12 @@ export function renderAgentResult(
 	shareRowModel(context, withoutProvider(details.model));
 	if (argsOf(context).isolate) shareWorktree(context, details.id);
 	if (isPartial) {
-		// Live progress: counts, then the latest steps (the header carries the running clock).
+		const shot = details.shot;
 		const lines = [
 			...(details.cache ? [theme.fg("dim", `Last request cache: ${childCacheLabel(details.cache.latest)}`)] : []),
 			...details.activity.slice(-3).map((line) => theme.fg("dim", clip(line, 200))),
 			...(details.thinking ? [theme.italic(theme.fg("thinkingText", `✻ ${clip(details.thinking, 200)}…`))] : []),
-			...(details.shot ? [theme.fg("dim", `📷 ${clip(shortPath(details.shot), 200)}`)] : []),
+			...(shot ? [theme.fg("dim", `📷 ${linkPath(clip(shortPath(shot), 200), shot)}`)] : []),
 		];
 		const summary = details.stopping
 			? `stopping… (${runStats(details)})`

@@ -33,6 +33,7 @@ flowchart LR
 | [Models](models.md)                                       | Pick, route, discover and add models                                            |
 | [Models configuration reference](models-configuration.md) | Look up every `models.json` field                                               |
 | [Permissions](permissions.md)                             | Choose a permission mode and write rules                                        |
+| [Sandbox](sandbox.md)                                     | Confine the agent's shell commands with an operating-system sandbox             |
 | [Prompts](prompts.md)                                     | Change what agents are told                                                     |
 | [What an agent reads](agent-context.md)                   | See each context source, its switch and how to measure it                       |
 | [Prompt caching](prompt-caching.md)                       | Keep requests cheap and find cache misses                                       |

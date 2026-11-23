@@ -64,8 +64,14 @@ export type ApplicationSession = ApplicationOperations &
 		AgentSessionApi,
 		"sessionId" | "messages" | "isStreaming" | "model" | "sessionManager" | "subscribe" | "answerDialog" | "holdDialog"
 	> &
-	// Optional so a session without tools (a fixture) still projects; its calls then use the generic display.
-	Partial<Pick<AgentSessionApi, "getToolRenderers">>;
+	// Optional so a session without tools (a fixture) still projects; its calls then use the generic display. A session
+	// without a model runtime publishes no thinking levels, billing, spend split or model list, and refuses `setModel`.
+	Partial<
+		Pick<
+			AgentSessionApi,
+			"getToolRenderers" | "modelRuntime" | "thinkingLevel" | "getAvailableThinkingLevels" | "getContextUsage"
+		>
+	>;
 
 /** Run a listed operation on the session; any other name, even of a session method, is refused. */
 export function invokeOperation<K extends ApplicationOperation<ApplicationOperations>>(

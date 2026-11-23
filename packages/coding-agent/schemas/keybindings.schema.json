@@ -203,6 +203,10 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Scroll viewport to bottom"
     },
+    "tui.altScreen.toggleMouse": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Hand the mouse to the terminal's own selection, or take it back"
+    },
     "app.permission.cycle": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Cycle permission mode"
@@ -386,6 +390,10 @@
     "app.models.details": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Show or hide model pricing and cache details"
+    },
+    "app.models.preferred": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Set the highlighted model as its provider's preferred model (model details open)"
     },
     "app.models.enableAll": {
       "$ref": "#/$defs/KeybindingValue",

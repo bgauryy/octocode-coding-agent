@@ -7,7 +7,7 @@ import type { McpExposure } from "@octocodeai/octocode-contracts/mcp-server";
 import type { McpServerEntry } from "./config.ts";
 import { exposureOf } from "./exposure.ts";
 import { mcpGroupLabel, mcpServerGroup, mcpServerSource } from "./group.ts";
-import { isEnabled, type McpServer } from "./server.ts";
+import { isEnabled, type McpServer, WITHHELD_STATE } from "./server.ts";
 
 /** Who gets the server's tools by default: `defaultActive` as the rows word it. */
 type McpAvailableTo = "every agent" | "only agents that name it";
@@ -17,6 +17,7 @@ export interface McpRowInput {
 	name: string;
 	/** The server's own `enabled` switch. */
 	enabled: boolean;
+
 	state?: string;
 	toolCount?: number;
 	exposure: McpExposure;
@@ -41,6 +42,7 @@ export interface McpRowFacts {
 }
 
 const STATE_LABELS: Readonly<Record<string, string>> = {
+	"not checked": WITHHELD_STATE,
 	"needs-auth": "needs sign-in",
 	unselected: "not selected",
 	disconnected: "disconnected, reconnects on next call",
@@ -64,6 +66,8 @@ export function mcpEntryRowInput(entry: McpServerEntry, live?: { state: string; 
 	return {
 		name: entry.name,
 		enabled: entry.config.enabled !== false,
+		// Off until approved, whatever its switch: worded so even where no session reports a state.
+		...(entry.withheld ? { state: "not checked" } : {}),
 		exposure: exposureOf(entry),
 		defaultActive: entry.config.defaultActive !== false,
 		...(entry.scope ? { scope: entry.scope } : {}),
@@ -76,6 +80,7 @@ export function mcpRowFacts(input: McpRowInput, short?: (file: string) => string
 	const scope = input.scope;
 	return {
 		name: input.name,
+		// The switch, which `/harness` and `/settings` toggle; a held-back server's state says it is off until approved.
 		on: input.enabled,
 		state: input.state === undefined ? "not connected" : (STATE_LABELS[input.state] ?? input.state),
 		toolCount: input.toolCount ?? 0,

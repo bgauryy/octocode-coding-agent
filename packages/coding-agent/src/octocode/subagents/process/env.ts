@@ -126,6 +126,8 @@ export interface Identity {
 	cachePreferences?: CachePreferences;
 	/** How much of the user's hooks it runs (`childHookMode`); a follow-up to the same child keeps it. Absent: none. */
 	hooks?: HookMode;
+	/** Its task's soft request limit (`maxRequests`), below its profile's (`taskRequestLimit`). Absent: the profile's. */
+	maxRequests?: number;
 	/** Lifetime of the history entry the child's requests write, when known (`cache-warmer/economics`). */
 	cacheTtlMs?: number;
 	/** Siblings of its prefix save by waiting for its cache entry: its model prices a cache read below the write (`staggerPays`). */

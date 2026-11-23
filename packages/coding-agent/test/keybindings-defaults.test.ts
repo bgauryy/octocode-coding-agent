@@ -38,6 +38,7 @@ const EDITOR_CONTEXT_ACTIONS = [
 	"tui.altScreen.search",
 	"tui.altScreen.top",
 	"tui.altScreen.bottom",
+	"tui.altScreen.toggleMouse",
 ];
 
 /**

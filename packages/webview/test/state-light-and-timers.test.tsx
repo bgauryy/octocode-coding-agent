@@ -15,12 +15,21 @@ afterEach(() => {
 });
 
 describe("state marks", () => {
-	it("spins a half-filled circle in four steps while running, with no colour change", () => {
+	it("turns the working spinner while running, a full dot under reduced motion, and never a half-filled shape", () => {
 		const { container } = render(<StateMark state="running" />);
 		const svg = container.querySelector("svg");
 		expect(svg?.getAttribute("class")).toContain("mark-running");
-		expect(svg?.querySelector(".mark-spinner")).not.toBeNull();
-		expect(CHROME_CSS).toMatch(/\.mark-spinner\s*\{[^}]*animation:\s*spin [\d.]+s steps\(4\) infinite/);
+		// An arc on a faint ring turns smoothly, the family of the page's `.spinner`.
+		expect(svg?.querySelector(".mark-spinner")?.getAttribute("fill")).toBeNull();
+		expect(CHROME_CSS).toMatch(/\.mark-spinner\s*\{[^}]*animation:\s*spin [\d.]+s linear infinite/);
+		// No filled half circle (an arc closed with `Z` and filled) anywhere in the mark.
+		for (const path of svg?.querySelectorAll("path") ?? []) expect(path.getAttribute("d")).not.toMatch(/Z$/);
+		// Reduced motion hides the spinner and shows the full dot.
+		expect(svg?.querySelector(".mark-still")?.getAttribute("fill")).toBe("currentColor");
+		expect(CHROME_CSS).toMatch(
+			/@media \(prefers-reduced-motion: reduce\)\s*\{[^}]*\.mark-running \.mark-spinner[^}]*display:\s*none[^}]*\}\s*\.mark-running \.mark-still\s*\{\s*display:\s*inline/,
+		);
+		expect(CHROME_CSS).toMatch(/\.mark-still\s*\{\s*display:\s*none/);
 		expect(CHROME_CSS).not.toMatch(/\.mark-arc/);
 	});
 

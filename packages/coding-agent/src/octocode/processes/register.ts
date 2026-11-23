@@ -1,9 +1,9 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Db } from "../../../../db/src/api.ts";
-import { liveStdioServerPids } from "../../../../mcp/src/api.ts";
+import { liveStdioServerPids, onStdioServersChange } from "../../../../mcp/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import type { FeatureSetup } from "../../core/features/index.ts";
-import { processStartTime } from "../shared/process.ts";
+import { processStartTime, warmProcessStartTime } from "../shared/process.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { PARENT_PID_ENV } from "../team/store/env.ts";
@@ -29,6 +29,8 @@ export interface ProcessesOptions {
 	db?: () => Db;
 	table?: ProcessTableSource;
 	mcpPids?: () => number[];
+	/** Subscribes to MCP server starts and exits (`onStdioServersChange`); returns the unsubscribe. */
+	onMcpServersChange?: (listener: () => void) => () => void;
 	intervalMs?: number;
 	stop?: StopDeps["stop"];
 	match?: StopDeps["match"];
@@ -52,6 +54,13 @@ export function registerProcesses(api: FeatureSetup, options: ProcessesOptions):
 	const db = options.db ?? (() => sharedAgentDb().db);
 	const live = liveStopDeps(async () => []);
 	let sampler: ProcessSampler | undefined;
+	// A server that starts after a sample read the table is labelled `child` until the next one: sample again at once,
+	// so every `/processes` (this session's and another's) reads it as `mcp`.
+	let unwatchMcp: (() => void) | undefined;
+	// Session start records this process's start time (here and in the sessions table): reading it now, in the
+	// background, keeps that `ps` (5–18 ms) off the startup path. Never rejects; every reader shares the kept answer
+	// (`common/src/own-start.ts`).
+	void warmProcessStartTime();
 
 	if (!options.isSubagent)
 		options.commands.add(
@@ -74,6 +83,7 @@ export function registerProcesses(api: FeatureSetup, options: ProcessesOptions):
 			? processTitle(role, id)
 			: sessionProcessTitle(ctx.mode === "rpc" ? "rpc" : "main", sessionId);
 		setProcessTitle(title);
+		unwatchMcp?.();
 		sampler?.stop();
 		sampler = undefined;
 		const parent = subagent ? parentOf(env) : undefined;
@@ -113,6 +123,8 @@ export function registerProcesses(api: FeatureSetup, options: ProcessesOptions):
 				intervalMs: options.intervalMs ?? sampleIntervalMs(env),
 				onError,
 			});
+			const current = sampler;
+			unwatchMcp = (options.onMcpServersChange ?? onStdioServersChange)(() => current.sampleNow());
 		} catch (error) {
 			onError(error);
 		}
@@ -120,6 +132,8 @@ export function registerProcesses(api: FeatureSetup, options: ProcessesOptions):
 
 	// The final sample is written at once from the last table read: a shutdown or a switch never waits for a `ps`.
 	api.bus.on("session_shutdown", () => {
+		unwatchMcp?.();
+		unwatchMcp = undefined;
 		const stopping = sampler;
 		sampler = undefined;
 		stopping?.stop();

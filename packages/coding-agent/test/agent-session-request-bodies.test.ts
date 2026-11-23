@@ -144,8 +144,9 @@ describe("request bodies with read-only context handlers", () => {
 			.getEntries()
 			.filter((entry): entry is SessionMessageEntry => entry.type === "message" && entry.message.role === "assistant")
 			.map((entry) => (entry.message as AssistantMessage).requestTrace);
+		const ids = sessionManager.getEntries().map((entry) => `${entry.type}:${entry.id}`);
 		session.dispose();
-		return { bodies, traces };
+		return { bodies, traces, ids };
 	}
 
 	it("sends the bytes the copying path sends, and traces each body as the full description does", async () => {
@@ -158,8 +159,18 @@ describe("request bodies with read-only context handlers", () => {
 		const normalize = (body: string) =>
 			body.replaceAll(join(tempDir, "reading"), "<dir>").replaceAll(join(tempDir, "copying"), "<dir>");
 		expect(reading.bodies.map(normalize)).toEqual(copying.bodies.map(normalize));
+		const unkeyed = (trace: unknown) =>
+			JSON.stringify(trace, (key, value: unknown) => (key === "entryKey" ? undefined : value));
+		// The reading path hands the provider the session's own message objects, so every message layer names its entry;
+		// the copying path's handler clones them, so no layer can be tied to an entry.
+		for (const trace of reading.traces) {
+			const keys = trace!.layers.filter((layer) => layer.kind === "message").map((layer) => layer.entryKey);
+			expect(keys.length).toBeGreaterThan(0);
+			for (const key of keys) expect(reading.ids).toContain(key);
+		}
+		expect(copying.traces.every((trace) => trace!.layers.every((layer) => layer.entryKey === undefined))).toBe(true);
 		for (const run of [reading, copying]) {
-			expect(run.traces.map((trace) => JSON.stringify(trace))).toEqual(
+			expect(run.traces.map(unkeyed)).toEqual(
 				run.bodies.map((body) => JSON.stringify(describePayloadLayers("anthropic-messages", JSON.parse(body)))),
 			);
 		}

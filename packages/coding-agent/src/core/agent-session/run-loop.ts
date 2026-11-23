@@ -73,6 +73,7 @@ export class SessionRunLoop {
 		this.fallback = new SessionFallback({
 			session: host.session,
 			run: host.run,
+			emit: (event) => host.emit(event),
 			models: host.models,
 			omitRecoveryAttempt: (message) => host.boundaries.omitRecoveryAttempt(message),
 			isRetryable: (message) => host.retry.isRetryableError(message),

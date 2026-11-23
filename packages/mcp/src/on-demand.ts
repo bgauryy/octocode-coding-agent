@@ -17,8 +17,8 @@ import { configuredMcpToolExposure } from "./servers.ts";
 import type { McpFeatureState } from "./state.ts";
 
 interface OnDemandSession {
-	/** The session model's transport adds a declaration without rewriting the cached prefix. */
-	capable: boolean;
+	/** The selected transport requires tools to be declared from the first request. */
+	requiresInitialDeclaration: boolean;
 	/** On-demand tools declared this session, as `<server>\0<tool>`: they stay declared in full. */
 	loaded: Set<string>;
 }
@@ -27,7 +27,7 @@ const sessions = new WeakMap<McpFeatureState, OnDemandSession>();
 
 function sessionOf(state: McpFeatureState): OnDemandSession {
 	let session = sessions.get(state);
-	if (!session) sessions.set(state, (session = { capable: false, loaded: new Set() }));
+	if (!session) sessions.set(state, (session = { requiresInitialDeclaration: false, loaded: new Set() }));
 	return session;
 }
 
@@ -40,7 +40,10 @@ const configuredOnDemand = (entry: McpServerEntry, tool: string): boolean =>
 /** Read the session model's transport: a model switch to one without in-place additions declares every unloaded tool deferred. */
 export function setOnDemandModel(state: McpFeatureState, model: unknown): void {
 	const valid = typeof model === "object" && model !== null && typeof (model as { api?: unknown }).api === "string";
-	sessionOf(state).capable = valid && supportsNativeToolLoading(model as Model<Api>);
+	// A server can connect before the user selects the first model. Activating its tools now would keep them
+	// declared even after a capable model is selected. model_select registers them for the actual transport.
+	sessionOf(state).requiresInitialDeclaration =
+		model !== undefined && !(valid && supportsNativeToolLoading(model as Model<Api>));
 }
 
 /** A new session or another branch: the transcript says what is declared (`McpFeatureState.declaredBefore`). */
@@ -74,7 +77,7 @@ export function loadedOnDemand(state: McpFeatureState, server: string): Readonly
 export function isOnDemand(state: McpFeatureState, entry: McpServerEntry, tool: string, name: string): boolean {
 	if (!configuredOnDemand(entry, tool)) return false;
 	const session = sessionOf(state);
-	if (!session.capable || session.loaded.has(keyOf(entry.name, tool))) return false;
+	if (session.requiresInitialDeclaration || session.loaded.has(keyOf(entry.name, tool))) return false;
 	const active = state.api.tools.getActive();
 	if (!active.includes(MCP_MANAGE_TOOL_NAME) || state.declaredBefore.has(name)) return false;
 	if (state.recentTools()?.has(recentToolKey(entry.name, tool))) return false;

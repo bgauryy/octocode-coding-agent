@@ -1,4 +1,5 @@
 import { getMcpSwitch } from "../src/switch.ts";
+import { getMcpSessionStatus } from "../src/status.ts";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RegisteredCommand } from "../../coding-agent/src/core/features/types.ts";
@@ -143,6 +144,23 @@ describe("unified MCP slash management", () => {
 		expect(menus[1].items).toEqual([]);
 		expect(menus[1].facts).toContainEqual({ label: "State", value: "Off · turn on in /harness mcp" });
 	});
+	it("words a server the security review holds back as off until approved in /mcp list, never enabled", async () => {
+		const held: McpServerEntry = { ...entry("demo", "global"), config: { command: "never-launch" }, withheld: true };
+		const { harness, state, notifications } = await setup([entry(), held]);
+		await harness.session.prompt("/mcp list");
+		const line = notifications
+			.at(-1)!
+			.split("\n")
+			.find((row) => row.startsWith("demo:"));
+		expect(line).toContain("demo: not checked: off until you approve it in /security · 0 tools");
+		expect(line).not.toContain("enabled");
+		// The session status keeps the switch (`enabled`, which /harness toggles) and says it is held back.
+		expect(getMcpSessionStatus(state.api.channels)).toContainEqual(
+			expect.objectContaining({ name: "demo", enabled: true, state: "not checked" }),
+		);
+		expect(state.connections().map((connection) => connection.name)).toEqual(["octocode"]);
+	});
+
 	it("keeps disabled same-name configuration authoritative", async () => {
 		const { harness, state, command, notifications } = await setup([
 			{ ...entry(), scope: "global", config: { command: "never-launch", enabled: false } },

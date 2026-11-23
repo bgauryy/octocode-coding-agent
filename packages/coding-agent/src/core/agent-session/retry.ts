@@ -4,6 +4,7 @@ import type { AgentEvent } from "@octocodeai/octocode-agent-core";
 import {
 	describeRetryOutcome,
 	isMachineOffline,
+	isNetworkFailureText,
 	mayRetry,
 	mayRetryOffline,
 	planOfflineRetry,
@@ -56,6 +57,19 @@ function networkOutageNote(since: number, until: number, attempts: number, end: 
 }
 
 export { RATE_LIMIT_MIN_RETRIES, RATE_LIMIT_WINDOW_MS } from "@octocodeai/octocode-ai";
+
+/**
+ * A failure as the retry lines show it: `<provider>/<model>: <error>`, and for a request that never reached its endpoint
+ * `<provider>/<model> at <host>: <error>`, so a retry against a custom endpoint says what failed and where. Only these
+ * lines change: the message keeps its own text, which retry classification reads.
+ */
+export function retryFailureText(message: AssistantMessage, baseUrl: string | undefined): string {
+	const text = message.errorMessage || "Unknown error";
+	const subject = `${message.provider}/${message.model}`;
+	if (text.includes(subject)) return text;
+	const host = baseUrl && isNetworkFailureText(text) && URL.canParse(baseUrl) ? new URL(baseUrl).host : "";
+	return `${subject}${host ? ` at ${host}` : ""}: ${text}`;
+}
 
 /** What `prepare` decided for a retryable failure: retry it, let it stand, or stop because the wait was cancelled. */
 export type RetryDecision = "retry" | "no_retry" | "cancelled";
@@ -124,6 +138,11 @@ export class SessionRetry {
 	/** Whether auto-retry is currently in progress */
 	get isRetrying(): boolean {
 		return this._abortController !== undefined;
+	}
+
+	/** `message`'s failure as the retry lines name it (`retryFailureText`), for the run's final report. */
+	failureText(message: AssistantMessage): string {
+		return retryFailureText(message, this.host.modelForMessage(message)?.baseUrl);
 	}
 
 	/**
@@ -237,7 +256,7 @@ export class SessionRetry {
 			success: false,
 			attempt: this.attempt,
 			finalError: describeRetryOutcome(
-				message.errorMessage ?? "Unknown error",
+				retryFailureText(message, this.host.modelForMessage(message)?.baseUrl),
 				this.attempt + 1,
 				this.sinceFirstRequestMs(message),
 			),
@@ -322,7 +341,11 @@ export class SessionRetry {
 				attempt: this.attempt,
 				maxAttempts: offline.kind === "wait" ? 0 : retryBudget(settings.maxRetries, errorText),
 				delayMs,
-				errorMessage: message.errorMessage || "Unknown error",
+				// Offline, the machine's own network is down: the line names the outage, not one endpoint.
+				errorMessage:
+					offline.kind === "wait"
+						? message.errorMessage || "Unknown error"
+						: retryFailureText(message, this.host.modelForMessage(message)?.baseUrl),
 				...(offline.kind === "wait" ? { offlineSince: offline.since } : {}),
 			});
 

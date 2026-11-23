@@ -2,6 +2,7 @@
 import "../../octocode/mcp-host/core-install.ts";
 import {
 	addMcpServerConfig,
+	reviewBeforeAdding,
 	loadMcpConfig,
 	removeMcpServerConfig,
 	updateMcpServerConfig,
@@ -61,7 +62,7 @@ async function enableDisable(op: ConfigOp, ctx: ConfigContext): Promise<ConfigRe
 	if (scope === "run")
 		return refused(
 			op,
-			"MCP servers have no per-run form here: the MCP owner saves every switch. Use global or project scope.",
+			"MCP servers have no per-run form here: the MCP owner saves every switch. Use global or project scope, or run with --no-mcp for one run without MCP.",
 		);
 	const enabled = op.verb === "enable";
 	const loaded = loadMcpServers(ctx);
@@ -85,10 +86,12 @@ async function enableDisable(op: ConfigOp, ctx: ConfigContext): Promise<ConfigRe
 	} catch (error) {
 		return refused(op, `Could not update ${target}: ${error instanceof Error ? error.message : String(error)}`);
 	}
+	// Switched on, a server the review holds back still does not start: say so in the review's own words.
+	const held = enabled && entry.withheld ? ` It is ${mcpRowFacts(mcpEntryRowInput(entry)).state}.` : "";
 	return applied(
 		op,
 		"next-session",
-		`MCP server "${name}" ${enabled ? "enabled" : "disabled"}. Saved to ${target}; running sessions keep their configuration.`,
+		`MCP server "${name}" ${enabled ? "enabled" : "disabled"}. Saved to ${target}; running sessions keep their configuration.${held}`,
 	);
 }
 
@@ -97,7 +100,7 @@ export const mcpAdapter: ConfigAdapter = {
 	async list(ctx) {
 		const session = new Map((ctx.live?.mcpStatus?.() ?? []).map((status) => [status.name, status]));
 		return loadMcpServers(ctx).servers.map((entry): ConfigEntry => {
-			// The switch: a server the security review withholds stays switched on and shows its review state elsewhere.
+			// The switch: a server the security review withholds stays switched on; `state` says it is off until approved.
 			const enabled = entry.config.enabled !== false;
 			const setBy = ownerScope(entry);
 			const status = session.get(entry.name);
@@ -111,6 +114,8 @@ export const mcpAdapter: ConfigAdapter = {
 				label: entry.name,
 				valueType: { type: "toggle" },
 				value: enabled,
+				// Held back by the security review: off until approved, in the words of every MCP row.
+				...(entry.withheld ? { state: facts.state } : {}),
 				scopes: setBy === "default" ? {} : { [setBy]: enabled },
 				setBy,
 				default: true,
@@ -131,12 +136,21 @@ export const mcpAdapter: ConfigAdapter = {
 				// The value is what `octocode mcp add` builds from its flags: `{ url, headers?, oauth? }` or `{ command, args?, env?, cwd? }`.
 				const config = op.value && typeof op.value === "object" ? (op.value as Record<string, unknown>) : undefined;
 				if (!config) return refused(op, "add needs the server definition: { command, args } or { url }.");
-				const validated = validateMcpServerConfig(name, config);
+				// A new definition is saved off and unassigned, as `octocode mcp add` and Add MCP save it: it stays off until
+				// the user approves its launch in the security review and switches it on.
+				const validated = validateMcpServerConfig(name, { ...config, enabled: false, defaultActive: false });
 				if (typeof validated === "string") return refused(op, validated);
 				const path = scope === "project" ? projectMcpConfigPath(ctx.cwd) : globalMcpConfigPath(ctx.agentDir);
 				try {
+					// The servers already configured get their first security review now, so this one is not approved with them.
+					reviewBeforeAdding({ agentDir: ctx.agentDir, cwd: ctx.cwd });
 					const replaced = addMcpServerConfig(path, name, validated);
-					return applied(op, "reload", `${replaced ? "Replaced" : "Added"} ${scope} MCP server "${name}" in ${path}.`);
+					return applied(
+						op,
+						"reload",
+						`Saved ${scope} MCP server "${name}" off and unassigned in ${path}${replaced ? " (replacing the earlier one)" : ""}. ` +
+							`Nothing was started: approve it in /security, then switch it on (enable mcp:${name}) and choose its agents in /mcp.`,
+					);
 				} catch (error) {
 					return refused(op, `Could not update ${path}: ${error instanceof Error ? error.message : String(error)}`);
 				}

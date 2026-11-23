@@ -14,7 +14,7 @@ const DESCRIPTIONS = {
 	kind: "every one of this kind runs unasked until this session ends",
 	deny: "the agent is told you refused",
 	denySession: "later ones like it are refused unasked until this session ends",
-	note: "type what to do instead; esc returns here",
+	note: "the agent is told you refused and what to do instead",
 };
 
 interface Labels {

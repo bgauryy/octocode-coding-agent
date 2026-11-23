@@ -35,6 +35,8 @@ export interface AcceptCommandHost {
 	publish: (event: ApplicationEvent) => void;
 	publishDomain: (event: ApplicationEvent) => void;
 	reportFailure: (error: ApplicationServiceError) => void;
+	/** Publish the session's model and spend now: a model command's outcome reaches clients before its receipt does. */
+	syncFacts: () => void;
 }
 
 /**
@@ -98,7 +100,9 @@ function admit(
 		runId: () => state.getState().runId,
 		invoke: () => {
 			if (!host.isOpen()) throw new Error("Application service is closed");
-			return invokeCommand(command, images, session);
+			const result = invokeCommand(command, images, session);
+			if (command.action !== "setModel" && command.action !== "setThinking") return result;
+			return Promise.resolve(result).then(host.syncFacts);
 		},
 		publishDomain: host.publishDomain,
 		reportFailure: host.reportFailure,

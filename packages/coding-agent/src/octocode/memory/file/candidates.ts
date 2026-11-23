@@ -23,8 +23,12 @@ import { isDurable, lessonWords, sameLesson } from "./durable-text.ts";
 
 /** Candidates a repository keeps queued; past it the oldest pending ones go. */
 const MAX_QUEUED = 120;
-/** Notes read when looking for candidates; candidates are a small share of a repository's notes. */
-const SCAN = 600;
+/**
+ * Notes read when looking for candidates (pinned, then newest first); candidates are a small share of a repository's
+ * notes. Bounded on purpose: no existing query filters by tag, so the scan reads whole rows, and an older candidate
+ * beneath this many newer notes is not seen (nor trimmed by `MAX_QUEUED`).
+ */
+export const CANDIDATE_SCAN = 600;
 const MAX_TEXT = 400;
 /** A shorter bullet ("Tests pass.") carries no lesson. */
 const MIN_TEXT = 16;
@@ -43,7 +47,7 @@ export interface CandidateInput {
 
 /** Every candidate of the repository, newest first: pending and quarantined. */
 export function listCandidates(store: Pick<MemoryStore, "list">): Memory[] {
-	return store.list("project", SCAN).filter(isCandidate);
+	return store.list("project", CANDIDATE_SCAN).filter(isCandidate);
 }
 
 /** The candidates a pass may use: newest first, the quarantined left out. */

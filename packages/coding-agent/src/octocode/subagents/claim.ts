@@ -17,11 +17,11 @@ import { agentScratch, dropEmptyScratch, type ReadReports, scratchNames } from "
 import { type CacheChoice, childCachePreferences, defaultTaskCache, type Identity } from "./process/env.ts";
 import { childHookMode, type HookMode } from "../shared/hook-mode.ts";
 import { routeThinking } from "../render/route-thinking.ts";
-import { maxRequests } from "./budget.ts";
+import { maxRequests, taskRequestLimit } from "./budget.ts";
 import type { Team } from "../team/session.ts";
 import { sessionHeap } from "../shared/session-heap.ts";
 import { joinTeamNow, type RunTeamJoin } from "./team-join.ts";
-import { currentCatalog } from "./catalog.ts";
+import { currentCatalog } from "../../core/model-catalog/index-store.ts";
 import type { Background } from "./command.ts";
 import { type ReportQueue } from "./handoff.ts";
 import {
@@ -134,6 +134,8 @@ interface AgentParams {
 	hooks?: HookMode;
 	/** The task's cache tier; absent: `defaultTaskCache`. */
 	cache?: CacheChoice;
+	/** The task's soft request limit, or the one an earlier run of a resumed child was started with. */
+	maxRequests?: number;
 }
 
 /** A claimed subagent run: who it is, who started it, where it hands files back, and how it gives its slot back. */
@@ -180,8 +182,11 @@ function childAvailable(registry: FeatureContext["modelRegistry"] | undefined, e
 	return all.filter((model) => modelAvailableToChild(registry, model));
 }
 
-/** What a call asks for, checked before anything waits, asks or starts: its profile and the model it routes to. */
-export type RunPlan = Pick<Run, "profile" | "route">;
+/**
+ * What a call asks for, checked before anything waits, asks or starts: its profile, the model it routes to and, when
+ * the task caps it, its soft request limit (`requests`).
+ */
+export type RunPlan = Pick<Run, "profile" | "route"> & { requests?: number };
 
 /**
  * Checks the profile and routes the model; throws the refusal (unknown profile, unavailable model). `refused` holds why
@@ -189,7 +194,7 @@ export type RunPlan = Pick<Run, "profile" | "route">;
  */
 export function planRun(
 	profiles: Map<string, AgentProfile>,
-	params: Pick<AgentParams, "profile" | "model" | "headless" | "apps" | "background">,
+	params: Pick<AgentParams, "profile" | "model" | "headless" | "apps" | "background" | "maxRequests">,
 	ctx: Pick<FeatureContext, "modelRegistry" | "model">,
 	refused: ReadonlyMap<string, string> = new Map(),
 ): RunPlan {
@@ -208,6 +213,7 @@ export function planRun(
 	}
 	if (params.apps !== undefined && !profile?.permissions?.includes("desktop.control"))
 		throw new Error("apps requires a profile that controls the desktop; use profile: desktop.");
+	const requests = params.maxRequests === undefined ? undefined : taskRequestLimit(profile, params.maxRequests);
 	// An explicit model is strict; a profile's is a preference that falls back to this session's model; a task with
 	// neither a model nor a profile takes the default purpose.
 	const available = childAvailable(ctx.modelRegistry, params.model);
@@ -252,7 +258,11 @@ export function planRun(
 	// A purpose says whether the user's setting chose its model or the automatic choice did, and why a set one was skipped.
 	const source = routeSource(route);
 	const via = [asked, source, clamped].filter(Boolean).join("; ") || undefined;
-	return { profile, route: { ...route, ...(via ? { via } : {}), ...(parent ? { parent } : {}) } };
+	return {
+		profile,
+		route: { ...route, ...(via ? { via } : {}), ...(parent ? { parent } : {}) },
+		...(requests !== undefined ? { requests } : {}),
+	};
 }
 
 /**
@@ -294,6 +304,7 @@ export function claimRun(
 	identity.heapHandles = sessionHeap(ctx.sessionManager)?.index.entries();
 	identity.hooks = childHookMode(profile?.hooks, params.hooks, resumed?.hooks);
 	if (params.apps?.length) identity.desktopApps = params.apps;
+	if (plan.requests !== undefined) identity.maxRequests = plan.requests;
 	// Resolved for the model the child runs on: its provider and model cache settings apply, not the parent's.
 	const childModel = ctx.modelRegistry
 		? (routedModel(route.model, ctx.modelRegistry.getAvailable()) ?? ctx.model)
@@ -312,7 +323,7 @@ export function claimRun(
 					reachableSeconds(undefined, process.env, profile?.linger) > 0,
 				resumed: resumed !== undefined || params.name !== undefined,
 				thinking: routeThinking(route.model) ?? route.thinking,
-				requests: maxRequests(profile),
+				requests: plan.requests ?? maxRequests(profile),
 			});
 		identity.cachePreferences = childCachePreferences(policy, choice);
 		// How long the entry the child writes lives: the stagger keeps its prefix warm for that long.

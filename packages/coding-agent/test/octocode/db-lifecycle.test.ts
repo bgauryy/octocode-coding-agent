@@ -216,6 +216,10 @@ describe("purge", () => {
 			)
 			.run(ws);
 		agent.db.prepare("INSERT INTO meta(key,value) VALUES (?,'3')").run(`backlog_seq:${ws}`);
+		// The item handed to a running child: keyed by agent and item, with no workspace column of its own.
+		agent.db
+			.prepare("INSERT INTO item_handoffs(agent,item_id,by_agent,at) VALUES (?,?,'boss',1)")
+			.run(`kid-${ws}`, item);
 	}
 	const owned = (ws: string) =>
 		[
@@ -263,6 +267,9 @@ describe("purge", () => {
 			messages: 1,
 		});
 		expect(count("session_entries", "session_id = 's-two'")).toBe(2);
+		expect(counts.item_handoffs).toBe(1);
+		expect(count("item_handoffs", "agent = 'kid-two'")).toBe(1);
+		expect(count("item_handoffs")).toBe(1);
 		expect(count("deliveries")).toBe(1);
 		expect(count("memories", "scope='project'")).toBe(1);
 		expect(count("meta", "key IN ('memory_auto','backlog_seq:two')")).toBe(2);
@@ -342,10 +349,26 @@ describe("purge", () => {
 				"INSERT INTO trusted_folders(path,dev,ino,scope,source,surface,decided_by,decided_at) VALUES ('/p','1','2','folder','s','cli','u',1)",
 			)
 			.run();
+		// Machine-wide provider caches: the next response records them again.
+		agent.db
+			.prepare(
+				"INSERT INTO provider_quota(provider,window,label,used,kind,source,updated_at) VALUES ('p','5h','5h',0.5,'plan','header',1)",
+			)
+			.run();
+		agent.db.prepare("INSERT INTO provider_cooldowns(provider,until_ms,pause_ms) VALUES ('p',2,1)").run();
 		const objects = () => agent.db.prepare("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").all();
 		const schema = objects();
 		const counts = purge.all(agent.db, agent.mirror.db);
-		expect(counts).toMatchObject({ workspaces: 2, backlog: 2, config_audits: 1, session_entries: 4, sessions: 2 });
+		expect(counts).toMatchObject({
+			workspaces: 2,
+			backlog: 2,
+			config_audits: 1,
+			session_entries: 4,
+			sessions: 2,
+			item_handoffs: 2,
+			provider_quota: 1,
+			provider_cooldowns: 1,
+		});
 		const tables = (
 			agent.db
 				.prepare(

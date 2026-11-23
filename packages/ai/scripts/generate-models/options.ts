@@ -11,10 +11,12 @@ function readGeneratorOptions(args: string[]): {
 	dataOnly: boolean;
 	jsonOnly: boolean;
 	jsonOutputDir: string | undefined;
+	live: boolean;
 	pretty: boolean;
 	providers: string[] | undefined;
 } {
 	let dataOnly = false;
+	let live = false;
 	let jsonOnly = false;
 	let jsonOutputDir: string | undefined;
 	let pretty = false;
@@ -37,6 +39,11 @@ function readGeneratorOptions(args: string[]): {
 			jsonOnly = true;
 			continue;
 		}
+		// models.dev itself instead of the pinned package's snapshot.
+		if (arg === "--live") {
+			live = true;
+			continue;
+		}
 		if (arg === "--pretty") {
 			pretty = true;
 			continue;
@@ -53,7 +60,7 @@ function readGeneratorOptions(args: string[]): {
 	if (jsonOnly && !jsonOutputDir) throw new Error("--json-only requires --json-output");
 	if (dataOnly && (jsonOnly || jsonOutputDir))
 		throw new Error("--data-only cannot be combined with JSON catalog output");
-	return { dataOnly, jsonOnly, jsonOutputDir, pretty, providers };
+	return { dataOnly, jsonOnly, jsonOutputDir, live, pretty, providers };
 }
 
 export const generatorOptions = readGeneratorOptions(process.argv.slice(2));

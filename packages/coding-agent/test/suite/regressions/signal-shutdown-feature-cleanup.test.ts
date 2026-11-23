@@ -8,6 +8,8 @@ import type { SessionManager } from "../../../src/core/session-manager.ts";
 import * as crashReporting from "../../../src/modes/interactive/interactive-mode/crash-reporting.ts";
 import * as lifecycle from "../../../src/modes/interactive/interactive-mode/lifecycle.ts";
 import { createFakeHost } from "../../interactive-mode-host.ts";
+import { createUiStore, type UiStore } from "../../../src/modes/interactive/state/store.ts";
+import { selectShuttingDown } from "../../../src/modes/interactive/state/lifecycle-slice.ts";
 
 // On SIGTERM/SIGHUP the graceful shutdown must emit `session_shutdown`
 // (runtimeHost.dispose) BEFORE touching the terminal. Extension teardown such
@@ -17,7 +19,7 @@ import { createFakeHost } from "../../interactive-mode-host.ts";
 // the final TUI frame.
 
 type ShutdownThis = {
-	isShuttingDown: boolean;
+	uiStore: UiStore;
 	unregisterSignalHandlers: () => void;
 	runtimeHost: { dispose: () => Promise<void> };
 	ui: { terminal: { drainInput: (ms: number) => Promise<void>; drainOutput?: () => Promise<boolean> } };
@@ -69,7 +71,7 @@ function restoreStdoutIsTTY(): void {
 
 function createContext(order: string[], sessionManager = createSessionManager()): ShutdownThis {
 	return {
-		isShuttingDown: false,
+		uiStore: createUiStore(),
 		unregisterSignalHandlers: vi.fn(),
 		runtimeHost: {
 			dispose: vi.fn(async () => {
@@ -138,7 +140,7 @@ describe("InteractiveMode.shutdown ordering", () => {
 		await callShutdown(context, { fromSignal: true });
 
 		expect(order).toEqual(["dispose", "drainInput", "stop"]);
-		expect(context.isShuttingDown).toBe(true);
+		expect(selectShuttingDown(context.uiStore.getState())).toBe(true);
 	});
 
 	test("interactive quit stops the TUI before emitting session_shutdown", async () => {
@@ -193,7 +195,7 @@ describe("InteractiveMode.shutdown ordering", () => {
 		});
 		const order: string[] = [];
 		const context = createContext(order);
-		context.isShuttingDown = true;
+		context.uiStore.getState().beginShutdown();
 
 		await callShutdown(context, { fromSignal: true });
 
@@ -211,7 +213,7 @@ describe("InteractiveMode.shutdown ordering", () => {
 // prompted users to run /bug on the next launch.
 
 type HandlerContext = {
-	isShuttingDown: boolean;
+	uiStore: UiStore;
 	signalCleanupHandlers: Array<() => void>;
 	shutdown: () => Promise<void>;
 	unregisterSignalHandlers: () => void;
@@ -226,7 +228,7 @@ type HandlerContext = {
 
 function createHandlerContext(): HandlerContext {
 	const context: HandlerContext = {
-		isShuttingDown: false,
+		uiStore: createUiStore(),
 		signalCleanupHandlers: [],
 		shutdown: vi.fn(async () => {}),
 		unregisterSignalHandlers: () => lifecycle.unregisterSignalHandlers(createFakeHost(context)),

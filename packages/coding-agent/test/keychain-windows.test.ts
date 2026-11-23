@@ -27,7 +27,7 @@ function recorder(result: KeychainRunResult = { code: 0, stderr: "" }) {
 const onPath = (name: string) => (name === "powershell.exe" ? "C:\\ps\\powershell.exe" : undefined);
 
 function decode(args: string[]): string {
-	return Buffer.from(args[args.indexOf("-EncodedCommand") + 1] as string, "base64").toString("utf16le");
+	return Buffer.from(args[args.indexOf("-EncodedCommand") + 1], "base64").toString("utf16le");
 }
 
 describe("Windows Credential Manager backend", () => {

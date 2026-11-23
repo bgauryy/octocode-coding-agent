@@ -15,6 +15,8 @@ import { activityCard, type FeedEvent, type Tone } from "./model.ts";
 import { Elapsed, ThoughtFor } from "./RunIndicator.tsx";
 import { useLive } from "./session.tsx";
 import { SessionActivityContent } from "./SessionActivityContent.tsx";
+import { replyUsageText } from "./usage-text.ts";
+import { hashFor } from "../model/route.ts";
 
 const BADGE_TONES: Record<Tone, BadgeTone> = {
 	success: "success",
@@ -56,6 +58,7 @@ const ResultCardContent = memo(function ResultCardContent({ event, compact }: { 
 	const card = activityCard({ ...event, message });
 	const streaming = card.status === "streaming";
 	const mail = message?.customType === MAIL_MESSAGE_TYPE ? mailViews(message.details) : undefined;
+	const usage = message?.usage && replyUsageText(message.usage);
 	return (
 		<article className={cx("result-card", `tone-${card.tone}`, compact && "is-compact", streaming && "is-streaming")}>
 			<div className="result-meta">
@@ -105,6 +108,9 @@ const ResultCardContent = memo(function ResultCardContent({ event, compact }: { 
 			{message?.errorMessage && (
 				<div role="alert">
 					<LongText text={message.errorMessage} label="Error" plain />
+					{message.errorKind === "credential" && (
+						<a href={hashFor("settings", { section: "providers" })}>Fix the sign-in in Settings → Providers</a>
+					)}
 				</div>
 			)}
 			{message && (
@@ -112,9 +118,9 @@ const ResultCardContent = memo(function ResultCardContent({ event, compact }: { 
 					{message.model && <span>{[message.provider, message.model].filter(Boolean).join(" / ")}</span>}
 					{message.durationMs !== undefined && <span>{Math.round(message.durationMs)} ms</span>}
 					{message.stopReason && <span>Finish: {message.stopReason}</span>}
+					{usage && <span>Usage: {usage}</span>}
 				</div>
 			)}
-			{message?.usage && <JsonDetails label="Usage" value={message.usage} />}
 			{message?.details !== undefined && <JsonDetails label="Details" value={message.details} />}
 			{card.files.length > 0 && (
 				<div className="result-files">

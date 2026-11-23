@@ -18,20 +18,26 @@ const BADGE_OF: Record<ProviderEntry["state"], BadgeState> = {
 /** The page-kit badge state of a provider. */
 export const providerBadge = (entry: ProviderEntry) => badge(BADGE_OF[entry.state]);
 
-/** One row: the snapshot's sentence, its next step, where it is defined and how many models it offers. */
-function providerRow(entry: ProviderEntry): PageRow {
-	const shown = providerBadge(entry);
-	const parts = [entry.statusText];
+/**
+ * One row: the snapshot's sentence, its next step, where it is defined and how many models it offers. An Available
+ * row (`badged` false) carries no badge and no sentence: a built-in nobody set up needs no action, only a next step.
+ */
+function providerRow(entry: ProviderEntry, badged: boolean): PageRow {
+	const shown = badged ? providerBadge(entry) : undefined;
+	// An Available row needs a key by definition (the group says so): only its next step is news.
+	const parts = !badged && entry.nextStep ? [] : [entry.statusText];
 	if (entry.nextStep && entry.state !== "disabled") parts.push(entry.nextStep.label);
-	if (entry.definitionFile) parts.push(`defined in ${homeTilde(entry.definitionFile)}`);
+	// A key kept in the definition file already names it: the path, which wraps on a narrow page, shows once.
+	const file = entry.definitionFile ? homeTilde(entry.definitionFile) : undefined;
+	if (file) parts.push(entry.statusText.endsWith(` in ${file}`) ? "defined there" : `defined in ${file}`);
 	else if (entry.state === "ready") parts.push("defined in built-in");
 	if (entry.defined && entry.state !== "needs-key") parts.push(plural(entry.models, "model"));
 	return {
 		id: `provider:${entry.id}`,
 		name: entry.name,
 		detail: parts.join(" · "),
-		badge: shown.text,
-		tone: shown.tone,
+		badge: shown?.text,
+		tone: shown?.tone,
 		keys: { e: entry.disabled ? "enable" : "disable" },
 	};
 }
@@ -57,8 +63,8 @@ export function providerRows(snapshot: ProviderSnapshot): ProviderRowGroups {
 				: entry.state === "disabled"
 					? "off"
 					: "attention";
-		groups[group].push(providerRow(entry));
-		groups.states.push(BADGE_OF[entry.state]);
+		groups[group].push(providerRow(entry, group !== "available"));
+		if (group !== "available") groups.states.push(BADGE_OF[entry.state]);
 	}
 	return groups;
 }

@@ -42,6 +42,8 @@ export interface LaunchedDaemon {
 	/** The launch capability for the page fragment. */
 	token: string;
 	record: DaemonRecord;
+	/** The daemon's idle limit in minutes, as its health answer reports it; absent from an older daemon. */
+	idleMinutes?: number;
 }
 
 interface Live {
@@ -119,10 +121,18 @@ export function daemonRequest(
 	return call(daemon.origin, route, daemon.token, options.method ?? "GET", options.body, REQUEST_MS);
 }
 
+/** What a caller gets of a live daemon. */
+const launched = (daemon: Live): LaunchedDaemon => ({
+	origin: daemon.origin,
+	token: daemon.token,
+	record: daemon.record,
+	...(daemon.status.idleMinutes ? { idleMinutes: daemon.status.idleMinutes } : {}),
+});
+
 /** The daemon that is running now, if any; never starts one. */
 export async function findWebDaemon(env: NodeJS.ProcessEnv = process.env): Promise<LaunchedDaemon | undefined> {
 	const current = await live(webDaemonPaths(env).record);
-	return current && { origin: current.origin, token: current.token, record: current.record };
+	return current && launched(current);
 }
 
 /**
@@ -196,11 +206,6 @@ export async function ensureWebDaemon(options: LaunchOptions = {}): Promise<Laun
 	const env = options.env ?? process.env;
 	const paths = webDaemonPaths(env);
 	const build = options.build ?? daemonPage().build;
-	const result = (daemon: Live): LaunchedDaemon => ({
-		origin: daemon.origin,
-		token: daemon.token,
-		record: daemon.record,
-	});
 	const accepts = (current: Live) =>
 		usable(current, build) ||
 		(replacement?.requested === build &&
@@ -208,12 +213,12 @@ export async function ensureWebDaemon(options: LaunchOptions = {}): Promise<Laun
 			current.status.protocolVersion === DAEMON_PROTOCOL_VERSION &&
 			!current.status.draining);
 	const quick = await live(paths.record);
-	if (quick && accepts(quick)) return result(quick);
+	if (quick && accepts(quick)) return launched(quick);
 	privateDir(paths.dir);
 	const release = await acquireRegistryLock(paths.launchLock, START_TIMEOUT_MS + DRAIN_WAIT_MS + 5000);
 	try {
 		let current = await live(paths.record);
-		if (current && accepts(current)) return result(current);
+		if (current && accepts(current)) return launched(current);
 		if (current) {
 			// Another build (or a draining one) holds the record: ask it to hand over, then wait for the record to go.
 			await call(current.origin, DAEMON_ROUTES.drain, current.token, "POST");
@@ -251,11 +256,11 @@ export async function ensureWebDaemon(options: LaunchOptions = {}): Promise<Laun
 			) {
 				replacement = { requested: build, nonce: current.record.nonce };
 			}
-			if (current && accepts(current)) return result(current);
+			if (current && accepts(current)) return launched(current);
 			// A daemon that found another one running exits quietly; its record then answers the next check.
 			if (failed) {
 				current = await live(paths.record);
-				if (current && accepts(current)) return result(current);
+				if (current && accepts(current)) return launched(current);
 				throw failed;
 			}
 			await sleep(50, options.signal);
@@ -281,4 +286,21 @@ export async function waitForSession(
 		await sleep(100, signal);
 	}
 	return false;
+}
+
+/**
+ * Stops the running daemon (`/web stop`): asks it to drain and waits until it dropped its record, so the next `/web` or
+ * `remote list` no longer finds it; it exits once its open pages leave, after 30 seconds at most. Resolves to the pid it
+ * stopped, or undefined when none runs; rejects when the daemon refuses.
+ */
+export async function stopWebDaemon(env: NodeJS.ProcessEnv = process.env): Promise<number | undefined> {
+	const daemon = await findWebDaemon(env);
+	if (!daemon) return undefined;
+	const answer = await daemonRequest(daemon, DAEMON_ROUTES.drain, { method: "POST" });
+	if (answer?.status !== 200) throw new Error(`The web daemon answered ${answer?.status ?? "nothing"}.`);
+	// The answer can arrive before the daemon removed its record (another process): wait for that, as a launcher does.
+	const file = webDaemonPaths(env).record;
+	const deadline = Date.now() + DRAIN_WAIT_MS;
+	while (Date.now() < deadline && readDaemonRecord(file)?.nonce === daemon.record.nonce) await sleep(50);
+	return daemon.record.pid;
 }

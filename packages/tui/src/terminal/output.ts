@@ -179,8 +179,9 @@ export class TerminalOutput {
 	write(data: string, kind: OutputKind = "essential"): void {
 		if (kind === "frame" && this.frameCapBytes !== undefined) {
 			const pending = this.pendingBytes;
-			// Measured only near the cap: a frame far below it is queued without counting its bytes.
-			if (pending + data.length * MAX_UTF8_BYTES_PER_UNIT > this.frameCapBytes) {
+			// One indivisible frame can exceed the cap even after budgeting images (e.g. a very large text viewport).
+			// An empty queue can accept it once. Further frames wait for real drain before recovery.
+			if (pending > 0 && pending + data.length * MAX_UTF8_BYTES_PER_UNIT > this.frameCapBytes) {
 				const bytes = Buffer.byteLength(data);
 				if (pending + bytes > this.frameCapBytes) return this.dropFrame(bytes);
 			}

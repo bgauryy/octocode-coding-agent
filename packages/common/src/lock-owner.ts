@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import lockfile from "proper-lockfile";
+import { keptOwnStart, ownStartAsync } from "./own-start.ts";
 import { processStartAsync } from "./process-start.ts";
 
 /**
@@ -36,18 +37,13 @@ function sameDirectory(lockfilePath: string, recorded: string): boolean {
 	return current !== undefined && recorded === current;
 }
 
-let ownStart: string | undefined;
-let askedOwnStart = false;
-
-/** This process's start time once the background `ps` answered; asked on first use. */
+/** This process's start time once its one background read answered (`own-start.ts`); asked on first use. */
 function ownStartTime(): string | undefined {
-	if (!askedOwnStart) {
-		askedOwnStart = true;
-		void processStartAsync(process.pid).then((read) => {
-			ownStart = read?.started;
-		});
-	}
-	return ownStart;
+	const known = keptOwnStart();
+	if (known) return known.started;
+	// Never rejects; the answer is kept for the next record.
+	void ownStartAsync();
+	return undefined;
 }
 
 /**

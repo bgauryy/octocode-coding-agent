@@ -1,6 +1,6 @@
 import { OCTOCODE_FAVICON_DATA_URI } from "./favicon.generated.ts";
 
-/** Octocode's mark: the generated favicon (`scripts/generate-favicon.mjs`), so the page shows the product that signed in. */
+/** Octocode's mark: the generated favicon (`scripts/build/generate-favicon.mjs`), so the page shows the product that signed in. */
 const LOGO = `<img src="${OCTOCODE_FAVICON_DATA_URI}" alt="" width="72" height="72">`;
 
 function escapeHtml(value: string): string {

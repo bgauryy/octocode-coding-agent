@@ -34,7 +34,9 @@ export interface TrustGateInput {
 
 export type TrustGateResult =
 	/** `notice` is one line the caller prints: what the user should know about how the folder became trusted. */
-	{ ok: true; root: string; notice?: string } | { ok: false; exitCode: number; message: string; stdout?: boolean };
+	| { ok: true; root: string; notice?: string }
+	/** `undecided`: nobody was asked about this folder, so a grant (`trust add`, `--trust`) would let the run start. */
+	| { ok: false; exitCode: number; message: string; stdout?: boolean; undecided?: true };
 
 /** Project files whose names the prompt may list. Existence only: nothing is opened. */
 const PROJECT_FILE_NAMES = ["AGENTS.md", ".octocode", ".pi", ".agents", ".claude", ".mcp.json", ".codex", ".cursor"];
@@ -71,9 +73,9 @@ function notTrustedMessage(folder: string, surface: TrustSurface, moving = false
 			return [
 				`Error: ${folder} is not trusted, so Octocode did not start here.`,
 				"Nothing was read or run, and no model was called.",
-				"To trust it, run octocode once in this folder and choose Trust, or run:",
+				"To trust it, run octocode once in this folder and choose Trust, or run (--yes answers its question in a script):",
 				`  octocode trust add ${folder}`,
-				'For a one-time CI run, add --trust: octocode -p "..." --trust',
+				'Or add --trust to this command: octocode -p "..." --trust. Either records a grant that stays until octocode trust remove.',
 			].join("\n");
 	}
 }
@@ -145,7 +147,8 @@ export async function enforceFolderTrust(input: TrustGateInput): Promise<TrustGa
 			message: surface === "tui" ? message : `Error: ${message}`,
 		};
 	}
-	if (surface !== "tui" || !input.prompt) return fail(notTrustedMessage(folder, surface, input.moving));
+	if (surface !== "tui" || !input.prompt)
+		return { ok: false, exitCode: 1, message: notTrustedMessage(folder, surface, input.moving), undecided: true };
 
 	const choice = await input.prompt({
 		path: folder,

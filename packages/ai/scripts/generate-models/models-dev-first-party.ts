@@ -1,4 +1,10 @@
-import { modelsDevLimits } from "./models-dev-limits.ts";
+import {
+	getModelsDevCost,
+	modelsDevInput,
+	modelsDevLimits,
+	modelsDevReasoning,
+	modelsDevToolCall,
+} from "../../src/catalog/models-dev-fields.ts";
 import {
 	CLOUDFLARE_AI_GATEWAY_ANTHROPIC_BASE_URL,
 	CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL,
@@ -11,7 +17,6 @@ import {
 	BEDROCK_INFERENCE_PROFILE_ONLY_MODEL_IDS,
 	MODELS_DEV_OPENAI_UNSUPPORTED_MODEL_IDS,
 } from "./constants.ts";
-import { getModelsDevCost } from "./pricing.ts";
 import { processGoogleModels } from "./processors.ts";
 import { recordModelsDevReasoningOptions } from "./thinking-levels.ts";
 import type { ModelsDevCatalog } from "./types.ts";
@@ -28,7 +33,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 	if (data["amazon-bedrock"]?.models) {
 		for (const [modelId, model] of Object.entries(data["amazon-bedrock"].models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 			// models.dev marks some models deprecated that AWS still serves; only end-of-life ones are left out.
 			if (BEDROCK_END_OF_LIFE_MODEL_IDS.has(modelId)) continue;
 			if (BEDROCK_INFERENCE_PROFILE_ONLY_MODEL_IDS.has(modelId)) continue;
@@ -51,8 +56,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				api: "bedrock-converse-stream" as const,
 				provider: "amazon-bedrock" as const,
 				baseUrl: getBedrockBaseUrl(id),
-				reasoning: m.reasoning === true,
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: modelsDevReasoning(m),
+				input: modelsDevInput(m.modalities),
 				// Includes models.dev pricing tiers, e.g. the long-context tier for OpenAI models (#10326).
 				cost: getModelsDevCost(m.cost),
 				...modelsDevLimits(m.limit),
@@ -66,7 +71,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 	if (data.anthropic?.models) {
 		for (const [modelId, model] of Object.entries(data.anthropic.models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 
 			models.push({
 				id: modelId,
@@ -74,8 +79,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				api: "anthropic-messages",
 				provider: "anthropic",
 				baseUrl: "https://api.anthropic.com",
-				reasoning: m.reasoning === true,
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: modelsDevReasoning(m),
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				...modelsDevLimits(m.limit),
 			});
@@ -89,7 +94,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 	if (data.openai?.models) {
 		for (const [modelId, model] of Object.entries(data.openai.models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 			// models.dev lists this alias, but it is not accepted by OpenAI APIs.
 			if (MODELS_DEV_OPENAI_UNSUPPORTED_MODEL_IDS.has(modelId)) continue;
 
@@ -99,8 +104,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				api: "openai-responses",
 				provider: "openai",
 				baseUrl: "https://api.openai.com/v1",
-				reasoning: m.reasoning === true,
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: modelsDevReasoning(m),
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				...modelsDevLimits(m.limit),
 			});
@@ -112,7 +117,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 	if (data.groq?.models) {
 		for (const [modelId, model] of Object.entries(data.groq.models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 
 			models.push({
 				id: modelId,
@@ -120,8 +125,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				api: "openai-completions",
 				provider: "groq",
 				baseUrl: "https://api.groq.com/openai/v1",
-				reasoning: m.reasoning === true,
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: modelsDevReasoning(m),
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				...modelsDevLimits(m.limit),
 			});
@@ -133,7 +138,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 	if (data.cerebras?.models) {
 		for (const [modelId, model] of Object.entries(data.cerebras.models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 
 			models.push({
 				id: modelId,
@@ -141,8 +146,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				api: "openai-completions",
 				provider: "cerebras",
 				baseUrl: "https://api.cerebras.ai/v1",
-				reasoning: m.reasoning === true,
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: modelsDevReasoning(m),
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				...modelsDevLimits(m.limit),
 			});
@@ -154,7 +159,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 	if (data["cloudflare-workers-ai"]?.models) {
 		for (const [modelId, model] of Object.entries(data["cloudflare-workers-ai"].models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 
 			models.push({
 				id: modelId,
@@ -162,8 +167,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				api: "openai-completions",
 				provider: "cloudflare-workers-ai",
 				baseUrl: CLOUDFLARE_WORKERS_AI_BASE_URL,
-				reasoning: m.reasoning === true,
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: modelsDevReasoning(m),
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				...modelsDevLimits(m.limit),
 				compat: { sendSessionAffinityHeaders: true },
@@ -177,7 +182,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 	if (data["cloudflare-ai-gateway"]?.models) {
 		for (const [prefixedId, model] of Object.entries(data["cloudflare-ai-gateway"].models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 
 			const slashIdx = prefixedId.indexOf("/");
 			if (slashIdx === -1) continue;
@@ -218,8 +223,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				api,
 				provider: "cloudflare-ai-gateway",
 				baseUrl,
-				reasoning: m.reasoning === true,
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: modelsDevReasoning(m),
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				...modelsDevLimits(m.limit),
 				...(compat ? { compat } : {}),
@@ -235,7 +240,7 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 	if (data["cloudflare-workers-ai"]?.models) {
 		for (const [modelId, model] of Object.entries(data["cloudflare-workers-ai"].models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 
 			const id = `workers-ai/${modelId}`;
 			if (cloudflareAIGatewayModelIds.has(id)) continue;
@@ -247,8 +252,8 @@ export function addModelsDevFirstPartyModels(data: ModelsDevCatalog, models: Mod
 				api: "openai-completions",
 				provider: "cloudflare-ai-gateway",
 				baseUrl: CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL,
-				reasoning: m.reasoning === true,
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: modelsDevReasoning(m),
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				...modelsDevLimits(m.limit),
 				compat: { sendSessionAffinityHeaders: true },

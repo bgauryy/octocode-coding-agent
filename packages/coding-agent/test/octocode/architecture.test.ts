@@ -60,6 +60,8 @@ const ALLOWED: Record<string, string[]> = {
 	// Opening local pages: the browser app window, where a page can open, the OS opener, the launcher, and routes every page serves.
 	browser: ["shared"],
 	// A parent's view of its children: the agent call's fields, child session files, report artifacts, handoff references.
+	// One session's activity light: the root session's follower and the light other live sessions recorded.
+	activity: ["shared"],
 	"child-sessions": ["shared"],
 	// Where worktree sessions live: the member and own worktree roots and the prompt root a worktree session rebases to.
 	"worktree-paths": ["shared"],
@@ -68,7 +70,7 @@ const ALLOWED: Record<string, string[]> = {
 	// `events`: an API message carries its source (`events/source.ts`).
 	api: ["shared", "render", "events"],
 	// `worktrees`: a worktree session's message to its coordinator looks up the repository's main checkout.
-	external: ["shared", "api", "worktrees", "ask", "child-sessions", "jobs"],
+	external: ["activity", "shared", "api", "worktrees", "ask", "child-sessions", "jobs"],
 	// Claude Code as the model backend: the connected runner, its cleaned environment and the ACP host come from `external`.
 	"claude-code": ["external"],
 	ask: ["shared", "render"],
@@ -105,8 +107,9 @@ const ALLOWED: Record<string, string[]> = {
 	archive: ["shared", "permission", "profiler", "history", "render"],
 	// The phase feed reads the ongoing items this session holds, as a settled run leaves them open; the editor's skill-word
 	// highlight stems words the way history ranking does.
-	ui: ["shared", "permission", "render", "child-sessions", "tool-input", "wake", "backlog", "history"],
+	ui: ["activity", "shared", "permission", "render", "child-sessions", "tool-input", "wake", "backlog", "history"],
 	subagents: [
+		"activity",
 		"shared",
 		"jobs",
 		"discovery",
@@ -151,9 +154,10 @@ const ALLOWED: Record<string, string[]> = {
 	"native/tools/skill": ["shared", "render", "skill"],
 	"native/tools/notify": ["shared", "render", "timer"],
 	"native/tools/web": ["shared", "render", "permission", "web", "jobs"],
-	sessions: ["shared", "files", "subagents", "backlog", "archive", "child-sessions"],
+	sessions: ["activity", "shared", "files", "subagents", "backlog", "archive", "child-sessions"],
 	// `graph`: the board's ready list and `octocode backlog graph` read the work graph over its items.
-	backlog: ["shared", "render", "browser", "native/tools/backlog", "native/tools/backlog-plan", "graph"],
+	// `files`: a completion cites a shell receipt (`files/bash/verification.ts`) and checks it against later edits.
+	backlog: ["shared", "render", "browser", "native/tools/backlog", "native/tools/backlog-plan", "graph", "files"],
 	// The derived work graph (items, steps, agents, jobs, resources, waits), its ready order and stall tracking; its
 	// readers of the backlog live in `backlog/`.
 	graph: ["shared"],
@@ -163,7 +167,10 @@ const ALLOWED: Record<string, string[]> = {
 	guard: ["shared", "trust"],
 	// Rebuilds a stored session's profiler source from the team's message model; entry names from `shared`.
 	profiler: ["shared", "team"],
-	workspace: ["shared", "backlog", "team", "subagents", "profiler", "browser", "worktree-paths"],
+	// `/usage` and its recorder: spend by day, provider and model from the agent database; formats and spend from `shared`.
+	usage: ["shared"],
+	// `archive`: the evidence route reads a source anchor through the archive's scoped resolver.
+	workspace: ["shared", "backlog", "team", "subagents", "profiler", "browser", "worktree-paths", "archive"],
 	// The harness page previews a scan through the harness domain's renderer.
 	// `guard`, `hooks`: the Security panel lists what the session loaders find (`security-collect.ts`, which `/security` shares) and records decisions.
 	// `external`: the External agents panel lists and checks runners with the code `/providers` uses.
@@ -180,6 +187,8 @@ const ALLOWED: Record<string, string[]> = {
 		"hooks",
 		"external",
 		"subagents",
+		// The attach server answers an evidence read with the archive's scoped resolver.
+		"archive",
 	],
 	remote: ["shared", "web-daemon", "workspace"],
 	// `history`: a `query` is tested in the regex worker that bounds a search (`history/search.ts`).
@@ -206,7 +215,8 @@ const ALLOWED: Record<string, string[]> = {
 	// `processes`: the process table names other vendors' agent CLIs working in a worktree.
 	worktrees: ["shared", "terminal-launch", "trust", "worktree-paths", "processes"],
 	// `/realm`: the checkout, worktrees, agents and saved sessions of the repository in one view; it reads each, owns none.
-	realm: ["shared", "worktrees", "worktree-paths", "sessions"],
+	// `activity`: each live session's light, as the session records it (`liveActivityOf`).
+	realm: ["shared", "worktrees", "worktree-paths", "sessions", "activity"],
 	// An until-command runs on the bash foreground path (`files`) after the plan-mode and read-only-role checks a bash call meets.
 	// `graph`: the `unlocked full-run` wait reads the lock's owner record.
 	timer: ["shared", "files", "permission", "plan", "render", "wake", "events", "native/tools/notify", "graph"],
@@ -328,6 +338,11 @@ describe("source layout", () => {
 		const runtime = new Set([
 			...Object.keys(manifest.dependencies ?? {}),
 			...Object.keys(manifest.peerDependencies ?? {}),
+			// A local package compiled into the bundle (the sandbox runtime fork) has no registry version to install, so it
+			// is a development dependency that the bundle carries.
+			...Object.entries(manifest.devDependencies ?? {})
+				.filter(([, specifier]) => /^(?:link|file):/.test(specifier))
+				.map(([name]) => name),
 		]);
 		const packageOf = (specifier: string) =>
 			specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0];
@@ -397,7 +412,7 @@ describe("source layout", () => {
 		expect(
 			uses,
 			"interactive-mode gained uses of its shared host; give the collaborator a narrow host",
-		).toBeLessThanOrEqual(2_200);
+		).toBeLessThanOrEqual(2_123);
 	});
 
 	it("locates its package root at any depth", () => {

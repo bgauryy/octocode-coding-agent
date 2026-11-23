@@ -178,6 +178,18 @@ export function lastInjection(entries: readonly unknown[]): string | undefined {
 	return undefined;
 }
 
+/** The memory ids of the injection `lastInjection` shows (empty when it recorded none). */
+export function lastInjectionIds(entries: readonly unknown[]): number[] {
+	for (let index = entries.length - 1; index >= 0; index--) {
+		const entry = entries[index];
+		if (isRecord(entry) && entry.type === "custom_message" && entry.customType === MEMORY_MESSAGE_TYPE) {
+			const ids = isRecord(entry.details) ? entry.details.ids : undefined;
+			return Array.isArray(ids) ? ids.filter((id): id is number => typeof id === "number") : [];
+		}
+	}
+	return [];
+}
+
 /**
  * What to inject before a prompt: pinned memories (up to `pinnedBudget` chars; skipped with `pinned: false`, only
  * those of `pinnedKind` when it is set), then the top `topK` BM25 hits for the prompt's words of 3+ letters that clear the absolute floor (`clearsFloor`) and score at least

@@ -91,6 +91,31 @@ describe("DaemonShell", () => {
 		else expect(notice).toBeNull();
 	});
 
+	it("draws the light the daemon sends: a failed session reads Failed in red, a compacting one Compacting", async () => {
+		const row = (id: string, activity: { tone: string; state: string; label: string }) => ({
+			...sessions.sessions[0],
+			id,
+			busy: false,
+			activity,
+		});
+		const listed = {
+			sessions: [
+				row("failed", { tone: "error", state: "failed", label: "failed" }),
+				row("compacting", { tone: "working", state: "running", label: "compacting" }),
+			],
+		};
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (url: string) => new Response(JSON.stringify(url === "/api/sessions" ? listed : repos))),
+		);
+		render(<DaemonShell access="tok" />);
+		const failed = (await screen.findByText("Failed")).closest(".badge");
+		expect(failed).toHaveClass("tone-danger");
+		expect(failed?.querySelector(".mark-failed")).not.toBeNull();
+		expect(screen.getByText("Compacting").closest(".badge")).toHaveClass("tone-success");
+		expect(screen.queryByText("Idle")).toBeNull();
+	});
+
 	it("lists live sessions with a link that opens that session's own live view", async () => {
 		render(<DaemonShell access="tok" />);
 		const links = await screen.findAllByRole("link", { name: /^Open octo-repo session / });
@@ -103,11 +128,15 @@ describe("DaemonShell", () => {
 		expect(screen.getByTitle("sess one")).toHaveTextContent("sess one");
 		expect(screen.getAllByText("octo-repo")).toHaveLength(3);
 		expect(screen.getByText("/work/octo")).toBeInTheDocument();
-		// Each session says what it is doing; a blocked one shows the question it waits on.
-		expect(screen.getByText("Live")).toBeInTheDocument();
-		expect(screen.getByText("Needs you")).toBeInTheDocument();
+		// Each session says what it is doing; a blocked one shows the question it waits on. The badges are the shared
+		// activity light (contract change: status dots, wave C): an idle session reads "Idle", not "Live", in neutral.
+		expect(screen.getByText("Idle").closest(".badge")).toHaveClass("tone-neutral");
+		expect(screen.getByText("Needs you").closest(".badge")).toHaveClass("tone-warning");
 		expect(screen.getByText("Run rm -rf build?")).toBeInTheDocument();
-		expect(screen.getByText("Working")).toBeInTheDocument();
+		expect(screen.getByText("Working").closest(".badge")).toHaveClass("tone-success");
+		// Each badge carries its state's shape, so colour is not the only cue.
+		expect(screen.getByText("Needs you").closest(".badge")?.querySelector(".mark-waiting")).not.toBeNull();
+		expect(screen.getByText("Working").closest(".badge")?.querySelector(".mark-running")).not.toBeNull();
 		expect(requests.every((request) => request.auth === "Bearer tok")).toBe(true);
 	});
 

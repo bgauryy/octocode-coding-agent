@@ -17,7 +17,7 @@ import { StartupError } from "./process/outcome.ts";
 import { type ChildSession, childSessionFile } from "./process/session.ts";
 import { GENERAL_PROFILE } from "./profiles.ts";
 import { archiveNote, compactionNote, sessionNote } from "./render.ts";
-import { type Shot, saveShot, shotsDir } from "./screenshots.ts";
+import { type Shot, ShotWriter, shotsDir } from "./screenshots.ts";
 import type { ResultDetails, RunDetails } from "./run-types.ts";
 import { throttled } from "./update-throttle.ts";
 
@@ -38,36 +38,42 @@ const COMPACTING_TEXT = "compacting its context";
 /** A run's total usage so far (Octocode's `Usage`, kept up to date by the child's event stream), by its details. */
 const spent = new WeakMap<RunDetails, Usage>();
 
-/** What a background report carries of the run besides its text: its spend (the parent's footer and session index count it), its compactions and notices, its saved conversation, its questions to the parent. */
+/**
+ * What a background report carries of the run besides its text: its spend (the parent's footer and session index count
+ * it) with the model it last ran on (`ran`: after a fallback, who paid is that provider's, not the planned `model`'s),
+ * its compactions and notices, its saved conversation, its questions to the parent.
+ */
 export const reportFacts = (
 	details: RunDetails,
-): Pick<
-	ResultDetails,
-	| "runId"
-	| "startedAt"
-	| "usage"
-	| "unpriced"
-	| "model"
-	| "fallback"
-	| "refusedBy"
-	| "compactions"
-	| "notices"
-	| "session"
-	| "asks"
-	| "firstTurnTokens"
-	| "requests"
-	| "cache"
-	| "startup"
-	| "structured"
-	| "reportArtifact"
-	| "billing"
-> => {
+): Pick<RunDetails, "ran"> &
+	Pick<
+		ResultDetails,
+		| "runId"
+		| "startedAt"
+		| "usage"
+		| "unpriced"
+		| "model"
+		| "fallback"
+		| "refusedBy"
+		| "compactions"
+		| "notices"
+		| "session"
+		| "asks"
+		| "firstTurnTokens"
+		| "requests"
+		| "cache"
+		| "startup"
+		| "structured"
+		| "reportArtifact"
+		| "billing"
+	> => {
 	const usage = spent.get(details);
 	return {
 		...(details.runId ? { runId: details.runId } : {}),
 		startedAt: details.startedAt,
 		...(usage ? { usage, unpriced: details.unpriced } : {}),
 		...(details.model ? { model: details.model } : {}),
+		...(details.ran ? { ran: details.ran } : {}),
 		...(details.fallback ? { fallback: details.fallback } : {}),
 		...(details.refusedBy ? { refusedBy: details.refusedBy } : {}),
 		...(details.compactions ? { compactions: details.compactions } : {}),
@@ -121,10 +127,8 @@ export function tracker(
 	find: ModelLookup,
 	ctx?: Pick<FeatureContext, "hasUI" | "ui">,
 ) {
-	const dir = shotsDir();
-	let shots = 0;
-	let latest: Shot | undefined;
-	return (onUpdate: AgentUpdate | undefined) => {
+	const writer = new ShotWriter(shotsDir(), details.runId ? `${identity.id}-${details.runId}` : identity.id);
+	const track = (onUpdate: AgentUpdate | undefined) => {
 		const send = throttled<Parameters<AgentUpdate>[0]>(
 			(update) => onUpdate?.(update),
 			() => details.status === "running",
@@ -136,6 +140,7 @@ export function tracker(
 			usage,
 			reply,
 			ran,
+			usageLimit,
 			image,
 			denied,
 			waiting,
@@ -175,6 +180,7 @@ export function tracker(
 			if (notices) details.notices = notices;
 			if (requests !== undefined) details.requests = requests;
 			if (ran) details.ran = ran;
+			if (usageLimit) details.usageLimit = usageLimit;
 			if (denied) details.denied = (details.denied ?? 0) + 1;
 			if (line) details.toolCalls += 1;
 			const entry = line ?? step;
@@ -182,11 +188,6 @@ export function tracker(
 			if (thinking !== undefined) {
 				if (thinking) details.thinking = thinking;
 				else delete details.thinking;
-			}
-			if (image) {
-				shots += 1;
-				latest = saveShot(dir, identity.id, shots, image);
-				details.shot = latest.path;
 			}
 			const prompt = replyPromptTokens(reply);
 			if (reply) details.cache = noteChildCache(details.cache, reply);
@@ -201,14 +202,6 @@ export function tracker(
 			spent.set(details, usage);
 			Object.assign(details, emptyTotals());
 			addReply(details, usage, unpriced);
-			const text = {
-				type: "text" as const,
-				text: details.waiting
-					? WAITING_TEXT
-					: details.compacting
-						? COMPACTING_TEXT
-						: (line ?? details.activity.at(-1) ?? "working"),
-			};
 			// Partial results only reach the user's screen, so the latest screenshot is drawn there but never enters the model's context.
 			// Tool ends (screenshots, denials), replies, waiting, compaction and notices show at once; the rest at most every interval.
 			const urgent =
@@ -216,17 +209,41 @@ export function tracker(
 				waiting !== undefined ||
 				compacting !== undefined ||
 				editedAfterVerify !== undefined;
-			if (!onUpdate) return;
-			send(
-				{
-					content:
-						image && latest?.data ? [text, { type: "image", data: latest.data, mimeType: latest.mimeType }] : [text],
-					details: { ...details },
-				},
-				urgent,
-			);
+			const publish = (shot?: Shot) => {
+				if (!onUpdate) return;
+				const text = {
+					type: "text" as const,
+					text: details.waiting
+						? WAITING_TEXT
+						: details.compacting
+							? COMPACTING_TEXT
+							: (details.activity.at(-1) ?? "working"),
+				};
+				send(
+					{
+						content: shot?.data ? [text, { type: "image", data: shot.data, mimeType: shot.mimeType }] : [text],
+						details: { ...details },
+					},
+					urgent,
+				);
+			};
+			if (image)
+				writer.add(image, (shot) => {
+					details.shot = shot.path;
+					publish(shot);
+				});
+			else publish();
 		};
 	};
+	return Object.assign(track, {
+		async withScreenshots<T>(work: Promise<T>): Promise<T> {
+			try {
+				return await work;
+			} finally {
+				await writer.finish();
+			}
+		},
+	});
 }
 
 /**

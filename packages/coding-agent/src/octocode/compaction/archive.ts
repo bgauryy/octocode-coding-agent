@@ -12,6 +12,7 @@ import {
 	writeSegment,
 } from "../history/archive.ts";
 import { isStaleSessionError, stringList } from "../shared/util.ts";
+import { ENTRY_IDS_SOURCE } from "../history/archive/segments.ts";
 import { entryIndex, firstUserLine, isoTime, renderMessages } from "./archive/render.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { shownLine } from "../sessions/store.ts";
@@ -60,6 +61,8 @@ interface Pending {
 	/** The branch's leaf entry when the compaction began (the compaction entry becomes its child). */
 	leaf?: string;
 	messages: unknown[];
+	/** The session entry id of each of `messages`, from the preparation; absent for a preparation that carried none. */
+	entryIds?: Array<string | undefined>;
 	entryOf: (message: unknown) => string | undefined;
 }
 
@@ -75,11 +78,20 @@ export class ArchiveCapture {
 		const { preparation } = event;
 		const leaf = event.branchEntries.at(-1)?.id;
 		// The pointer message of an earlier compaction is a reference to the archive, not history: it is not filed again.
-		const messages = [...preparation.messagesToSummarize, ...preparation.turnPrefixMessages].filter(
-			(message: unknown) =>
-				!(isRecord(message) && message.role === "custom" && message.customType === ARCHIVE_POINTER_TYPE),
+		const all = [...preparation.messagesToSummarize, ...preparation.turnPrefixMessages];
+		const carried =
+			preparation.messageEntryIds?.length === preparation.messagesToSummarize.length &&
+			preparation.turnPrefixEntryIds?.length === preparation.turnPrefixMessages.length
+				? [...preparation.messageEntryIds, ...preparation.turnPrefixEntryIds]
+				: undefined;
+		const kept = all.flatMap((message: unknown, index) =>
+			isRecord(message) && message.role === "custom" && message.customType === ARCHIVE_POINTER_TYPE
+				? []
+				: [{ message, id: carried?.[index] }],
 		);
+		const messages = kept.map((item) => item.message);
 		this.pending = {
+			...(carried ? { entryIds: kept.map((item) => item.id) } : {}),
 			firstKeptEntryId: preparation.firstKeptEntryId,
 			...(leaf ? { leaf } : {}),
 			messages,
@@ -136,8 +148,9 @@ export class ArchiveCapture {
 				modifiedFiles: stringList(details.modifiedFiles) ?? [],
 				messages: pending.messages.length,
 				...(pending.leaf ? { leaf: pending.leaf } : {}),
+				...(pending.entryIds ? { entryIds: ENTRY_IDS_SOURCE } : {}),
 			},
-			renderMessages(pending.messages, pending.entryOf),
+			renderMessages(pending.messages, pending.entryIds ?? pending.entryOf),
 		);
 	}
 }

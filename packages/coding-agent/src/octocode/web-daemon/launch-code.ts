@@ -16,7 +16,7 @@ import { ITEM_REF } from "../shared/item-ref.ts";
 export const LAUNCH_CODE_ROUTE = "/api/admin/launch-code";
 /** The page's one-time door: `/open/<code>?s=<session>&view=<view>&item=<B12>`; takes no bearer token. */
 export const LAUNCH_DOOR_PREFIX = "/open/";
-const CODE_LIFETIME_MS = 5 * 60_000;
+export const CODE_LIFETIME_MS = 5 * 60_000;
 const VIEW = /^[a-z]{1,32}$/;
 const SESSION = /^[\w.-]{1,128}$/;
 

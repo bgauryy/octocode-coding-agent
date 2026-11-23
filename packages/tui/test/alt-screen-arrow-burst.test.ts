@@ -103,12 +103,37 @@ describe("arrow keys sent for the wheel", () => {
 		});
 	});
 
+	it("move an open completion list instead of scrolling, however fast they come", async () => {
+		await withChat(async ({ terminal, editor }) => {
+			editor.setAutocompleteProvider({
+				getSuggestions: async () => ({
+					prefix: "/",
+					items: Array.from({ length: 8 }, (_, i) => ({ value: `/cmd${i}`, label: `cmd${i}` })),
+				}),
+				applyCompletion: (lines, cursorLine, cursorCol) => ({ lines, cursorLine, cursorCol }),
+			});
+			terminal.sendInput("/");
+			for (let i = 0; i < 20 && !editor.isShowingAutocomplete(); i++) await delay(10);
+			assert.equal(editor.isShowingAutocomplete(), true);
+			await terminal.waitForRender();
+			const before = top(terminal);
+			for (let i = 0; i < 3; i++) terminal.sendInput("\x1b[B");
+			await terminal.waitForRender();
+			assert.equal(top(terminal), before);
+			assert.ok(
+				terminal.getViewport().some((line) => /› +cmd3/.test(line)),
+				terminal.getViewport().join("\n"),
+			);
+		});
+	});
+
 	it("deliver a held arrow before the key that follows it", async () => {
 		await withChat(async ({ terminal, editor }) => {
 			terminal.sendInput("\x1b[A");
 			terminal.sendInput("x");
 			await delay(20);
-			assert.equal(editor.getText(), `x${PROMPT}`);
+			// The held Up recalled the prompt (cursor at its end) before "x" was typed after it.
+			assert.equal(editor.getText(), `${PROMPT}x`);
 		});
 	});
 });

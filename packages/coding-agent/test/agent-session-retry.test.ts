@@ -7,7 +7,7 @@ import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentSession } from "../src/core/agent-session.ts";
-import { RATE_LIMIT_MIN_RETRIES, RATE_LIMIT_WINDOW_MS } from "../src/core/agent-session/retry.ts";
+import { RATE_LIMIT_MIN_RETRIES, RATE_LIMIT_WINDOW_MS, retryFailureText } from "../src/core/agent-session/retry.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
@@ -67,6 +67,8 @@ describe("AgentSession retry", () => {
 		baseDelayMs?: number;
 		/** Called as a failing call ends, to let a test move its clock; the error's timestamp is the call's start. */
 		onCallFailed?: () => void;
+		/** The model id the replies name; the session's own model (`claude-sonnet-4-5`) makes them its replies. */
+		replyModel?: string;
 	}) {
 		const failCount = options?.failCount ?? 1;
 		const maxRetries = options?.maxRetries ?? 3;
@@ -90,6 +92,7 @@ describe("AgentSession retry", () => {
 							stopReason: "error",
 							errorMessage: options?.errorMessage ?? "500 internal server error",
 							...(options?.retryAfterMs === undefined ? {} : { retryAfterMs: options.retryAfterMs }),
+							...(options?.replyModel ? { model: options.replyModel } : {}),
 						});
 						stream.push({ type: "start", partial: msg });
 						stream.push({ type: "error", reason: "error", error: msg });
@@ -165,6 +168,21 @@ describe("AgentSession retry", () => {
 		expect(events).toContain("start:2");
 		expect(events).toContain("end:success=false");
 		expect(created.session.isRetrying).toBe(false);
+	});
+
+	it("records the final failure named as the retry lines name it, keeping the provider's own text", async () => {
+		const created = await createSession({
+			failCount: 99,
+			maxRetries: 1,
+			errorMessage: "fetch failed",
+			replyModel: "claude-sonnet-4-5",
+		});
+		await created.session.prompt("Test");
+		expect(created.session.lastRunOutcome).toMatchObject({
+			status: "failed",
+			errorMessage: "fetch failed",
+			failureText: `anthropic/claude-sonnet-4-5 at ${new URL(getBuiltinModel("anthropic", "claude-sonnet-4-5").baseUrl).host}: fetch failed`,
+		});
 	});
 
 	it("caps agent retry delay", async () => {
@@ -610,5 +628,27 @@ describe("AgentSession retry", () => {
 		// A follow-up prompt must work (no "Agent is already processing" error)
 		await session.prompt("Follow-up");
 		expect(callCount).toBe(4);
+	});
+});
+
+describe("what a retry line says failed", () => {
+	const failed = (errorMessage: string) =>
+		({ provider: "local-gateway", model: "fake-model", errorMessage }) as AssistantMessage;
+
+	it("names the provider and model, and the endpoint's host when the request never reached it", () => {
+		expect(retryFailureText(failed("fetch failed"), "http://127.0.0.1:9/v1")).toBe(
+			"local-gateway/fake-model at 127.0.0.1:9: fetch failed",
+		);
+		expect(retryFailureText(failed("503 Service Unavailable"), "http://127.0.0.1:9/v1")).toBe(
+			"local-gateway/fake-model: 503 Service Unavailable",
+		);
+		// No credentials or path of the configured URL reach the line, only its host.
+		expect(retryFailureText(failed("fetch failed"), "https://user:secret@gw.example:8443/v1?key=x")).toBe(
+			"local-gateway/fake-model at gw.example:8443: fetch failed",
+		);
+		expect(retryFailureText(failed("fetch failed"), "not a url")).toBe("local-gateway/fake-model: fetch failed");
+		expect(retryFailureText(failed("local-gateway/fake-model: refused"), undefined)).toBe(
+			"local-gateway/fake-model: refused",
+		);
 	});
 });

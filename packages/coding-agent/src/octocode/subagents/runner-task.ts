@@ -10,14 +10,14 @@ import type { Runners } from "./runner-port.ts";
 import type { Team } from "../team/session.ts";
 
 /** Task fields that belong to an Octocode child: a runner has its own tools, skills and session, so they do not apply. */
-const NATIVE_ONLY = ["skills", "mcp", "profile", "headless"] as const;
+const NATIVE_ONLY = ["skills", "mcp", "profile", "headless", "maxRequests"] as const;
 
 /** The `runner` field of a task, declared when an installed runnable CLI is available in this session. */
 export const runnerField = (ids: readonly string[]) =>
 	Type.Optional(
 		StringEnum(ids, {
 			description:
-				"Installed vendor CLI with its own model/sign-in (checked when used; plan or metered key). No skills, mcp, profile or headless; resume continues its own CLI session where the vendor supports it.",
+				"Installed vendor CLI with its own model/sign-in (checked when used; plan or metered key). No skills, mcp, profile, headless or maxRequests; resume continues its own CLI session where the vendor supports it.",
 		}),
 	);
 

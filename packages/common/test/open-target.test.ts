@@ -1,6 +1,11 @@
 import { EventEmitter } from "node:events";
+import type * as ChildProcess from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import { openTarget, openTargetCommand } from "../src/open-target.ts";
+
+/** The real `spawn`, replaced: a test that reaches it would open an application on the machine running the suite. */
+const systemSpawn = vi.hoisted(() => vi.fn());
+vi.mock("node:child_process", async (actual) => ({ ...(await actual<typeof ChildProcess>()), spawn: systemSpawn }));
 
 /** A spawn that records its call and emits `outcome` on the child it returns. */
 function fakeSpawn(outcome: "spawn" | Error) {
@@ -61,5 +66,12 @@ describe("openTarget", () => {
 	it("rejects with the spawn error, such as a missing xdg-open", async () => {
 		const fake = fakeSpawn(Object.assign(new Error("spawn xdg-open ENOENT"), { code: "ENOENT" }));
 		await expect(openTarget("/tmp/x.html", { platform: "linux", spawn: fake.spawn })).rejects.toThrow("ENOENT");
+	});
+
+	it("starts nothing with OCTOCODE_OPEN_BROWSER=0 and rejects saying so", async () => {
+		await expect(
+			openTarget("https://example.com", { platform: "darwin", env: { OCTOCODE_OPEN_BROWSER: "0" } }),
+		).rejects.toThrow("OCTOCODE_OPEN_BROWSER=0");
+		expect(systemSpawn).not.toHaveBeenCalled();
 	});
 });

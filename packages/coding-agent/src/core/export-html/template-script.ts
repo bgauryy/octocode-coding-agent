@@ -5,7 +5,7 @@ import { join } from "node:path";
  * The browser script of the HTML export is a set of fragments in `script/`, read in this order and inlined as one
  * script. The fragments share one scope and are not modules: each declares its functions and state at the top level and
  * uses those declared by the others, so the order is also the initialisation order. The package build
- * (`scripts/build-coding-agent.mjs`) copies the folder to `dist`, and the compiled binary stages it with the rest of `export-html/`.
+ * (`scripts/build/build-coding-agent.mjs`) copies the folder to `dist`, and the compiled binary stages it with the rest of `export-html/`.
  */
 export const TEMPLATE_SCRIPT_FRAGMENTS = [
 	"data.js",

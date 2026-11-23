@@ -122,27 +122,58 @@ export const PROMPT_FOLDERS: Readonly<Record<string, string>> = {
 	agents: "agents/",
 };
 
-/** Reader-only Markdown in a source checkout, never rendered: the generated `final/` prompts and the folder READMEs. The package build leaves them out too (`scripts/copy-native.mjs`). */
+/** Reader-only Markdown in a source checkout, never rendered: the generated `final/` prompts and the folder READMEs. The package build leaves them out too (`scripts/build/copy-native.mjs`). */
 const isReaderOnly = (name: string): boolean => name.startsWith("final/") || name.split("/").at(-1) === "README.md";
 
 /**
- * Every prompt file, read together on first use (about 85 KB). A running process keeps the text it started with while the files change on disk, so its loaded code never
- * meets a template naming a value that code does not pass.
+ * The prompt Markdown a build packs into one file at the top of `native/` (`scripts/build/copy-native.mjs`), keyed by
+ * path under `native/` (`prompts/policy/finish.md`), so a process reads one file instead of each. A source checkout has
+ * none and reads the folders.
  */
-function promptSources(): Map<string, string> {
-	if (sources) return sources;
-	const read = new Map<string, string>();
-	for (const [folder, prefix] of Object.entries(PROMPT_FOLDERS)) {
-		const root = path.join(getNativeDir(), folder);
+export const PROMPT_PACK = "prompts.pack.json";
+
+/** The prompt Markdown under `nativeDir` as [path under `nativeDir`, text] pairs: the pack when there is one, else each file. */
+function promptFiles(nativeDir: string): Array<[string, string]> {
+	try {
+		return Object.entries(
+			JSON.parse(fs.readFileSync(path.join(nativeDir, PROMPT_PACK), "utf8")) as Record<string, string>,
+		);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+	}
+	const files: Array<[string, string]> = [];
+	for (const folder of Object.keys(PROMPT_FOLDERS)) {
+		const root = path.join(nativeDir, folder);
 		if (!fs.existsSync(root)) continue;
 		for (const entry of fs.readdirSync(root, { recursive: true, withFileTypes: true })) {
+			if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
 			const file = path.join(entry.parentPath, entry.name);
-			const name = prefix + path.relative(root, file).split(path.sep).join("/");
-			if (entry.isFile() && name.endsWith(".md") && !isReaderOnly(name)) read.set(name, fs.readFileSync(file, "utf8"));
+			files.push([path.relative(nativeDir, file).split(path.sep).join("/"), fs.readFileSync(file, "utf8")]);
 		}
 	}
-	sources = read;
+	return files;
+}
+
+/** Every prompt file under `nativeDir` by its key (`PROMPT_FOLDERS`), reader-only files left out. */
+export function readPromptSources(nativeDir: string): Map<string, string> {
+	const read = new Map<string, string>();
+	for (const [file, text] of promptFiles(nativeDir)) {
+		const slash = file.indexOf("/");
+		const folder = file.slice(0, slash);
+		if (slash === -1 || !Object.hasOwn(PROMPT_FOLDERS, folder)) continue;
+		const name = PROMPT_FOLDERS[folder] + file.slice(slash + 1);
+		if (!isReaderOnly(name)) read.set(name, text);
+	}
 	return read;
+}
+
+/**
+ * Every prompt file, read together on first use (about 110 KB). A running process keeps the text it started with while
+ * the files change on disk, so its loaded code never meets a template naming a value that code does not pass.
+ */
+function promptSources(): Map<string, string> {
+	sources ??= readPromptSources(getNativeDir());
+	return sources;
 }
 
 /** The text of a prompt file. `name` is its key (`PROMPT_FOLDERS`), such as `policy/finish.md` or `tools/bash/cli.md`. */

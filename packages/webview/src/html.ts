@@ -17,7 +17,8 @@ export function embeddedJson(value: unknown): string {
 
 /**
  * The backlog as one static page: the data in a JSON block, the style and script inline. Nothing from the data is placed
- * in the markup; React renders the page from the parsed data as text, never as HTML.
+ * in the markup; React renders the page from the parsed data as text, never as HTML. A live page is titled Octocode until
+ * its script names the view (`Activity · Octocode`); the offline export stays `Backlog`.
  */
 export function renderBacklogHtml(snapshot: Snapshot, live = false, daemon = false): string {
 	return `<!doctype html>
@@ -29,7 +30,7 @@ export function renderBacklogHtml(snapshot: Snapshot, live = false, daemon = fal
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#6d28d9">
 <link rel="icon" type="image/png" href="${OCTOCODE_FAVICON_DATA_URI}">
-<title>Backlog</title>
+<title>${live ? "Octocode" : "Backlog"}</title>
 <style>${PAGE_CSS}</style>
 </head>
 <body data-live="${live}"${daemon ? ' data-daemon="true"' : ""}>

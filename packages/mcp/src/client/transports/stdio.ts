@@ -16,6 +16,7 @@ import {
 import { type StdioLaunchWrapper, stdioLaunch } from "./stdio-launch.ts";
 import { recordStdioGroup, reapStdioOrphans } from "./stdio-owner.ts";
 import { DEFAULT_MAX_MESSAGE_BYTES, type McpTransport, TransportEvents } from "./transport.ts";
+import { serverExited, serverStarted } from "./stdio-live.ts";
 
 /** The JSON of one stdio frame; a frame that is not JSON is reported like a frame that is not a message. */
 function parseFrame(text: string): unknown {
@@ -45,13 +46,8 @@ export function getDefaultEnvironment(source: NodeJS.ProcessEnv = process.env): 
 	return env;
 }
 
-/** Process groups of running servers; each gets SIGTERM if the host exits without closing it (`processLifetime`). */
-const liveProcessGroups = new Set<number>();
-
-/** Pids of the stdio servers this process has running (each leads its own process group); empty on Windows. */
-export function liveStdioServerPids(): number[] {
-	return [...liveProcessGroups];
-}
+// The servers this transport runs (`stdio-live.ts`), where the tests that drive the transport read them.
+export { liveStdioServerPids } from "./stdio-live.ts";
 
 function killProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
 	const pid = child.pid;
@@ -179,7 +175,7 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 		}
 		const pid = child.pid;
 		if (USE_PROCESS_GROUPS && pid !== undefined) {
-			liveProcessGroups.add(pid);
+			serverStarted(pid);
 			const atExit = processLifetime.acquireGroup(`MCP server ${this.options.command}`, pid, "SIGTERM");
 			// Until "close", a launcher's children may still hold the pipes and belong to the group.
 			const release = recordStdioGroup(
@@ -187,7 +183,7 @@ export class StdioTransport extends TransportEvents implements McpTransport {
 				[this.options.command, ...(this.options.args ?? [])].join(" ").slice(0, 200),
 			);
 			child.once("close", () => {
-				liveProcessGroups.delete(pid);
+				serverExited(pid);
 				atExit();
 				void release();
 			});

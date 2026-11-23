@@ -1,3 +1,4 @@
+import { globalOnlyRoot } from "../../core/settings-manager/global-only.ts";
 import { ignoredSettingsKeys } from "../../core/settings-manager/ignored-keys.ts";
 import { applied, closestIds, kindOf, refused } from "../result.ts";
 import { coerceSettingValue, findLeaf, OWNED_SETTINGS, type SettingLeaf, settingLeaves } from "../settings-leaves.ts";
@@ -9,8 +10,10 @@ const MODEL_DEFAULTS = new Set(["defaultProvider", "defaultModel"]);
 function toEntry(leaf: SettingLeaf, ctx: ConfigContext): ConfigEntry {
 	const global = readPath(ctx.settings.getGlobalSettings(), leaf.key);
 	const project = ctx.projectTrusted ? readPath(ctx.settings.getProjectSettings(), leaf.key) : undefined;
-	const effective = readPath(ctx.settings.getSettings(), leaf.key);
-	const setBy = project !== undefined ? "project" : global !== undefined ? "global" : "default";
+	// A global-only key's readers open the global file themselves: what the project file holds never applies.
+	const globalOnly = globalOnlyRoot(leaf.key) !== undefined;
+	const effective = globalOnly ? global : readPath(ctx.settings.getSettings(), leaf.key);
+	const setBy = project !== undefined && !globalOnly ? "project" : global !== undefined ? "global" : "default";
 	return {
 		id: leaf.key,
 		kind: "setting",
@@ -24,13 +27,27 @@ function toEntry(leaf: SettingLeaf, ctx: ConfigContext): ConfigEntry {
 		},
 		setBy,
 		...(leaf.default !== undefined ? { default: leaf.default } : {}),
-		// Model defaults choose new sessions; other keys are read on reload or every use.
-		appliesWhen: MODEL_DEFAULTS.has(leaf.key) ? "next-session" : "reload",
+		...(globalOnly
+			? {
+					detail: `read from the global settings only; ${project === undefined ? "a project value is ignored" : `the project value ${JSON.stringify(project)} is ignored`}`,
+				}
+			: {}),
+		// Model defaults choose new sessions; the running terminal applies its live keys at once; others are read on reload.
+		appliesWhen: MODEL_DEFAULTS.has(leaf.key) ? "next-session" : ctx.live?.appliesLive?.(leaf.key) ? "now" : "reload",
 	};
+}
+
+/** Why `scope` cannot hold a global-only key, or undefined when it can: its value there would do nothing. */
+function globalOnlyRefusal(key: string, scope: ConfigScope): string | undefined {
+	if (scope === "global" || globalOnlyRoot(key) === undefined) return undefined;
+	const where = scope === "project" ? "a project value" : "a value for this run";
+	return `${key} is read from the global settings only, so ${where} would do nothing. Set it in the global settings instead.`;
 }
 
 async function set(op: ConfigOp, leaf: SettingLeaf, value: unknown, ctx: ConfigContext): Promise<ConfigResult> {
 	const scope: ConfigScope = op.scope ?? "global";
+	const globalOnly = globalOnlyRefusal(leaf.key, scope);
+	if (globalOnly) return refused(op, globalOnly);
 	if (scope === "run") {
 		ctx.settings.applyOverrides(nestPath(leaf.key, value), { durable: true });
 		const message = `${leaf.key} = ${JSON.stringify(value)} for this run only.`;
@@ -42,8 +59,8 @@ async function set(op: ConfigOp, leaf: SettingLeaf, value: unknown, ctx: ConfigC
 	const saved = `${leaf.key} = ${JSON.stringify(value)} saved ${scope === "project" ? "for this project" : "globally"}.`;
 	if (MODEL_DEFAULTS.has(leaf.key))
 		return applied(op, "next-session", `${saved} New sessions use this default; the current chat keeps its model.`);
-	// A session applies the keys its live settings list changes at once, through the same appliers.
-	if (scope === "global" && ctx.live?.applySetting?.(leaf.key, value)) return applied(op, "now", saved);
+	// A session applies the keys its live settings list changes at once, from the files as they now are.
+	if (ctx.live?.applySetting?.(leaf.key)) return applied(op, "now", saved);
 	return applied(
 		op,
 		"reload",
@@ -96,7 +113,12 @@ export const settingsAdapter: ConfigAdapter = {
 				await writeSettingsKey(ctx, op.scope ?? "global", leaf.key, undefined);
 				return applied(
 					op,
-					MODEL_DEFAULTS.has(leaf.key) ? "next-session" : "reload",
+					MODEL_DEFAULTS.has(leaf.key)
+						? "next-session"
+						: // The running terminal takes the value that applies now (another scope's, or the default).
+							ctx.live?.applySetting?.(leaf.key)
+							? "now"
+							: "reload",
 					`${leaf.key} removed from the ${op.scope ?? "global"} settings.`,
 				);
 			default:

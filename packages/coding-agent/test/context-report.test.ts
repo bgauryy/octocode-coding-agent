@@ -223,6 +223,9 @@ it("suggests /context all only while contributors are folded into 'Other contrib
 	expect(renderContextReport(report(12), true)).not.toContain("Use /context all");
 	expect(renderContextReport(report(3))).not.toContain("Use /context all");
 	expect(renderContextReport(report(3))).toContain("/mcp exposure controls");
+	const text = renderContextReport(report(3));
+	expect(text).toContain("**Last request**");
+	expect(text).toContain("**Current context estimate**");
 });
 
 it("leads with the total in use, free space and distance to compaction, and totals the contributors", () => {

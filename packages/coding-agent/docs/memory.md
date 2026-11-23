@@ -48,8 +48,6 @@ flowchart LR
 
 A session reads both files when it builds its first request and keeps that text for the whole session, so the cached prompt stays the same while another session changes a file. After a compaction it reads them again and uses the new text when a file changed. The global file comes first, then the workspace file; a header says the notes are data, that `AGENTS.md` and your current words win, and that workspace notes beat global ones. A subagent gets the workspace file only (`memory.subagents`), and a lean subagent gets none. A line that looks like a secret is left out of the prompt, and a session with a screen says so.
 
-`/memory migrate --dry-run` shows what one pass from the notes database would write, as a diff, and writes nothing; `/memory migrate` writes it. Workspace and project notes go to the workspace file, global notes to the global file; a note is never moved to global there. Notes that do not fit stay in the database only. Every note stays in the database either way.
-
 ### How the files learn
 
 With `memory.autoUpdate` at `auto`, a main session also turns what it learned into lines, in three steps. Subagents and lean sessions take no part: a coordinator collects its children's `Noticed:` lines instead.
@@ -151,15 +149,14 @@ Every call includes `reason`. `op` is `list | search | get`; `source` is `all | 
 
 ## User commands and automatic recall
 
-| Command                       | Does                                                                                                             |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `/memory`                     | Browse (pinned, project, global); headless prints notes                                                          |
-| `/memory add [title]`         | Editor for title, kind, scope, keywords, pinning; headless `/memory add <title> — <body>` saves a workspace note |
-| `/memory search <words>`      | Search notes                                                                                                     |
-| `/memory last`                | What was injected last                                                                                           |
-| `/memory review [days]`       | Notes never handed to the model or not updated in that many days                                                 |
-| `/memory auto`                | Whether automatic recall is on here, and how to change it                                                        |
-| `/memory migrate [--dry-run]` | Writes notes from the database to the MEMORY.md files; the dry run prints the diff and writes nothing            |
+| Command                      | Does                                                                                                                                                                               |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/memory`                    | Browse (pinned, project, global); headless prints notes                                                                                                                            |
+| `/memory add [title — body]` | Editor for title, kind, scope, keywords, pinning, filled with the title and body typed (`—`, `-` or `--` between spaces splits them); headless it saves a workspace note with them |
+| `/memory search <words>`     | Search notes                                                                                                                                                                       |
+| `/memory last`               | What was injected last                                                                                                                                                             |
+| `/memory review [days]`      | Notes never handed to the model or not updated in that many days                                                                                                                   |
+| `/memory auto`               | Whether automatic recall is on here, and how to change it                                                                                                                          |
 
 User commands add no permission dialogs. A note you add, edit, pin, move or delete updates its MEMORY.md line the same way, marked as yours.
 
@@ -173,6 +170,10 @@ An omitted or replaced memory notice no longer counts as present: unchanged note
 
 Built-in hooks record init, create, update, delete and committed compaction events in the same database. Every activation, including resume and reload, gets its own init event; repeated delivery is idempotent; registration IDs distinguish reused agent names. Heartbeats and activity text produce no events, and nonpersistent agents produce no automatic durable events.
 
-`.octocode/agent/agents.txt` is a generated JSON Lines view of the latest 50 workspace events (time, event id, name, parentId, sessionId, type, data, schema version); older events stay in the database and in Archive. The first writer binds the view to its database through `data.storeKey`; a different database or a malformed file is refused. Delete the file to rebuild or rebind it. Symlinks and forbidden workspace writes are refused, and a projection failure does not undo database commits.
+`.octocode/agent/agents.txt` is a generated JSON Lines view of the latest 50 workspace events (time, event id, name, parentId, sessionId, type, data, schema version); older events stay in the database and in Archive. It is rewritten after each event, so it appears with the first session started in a workspace (its `init` event), and `.octocode/agent/.gitignore` lists it. The first writer binds the view to its database through `data.storeKey`; a different database or a malformed file is refused. A view bound to the home's database at its former location (`~/.octocode/octocodecode/agent/`, before agent state moved to `~/.octocode/agent/`) is rebound without a warning. Delete the file to rebuild or rebind it; until the file changes the session stops projecting and warns once. Symlinks and forbidden workspace writes are refused, and a projection failure does not undo database commits.
 
 Complete compaction summaries are kept indefinitely. Detailed archive copies expire after `OCTOCODE_CLEANUP_DAYS` days (default 30, zero disables), counted from the committed compaction time, not reads, resume or file mtime; a copy is removed only after its full summary and a trustworthy timestamp are retained, and unverifiable legacy copies stay. Forks reference source compactions and repair never recreates expired copies. Original transcripts stay available for resume and branching. `--no-session` skips automatic lifecycle and compaction persistence; saving a memory explicitly is unchanged.
+
+## Sources
+
+A note saved through the `memory` tool can name where it came from: `set` takes `sources`, up to 8 anchors (`archive:<session>/<segment>/<entry>` or `transcript:<session>/<entry>`). A malformed anchor or a ninth one refuses the save. The links live in the database next to the note, never in `MEMORY.md`, which stays hand-editable. They are written as pending with the note, become final once the `MEMORY.md` write is done, and a crash in between is settled the next time the notes open: pending links whose note version is still the saved one are finalized, the rest dropped. A link belongs to one version of the note, so editing a note's content unlinks its sources. `memory get`, the memory detail view and `/memory last` show the final sources; lines written by hand in `MEMORY.md` have none.

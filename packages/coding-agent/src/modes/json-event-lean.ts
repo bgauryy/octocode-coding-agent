@@ -74,3 +74,24 @@ export function toLeanJsonEvent(event: AgentSessionEvent): JsonAgentSessionEvent
 			return json;
 	}
 }
+
+/** Native parents consume tool updates solely as a child-wide liveness stamp. Project before the stdout queue so
+ * neither serialization nor a stalled pipe retains a tool's arguments or partial output. ACP consumes the full update.
+ */
+export function childProgressOutput(write: (event: AgentSessionEvent) => void, now = () => performance.now()) {
+	let next = -Infinity;
+	return (event: AgentSessionEvent): void => {
+		if (event.type !== "tool_execution_update") return write(event);
+		if (event.parentToolCallId) return;
+		const at = now();
+		if (at < next) return;
+		next = at + 250;
+		write({
+			type: event.type,
+			toolCallId: event.toolCallId,
+			toolName: event.toolName,
+			args: undefined,
+			partialResult: undefined,
+		});
+	};
+}

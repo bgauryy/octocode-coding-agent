@@ -227,7 +227,11 @@ describe("the models tool", () => {
 		const run = async (list: () => Promise<string[]>) => {
 			let tool: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }> } | undefined;
 			registerModelsTool(
-				asSetup({ registerTool: (definition: never) => void (tool = definition) }) as never,
+				asSetup({
+					registerTool: (definition: never) => void (tool = definition),
+					// The quota notice registers with the tool (`models-quota-notice.ts`); no event fires here.
+					on: () => () => undefined,
+				}) as never,
 				() => new Map(),
 				list,
 			);

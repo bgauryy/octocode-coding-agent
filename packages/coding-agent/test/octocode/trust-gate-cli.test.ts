@@ -66,6 +66,34 @@ describe("folder trust gate (CLI)", () => {
 		expect(resolveFolderTrust(box.project, { env: box.env, home: box.home }).state).toBe("undecided");
 	});
 
+	it("a refused print run writes nothing in the folder and names every step a new user still needs", () => {
+		const box = sandbox();
+		// No provider credential from the developer's shell: the refusal must see the user's own sources only.
+		const env = Object.fromEntries(
+			Object.entries(box.env).filter(([name]) => !/(_API_KEY|_TOKEN|^AWS_|^AZURE_)/.test(name)),
+		);
+		const refuse = (extra: Record<string, string> = {}) =>
+			spawnSync(process.execPath, ["--import", resolver, cli, "-p", "hello", "--session-dir", "sessions"], {
+				cwd: box.project,
+				env: { ...env, ...extra },
+				encoding: "utf8",
+				timeout: 60_000,
+				input: "",
+			});
+		const result = refuse();
+		expect(result.status).toBe(1);
+		expect(fs.readdirSync(box.project)).toEqual(["AGENTS.md"]);
+		expect(result.stderr).toContain(`octocode trust add ${box.project}`);
+		expect(result.stderr).toContain("--yes answers its question in a script");
+		expect(result.stderr).toContain("a grant that stays until octocode trust remove");
+		expect(result.stderr).toContain("Then: No AI provider connected yet.");
+		const withKey = refuse({ OPENAI_API_KEY: "sk-test-never-sent" });
+		expect(withKey.status).toBe(1);
+		expect(withKey.stderr).toContain("is not trusted");
+		expect(withKey.stderr).not.toContain("No AI provider");
+		expect(fs.readdirSync(box.project)).toEqual(["AGENTS.md"]);
+	});
+
 	it("--trust records the grant (source flag) and runs; the next run needs no flag", () => {
 		const box = sandbox();
 		const first = run(box, box.project, ["-p", "hello", "--trust"]);
@@ -123,6 +151,8 @@ describe("folder trust gate (CLI)", () => {
 		});
 		expect(child.status).toBe(1);
 		expect(child.stderr).toContain("Folder not trusted");
+		// The parent session holds the provider: a child's refusal names only the trust step.
+		expect(child.stderr).not.toContain("No AI provider");
 		expect(resolveFolderTrust(box.project, { env: box.env, home: box.home }).state).toBe("undecided");
 	});
 

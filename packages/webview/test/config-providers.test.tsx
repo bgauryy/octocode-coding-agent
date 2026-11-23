@@ -69,6 +69,8 @@ describe("ConfigView provider sources and switches", () => {
 		expect(screen.getByText(/Billed by plan/)).toBeInTheDocument();
 		expect(screen.getByRole("status")).toHaveTextContent("Paused: Temporarily paused");
 	});
+	// Contract change: the route was shown as its machine name (`Route: config`); the page now says who runs the requests
+	// and how they are billed, keeping the name in the tooltip.
 	it("shows each provider's route", async () => {
 		render(
 			<ConfigView
@@ -82,9 +84,12 @@ describe("ConfigView provider sources and switches", () => {
 				})}
 			/>,
 		);
-		expect(await screen.findByText("Route: config")).toBeInTheDocument();
-		expect(screen.getByText("Route: subscription")).toBeInTheDocument();
-		expect(screen.getByText("Route: external")).toBeInTheDocument();
+		expect(await screen.findByText("Octocode runs the agent; billed per token")).toHaveAttribute(
+			"title",
+			"Route: config",
+		);
+		expect(screen.getByText("Octocode runs the agent on your plan")).toHaveAttribute("title", "Route: subscription");
+		expect(screen.getByText("The vendor's CLI runs the agent")).toHaveAttribute("title", "Route: external");
 	});
 	it("shows a models.json-only provider with its models, and says its key variable is unset", async () => {
 		const snapshot: ConfigSnapshot = {

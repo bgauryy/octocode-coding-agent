@@ -41,6 +41,16 @@ export const ANTHROPIC_WORKSPACE_ID_ENV = "ANTHROPIC_WORKSPACE_ID";
  * both. An API key wins over ANTHROPIC_OAUTH_TOKEN, which only holds a Claude subscription token that requests refuse.
  */
 export const ANTHROPIC_API_KEY_ENV_ORDER = [ANTHROPIC_API_KEY_ENV, ANTHROPIC_OAUTH_TOKEN_ENV] as const;
+/** Amazon Bedrock's API key: a bearer token the Bedrock client sends, outside the API-key table. */
+export const AWS_BEARER_TOKEN_BEDROCK_ENV = "AWS_BEARER_TOKEN_BEDROCK";
+/** Extra headers for OpenAI requests, one `Name: value` per line: a gateway's `Authorization` header can ride in it. */
+export const OPENAI_CUSTOM_HEADERS_ENV = "OPENAI_CUSTOM_HEADERS";
+/**
+ * Provider secrets that `findEnvKeys` does not report (they are not API keys in the table): whoever hands this process's
+ * environment to other programs removes them with the API keys. Ambient credentials other tools share (AWS profiles and
+ * access keys, Google Application Default Credentials) are not listed.
+ */
+export const PROVIDER_TOKEN_ENV_VARS: readonly string[] = [AWS_BEARER_TOKEN_BEDROCK_ENV, OPENAI_CUSTOM_HEADERS_ENV];
 
 /**
  * Whether Application Default Credentials exist on disk. A stat per call, not a process-lifetime cache: a
@@ -120,7 +130,7 @@ export function getEnvApiKey(provider: string, env?: ProviderEnv): string | unde
 		if (
 			getProviderEnvValue("AWS_PROFILE", env) ||
 			(getProviderEnvValue("AWS_ACCESS_KEY_ID", env) && getProviderEnvValue("AWS_SECRET_ACCESS_KEY", env)) ||
-			getProviderEnvValue("AWS_BEARER_TOKEN_BEDROCK", env) ||
+			getProviderEnvValue(AWS_BEARER_TOKEN_BEDROCK_ENV, env) ||
 			getProviderEnvValue("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", env) ||
 			getProviderEnvValue("AWS_CONTAINER_CREDENTIALS_FULL_URI", env) ||
 			getProviderEnvValue("AWS_WEB_IDENTITY_TOKEN_FILE", env)

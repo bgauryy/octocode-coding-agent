@@ -6,6 +6,8 @@ import { getWordSegmenter, visibleWidth } from "../utils/width.ts";
 import { getGraphemeCellRange, sliceByColumn } from "../utils/columns.ts";
 import { extractAnsiCode } from "../utils/ansi-codes.ts";
 import { stripTerminalSequences } from "../utils.ts";
+import { rowContinuation } from "../utils/row-marks.ts";
+import { dedentSelectedLines, joinWrappedRow, leadingSpaces, type SelectedLine } from "./selection-lines.ts";
 import type { SelectionPoint, SelectionRange } from "./types.ts";
 
 // Regular mode delegates double-click selection to the terminal emulator. Fullscreen owns mouse selection,
@@ -167,12 +169,29 @@ function rebaseSelection(
 	return { start: rebasePoint(selection.start, box), end: rebasePoint(selection.end, box) };
 }
 
-/** Selected plain-text rows, so a bounded clipboard can stop before reading the rest of a selection. */
-export function* selectedTextLines(
+/** The copied text of one row: the selected columns, from `fromCol` on, without styles or trailing blanks. */
+function rowText(
+	line: string,
+	row: number,
+	selection: { start: SelectionPoint; end: SelectionPoint },
+	fromCol = 0,
+): string {
+	const columns = getSelectionColumns(line, row, selection);
+	const start = Math.max(columns.start, fromCol);
+	return stripTerminalSequences(sliceByColumn(line, start, Math.max(0, columns.end - start), true)).trimEnd();
+}
+
+/** Whether a row lies wholly inside the selection and copies without cutting columns. */
+function isWholeRow(plain: string, row: number, selection: { start: SelectionPoint; end: SelectionPoint }): boolean {
+	return row > selection.start.row && row < selection.end.row && !COPY_NEEDS_COLUMNS.test(plain.slice(-2));
+}
+
+/** The selected rows as drawn (marks included), with the selection in the rows they are read from. */
+function* selectedRows(
 	bounds: { start: SelectionPoint; end: SelectionPoint } | undefined,
 	previousScreen: readonly string[],
 	currentLayout: LayoutFrame | undefined,
-): Generator<string> {
+): Generator<{ line: string; row: number; selection: { start: SelectionPoint; end: SelectionPoint } }> {
 	if (!bounds) return;
 	let selection = bounds;
 	let rowAt = (row: number): string | undefined => previousScreen[row];
@@ -192,16 +211,49 @@ export function* selectedTextLines(
 		}
 	}
 	for (let row = selection.start.row; row <= selection.end.row; row++) {
-		const line = rowAt(row) ?? "";
-		const plain = stripTerminalSequences(line);
-		if (row > selection.start.row && row < selection.end.row && !COPY_NEEDS_COLUMNS.test(plain.slice(-2))) {
-			yield plain.trimEnd();
+		yield { line: rowAt(row) ?? "", row, selection };
+	}
+}
+
+/**
+ * Selected plain-text lines, so a bounded clipboard can stop before reading the rest of a selection. A row the width
+ * wrapped joins the line it continues (its frame before the wrap mark is dropped); each line keeps its row padding
+ * for `dedentSelectedLines`.
+ */
+export function* selectedLines(
+	bounds: { start: SelectionPoint; end: SelectionPoint } | undefined,
+	previousScreen: readonly string[],
+	currentLayout: LayoutFrame | undefined,
+): Generator<SelectedLine> {
+	let pending: SelectedLine | undefined;
+	for (const { line, row, selection } of selectedRows(bounds, previousScreen, currentLayout)) {
+		const continuation = pending ? rowContinuation(line) : undefined;
+		if (pending && continuation) {
+			const rest = stripTerminalSequences(line.slice(continuation.at + continuation.length));
+			const piece = isWholeRow(rest, row, selection)
+				? rest.trimEnd()
+				: rowText(line, row, selection, visibleWidth(line.slice(0, continuation.at)));
+			pending.text = joinWrappedRow(pending.text, piece, continuation.kind);
 			continue;
 		}
-		const columns = getSelectionColumns(line, row, selection);
-		yield stripTerminalSequences(
-			sliceByColumn(line, columns.start, Math.max(0, columns.end - columns.start), true),
-		).trimEnd();
+		if (pending) yield pending;
+		const plain = stripTerminalSequences(line);
+		const startCol = row === selection.start.row ? getSelectionColumns(line, row, selection).start : 0;
+		const text = isWholeRow(plain, row, selection) ? plain.trimEnd() : rowText(line, row, selection);
+		pending = { text, rowIndent: leadingSpaces(plain), startCol };
+	}
+	if (pending) yield pending;
+}
+
+/** Each selected row's copied text, unjoined: enough to tell whether a selection holds anything, row by row. */
+export function* selectedTextLines(
+	bounds: { start: SelectionPoint; end: SelectionPoint } | undefined,
+	previousScreen: readonly string[],
+	currentLayout: LayoutFrame | undefined,
+): Generator<string> {
+	for (const { line, row, selection } of selectedRows(bounds, previousScreen, currentLayout)) {
+		const plain = stripTerminalSequences(line);
+		yield isWholeRow(plain, row, selection) ? plain.trimEnd() : rowText(line, row, selection);
 	}
 }
 
@@ -211,7 +263,7 @@ export function getSelectionText(
 	previousScreen: readonly string[],
 	currentLayout: LayoutFrame | undefined,
 ): string | undefined {
-	const text = [...selectedTextLines(selection, previousScreen, currentLayout)].join("\n");
+	const text = dedentSelectedLines([...selectedLines(selection, previousScreen, currentLayout)]).join("\n");
 	return text.length === 0 ? undefined : text;
 }
 

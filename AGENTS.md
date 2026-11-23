@@ -25,7 +25,7 @@ Paths are under `packages/`.
 | `webview/` | browser state, transport, rendering; ✗ execute, authenticate or authorize |
 | `octocode-agentic-testkit/` | behavior tests for any agent harness through per-harness adapters; ✗ import other workspaces |
 
-Package graph, library vs hosted workspaces, and the path from command to tool call: [DEVELOPMENT.md](DEVELOPMENT.md#packages). Root `scripts/`: build, checks, release, agent eval ([README](scripts/README.md)).
+Package graph, library vs hosted workspaces, and the path from command to tool call: [DEVELOPMENT.md](DEVELOPMENT.md#packages). Root `scripts/`: `build/`, `check/`, `release/`, `test/`, shared `lib/`, `agent-eval/` ([README](scripts/README.md)).
 
 Docs: [index](packages/coding-agent/docs/index.md), [configuration](packages/coding-agent/docs/configuration.md), package READMEs (public API), [FEATURES](docs/FEATURES.md) (cross-package designs).
 

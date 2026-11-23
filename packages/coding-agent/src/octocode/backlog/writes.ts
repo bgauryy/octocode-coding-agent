@@ -50,10 +50,14 @@ const CHANGED_FIELDS = [
 	"close",
 ] as const;
 
-/** The fields a subagent may not change on its coordinator's items: it changes state, notes and completion only. */
+/** The fields a subagent may not change on its coordinator's items; state, completion and close have their own refusals. */
 const SUBAGENT_FIXED_FIELDS = CHANGED_FIELDS.filter(
 	(field) => field !== "state" && field !== "completion" && field !== "close",
 );
+
+/** The refusal of a subagent's done or close: finishing is its coordinator's, after review and merge. */
+const SUBAGENT_FINISH =
+	"A subagent does not finish its coordinator's items: put the result (summary, files, checks) in your report; your coordinator reviews it, merges any isolated change and marks the item done or closes it.";
 
 const tagText = (tags: readonly string[]) => (tags.length ? tags.map((tag) => `#${tag}`).join(" ") : "none");
 const listText = (entries: readonly string[]) => (entries.length ? entries.join(", ") : "none");
@@ -181,7 +185,8 @@ export function addItem(agentDb: AgentDb, repo: string, now: () => number, reque
  * Changes an item. `ongoing` claims it for `actor` (refused while another live assignee holds it); leaving
  * `ongoing` for `backlog`/`todo` releases it; `done` stamps `done_at`. While another live session holds an item,
  * others may only add a note (the user may force an edit). A subagent may only touch items its parent holds, and one
- * started for an item (`actor.item`) only that item; it changes state, notes and completion, never the rest.
+ * started for an item (`actor.item`) only that item; it adds notes and never finishes or closes one: it reports, and its
+ * coordinator completes the item after review and merge.
  */
 export function updateItem(
 	agentDb: AgentDb,
@@ -247,12 +252,15 @@ export function updateItem(
 			}
 			if (actor.owners && SUBAGENT_FIXED_FIELDS.some((key) => input[key] !== undefined))
 				throw new BacklogError(
-					"A subagent changes only the state and notes of its coordinator's items (and the completion that closes one); report other changes to your coordinator.",
+					"A subagent changes only the state and notes of its coordinator's items; report other changes to your coordinator.",
 				);
+			// A child's done or close would skip the coordinator's QA review and merge gate.
+			if (actor.owners && (input.state === "done" || input.completion !== undefined || input.close !== undefined))
+				throw new BacklogError(SUBAGENT_FINISH);
 			// Moving an item back to todo or backlog would release the parent's claim behind its back.
 			if (actor.owners && (input.state === "todo" || input.state === "backlog"))
 				throw new BacklogError(
-					`A subagent sets only ongoing or done; ask your coordinator to move an item to ${input.state}.`,
+					`A subagent leaves the state to its coordinator; ask it to move the item to ${input.state}.`,
 				);
 			const state = input.state ?? item.state;
 			if (!STATES.includes(state))

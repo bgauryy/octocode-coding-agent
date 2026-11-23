@@ -4,6 +4,7 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promise
 import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { OPEN_BROWSER_ENV } from "@octocodeai/octocode-common/env";
 import { openTarget } from "@octocodeai/octocode-common/open-target";
 import { processAlive } from "../shared/process.ts";
 
@@ -15,6 +16,9 @@ const OWNER_FILE = "owner.pid";
 const LAUNCH_GRACE_MS = 60_000;
 /** How long a closing browser gets after SIGTERM before SIGKILL. */
 const CLOSE_GRACE_MS = 2_000;
+
+/** `0`: no window starts and `open` gives the page's address instead (`common/src/env.ts`). */
+export { OPEN_BROWSER_ENV };
 
 /** `app` opens an isolated Chromium app window; `browser` uses the system default browser. */
 export type WebWindowMode = "app" | "browser";
@@ -93,7 +97,7 @@ export function appWindowArgs(url: string, profile: string, platform: NodeJS.Pla
 }
 
 interface AppWindowOptions extends DiscoveryOptions {
-	/** Replaceable so a test never starts a real browser. */
+	/** Replaceable so a test never starts a real browser; with it or `openDefault` given, `OPEN_BROWSER_ENV` is not read. */
 	spawn?: typeof spawn;
 	/** Parent of the temporary profiles; the OS temp directory by default. */
 	tmpDir?: string;
@@ -141,6 +145,8 @@ export function createAppWindow(options: AppWindowOptions = {}): AppWindow {
 	const report = options.onError ?? ((message: string) => process.stderr.write(`${message}\n`));
 	const now = options.now ?? Date.now;
 	const running = new Set<Running>();
+	// The off switch guards the real launchers only: a caller that hands in its own (a test of this module) decides.
+	const ownLaunchers = options.spawn === undefined && options.openDefault === undefined;
 
 	const removeProfile = async (profile: string) => {
 		try {
@@ -167,7 +173,13 @@ export function createAppWindow(options: AppWindowOptions = {}): AppWindow {
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 			// Created but not yet owned: another launch may be between mkdtemp and spawn.
-			return now() - (await stat(profile)).mtimeMs < LAUNCH_GRACE_MS;
+			try {
+				return now() - (await stat(profile)).mtimeMs < LAUNCH_GRACE_MS;
+			} catch (statError) {
+				// Another process removed it meanwhile: nothing left to clean.
+				if ((statError as NodeJS.ErrnoException).code === "ENOENT") return true;
+				throw statError;
+			}
 		}
 		return isAlive(Number.parseInt(text, 10));
 	};
@@ -222,6 +234,9 @@ export function createAppWindow(options: AppWindowOptions = {}): AppWindow {
 
 	return {
 		async open(url) {
+			// Read at each open, like the mode: the environment decides for every window this opener would start.
+			if (ownLaunchers && process.env[OPEN_BROWSER_ENV] === "0")
+				return `Opening a browser is turned off (${OPEN_BROWSER_ENV}=0). Open this link: ${url}`;
 			const openDefault = options.openDefault ?? openTarget;
 			if ((options.mode?.() ?? "app") === "browser") {
 				await openDefault(url);

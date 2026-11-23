@@ -1,5 +1,4 @@
 import path from "node:path";
-import { CONTEXT_FILE_CANDIDATES } from "../../../core/discovery/sources.ts";
 import { AGENT_DIR, AGENT_FOLDERS, MEMORY_FILE, OCTOCODE_DIR } from "../../../storage/agent-layout.ts";
 import { RUNS_LATER_ANYWHERE, RUNS_LATER_AT_ROOT } from "../file-access.ts";
 import { LOADED_BY_LATER_SESSIONS } from "../later-session-loaded.ts";
@@ -21,15 +20,19 @@ const agentProtected = (prefix: string, worktrees: boolean): string[] =>
 		path.join(prefix, AGENT_DIR, name),
 	);
 
-/** Paths under one checkout that load code, hooks or instructions in a later session, mirroring `runsLater`. */
+/**
+ * Paths under one checkout that load code, hooks or instructions in a later session, from the lists `runsLater` decides
+ * by (the instruction files are in `RUNS_LATER_ANYWHERE`). The paths keep the spelling each loader opens: the operating
+ * system matches them as the file system names files (Seatbelt folds `.CLAUDE` and `ſettings.json` on APFS as
+ * `foldName` does; Linux file systems are case-sensitive).
+ */
 function checkoutPaths(prefix: string): string[] {
 	const octocode = path.join(prefix, OCTOCODE_DIR);
 	return [
 		// The repository's own `.git` stays writable for commits; its hooks and config are what run later.
 		...RUNS_LATER_AT_ROOT.filter((entry) => entry !== ".git").map((entry) => path.join(prefix, entry)),
 		...RUNS_LATER_ANYWHERE.map((entry) => path.join(prefix, entry)),
-		...CONTEXT_FILE_CANDIDATES.map((name) => path.join(prefix, name)),
-		...[...LOADED_BY_LATER_SESSIONS].map((entry) => path.join(octocode, entry)),
+		...LOADED_BY_LATER_SESSIONS.map((entry) => path.join(octocode, entry)),
 		...agentProtected(prefix, false),
 	];
 }
@@ -59,7 +62,7 @@ export function protectedPaths(root: string): string[] {
 export function readOnlyProtectedPaths(root: string): string[] {
 	const octocode = path.join(root, OCTOCODE_DIR);
 	return [
-		...[...LOADED_BY_LATER_SESSIONS].map((entry) => path.join(octocode, entry)),
+		...LOADED_BY_LATER_SESSIONS.map((entry) => path.join(octocode, entry)),
 		...agentProtected(root, true),
 		path.join(root, AGENT_DIR, AGENT_FOLDERS.temp, "sessions"),
 	];

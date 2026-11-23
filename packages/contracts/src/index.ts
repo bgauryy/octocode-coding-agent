@@ -1,4 +1,5 @@
 export * from "./backlogs.ts";
+export * from "./evidence.ts";
 export * from "./snapshot.ts";
 export * from "./team.ts";
 export * from "./workspace.ts";
@@ -12,3 +13,4 @@ export * from "./tool-progress.ts";
 export * from "./tool-display.ts";
 export * from "./question.ts";
 export * from "./question-replies.ts";
+export * from "./activity-light.ts";

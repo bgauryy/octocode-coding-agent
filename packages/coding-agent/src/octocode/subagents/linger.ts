@@ -14,6 +14,7 @@ import { allParked, readParked, writeParked, type ParkedWorker } from "./parked.
 import type { AgentProfile } from "./profiles.ts";
 import { childSession, childSessionFile } from "./process/session.ts";
 import { retakeReservation } from "./reservation.ts";
+import { refuseOverLimit } from "./spawn-limits.ts";
 
 /**
  * Finished background runs that stay reachable: a message from the parent or the user resumes their saved conversation
@@ -278,6 +279,8 @@ export class Lingering {
 		const launchSignal = this.launchSignal(signal);
 		launchSignal.throwIfAborted();
 		const { run: last, ctx } = prior;
+		// A resume like a `resume` task: past `subagents.maxCost` it is refused, and the user told, the same way.
+		refuseOverLimit(runs.api, ctx, runs, id);
 		// A message is answered now: over the limit it is refused, not left waiting for a slot.
 		if (!runs.slots.tryTake()) throw new Error(subagentLimitError(runs.running.keys(), maxSubagents()));
 		this.resuming.add(id);

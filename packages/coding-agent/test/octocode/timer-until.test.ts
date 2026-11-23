@@ -940,7 +940,7 @@ describe("an expired command wait", () => {
 			max_runs: null,
 			runs: 0,
 			condition_kind: "command",
-			condition: JSON.stringify("node scripts/full-run-lock.ts --status"),
+			condition: JSON.stringify("node scripts/test/full-run-lock.ts --status"),
 			baseline: null,
 			last_exit: 1,
 			last_output: output,

@@ -61,6 +61,18 @@ describe("/export", () => {
 		expect(html.length).toBeGreaterThan(5_000);
 	});
 
+	it("before the first message, says there is nothing to export or share yet: a warning, no question, no failure", async () => {
+		t = await startUi();
+		await command("/export");
+		await t.until(shows("Nothing to export yet: send a message first."), "export notice");
+		await command("/share");
+		await t.until(shows("Nothing to share yet: send a message first."), "share notice");
+		const text = await t.text();
+		expect(text).not.toMatch(/Failed to export session|Share session/);
+		// A refused command gets no next-step hint: there is no session to share or save a copy of.
+		expect(text).not.toMatch(/share it as a private gist|save a local copy/);
+	});
+
 	it("reports a failure when the target cannot be written (a path under a regular file)", async () => {
 		t = await startUi();
 		t.script("fine");
@@ -117,15 +129,19 @@ describe("/export then /import", () => {
 		expect(await t.text()).toContain("ORIGINAL-QUESTION");
 	});
 
-	it("importing a file that does not exist reports an error", async () => {
+	// Contract change (C1): a missing file is refused before the question, so the user never confirms a replacement
+	// that cannot happen.
+	it("importing a file that does not exist says so without asking to replace the session", async () => {
 		t = await startUi();
-		await command(`/import ${path.join(t.root, "missing.jsonl")}`);
-		await t.until(shows("Replace current session"), "import confirmation");
-		t.press(KEY.down);
-		t.press(KEY.enter);
-		await t.until(shows(/Failed to import session/), "error shown");
-		expect(await t.text()).toMatch(/Failed to import session/);
-		expect(await t.text()).not.toContain("Session imported from:");
+		const missing = path.join(t.root, "missing.jsonl");
+		await command(`/import ${missing}`);
+		// The long temporary path wraps on the grid, so the line is compared without its whitespace.
+		const flat = async () => (await t!.text()).replace(/\s+/g, "");
+		await t.until(async () => (await flat()).includes("doesnotexist."), "refusal shown");
+		expect(await flat()).toContain(`Notimported:${missing.replace(/\s+/g, "")}doesnotexist.`);
+		const text = await t.text();
+		expect(text).not.toContain("Replace current session");
+		expect(text).not.toContain("Session imported from:");
 		expect(conversation()).toEqual([]);
 	});
 });

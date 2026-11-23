@@ -3,7 +3,14 @@ import { sessionDirName } from "../shared/home.ts";
 import { getOctocodeHome } from "../../config.ts";
 
 /** Minutes without a browser tab or an attached session after which the daemon exits (decimals allowed; default 10). */
-export const WEB_DAEMON_IDLE_ENV = "OCTOCODE_WEB_DAEMON_IDLE_MINUTES";
+const WEB_DAEMON_IDLE_ENV = "OCTOCODE_WEB_DAEMON_IDLE_MINUTES";
+const DEFAULT_IDLE_MINUTES = 10;
+
+/** The daemon's idle limit in minutes from `OCTOCODE_WEB_DAEMON_IDLE_MINUTES`; a value that is not a positive number gives 10. */
+export function webDaemonIdleMinutes(env: NodeJS.ProcessEnv): number {
+	const minutes = Number.parseFloat(env[WEB_DAEMON_IDLE_ENV] ?? "");
+	return Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_IDLE_MINUTES;
+}
 
 export interface WebDaemonPaths {
 	/** `<octocode home>/web`, owner-only. */

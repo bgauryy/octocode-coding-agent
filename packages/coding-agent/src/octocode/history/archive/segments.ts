@@ -31,7 +31,12 @@ export interface Segment {
 	messages: number;
 	/** The session entry that was the branch's leaf when the compaction began: segments of different `/tree` branches differ here. */
 	leaf?: string;
+	/** `session-entries` when every message heading's entry id is the persisted entry id carried from the compaction's preparation; absent in segments written before that, whose ids were derived by role and time. */
+	entryIds?: typeof ENTRY_IDS_SOURCE;
 }
+
+/** The `entryIds` value of a segment whose message ids are authoritative. */
+export const ENTRY_IDS_SOURCE = "session-entries";
 
 /** The label of a segment file whose header cannot be read. */
 const UNREADABLE_HEADER = "unreadable header";
@@ -62,6 +67,7 @@ export const LABELS = {
 	segment: "Segment",
 	entry: "Compaction entry",
 	leaf: "Branch leaf",
+	entryIds: "Message entry ids",
 	range: "Time range",
 	tokensBefore: "Tokens before",
 	method: "Summary method",
@@ -87,11 +93,13 @@ function parseHeader(header: string, n: number): Segment | undefined {
 	const [from, to] = (field(LABELS.range) ?? "").split(" → ");
 	const topics = (field(LABELS.topics) ?? "").split(", ").filter(Boolean);
 	const leaf = field(LABELS.leaf);
+	const entryIds = field(LABELS.entryIds) === ENTRY_IDS_SOURCE ? ENTRY_IDS_SOURCE : undefined;
 	return {
 		n,
 		session,
 		entry,
 		...(leaf ? { leaf } : {}),
+		...(entryIds ? { entryIds } : {}),
 		...(from && from !== "?" ? { from } : {}),
 		...(to && to !== "?" ? { to } : {}),
 		tokensBefore: Number(field(LABELS.tokensBefore)) || 0,

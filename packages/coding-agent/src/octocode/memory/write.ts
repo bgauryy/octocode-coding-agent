@@ -34,6 +34,8 @@ export interface MemoryWriteParams {
 	keywords?: string;
 	kind?: (typeof MEMORY_KINDS)[number];
 	pinned?: boolean;
+	/** set: source anchors the note came from (`archive:…`, `transcript:…`); at most `MAX_MEMORY_SOURCES`. */
+	sources?: string[];
 }
 
 /**
@@ -156,6 +158,7 @@ export async function writeMemory({
 		},
 		undefined,
 		current?.updatedAt,
+		params.sources,
 	);
 	// A body longer than the warning length keeps its save: an injected line is cut at `NOTE_CHARS`.
 	const softMax = NOTE_WARN_CHARS;
@@ -175,6 +178,9 @@ export async function writeMemory({
 		approved: global || pinned,
 		...(signal ? { signal } : {}),
 	});
+	// The file write is done (or refused with a report): the sources become final. A crash before this leaves them
+	// pending; the next open settles them against the saved note.
+	store.finalizeSources(memory);
 	return textResult(
 		`${created ? "Saved" : "Updated"} ${memoryToolLine(memory, SAVED_BODY_CHARS)}${long}${neighbours}${file ? `\n${file}` : ""}`,
 		{ ids: [memory.id], updated: [memory.updatedAt] },

@@ -27,14 +27,14 @@ import { headlessCommandActions } from "../headless-actions.ts";
 import { handleTerminationSignals } from "../termination-signals.ts";
 import { createEventLines } from "../event-lines.ts";
 import { toJsonEvent } from "../json-event.ts";
-import { toLeanJsonEvent } from "../json-event-lean.ts";
+import { childProgressOutput, toLeanJsonEvent } from "../json-event-lean.ts";
 import { drainDbWriters } from "../../storage/database.ts";
 import { attachJsonlLineReader, serializeJsonLine } from "@octocodeai/octocode-common/jsonl";
 import { validateRpcCommand } from "./rpc-command-schema.ts";
 import { handleCommand as handleRpcCommand, type RpcCommandHost } from "./rpc-mode/commands.ts";
 import { error } from "./rpc-mode/responses.ts";
 import { RPC_PROTOCOL_VERSION, type RpcReady, type RpcSessionIdentity } from "./session-identity.ts";
-import { ACP_WORKER_ENV } from "@octocodeai/octocode-common/env";
+import { ACP_WORKER_ENV, envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { setProcessInputOrigin } from "../../core/input-origin.ts";
 import { createSessionControls } from "./rpc-mode/session-controls.ts";
 import { armShutdownDeadline } from "./shutdown-deadline.ts";
@@ -71,10 +71,15 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime, options: RpcM
 	};
 	// Lean events repeat no message; the default ones write a large message's serialized text again (`event-lines.ts`).
 	const eventLines = createEventLines();
-	const outputEvent = createEventOutput<AgentSessionEvent>((event) => {
+	const queueEvent = createEventOutput<AgentSessionEvent>((event) => {
 		if (options.leanEvents) output(toLeanJsonEvent(event));
 		else for (const piece of eventLines(toJsonEvent(event))) writeRawStdout(piece);
 	});
+
+	const outputEvent =
+		options.leanEvents && !acpOwnsSession && envFlag(process.env, SUBAGENT_ENV)
+			? childProgressOutput(queueEvent)
+			: queueEvent;
 
 	// Pending feature UI requests waiting for response
 	const pendingUiRequests: PendingUiRequests = new Map();

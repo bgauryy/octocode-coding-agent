@@ -43,11 +43,11 @@ A session whose last record was cut off (a crash or a power loss mid-write) resu
 
 ## Turn a tool, skill, hook or MCP server on or off
 
-| Scope             | Do                                                                                |
-| ----------------- | --------------------------------------------------------------------------------- |
+| Scope             | Do                                                                           |
+| ----------------- | ---------------------------------------------------------------------------- |
 | Everywhere        | `/settings disable tool:backlog` (or `enable`)                               |
-| This project      | add `--local` (needs a trusted folder)                                            |
-| One run           | `octocode --disable tool:backlog`, `--enable <id>`, `--set key=value`             |
+| This project      | add `--local` (needs a trusted folder)                                       |
+| One run           | `octocode --disable tool:backlog`, `--enable <id>`, `--set key=value`        |
 | Browse and toggle | `/settings` with no argument; Space toggles, Tab switches global and project |
 
 `/settings list <kind>` shows the ids (`tool:`, `mcp:`, `skill:`, `hook:`, `harness:`, ...). Details: [configuration](configuration.md#changing-configuration).
@@ -56,7 +56,7 @@ A session whose last record was cut off (a crash or a power loss mid-write) resu
 
 1. `octocode mcp add --local docs -- npx -y some-mcp-server` (or `--url <url>` for a remote server) writes `.octocode/mcp.json`; `-l` is short for `--local`.
 2. In a running session, `/reload`; the folder is already trusted, so project hooks, MCP servers, agents and skills load.
-3. Check: `/mcp list` in the session or `octocode mcp list` in a shell shows each server's state; `/mcp tools docs` lists its tools.
+3. Check: `/mcp list` in the session shows each server's state; in a shell, `octocode mcp list --check` connects the enabled servers and shows theirs (without `--check` it only reads the configuration). `/mcp tools docs` lists its tools.
 4. To switch it off later: `/settings disable mcp:docs --local`.
 
 Details: [Add an MCP server](mcp.md#add-a-server), [MCP precedence](configuration.md#precedence), [project trust](permissions.md#project-trust).
@@ -136,6 +136,7 @@ flowchart LR
 - Start stricter with `OCTOCODE_PERMISSION=manual` or `--permission-mode workspace`, or switch in a session with `/permissions manual|workspace|full`.
 - `/permissions grants` lists what you allowed for the session; `/permissions grants clear` removes it.
 - `/trust` lists and changes the per-folder decisions. Permissions apply after trust. This is not an operating-system sandbox.
+- To confine what the agent's shell commands can write, read and reach once they run, turn on the [sandbox](sandbox.md).
 
 Details: [modes](permissions.md#modes), [project trust](permissions.md#project-trust).
 

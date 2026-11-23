@@ -8,6 +8,21 @@ function accessNote(link: Pick<RemoteLink, "access">): string {
 		: "Anyone with this link can read every session on this machine (transcripts included), the board, reports and provider configuration; nothing can be sent through it.";
 }
 
+/**
+ * The capability a link carries after `#`: the control or view token of an `ssh` link (`#access=`), the key of a `relay`
+ * link (`#k=`). A session registers it as a secret before it shows the link, so only the terminal shows it: every
+ * redacted copy, including the notice the session's pages and the devices following it receive, reads `[redacted]`.
+ */
+export function linkSecret(link: Pick<RemoteLink, "url">): string | undefined {
+	try {
+		const fragment = new URLSearchParams(new URL(link.url).hash.slice(1));
+		return fragment.get("access") ?? fragment.get("k") ?? undefined;
+	} catch {
+		// Not a URL: nothing to register, and nothing the page could open either.
+		return undefined;
+	}
+}
+
 /** The lines to print for a freshly published link: how to reach it, the link, what it allows, and a QR code. */
 export function describeLink(link: RemoteLink, options: { qr?: boolean } = {}): string {
 	const lines: string[] = [];

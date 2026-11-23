@@ -1480,7 +1480,7 @@ describe("file change rendering", () => {
 			.renderCall(args, theme, { lastComponent: undefined, isPartial: true, executionStarted: false })
 			.render(120)
 			.join("\n");
-		expect(call.split("\n")[0]).toBe("⏺ File(2 changes)");
+		expect(call.split("\n")[0]).toBe("○ File(2 changes)");
 		expect(call).toMatch(/edit src\/a\.ts · 2 edits/);
 		expect(call).toMatch(/write test\/a\.test\.ts · 2 lines/);
 		// The call row lists the changes only: each reason is drawn once, by the shared purpose row under it.
@@ -1499,16 +1499,16 @@ describe("file change rendering", () => {
 			})
 			.render(120)
 			.join("\n");
-		expect(single).toBe("⏺ File(edit src/a.ts) · 2 edits · 1.2s");
+		expect(single).toBe("✓ File(edit src/a.ts) · 2 edits · 1.2s");
 		const expandedSingle = (callArgs: object) =>
 			tool!
 				.renderCall(callArgs, theme, { lastComponent: undefined, expanded: true, isPartial: false })
 				.render(120)
 				.join("\n");
 		expect(expandedSingle({ reason: "Fix the loop bounds", queries: [args.queries[0]] })).toBe(
-			"⏺ File(edit src/a.ts) · 2 edits",
+			"✓ File(edit src/a.ts) · 2 edits",
 		);
-		expect(expandedSingle({ queries: [args.queries[0]] })).toBe("⏺ File(edit src/a.ts) · 2 edits");
+		expect(expandedSingle({ queries: [args.queries[0]] })).toBe("✓ File(edit src/a.ts) · 2 edits");
 		const diff = Array.from({ length: 30 }, (_, index) => `+${index} added line ${index}`).join("\n");
 		const result = {
 			content: [],

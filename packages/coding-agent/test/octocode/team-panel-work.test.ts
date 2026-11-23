@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { TimerRow } from "../../../db/src/api.ts";
 import { RunningWork, type WorkRow, workCounts } from "../../src/octocode/shared/running-work.ts";
-import { liveAgentsStore } from "../../src/octocode/shared/team-spend.ts";
+import { createLiveAgentsStore } from "../../src/octocode/shared/team-spend.ts";
 import { AgentsView } from "../../src/octocode/team/panel.ts";
 import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
 import { collapsedRows } from "../../src/octocode/team/panel/rows.ts";
@@ -329,7 +329,9 @@ describe("typed counts and the footer", () => {
 		} as unknown as Team;
 		const ctx = fakeCtx({ cwd: tmp() });
 		const work = new RunningWork();
-		const view = new AgentsView(team, work);
+		// The session's store the footer reads for `Σ` (one per session, RFC app-state T5).
+		const liveAgentsStore = createLiveAgentsStore();
+		const view = new AgentsView(team, work, liveAgentsStore);
 		view.start(ctx);
 		tick?.();
 		// Alone, the footer names the session.
@@ -346,6 +348,16 @@ describe("typed counts and the footer", () => {
 		// The footer's Σ adds the live descendants, never this session's own row (its ledger holds those replies).
 		const ids = () => liveAgentsStore.getState().live.map((agent) => agent.id);
 		expect(ids()).toEqual(["a-0001", "b-0002"]);
+		// Each carries who pays for it, judged from its model's provider as `subagents.maxCost` does: Σ splits on it.
+		expect(liveAgentsStore.getState().live.map((agent) => agent.billing)).toEqual(["metered", "metered"]);
+		const planned = {
+			...ctx.modelRegistry,
+			getProviderBilling: (provider: string) => (provider === "codex" ? "plan" : "metered"),
+		};
+		Object.assign(ctx, { modelRegistry: planned });
+		state.members = [main, { ...child("a-0001"), model: "codex/gpt-5:high" }, child("b-0002")];
+		tick?.();
+		expect(liveAgentsStore.getState().live.map((agent) => agent.billing)).toEqual(["plan", "metered"]);
 		state.members = [main, child("a-0001")];
 		tick?.();
 		expect(ids()).toEqual(["a-0001"]);

@@ -1,6 +1,7 @@
 /**
- * View slice of the interactive UI store: tool-output expansion, thinking-block visibility and the latest toggle
- * acknowledgement. Slices are plain objects replaced immutably so `watchSelection` equality stays cheap.
+ * View slice of the interactive UI store: tool-output expansion, thinking-block visibility, the transcript rows'
+ * padding and the latest toggle acknowledgement. Slices are plain objects replaced immutably so `watchSelection`
+ * equality stays cheap.
  */
 
 import type { StoreApi } from "zustand/vanilla";
@@ -14,6 +15,8 @@ export interface ViewNotice {
 export interface ViewSlice {
 	toolsExpanded: boolean;
 	hideThinking: boolean;
+	/** Columns left of transcript rows (`outputPad` setting); new rows start with it, live rows follow it. */
+	outputPad: number;
 	notice: ViewNotice | undefined;
 }
 
@@ -21,6 +24,7 @@ export interface ViewActions {
 	setToolsExpanded(expanded: boolean): void;
 	toggleToolsExpanded(): void;
 	setHideThinking(hide: boolean): void;
+	setOutputPad(pad: number): void;
 	/**
 	 * Says `text` once in the messages list, as a display-only status line that is neither recorded in the session nor
 	 * sent to the model; back-to-back notices share one line (`showStatus` coalesces them).
@@ -38,12 +42,14 @@ type Set = StoreApi<ViewState & ViewActions>["setState"];
 export const initialViewSlice = (init: Partial<ViewSlice> = {}): ViewSlice => ({
 	toolsExpanded: false,
 	hideThinking: false,
+	outputPad: 1,
 	notice: undefined,
 	...init,
 });
 
 export const selectToolsExpanded = (state: ViewState): boolean => state.view.toolsExpanded;
 export const selectHideThinking = (state: ViewState): boolean => state.view.hideThinking;
+export const selectOutputPad = (state: ViewState): number => state.view.outputPad;
 export const selectNotice = (state: ViewState): ViewNotice | undefined => state.view.notice;
 
 function patchView(set: Set, patch: Partial<ViewSlice>): void {
@@ -63,6 +69,10 @@ export function createViewActions(set: Set, get: Get): ViewActions {
 		setHideThinking(hide) {
 			if (hide === get().view.hideThinking) return;
 			patchView(set, { hideThinking: hide });
+		},
+		setOutputPad(pad) {
+			if (pad === get().view.outputPad) return;
+			patchView(set, { outputPad: pad });
 		},
 		showNotice(text) {
 			patchView(set, { notice: { text, seq: (get().view.notice?.seq ?? 0) + 1 } });

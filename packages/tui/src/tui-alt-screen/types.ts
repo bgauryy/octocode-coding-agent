@@ -60,6 +60,12 @@ export interface ScrollbarTarget {
 	geometry: ScrollbarGeometry;
 }
 
+/**
+ * The jump-to-latest label: rows below the viewport, the reader's position (0-100) and the rows that arrived below
+ * since the view left its end (0 while nothing new came).
+ */
+export type ScrollToEndIndicatorLabel = (rowsBelow: number, percent: number, newRows: number) => string;
+
 export interface ScrollToEndIndicatorRect {
 	row: number;
 	column: number;
@@ -100,9 +106,10 @@ export interface TuiAltScreenOptions {
 	/**
 	 * Render a clickable jump-to-end label. It is centered on the last row of a follow-end
 	 * primary scroll view while that view is scrolled away from its end. `percent` (0-100) is the reader's position
-	 * in the transcript, so the position shows at rest without a scrollbar.
+	 * in the transcript, so the position shows at rest without a scrollbar. `newRows` counts output that arrived below
+	 * since the view left its end.
 	 */
-	scrollToEndIndicator?: (rowsBelow: number, percent: number) => string;
+	scrollToEndIndicator?: ScrollToEndIndicatorLabel;
 	/** Open an OSC 8 hyperlink activated with a primary-button click. */
 	openUrl?: (url: string) => void;
 	/** Handle an unmodified secondary-button press for clipboard paste. Currently enabled on Windows only. */

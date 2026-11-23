@@ -47,10 +47,11 @@ async function savedRequests(args: string[], signal?: AbortSignal): Promise<numb
 export async function requestBudgetHistory(
 	args: string[],
 	profile: AgentProfile | undefined,
-	child: BudgetChild & { peerResumed?: boolean },
+	child: BudgetChild & { peerResumed?: boolean; maxRequests?: number },
 	signal?: AbortSignal,
 ): Promise<{ requests: number; limit: number; exhausted?: SubagentOutcome }> {
-	const limit = maxRequests(profile);
+	// The task's own cap, checked against the profile's limit when it was planned (`taskRequestLimit`).
+	const limit = child.maxRequests ?? maxRequests(profile);
 	const requests = limit > 0 ? await savedRequests(args, signal) : 0;
 	if (signal?.aborted) throw new Error("Subagent cancelled");
 	const hard = hardLimit(limit);

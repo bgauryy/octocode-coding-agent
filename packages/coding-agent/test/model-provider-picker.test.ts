@@ -50,6 +50,8 @@ it("selects only the chosen provider, including when shortcuts point elsewhere",
 		getProviderKind: () => "API key",
 		getProviderBilling: () => "metered",
 		getProvider: () => undefined,
+		getCatalogUpdate: () => undefined,
+		isModelDeprecated: () => false,
 	} as unknown as ModelRuntime;
 	const select = vi.fn();
 	const selector = new ModelSelectorComponent(
@@ -100,14 +102,17 @@ it("shows the rates in effect at the given time for a dated price", () => {
 
 it("uses billing facts independently of CLI access labels", () => {
 	const selected = model("claude-code", "shared-model");
-	expect(compactModelDetails(selected, "CLI", "plan").join("\n")).toContain("plan billing");
+	// Billing reads "billed by plan" / "billed per token" as in /providers and the fallback notices (was "plan billing"
+	// and "metered"): one vocabulary for the two billing kinds.
+	expect(compactModelDetails(selected, "CLI", "plan").join("\n")).toContain("billed by plan");
 	expect(modelDetails(selected, 0, "CLI", "plan")).toContain("Billing: billed by plan");
-	expect(modelDetails(selected, 0, "CLI", "plan")).not.toContain("Billing: metered");
+	expect(modelDetails(selected, 0, "CLI", "plan")).not.toContain("per token");
 	expect(modelDetails(selected, 0, "CLI", "plan")).toContain("Route: external");
 	expect(compactModelDetails(selected, "CLI", "plan").join("\n")).toContain("route external");
 	expect(modelDetails(selected, 0, "subscription", "plan")).toContain("Route: subscription");
 	expect(modelDetails(selected, 0, "API key", "metered")).toContain("Route: config");
-	expect(compactModelDetails(selected, "CLI", "metered").join("\n")).toContain("metered");
-	expect(modelDetails(selected, 0, "CLI", "metered")).toContain("Billing: metered");
+	expect(compactModelDetails(selected, "CLI", "metered").join("\n")).toContain("billed per token");
+	expect(modelDetails(selected, 0, "CLI", "metered")).toContain("Billing: billed per token");
+	expect(modelDetails(selected, 0, "CLI", "metered")).not.toContain("metered");
 	expect(modelDetails(selected, 0, "CLI")).toContain("Billing: unknown");
 });

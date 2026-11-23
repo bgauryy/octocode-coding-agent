@@ -6,10 +6,12 @@
 /** The six states a tool, agent, question or run can be in. */
 export type UiState = "pending" | "running" | "waiting" | "done" | "failed" | "stopped";
 
-/** Spinner frame sets. `braille` is the default; `quadrant` is for terminals that draw braille too narrow. */
+/**
+ * Spinner frame sets: the one family every running mark animates with. A mark that cannot move is a full mark
+ * (`GLYPH.light`), never a frame held still: a half-filled circle reads as half done.
+ */
 export const SPINNER = {
 	braille: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
-	quadrant: ["◐", "◓", "◑", "◒"],
 } as const satisfies Record<string, readonly string[]>;
 
 /**
@@ -38,7 +40,7 @@ export const GLYPH = {
 	/** From one value to another (`A → B`), a state change or a question's answer. */
 	arrow: "→",
 	userBar: "▎",
-	/** The state light: one dot every state shares, coloured by `LIGHT_COLOR` and lit while it runs (agent rows, work rows). */
+	/** The running state light where it cannot move: a full dot, only ever for running (settled lights draw their state's glyph). */
 	light: "⏺",
 } as const;
 

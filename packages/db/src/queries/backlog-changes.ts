@@ -19,6 +19,13 @@ export interface BacklogSnapshot {
 	items: SnapshotItem[];
 }
 
+const CURSOR_SQL = "SELECT COALESCE(MAX(id), 0) AS cursor FROM backlog_audits WHERE workspace_id = ?1";
+
+/** The workspace's newest audit id (0 for an empty log): `snapshot().cursor` without the item rows. */
+export function cursor(db: DatabaseSync, repo: string): number {
+	return num((db.prepare(CURSOR_SQL).get(repo) as { cursor: number }).cursor);
+}
+
 /**
  * Every open (not done or closed) item of workspace `repo`, most urgent first, with the workspace's newest audit id as
  * `cursor` (0 for an empty log). One statement, so the rows and the cursor come from one read.
@@ -27,7 +34,7 @@ export function snapshot(db: DatabaseSync, repo: string): BacklogSnapshot {
 	const rows = allRows<SnapshotItem & { cursor: number; seq: number | null }>(
 		db.prepare(`
 		SELECT c.cursor, b.seq, b.version, b.state, b.assignee, b.title, b.goal, b.priority, p.seq AS parent_seq
-		FROM (SELECT COALESCE(MAX(id), 0) AS cursor FROM backlog_audits WHERE workspace_id = ?1) c
+		FROM (${CURSOR_SQL}) c
 		LEFT JOIN backlog b ON b.workspace_id = ?1 AND b.state <> 'done'
 		LEFT JOIN backlog p ON p.id = b.parent_id
 		ORDER BY b.priority, b.seq
@@ -90,8 +97,10 @@ export type AuditPage =
 	| { resync: true; cursor: number };
 
 /**
- * Workspace `repo`'s audit rows with an id above `afterId`, oldest first, at most `limit`. A cursor below the oldest
- * kept row (history housekeeping pruned the row it names) answers `resync`; a cursor of 0 is an empty log's and never does.
+ * Workspace `repo`'s audit rows with an id above `afterId`, oldest first, from the next `limit` rows. A row that only
+ * orders a card (its `rank`, `setItemRank`) is passed over: the cursor moves past it, but no reader is told of it. A
+ * cursor below the oldest kept row (history housekeeping pruned the row it names) answers `resync`; a cursor of 0 is an
+ * empty log's and never does.
  */
 export function auditAfter(db: DatabaseSync, repo: string, afterId: number, limit: number): AuditPage {
 	const bounds = db
@@ -100,7 +109,7 @@ export function auditAfter(db: DatabaseSync, repo: string, afterId: number, limi
 	const high = num(bounds.high ?? 0);
 	if (afterId > 0 && (bounds.low === null ? afterId > high : afterId < num(bounds.low)))
 		return { resync: true, cursor: high };
-	const rows = allRows<AuditAfterRow>(
+	const rows = allRows<AuditAfterRow & { rank_only: number }>(
 		db.prepare(`
 		SELECT id, backlog_id, action, entity, actor,
 			CASE WHEN entity = 'backlog' THEN after_value ->> '$.version' END AS version,
@@ -118,21 +127,31 @@ export function auditAfter(db: DatabaseSync, repo: string, afterId: number, limi
 			CASE WHEN entity = 'backlog_links' THEN COALESCE(after_value, before_value) ->> '$.target' END AS target,
 			CASE WHEN entity = 'backlog_comments' THEN after_value ->> '$.text' END AS text,
 			CASE WHEN entity = 'backlog_tasks' THEN after_value ->> '$.state' END AS step_state,
-			CASE WHEN entity = 'backlog_tasks' THEN before_value ->> '$.state' END AS before_step_state
+			CASE WHEN entity = 'backlog_tasks' THEN before_value ->> '$.state' END AS before_step_state,
+			entity = 'backlog' AND action = 'update'
+				AND json_remove(before_value, '$.updated_at', '$.version', '$.rank') IS json_remove(after_value, '$.updated_at', '$.version', '$.rank')
+				AS rank_only
 		FROM backlog_audits WHERE workspace_id = ? AND id > ? ORDER BY id LIMIT ?
 	`),
 		repo,
 		afterId,
 		limit + 1,
-	).map((row) => ({
-		...row,
-		id: num(row.id),
-		version: row.version === null ? null : num(row.version),
-		closed: num(row.closed),
-	}));
+	);
 	const more = rows.length > limit;
 	const page = more ? rows.slice(0, limit) : rows;
-	return { resync: false, cursor: page.at(-1)?.id ?? afterId, rows: page, more };
+	return {
+		resync: false,
+		cursor: page.length ? num(page.at(-1)!.id) : afterId,
+		rows: page
+			.filter((row) => !num(row.rank_only))
+			.map(({ rank_only: _rankOnly, ...row }) => ({
+				...row,
+				id: num(row.id),
+				version: row.version === null ? null : num(row.version),
+				closed: num(row.closed),
+			})),
+		more,
+	};
 }
 
 /** A session waiting for items (an active `wait` on `item`): the refs it names. */

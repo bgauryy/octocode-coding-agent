@@ -3,6 +3,7 @@ import type { Subcommands } from "../shared/commands.ts";
 import { registerSessionAttach } from "../web-daemon/attach-register.ts";
 import { setItemLinkHandler } from "../shared/item-ref.ts";
 import { attachedDaemon, daemonOpener } from "../web-daemon/open.ts";
+import { stopWebDaemon } from "../web-daemon/launcher.ts";
 import type { NativeToolsLive } from "../web-daemon/tool-exposure.ts";
 import { webCommand } from "../workspace/command.ts";
 import type { WorkspaceRuntime } from "../workspace/runtime.ts";
@@ -10,7 +11,7 @@ import { registerRemoteAutoStart, remoteCommand, type RemoteHost } from "./comma
 
 /**
  * The commands that reach this session through the user-level web daemon: `/web` opens the daemon's page (this
- * session's own server when the daemon cannot start) and `/remote` publishes the daemon for another device, with
+ * session's own server when the daemon cannot start), `/web stop` stops the daemon, and `/remote` publishes it for another device, with
  * `remote.autoStart` at session start. One attach endpoint serves both; it also answers the page's Tools panel with
  * `nativeTools` and repaints the board counts with `boardChanged` after an edit on the page. Never registered for a
  * subagent.
@@ -34,6 +35,7 @@ export function registerWebCommands(
 	const web = webCommand(
 		options.openWorkspace,
 		daemonOpener(attach, { window: () => api.settings.get().web?.window ?? "app" }),
+		() => stopWebDaemon(),
 	);
 	options.commands.add("web", web);
 	// A click on a drawn backlog id in fullscreen mode runs `/web item <id>` on this session.

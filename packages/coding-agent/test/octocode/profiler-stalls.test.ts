@@ -1,14 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { registerStallRecorder, STALL_ENTRY, STALL_MS } from "../../src/octocode/profiler/stalls.ts";
 import { asSetup } from "./fake-host.ts";
 
-function recorder() {
+function recorder(append?: () => void) {
 	const handlers = new Map<string, (event: unknown) => Promise<void>>();
 	const entries: Array<{ type: string; data: Record<string, unknown> }> = [];
 	registerStallRecorder(
 		asSetup({
 			on: (name: string, handler: (event: unknown) => Promise<void>) => void handlers.set(name, handler),
-			appendEntry: (type: string, data: Record<string, unknown>) => void entries.push({ type, data }),
+			appendEntry: (type: string, data: Record<string, unknown>) => {
+				append?.();
+				entries.push({ type, data });
+			},
 		}) as never,
 	);
 	const emit = (name: string, event: unknown = {}) => handlers.get(name)!(event);
@@ -24,6 +27,29 @@ function block(ms: number): void {
 }
 
 describe("event-loop stall recorder", () => {
+	it.each([
+		["This feature ctx is stale after session replacement or reload.", true],
+		["Session write failed", false],
+	])("handles a deferred write reporting %s", async (message, stale) => {
+		const append = vi.fn(() => {
+			throw new Error(message);
+		});
+		const { emit } = recorder(append);
+		await emit("agent_start");
+		await pause(60);
+		block(STALL_MS + 150);
+		await pause(60);
+		vi.useFakeTimers({ toFake: ["setImmediate"] });
+		try {
+			await emit("agent_end");
+			if (stale) expect(() => vi.runAllTimers()).not.toThrow();
+			else expect(() => vi.runAllTimers()).toThrow(message);
+			expect(append).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("records a blocked window after the run ends, naming the phase that closed it", async () => {
 		const { emit, entries } = recorder();
 		await emit("agent_start");

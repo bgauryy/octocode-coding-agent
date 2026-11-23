@@ -199,6 +199,8 @@ export function permissionGate(options: PermissionGateOptions) {
 					toolCallId: event.toolCallId,
 				}),
 				invocation,
+				// A `!cmd` from a web or ACP client is the user's own, as at the terminal: checked, never counted as unasked.
+				...(originalEvent.origin === "user" ? { byUser: true as const } : {}),
 				...(ctx.signal ? { signal: ctx.signal } : {}),
 				...(originalEvent.early
 					? {

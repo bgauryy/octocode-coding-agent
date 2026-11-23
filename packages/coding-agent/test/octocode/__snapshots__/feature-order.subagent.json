@@ -10,7 +10,8 @@
 			"registerBacklog@octocode/backlog/index.ts",
 			"registerRecordedSpend@octocode/team/tools/spend.ts",
 			"registerStallRecorder@octocode/profiler/stalls.ts",
-			"registerCompaction@octocode/compaction/register.ts"
+			"registerCompaction@octocode/compaction/register.ts",
+			"registerUsageRecording@octocode/usage/record.ts"
 		],
 		"agent_settle_end": [
 			"registerWake@octocode/wake/register.ts"
@@ -72,7 +73,8 @@
 			"registerStallRecorder@octocode/profiler/stalls.ts",
 			"registerActivity@octocode/ui/activity.ts",
 			"registerTurnBudget@octocode/compaction/turn-budget.ts",
-			"registerLoopGuard@octocode/loop-guard.ts"
+			"registerLoopGuard@octocode/loop-guard.ts",
+			"registerUsageRecording@octocode/usage/record.ts"
 		],
 		"message_start": [
 			"Delivery.install@octocode/ui/delivery.ts",
@@ -125,7 +127,8 @@
 			"registerPrewarmWatch@octocode/compaction/prewarm-watch.ts",
 			"registerCompaction@octocode/compaction/register.ts",
 			"registerDeferredSchemaRestore@octocode/compaction/deferred-schemas.ts",
-			"registerArchiveLifecycle@octocode/archive/lifecycle.ts"
+			"registerArchiveLifecycle@octocode/archive/lifecycle.ts",
+			"registerUsageRecording@octocode/usage/record.ts"
 		],
 		"session_compact_failed": [
 			"bindSessionSignals@octocode/wake/session-signals.ts",
@@ -157,6 +160,7 @@
 			"registerActivity@octocode/ui/activity.ts",
 			"registerCompaction@octocode/compaction/register.ts",
 			"registerMonitor@octocode/monitor/register.ts",
+			"registerUsageRecording@octocode/usage/record.ts",
 			"registerWakeRetry@octocode/wake-retry.ts",
 			"registerTimers@octocode/timer/register.ts",
 			"registerNativeSessionLifecycle@octocode/session-lifecycle.ts",
@@ -191,6 +195,7 @@
 			"registerLoopGuard@octocode/loop-guard.ts",
 			"registerHarnessSync@octocode/subagents/harness-sync.ts",
 			"registerMonitor@octocode/monitor/register.ts",
+			"registerUsageRecording@octocode/usage/record.ts",
 			"octocode@octocode/index.ts",
 			"registerWakeRetry@octocode/wake-retry.ts",
 			"registerTimers@octocode/timer/register.ts"

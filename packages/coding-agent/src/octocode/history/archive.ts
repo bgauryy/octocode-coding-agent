@@ -139,6 +139,7 @@ function renderHeader(segment: Segment): string {
 		line(LABELS.segment, segment.n),
 		line(LABELS.entry, oneLine(segment.entry)),
 		...(segment.leaf ? [line(LABELS.leaf, oneLine(segment.leaf))] : []),
+		...(segment.entryIds ? [line(LABELS.entryIds, segment.entryIds)] : []),
 		line(LABELS.range, `${segment.from ?? "?"} → ${segment.to ?? "?"}`),
 		line(LABELS.tokensBefore, segment.tokensBefore),
 		line(LABELS.method, oneLine(segment.method)),

@@ -37,6 +37,8 @@ export default async function setup(): Promise<() => Promise<void>> {
 	process.env.TMP = dir;
 	const guardFile = join(dir, "real-home-opens.log");
 	process.env[GUARD_FILE_ENV] = guardFile;
+	// No process of the run opens a browser window on this machine (`OPEN_BROWSER_ENV`, `browser/app-window.ts`).
+	process.env.OCTOCODE_OPEN_BROWSER = "0";
 	return async () => {
 		const { daemons, others } = await stopRunProcesses(`${GUARD_FILE_ENV}=${guardFile}`);
 		const opened = guardRecords(guardFile);

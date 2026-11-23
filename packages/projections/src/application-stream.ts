@@ -56,6 +56,15 @@ export class ApplicationStream {
 			case "session.model":
 				next = { ...next, model: event.model };
 				break;
+			case "session.usage":
+				next = { ...next, usage: event.usage };
+				break;
+			case "session.quota":
+				next = { ...next, quota: event.quota };
+				break;
+			case "session.models":
+				next = { ...next, models: event.models };
+				break;
 			case "message.started":
 			case "message.completed": {
 				const found = next.messages.some((message) => message.id === event.message.id);

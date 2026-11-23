@@ -1,4 +1,4 @@
-import { type MarkdownTheme, Markdown } from "@octocodeai/octocode-tui";
+import { type MarkdownTheme, Markdown, stripRowMarks } from "@octocodeai/octocode-tui";
 import { cliStyle } from "../utils/cli-style.ts";
 import {
 	APP_NAME,
@@ -11,6 +11,7 @@ import {
 } from "../config.ts";
 import { spawnProcess } from "@octocodeai/octocode-common/child-process";
 import { formatVersionCheckError, getLatestOctocodeRelease, isNewerPackageVersion } from "../utils/version-check.ts";
+import { isOfflineModeEnabled } from "../utils/env-flag.ts";
 import {
 	cleanupWindowsSelfUpdateQuarantine,
 	quarantineWindowsNativeDependencies,
@@ -66,9 +67,10 @@ export function printSelfUpdateNote(note: string): void {
 	console.log(cliStyle.heading(cliStyle.warn("Update note")));
 	try {
 		const width = Math.max(20, process.stdout.columns ?? 80);
+		// Printed straight to stdout, not through the TUI: drop the row marks the renderer would strip.
 		const renderedLines = new Markdown(trimmedNote, 0, 0, SELF_UPDATE_NOTE_MARKDOWN_THEME)
 			.render(width)
-			.map((line) => line.trimEnd());
+			.map((line) => stripRowMarks(line).trimEnd());
 		console.log(renderedLines.join("\n"));
 	} catch {
 		console.log(trimmedNote);
@@ -85,6 +87,11 @@ interface SelfUpdatePlan {
 }
 
 export async function getSelfUpdatePlan(force: boolean): Promise<SelfUpdatePlan> {
+	// The version check is network work offline mode skips; say so instead of "could not determine".
+	if (isOfflineModeEnabled())
+		throw new Error(
+			`Offline mode is on (--offline or OCTOCODE_OFFLINE), so ${APP_NAME} cannot check for a newer version. Run update without it.`,
+		);
 	let latestRelease: Awaited<ReturnType<typeof getLatestOctocodeRelease>>;
 	try {
 		latestRelease = await getLatestOctocodeRelease(VERSION, { retry: true });

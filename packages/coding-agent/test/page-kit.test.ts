@@ -19,7 +19,7 @@ describe("page-kit", () => {
 	});
 
 	it("names only the states given, once each", () => {
-		expect(legend(["ready", "off", "ready"])).toBe("✓ ready  ○ off");
+		expect(legend(["ready", "off", "ready"])).toBe("✓ ready  ∅ off");
 		expect(legend([])).toBe("");
 	});
 

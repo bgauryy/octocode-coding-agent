@@ -175,6 +175,8 @@ export interface ContextActions {
 	replaceQueuedMessage?: (details: object, content: string) => boolean;
 	shutdown: () => void;
 	getContextUsage: () => ContextUsage | undefined;
+	/** The Cache Warming section of `/status` (`cacheWarmingReport`); without it, `/status` has no such section. */
+	getCacheWarmingReport?: () => string[];
 	compact: (options?: CompactOptions) => void;
 	getSystemPrompt: () => string;
 	getSystemPromptOptions?: () => BuildSystemPromptOptions;

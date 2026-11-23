@@ -24,7 +24,7 @@ A theme assigns colors to roles. A surface picks the role that matches its meani
 
 The complete list of roles, their required or optional status and each fallback is in `themes.md` and the published theme schema.
 
-A state never rests on color alone: every state has a glyph, and badges and warnings also carry a word.
+A state never rests on color alone: every state has a glyph, and badges and warnings also carry a word. `/status` writes each warning or error status of the footer with both, as `⚠ WARNING · …` or `✗ ERROR · …`, so the severity survives copying and screen readers.
 
 ### State colors
 
@@ -84,18 +84,31 @@ Every theme meets WCAG contrast against the backgrounds its text can land on (bl
 
 ### The state light
 
-Every transcript tool row (bash, file, MCP, Agent cards and background reports), the footer's agent and work rows, and the `+N more` counts draw one dot, `⏺`, in place of the state glyphs above. The moving braille spinner stays on the main working line (the reasoning label and working verb) and the terminal title only.
+Every transcript tool row (bash, file, MCP, Agent cards and background reports), the agents panel and `/agents`, the footer's agent and work rows, and the `+N more` counts draw one light in place of the state glyphs above. A running light is an animation or a state, never a spinner frame held still: where the row moves it turns the working spinner's frames (the braille of the main working line, in green); where it cannot move (reduced motion, the footer, a list, `+N more`) it is a full green `⏺` beside its word. A settled state is its own glyph, steady, in its color: `⏺` means running and nothing else, so a still running light never looks like a done one.
 
-| State     | Light color | Motion                                                       |
-| --------- | ----------- | ------------------------------------------------------------ |
-| `running` | `success`   | Lit: breathes toward the light color, at a calm repaint pace |
-| `waiting` | `warning`   | Pulses for 4 s, then steady                                  |
-| `done`    | `success`   | Glows briefly, then steady                                   |
-| `failed`  | `error`     | Steady                                                       |
-| `stopped` | `error`     | Steady                                                       |
-| `pending` | `dim`       | Unlit                                                        |
+| State                    | Light color | Light                                                                            |
+| ------------------------ | ----------- | -------------------------------------------------------------------------------- |
+| `running`                | `success`   | The working spinner (`⠋ ⠙ ⠹ …`) at the background pace; `⏺` where it cannot move |
+| `waiting`                | `warning`   | Steady `◇`                                                                       |
+| `done`                   | `success`   | Steady `✓`                                                                       |
+| `failed`                 | `error`     | Steady `✗`                                                                       |
+| `stopped`                | `error`     | Steady `◼`                                                                       |
+| `pending` (idle, queued) | `dim`       | Steady `○`                                                                       |
 
-Reduced motion draws every light steady in its color. The `+N more` row counts hidden agents with the same lights.
+Each state has this one glyph, with and without color (`NO_COLOR` drops only the color); no two states share one, and `⏺` always means running. An idle agent or session is the `pending` state: nothing runs until it gets work. Reduced motion draws a running light as the full green `⏺`. The `+N more` row counts hidden agents with the same lights. In `/web` a running mark is an arc turning on a faint ring, and a full dot under reduced motion.
+
+### Activity light
+
+The session's light answers one question, what is it doing, with four tones. The same mapping drives the footer, the `/agents` picker, the session list and session header in `/web`, and the state and progress the terminal tab reports, so they agree.
+
+| Tone    | State     | Light      | Without color | Word beside it                                                                 | When                                                                                                            |
+| ------- | --------- | ---------- | ------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Working | `running` | green `⏺`  | `⏺`           | `working`, `compacting`, `retrying`, `not answering`, `background`, `resuming` | A run, compaction, a retry wait, a model that went quiet, background work or a report about to wake the session |
+| Waiting | `waiting` | yellow `◇` | `◇`           | `needs you`                                                                    | A dialog or question waits for you                                                                              |
+| Error   | `failed`  | red `✗`    | `✗`           | `failed`, `stopped`                                                            | The job failed, or stopped with work left open                                                                  |
+| Idle    | `pending` | dim `○`    | `○`           | `idle`, `done`, `scheduled`                                                    | Nothing runs: the job is done, or only a timer will wake it                                                     |
+
+In the terminal these places draw the light still, so working is a full green `⏺` beside its word, never a spinner frame held still (`/web` turns its running mark); the list badges read `⏺ working`, `◇ needs you`, `✗ failed`, `○ idle`, the glyphs of the state light. A pending timer alone is idle: nothing is working until it fires. In the footer the light leads line 2, before `model:effort`, with its word (`◇ needs you · model:effort`); an idle session shows the light alone, and on a narrow terminal the word goes before the session name while the light stays. The word is quiet except `needs you` in `warning` and `failed` or `stopped` in `error`, so the light is never the only cue. The `/web` session list writes the light's word capitalized (**Working**, **Needs you**, **Compacting**, **Failed**, **Stopped**, **Idle** and the rest), the words `octocode remote list` prints.
 
 ### Page badges
 
@@ -106,7 +119,9 @@ Management pages (such as `/mcp`) summarize an item with one badge of glyph, wor
 | `✓ ready`        | `success` |
 | `⚠ needs action` | `warning` |
 | `✗ broken`       | `error`   |
-| `○ off`          | `muted`   |
+| `∅ off`          | `muted`   |
+
+`∅` marks a switched-off item only; `○` stays the idle and queued state, so a page and a light never share a glyph.
 
 ## Glyphs
 
@@ -195,6 +210,7 @@ A line is cut by visible width: ANSI colors and wide characters are counted corr
 | Footer parts shorten lowest priority first: a path loses its middle, then shrinks to its last segment, then the part is dropped. When room returns, parts grow back by priority. A part cut to fit, and the whole line when it still overflows, end in a `dim` `…`; the model name, branch and alert rows end in a plain `…` | Footer                          |
 | Alerts (warning and error statuses) are dropped whole rather than cut mid-word, and appear in rows of their own                                                                                                                                                                                                              | Footer                          |
 | A detail line 1 drops moves to free room on line 2; `… /status` appears when a detail is still shortened or dropped                                                                                                                                                                                                          | Footer                          |
+| A plan window at 70 % or more shows beside `Σ` as `quota 5h 82% · resets 14:20` in `warning`, in `error` from 90 %; it shortens to `quota 5h 82%`, then `5h 82%`, and is never cut                                                                                                                                           | Footer                          |
 | A finished tool result closes to its summary line: `⎿  exit 0 · 20 lines (ctrl+o to expand)`; a running or failed one shows 5 lines, then `… +12 lines (ctrl+o to expand)`                                                                                                                                                   | Tool rows                       |
 | When the preview keeps the last lines, the hint reads `… +12 earlier lines (...)`                                                                                                                                                                                                                                            | Tool rows such as shell output  |
 | The fold hint adds `or click` while mouse clicks are active, and names only the count when no key is bound                                                                                                                                                                                                                   | Tool rows                       |
@@ -221,13 +237,13 @@ Every picker, dialog and page is the same list underneath, so the same keys and 
 
 Pickers with a search line take every printable key as search text, so they offer no single-letter actions; short lists (the thinking levels) have no search line.
 
-| Picker               | What differs                                                                                                                                                                                                                                                                                       |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Model (`/model`)     | `alt+i` opens the details; while they are open, PgUp and PgDn scroll them. The switch choice after it is a short list: Esc goes back to the models                                                                                                                                                 |
-| Model shortcuts      | Enter toggles the selected model; Esc clears the search, then closes                                                                                                                                                                                                                               |
-| Sessions (`/resume`) | The search takes `re:<regex>` and `"exact phrase"`. `ctrl+d` asks before it deletes. Esc closes the preview, then drops the marks, then clears the search, then closes. The header names the scope and sort as one muted fact; the mouse is ignored while the preview or a delete question is open |
-| Tree (`/tree`)       | Left and Right page like PgUp and PgDn; the search matches every typed word; the active filter shows beside the position                                                                                                                                                                           |
-| Queue (`/queue`)     | No search line, so letter keys act on the selected message: `e` edit, `d` remove, `s` switch kind, `K`/`J` move, `q` close                                                                                                                                                                         |
+| Picker               | What differs                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Model (`/model`)     | Enter switches this chat; `ctrl+s` switches it and saves the default. `alt+i` opens the details; while they are open, PgUp and PgDn scroll them and `ctrl+p` makes the highlighted model its provider's preferred one. After the id a row marks `default`, `new` (in `success`: models.dev added it after this release) and `deprecated` (in `muted`, with the id dimmed: models.dev lists it as deprecated) |
+| Model shortcuts      | Enter toggles the selected model; Esc clears the search, then closes                                                                                                                                                                                                                                                                                                                                         |
+| Sessions (`/resume`) | The search takes `re:<regex>` and `"exact phrase"`. `ctrl+d` asks before it deletes. Esc closes the preview, then drops the marks, then clears the search, then closes. The header names the scope and sort as one muted fact; the mouse is ignored while the preview or a delete question is open                                                                                                           |
+| Tree (`/tree`)       | Left and Right page like PgUp and PgDn; the search matches every typed word; the active filter shows beside the position                                                                                                                                                                                                                                                                                     |
+| Queue (`/queue`)     | No search line, so letter keys act on the selected message: `e` edit, `d` remove, `s` switch kind, `K`/`J` move, `q` close                                                                                                                                                                                                                                                                                   |
 
 ### Dialogs
 

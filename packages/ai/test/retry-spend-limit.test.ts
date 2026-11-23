@@ -96,3 +96,31 @@ describe("documented spend and billing limits", () => {
 		expect(request).toHaveBeenCalledTimes(2);
 	});
 });
+
+/** Subscription plans' usage windows (hours to days), as their services word them. */
+const SUBSCRIPTION_LIMITS: [name: string, text: string][] = [
+	[
+		"Codex usage_limit_reached body",
+		'429 {"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"plus","resets_at":1767225600}}',
+	],
+	["Codex usage_limit_reached code", "Codex error: usage_limit_reached"],
+	["ChatGPT usage limit", "You have hit your ChatGPT usage limit (plus plan). Try again in ~158 min."],
+	["Claude Code usage limit", "Claude AI usage limit reached|1763900000"],
+	["Claude usage limit", "You've hit your usage limit. Upgrade to Pro or try again in 3 days 2 hours"],
+	["plan usage limit", "429 You have reached your usage limit. Resets at 5pm"],
+];
+
+describe("subscription usage limits", () => {
+	it.each(SUBSCRIPTION_LIMITS)("%s is a usage limit the session never retries", (_name, text) => {
+		expect(isUsageLimitError(text)).toBe(true);
+		expect(isRetryableErrorText(text)).toBe(false);
+	});
+
+	it.each([
+		"429 Rate limit reached on this model",
+		'429 {"type":"error","error":{"type":"rate_limit_error","message":"Number of request tokens has exceeded your per-minute rate limit"}}',
+	])("a per-minute rate limit stays retryable: %s", (text) => {
+		expect(isUsageLimitError(text)).toBe(false);
+		expect(isRetryableErrorText(text)).toBe(true);
+	});
+});

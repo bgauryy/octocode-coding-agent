@@ -178,10 +178,11 @@ export class RpcClient {
 	}
 
 	/**
-	 * Set thinking level.
+	 * Set thinking level. Returns the level applied: the requested one clamped to what the model supports.
 	 */
-	async setThinkingLevel(level: ThinkingLevel): Promise<void> {
-		await this.send({ type: "set_thinking_level", level });
+	async setThinkingLevel(level: ThinkingLevel): Promise<ThinkingLevel> {
+		const response = await this.send({ type: "set_thinking_level", level });
+		return this.getData<{ level: ThinkingLevel }>(response).level;
 	}
 
 	/**

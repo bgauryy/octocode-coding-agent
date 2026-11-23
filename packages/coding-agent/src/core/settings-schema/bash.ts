@@ -6,7 +6,7 @@ const BashSettingsSchema = Type.Object(
 		inheritProviderKeys: Type.Optional(
 			Type.Boolean({
 				description:
-					"Keep provider API keys (`OPENAI_API_KEY`, `HF_TOKEN`…) in the environment of bash commands. Off by default: a command's output reaches the model, and a build script or an injected command can read its environment. `GH_TOKEN` and other tool tokens are not provider keys and stay either way. A nested `octocode` still signs in through `auth.json`. Read from the global settings file; a project file cannot turn it on. Takes effect for new sessions.",
+					"Keep provider API keys (`OPENAI_API_KEY`, `HF_TOKEN`…) and provider tokens (`AWS_BEARER_TOKEN_BEDROCK`, `OPENAI_CUSTOM_HEADERS`) in the environment of bash commands. Off by default: a command's output reaches the model, and a build script or an injected command can read its environment. `GH_TOKEN` and other tool tokens are not provider keys and stay either way. A nested `octocode` still signs in through `auth.json`. Read from the global settings file; a project file cannot turn it on. Takes effect for new sessions.",
 				default: SETTINGS_DEFAULTS.bash.inheritProviderKeys,
 			}),
 		),

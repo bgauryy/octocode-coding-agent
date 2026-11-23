@@ -17,6 +17,7 @@ import { ModelConfig } from "../model-config.ts";
 import type { ModelsProject } from "../model-config/project.ts";
 import { withCopilotEnvSource } from "../provider-sources/copilot-env.ts";
 import { FileModelsStore } from "../models-store.ts";
+import { withCatalogUpdates } from "../model-catalog/provider.ts";
 import { withPersonalizedCatalog, withRemoteCatalog } from "../remote-catalog-provider.ts";
 import { RuntimeCredentials } from "../runtime-credentials.ts";
 import { installSecretRedaction } from "../secret-redaction.ts";
@@ -115,21 +116,18 @@ function ownKeyedProviders(modelsPath: string): (providerId: string) => Promise<
 	};
 }
 
-/** The built-in providers, each refreshing its catalog from `catalogBaseUrl`. */
+/** The built-in providers, each refreshing its catalog from `catalogBaseUrl`, with the models.dev catalog updates on top. */
 function createBuiltinProviders(catalogBaseUrl: string | undefined): Provider[] {
 	const builtinModelDataGeneratedAt = builtinProviderCatalog.getBuiltinModelDataGeneratedAt();
 	return builtinProviderCatalog.builtinProviders().map((builtin) => {
 		const provider = withCopilotEnvSource(builtin);
 		// OpenRouter narrows the catalog to the models, limits and prices of the user's key.
 		if (provider.id === "openrouter") {
-			return withPersonalizedCatalog(
-				provider,
-				personalizeOpenRouterCatalog,
-				catalogBaseUrl,
-				builtinModelDataGeneratedAt,
+			return withCatalogUpdates(
+				withPersonalizedCatalog(provider, personalizeOpenRouterCatalog, catalogBaseUrl, builtinModelDataGeneratedAt),
 			);
 		}
-		return withRemoteCatalog(provider, catalogBaseUrl, builtinModelDataGeneratedAt);
+		return withCatalogUpdates(withRemoteCatalog(provider, catalogBaseUrl, builtinModelDataGeneratedAt));
 	});
 }
 

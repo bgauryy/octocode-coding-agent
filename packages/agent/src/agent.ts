@@ -40,6 +40,7 @@ import type {
 
 export type { AgentOptions } from "./agent/options.ts";
 export type { AgentInitialState } from "./agent/state.ts";
+export { isUnsetModel } from "./agent/state.ts";
 export type { QueueMode } from "./types.ts";
 
 /**

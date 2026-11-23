@@ -107,7 +107,9 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 				return error(id, "set_model", `Model not found: ${command.provider}/${command.modelId}`);
 			}
 			await host.session.setModel(model);
-			return success(id, "set_model", publicModel(model));
+			// The model as the session holds it, as `get_state` reports it: `contextWindow` is the session's working budget
+			// (`contextBudget`), while `get_available_models` lists each model's full capacity.
+			return success(id, "set_model", publicModel(host.session.model ?? model));
 		}
 
 		case "cycle_model": {
@@ -132,7 +134,8 @@ export const handleCommand = async (host: RpcCommandHost, command: RpcCommand): 
 
 		case "set_thinking_level": {
 			host.session.setThinkingLevel(command.level);
-			return success(id, "set_thinking_level");
+			// The level applied, clamped to what the model supports: "off" on a model without reasoning.
+			return success(id, "set_thinking_level", { level: host.session.thinkingLevel });
 		}
 
 		case "cycle_thinking_level": {

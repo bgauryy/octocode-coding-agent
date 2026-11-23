@@ -1,8 +1,9 @@
 import type { ImageContent, Message, TextContent, Usage } from "@octocodeai/octocode-ai";
 import type { BashExecutionMessage, CustomMessage, MessageDisplay } from "../messages.ts";
+import { noteAppendedSpend, stampSpendBilling } from "../spend-capture.ts";
 import { getCompactionBoundarySystem } from "./context.ts";
 import { generateId } from "./entries.ts";
-import { appendEntry } from "./persistence.ts";
+import { appendEntry as appendStored } from "./persistence.ts";
 import { getBranchEntries, getSessionEntries, type SessionState } from "./state.ts";
 import { normalizeContextEditReplacement } from "./tree.ts";
 import type {
@@ -18,10 +19,22 @@ import type {
 	SessionMessageEntry,
 	SessionNameSource,
 	ThinkingLevelChangeEntry,
+	SessionEntry,
 	UsageEntry,
 } from "./types.ts";
 
 // Entry builders behind SessionManager's append methods. Each creates a child of the current leaf and advances it.
+
+/**
+ * The one way an entry joins the session: who paid for the spend it carries is stored on it before it is written, and,
+ * once it is part of the session (written, or held for the retry), it goes to the process's spend capture. Records
+ * merged in from another process never pass here, so a request is captured once, by the process that made it.
+ */
+function appendEntry(state: SessionState, entry: SessionEntry): void {
+	stampSpendBilling(entry);
+	appendStored(state, entry);
+	noteAppendedSpend(entry, state);
+}
 
 export function appendMessage(
 	state: SessionState,

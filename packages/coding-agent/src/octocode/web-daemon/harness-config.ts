@@ -60,6 +60,7 @@ function toRow(entry: ConfigEntry & { kind: HarnessRowKind }): HarnessRow {
 		label: entry.label.slice(0, 512),
 		...(entry.detail ? { detail: entry.detail.slice(0, 1024) } : {}),
 		on: entry.value === true,
+		...(entry.state ? { state: entry.state.slice(0, 512) } : {}),
 		setBy: entry.setBy === "project" ? "workspace" : entry.setBy === "global" ? "global" : "default",
 		...(entry.locked ? { locked: entry.locked.slice(0, 512) } : {}),
 		appliesWhen: entry.appliesWhen,

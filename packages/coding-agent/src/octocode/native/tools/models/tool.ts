@@ -14,7 +14,6 @@ import { VALID_THINKING_LEVELS } from "../../../../core/thinking-level.ts";
 import { canRunTask, registryBilling } from "../../../subagents/model.ts";
 import {
 	describeModels,
-	describeRoutes,
 	describeUnrunnable,
 	MODEL_ABILITIES,
 	modelAbilities,
@@ -22,6 +21,9 @@ import {
 	modelCatalog,
 	SOURCE_NOTE,
 } from "../../../subagents/models-command.ts";
+import { describeRoutes } from "../../../subagents/models-routes.ts";
+import { providerState } from "../../../subagents/models-quota.ts";
+import { registerQuotaNotice } from "../../../subagents/models-quota-notice.ts";
 import { compactModels, providerKinds, providerRows, providerSummary } from "../../../subagents/models-summary.ts";
 import type { AgentProfile } from "../../../subagents/profiles.ts";
 import { checkCandidates, checkProviders, providerHealth } from "../../../subagents/provider-health.ts";
@@ -42,7 +44,7 @@ export type ExternalListing = (
  * The `models` tool: this session's model and thinking level, the configured providers with their credential status,
  * and the models a task can run on, as `/modelsettings` shows them to the user. The full list is a call, not prompt
  * text: it changes with configuration and credentials, and the cached prompt must not. The prompt states only the short
- * routing facts, frozen per session (`routing-watch.ts`).
+ * routing facts, frozen per session (`routing-watch.ts`). The quota notice (`models-quota-notice.ts`) registers with it.
  */
 export function registerModelsTool(
 	api: FeatureSetup,
@@ -57,7 +59,7 @@ export function registerModelsTool(
 				label: "Models",
 				promptSnippet: renderPrompt("tools/models/snippet.md"),
 				description:
-					"List enabled models, estimated size, context/output limits, cost and abilities. Use routes for task choices.",
+					"List enabled models (size, context/output limits, cost, abilities), provider quota, health and spend. Use routes for task choices.",
 				parameters: Type.Object({
 					routes: Type.Optional(Type.Boolean({ description: "Add routes" })),
 					offset: Type.Optional(Type.Integer({ description: "Continue a large inventory at this zero-based row" })),
@@ -129,7 +131,10 @@ export function registerModelsTool(
 							].join("\n\n"),
 						);
 					if (params.check)
-						await checkProviders(ctx.modelRegistry, checkCandidates(shown, ctx.model), providerHealth, signal);
+						await checkProviders(ctx.modelRegistry, checkCandidates(shown, ctx.model), providerHealth, signal, ctx.cwd);
+					// After a check, so its results are the health it shows.
+					const state = providerState(ctx, all, provider);
+					const stated = state ? [state] : [];
 					const footer = `${SOURCE_NOTE}\nPass one as \`model\` ("provider/id") when you start a task; append ${thinkingLevels()} to set its thinking.`;
 
 					const count = shown.length + unconnected.length;
@@ -154,6 +159,7 @@ export function registerModelsTool(
 						return textResult(
 							[
 								sessionHeader(ctx),
+								...stated,
 								...rows,
 								`${count} matching models. ${offset + page.length < count ? `Continue with offset ${offset + page.length} and the same filters.` : "End of list."}`,
 								...(params.routes
@@ -179,6 +185,7 @@ export function registerModelsTool(
 						return textResult(
 							[
 								sessionHeader(ctx),
+								...stated,
 								`${compactModels(taskModels, catalog)}\n${SOURCE_NOTE}`,
 								...(params.routes
 									? [
@@ -206,6 +213,7 @@ export function registerModelsTool(
 						return textResult(
 							[
 								sessionHeader(ctx),
+								...stated,
 								providerSummary(ctx.modelRegistry, all, catalog, kept, kinds),
 								...(kept
 									? [`${kept.length} models match; too many to list. Set \`provider\` to list one provider's models.`]
@@ -245,6 +253,7 @@ export function registerModelsTool(
 						[
 							sessionHeader(ctx),
 							providerRows(ctx.modelRegistry, all, kinds),
+							...stated,
 							listing,
 							...parentOnlyNote,
 							...outside,
@@ -261,6 +270,8 @@ export function registerModelsTool(
 				"list",
 		),
 	);
+	// The quota the tool lists, told once per plan window when the session's provider passes 90 % of it.
+	registerQuotaNotice(api);
 }
 
 /** Connected runners and external agents, when the setting enables them; a listing that fails says so in one line. */

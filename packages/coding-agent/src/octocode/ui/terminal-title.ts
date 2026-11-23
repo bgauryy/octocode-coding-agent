@@ -1,5 +1,6 @@
 import path from "node:path";
 import { SEPARATOR, SPINNER, TITLE_FRAME_MS, type TitleState, titleMark } from "@octocodeai/octocode-tui";
+import { activity, type Activity } from "@octocodeai/octocode-projections";
 import { cleanTitle } from "../../core/session-manager/title.ts";
 
 export { TITLE_FRAME_MS, type TitleState };
@@ -51,32 +52,41 @@ export function terminalTitle(
 }
 
 /**
- * Folds run events into a title state. During a run: `waiting` while a dialog is open, `running` while a tool
- * executes, else `thinking`. After it: `background` while background work (subagents, jobs, wakes) still runs, then
- * the outcome (`done`, `failed`, or `idle` when interrupted) until `seen`.
+ * The tab's state: the session's activity light (`activity`, the footer's and the program status's), refined while its
+ * own run goes on. During a run: `waiting` while a dialog is open, `running` while a tool executes, else `thinking`. With
+ * no run of its own the light decides: `background` while it is working (background agents, a wake, compaction or a
+ * retry), `waiting` while it needs you, `failed` for a failed or stopped job and `done` for one that ended well, both
+ * until `seen`, else `idle` (a pending timer included).
  */
 export class TitleTracker {
 	private active = false;
-	/** The session's phase is waiting, resuming or scheduled: work or a wake is outstanding. */
-	private pending = false;
+	private light: Activity = activity(undefined);
+	/** The finished light the user has seen: `done` or `failed` shows until then. */
+	private seenLight: Activity | undefined;
 	private readonly tools = new Set<string>();
 	/** Open dialogs by id, each with whether it blocks: the agent (or a background subagent) waits on the user. */
 	private readonly prompts = new Map<string | undefined, boolean>();
-	private outcome: "idle" | "done" | "failed" = "idle";
 
 	get state(): TitleState {
-		if (!this.active) {
-			if ([...this.prompts.values()].some(Boolean)) return "waiting";
-			return this.pending ? "background" : this.outcome;
+		if ([...this.prompts.values()].some(Boolean) || this.light.tone === "waiting") return "waiting";
+		// The light's `working` word is the session's own run, whichever of its run's events or its phase came first.
+		if (this.active || (this.light.tone === "working" && this.light.label === "working")) {
+			if (this.prompts.size > 0) return "waiting";
+			return this.tools.size > 0 ? "running" : "thinking";
 		}
-		if (this.prompts.size > 0) return "waiting";
-		return this.tools.size > 0 ? "running" : "thinking";
+		if (this.light.tone === "working") return "background";
+		const finished = this.light.tone === "error" ? "failed" : this.light.label === "done" ? "done" : undefined;
+		return finished && this.seenLight !== this.light ? finished : "idle";
+	}
+
+	/** The session's light changed. */
+	setLight(next: Activity): void {
+		this.light = next;
 	}
 
 	start(): void {
 		this.active = true;
 		this.tools.clear();
-		this.outcome = "idle";
 	}
 
 	toolStart(id: string): void {
@@ -101,24 +111,21 @@ export class TitleTracker {
 		this.prompts.delete(id);
 	}
 
-	settle(outcome: "idle" | "done" | "failed"): void {
+	/** The session's own run ended; the light says what became of the job. */
+	settle(): void {
 		this.active = false;
 		this.tools.clear();
-		this.outcome = outcome;
 	}
 
-	/** Whether the session's phase is non-final with no run of its own (`isPendingPhase`); the outcome waits until it is not. */
-	setPending(pending: boolean): void {
-		this.pending = pending;
-	}
-
-	/** The user is back: a finished outcome has been seen. A run or outstanding work keeps its state. */
+	/** The user is back: the finished light now is seen. A run or outstanding work keeps its state. */
 	seen(): void {
-		if (!this.pending) this.outcome = "idle";
+		this.seenLight = this.light;
 	}
 
 	reset(): void {
-		this.settle("idle");
+		this.settle();
 		this.prompts.clear();
+		this.light = activity(undefined);
+		this.seenLight = undefined;
 	}
 }

@@ -4,6 +4,7 @@ import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { listMcpFileEntries } from "./config.ts";
 import { addMcpServerConfig } from "./config-write.ts";
 import { globalMcpConfigPath, mcpConfigFiles, projectMcpConfigPath } from "./paths.ts";
+import { reviewBeforeAdding } from "./review-first.ts";
 import { validateMcpServerConfig } from "./servers.ts";
 
 const MCP_ADDED_MESSAGE =
@@ -62,6 +63,7 @@ export function saveMcpDefinition(command: McpAddCommand, options: McpAddOptions
 		throw new McpAddError("An MCP server with this name already exists. Choose another name.");
 	const path =
 		command.scope === "workspace" ? projectMcpConfigPath(options.cwd) : globalMcpConfigPath(options.agentDir);
+	reviewBeforeAdding(options);
 	try {
 		addMcpServerConfig(path, command.name, checked, { replace: false });
 	} catch {

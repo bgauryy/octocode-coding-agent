@@ -6,6 +6,7 @@ import {
 	type MemoryFilter,
 	type MemoryScope,
 	memories,
+	memorySources,
 	type ScopeFilter,
 } from "../../../../db/src/api.ts";
 import { agentDbWriter, sharedAgentDb, sharedAgentDbWriter } from "../../storage/database.ts";
@@ -16,6 +17,7 @@ import { jaccard, memoryLabel, normalizeTitle, terms } from "./query.ts";
 import { checkRevision, MemoryError, noMemory } from "./errors.ts";
 import { isCandidate } from "./file/candidate-tags.ts";
 import { type Memory, type MemoryHit, type MemoryInput, refuseMemorySecrets, toMemory } from "./record.ts";
+import { canonicalSources, readableSources, sourcesLine } from "./sources.ts";
 import { searchMemories, searchMemoryPage } from "./search.ts";
 export { MemoryError, noMemory } from "./errors.ts";
 export {
@@ -77,6 +79,11 @@ export class MemoryStore {
 		return memories.list(this.db, this.context, scope, limit, options).map(toMemory);
 	}
 
+	/** The id and title of every visible note, without bodies. */
+	titles(): Array<{ id: number; title: string }> {
+		return memories.titles(this.db, this.context);
+	}
+
 	/** Bounded retrieval for the `memory` tool; the cursor visits every visible note. */
 	scan(scope: ScopeFilter, before: memories.MemoryCursor, limit: number): Memory[] {
 		return memories.scan(this.db, this.context, scope, before, limit).map(toMemory);
@@ -122,11 +129,32 @@ export class MemoryStore {
 		input: MemoryInput & { id?: number; author: string; sourceSession?: string },
 		now = Date.now(),
 		expectedRevision?: number,
+		sources: readonly string[] = [],
 	): { memory: Memory; created: boolean } {
 		refuseMemorySecrets(input);
-		return this.agentDb.transaction(() =>
-			input.id === undefined ? this.insert(input, now) : this.update(input.id, input, now, expectedRevision),
-		);
+		const anchors = canonicalSources(sources);
+		return this.agentDb.transaction(() => {
+			const saved =
+				input.id === undefined ? this.insert(input, now) : this.update(input.id, input, now, expectedRevision);
+			// Pending in the same transaction as the note: the link names this exact revision or does not exist.
+			if (anchors.length > 0) memorySources.addPending(this.db, saved.memory.id, saved.memory.updatedAt, anchors, now);
+			return saved;
+		});
+	}
+
+	/** After the note's MEMORY.md write: its pending sources become final. */
+	finalizeSources(memory: Pick<Memory, "id" | "updatedAt">): void {
+		this.agentDb.transaction(() => memorySources.finalize(this.db, memory.id, memory.updatedAt));
+	}
+
+	/** Settles sources an interrupted save left pending (see `memorySources.reconcile`); run when the store opens. */
+	reconcileSources(): number {
+		return this.agentDb.transaction(() => memorySources.reconcile(this.db));
+	}
+
+	/** The final source anchors of this version of `memory`; none for a note edited since they were linked. */
+	sourcesOf(memory: Pick<Memory, "id" | "updatedAt">): string[] {
+		return readableSources(memorySources.finalAnchors(this.db, memory.id, memory.updatedAt));
 	}
 
 	private insert(
@@ -269,15 +297,18 @@ export function memoryToolLine(memory: Memory, bodyChars: number, now = Date.now
 export function memoryStore(cwd: string, env: NodeJS.ProcessEnv = process.env): MemoryStore {
 	const db = sharedAgentDb(env);
 	const workspace = registeredWorkspace(cwd, db);
-	return new MemoryStore(db, repoKey(workspace.root).key, workspace.id, () => sharedAgentDbWriter(env));
+	const store = new MemoryStore(db, repoKey(workspace.root).key, workspace.id, () => sharedAgentDbWriter(env));
+	store.reconcileSources();
+	return store;
 }
 
 /** The full view of one memory, for `get`. */
-export function describeMemory(memory: Memory, now = Date.now()): string {
+export function describeMemory(memory: Memory, now = Date.now(), sources: readonly string[] = []): string {
 	const days = (at: number) => `${Math.max(0, Math.round((now - at) / DAY_MS))}d ago`;
 	return [
 		memoryLine(memory, 0),
 		...(memory.keywords ? [`keywords: ${memory.keywords}`] : []),
+		...(sources.length > 0 ? [sourcesLine(sources)] : []),
 		`author: ${memory.author}${memory.sourceSession ? ` · source session ${memory.sourceSession}` : ""} · updated ${days(memory.updatedAt)} · used ${memory.useCount}×${memory.lastUsed ? ` (last ${days(memory.lastUsed)})` : ""}`,
 		"",
 		memory.body || "(no body)",

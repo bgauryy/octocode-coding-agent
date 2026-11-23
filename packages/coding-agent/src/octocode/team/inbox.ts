@@ -7,6 +7,21 @@ import type { TeamStore } from "./store.ts";
  * waking request. The byte budget never splits a message; a single oversized message travels alone.
  */
 const INBOX_BATCH_BYTES = 32 * 1024;
+/** Late rows one tick looks for below the watermark; the rest are found on later ticks as these are handed over. */
+const LATE_WINDOW = 256;
+
+/** The leading messages that fit the byte budget; the first always fits, so an oversized message travels alone. */
+function withinBudget(messages: Iterable<Message>): Message[] {
+	const batch: Message[] = [];
+	let bytes = 2;
+	for (const message of messages) {
+		const size = Buffer.byteLength(JSON.stringify(message)) + (batch.length > 0 ? 1 : 0);
+		if (batch.length > 0 && bytes + size > INBOX_BATCH_BYTES) break;
+		batch.push(message);
+		bytes += size;
+	}
+	return batch;
+}
 
 export class Inbox {
 	/** The newest message handed to Octocode: later ticks hand over only newer ones, so none is injected twice. */
@@ -61,11 +76,16 @@ export class Inbox {
 		const stamp = db.stamp();
 		const state = () => `${id}|${this.handed}|${stamp}`;
 		if (state() === this.idleAt) return;
-		if (this.handed > 0)
-			for (const late of db.waitingThrough(id, this.handed)) if (!this.unseen.has(late)) this.retry.add(late);
+		if (this.handed > 0) {
+			const known = new Set([...this.unseen, ...this.retry]);
+			for (const late of db.waitingThrough(id, this.handed, known, LATE_WINDOW)) this.retry.add(late);
+		}
+		// A retry does not wait for `unseen`: rejected or late mail is handed over at once, in budgeted batches.
+		// Rows beyond the budget stay in `retry` for the next tick.
 		if (this.retry.size > 0) {
 			const first = Math.min(...this.retry);
-			const batch = db.pending(id, first - 1).filter((message) => this.retry.has(message.id));
+			const due = db.pending(id, first - 1).filter((message) => this.retry.has(message.id));
+			const batch = withinBudget(due);
 			if (batch.length === 0) {
 				// The first rejected row is no longer pending. Later failed rows may be beyond the bounded read.
 				this.retry.delete(first);
@@ -100,14 +120,7 @@ export class Inbox {
 			}
 			return;
 		}
-		const batch: Message[] = [];
-		let bytes = 2;
-		for (const message of db.pending(id, this.handed)) {
-			const size = Buffer.byteLength(JSON.stringify(message)) + (batch.length > 0 ? 1 : 0);
-			if (batch.length > 0 && bytes + size > INBOX_BATCH_BYTES) break;
-			batch.push(message);
-			bytes += size;
-		}
+		const batch = withinBudget(db.pending(id, this.handed));
 		if (batch.length === 0) return; // Another process can remove the recipient between the two reads.
 		const before = this.handed;
 		// Marked first: Octocode may call the model with the batch, and report it seen, before `send` returns.

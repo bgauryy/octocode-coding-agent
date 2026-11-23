@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import type * as OsModule from "node:os";
+import type * as Multiplexer from "@octocodeai/octocode-tui/multiplexer";
 import type { NativeClipboard } from "@octocodeai/octocode-tui";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { copyToClipboard, readClipboardText } from "../src/utils/clipboard.ts";
@@ -20,9 +21,14 @@ const mocks = vi.hoisted(() => ({
 			) => Promise<Buffer | undefined>
 		>(),
 	platform: vi.fn<() => NodeJS.Platform>(),
+	passthrough: vi.fn<() => boolean>(),
 }));
 vi.mock("@octocodeai/octocode-tui", () => ({ getNativeClipboard: mocks.getNativeClipboard }));
 vi.mock("../src/utils/clipboard-command.ts", () => ({ runClipboardCommand: mocks.command }));
+vi.mock("@octocodeai/octocode-tui/multiplexer", async () => ({
+	...(await vi.importActual<typeof Multiplexer>("@octocodeai/octocode-tui/multiplexer")),
+	tmuxPaneAllowsPassthrough: mocks.passthrough,
+}));
 vi.mock("node:os", async () => ({
 	...(await vi.importActual<typeof OsModule>("node:os")),
 	platform: mocks.platform,
@@ -43,6 +49,9 @@ beforeEach(() => {
 		"WSL_DISTRO_NAME",
 		"WSLENV",
 		"OCTOCODE_CLIPBOARD_OSC52",
+		// The copy routes through a multiplexer the test may itself run in.
+		"TMUX",
+		"STY",
 	])
 		vi.stubEnv(name, "");
 	mocks.platform.mockReturnValue("darwin");
@@ -54,7 +63,8 @@ beforeEach(() => {
 	originalWrite = process.stdout.write.bind(process.stdout);
 	process.stdout.write = ((...args: Parameters<typeof process.stdout.write>) => {
 		const [chunk] = args;
-		if (typeof chunk === "string" && chunk.startsWith("\x1b]52;c;")) {
+		// OSC 52, bare or in a multiplexer's DCS passthrough.
+		if (typeof chunk === "string" && (chunk.startsWith("\x1b]52;c;") || chunk.startsWith("\x1bP"))) {
 			osc52Writes.push(chunk);
 			return true;
 		}
@@ -312,6 +322,40 @@ describe("copyToClipboard", () => {
 		mocks.command.mockResolvedValue(undefined);
 		await copyToClipboard("hello");
 		expect(osc52Writes).toHaveLength(1);
+	});
+	test("a remote copy inside tmux goes through tmux, which forwards it whatever set-clipboard says", async () => {
+		vi.stubEnv("SSH_CONNECTION", "client server");
+		vi.stubEnv("TMUX", "/tmp/tmux-1/default,1,0");
+		mocks.clipboard.setText.mockRejectedValue(new Error("native failed"));
+		mocks.command.mockImplementation(async (name) => (name === "tmux" ? Buffer.alloc(0) : undefined));
+		await copyToClipboard("hello");
+		expect(mocks.command).toHaveBeenLastCalledWith("tmux", ["load-buffer", "-w", "-"], {
+			input: "hello",
+			timeoutMs: 2000,
+		});
+		expect(osc52Writes).toHaveLength(0);
+	});
+	test("without tmux load-buffer -w, OSC 52 goes in passthrough when the pane allows it, else as is", async () => {
+		vi.stubEnv("SSH_CONNECTION", "client server");
+		vi.stubEnv("TMUX", "/tmp/tmux-1/default,1,0");
+		mocks.clipboard.setText.mockRejectedValue(new Error("native failed"));
+		mocks.command.mockResolvedValue(undefined);
+		const encoded = Buffer.from("hello").toString("base64");
+		mocks.passthrough.mockReturnValue(true);
+		await copyToClipboard("hello");
+		mocks.passthrough.mockReturnValue(false);
+		await copyToClipboard("hello");
+		expect(osc52Writes).toEqual([`\x1bPtmux;\x1b\x1b]52;c;${encoded}\x07\x1b\\`, `\x1b]52;c;${encoded}\x07`]);
+	});
+	test("inside GNU screen, OSC 52 goes in DCS pieces screen can hold", async () => {
+		vi.stubEnv("SSH_CONNECTION", "client server");
+		vi.stubEnv("STY", "1234.pts-0.host");
+		mocks.clipboard.setText.mockRejectedValue(new Error("native failed"));
+		mocks.command.mockResolvedValue(undefined);
+		const text = "x".repeat(100);
+		const encoded = Buffer.from(text).toString("base64");
+		await copyToClipboard(text);
+		expect(osc52Writes).toEqual([`\x1bP\x1b]52;c;${encoded.slice(0, 76)}\x1b\\\x1bP${encoded.slice(76)}\x07\x1b\\`]);
 	});
 	test("does not emit oversized OSC 52 payloads", async () => {
 		vi.stubEnv("SSH_CONNECTION", "client server");

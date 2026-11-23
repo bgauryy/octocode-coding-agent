@@ -288,11 +288,12 @@ function isolatedWorktree(id: string, options: ResumeOptions): { ref: string; pa
 }
 
 /**
- * The task a continued child runs: its recorded profile and browser mode, and its recorded model while that is still
- * among `available` (else the profile's or parent's routing applies), unless the call names its own. A call naming
- * another profile is refused: the saved conversation was built under the recorded profile's prompt, tools and approval.
+ * The task a continued child runs: its recorded profile, browser mode and request limit, and its recorded model while
+ * that is still among `available` (else the profile's or parent's routing applies), unless the call names its own. A
+ * call naming another profile is refused: the saved conversation was built under the recorded profile's prompt, tools
+ * and approval.
  */
-export function resumedTask<T extends { profile?: string; headless?: boolean; model?: string }>(
+export function resumedTask<T extends { profile?: string; headless?: boolean; model?: string; maxRequests?: number }>(
 	params: T,
 	child: SessionChild,
 	available: readonly { provider: string; id: string }[],
@@ -308,6 +309,7 @@ export function resumedTask<T extends { profile?: string; headless?: boolean; mo
 		profile: child.profile !== GENERAL_PROFILE ? child.profile : undefined,
 		headless: params.headless ?? child.headless,
 		model: params.model ?? (usable ? child.model : undefined),
+		maxRequests: params.maxRequests ?? child.maxRequests,
 	};
 }
 

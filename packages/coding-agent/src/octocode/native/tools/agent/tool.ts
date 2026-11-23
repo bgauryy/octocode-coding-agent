@@ -17,6 +17,7 @@ import {
 import { AGENT_FIELD_RENAMES, agentCall } from "../../../child-sessions/agent-call.ts";
 import { declaresReason, reasonSchema } from "../../../shared/reason.ts";
 import { maxSubagents } from "../../../subagents/claim.ts";
+import { FOREGROUND_ABORT_GRACE_MS } from "../../../subagents/process/outcome.ts";
 
 const MODES = {
 	agent: "task",
@@ -134,6 +135,8 @@ export function agentModes() {
 				// The delegation rules ask `notify` to be told (never sleep or poll), so the loadout keeps it whenever agent is active.
 				// A lean child gets no such rules and only messages its parent: it has `notify` only when its profile lists it.
 				...(envFlag(process.env, LEAN_ENV) ? {} : { companionTools: ["notify"] }),
+				// A foreground child stopped by Esc still returns its record and spend once its process is down.
+				abortGraceMs: FOREGROUND_ABORT_GRACE_MS,
 				// The call's `reason` is declared here, not added by the native wrapper, so `execute` keeps it for coordinate's lock note.
 				parameters: Type.Unsafe<{ type: Mode; reason?: string } & Record<string, unknown>>({
 					type: "object",

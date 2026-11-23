@@ -7,19 +7,61 @@ import { modelSizeClass, SIZE_RANK, type SizeClass } from "../octocode/subagents
 import { bedrockModelAccess } from "../core/bedrock-model-access.ts";
 import { fuzzyFilter } from "@octocodeai/octocode-tui";
 import { cliStyle } from "../utils/cli-style.ts";
-import { formatNoModelsAvailableMessage } from "../core/auth-guidance.ts";
+import { formatNoApiKeyFoundMessage, formatNoModelsAvailableMessage } from "../core/auth-guidance.ts";
+import { APP_NAME } from "../config.ts";
 import type { ModelRuntime } from "../core/model-runtime.ts";
 import { formatTokens } from "../octocode/shared/format.ts";
 
+/** Why `--provider <id>` lists nothing: no such provider, or one with no usable credentials; undefined when it has models. */
+function unusableProvider(
+	runtime: Pick<ModelRuntime, "getProviders" | "getDefinedProviderIds">,
+	available: readonly Model<Api>[],
+	provider: string,
+): string | undefined {
+	if (available.some((model) => model.provider === provider)) return undefined;
+	const connected = [...new Set(available.map((model) => model.provider))].sort();
+	const known =
+		runtime.getProviders().some((entry) => entry.id === provider) || runtime.getDefinedProviderIds().includes(provider);
+	if (known) return formatNoApiKeyFoundMessage(provider, "cli");
+	return `Unknown provider "${provider}". Connected: ${connected.join(", ")}. ${APP_NAME} --list-models lists their models.`;
+}
+
+/** What an empty filtered list says: the filters that matched nothing, and the command that lists the rest. */
+function noMatchText(provider: string | undefined, size: SizeClass | undefined, search: string | undefined): string {
+	const filters = [
+		...(provider ? [`provider ${provider}`] : []),
+		...(size ? [`size ${size}`] : []),
+		...(search ? [`search "${search}"`] : []),
+	];
+	const wider = provider ? `${APP_NAME} --list-models --provider ${provider}` : `${APP_NAME} --list-models`;
+	return `No models match ${filters.join(", ")}. ${wider} lists every one you can use.`;
+}
+
+/** The note under a `--check-model-access` table: what `unverified` and `not Bedrock` mean. */
+function accessNote(rows: readonly { access: string }[]): string[] {
+	const notes: string[] = [];
+	if (rows.some((row) => row.access.startsWith("unverified")))
+		notes.push(
+			"unverified: AWS did not confirm access (the reason is in parentheses); a request may still work or fail.",
+		);
+	if (rows.some((row) => row.access === NOT_CHECKED))
+		notes.push(`${NOT_CHECKED}: only Amazon Bedrock access can be checked without a request.`);
+	return notes;
+}
+
+/** The access cell of a model `--check-model-access` cannot check: only Bedrock answers without a request. */
+const NOT_CHECKED = "not Bedrock";
+
 /**
- * List available models, optionally filtered by search pattern
+ * List available models, optionally filtered by search pattern. Resolves to the exit status: 1 when `--provider` names
+ * a provider that is unknown or has no usable credentials (told on stderr), else 0.
  */
 export async function listModels(
 	modelRuntime: ModelRuntime,
 	searchPattern?: string,
 	signal?: AbortSignal,
 	options: { provider?: string; size?: SizeClass; checkAccess?: boolean } = {},
-): Promise<void> {
+): Promise<number> {
 	const loadError = modelRuntime.getError();
 	if (loadError) {
 		console.error(cliStyle.warn(`Warning: errors loading models.json:\n${loadError}`));
@@ -29,7 +71,13 @@ export async function listModels(
 
 	if (models.length === 0) {
 		console.log(formatNoModelsAvailableMessage("cli"));
-		return;
+		return 0;
+	}
+
+	const providerProblem = options.provider ? unusableProvider(modelRuntime, models, options.provider) : undefined;
+	if (providerProblem) {
+		console.error(providerProblem);
+		return 1;
 	}
 
 	let filteredModels: Model<Api>[] = models.filter(
@@ -41,8 +89,8 @@ export async function listModels(
 	}
 
 	if (filteredModels.length === 0) {
-		console.log(`No models match ${[options.provider, options.size, searchPattern].filter(Boolean).join(" ")}`);
-		return;
+		console.log(noMatchText(options.provider, options.size, searchPattern));
+		return 0;
 	}
 
 	filteredModels.sort((a, b) => {
@@ -60,7 +108,7 @@ export async function listModels(
 		provider: m.provider,
 		model: m.id,
 		size: modelSizeClass(m),
-		access: access?.get(m) ?? "unverified",
+		access: access?.get(m) ?? NOT_CHECKED,
 		context: formatTokens(m.contextWindow),
 		maxOut: formatTokens(m.maxTokens),
 		thinking: m.reasoning ? "yes" : "no",
@@ -112,4 +160,6 @@ export async function listModels(
 		].join("  ");
 		console.log(line);
 	}
+	if (access) for (const note of accessNote(rows)) console.log(cliStyle.dim(note));
+	return 0;
 }

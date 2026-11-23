@@ -183,7 +183,7 @@ export function addUsage(total: Usage, usage: unknown): void {
  * (uncached input, cache reads and writes), `cacheRead` the part of it read from cache, `cost` the sum of Octocode's per-reply
  * estimate, and `unpriced` whether any reply came from a model without pricing (its tokens are missing from `cost`).
  */
-export interface UsageTotals {
+export interface TokenTotals {
 	input: number;
 	cacheRead: number;
 	/** The part of `input` written to cache. */
@@ -193,7 +193,7 @@ export interface UsageTotals {
 	unpriced: boolean;
 }
 
-export const emptyTotals = (): UsageTotals => ({
+export const emptyTotals = (): TokenTotals => ({
 	input: 0,
 	cacheRead: 0,
 	cacheWrite: 0,
@@ -235,7 +235,7 @@ export function entryMessage(entry: unknown): unknown {
 }
 
 /** Adds one reply's usage (anything that is not a number counts as zero); `unpriced` from `unpricedModel`. */
-export function addReply(totals: UsageTotals, usage: unknown, unpriced: boolean): void {
+export function addReply(totals: TokenTotals, usage: unknown, unpriced: boolean): void {
 	if (!isRecord(usage)) return;
 	totals.input += finiteOrZero(usage.input) + finiteOrZero(usage.cacheRead) + finiteOrZero(usage.cacheWrite);
 	totals.cacheRead += finiteOrZero(usage.cacheRead);

@@ -26,7 +26,8 @@ import { teamWorkspace } from "../../../team/store/workspace.ts";
 import { checkGoal } from "../../../team/identity.ts";
 import { describeMembers } from "../../../team/member-list.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
-import { describeChanges, describeConflicts, memberGoals, mutatedPaths } from "../../../team/routing.ts";
+import { toolEffect } from "../../../permission/tool-effects.ts";
+import { describeChanges, describeConflicts, memberGoals } from "../../../team/routing.ts";
 import type { Team } from "../../../team/session.ts";
 import { type ChildBudgets, childStanding, grantRequests } from "../../../team/tools/grant.ts";
 import {
@@ -102,7 +103,7 @@ export function registerCollab(
 	// Reservations are enforced where the edit happens, so a model that forgot to check cannot overwrite a peer's file with
 	// the edit tools, or with a `bash` command whose parse names the path it writes (redirect, `tee`, `rm`, `mv`, `cp`, `sed -i`…).
 	// A command whose targets the parse cannot name (`> $FILE`, a script an interpreter runs, `git checkout .`) is not checked.
-	// The `file` tool checks each of its queries itself (one held path fails one change, not the whole batch); this covers `bash` writes.
+	// The `file` tool checks each of its queries itself (one held path fails one change, not the whole batch); this covers `bash` and every other tool that declares its writes.
 	// A `..` after a symlink stays in the path (`reservationPath`): the shell reads it past the link, not before it.
 	const refusal = (file: string, cwd: string) => team.reservation(reservationPath(cwd, file), file);
 	const reservationGate = async (
@@ -151,10 +152,11 @@ export function registerCollab(
 		}
 		if (command !== undefined && held && PACKAGE_SCRIPT.test(command) && !options.shellReadOnly?.(command))
 			markConfined(event.toolCallId, PACKAGE_SCRIPT_NOTE, PACKAGE_SCRIPT_REPEAT);
+		// Any other tool: the files its declared effect names (Pi's `write` and `edit` from an extension, a native writer).
 		const files =
 			command !== undefined
 				? ((await options.shellWrites?.(command)) ?? [])
-				: mutatedPaths(event.toolName, event.input);
+				: (toolEffect(event.toolName)?.changes?.(input) ?? []).map((change) => change.path);
 		for (const file of files) {
 			const reason = refusal(file, ctx.cwd);
 			if (reason) return { block: true, reason };

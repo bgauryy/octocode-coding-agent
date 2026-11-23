@@ -5,6 +5,7 @@ import { atomicWriteFileUnlocked, shortHash } from "@octocodeai/octocode-common/
 import { withFileLock } from "@octocodeai/octocode-common/file-write-lock";
 import { type AgentDb, agentEvents } from "../../../../db/src/api.ts";
 import { isCurrentWorkspace, workspaceStateDir } from "../../storage/workspace.ts";
+import { globalPaths, HOME_NAMES } from "../../storage/state-paths.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { workspaceRoot } from "../../utils/git-repository.ts";
@@ -43,7 +44,7 @@ export async function projectAgents(
 	if (wanted !== undefined && (await currentView(file)) === wanted) return;
 	await withFileLock(file, async (assertHeld) => {
 		await checkPath(expected, directory, file);
-		const previous = await readView(file, storeKey);
+		const previous = await readView(file, storeKey, formerStoreKey(agent.file));
 		// Read again under the lock: commits made while waiting for the disk are in this write.
 		const content = viewContent(agent, expected.id, storeKey);
 		if (content === undefined || content === previous) return; // An empty file cannot carry a database binding.
@@ -57,20 +58,60 @@ export async function projectAgents(
 	});
 }
 
-/** The existing view, checked to be one this database wrote; undefined when there is none. */
-async function readView(file: string, storeKey: string): Promise<string | undefined> {
+/** The generated view cannot be used or replaced by this database; it stays so until the file changes. */
+export class ForeignViewError extends Error {
+	readonly code = "EFOREIGNVIEW";
+	readonly file: string;
+	constructor(message: string, file: string) {
+		super(message);
+		this.name = "ForeignViewError";
+		this.file = file;
+	}
+}
+
+/** A change signature of the view file; undefined when it does not exist. */
+export async function viewSignature(file: string): Promise<string | undefined> {
+	const stat = await fs.promises.stat(file).catch((error: NodeJS.ErrnoException) => {
+		return error.code === "ENOENT" ? undefined : null;
+	});
+	if (stat === null) return "unreadable";
+	return stat && `${stat.mtimeMs}:${stat.size}:${stat.ino}`;
+}
+
+/**
+ * The key of the file the home's default database `file` had before agent state moved from `<Octocode home>/agent/` to
+ * the shared `~/.octocode/agent/`; undefined for any other database, or when the two are one file (`OCTOCODE_HOME`).
+ * Every workspace a session used before the move holds a view bound to that file, which no session writes any more: it
+ * is rebound like the database's own, where refusing it warned on every run until each file was removed by hand.
+ */
+function formerStoreKey(file: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
+	const own = canonicalPath(file);
+	const paths = globalPaths(env);
+	if (path.dirname(own) !== canonicalPath(paths.agentState)) return undefined;
+	const former = canonicalPath(path.join(paths.home, HOME_NAMES.agentState, path.basename(own)));
+	return former === own ? undefined : shortHash(former);
+}
+
+/** The existing view, checked to be one this database wrote (or may rebind, `formerKey`); undefined when there is none. */
+async function readView(file: string, storeKey: string, formerKey?: string): Promise<string | undefined> {
 	const stat = await fs.promises.stat(file).catch((error: NodeJS.ErrnoException) => {
 		if (error.code === "ENOENT") return undefined;
 		throw error;
 	});
 	if (!stat) return undefined;
-	if (stat.size > 1024 * 1024) throw new Error("Invalid agents.txt: generated view exceeds 1 MiB.");
+	// Each note names the file to remove by its path: the notice reaches the user wherever the session runs.
+	if (stat.size > 1024 * 1024)
+		throw new ForeignViewError(
+			`Invalid agents.txt: the generated view exceeds 1 MiB; remove ${file} to rebuild it.`,
+			file,
+		);
 	const previous = await fs.promises.readFile(file, "utf8");
 	const lines = previous.trim().split("\n");
 	if (!previous.trim() || lines.length > 50)
-		throw new Error("Invalid agents.txt; remove the generated file to rebuild it.");
+		throw new ForeignViewError(`Invalid agents.txt; remove ${file} to rebuild it.`, file);
 	for (const line of lines) {
-		const row: unknown = JSON.parse(line);
+		const row = parseRow(line);
+		if (row === undefined) throw new ForeignViewError(`Invalid agents.txt; remove ${file} to rebuild it.`, file);
 		if (
 			!isRecord(row) ||
 			row.version !== 1 ||
@@ -81,11 +122,24 @@ async function readView(file: string, storeKey: string): Promise<string | undefi
 			typeof row.type !== "string" ||
 			!(agentEvents.EVENT_TYPES as readonly string[]).includes(row.type) ||
 			!isRecord(row.data) ||
-			row.data.storeKey !== storeKey
+			!(row.data.storeKey === storeKey || (formerKey !== undefined && row.data.storeKey === formerKey))
 		)
-			throw new Error("agents.txt belongs to another database or format; remove the generated file to rebind it.");
+			throw new ForeignViewError(
+				`agents.txt belongs to another database or format; remove ${file} to rebind it.`,
+				file,
+			);
 	}
 	return previous;
+}
+
+/** One view line as JSON; undefined when it is not JSON (a file that is not a view). */
+function parseRow(line: string): unknown {
+	try {
+		return JSON.parse(line) as unknown;
+	} catch (error) {
+		if (error instanceof SyntaxError) return undefined;
+		throw error;
+	}
 }
 
 /** The view's text for the newest events, bound to the database by `storeKey`; undefined when there are none. */

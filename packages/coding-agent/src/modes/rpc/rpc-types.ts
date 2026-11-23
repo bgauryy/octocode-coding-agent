@@ -159,7 +159,14 @@ export type RpcResponse =
 			/** `interactiveOnly`: the model's plan allows interactive use only (`ModelRuntime.allowsUnattendedUse`). */
 			data: { models: Array<Model<any> & { interactiveOnly?: true }> };
 	  }
-	| { id?: string; type: "response"; command: "set_thinking_level"; success: true }
+	| {
+			id?: string;
+			type: "response";
+			command: "set_thinking_level";
+			success: true;
+			/** The level applied: the requested one clamped to what the model supports. */
+			data: { level: ThinkingLevel };
+	  }
 	| {
 			id?: string;
 			type: "response";

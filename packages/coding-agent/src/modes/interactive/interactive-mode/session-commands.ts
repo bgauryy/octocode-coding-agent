@@ -1,28 +1,38 @@
-import { validateCompactionInstructions } from "../../../core/compaction/manual-options.ts";
 /**
- * Slash commands that act on the current session: /reload, /export, /import, /share, /bug, /copy, /rename, /new and
- * /compact, plus project trust after a reload and the trust selector.
+ * Slash commands that act on the current session: /reload, /bug, /copy, /rename, /new and /compact, plus project trust
+ * after a reload and the trust selector. /export, /import and /share live in `session-file-commands.ts`.
  */
 
-import { type Component, Container, Spacer, ThemedText, TuiAltScreen } from "@octocodeai/octocode-tui";
-import { getApplicationPort } from "../../../core/application/index.ts";
+import { validateCompactionInstructions } from "../../../core/compaction/manual-options.ts";
+import { explainNothingToCompact } from "../../../core/compaction/nothing-to-compact.ts";
 import {
-	SessionImportFileNotFoundError,
-	SessionImportInvalidError,
-	SessionNameError,
-} from "../../../core/agent-session-runtime.ts";
+	type Component,
+	Container,
+	copiedAmount,
+	copiedMessage,
+	Spacer,
+	ThemedText,
+	TuiAltScreen,
+} from "@octocodeai/octocode-tui";
+import { getApplicationPort } from "../../../core/application/index.ts";
+import { SessionNameError } from "../../../core/agent-session-runtime.ts";
 import { NothingToCompactError } from "../../../core/agent-session/compaction-control.ts";
-import { MissingSessionCwdError } from "../../../core/session-cwd.ts";
 import { copyToClipboard } from "../../../utils/clipboard.ts";
 import { reportBug } from "../bug-report.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
-import { shareSession } from "../session-share.ts";
 import { setRegisteredThemes, theme } from "../../../theme/theme.ts";
 import { noticeLine } from "./display.ts";
 import { isExpandable } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
-import { warnRefusedSwitch } from "./trust-switch.ts";
+import { showCancelled, unsaved } from "./session-file-commands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+
+export {
+	getPathCommandArgument,
+	handleExportCommand,
+	handleImportCommand,
+	handleShareCommand,
+} from "./session-file-commands.ts";
 
 /** Interactive-mode members used by the session slash commands. */
 type SessionCommandsHost = Pick<
@@ -38,7 +48,6 @@ type SessionCommandsHost = Pick<
 	| "handleFatalRuntimeError"
 	| "uiStore"
 	| "keybindings"
-	| "outputPad"
 	| "promptForMissingSessionCwd"
 	| "rebuildChatFromMessages"
 	| "resetFeatureUI"
@@ -103,8 +112,9 @@ export async function handleReloadCommand(host: SessionCommandsHost): Promise<vo
 		if (chatRestoredBeforeSessionStart) {
 			return;
 		}
-		host.uiStore.getState().setHideThinking(host.settingsManager.getHideThinkingBlock());
-		host.outputPad = host.settingsManager.getOutputPad();
+		const view = host.uiStore.getState();
+		view.setHideThinking(host.settingsManager.getHideThinkingBlock());
+		view.setOutputPad(host.settingsManager.getOutputPad());
 		host.rebuildChatFromMessages();
 		chatRestoredBeforeSessionStart = true;
 	};
@@ -138,115 +148,6 @@ export async function handleReloadCommand(host: SessionCommandsHost): Promise<vo
 		}
 		host.showError(`Reload failed: ${errorMessage(error)}`);
 	}
-}
-
-export async function handleExportCommand(host: SessionCommandsHost, text: string): Promise<void> {
-	const outputPath = host.getPathCommandArgument(text, "/export");
-
-	try {
-		if (outputPath?.endsWith(".jsonl")) {
-			const filePath = getApplicationPort(host.session).invoke("exportToJsonl", outputPath);
-			host.showStatus(`Session exported to: ${filePath}`);
-		} else {
-			const filePath = await getApplicationPort(host.session).invoke("exportToHtml", outputPath, {
-				themeName: theme.name,
-			});
-			host.showStatus(`Session exported to: ${filePath}`);
-		}
-	} catch (error: unknown) {
-		host.showError(`Failed to export session: ${errorMessage(error)}`);
-	}
-}
-
-export function getPathCommandArgument(text: string, command: "/export" | "/import"): string | undefined {
-	if (text === command) {
-		return undefined;
-	}
-	if (!text.startsWith(`${command} `)) {
-		return undefined;
-	}
-
-	const argsString = text.slice(command.length + 1).trimStart();
-	if (!argsString) {
-		return undefined;
-	}
-
-	const firstChar = argsString[0];
-	if (firstChar === '"' || firstChar === "'") {
-		const closingQuoteIndex = argsString.indexOf(firstChar, 1);
-		if (closingQuoteIndex < 0) {
-			return undefined;
-		}
-		return argsString.slice(1, closingQuoteIndex);
-	}
-
-	const firstWhitespaceIndex = argsString.search(/\s/);
-	if (firstWhitespaceIndex < 0) {
-		return argsString;
-	}
-	return argsString.slice(0, firstWhitespaceIndex);
-}
-
-export async function handleImportCommand(host: SessionCommandsHost, text: string): Promise<void> {
-	const inputPath = host.getPathCommandArgument(text, "/import");
-	if (!inputPath) {
-		host.showWarning("Usage: /import <path.jsonl>");
-		return;
-	}
-
-	const confirmed = await host.showConfirmDialog("Import session", `Replace current session with ${inputPath}?`);
-	if (!confirmed) {
-		host.showStatus("Import cancelled");
-		return;
-	}
-
-	host.clearStatusIndicator();
-	const runImport = async (cwdOverride?: string) => {
-		const result = await (cwdOverride === undefined
-			? host.runtimeHost.importFromJsonl(inputPath)
-			: host.runtimeHost.importFromJsonl(inputPath, cwdOverride));
-		host.showStatus(result.cancelled ? "Import cancelled" : `Session imported from: ${inputPath}`);
-	};
-	// The retry in a chosen folder fails the same way as the first attempt.
-	try {
-		try {
-			await runImport();
-		} catch (error: unknown) {
-			if (!(error instanceof MissingSessionCwdError)) throw error;
-			const selectedCwd = await host.promptForMissingSessionCwd(error);
-			if (!selectedCwd) {
-				host.showStatus("Import cancelled");
-				return;
-			}
-			await runImport(selectedCwd);
-		}
-	} catch (error: unknown) {
-		if (error instanceof SessionImportFileNotFoundError || error instanceof SessionImportInvalidError) {
-			host.showError(`Failed to import session: ${error.message}`);
-			return;
-		}
-		if (warnRefusedSwitch(host, error)) return;
-		await host.handleFatalRuntimeError("Failed to import session", error);
-	}
-}
-
-export async function handleShareCommand(host: SessionCommandsHost): Promise<void> {
-	const confirmed = await host.showConfirmDialog(
-		"Share session",
-		"Uploads this whole session (every branch, the system prompt and tool definitions) to a secret GitHub gist. It is unlisted, but anyone with the link can read it. Continue?",
-	);
-	if (!confirmed) {
-		host.showStatus("Share cancelled");
-		return;
-	}
-	await shareSession({
-		session: host.session,
-		ui: host.ui,
-		editorContainer: host.editorContainer,
-		editor: host.editor,
-		showStatus: (message) => host.showStatus(message),
-		showError: (message) => host.showError(message),
-	});
 }
 
 export async function handleBugCommand(host: SessionCommandsHost, hint: string | undefined): Promise<void> {
@@ -287,9 +188,9 @@ export async function handleCopyCommand(
 	try {
 		await copyToClipboard(text);
 		if (options.flashConfirmation && host.ui instanceof TuiAltScreen) {
-			host.ui.flash("Copied!");
+			host.ui.flash(copiedMessage(text));
 		} else {
-			host.showStatus("Copied last agent message to clipboard");
+			host.showStatus(`Copied last agent message to clipboard · ${copiedAmount(text)}`);
 		}
 	} catch (error) {
 		host.showError(errorMessage(error));
@@ -317,17 +218,25 @@ export function handleNameCommand(host: SessionCommandsHost, text: string): void
 	}
 	host.chatContainer.addChild(new Spacer(1));
 	const displayName = sessionName ?? name;
-	host.chatContainer.addChild(new ThemedText(() => theme.fg("dim", `Session name set: ${displayName}`), 1, 0));
+	const kept = unsaved(host.sessionManager) ? " · kept once the session has a message" : "";
+	host.chatContainer.addChild(new ThemedText(() => theme.fg("dim", `Session name set: ${displayName}${kept}`), 1, 0));
 	host.ui.requestRender();
 }
 
 export async function handleClearCommand(host: SessionCommandsHost, previousName?: string): Promise<void> {
 	host.clearStatusIndicator();
+	// A session with no message is never written: the name it has, or the one typed for it, goes with it.
+	const dropped = unsaved(host.sessionManager)
+		? previousName?.trim() || host.sessionManager.getSessionName()
+		: undefined;
 	try {
 		const result = await host.runtimeHost.newSession(previousName ? { previousName } : undefined);
-		if (result.cancelled) return host.showStatus("New session cancelled.");
+		if (result.cancelled) return showCancelled(host, "New session cancelled.");
 		host.chatContainer.addChild(new Spacer(1));
-		host.chatContainer.addChild(noticeLine("success", "New session started", host.outputPad));
+		const started = dropped
+			? `New session started · the previous one had no messages, so "${dropped}" was not saved`
+			: "New session started";
+		host.chatContainer.addChild(noticeLine("success", started, host.uiStore.getState().view.outputPad));
 		host.ui.requestRender();
 	} catch (error: unknown) {
 		if (error instanceof SessionNameError)
@@ -344,11 +253,18 @@ export async function handleCompactCommand(host: SessionCommandsHost, customInst
 		await host.session.settled();
 	}
 	host.clearStatusIndicator();
+	// A session with no message has nothing to compact, with a model or without one: say that, not that no model is set.
+	const branch = host.sessionManager.getBranch();
+	if (!branch.some((entry) => entry.type === "message")) {
+		const keep = host.settingsManager.getCompactionKeepRecentTokens(host.session.model);
+		return showCancelled(host, explainNothingToCompact(branch, keep).notice);
+	}
 
 	try {
 		await getApplicationPort(host.session).invoke("compact", { customInstructions });
 	} catch (error) {
 		// Failures are emitted as events; an empty session is not one.
-		if (error instanceof NothingToCompactError) host.showStatus(error.notice);
+		// Nothing was compacted, so no next-step hint follows (`showCancelled`).
+		if (error instanceof NothingToCompactError) showCancelled(host, error.notice);
 	}
 }

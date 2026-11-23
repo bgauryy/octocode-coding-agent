@@ -320,7 +320,7 @@ export class DbWriter {
 
 /**
  * From source the worker is `worker-entry.ts`. The Node bundle ships that entry built on its own beside the bundle file
- * (`scripts/build-coding-agent.mjs`), so a writer thread loads the database code, not the whole bundle. A layout without
+ * (`scripts/build/build-coding-agent.mjs`), so a writer thread loads the database code, not the whole bundle. A layout without
  * that file fails the worker's load, and the writer runs inline.
  */
 function defaultEntry(): URL {

@@ -4,6 +4,7 @@
  * private state only through the run state and callbacks the session passes in.
  */
 
+import type { CacheWarmingStatus } from "../cache-warmer/types.ts";
 import type { Agent, AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, ImageContent, Model, TextContent } from "@octocodeai/octocode-ai/compat";
 import type { CompactionResult } from "../compaction/index.ts";
@@ -103,6 +104,8 @@ export interface SessionPublic {
 	readonly resourceLoader: ResourceLoader;
 	readonly promptTemplates: ReadonlyArray<PromptTemplate>;
 	readonly model: Model<any> | undefined;
+	/** The cache warmer's state, undefined when the session has none. */
+	readonly cacheWarmingStatus: CacheWarmingStatus | undefined;
 	readonly thinkingLevel: ThinkingLevel;
 	readonly routedModel: { model: Model<any>; thinkingLevel?: ThinkingLevel } | undefined;
 	readonly messages: AgentMessage[];

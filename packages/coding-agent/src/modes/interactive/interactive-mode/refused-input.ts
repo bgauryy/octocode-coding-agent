@@ -6,6 +6,7 @@
 
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { getApplicationPort } from "../../../core/application/index.ts";
+import { selectEscapeAbortedRun } from "../state/input-slice.ts";
 import { prependToEditorDraft } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { featureCommandHint } from "./next-step-hint.ts";
@@ -117,17 +118,17 @@ async function sendAsMessage(input: RefusedInput, text: string): Promise<void> {
  * the editor, ahead of any new draft, and a warning says it was not sent. Slash commands are not prompts and are left alone.
  */
 export async function submitPrompt(
-	host: Pick<InteractiveModeHost, "chatContainer" | "editor" | "escapeAbortedRun" | "session" | "showWarning" | "ui">,
+	host: Pick<InteractiveModeHost, "chatContainer" | "editor" | "session" | "showWarning" | "ui" | "uiStore">,
 	text: string,
 ): Promise<void> {
-	const { session } = host;
+	const { session, uiStore } = host;
 	const before = session.messages.length;
-	host.escapeAbortedRun = false;
+	uiStore.getState().clearEscapeAbort();
 	await getApplicationPort(session).invoke("prompt", text, {
 		attachImagePaths: true,
 		preflightResult: featureCommandHint(host, text),
 	});
-	if (!host.escapeAbortedRun || text.trimStart().startsWith("/")) return;
+	if (!selectEscapeAbortedRun(uiStore.getState()) || text.trimStart().startsWith("/")) return;
 	if (session.messages.slice(before).some((message) => message.role === "user")) return;
 	prependToEditorDraft(host.editor, text);
 	host.showWarning("Cancelled before it reached the model: the prompt is back in the editor");

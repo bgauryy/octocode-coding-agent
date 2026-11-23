@@ -259,6 +259,17 @@ describe("backlog schemas", () => {
 	it("completion requires summary, files, verification and operationKey and closes its objects", () => {
 		expect(Value.Check(CompletionSchema, completion)).toBe(true);
 		expect(Value.Check(CompletionSchema, { ...completion, lesson: "x", replaces: 2 })).toBe(true);
+		const receipt = {
+			id: "s:1:abc",
+			command: "yarn test",
+			state: "finished",
+			exitCode: 0,
+			stale: false,
+			mutationEpoch: "e",
+			revisionAtLaunch: 0,
+		};
+		expect(Value.Check(CompletionSchema, { ...completion, receipt })).toBe(true);
+		expect(Value.Check(CompletionSchema, { ...completion, receipt: { ...receipt, stale: "no" } })).toBe(false);
 		const { operationKey: _key, ...noKey } = completion;
 		expect(Value.Check(CompletionSchema, noKey)).toBe(false);
 		expect(Value.Check(CompletionSchema, { ...completion, verification: { status: "skipped", summary: "" } })).toBe(

@@ -56,6 +56,7 @@ export class SessionList implements Component, Focusable {
 			shown,
 			total: this.allSessions.length,
 			marked: this.deleteFlow.markedCount,
+			searching: this.list.getQuery() !== "",
 		};
 	}
 

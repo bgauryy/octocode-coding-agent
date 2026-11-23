@@ -30,8 +30,10 @@ export interface MessagesSources {
 class TranscriptCache {
 	private readonly parsed = new Map<string, { stamp: string; value: ReturnType<typeof prepare> }>();
 
+	/** A session's file is written with its first message: before that its transcript is empty, not an error. */
 	read(file: string): ReturnType<typeof prepare> {
-		const stat = fs.statSync(file);
+		const stat = fs.statSync(file, { throwIfNoEntry: false });
+		if (!stat) return prepare([]);
 		const stamp = `${stat.mtimeMs}:${stat.size}`;
 		const cached = this.parsed.get(file);
 		if (cached?.stamp === stamp) return cached.value;

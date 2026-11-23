@@ -2,7 +2,7 @@ import type { Component } from "../tui.ts";
 import { renderChanged, trackRenderChanges } from "../tui/render-signal.ts";
 import { visibleWidth } from "../utils/width.ts";
 import { sliceByColumn } from "../utils/columns.ts";
-import { continuesPreviousRow, WRAP_JOIN_MARK } from "../utils/row-marks.ts";
+import { rowContinuation, WRAP_JOIN_MARK, WRAP_SPACE_MARK } from "../utils/row-marks.ts";
 import { wrapTextWithAnsi } from "../utils/wrap.ts";
 import { fitHorizontalPadding, frameContentLines } from "../utils.ts";
 
@@ -123,7 +123,8 @@ function wrapWithHangingIndent(line: string, width: number): string[] {
 		"$1",
 	);
 	const continued = wrapTextWithAnsi(remainder, width - indent.length);
-	// The remainder starts a fresh wrap, so it carries the first wrap's mark of a word cut at that row break.
-	if (continuesPreviousRow(rest[0] ?? "")) continued[0] = WRAP_JOIN_MARK + (continued[0] ?? "");
+	// The remainder starts a fresh wrap, so it carries the first wrap's mark of that row break: a cut word or a space.
+	const kind = rowContinuation(rest[0] ?? "")?.kind;
+	if (kind) continued[0] = (kind === "join" ? WRAP_JOIN_MARK : WRAP_SPACE_MARK) + (continued[0] ?? "");
 	return [first, ...continued.map((part) => indent + part)];
 }

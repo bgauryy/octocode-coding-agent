@@ -11,7 +11,7 @@ import {
 	submitValue,
 } from "./editing.ts";
 import { acceptGhost } from "./ghost.ts";
-import { isOnFirstVisualLine, isOnLastVisualLine, navigateHistory } from "./history.ts";
+import { atHistoryRecall, isOnFirstVisualLine, isOnLastVisualLine, navigateHistory } from "./history.ts";
 import {
 	deleteToEndOfLine,
 	deleteToStartOfLine,
@@ -119,11 +119,15 @@ export function handleEditorInput(editor: EditorModel, data: string): void {
 			const { cursorLine, cursorCol, lines } = editor.state;
 			const prefix = editor.autocomplete.autocompletePrefix;
 			const atInputStart = cursorLine === 0 && (lines[0] || "").slice(0, cursorCol - prefix.length).trim() === "";
-			const midInputSkill =
-				!atInputStart && editor.isInSkillMentionContext((lines[cursorLine] || "").slice(0, cursorCol));
+			const beforeCursor = (lines[cursorLine] || "").slice(0, cursorCol);
+			const midInputSkill = !atInputStart && editor.isInSkillMentionContext(beforeCursor);
+			const typed = editor.getText();
+			const commandArgument = cursorLine === 0 && editor.isInSlashCommandContext(beforeCursor);
 			if (selected && editor.autocomplete.insertCompletion(selected, prefix)) {
-				// A command (or its `/path` argument) runs; a skill named mid-input only inserts.
-				if (prefix.startsWith("/") && !midInputSkill) {
+				// A command (or its `/path` argument) runs; a skill named mid-input only inserts. An argument typed in
+				// full (`/backlog tui`) runs too: a completion that changes nothing would only cost a second Enter.
+				const exact = commandArgument && editor.getText().trimEnd() === typed.trimEnd();
+				if ((prefix.startsWith("/") && !midInputSkill) || exact) {
 					editor.autocomplete.cancelAutocomplete();
 					// Fall through to submit
 				} else {
@@ -250,8 +254,9 @@ export function handleEditorInput(editor: EditorModel, data: string): void {
 	// Arrow key navigation (with history support)
 	if (kb.matches(data, "tui.editor.cursorUp")) {
 		if (
-			isOnFirstVisualLine(editor) &&
-			(editor.isEditorEmpty() || editor.historyIndex > -1 || editor.state.cursorCol === 0)
+			atHistoryRecall(editor) ||
+			(isOnFirstVisualLine(editor) &&
+				(editor.isEditorEmpty() || editor.historyIndex > -1 || editor.state.cursorCol === 0))
 		) {
 			navigateHistory(editor, -1);
 		} else if (isOnFirstVisualLine(editor)) {
@@ -263,7 +268,7 @@ export function handleEditorInput(editor: EditorModel, data: string): void {
 		return;
 	}
 	if (kb.matches(data, "tui.editor.cursorDown")) {
-		if (editor.historyIndex > -1 && isOnLastVisualLine(editor)) {
+		if (atHistoryRecall(editor) || (editor.historyIndex > -1 && isOnLastVisualLine(editor))) {
 			navigateHistory(editor, 1);
 		} else if (isOnLastVisualLine(editor)) {
 			// Already at bottom - jump to end of line

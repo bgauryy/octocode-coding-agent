@@ -181,6 +181,30 @@ describe("runPrintMode", () => {
 		expect(session.featureHost.emit).toHaveBeenCalledWith({ type: "session_shutdown", reason: "quit" });
 	});
 
+	it("fails when a message a command sent could not go out, and fails open on other feature errors", async () => {
+		type FeatureError = { source: string; event: string; error: string };
+		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		const run = async (failure: FeatureError) => {
+			const runtimeHost = createRuntimeHost(createAssistantMessage({ text: "" }));
+			let onError: ((err: FeatureError) => void) | undefined;
+			runtimeHost.session.bindFeatures.mockImplementation(async (bindings: { onError: typeof onError }) => {
+				onError = bindings.onError;
+			});
+			// `/plan add ...` with no model: the command runs, then the turn it asks for cannot start.
+			runtimeHost.session.prompt.mockImplementation(async () => onError?.(failure));
+			return runPrintMode(runtimeHost as unknown as Parameters<typeof runPrintMode>[0], {
+				mode: "text",
+				initialMessage: "/plan add a retry",
+			});
+		};
+		const noModel = "No model selected. Run `octocode` and type /providers to connect one.";
+		expect(await run({ source: "<runtime>", event: "send_message", error: noModel })).toBe(1);
+		expect(error).toHaveBeenCalledWith(noModel);
+		expect(await run({ source: "<runtime>", event: "send_user_message", error: noModel })).toBe(1);
+		expect(await run({ source: "timer", event: "turn_end", error: "boom" })).toBe(0);
+		expect(error).toHaveBeenLastCalledWith("Feature error (timer): boom");
+	});
+
 	it("emits session_shutdown in json mode", async () => {
 		const runtimeHost = createRuntimeHost(createAssistantMessage({ text: "done" }));
 		const { session } = runtimeHost;
@@ -211,6 +235,25 @@ describe("runPrintMode", () => {
 		expect(errorSpy).toHaveBeenCalledWith("provider failure");
 		expect(session.featureHost.emit).toHaveBeenCalledTimes(1);
 		expect(session.featureHost.emit).toHaveBeenCalledWith({ type: "session_shutdown", reason: "quit" });
+	});
+
+	it("names the failed provider, model and endpoint in the final line, as the retry lines do", async () => {
+		const failed = createAssistantMessage({ stopReason: "error", errorMessage: "fetch failed" });
+		const runtimeHost = createRuntimeHost(failed);
+		const outcome = createRunOutcome();
+		recordRunMessage(
+			outcome,
+			failed,
+			(message) => `${message.provider}/${message.model} at llm.internal:8080: fetch failed`,
+		);
+		Object.defineProperty(runtimeHost.session, "lastRunOutcome", { get: () => outcome });
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const exitCode = await runPrintMode(runtimeHost as unknown as Parameters<typeof runPrintMode>[0], {
+			mode: "text",
+		});
+		expect(exitCode).toBe(1);
+		expect(errorSpy).toHaveBeenCalledWith("openai/gpt-4o-mini at llm.internal:8080: fetch failed");
+		expect(errorSpy).not.toHaveBeenCalledWith("fetch failed");
 	});
 
 	it("returns non-zero in json mode when the run failed", async () => {

@@ -1,5 +1,6 @@
 import {
 	type Component,
+	formatKeyText,
 	type KeyId,
 	type Keybinding,
 	SEPARATOR,
@@ -9,27 +10,10 @@ import {
 } from "@octocodeai/octocode-tui";
 import { theme } from "./theme-global.ts";
 
-// Keybinding hints as every surface shows them: terminal components, tool renderers in core and native UI.
+// Keybinding hints as every surface shows them: terminal components, tool renderers in core and native UI. Key names
+// follow the terminal library's one rule (`formatKeyText`: lowercase, `esc`, `option` for `alt` on macOS).
 
-/**
- * Key text as every hint, chip and shortcut table shows it: lowercase (`shift+tab`, `ctrl+c`), with `option` for `alt`
- * on macOS.
- */
-export function formatKeyText(key: string): string {
-	return key
-		.split("/")
-		.map((k) =>
-			k
-				.split("+")
-				.map((part) => {
-					const lower = part.toLowerCase();
-					if (lower === "escape") return "esc";
-					return process.platform === "darwin" && lower === "alt" ? "option" : lower;
-				})
-				.join("+"),
-		)
-		.join("/");
-}
+export { formatKeyText };
 
 function formatKeys(keys: KeyId[]): string {
 	if (keys.length === 0) return "";

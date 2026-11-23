@@ -99,7 +99,7 @@ cancel() {
 trap 'cancel INT 130' INT
 trap 'cancel TERM 143' TERM
 trap 'cancel HUP 129' HUP
-env -i "${test_env[@]}" "$node_path" "$repo_root/scripts/test-workspaces.mjs" "$@" &
+env -i "${test_env[@]}" "$node_path" "$repo_root/scripts/test/test-workspaces.mjs" "$@" &
 runner_pid=$!
 status=0
 wait "$runner_pid" || status=$?

@@ -69,6 +69,8 @@ export interface SessionChild {
 	headless?: boolean;
 	/** The hook mode a call named for it (`hooks`): a resume keeps it unless it names another. */
 	hooks?: "off" | "decisions" | "all";
+	/** The soft request limit a call named for it (`maxRequests`): a resume keeps it unless it names another. */
+	maxRequests?: number;
 	/** The `provider/id` (with any `:thinking`) it ran on; absent when it ran on the parent's model. */
 	model?: string;
 	/** Its latest run exited before its first model turn (`details.startup`), so no conversation may be saved. */
@@ -202,6 +204,7 @@ export function sessionChildren(entries: readonly unknown[]): SessionChild[] {
 		else if (input.resume !== id) delete child.runner;
 		if (typeof input.headless === "boolean") child.headless = input.headless;
 		if (input.hooks === "off" || input.hooks === "decisions" || input.hooks === "all") child.hooks = input.hooks;
+		if (Number.isInteger(input.maxRequests)) child.maxRequests = input.maxRequests as number;
 		const task = text(input.task);
 		if (task && !(input.resume === id && tasks.has(id))) tasks.set(id, task);
 		update(child, details, withReport ? reportOf(entry, message) : undefined);

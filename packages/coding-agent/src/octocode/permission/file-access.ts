@@ -1,29 +1,36 @@
 import fs from "node:fs";
+import os from "node:os";
 import { AGENT_DIR, AGENT_FOLDERS } from "../../storage/agent-layout.ts";
 import path from "node:path";
 import { OCTOCODE_DIR, resolveToolPath } from "../shared/home.ts";
-import { getOctocodeHome } from "../../config.ts";
+import { ENV_AGENT_DIR, getAgentDir, getOctocodeHome, providerFallbackDirs } from "../../config.ts";
+import { CONTEXT_FILE_CANDIDATES } from "../../core/discovery/sources.ts";
 import { globalPaths } from "../../storage/state-paths.ts";
 import { ownWorktreeRoot } from "../worktree-paths/own-worktree.ts";
 import type { ActionClass } from "./mode.ts";
 import type { BashFileTarget } from "./bash-types.ts";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { canonicalPaths } from "@octocodeai/octocode-common/canonical-path-set";
 import { isWithin } from "@octocodeai/octocode-common/paths";
 import { workspaceRoot } from "../../utils/git-repository.ts";
-import { agentStateEntry, LOADED_BY_LATER_SESSIONS, loadedFromAgentDir } from "./later-session-loaded.ts";
+import { agentStateEntry, loadedByLaterSessions, loadedFromAgentDir } from "./later-session-loaded.ts";
 import { memoryFileRefusal } from "./memory-files.ts";
+import { foldName } from "./fold-name.ts";
 
 /**
- * Repository folders that load code, hooks or agent instructions in later sessions (git config, Pi, Claude Code, Codex and
- * Agents project config): a change there outlives the session, so it asks like an outside change. `.octocode/` is not
- * here as a whole: only its entries in `LOADED_BY_LATER_SESSIONS` and `.octocode/agent/`'s in
- * `loadedFromAgentDir` ask; scratch (`.octocode/agent/tmp/`) and report folders (`.octocode/agent/<topic>/`)
- * run unasked.
+ * Repository folders that load code, hooks or agent instructions in later sessions (git config, Pi, Claude Code, Codex,
+ * Cursor and Agents project config): a change there outlives the session, so it asks like an outside change.
+ * `.octocode/` is not here as a whole: only its entries in `LOADED_BY_LATER_SESSIONS` and `.octocode/agent/`'s in
+ * `loadedFromAgentDir` ask; scratch (`.octocode/agent/tmp/`) and report folders (`.octocode/agent/<topic>/`) run unasked.
+ * Each list keeps the spelling its loader opens, which the sandbox's `protectedPaths` uses as is; `runsLater` compares
+ * them folded (`foldName`).
  */
-export const RUNS_LATER_AT_ROOT = [".git", ".pi", ".claude", ".codex", ".agents"].map((entry) => entry.toLowerCase());
-const OCTOCODE_FOLDER = OCTOCODE_DIR.toLowerCase();
-const AGENT_PREFIX = `${AGENT_DIR.split(path.sep).join("/").toLowerCase()}/`;
-/** Paths that run or load code at any depth (a nested repository's hooks, a package's `.husky`, a folder's `.envrc`). */
+export const RUNS_LATER_AT_ROOT = [".git", ".pi", ".claude", ".codex", ".cursor", ".agents"];
+/**
+ * Paths that run or load code or instructions at any depth: a nested repository's hooks, a package's `.husky`, a
+ * folder's `.envrc`, and the instruction files (`CONTEXT_FILE_CANDIDATES`) a session loads from the folder it starts in
+ * and from each folder below it that it reads.
+ */
 export const RUNS_LATER_ANYWHERE = [
 	".git/hooks",
 	".git/config",
@@ -38,29 +45,33 @@ export const RUNS_LATER_ANYWHERE = [
 	"lefthook.yml",
 	".lefthook.yml",
 	"lefthook.yaml",
+	...CONTEXT_FILE_CANDIDATES,
 ];
+const AT_ROOT = RUNS_LATER_AT_ROOT.map((entry) => foldName(entry));
+const ANYWHERE = [...new Set(RUNS_LATER_ANYWHERE.map((entry) => foldName(entry)))];
+const OCTOCODE_FOLDER = foldName(OCTOCODE_DIR);
+const AGENT_PREFIX = `${foldName(AGENT_DIR.split(path.sep).join("/"))}/`;
 
-/** Whether `relative` (lower-cased, `/`-separated) is the `OCTOCODE_DIR` folder itself or an entry of it that a later session loads. */
+/** Whether `relative` (folded, `/`-separated) is the `OCTOCODE_DIR` folder itself or an entry of it that a later session loads. */
 function loadedFromOctocodeDir(relative: string): boolean {
 	if (relative === OCTOCODE_FOLDER) return true;
 	if (relative.startsWith(AGENT_PREFIX))
 		return loadedFromAgentDir(relative.slice(AGENT_PREFIX.length).split("/")[0] ?? "");
 	if (!relative.startsWith(`${OCTOCODE_FOLDER}/`)) return false;
-	return LOADED_BY_LATER_SESSIONS.has(relative.slice(OCTOCODE_FOLDER.length + 1).split("/")[0] ?? "");
+	return loadedByLaterSessions(relative.slice(OCTOCODE_FOLDER.length + 1).split("/")[0] ?? "");
 }
 
 /**
- * Whether a change to `file` (canonical, inside `root`) outlives the session. Compared lower-cased: on macOS and Windows
- * `.CLAUDE/settings.json` is the folder Claude Code loads, and on a case-sensitive filesystem the extra match only asks.
+ * Whether a change to `file` (canonical, inside `root`) outlives the session. Compared folded (`foldName`): on macOS and
+ * Windows `.CLAUDE/settings.json` and `.octocode/ſettings.json` are the files later sessions load, and on a
+ * case-sensitive filesystem the extra match only asks.
  */
 export function runsLater(file: string, root: string): boolean {
-	const relative = path.relative(root, file).split(path.sep).join("/").toLowerCase();
+	const relative = foldName(path.relative(root, file).split(path.sep).join("/"));
 	const rooted =
-		loadedFromOctocodeDir(relative) ||
-		RUNS_LATER_AT_ROOT.some((entry) => relative === entry || relative.startsWith(`${entry}/`));
+		loadedFromOctocodeDir(relative) || AT_ROOT.some((entry) => relative === entry || relative.startsWith(`${entry}/`));
 	return (
-		rooted ||
-		RUNS_LATER_ANYWHERE.some((entry) => `/${relative}`.endsWith(`/${entry}`) || `/${relative}`.includes(`/${entry}/`))
+		rooted || ANYWHERE.some((entry) => `/${relative}`.endsWith(`/${entry}`) || `/${relative}`.includes(`/${entry}/`))
 	);
 }
 
@@ -80,12 +91,72 @@ export function changesOnlyWorkspace(file: string, root: string): boolean {
 	}
 }
 
+/** What Octocode reads from each fallback folder (the older Octocode folders' and Pi's): keys, OAuth tokens, models, settings. */
+const FALLBACK_STORE_FILES = ["auth.json", "mcp-auth.json", "models.json", "settings.json"];
+
 /**
- * The refusal for a change inside Octocode's state folder (its trust store, config, the global agent state with the agent
- * database), in every mode. An
- * isolated subagent works in a worktree under the Octocode home, so the home part of the rule does not apply to that
- * one folder when the caller says where the process runs (`cwd`, `ownWorktreeRoot`): not to a sibling's worktree, and
- * not to a checkout's own `.octocode/agent` state inside it.
+ * Where Octocode keeps its state or reads credentials outside a workspace, for a session started with this process's
+ * variables and for one started without them (which reads the default places, so a file planted there reaches it): the
+ * Octocode home and the agent directory (`OCTOCODE_CODING_AGENT_DIR`), apart from an isolated child's own worktree
+ * (`homes`, listed first); the global agent state and the agents-communication database; and the credential, model and
+ * settings files of the fallback folders (`providerFallbackDirs`: `~/.octocode`, `~/.octocode/agent`, Pi's).
+ */
+function spelledStores(): { paths: string[]; homes: number } {
+	const none: NodeJS.ProcessEnv = {};
+	const homes = [...new Set([getOctocodeHome(), getAgentDir(), getOctocodeHome(none)])];
+	const always = [
+		...[globalPaths(), globalPaths(none)].flatMap(({ agentState, peerCommunication }) => [
+			agentState,
+			peerCommunication,
+		]),
+		...providerFallbackDirs(getOctocodeHome(none), os.homedir(), none).flatMap((dir) =>
+			FALLBACK_STORE_FILES.map((name) => path.join(dir, name)),
+		),
+	];
+	return { paths: [...homes, ...new Set(always)], homes: homes.length };
+}
+
+/** The stores by the variables that place them; their folded canonical paths by the canonical list they come from. */
+let spelled: { key: string; stores: ReturnType<typeof spelledStores> } | undefined;
+let folded: { from: string[]; homes: string[]; always: string[] } | undefined;
+
+/**
+ * `spelledStores`, folded and canonical. A check runs on every file change and shell write target, so the list is
+ * built once per set of variables, and canonicalized together and remembered while the folders it resolves through are
+ * unchanged (`canonicalPaths`: one `stat` per folder).
+ */
+function stateStores(): { homes: string[]; always: string[] } {
+	const key = [process.env.OCTOCODE_HOME, process.env[ENV_AGENT_DIR], os.homedir()].join("\0");
+	if (spelled?.key !== key) spelled = { key, stores: spelledStores() };
+	const canonical = canonicalPaths(spelled.stores.paths);
+	if (folded?.from !== canonical) {
+		const all = canonical.map((entry) => foldName(entry));
+		const cut = spelled.stores.homes;
+		folded = { from: canonical, homes: all.slice(0, cut), always: all.slice(cut) };
+	}
+	return folded;
+}
+
+const [AGENT_PARENT, AGENT_FOLDER] = foldName(AGENT_DIR).split(path.sep);
+const TEMP_FOLDER = foldName(AGENT_FOLDERS.temp);
+
+/** Whether `parts` (a folded canonical path, split) runs through a workspace's `.octocode/agent/` state, `temp/sessions/` included. */
+function workspaceState(parts: string[]): boolean {
+	return parts.some(
+		(name, i) =>
+			name === AGENT_PARENT &&
+			parts[i + 1] === AGENT_FOLDER &&
+			((parts[i + 2] !== undefined && agentStateEntry(parts[i + 2])) ||
+				(parts[i + 2] === TEMP_FOLDER && parts[i + 3] === "sessions")),
+	);
+}
+
+/**
+ * The refusal for a change to Octocode's state or a credential store it reads (`stateStores`; a workspace's
+ * `.octocode/agent/` state), in every mode. Compared folded (`foldName`), so no spelling the file system folds onto one
+ * of them escapes. An isolated subagent works in a worktree under the Octocode home, so the home part of the rule does
+ * not apply to that one folder when the caller says where the process runs (`cwd`, `ownWorktreeRoot`): not to a
+ * sibling's worktree, and not to a checkout's own `.octocode/agent` state inside it.
  */
 export function stateFolderRefusal(
 	file: string,
@@ -95,17 +166,10 @@ export function stateFolderRefusal(
 	env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
 	const real = canonicalPath(file);
-	const parts = real.toLowerCase().split(path.sep);
-	const [parent, folder] = AGENT_DIR.split(path.sep);
-	const state = parts.some(
-		(name, i) =>
-			name === parent &&
-			parts[i + 1] === folder &&
-			((parts[i + 2] !== undefined && agentStateEntry(parts[i + 2])) ||
-				(parts[i + 2] === AGENT_FOLDERS.temp && parts[i + 3] === "sessions")),
-	);
-	if (!state && !isWithin(real, canonicalPath(globalPaths().agentState))) {
-		if (!isWithin(real, canonicalPath(getOctocodeHome()))) return undefined;
+	const folded = foldName(real);
+	const { homes, always } = stateStores();
+	if (!workspaceState(folded.split(path.sep)) && !always.some((store) => isWithin(folded, store))) {
+		if (!homes.some((home) => isWithin(folded, home))) return undefined;
 		const own = cwd === undefined ? undefined : ownWorktreeRoot(cwd, env);
 		if (own !== undefined && isWithin(real, own)) return undefined;
 	}

@@ -8,6 +8,7 @@ import type { EditorFactory, WidgetOptions } from "../../../core/features/index.
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
 import { hintText, interruptKey } from "../../../theme/theme-tui-helpers.ts";
 import { getEditorTheme, type Theme, theme } from "../../../theme/theme.ts";
+import { DEFAULT_WORKING_MESSAGE } from "../state/status-slice.ts";
 import { closeDialogOverlays } from "./dialogs.ts";
 import { isExpandable } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
@@ -16,7 +17,6 @@ import type { InteractiveModeHost } from "./host.ts";
 type FeatureChromeHost = Pick<
 	InteractiveModeHost,
 	| "activeStatusIndicator"
-	| "activeWorkingIndicatorEmbedded"
 	| "autocompleteProvider"
 	| "autocompleteProviderWrappers"
 	| "builtInHeader"
@@ -24,7 +24,6 @@ type FeatureChromeHost = Pick<
 	| "customFooter"
 	| "customHeader"
 	| "defaultEditor"
-	| "defaultWorkingMessage"
 	| "disposeActiveSelector"
 	| "editor"
 	| "editorComponentFactory"
@@ -55,7 +54,6 @@ type FeatureChromeHost = Pick<
 	| "updateTerminalTitle"
 	| "widgetContainerAbove"
 	| "widgetContainerBelow"
-	| "workingMessage"
 >;
 
 export function bindEditorHandlers(host: Pick<InteractiveModeHost, "defaultEditor" | "editor">): void {
@@ -174,11 +172,11 @@ export function resetFeatureUI(host: FeatureChromeHost): void {
 	host.setCustomEditorComponent(undefined);
 	host.setupAutocompleteProvider();
 	host.updateTerminalTitle();
-	host.workingMessage = undefined;
+	host.uiStore.getState().setWorkingMessage(undefined);
 	host.setWorkingIndicator();
 	if (host.activeStatusIndicator?.kind === "working") {
 		host.activeStatusIndicator.setMessage(
-			`${host.defaultWorkingMessage}${SEPARATOR}${hintText([[interruptKey(), "interrupt"]])}`,
+			`${DEFAULT_WORKING_MESSAGE}${SEPARATOR}${hintText([[interruptKey(), "interrupt"]])}`,
 		);
 	}
 }
@@ -351,8 +349,8 @@ export function setCustomEditorComponent(host: FeatureChromeHost, factory: Edito
 	host.editorContainer.addChild(host.editor);
 	if (host.activeStatusIndicator) {
 		host.statusContainer.clear();
-		host.activeWorkingIndicatorEmbedded = host.setEditorWorkingStatusIndicator(host.activeStatusIndicator);
-		if (!host.activeWorkingIndicatorEmbedded) {
+		// The status row holds the indicator only when the new editor does not embed it (`showStatusIndicator`).
+		if (!host.setEditorWorkingStatusIndicator(host.activeStatusIndicator)) {
 			host.statusContainer.addChild(host.activeStatusIndicator);
 		}
 	}

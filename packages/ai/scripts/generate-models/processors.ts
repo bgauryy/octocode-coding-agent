@@ -1,7 +1,13 @@
-import { modelsDevLimits } from "./models-dev-limits.ts";
+import {
+	getEffortThinkingLevelMap,
+	getModelsDevCost,
+	modelsDevInput,
+	modelsDevLimits,
+	modelsDevReasoning,
+	modelsDevToolCall,
+} from "../../src/catalog/models-dev-fields.ts";
 import type { AnthropicMessagesCompat, Api, Model, OpenAICompletionsCompat } from "../../src/types.ts";
 import { withGoogleVertexPricing } from "../../src/utils/google-vertex-pricing.ts";
-import { getEffortThinkingLevelMap } from "../models-dev-reasoning-options.ts";
 import {
 	FIREWORKS_ADAPTIVE_THINKING_FALLBACK_MODELS,
 	KIMI_K3_COST,
@@ -10,7 +16,6 @@ import {
 	VERTEX_BASE_URL,
 	ZAI_TOOL_STREAM_UNSUPPORTED_MODELS,
 } from "./constants.ts";
-import { getModelsDevCost } from "./pricing.ts";
 import { getGoogleThinkingLevelMap, recordModelsDevReasoningOptions } from "./thinking-levels.ts";
 import type { ModelsDevCatalog, ModelsDevModel, ModelsDevProvider } from "./types.ts";
 import { nonZeroOr } from "../../src/utils/non-zero.ts";
@@ -35,7 +40,7 @@ export function processZaiModels(data: ModelsDevCatalog): Model<Api>[] {
 	for (const { source, provider, baseUrl } of variants) {
 		for (const [modelId, model] of Object.entries(data[source]?.models ?? {})) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 			const supportsImage = m.modalities?.input?.includes("image");
 
 			const thinkingLevelMap = getEffortThinkingLevelMap(m.reasoning_options ?? []);
@@ -52,7 +57,7 @@ export function processZaiModels(data: ModelsDevCatalog): Model<Api>[] {
 				api: "openai-completions",
 				provider,
 				baseUrl,
-				reasoning: m.reasoning === true,
+				reasoning: modelsDevReasoning(m),
 				...(thinkingLevelMap ? { thinkingLevelMap } : {}),
 				input: supportsImage ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(referenceCost),
@@ -126,7 +131,7 @@ export function processBasetenModels(provider: ModelsDevProvider | undefined): M
 	for (const [modelId, model] of Object.entries(provider.models)) {
 		if (model.status === "deprecated") continue;
 
-		const reasoning = model.reasoning === true;
+		const reasoning = modelsDevReasoning(model);
 		const reasoningOptions = model.reasoning_options ?? [];
 		const isGlm52 = modelId === "zai-org/GLM-5.2" || modelId === "zai-org/GLM-5.2-Fast";
 		const supportsToggle = reasoningOptions.some((option) => option.type === "toggle") || isGlm52;
@@ -170,7 +175,7 @@ export function processGoogleModels(data: ModelsDevCatalog): Model<Api>[] {
 	const googleModels = data.google?.models;
 	if (googleModels) {
 		for (const [modelId, model] of Object.entries(googleModels)) {
-			if (model.tool_call !== true) continue;
+			if (!modelsDevToolCall(model)) continue;
 			const source =
 				modelId === "gemini-flash-latest"
 					? (googleModels["gemini-3.5-flash"] ?? model)
@@ -185,9 +190,9 @@ export function processGoogleModels(data: ModelsDevCatalog): Model<Api>[] {
 				api: "google-generative-ai",
 				provider: "google",
 				baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-				reasoning: source.reasoning === true,
+				reasoning: modelsDevReasoning(source),
 				...(thinkingLevelMap ? { thinkingLevelMap } : {}),
-				input: source.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				input: modelsDevInput(source.modalities),
 				cost: getModelsDevCost(source.cost),
 				...modelsDevLimits(source.limit),
 			});
@@ -199,7 +204,7 @@ export function processGoogleModels(data: ModelsDevCatalog): Model<Api>[] {
 	const vertexModels = data["google-vertex"]?.models;
 	if (vertexModels) {
 		for (const [modelId, model] of Object.entries(vertexModels)) {
-			if (model.tool_call !== true || !modelId.startsWith("gemini-")) continue;
+			if (!modelsDevToolCall(model) || !modelId.startsWith("gemini-")) continue;
 			if (modelId === "gemini-3.1-flash-lite-preview") continue;
 			const source =
 				modelId === "gemini-flash-latest"
@@ -221,9 +226,9 @@ export function processGoogleModels(data: ModelsDevCatalog): Model<Api>[] {
 					api: "google-vertex",
 					provider: "google-vertex",
 					baseUrl: VERTEX_BASE_URL,
-					reasoning: source.reasoning === true,
+					reasoning: modelsDevReasoning(source),
 					...(thinkingLevelMap ? { thinkingLevelMap } : {}),
-					input: source.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+					input: modelsDevInput(source.modalities),
 					cost: {
 						...cost,
 						cacheRead,
@@ -263,14 +268,14 @@ export function processFireworksModels(provider: ModelsDevProvider | undefined):
 	const models: Model<Api>[] = [];
 
 	for (const [modelId, model] of Object.entries(provider.models)) {
-		if (model.tool_call !== true) continue;
+		if (!modelsDevToolCall(model)) continue;
 
-		const input: ("text" | "image")[] = model.modalities?.input?.includes("image") ? ["text", "image"] : ["text"];
+		const input: ("text" | "image")[] = modelsDevInput(model.modalities);
 		const common = {
 			id: modelId,
 			name: model.name || modelId,
 			provider: "fireworks",
-			reasoning: model.reasoning === true,
+			reasoning: modelsDevReasoning(model),
 			input,
 			cost: getModelsDevCost(model.cost),
 			...modelsDevLimits(model.limit),
@@ -333,7 +338,7 @@ const KIMI_CODING_K3_STYLE_MODEL_IDS = new Set(["k3", "k3-256k", "kimi-for-codin
 export function createKimiCodingModels(kimiModels: Record<string, ModelsDevModel>): Model<"openai-completions">[] {
 	const models: Model<"openai-completions">[] = [];
 	for (const [modelId, m] of Object.entries(kimiModels)) {
-		if (m.tool_call !== true) continue;
+		if (!modelsDevToolCall(m)) continue;
 
 		const isK3Style = KIMI_CODING_K3_STYLE_MODEL_IDS.has(modelId);
 		const impliedCost = KIMI_CODING_IMPLIED_COSTS[modelId];
@@ -352,8 +357,8 @@ export function createKimiCodingModels(kimiModels: Record<string, ModelsDevModel
 				supportsMidConvoSystemMessages: true,
 				...(isK3Style ? { supportsMidConvoToolAdditions: true } : {}),
 			},
-			reasoning: m.reasoning === true,
-			input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+			reasoning: modelsDevReasoning(m),
+			input: modelsDevInput(m.modalities),
 			cost: {
 				input: nonZeroOr(0, m.cost?.input, impliedCost?.input),
 				output: nonZeroOr(0, m.cost?.output, impliedCost?.output),

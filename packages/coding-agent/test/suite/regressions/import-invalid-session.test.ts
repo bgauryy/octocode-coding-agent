@@ -38,7 +38,12 @@ it("refuses a file that is not a session, leaves no copy behind and keeps the cu
 	const input = join(harness.tempDir, "not-a-session.jsonl");
 	writeFileSync(input, '{"hello":"world"}\n');
 
-	await expect(runtime.importFromJsonl(input)).rejects.toBeInstanceOf(SessionImportInvalidError);
+	const refused = runtime.importFromJsonl(input);
+	await expect(refused).rejects.toBeInstanceOf(SessionImportInvalidError);
+	// The error names the file given and its bad line, never the copy in the session folder (it is removed).
+	await expect(refused).rejects.toThrow(
+		`Not a session file: ${input} (line 1 is not a session record, and a session file starts with its "session" header)`,
+	);
 	expect(readdirSync(sessionDir)).toEqual(before);
 	expect(runtime.session).toBe(harness.session);
 });

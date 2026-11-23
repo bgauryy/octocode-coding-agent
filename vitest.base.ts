@@ -72,6 +72,10 @@ export default defineConfig({
 				replacement: `${workspaceSourcePaths.aiApi}/$1.ts`,
 			},
 			{
+				find: /^@octocodeai\/octocode-ai\/catalog\/(.+)$/,
+				replacement: fileURLToPath(new URL("./packages/ai/src/catalog/", import.meta.url)) + "$1.ts",
+			},
+			{
 				find: /^@octocodeai\/octocode-ai\/providers\/(.+)$/,
 				replacement: `${workspaceSourcePaths.aiProviders}/$1.ts`,
 			},

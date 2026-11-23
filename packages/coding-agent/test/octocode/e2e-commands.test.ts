@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import type { TuiAltScreen } from "@octocodeai/octocode-tui";
 import { BUILTIN_SLASH_COMMANDS } from "../../src/core/slash-commands.ts";
 import { type InteractiveHarness, type Outcome, startInteractive } from "./e2e-commands-harness.ts";
 
@@ -80,8 +81,9 @@ const CASES: Record<string, Case> = {
 	// The page opens on the current mode; the sweep dismisses it, which changes nothing.
 	permissions: { check: asks(/Permissions[\s\S]*Mode\s+workspace —[\s\S]*workspace\s+current/) },
 	security: { check: asks(/Security[\s\S]*Not checked[\s\S]*Approved[\s\S]*Denied/) },
-	// A main session joins its team at start (lifecycle design O6b), so /agents lists it and its run.
-	agents: { check: says(/\(you\) · main[\s\S]*Recent runs/) },
+	// A main session joins its team at start (lifecycle design O6b), so /agents lists it and its run; the run of this
+	// idle session says what it does in the light's words, not "running".
+	agents: { check: says(/\(you\) · main[\s\S]*Recent runs[^\n]*\n[^\n]*\(main\) idle · /) },
 	// The page opens on the team feed (empty here) with internal notices hidden and the toggle key shown.
 	messages: { check: asks(/Messages[\s\S]*no messages yet[\s\S]*Internal notices hidden · i shows them/) },
 	plan: {
@@ -94,8 +96,23 @@ const CASES: Record<string, Case> = {
 	},
 	btw: { check: says(/Usage: \/btw <question>/) },
 	context: { check: says(/Total context: 0 of [\d,]+ tokens/) },
-	diff: { check: says(/Repository diff[\s\S]*No staged changes/) },
-	status: { check: says(/Session Info[\s\S]*File:/) },
+	// Empty sections are sentences: no code block labelled "diff" around "No staged changes.".
+	diff: {
+		check: (run) => {
+			expect(run.text).toMatch(
+				/Repository diff[\s\S]*Staged\s+No staged changes\.[\s\S]*Unstaged\s+No unstaged changes\./,
+			);
+			expect(run.text).not.toMatch(/\bdiff\s+No (un)?staged changes/);
+		},
+	},
+	// The Cache Warming section comes from the real session through the feature context (`getCacheWarmingReport`).
+	status: {
+		check: says(
+			/Session Info[\s\S]*File:[\s\S]*Cache Warming[\s\S]*Requested instructions:[\s\S]*Mode: \w+[\s\S]*Status: /,
+		),
+	},
+	// A fresh home has recorded nothing yet: the report says so and where its history starts.
+	usage: { check: says(/Usage today[\s\S]*No usage recorded[\s\S]*Usage last 7 days/) },
 	// The dialog lists each configured server with its source and state: the Octocode server is connected with its tools; the browser, on demand in the main session, is off in this suite
 	// (setup-env.ts), like the other bundled servers.
 	mcp: {
@@ -125,8 +142,8 @@ const CASES: Record<string, Case> = {
 	// An unknown name lists the realms by name; the main checkout is always one.
 	realm: { args: "zz-none", check: says(/No realm named zz-none\. Realms: main/) },
 	// `/loop` sets a cron wait through the same path as the tool, and `/cron` then lists the session's scheduled tasks.
-	loop: { args: "10m run the tests", check: says(/Every 10m: Scheduled task \d+/) },
-	cron: { check: says(/cron \*\/10 \* \* \* \* · next in/) },
+	loop: { args: "10m run the tests", check: says(/Every 10m: Scheduled task #\d+ sends "run the tests"/) },
+	cron: { check: says(/cron \*\/10 \* \* \* \* · run 1 of 20 · next in/) },
 	// Lists every monitor rule of the session's ledger: a page in the terminal, with all rules ok before any alert.
 	monitor: { check: asks(/Monitor[\s\S]*Rules\s+\d+[\s\S]*Tripped\s+0[\s\S]*load[\s\S]*idle-items/) },
 	// `/remote` grants control, so it asks first; the sweep dismisses the question and nothing is published (the
@@ -176,18 +193,21 @@ const CASES: Record<string, Case> = {
 		},
 	},
 	providers: { check: asks(/Ready means configured, not verified/) },
+	models: { check: asks(/Off models leave/) },
 	logout: {
 		check: (run) => expect(`${run.text}\n${run.dialogs.join("\n")}`).toMatch(/credential|logout|log out|provider/i),
 	},
 	bug: { check: asks(/Report a bug/) },
 	// Guarded: nothing to act on yet, or a confirmation the user declines.
+	// No message yet, so no session file: /share says so before asking to upload anything (the confirmation and its
+	// decline are covered in session-share.test.ts).
 	share: {
 		check: (run) => {
-			expect(run.dialogs.length).toBeGreaterThan(0);
-			expect(run.text).toMatch(/Share cancelled/);
+			expect(run.dialogs).toEqual([]);
+			expect(run.text).toMatch(/Nothing to share yet: send a message first/);
 		},
 	},
-	export: { check: says(/Nothing to export yet/) },
+	export: { check: says(/Nothing to export yet: send a message first/) },
 	copy: { check: says(/No agent messages to copy yet/) },
 	links: { check: says(/No matching references/) },
 	compact: { check: says(/Nothing to compact yet/) },
@@ -203,6 +223,26 @@ const CASES: Record<string, Case> = {
 		check: (_run, t) => {
 			expect(t.host.ui.hasOverlay(), "opens the search box").toBe(true);
 			t.press("\x1b");
+		},
+	},
+	// Fullscreen is the default: bare /mouse hands the mouse to the terminal and its notice says so; taken back after.
+	mouse: {
+		// `host.ui` is a reference that forwards to the live screen: assignment reaches the screen, a spy would not.
+		before: (t) => {
+			const ui = t.host.ui as TuiAltScreen;
+			const flash = ui.flash;
+			const flashes: string[] = [];
+			ui.flash = (message, durationMs) => {
+				flashes.push(message);
+				flash.call(ui, message, durationMs);
+			};
+			return { flashes, restore: () => (ui.flash = flash) };
+		},
+		check: (_run, t, before) => {
+			const seen = before as { flashes: string[]; restore: () => void };
+			seen.restore();
+			expect(seen.flashes).toEqual([expect.stringMatching(/^Mouse off: select, copy and scroll with your terminal/)]);
+			(t.host.ui as TuiAltScreen).setMouseCapture(true);
 		},
 	},
 	debug: { check: says(/Debug log written/) },

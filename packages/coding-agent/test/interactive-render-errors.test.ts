@@ -55,7 +55,7 @@ function interactiveScreen() {
 	const chatContainer = new Container();
 	renderer.addChild(chatContainer);
 	// The fake host gets interactive mode's own `showError` (display.ts).
-	const host = createFakeHost({ renderer, ui: renderer, chatContainer, outputPad: 1 });
+	const host = createFakeHost({ renderer, ui: renderer, chatContainer });
 	const frames = async (count: number) => {
 		for (let index = 0; index < count; index++) {
 			renderer.requestRender();

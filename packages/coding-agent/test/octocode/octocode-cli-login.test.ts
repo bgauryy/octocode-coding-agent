@@ -100,7 +100,7 @@ describe("GitHub sign-in notice", () => {
 		return { api, notify, emit };
 	}
 
-	it("shows one notice per run when not signed in, none when the CLI is missing", async () => {
+	it("shows one notice per run when not signed in", async () => {
 		captureCli.mockImplementation(async () => ({
 			output: "",
 			stdout: '{"authenticated":false}',
@@ -117,12 +117,78 @@ describe("GitHub sign-in notice", () => {
 		await emit("session_start");
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(notify).toHaveBeenCalledOnce();
+	});
 
+	/** The feature as a new process loads it: the once-per-process memory starts empty. */
+	async function freshProcess() {
+		vi.resetModules();
+		const command = await import("../../src/octocode/cli/command.ts");
+		const shared = await import("../../src/octocode/shared/commands.ts");
+		return (api: ReturnType<typeof host>["api"]) => command.registerOctocodeCli(api, new shared.Subcommands());
+	}
+
+	it("shows no notice when the CLI is missing", async () => {
+		const register = await freshProcess();
 		resolved.cli = undefined;
 		const other = host();
-		registerOctocodeCli(other.api, new Subcommands());
+		register(other.api);
 		await other.emit("session_start");
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(other.notify).not.toHaveBeenCalled();
+	});
+
+	it("shows the notice once per process: the session after /new, /clone or /reload neither checks nor repeats it", async () => {
+		const register = await freshProcess();
+		captureCli.mockClear();
+		captureCli.mockImplementation(async () => ({
+			output: "",
+			stdout: '{"authenticated":false}',
+			code: 4,
+			truncated: false,
+			cancelled: false,
+		}));
+		const first = host();
+		register(first.api);
+		await first.emit("session_start");
+		await vi.waitFor(() => expect(first.notify).toHaveBeenCalledWith(GITHUB_LOGIN_NOTICE, "warning"));
+		// /new, /clone and /reload register the features again in the same process.
+		const next = host();
+		register(next.api);
+		await next.emit("session_start");
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(next.notify).not.toHaveBeenCalled();
+		expect(captureCli).toHaveBeenCalledOnce();
+	});
+
+	it("checks again in the next session when the check was cancelled before it answered", async () => {
+		const register = await freshProcess();
+		captureCli.mockClear();
+		let answer: ((value: unknown) => void) | undefined;
+		captureCli.mockImplementation(
+			(_bin: string, _argv: string[], options: { signal: AbortSignal }) =>
+				new Promise((resolve) => {
+					answer = resolve;
+					options.signal.addEventListener("abort", () =>
+						resolve({ output: "", stdout: "", code: null, truncated: false, cancelled: true }),
+					);
+				}),
+		);
+		const first = host();
+		register(first.api);
+		await first.emit("session_start");
+		await first.emit("session_shutdown");
+		captureCli.mockImplementation(async () => ({
+			output: "",
+			stdout: '{"authenticated":false}',
+			code: 4,
+			truncated: false,
+			cancelled: false,
+		}));
+		const next = host();
+		register(next.api);
+		await next.emit("session_start");
+		await vi.waitFor(() => expect(next.notify).toHaveBeenCalledWith(GITHUB_LOGIN_NOTICE, "warning"));
+		expect(first.notify).not.toHaveBeenCalled();
+		expect(answer).toBeDefined();
 	});
 });

@@ -61,8 +61,14 @@ describe("TaskCompleted gates the done write in the writing process (S4)", () =>
 		await expect(
 			t.call({ op: "close", id: "B1", close: { kind: "obsolete", text: "no longer needed" } }),
 		).rejects.toThrow(/tests not green/);
+		// The store's own refusals now run before the hooks (contract change), so this completion names a passed check: the
+		// hook, not the store, refuses it.
 		await expect(
-			t.call({ op: "done", id: "B1", completion: { summary: "did it", verification: "ran the check", files: [] } }),
+			t.call({
+				op: "done",
+				id: "B1",
+				completion: { summary: "did it", verification: "passed: ran the check", files: [] },
+			}),
 		).rejects.toThrow(/tests not green/);
 		expect(t.store().get("B1")?.state).toBe("ongoing");
 		expect(asked.map((info) => [info.ref, info.change])).toEqual([

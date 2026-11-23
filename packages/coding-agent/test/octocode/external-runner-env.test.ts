@@ -49,3 +49,17 @@ describe("runner credential ownership", () => {
 		},
 	);
 });
+
+describe("runner provider tokens", () => {
+	it.each(["claude-code", "codex", "gemini"])(
+		"drops Octocode's OpenAI header variable and keeps the Bedrock API key for %s",
+		(vendor) => {
+			const clean = agentEnv(vendor, {
+				OPENAI_CUSTOM_HEADERS: "Authorization: Bearer fixture-gateway-token",
+				AWS_BEARER_TOKEN_BEDROCK: "fixture-bedrock-key",
+			});
+			expect(clean).not.toHaveProperty("OPENAI_CUSTOM_HEADERS");
+			expect(clean.AWS_BEARER_TOKEN_BEDROCK).toBe("fixture-bedrock-key");
+		},
+	);
+});

@@ -46,6 +46,17 @@ export interface CutPointResult {
 	isSplitTurn: boolean;
 }
 
+/**
+ * The tokens an entry adds to the recent-messages budget (`keepRecentTokens`): its conversation messages. The system
+ * prompt and its later updates are not counted: they are never summarized (the compaction entry replays the prompt in
+ * force), so counting them would only push conversation out of the kept tail, and a prompt update alone could fill it.
+ */
+export function recentMessageTokens(entry: ProjectedSessionEntry): number {
+	let tokens = 0;
+	for (const message of entry.messages) if (message.role !== "system") tokens += estimateTokens(message);
+	return tokens;
+}
+
 function isProjectedTurnStart(entry: ProjectedSessionEntry): boolean {
 	if (entry.sourceEntry.type === "compaction") return false;
 	return entry.messages.some(isTurnStartMessage);
@@ -61,7 +72,8 @@ function findProjectedTurnStartIndex(entries: ProjectedSessionEntry[], entryInde
 /**
  * Find the cut point in projected session entries that keeps approximately `keepRecentTokens`.
  *
- * Walk backwards from the newest entry, accumulating estimated message sizes, and cut once the budget is reached.
+ * Walk backwards from the newest entry, accumulating estimated conversation sizes (`recentMessageTokens`), and cut once
+ * the budget is reached.
  * A cut can fall at a user or assistant message, never at a tool result (an assistant message's tool results come
  * after it and are kept). Only entries between `startIndex` and `endIndex` (exclusive) count.
  *
@@ -87,7 +99,7 @@ export function findProjectedCutPoint(
 	let exceededBudget = false;
 	let cutIndex = cutPoints[0];
 	for (let i = endIndex - 1; i >= startIndex; i--) {
-		const messageTokens = entries[i].messages.reduce((sum, message) => sum + estimateTokens(message), 0);
+		const messageTokens = recentMessageTokens(entries[i]);
 		if (messageTokens === 0) continue;
 		accumulatedTokens += messageTokens;
 		if (accumulatedTokens >= keepRecentTokens) {

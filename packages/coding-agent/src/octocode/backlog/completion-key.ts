@@ -2,9 +2,14 @@ import { shortHash } from "@octocodeai/octocode-common/atomic-file";
 import type { EntityInput } from "@octocodeai/octocode-contracts/backlogs";
 
 /** A completion as the model may send it: the retry key is optional. */
-export type CompletionArgument = Omit<NonNullable<EntityInput["completion"]>, "operationKey"> & {
+export type CompletionArgument = Omit<NonNullable<EntityInput["completion"]>, "operationKey" | "receipt" | "qa"> & {
 	operationKey?: string;
+	/** The receipt the call cites (an id or `latest`); the write turns it into the facts the completion stores. */
+	receipt?: string;
 };
+
+/** A completion with its retry key, its receipt still the reference the caller gave. */
+export type KeyedCompletion = CompletionArgument & { operationKey: string };
 
 /** JSON with object keys sorted, so equal content hashes equally whatever order the caller wrote it in. */
 function canonical(value: unknown): string {
@@ -23,12 +28,9 @@ function canonical(value: unknown): string {
  * completion's content (not the item version, which the completion itself bumps): resending the same completion
  * yields the same key, so the store replays it instead of writing a second one, and a different result gets a new key.
  */
-export function withOperationKey(
-	completion: CompletionArgument,
-	itemId: string | undefined,
-): NonNullable<EntityInput["completion"]> {
+export function withOperationKey(completion: CompletionArgument, itemId: string | undefined): KeyedCompletion {
 	if (completion.operationKey !== undefined && completion.operationKey.trim()) {
-		return completion as NonNullable<EntityInput["completion"]>;
+		return completion as KeyedCompletion;
 	}
 	const { operationKey: _unused, ...content } = completion;
 	return {

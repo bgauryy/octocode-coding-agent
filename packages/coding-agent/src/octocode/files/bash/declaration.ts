@@ -5,7 +5,7 @@ import { SETTINGS_DEFAULTS } from "../../../core/settings-defaults.ts";
 import { maxOutputTokensParameter } from "../../../core/tools/bash.ts";
 import { reasonSchema } from "../../shared/reason.ts";
 import { probeCliHost, renderCliGuide } from "./cli-guide.ts";
-import { DEFAULT_BASH_TIMEOUT, MAX_FOREGROUND_TIMEOUT } from "./results.ts";
+import { MAX_FOREGROUND_TIMEOUT } from "./results.ts";
 import { verificationSchema } from "./verification.ts";
 
 /** `structuredContent` of a background start; a foreground command returns Octocode's own bash output. */
@@ -42,7 +42,8 @@ export const bashParameters = Type.Object({
 	command: Type.String({ description: "Command in the selected syntax" }),
 	timeout: Type.Optional(
 		Type.Number({
-			description: `Seconds (foreground: default ${DEFAULT_BASH_TIMEOUT}, max ${MAX_FOREGROUND_TIMEOUT}; background: none unless set)`,
+			// The description states when an unset foreground call backgrounds; this field says only when the command stops.
+			description: `Seconds before stop (max ${MAX_FOREGROUND_TIMEOUT}); foreground backgrounds after ${SETTINGS_DEFAULTS.bash.deliberateMaxSeconds} s. Unset: never stopped`,
 		}),
 	),
 	maxOutputTokens: maxOutputTokensParameter,

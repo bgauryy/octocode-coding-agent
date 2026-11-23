@@ -198,7 +198,7 @@ export function backlogCommand(api: FeatureSetup, deps: CommandDeps): Subcommand
 						...refs,
 						...Object.entries(verbs).map(([name, verb]): [string, string] => [
 							name,
-							`${name}${verb.args ? ` ${verb.args}` : ""} — ${verb.description}`,
+							`${verb.args ? `${verb.args} — ` : ""}${verb.description}`,
 						]),
 					],
 					prefix,

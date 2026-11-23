@@ -67,6 +67,7 @@ const APPLIES: Record<AppliesWhen, string> = {
 export const appliesText = (when: AppliesWhen): string => APPLIES[when];
 
 const stateText = (entry: ConfigEntry): string => {
+	if (entry.state) return entry.state;
 	if (entry.valueType.type === "toggle") return entry.value === false ? "off" : "on";
 	if (entry.value === undefined) return "(unset)";
 	return typeof entry.value === "string" ? entry.value : JSON.stringify(entry.value);

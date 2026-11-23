@@ -60,6 +60,10 @@
 			"types": "./dist/api/typesafe-system-one.lazy.d.ts",
 			"import": "./dist/api/typesafe-system-one.lazy.js"
 		},
+		"./catalog/models-dev-fields": {
+			"types": "./dist/catalog/models-dev-fields.d.ts",
+			"import": "./dist/catalog/models-dev-fields.js"
+		},
 		"./providers/all": {
 			"types": "./dist/providers/all.d.ts",
 			"import": "./dist/providers/all.js"
@@ -227,17 +231,17 @@
 		"@ai-sdk/openai-compatible": "3.0.92",
 		"@ai-sdk/provider": "4.0.38",
 		"@ai-sdk/provider-utils": "5.0.81",
-		"@aws-sdk/credential-providers": "3.1169.0",
+		"@aws-sdk/credential-providers": "^3.1175.0",
 		"@octocodeai/octocode-common": "1.3.0",
 		"@octocodeai/octocode-contracts": "1.3.0",
 		"@octocodeai/octocode-telemetry": "1.3.0",
 		"ai": "7.0.173",
-		"aws4fetch": "1.0.20",
-		"google-auth-library": "11.3.4",
-		"jose": "6.2.17",
-		"partial-json": "0.1.7",
-		"typebox": "1.4.7",
-		"zod": "4.6.7"
+		"aws4fetch": "^1.0.20",
+		"google-auth-library": "^11.3.4",
+		"jose": "^6.2.18",
+		"partial-json": "^0.1.7",
+		"typebox": "^1.4.7",
+		"zod": "^4.6.7"
 	},
 	"keywords": [
 		"ai",
@@ -260,11 +264,11 @@
 		"node": ">=22.19.0"
 	},
 	"devDependencies": {
-		"@opencode-ai/models": "0.0.142",
-		"@types/node": "24.19.2",
-		"shx": "0.4.0",
-		"typescript": "7.0.2",
-		"vite": "8.3.5",
-		"vitest": "5.1.0"
+		"@opencode-ai/models": "~0.0.143",
+		"@types/node": "^24.19.2",
+		"shx": "^0.4.0",
+		"typescript": "^7.0.2",
+		"vite": "^8.3.8",
+		"vitest": "^5.1.1"
 	}
 }

@@ -6,6 +6,7 @@ import {
 	formatNoApiKeyFoundMessage,
 	formatNoModelSelectedMessage,
 	formatNoModelsAvailableMessage,
+	setAuthGuidanceSurface,
 } from "../src/core/auth-guidance.ts";
 
 describe("auth guidance", () => {
@@ -22,6 +23,35 @@ describe("auth guidance", () => {
 		expect(message).toContain(`Run \`${APP_NAME}\` and type /providers`);
 		expect(message).toContain("API key environment variable");
 		expect(message).toContain("models.md");
+	});
+
+	it("on the command line never asks to type a slash command", () => {
+		const run = `Run \`${APP_NAME}\` and type /providers`;
+		const messages = [
+			formatNoModelSelectedMessage("cli"),
+			formatNoApiKeyFoundMessage("openai", "cli"),
+			formatAuthRefreshFailedMessage("openai", "invalid_grant", "cli"),
+			formatAuthExpiredMessage("openai", "cli"),
+		];
+		for (const message of messages) expect(message).not.toMatch(/(?:^|\. )Type \/providers|then \/model/);
+		expect(messages[0]).toContain(`${run} to connect one`);
+		expect(messages[0]).toContain("--model <provider>/<id>");
+		expect(messages[1]).toMatch(/^No usable credentials for openai\. Set its API key environment variable/);
+		expect(messages[1]).toContain(`${APP_NAME} auth check --provider openai`);
+		expect(messages[2]).toBe(
+			`Sign-in for openai could not be renewed. ${run} openai to sign in again. (invalid_grant)`,
+		);
+		expect(messages[3]).toContain(`${run} openai to sign in again.`);
+	});
+
+	it("follows the surface a headless run sets for the process", () => {
+		setAuthGuidanceSurface("cli");
+		try {
+			expect(formatNoApiKeyFoundMessage("openai")).toBe(formatNoApiKeyFoundMessage("openai", "cli"));
+		} finally {
+			setAuthGuidanceSurface("session");
+		}
+		expect(formatNoApiKeyFoundMessage("openai")).toMatch(/Type \/providers/);
 	});
 
 	it("tells a sign-in that could not be renewed how to sign in again and keeps the reason", () => {

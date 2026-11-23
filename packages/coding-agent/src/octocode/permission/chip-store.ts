@@ -1,12 +1,25 @@
-import { createStore } from "zustand/vanilla";
+import { createStore, type StoreApi } from "zustand/vanilla";
 import type { ChipParts } from "./mode.ts";
 
-/** The permission chip the footer draws; the audit trail writes it each time the mode or the action counters change. */
-export const chipStore = createStore<{ chip: ChipParts | undefined }>()(() => ({ chip: undefined }));
+/** The permission chip one session's footer draws; that session's audit trail writes it when the mode or counters change. */
+export type ChipStore = StoreApi<{ chip: ChipParts | undefined }>;
 
-/** Publishes `chip`; an unchanged chip notifies nobody. */
-export function publishChip(chip: ChipParts): void {
-	const current = chipStore.getState().chip;
+/** One store per feature instance, as `runningWorkOf`: a process hosting several sessions keeps each session's chip. */
+const stores = new WeakMap<object, ChipStore>();
+
+/** The chip store of the session `owner` (its feature setup) belongs to. */
+export function chipOf(owner: object): ChipStore {
+	let store = stores.get(owner);
+	if (!store) {
+		store = createStore<{ chip: ChipParts | undefined }>()(() => ({ chip: undefined }));
+		stores.set(owner, store);
+	}
+	return store;
+}
+
+/** Publishes `chip` to `store`; an unchanged chip notifies nobody. */
+export function publishChip(store: ChipStore, chip: ChipParts): void {
+	const current = store.getState().chip;
 	if (current && (Object.keys(chip) as (keyof ChipParts)[]).every((key) => current[key] === chip[key])) return;
-	chipStore.setState({ chip });
+	store.setState({ chip });
 }

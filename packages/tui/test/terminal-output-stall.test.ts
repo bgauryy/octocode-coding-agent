@@ -47,6 +47,23 @@ const count = (chunks: string[], needle: string) => chunks.filter((chunk) => chu
 describe("terminal stall diagnostic", () => {
 	afterEach(() => mock.timers.reset());
 
+	it("makes forward progress on an indivisible oversized frame once stdout drains", async () => {
+		const stdout = new FakeStdout();
+		const output = new TerminalOutput(asStdout(stdout));
+		output.setFrameCap(100);
+		const frame = "界".repeat(40);
+		let recoveries = 0;
+		output.setRecovery(() => {
+			if (++recoveries < 3) output.write(frame, "frame");
+		});
+		output.write("queued");
+		output.write(frame, "frame");
+		stdout.drain();
+		await afterPoll();
+		assert.equal(recoveries, 1);
+		assert.ok(stdout.delivered.includes(frame));
+	});
+
 	it("opens an episode when queued output waits 5 s and closes it when the terminal reads again", async () => {
 		mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1_000_000 });
 		const stdout = new FakeStdout();

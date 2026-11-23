@@ -204,8 +204,16 @@ function fuzzyMatches(text: string, models: readonly Model<Api>[]): Model<Api>[]
 
 function selectFuzzy(matches: Model<Api>[], usable: (provider: string) => boolean): ResolvedOrAmbiguous | undefined {
 	if (matches.length === 0) return undefined;
-	const multipleProviders = new Set(matches.map((model) => model.provider)).size > 1;
-	const usableMatches = multipleProviders ? matches.filter((model) => usable(model.provider)) : [];
+	const providers = new Set(matches.map((model) => model.provider));
+	const usableMatches = providers.size > 1 ? matches.filter((model) => usable(model.provider)) : [];
+	// No usable provider narrows several: the id sort below would choose the provider (Bedrock's region-prefixed
+	// `us.anthropic.…` sorts last), so each provider's best match is offered instead.
+	if (providers.size > 1 && usableMatches.length === 0) {
+		const candidates = [...providers]
+			.map((provider) => bestFuzzyMatch(matches.filter((model) => model.provider === provider)))
+			.filter((model): model is Model<Api> => model !== undefined);
+		return { status: "ambiguous", candidates, usableCount: 0 };
+	}
 	const pool = usableMatches.length > 0 ? usableMatches : matches;
 	const best = bestFuzzyMatch(pool);
 	if (!best) return undefined;

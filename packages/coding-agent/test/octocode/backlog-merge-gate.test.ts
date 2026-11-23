@@ -1,8 +1,9 @@
+import type * as ChildProcess from "node:child_process";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
@@ -11,6 +12,26 @@ import { sharedAgentDb } from "../../src/storage/database.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { backlogToolName } from "./backlog-fixture.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
+
+/** Whether the agent database was inside a write transaction each time git was started. */
+const gitInTransaction: boolean[] = [];
+vi.mock("node:child_process", async (original) => {
+	const real = await original<typeof ChildProcess>();
+	const seen = (command: unknown) => {
+		if (command === "git") gitInTransaction.push(sharedAgentDb().db.isTransaction);
+	};
+	return {
+		...real,
+		execFile: ((command: string, ...rest: never[]) => {
+			seen(command);
+			return (real.execFile as (...args: unknown[]) => unknown)(command, ...rest);
+		}) as typeof real.execFile,
+		execFileSync: ((command: string, ...rest: never[]) => {
+			seen(command);
+			return (real.execFileSync as (...args: unknown[]) => unknown)(command, ...rest);
+		}) as typeof real.execFileSync,
+	};
+});
 
 let tmp: string;
 let savedDb: string | undefined;
@@ -68,6 +89,15 @@ describe("completing an item with an isolated change", () => {
 		await expect(text({ op: "done", id: "B1", completion })).rejects.toThrow(/unmerged \(refs\/octocode\/kid-1\)/);
 		git("git update-ref -d refs/octocode/kid-1");
 		expect(await text({ op: "done", id: "B1", completion })).toMatch(/^Updated B1 \[done/);
+	});
+
+	it("asks git outside the write transaction, so a slow git holds no database lock", async () => {
+		const { text, git } = await setup();
+		git("git update-ref -d refs/octocode/kid-1");
+		gitInTransaction.length = 0;
+		expect(await text({ op: "done", id: "B1", completion })).toMatch(/^Updated B1 \[done/);
+		expect(gitInTransaction.length).toBeGreaterThan(0);
+		expect(gitInTransaction).not.toContain(true);
 	});
 
 	it("still allows closing abandoned work", async () => {

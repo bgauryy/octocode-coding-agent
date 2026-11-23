@@ -1,11 +1,10 @@
-import { activeRates } from "@octocodeai/octocode-ai";
 import {
 	effectiveOutputTokens,
 	resolveCacheRetention,
 	resolveInstructionCacheRetention,
 } from "@octocodeai/octocode-ai/utils/cache-policy";
+import { warmingDecision } from "./cache-warmer/decision.ts";
 import {
-	CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS,
 	estimateInstructionPrefixTokens,
 	getCacheWarmingDelayMs,
 	getPromptCacheLifetime,
@@ -13,7 +12,6 @@ import {
 	lastPromptTokens,
 	idleWarmingLimitMs,
 	MAX_WARMING_AGE_MS,
-	price,
 } from "./cache-warmer/economics.ts";
 import { IdleContinuationPool } from "./cache-warmer/idle-pool.ts";
 import type {
@@ -55,6 +53,16 @@ export interface CacheWarmerIdleOptions {
 /** Output cap a refresh asks for; `effectiveOutputTokens` says what the adapter bills. */
 const WARM_OUTPUT_TOKENS = 1;
 
+/** What the warmer sends with, and who pays for it (`getProviderBilling`, the billing every surface uses). */
+type WarmerModels = Pick<ModelRuntime, "streamSimple" | "getProviderBilling"> & Partial<Pick<ModelRuntime, "getAuth">>;
+
+/**
+ * A plan pays for each request, so neither a refresh nor a miss costs the user money, while every refresh spends plan
+ * quota (Copilot counts requests; other plans meter a usage window). The dollar gate can never pass, so a plan-billed
+ * provider is never warmed.
+ */
+const PLAN_BILLED = "provider billed by plan";
+
 /**
  * Keeps one prompt cache entry alive by re-sending its request with a
  * one-token output cap before the entry expires. `start` replaces any
@@ -63,7 +71,7 @@ const WARM_OUTPUT_TOKENS = 1;
 export class CacheWarmer {
 	private run?: ActiveRun;
 	private inactive: CacheWarmingStatus;
-	private readonly models: Pick<ModelRuntime, "streamSimple"> & Partial<Pick<ModelRuntime, "getAuth">>;
+	private readonly models: WarmerModels;
 	private readonly sessionManager: Pick<SessionManager, "captureUsageWriter" | "getSessionId" | "getBranch">;
 	private readonly getMode: () => CacheWarmingMode;
 	/** Lets features override `event.action`; failures fall back to Octocode's decision. */
@@ -76,7 +84,7 @@ export class CacheWarmer {
 	private finishedAt: number | undefined;
 
 	constructor(
-		models: Pick<ModelRuntime, "streamSimple"> & Partial<Pick<ModelRuntime, "getAuth">>,
+		models: WarmerModels,
 		sessionManager: Pick<SessionManager, "captureUsageWriter" | "getSessionId" | "getBranch">,
 		getMode: () => CacheWarmingMode,
 		decide: (event: CacheWarmingDecisionEvent) => Promise<CacheWarmingAction> = async (event) => event.action,
@@ -118,6 +126,10 @@ export class CacheWarmer {
 		const mode = this.getMode();
 		if (mode === "off") {
 			this.stop("cache warming disabled");
+			return;
+		}
+		if (this.models.getProviderBilling(request.model.provider) === "plan") {
+			this.stop(PLAN_BILLED);
 			return;
 		}
 		if (!isReplayable(request.model, request.options)) {
@@ -327,7 +339,11 @@ export class CacheWarmer {
 
 	private validateRun(run: ActiveRun): boolean {
 		if (this.run !== run) return false;
-		const reason = this.getModeStopReason(run) ?? (!run.isCurrent() ? "conversation context changed" : undefined);
+		// Billing can change between refreshes (a subscription sign-in or sign-out).
+		const reason =
+			this.getModeStopReason(run) ??
+			(this.models.getProviderBilling(run.model.provider) === "plan" ? PLAN_BILLED : undefined) ??
+			(!run.isCurrent() ? "conversation context changed" : undefined);
 		if (!reason) return true;
 		this.stop(reason);
 		return false;
@@ -341,43 +357,12 @@ export class CacheWarmer {
 	}
 
 	private evaluate(run: ActiveRun): CacheWarmingDecision {
-		const model = run.model;
-		const rates = activeRates(model.cost);
-		const { cached: promptTokens, input } = lastPromptTokens(this.sessionManager.getBranch());
-		// With layered lifetimes only the history entry expires; the instruction prefix is still read from its own entry.
-		const expiringTokens = Math.max(0, promptTokens - run.instructionTokens);
-		const cacheHitCost = price(model, { cacheRead: expiringTokens });
-		// A miss rewrites the expiring history at the tier the request wrote it at (`getPromptCacheLifetime`: long history
-		// behind short instructions, or on a lifetime kept for instruction breakpoints, goes out at the short tier).
-		const longField = run.ttlMs >= 12 * 3_600_000 ? "cacheWrite12h" : "cacheWrite1h";
-		const rewrite =
-			run.historyTier === "long"
-				? { cacheWrite: expiringTokens, [longField]: expiringTokens }
-				: { cacheWrite: expiringTokens };
-		const cacheMissCost = price(model, rates.cacheWrite > 0 ? rewrite : { input: expiringTokens });
-		const warmCost = price(model, {
-			cacheRead: promptTokens,
-			...(rates.cacheWrite > rates.input ? { cacheWrite: input } : { input }),
-			output: run.warmOutputTokens ?? effectiveOutputTokens(model, WARM_OUTPUT_TOKENS, run.options.apiKey),
-		});
-		const missCost = Math.max(0, cacheMissCost - cacheHitCost);
-		const continuationProbability =
-			run.phase === "idle" ? this.idle.probability(Date.now() - run.startedAt, run.ttlMs) : 1;
-		// Pricing is known when either rate applies; a layered prompt with no expiring history still has known economics.
-		const economicsAvailable =
-			promptTokens > 0 &&
-			(price(model, { cacheRead: promptTokens }) > 0 ||
-				price(model, rates.cacheWrite > 0 ? { cacheWrite: promptTokens } : { input: promptTokens }) > 0);
-		const expectedSavings = continuationProbability * missCost - warmCost;
-		return {
-			phase: run.phase,
-			warmCost,
-			missCost,
-			continuationProbability,
-			expectedSavings,
-			economicsAvailable,
-			action: expectedSavings >= CACHE_WARMING_MINIMUM_EXPECTED_SAVINGS ? "warm" : "stop",
-		};
+		return warmingDecision(
+			run,
+			lastPromptTokens(this.sessionManager.getBranch()),
+			run.warmOutputTokens ?? effectiveOutputTokens(run.model, WARM_OUTPUT_TOKENS, run.options.apiKey),
+			run.phase === "idle" ? this.idle.probability(Date.now() - run.startedAt, run.ttlMs) : 1,
+		);
 	}
 }
 

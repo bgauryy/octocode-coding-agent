@@ -1,7 +1,7 @@
 import { ansiCodeLength, extractAnsiCode } from "./ansi-codes.ts";
 import { AnsiCodeTracker, updateTrackerFromText } from "./ansi-tracker.ts";
 import { cjkBreakRegex } from "./chars.ts";
-import { WRAP_JOIN_MARK } from "./row-marks.ts";
+import { softWrapSpaceMark, WRAP_JOIN_MARK } from "./row-marks.ts";
 import { graphemeSegmenter, graphemeSegments, isPrintableAscii, visibleWidth } from "./width.ts";
 
 /**
@@ -136,6 +136,17 @@ export function wrapTextWithAnsi(text: string, width: number): string[] {
 	return result.length > 0 ? result : [""];
 }
 
+/** Whether `token` shows only spaces: the escape codes the splitter attached before them are not text. */
+function isBlankToken(token: string): boolean {
+	for (let i = 0; i < token.length;) {
+		const code = ansiCodeLength(token, i);
+		if (code > 0) i += code;
+		else if (token[i] === " ") i++;
+		else return false;
+	}
+	return true;
+}
+
 function wrapSingleLine(line: string, width: number): string[] {
 	if (!line) {
 		return [""];
@@ -155,10 +166,15 @@ function wrapSingleLine(line: string, width: number): string[] {
 	let currentVisibleLength = 0;
 	// A row break after a visible token (CJK text has no spaces) cuts no space: search joins such rows without one.
 	let afterWhitespace = true;
+	// Inside scroll-view content, a row that starts after a break at a space carries the space mark on its first
+	// visible token, so a row of trailing whitespace alone stays unmarked (and dropped) as before.
+	const spaceMark = softWrapSpaceMark();
+	let markSpaceRow = false;
 
 	for (const token of tokens) {
 		const tokenVisibleLength = visibleWidth(token);
-		const isWhitespace = token.trim() === "";
+		// A styled space (`dim(" · ")` splits into a coloured space, then the dot) is still a space: a row never starts with it.
+		const isWhitespace = ascii ? token.trim() === "" : isBlankToken(token);
 
 		// Token itself is too long - break it character by character
 		if (tokenVisibleLength > width && !isWhitespace) {
@@ -175,7 +191,8 @@ function wrapSingleLine(line: string, width: number): string[] {
 
 			// Break long token - breakLongWord handles its own resets
 			const broken = breakLongWord(token, width, tracker);
-			if (wrapped.length > 0 && !afterWhitespace) broken[0] = WRAP_JOIN_MARK + broken[0];
+			if (wrapped.length > 0) broken[0] = (afterWhitespace ? spaceMark : WRAP_JOIN_MARK) + broken[0];
+			markSpaceRow = false;
 			for (let i = 0; i < broken.length - 1; i++) {
 				wrapped.push(broken[i]);
 			}
@@ -197,14 +214,23 @@ function wrapSingleLine(line: string, width: number): string[] {
 			}
 			wrapped.push(lineToWrap);
 			if (isWhitespace) {
-				// Don't start new line with whitespace
+				// Don't start new line with whitespace; the styles it carried still apply to what follows.
+				if (!ascii) updateTrackerFromText(token, tracker);
 				currentLine = tracker.getActiveCodes();
 				currentVisibleLength = 0;
+				afterWhitespace = true;
+				markSpaceRow = spaceMark !== "";
+				continue;
 			} else {
-				currentLine = (afterWhitespace ? "" : WRAP_JOIN_MARK) + tracker.getActiveCodes() + token;
+				currentLine = (afterWhitespace ? spaceMark : WRAP_JOIN_MARK) + tracker.getActiveCodes() + token;
 				currentVisibleLength = tokenVisibleLength;
+				markSpaceRow = false;
 			}
 		} else {
+			if (markSpaceRow && !isWhitespace) {
+				currentLine = spaceMark + currentLine;
+				markSpaceRow = false;
+			}
 			currentLine += token;
 			currentVisibleLength += tokenVisibleLength;
 		}

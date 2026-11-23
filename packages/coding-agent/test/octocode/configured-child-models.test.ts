@@ -7,7 +7,7 @@ import { ModelRuntime } from "../../src/core/model-runtime.ts";
 import { applyProviderVisibility, setProviderHiddenModels } from "../../src/core/provider-models.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { registerModelsTool } from "../../src/octocode/native/tools/models/tool.ts";
-import { MODELS_DEV_ENV } from "../../src/octocode/subagents/catalog.ts";
+import { MODELS_DEV_ENV } from "../../src/core/model-catalog/index-store.ts";
 import { planRun } from "../../src/octocode/subagents/claim.ts";
 import { createSandbox, write } from "../discovery/fixtures.ts";
 import { asSetup } from "./fake-host.ts";
@@ -46,7 +46,8 @@ it("discovers and dispatches provider-qualified models from both files and follo
 		const ctx = { modelRegistry, model: undefined };
 		const settings = SettingsManager.create(sandbox.cwd, sandbox.agentDir);
 		const registerTool = vi.fn<(tool: ToolDefinition) => void>();
-		registerModelsTool(asSetup({ registerTool }), () => new Map());
+		// The quota notice registers with the tool (`models-quota-notice.ts`); no event fires here.
+		registerModelsTool(asSetup({ registerTool, on: () => () => undefined }), () => new Map());
 		const tool = registerTool.mock.calls[0][0];
 		const list = async (scope: "connected" | "catalog") => {
 			const result = await tool.execute("models", { scope, query: id }, undefined, undefined, ctx as ToolContext);

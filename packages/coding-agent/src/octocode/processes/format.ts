@@ -1,6 +1,7 @@
 import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import { columnRows } from "../../theme/columns.ts";
 import { entityOfRole } from "../shared/entity.ts";
+import { isWebDaemonTitle } from "../shared/process-title.ts";
 import { formatSpan } from "../shared/format.ts";
 import { plural } from "../shared/text.ts";
 import type { Growth, Orphan, ProcessEntry, ProcessReport } from "./classify.ts";
@@ -31,8 +32,16 @@ export interface FormatOptions {
 const HEAD = ["NAME", "API", "PID", "PPID", "OWNER", "RSS", "AGE"];
 const COMPACT_HEAD = ["NAME", "PID", "RSS", "AGE"];
 
+const isDaemon = (entry: ProcessEntry) => isWebDaemonTitle(entry.title, entry.pid);
+
 function flagsOf(entry: ProcessEntry): string {
-	return [entry.self && "this session", entry.growth && growth(entry.growth)].filter(Boolean).join("; ");
+	return [
+		entry.self && "this session",
+		isDaemon(entry) && "web daemon for every session; /web stop ends it",
+		entry.growth && growth(entry.growth),
+	]
+		.filter(Boolean)
+		.join("; ");
 }
 
 /** The processes' own rows: the full table, or at a narrow width the name, pid, memory and age with the rest under each. */
@@ -40,7 +49,8 @@ function processLines(
 	processes: readonly ProcessEntry[],
 	width: number | undefined,
 ): { head: string; rows: string[][] } {
-	const named = (entry: ProcessEntry) => `${entityOfRole(entry.role)} ${entry.title}`;
+	// The web daemon is neither the main agent nor a subagent: a blank as wide as a mark keeps the titles aligned.
+	const named = (entry: ProcessEntry) => `${isDaemon(entry) ? "  " : entityOfRole(entry.role)} ${entry.title}`;
 	const full = columnRows(
 		[
 			HEAD,

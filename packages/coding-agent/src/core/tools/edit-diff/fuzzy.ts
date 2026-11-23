@@ -3,7 +3,9 @@
  * of the original text, so the written file keeps every original byte outside the matched span.
  */
 
-const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+let graphemesCache: Intl.Segmenter | undefined;
+/** Made on first use: a segmenter loads ICU data (about 10 ms), which a process that never needs it should not pay at load. */
+const graphemes = (): Intl.Segmenter => (graphemesCache ??= new Intl.Segmenter(undefined, { granularity: "grapheme" }));
 
 /** Per-character folds applied after NFKC: smart quotes, Unicode dashes and special spaces become ASCII. */
 function foldCharacters(text: string): string {
@@ -39,7 +41,7 @@ function normalizeWithMap(text: string): NormalizedText {
 			ends.pop();
 		}
 	};
-	for (const { segment, index } of graphemes.segment(text)) {
+	for (const { segment, index } of graphemes().segment(text)) {
 		if (segment === "\n") {
 			endLine();
 			out.push("\n");

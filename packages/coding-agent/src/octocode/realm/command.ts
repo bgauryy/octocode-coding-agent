@@ -7,7 +7,7 @@ import { worktreeNames } from "../worktrees/names.ts";
 import { MAIN_CHECKOUT, switchToWorktree } from "../worktrees/switch.ts";
 import { collectRealms, type RealmDependencies } from "./collect.ts";
 import { findRealm, type Realm, type RealmView } from "./model.ts";
-import { realmDetail, realmList, realmListParts, switchProblem, switchTarget } from "./render.ts";
+import { realmDetail, realmList, realmListParts, sessionState, switchProblem, switchTarget } from "./render.ts";
 
 const USAGE = "Usage: /realm [<name> [switch|resume]]";
 
@@ -31,10 +31,7 @@ async function resumeFrom(realm: Realm, ctx: CommandContext): Promise<void> {
 	if (!ctx.hasUI || !ctx.ui.pickSession) {
 		const notice: Notice = {
 			title: `Sessions started in ${realm.name}`,
-			rows: realm.sessions.map((session) => [
-				session.live ? "live" : "saved",
-				`${session.name ?? "(unnamed)"} · ${session.id}`,
-			]),
+			rows: realm.sessions.map((session) => [sessionState(session), `${session.name ?? "(unnamed)"} · ${session.id}`]),
 			hint: "open one with /resume all <id>",
 		};
 		return say(ctx, noticeText(notice));

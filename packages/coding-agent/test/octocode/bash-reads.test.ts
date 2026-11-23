@@ -158,19 +158,48 @@ describe("the file tool and plain bash prints", () => {
 		return { cwd, file, guard, bash, change };
 	}
 
-	it("counts a file this session wrote through bash as read, until another writer changes it", async () => {
+	// Contract change (review S8): a bash write used to count as a whole read, so `touch` or `>>` on a file never read let a
+	// whole-file write replace lines nobody saw. A write now needs a read, whoever wrote the file.
+	it("does not count a file this session wrote through bash as read", async () => {
 		const { cwd, bash, change } = setup();
 		await shellParserReady();
 		const made = path.join(cwd, "walk.py");
 		fs.writeFileSync(made, "print(1)\n");
 		await bash("printf 'print(1)\\n' > walk.py");
+		const refused = await change({ type: "write", path: "walk.py", content: "print(2)\n" });
+		expect(refused.ok).toBe(false);
+		expect(refused.message).toMatch(/was not read in this session/);
+		expect(fs.readFileSync(made, "utf8")).toBe("print(1)\n");
+		await bash("cat walk.py");
 		expect(await change({ type: "write", path: "walk.py", content: "print(2)\n" })).toMatchObject({ ok: true });
 		expect(fs.readFileSync(made, "utf8")).toBe("print(2)\n");
-		// Another writer: the content moved after the session's own write.
-		fs.writeFileSync(made, "print(3) # other\n");
-		const refused = await change({ type: "write", path: "walk.py", content: "print(4)\n" });
+	});
+
+	it.each(["touch big.txt", "echo tail >> big.txt", "sed -i.bak 's/zzz/yyy/' big.txt", "chmod 644 big.txt"])(
+		"keeps a whole-file write of an unread file refused after `%s`",
+		async (command) => {
+			const { cwd, bash, change } = setup();
+			await shellParserReady();
+			const big = path.join(cwd, "big.txt");
+			const text = `${Array.from({ length: 5000 }, (_, i) => `precious line ${i}`).join("\n")}\n`;
+			fs.writeFileSync(big, text);
+			if (command.startsWith("echo")) fs.appendFileSync(big, "tail\n");
+			await bash(command);
+			const refused = await change({ type: "write", path: "big.txt", content: "clobbered\n" });
+			expect(refused.ok).toBe(false);
+			expect(refused.message).toMatch(/was not read in this session/);
+			expect(fs.statSync(big).size).toBeGreaterThan(text.length - 1);
+		},
+	);
+
+	it("asks for a fresh read before a write when bash changed a file read earlier", async () => {
+		const { file, bash, change } = setup();
+		await bash("cat a.txt");
+		fs.appendFileSync(file, "five\n");
+		await bash("echo five >> a.txt");
+		const refused = await change({ type: "write", content: "replaced\n" });
 		expect(refused.ok).toBe(false);
-		expect(refused.message).toMatch(/changed on disk|not read/);
+		expect(refused.message).toMatch(/changed on disk since you last read it/);
 	});
 
 	it("does not count a file bash only names, or a write whose file was changed by someone else afterwards", async () => {

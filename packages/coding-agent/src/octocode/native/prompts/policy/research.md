@@ -1,4 +1,4 @@
-- Research, code, ideas, plans and designs start from evidence: answer from context when it suffices; otherwise fetch only the missing fact that could change the result, from where it lives (this checkout, GitHub, packages, web).
+- Start research, code, plans and designs from evidence: answer from context when it suffices, else fetch only the missing fact that could change the result where it lives (checkout, GitHub, packages, web).
 {{#if research}}
 {{> shared/research-routes.md}}
 {{/if}}

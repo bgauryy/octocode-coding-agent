@@ -1,3 +1,4 @@
+import { fallbackNotice } from "../../../core/agent-session/fallback-switch.ts";
 import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { notify } from "../../shared/commands.ts";
 import { modelLookup, unpricedModel } from "../../shared/util.ts";
@@ -29,18 +30,22 @@ export function reasoningTwin(model: ModelInfo, all: readonly ModelInfo[]): Mode
 	return all.find((other) => other.id === model.id && other.provider !== model.provider && other.reasoning);
 }
 
-/** `retry.fallbackModels` replaced a failed model: say so and why, since the session model changed by itself.
- * Interactive and RPC clients see this notification; print mode has no UI and reads the run outcome warning instead
- * (`retry-fallback.ts`), so each surface shows the notice once. */
+/** `retry.fallbackModels` replaced a failed model: say so and why, since the session model changed by itself, and name
+ * a change between plan and per-token billing. Interactive and RPC clients see this notification; print mode has no UI
+ * and reads the run outcome warning instead (`retry-fallback.ts`), which `fallbackNotice` words the same way, so each
+ * surface shows the notice once. */
 export function registerFallbackNotice(api: FeatureSetup): void {
 	api.bus.on("model_select", async (event, ctx) => {
 		if (event.source !== "fallback" || !ctx.hasUI) return;
-		const from = event.previousModel ? `${event.previousModel.provider}/${event.previousModel.id}` : "The model";
-		notify(
-			ctx.ui,
-			`${from} ${event.reason ?? "hit a usage limit"}; continuing on ${event.model.provider}/${event.model.id} (retry.fallbackModels). /model switches back.`,
-			"warning",
-		);
+		const previous = event.previousModel;
+		const billing = (provider: string) => ctx.modelRegistry.getProviderBilling(provider);
+		const text = fallbackNotice({
+			from: previous ? `${previous.provider}/${previous.id}` : "The model",
+			to: `${event.model.provider}/${event.model.id}`,
+			reason: event.reason ?? "hit a usage limit",
+			billing: { from: billing(previous?.provider ?? event.model.provider), to: billing(event.model.provider) },
+		});
+		notify(ctx.ui, text, "warning");
 	});
 }
 

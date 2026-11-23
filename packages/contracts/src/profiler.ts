@@ -110,6 +110,10 @@ export interface ProfileLayer {
 	breakpoint?: boolean;
 	/** Index of the transcript entry the layer came from, to open it; absent for tools and system blocks. */
 	entry?: number;
+	/** How the layer's structure is known: recorded from the request, estimated from the transcript, or not at all. */
+	structure?: "observed" | "estimated" | "unavailable";
+	/** How the layer maps to its source: by recorded identity, by role and position only, or not at all. */
+	link?: "linked" | "inferred" | "unavailable";
 }
 
 /**

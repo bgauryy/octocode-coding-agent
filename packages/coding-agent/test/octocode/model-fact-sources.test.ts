@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { indexCatalog } from "../../src/octocode/subagents/catalog.ts";
+import { indexCatalog } from "../../src/core/model-catalog/index-shape.ts";
 import { taskBlocker, type ModelRef } from "../../src/octocode/subagents/model.ts";
 import { modelAbilities, modelLine } from "../../src/octocode/subagents/models-command.ts";
 

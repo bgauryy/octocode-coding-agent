@@ -15,7 +15,8 @@ export const VIEWS_CSS = `/* Board */
 .board-view, .backlog-view { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .board-view > *, .backlog-view > * { flex: 0 0 100%; min-width: 0; }
 .board-view > .view-heading, .backlog-view > .view-heading { flex: 0 0 auto; }
-.board-view > .toolbar, .backlog-view > .toolbar { flex: 1 1 0; padding: 2px; background: none; border: 0; border-radius: 0; }
+/* The filters wrap rather than scroll out of sight (the toolbar hides its scrollbar). */
+.board-view > .toolbar, .backlog-view > .toolbar { flex: 1 1 0; flex-wrap: wrap; overflow-x: visible; padding: 2px; background: none; border: 0; border-radius: 0; }
 .board-view .column-heading { padding: 8px 12px 6px; }
 .board-view .column-description { display: none; }
 .board-sort { margin-left: auto; }

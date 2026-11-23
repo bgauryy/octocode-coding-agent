@@ -213,16 +213,16 @@ export class BacklogStore {
 		return addItem(this.agentDb(), this.repo, this.now, input, actor);
 	}
 
-	/**
-	 * Changes an item. `ongoing` claims it for `actor` (refused while another live assignee holds it); leaving
-	 * `ongoing` for `backlog`/`todo` releases it; `done` stamps `done_at`. While another live session holds an item,
-	 * others may only add a note (the user may force an edit). A subagent may only touch items its parent holds.
-	 */
 	/** Places `ref` in its column by a rank between the cards `after` and `before` (see `rankItem`); one row changes in the usual case. */
 	rank(ref: string, input: RankInput, actor: Actor): Item {
 		return rankItem(this.agentDb(), this.repo, this.now, ref, input, actor);
 	}
 
+	/**
+	 * Changes an item. `ongoing` claims it for `actor` (refused while another live assignee holds it); leaving
+	 * `ongoing` for `backlog`/`todo` releases it; `done` stamps `done_at`. While another live session holds an item,
+	 * others may only add a note (the user may force an edit). A subagent may only touch items its parent holds.
+	 */
 	update(ref: string, input: UpdateInput, actor: Actor): Item {
 		return updateItem(this.agentDb(), this.repo, this.now, ref, input, actor);
 	}
@@ -230,7 +230,8 @@ export class BacklogStore {
 	/**
 	 * Returns to todo, with a note naming the ended holder, each ongoing item whose holder session ended without a graceful
 	 * exit, that no child run works on and that sat idle for the window (`RELEASE_AFTER_MS`). Claims of `actor` and of its
-	 * coordinators are never taken. Returns the refs released.
+	 * coordinators are never taken. Each release carries the version it read, so an item changed since then stays as it
+	 * is. Returns the refs released.
 	 */
 	releaseEnded(actor: Actor): string[] {
 		const items = this.list({ states: ["ongoing"] }).items;
@@ -242,6 +243,7 @@ export class BacklogStore {
 					item.ref,
 					{
 						state: "todo",
+						version: item.version,
 						note: `Returned to todo: holder ${item.assignee} ended and the claim sat idle for over ${hours} hours.`,
 					},
 					actor,

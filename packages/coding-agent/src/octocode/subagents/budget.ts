@@ -43,6 +43,27 @@ export function maxRequests(profile?: Pick<AgentProfile, "maxRequests">, env: No
 }
 
 /**
+ * The soft limit of one task: its own `maxRequests` (`cap`), which may only lower its profile's limit (`maxRequests`;
+ * any cap lowers a budget that is off), else that limit. The hard limit scales with it (`hardLimit`). Throws the
+ * refusal, naming that limit, for a cap that is not a positive integer or is above it.
+ */
+export function taskRequestLimit(
+	profile: Pick<AgentProfile, "name" | "maxRequests"> | undefined,
+	cap: unknown,
+	env: NodeJS.ProcessEnv = process.env,
+): number {
+	const limit = maxRequests(profile, env);
+	if (cap === undefined) return limit;
+	if (typeof cap !== "number" || !Number.isInteger(cap) || cap < 1)
+		throw new Error(`maxRequests must be a positive integer, not ${JSON.stringify(cap)}.`);
+	if (limit > 0 && cap > limit)
+		throw new Error(
+			`maxRequests ${cap} is above ${profile ? `the ${profile.name} profile's` : "the default"} limit of ${limit} requests: pass at most ${limit}, or omit it.`,
+		);
+	return cap;
+}
+
+/**
  * What the parent tells a child that reached its soft limit. `ask`: the parent can answer during this run, so the child
  * may ask it for more; else (a foreground run, or no team) it can only say so in its report. `continued`: a resumed task.
  */

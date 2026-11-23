@@ -4,11 +4,14 @@ import { asSetup } from "./fake-host.ts";
 
 type Handler = (event: unknown, ctx: unknown) => Promise<void>;
 
-function setup() {
+function setup(planBilled: readonly string[] = []) {
 	let handler: Handler | undefined;
 	registerFallbackNotice(asSetup({ on: (_name: string, h: Handler) => void (handler = h) }) as never);
 	const notify = vi.fn();
-	const ctx = { hasUI: true, ui: { notify } };
+	const modelRegistry = {
+		getProviderBilling: (provider: string) => (planBilled.includes(provider) ? "plan" : "metered"),
+	};
+	const ctx = { hasUI: true, ui: { notify }, modelRegistry };
 	const model = { provider: "anthropic", id: "b" };
 	return { notify, ctx, model, select: (event: object, c: unknown = ctx) => handler?.(event, c) };
 }
@@ -34,5 +37,16 @@ describe("registerFallbackNotice", () => {
 			previousModel: { provider: "openai", id: "a" },
 		});
 		expect(notify.mock.calls[0]?.[0]).toContain("openai/a refused the credential; continuing on anthropic/b");
+	});
+
+	it("names a change between plan and per-token billing, as the run warning does", async () => {
+		const { notify, model, select } = setup(["openai"]);
+		await select({ source: "fallback", model, previousModel: { provider: "openai", id: "a" } });
+		expect(notify.mock.calls[0]?.[0]).toBe(
+			"openai/a hit a usage limit; continuing on anthropic/b, billed per token instead of by plan (retry.fallbackModels). /model switches back.",
+		);
+		const same = setup();
+		await same.select({ source: "fallback", model, previousModel: { provider: "openai", id: "a" } });
+		expect(same.notify.mock.calls[0]?.[0]).not.toContain("billed");
 	});
 });

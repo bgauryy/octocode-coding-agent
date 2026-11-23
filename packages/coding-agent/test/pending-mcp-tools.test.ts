@@ -30,6 +30,7 @@ describe("PendingMcpTools", () => {
 				server("broken", "failed"),
 				server("off", "disabled", false),
 				server("browser", "unselected"),
+				server("held", "not checked"),
 			],
 			[
 				"bash",
@@ -40,6 +41,7 @@ describe("PendingMcpTools", () => {
 				"mcp__broken__a",
 				"mcp__off__a",
 				"mcp__gone__a",
+				"mcp__held__a",
 			],
 		);
 
@@ -59,6 +61,8 @@ describe("PendingMcpTools", () => {
 		["fails", server("docs", "failed")],
 		["stops", server("docs", "stopped")],
 		["is disabled", server("docs", "disabled", false)],
+		// Switched on, but the security review holds it back: it never starts, so its tools never register.
+		["is held back by the security review", server("docs", "not checked")],
 		["is removed", undefined],
 	])("drops its pending tools when the server %s", (_, next) => {
 		const { events, pending, retain } = setup(

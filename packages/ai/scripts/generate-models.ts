@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { join } from "node:path";
 import {
 	applyAnthropicAllowedFallbackModelMetadata,
 	applyAnthropicMessagesCompatMetadata,
@@ -9,16 +10,13 @@ import {
 import { addAzureModels, addMissingAliasModels } from "./generate-models/aliases-azure-models.ts";
 import { buildProviderCatalogs, sortProviderCatalogs } from "./generate-models/catalog.ts";
 import { loadModelsDevClassifierModels } from "./generate-models/classifiers.ts";
-import { XAI_BUILTIN_EXCLUDED_MODEL_IDS } from "./generate-models/constants.ts";
-import {
-	catalogRequestOptions,
-	modelsDev,
-	fetchAiGatewayModels,
-	fetchOpenRouterModels,
-} from "./generate-models/fetchers.ts";
+import { OPENCODE_EXCLUDED_MODEL_IDS, XAI_BUILTIN_EXCLUDED_MODEL_IDS } from "./generate-models/constants.ts";
+import { fetchAiGatewayModels, fetchOpenRouterModels } from "./generate-models/fetchers.ts";
 import { addDeepSeekAndAntLingModels, addMissingOpenAiModels } from "./generate-models/manual-models.ts";
 import { applyImageInputMetadata, applyPromptCacheMetadata } from "./generate-models/metadata.ts";
-import { modelsDevLimits } from "./generate-models/models-dev-limits.ts";
+import { modelsDevLimits } from "../src/catalog/models-dev-fields.ts";
+import { loadModelsDevSource } from "./generate-models/models-dev-source.ts";
+import { mergeModelsDevSources, modelsDevSources } from "./generate-models/models-dev-sources.ts";
 import { loadModelsDevData } from "./generate-models/models-dev.ts";
 import {
 	applyOpenAICompletionsCompatMetadata,
@@ -29,37 +27,42 @@ import {
 	applyOpenAIResponsesTranscriptMetadata,
 	applyOpenAIToolSearchMetadata,
 } from "./generate-models/openai-compat.ts";
-import { refreshesProvider } from "./generate-models/options.ts";
+import { packageRoot, refreshesProvider } from "./generate-models/options.ts";
 import { KNOWN_PROVIDER_IDS, type KnownProvider } from "../src/types/ids.ts";
 import { applyModelsDevReasoningOptionMetadata, applyThinkingLevelMetadata } from "./generate-models/thinking.ts";
 import { applyUpstreamCorrections } from "./generate-models/upstream-corrections.ts";
 import { writeModelCatalogs } from "./generate-models/writers.ts";
+import { readModelsDevStamp } from "./model-data.ts";
+
+// Azure derives its catalog from OpenAI and DeepSeek. The other exceptions have their own listings or manual models.
+const otherSources = new Set<KnownProvider>([
+	"ant-ling",
+	"azure",
+	"deepseek",
+	"openrouter",
+	"typesafe",
+	"vercel-ai-gateway",
+]);
+/** Every provider built from models.dev listings, whatever a run refreshes. */
+const modelsDevSourced = KNOWN_PROVIDER_IDS.filter((id) => !otherSources.has(id));
 
 async function generateModels() {
-	// Fetch models from all upstream catalogs.
-	// models.dev: Anthropic, Google, OpenAI, Groq, Cerebras, and others
+	// Upstream catalogs:
+	// models.dev: Anthropic, Google, OpenAI, Groq, Cerebras, and others (the pinned snapshot; `--live` fetches)
 	// OpenRouter: its tool-capable routed catalog
 	// AI Gateway: OpenAI-compatible catalog with tool-capable models
-	// Azure derives its catalog from OpenAI and DeepSeek. The other exceptions have their own listings or manual models.
-	const otherSources = new Set<KnownProvider>([
-		"ant-ling",
-		"azure",
-		"deepseek",
-		"openrouter",
-		"typesafe",
-		"vercel-ai-gateway",
-	]);
-	const modelsDevOwners = KNOWN_PROVIDER_IDS.filter(
-		(id) => !otherSources.has(id) && (refreshesProvider(id) || (id === "openai" && refreshesProvider("azure"))),
+	const modelsDevOwners = modelsDevSourced.filter(
+		(id) => refreshesProvider(id) || (id === "openai" && refreshesProvider("azure")),
 	);
 	const needsCatalog = modelsDevOwners.length > 0 || refreshesProvider("openrouter");
-	if (needsCatalog) console.log("Fetching models from models.dev API...");
-	const upstream = needsCatalog ? await modelsDev.providers(catalogRequestOptions()) : undefined;
+	const source = needsCatalog || refreshesProvider("typesafe") ? await loadModelsDevSource() : undefined;
+	const upstream = needsCatalog ? source?.providers : undefined;
 	const modelsDevModels = upstream && modelsDevOwners.length ? await loadModelsDevData(upstream) : [];
 	const populated = new Set(modelsDevModels.map((model) => model.provider));
 	const missing = modelsDevOwners.filter((id) => !populated.has(id));
 	if (missing.length) throw new Error(`models.dev returned no usable chat models for: ${missing.join(", ")}`);
-	const modelsDevClassifierModels = refreshesProvider("typesafe") ? await loadModelsDevClassifierModels() : [];
+	const modelsDevClassifierModels =
+		source && refreshesProvider("typesafe") ? await loadModelsDevClassifierModels(source) : [];
 	const openRouterCatalog = refreshesProvider("openrouter")
 		? await fetchOpenRouterModels()
 		: { chat: [], images: [], classifiers: [] };
@@ -71,7 +74,10 @@ async function generateModels() {
 	const allModels = [...modelsDevModels, ...openRouterCatalog.chat, ...aiGatewayCatalog.chat].filter(
 		(model) =>
 			!(model.provider === "xai" && XAI_BUILTIN_EXCLUDED_MODEL_IDS.has(model.id)) &&
-			!((model.provider === "opencode" || model.provider === "opencode-go") && model.id === "gpt-5.3-codex-spark"),
+			!(
+				(model.provider === "opencode" || model.provider === "opencode-go") &&
+				OPENCODE_EXCLUDED_MODEL_IDS.has(model.id)
+			),
 	);
 
 	applyUpstreamCorrections(allModels);
@@ -106,7 +112,22 @@ async function generateModels() {
 	applyAnthropicAllowedFallbackModelMetadata(allModels.filter(isAnthropicFallbackMetadataModel));
 
 	const providers = buildProviderCatalogs(allModels, openRouterCatalog, aiGatewayCatalog, modelsDevClassifierModels);
-	writeModelCatalogs(sortProviderCatalogs(providers));
+	// The manifest records each rebuilt provider's models.dev listing and left-out ids; a run that read no models.dev
+	// listings keeps the installed stamp.
+	const previous = readModelsDevStamp(join(packageRoot, "src", "providers", "data"));
+	writeModelCatalogs(
+		sortProviderCatalogs(providers),
+		source && upstream && modelsDevOwners.length > 0
+			? {
+					generatedAt: source.generatedAt,
+					sources: mergeModelsDevSources(
+						previous?.sources,
+						modelsDevSources(upstream, (id) => Object.keys(providers[id]?.chat ?? {}), modelsDevOwners),
+						modelsDevOwners,
+					),
+				}
+			: undefined,
+	);
 
 	// Print statistics
 	const publishedChat = Object.values(providers).flatMap((catalog) => Object.values(catalog.chat));

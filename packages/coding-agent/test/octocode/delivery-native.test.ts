@@ -21,7 +21,9 @@ const REPORT = "Unique background report: delivery-native";
 describe("Delivery with the native Octocode session queue", () => {
 	// These are the session operations the TUI uses for dequeue and Esc. Only the UI display is a double;
 	// registration, tool execution, queues, messages, settlement and transcript projection are real Octocode.
-	// interrupt: the application "abort" command (webview, RPC) stops the run without clearing the agent's queue.
+	// interrupt: the application "abort" command (webview, RPC). It is a user Stop, which withdraws the queued input as Esc
+	// does (`AgentSession.abort`), so the report is appended once without a turn. An abort that leaves the queue (a peer's
+	// held mail) keeps the report queued for the next run: `delivery.test.ts` covers that case.
 	it.each(["delivered", "dequeue", "escape", "interrupt"] as const)(
 		"retains exactly one report after %s without an extra run",
 		async (action) => {
@@ -151,12 +153,11 @@ describe("Delivery with the native Octocode session queue", () => {
 				const stopped = action === "escape" || action === "interrupt";
 				expect(runs).toBe(1);
 				expect(turns).toEqual(stopped ? [0] : action === "delivered" ? [0, 0, 1] : [0, 0]);
-				// The interrupt left the report in the agent's queue: it still waits there and is not appended a second time.
-				expect(delivery.pending).toBe(action === "interrupt" ? 1 : 0);
-				expect(reports()).toHaveLength(action === "interrupt" ? 0 : 1);
-				if (action !== "interrupt") expect(reports()[0]).toMatchObject(report);
+				expect(delivery.pending).toBe(0);
+				expect(reports()).toHaveLength(1);
+				expect(reports()[0]).toMatchObject(report);
 				expect(ui.notes.filter((note) => note.message.includes("kept 1 queued message"))).toHaveLength(
-					action === "dequeue" || action === "escape" ? 1 : 0,
+					action === "delivered" ? 0 : 1,
 				);
 
 				faux.setResponses([

@@ -82,10 +82,13 @@ export class SearchableSelectorComponent extends Container implements Focusable 
 		this.syncHints();
 	}
 
-	/** While the list is empty, Enter does nothing: only Esc (and the empty line's recovery key) remain. */
+	/**
+	 * While the list is empty, Enter does nothing: only Esc (and the empty line's recovery key) remain. A narrow line
+	 * drops the arrows first: every list moves with them, while Enter's verb says what this one does.
+	 */
 	private syncHints(): void {
 		this.hints.setHints(
-			this.list.getItems().length ? [moveHint(1), this.confirmHint, this.cancelHint] : [this.cancelHint],
+			this.list.getItems().length ? [moveHint(2), this.confirmHint, this.cancelHint] : [this.cancelHint],
 		);
 	}
 }

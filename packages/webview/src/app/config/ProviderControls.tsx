@@ -101,7 +101,7 @@ export function ProviderSwitch({ row, set }: { row: ProviderCredentialStatus; se
 	const toggle = useSwitch(() => set!({ action: "set-provider", provider: row.provider, enabled: !!row.disabled }));
 	if (!row.origins?.length && !row.disabled && !set) return null;
 	return (
-		<div className="config-sources">
+		<div className="config-stack">
 			{row.origins && row.origins.length > 0 && (
 				<ul className="config-sources" aria-label={`Configured in for ${title}`}>
 					{row.origins.map((origin) => (

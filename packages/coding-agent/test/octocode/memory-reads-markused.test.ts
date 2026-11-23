@@ -18,6 +18,7 @@ const memory = {
 function failingStore(error: Error = new DbWriterBusyError("writer queue full")): MemoryStore {
 	return {
 		get: (id: number) => (id === 7 ? memory : undefined),
+		sourcesOf: () => [],
 		searchPage: () => undefined,
 		scan: () => [memory],
 		markUsed: () => Promise.reject(error),

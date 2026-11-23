@@ -2,12 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { USER_AUTHOR, closeSharedAgentDb } from "../../../db/src/api.ts";
+import { USER_AUTHOR, backlog as queries, closeSharedAgentDb } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
 import { applyBacklogCommand } from "../../src/octocode/backlog/web-commands.ts";
+import { classify } from "../../src/octocode/shared/backlog-classify.ts";
 
 let tmp: string;
 let savedDb: string | undefined;
@@ -59,21 +60,41 @@ describe("item.rank", () => {
 		expect(order()).toEqual(["B3", "B1", "B4", "B2"]);
 	});
 
-	it("changes neither state, claim nor update time, and files a change note", () => {
+	it("changes neither state, claim, update time nor version, and files a change note", () => {
 		const { store, rank } = setup();
 		const before = store.get("B2")!;
 		const after = rank("B2", "B3", "B4");
 		expect(after).toMatchObject({ state: "todo", updatedAt: before.updatedAt });
 		expect(after.assignee).toBeUndefined();
-		expect(after.version).toBe(before.version + 1);
+		// Ordering is not an edit (contract changed): a rank keeps the version, so a copy read before it can still claim.
+		expect(after.version).toBe(before.version);
 		expect(store.notes(after, -1).at(-1)).toMatchObject({ kind: "change", text: expect.stringContaining("rank") });
 	});
 
 	it("refuses a stale version with the store's message", () => {
 		const { store, rank } = setup();
 		const stale = store.get("B1")!.version;
-		rank("B1", "B2");
+		store.update("B1", { title: "renamed" }, human);
 		expect(() => rank("B1", "B3", undefined, stale)).toThrow("B1 changed elsewhere — reload it.");
+	});
+
+	it("renumbering a column keeps every card's version and announces no edit", () => {
+		const { store } = setup();
+		const agent = sharedAgentDb();
+		for (let i = 5; i <= 8; i++) store.add({ title: `t${i}`, state: "todo", createdBy: USER_AUTHOR }, human);
+		const versions = () => Object.fromEntries(store.list({ states: ["todo"] }).items.map((i) => [i.ref, i.version]));
+		const before = versions();
+		const cursor = queries.snapshot(agent.db, store.repo).cursor;
+		// No card has a rank yet, so this one move ranks the whole column.
+		applyBacklogCommand(store, { command: "item.rank", id: "B8", version: 1, after: "B1", before: "B2" }, "s1");
+		expect(versions()).toEqual(before);
+		const page = queries.auditAfter(agent.db, store.repo, cursor, 100);
+		if (page.resync) throw new Error("resync");
+		expect(page.rows.map((row) => classify(row)).filter(Boolean)).toEqual([]);
+		// The audit still records the ranks.
+		expect(store.audit("B8").at(-1)?.after).toMatchObject({ rank: expect.any(Number) });
+		// A copy read before the move still writes.
+		expect(store.update("B6", { title: "renamed", version: before.B6 }, human).title).toBe("renamed");
 	});
 
 	it("refuses a neighbour in another column, itself, no neighbour and an unknown card", () => {
@@ -103,5 +124,20 @@ describe("item.rank", () => {
 			rank("B3", "B1", "B4");
 		}
 		expect(order().slice(0, 2)).toEqual(["B1", "B3"]);
+	});
+});
+
+describe("item.state", () => {
+	it("claims for the session whose page moved the card, a live holder there, as /backlog does", () => {
+		const { store } = setup();
+		const ready = store.update("B1", { goal: "g", why: "w" }, human);
+		const moved = applyBacklogCommand(
+			store,
+			{ command: "item.state", id: "B1", version: ready.version, state: "ongoing" },
+			"s1",
+		);
+		expect(moved.item).toMatchObject({ state: "ongoing", assignee: "s1" });
+		expect(store.marks([store.get("B1")!], "s1").get("B1")?.stale).toBeUndefined();
+		expect(store.audit("B1").at(-1)?.actor).toMatchObject({ id: "s1", kind: "human", surface: "web" });
 	});
 });

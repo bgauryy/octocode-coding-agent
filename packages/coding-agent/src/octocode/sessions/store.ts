@@ -1,4 +1,5 @@
 export type { CatalogEntry, CatalogRow, SessionExtra, SessionLinks };
+import type { ActivityTone } from "@octocodeai/octocode-contracts";
 import {
 	type AgentDb,
 	type CatalogEntry,
@@ -116,6 +117,11 @@ export class SessionIndex {
 		owner: { cwd: string; file: string },
 	): Promise<void> {
 		return this.writer().post({ kind: "session-title", id, ...titleRow(title, source), fileMtime, owner });
+	}
+
+	/** The light's tone of session `id`, which this process has open (`sessions.setActivity`), through the writer. */
+	activityLater(id: string, tone: ActivityTone): Promise<void> {
+		return this.writer().post({ kind: "session-activity", id, pid: process.pid, activity: tone });
 	}
 
 	/** `end` through the writer, after this session's writes still queued. */

@@ -1,7 +1,12 @@
+import { join } from "node:path";
 import { cliStyle } from "../utils/cli-style.ts";
 import type { Args } from "../cli/args.ts";
 import { showFolderTrustPrompt, type TrustChoice, type TrustPromptInput } from "../cli/trust-prompt.ts";
+import { getAgentDir } from "../config.ts";
+import { formatNoModelsAvailableMessage } from "../core/auth-guidance.ts";
 import type { FolderTrustAsker } from "../core/folder-trust.ts";
+import { ModelRuntime } from "../core/model-runtime.ts";
+import { providerSourceGate } from "../core/provider-sources/gate.ts";
 import type { SettingsManager } from "../core/settings-manager.ts";
 import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { enforceFolderTrust, type TrustSurface } from "./trust-gate.ts";
@@ -46,6 +51,27 @@ export function folderTrustAsker(
 }
 
 /**
+ * The provider step a refused headless run would meet next, so one refusal names both: undefined when a model is
+ * available. Reads only the user's own credentials and models.json, never the folder's (it is not trusted), offline.
+ */
+async function missingProviderStep(cwd: string, settingsManager: SettingsManager): Promise<string | undefined> {
+	providerSourceGate.set(settingsManager.getProviderSources());
+	const agentDir = getAgentDir();
+	const runtime = await ModelRuntime.create({
+		authPath: join(agentDir, "auth.json"),
+		modelsPath: join(agentDir, "models.json"),
+		project: { cwd, isTrusted: () => false },
+		readOnlyCredentials: true,
+		allowModelNetwork: false,
+	});
+	try {
+		return (await runtime.getAvailable()).length > 0 ? undefined : formatNoModelsAvailableMessage("cli");
+	} finally {
+		runtime.dispose();
+	}
+}
+
+/**
  * Decides whether a session may start in `cwd`; returns only when it may. Otherwise it prints why and exits: the
  * interactive prompt's own answers exit 0, every refusal of a headless run exits 1. Nothing of the folder was read.
  */
@@ -56,9 +82,10 @@ export async function gateStartup(input: {
 	settingsManager: SettingsManager;
 }): Promise<void> {
 	const { parsed, appMode } = input;
+	const surface = trustSurface(appMode);
 	const result = await enforceFolderTrust({
 		cwd: input.cwd,
-		surface: trustSurface(appMode),
+		surface,
 		trustFlag: parsed.trust,
 		prompt:
 			appMode === "interactive" ? (question) => showFolderTrustPrompt(input.settingsManager, question) : undefined,
@@ -67,6 +94,11 @@ export async function gateStartup(input: {
 		if (result.notice) console.error(cliStyle.warn(result.notice));
 		return;
 	}
-	(result.exitCode === 0 ? console.log : console.error)(result.message);
+	// A subagent's parent has a provider; a person starting a text or JSON run may have neither step done.
+	const next =
+		result.undecided && (surface === "print" || surface === "json")
+			? await missingProviderStep(input.cwd, input.settingsManager)
+			: undefined;
+	(result.exitCode === 0 ? console.log : console.error)(next ? `${result.message}\nThen: ${next}` : result.message);
 	process.exit(result.exitCode);
 }

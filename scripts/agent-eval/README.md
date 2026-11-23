@@ -145,7 +145,7 @@ Each row has the pass or fail with grader evidence, cost, turns (assistant messa
 ## Develop
 
 ```sh
-node --test "scripts/agent-eval/test/*.test.mjs"   # also part of yarn run test:scripts; no network, no provider
+node --test "scripts/agent-eval/test/*.test.mjs"   # also part of yarn run test:agentic; no network, no provider
 ```
 
 Tests that read the pinned tree skip where the ref is absent. [test/fake-cli.mjs](test/fake-cli.mjs) stands in for the agent and writes transcripts in the real format.

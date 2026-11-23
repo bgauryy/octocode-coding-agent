@@ -12,8 +12,10 @@ import { StateMark } from "../ui/StateMark.tsx";
 import { ConnectionNotice, StatusLine } from "./controls.tsx";
 import { DialogAnswer } from "./DialogAnswer.tsx";
 import { SessionAttachments } from "./SessionAttachments.tsx";
+import { SessionModelControls } from "./SessionModelControls.tsx";
+import { SessionUsageStrip } from "./SessionUsageStrip.tsx";
 import { SessionRequests } from "./SessionRequests.tsx";
-import { sessionBadge } from "./model.ts";
+import { ACTIVITY_BADGE_TONE, sessionBadge } from "./model.ts";
 import { useLive } from "./session.tsx";
 
 type SessionAction = "prompt" | "steer" | "followUp";
@@ -55,6 +57,9 @@ function SessionComposerForSession() {
 				? {
 						sessionId: state.application.sessionId,
 						model: state.application.model,
+						models: state.application.models,
+						usage: state.application.usage,
+						quota: state.application.quota,
 						runId: state.application.runId,
 						streaming: state.application.streaming,
 						status: state.application.status,
@@ -241,7 +246,7 @@ function SessionComposerForSession() {
 			<div className="session-panel-header">
 				<h3>Message the current agent</h3>
 				<Badge
-					tone={badge?.warn ? "warning" : badge ? "accent" : "neutral"}
+					tone={badge ? ACTIVITY_BADGE_TONE[badge.tone] : "neutral"}
 					icon={badge && <StateMark state={badge.state} size={12} />}
 				>
 					{badge ? badge.label : "Idle"}
@@ -267,6 +272,7 @@ function SessionComposerForSession() {
 			{answerable && session.awaiting?.id && (
 				<DialogAnswer key={session.awaiting.id} awaiting={session.awaiting} sessionId={session.sessionId} />
 			)}
+			<SessionModelControls session={session} />
 			{choices.length > 0 && (
 				<form className="composer" onSubmit={submit}>
 					<Field label="Message">
@@ -337,6 +343,7 @@ function SessionComposerForSession() {
 				</form>
 			)}
 			{choices.length === 0 && stopButton}
+			<SessionUsageStrip usage={session.usage} quota={session.quota} provider={session.model?.provider} />
 			{session.steering.length || session.followUp.length ? (
 				<p className="queue-chips">
 					{session.steering.length > 0 && (

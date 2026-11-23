@@ -94,4 +94,60 @@ describe("auth command credential sources", () => {
 		expect(stdout.mock.calls.map(([text]) => String(text)).join("")).not.toContain("pi-hidden-test-key");
 		expect(providerSourceGate.isEnabled("pi")).toBe(false);
 	});
+
+	test("names a models.json key by the words /providers uses: the file, its secret command, or the variable", async () => {
+		vi.stubEnv("R2_GATEWAY_KEY", "env-test-key");
+		const provider = (apiKey: string) => ({
+			baseUrl: "http://127.0.0.1:9/v1",
+			api: "openai-completions",
+			apiKey,
+			models: [{ id: "m" }],
+		});
+		write(join(agentDir, "models.json"), {
+			providers: {
+				literal: provider("fixture-literal-key"),
+				command: provider("!echo fixture"),
+				variable: provider("$R2_GATEWAY_KEY"),
+			},
+		});
+		const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		const sources: Record<string, unknown> = {};
+		for (const id of ["literal", "command", "variable"]) {
+			await runAuthCommand(["auth", "check", "--provider", id, "--json"]);
+			sources[id] = JSON.parse(String(stdout.mock.calls.at(-1)?.[0])).source;
+		}
+		expect(sources).toEqual({
+			literal: "models.json",
+			command: "secret command in models.json",
+			variable: "R2_GATEWAY_KEY",
+		});
+	});
+});
+
+describe("auth check --model", () => {
+	test("resolves the model as a session's --model does: to the matching provider that has credentials", async () => {
+		vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test-key");
+		const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+		await runAuthCommand(["auth", "check", "--model", "sonnet", "--json"]);
+
+		expect(JSON.parse(String(stdout.mock.calls.at(-1)?.[0]))).toMatchObject({
+			status: "ready",
+			provider: "anthropic",
+			source: "ANTHROPIC_API_KEY",
+		});
+		expect(process.exitCode).toBe(0);
+		expect(existsSync(join(agentDir, "models-store.json"))).toBe(false);
+	});
+
+	test("reports the resolver's error for a model it cannot resolve", async () => {
+		const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+		const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		await runAuthCommand(["auth", "check", "--model", "no-such-model-xyz", "--json"]);
+
+		expect(stdout).not.toHaveBeenCalled();
+		expect(String(stderr.mock.calls[0]?.[0])).toContain('Model "no-such-model-xyz" not found');
+		expect(process.exitCode).toBe(2);
+	});
 });

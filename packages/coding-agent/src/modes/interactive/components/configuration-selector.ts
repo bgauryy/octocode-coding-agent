@@ -25,13 +25,22 @@ export interface ConfigurationSelectorOptions {
 
 const MAX_VISIBLE = 12;
 
-/** What the row shows for `entry` in `scope`: that scope's own value, else the value that applies. */
+/**
+ * What the row shows for `entry` in `scope`: what the entry is in effect when its owner says so in words (`state`, such
+ * as an MCP server held back until approved), else that scope's own value, else the value that applies.
+ */
 function shown(entry: ConfigEntry, scope: SelectorScope): string {
 	const value = entry.scopes[scope] ?? entry.value;
 	const type = entry.valueType.type;
-	if (type === "toggle") return value === false ? "off" : "on";
+	if (type === "toggle") return entry.state ?? (value === false ? "off" : "on");
 	if (value === undefined) return "(unset)";
 	return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+/** What Enter cycles a toggle through: the row as shown, then the other side of its switch. */
+function toggleValues(entry: ConfigEntry, scope: SelectorScope): string[] {
+	const on = (entry.scopes[scope] ?? entry.value) !== false;
+	return [shown(entry, scope), on ? "off" : "on"];
 }
 
 /**
@@ -93,7 +102,7 @@ export class ConfigurationSelectorComponent extends Container {
 		};
 		if (entry.locked) return base;
 		const type = entry.valueType;
-		if (type.type === "toggle") return { ...base, values: ["on", "off"] };
+		if (type.type === "toggle") return { ...base, values: toggleValues(entry, this.scope) };
 		if (type.type === "boolean") return { ...base, values: ["true", "false"] };
 		if (type.type === "enum") return { ...base, values: [...type.values] };
 		return {
@@ -135,7 +144,11 @@ export class ConfigurationSelectorComponent extends Container {
 		const fresh = await this.options.get(id);
 		if (fresh) {
 			this.entries.set(id, fresh);
-			this.list.updateValue(id, shown(fresh, this.scope));
+			this.list.updateValue(
+				id,
+				shown(fresh, this.scope),
+				fresh.valueType.type === "toggle" && !fresh.locked ? toggleValues(fresh, this.scope) : undefined,
+			);
 		}
 		const color = result.status === "applied" ? "success" : "error";
 		this.notice.setText(

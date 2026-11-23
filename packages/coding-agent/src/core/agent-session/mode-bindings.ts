@@ -26,6 +26,7 @@ import { recordRunFailure } from "./run-outcome.ts";
 import type { SessionInputQueue } from "./input-queue.ts";
 import type { SessionModelControl } from "./model-control.ts";
 import type { SessionToolLoadout } from "./tool-loadout.ts";
+import { cacheWarmingReport } from "../cache-warmer/report.ts";
 import type { ModeBindingOptions } from "./types.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -284,6 +285,7 @@ export class ModeBindings {
 					this._shutdownHandler?.();
 				},
 				getContextUsage: () => session.getContextUsage(),
+				getCacheWarmingReport: () => cacheWarmingReport(session),
 				compact: (options) => {
 					const work = (async () => {
 						try {

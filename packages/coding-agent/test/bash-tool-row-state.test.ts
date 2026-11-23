@@ -47,7 +47,7 @@ describe("core bash tool row outcome", () => {
 			details: { exitCode: 0 },
 			durationMs: 1_200,
 		});
-		expect(header).toBe("⏺ Bash(make) · 1.2s");
+		expect(header).toBe("✓ Bash(make) · 1.2s");
 		expect(result).toContain("⎿  exit 0 · 1 line");
 		expect(result).not.toContain("1.2s");
 	});
@@ -57,7 +57,8 @@ describe("core bash tool row outcome", () => {
 			isError: true,
 			details: { exitCode: 1 },
 		});
-		expect(header.startsWith("⏺ Bash(make)")).toBe(true);
+		// A settled row draws its state's glyph: ⏺ means running only.
+		expect(header.startsWith("✗ Bash(make)")).toBe(true);
 		expect(result).toContain("⎿  Error: exit 1 · 1 line");
 		expect(raw).toContain(theme.fg("error", "boom!"));
 	});
@@ -67,7 +68,7 @@ describe("core bash tool row outcome", () => {
 			isError: true,
 			details: { termination: "aborted" },
 		});
-		expect(header.startsWith("⏺ Bash(make)")).toBe(true);
+		expect(header.startsWith("◼ Bash(make)")).toBe(true);
 		expect(result).toContain("⎿  aborted");
 	});
 

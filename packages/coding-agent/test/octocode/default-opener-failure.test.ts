@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { createAppWindow } from "../../src/octocode/browser/app-window.ts";
+import { createAppWindow, OPEN_BROWSER_ENV } from "../../src/octocode/browser/app-window.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -26,6 +26,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.unstubAllEnvs();
 	closeSharedAgentDb();
 	if (savedDb === undefined) delete process.env.OCTOCODE_AGENT_DB;
 	else process.env.OCTOCODE_AGENT_DB = savedDb;
@@ -50,6 +51,8 @@ describe("callers of the default system opener when it cannot start", () => {
 	});
 
 	it("the app window passes the opener's error to its caller in browser mode and without a Chromium browser", async () => {
+		// The run turns browser opening off; this case exercises the real default opener, whose boundary is mocked above.
+		vi.stubEnv(OPEN_BROWSER_ENV, "1");
 		const browserMode = createAppWindow({ platform: "linux", env: { PATH: "" }, mode: () => "browser" });
 		await expect(browserMode.open("http://127.0.0.1:9/")).rejects.toThrow("spawn xdg-open ENOENT");
 		const noChromium = createAppWindow({ platform: "linux", env: { PATH: path.join(tmp, "empty") } });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FeatureHost } from "../src/core/features/index.ts";
-import { tryExecuteFeatureCommand } from "../src/core/agent-session/prompt-expansion.ts";
+import { isCommandLine, tryExecuteFeatureCommand } from "../src/core/agent-session/prompt-expansion.ts";
 
 const runnerWith = (commands: Record<string, unknown> = {}): FeatureHost =>
 	({
@@ -35,5 +35,21 @@ describe("a moved name", () => {
 		expect(await tryExecuteFeatureCommand(runner, "/plugins disable x")).toBe(true);
 		expect(await tryExecuteFeatureCommand(runner, "/hooks events")).toBe(true);
 		expect(ran).toEqual(["disable x", "hooks events"]);
+	});
+});
+
+describe("a line prompt() settles without the model", () => {
+	it("is a registered command, a built-in or a switched-off feature's command; other text is a model prompt", () => {
+		const handler = async () => undefined;
+		const runner = runnerWith({ backlog: { handler }, harness: { handler } });
+		expect(isCommandLine(runner, "/backlog")).toBe(true);
+		expect(isCommandLine(runner, "/backlog add Fix it")).toBe(true);
+		expect(isCommandLine(runner, "/plugins disable x")).toBe(true);
+		expect(isCommandLine(runner, "/help")).toBe(true);
+		expect(isCommandLine(runner, "/mcp tools")).toBe(true);
+		expect(isCommandLine(runner, "/skill:review")).toBe(false);
+		expect(isCommandLine(runner, "/nosuch")).toBe(false);
+		expect(isCommandLine(runner, " /backlog")).toBe(false);
+		expect(isCommandLine(runner, "backlog")).toBe(false);
 	});
 });

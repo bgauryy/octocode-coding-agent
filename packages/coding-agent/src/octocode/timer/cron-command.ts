@@ -2,9 +2,9 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { type AgentDb, type TimerRow, timers } from "../../../../db/src/api.ts";
 import type { CommandContext } from "../../core/features/index.ts";
 import { builtinDescription } from "../../core/slash-commands.ts";
-import { formatSpan } from "../shared/format.ts";
+import { formatClock, formatSpan } from "../shared/format.ts";
 import { say, type Subcommand, wordCompletions } from "../shared/commands.ts";
-import { cronOf, cronSetText, describeCron, settledDue } from "./cron.ts";
+import { cronOf, cronSummary, settledDue } from "./cron.ts";
 import { MAX_ACTIVE, timerFields } from "./model.ts";
 
 /** What `/cron` and `/loop` read and write: the shared database and the session that typed the command. */
@@ -66,8 +66,8 @@ export function cronCommand(host: CronCommandHost): Subcommand {
 					ctx,
 					rows
 						.map((row) => {
-							const spec = cronOf(row)!;
-							return `#${row.id} cron ${describeCron(spec)} · next in ${formatSpan(row.due_at - now)} · run ${row.runs}/${row.max_runs ?? "∞"} · ${row.note.split("\n", 1)[0]}`;
+							// The run it is on, as /jobs, the footer and the team panel count it.
+							return `#${row.id} ${cronSummary(row, cronOf(row)!)} · next in ${formatSpan(row.due_at - now)} · ${row.note.split("\n", 1)[0]}`;
 						})
 						.join("\n"),
 				);
@@ -85,14 +85,51 @@ export function cronCommand(host: CronCommandHost): Subcommand {
 	};
 }
 
-/** `/loop <interval> <prompt>`: a scheduled task that runs the prompt every interval, set by the user, so with no further confirmation. */
+/**
+ * What `/loop` answers, in the user's words: the task, when it runs next, what ends it and the command that stops it.
+ * (The `notify` tool's reply, `cronSetText`, names the tool's own fields for the model.)
+ */
+function loopSetText(row: TimerRow, typed: string, every: string, now: number, cap: number): string {
+	const ends = new Date(row.deadline_at ?? row.due_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+	const runs = row.max_runs === null ? "" : `after ${row.max_runs} runs, `;
+	const rounded =
+		typed === every
+			? ""
+			: ` (${typed} rounded: a loop runs at least 5m apart, on a step that divides the hour or day evenly)`;
+	return [
+		`Every ${every}${rounded}: Scheduled task #${row.id} sends "${row.note.split("\n", 1)[0]}" once this session is idle;`,
+		`next in ${formatSpan(row.due_at - now)} (${formatClock(row.due_at).slice(0, 5)}).`,
+		`It stops ${runs}on ${ends}, or once this session spends $${cap.toFixed(2)}. /cron delete ${row.id} stops it now.`,
+	].join(" ");
+}
+
+const LOOP_USAGE = "Usage: /loop <interval> <prompt>";
+
+/**
+ * The interval and prompt of `/loop` arguments, or the warning that says what is wrong with them: an interval is a whole
+ * number of minutes, hours or days (`10m`, `2h`, `1d`) and the prompt is the rest of the line.
+ */
+function loopArgs(args: string): { amount: number; unit: "m" | "h" | "d"; typed: string; prompt: string } | string {
+	const [, typed = "", rest = ""] = /^(\S*)\s*([\s\S]*)$/.exec(args.trim()) ?? [];
+	if (!typed) return `${LOOP_USAGE}, the interval a number and m, h or d (10m, 2h, 1d)`;
+	const interval = /^([1-9]\d*)([mhd])$/.exec(typed);
+	if (!interval)
+		return `"${typed}" is not an interval: use a number and m, h or d, such as 10m, 2h or 1d. ${LOOP_USAGE}`;
+	if (!rest.trim()) return `/loop ${typed} needs a prompt to run. ${LOOP_USAGE}`;
+	return { amount: Number(interval[1]), unit: interval[2] as "m" | "h" | "d", typed, prompt: rest.trim() };
+}
+
+/**
+ * `/loop <interval> <prompt>`: a scheduled task that runs the prompt every interval. The user typed it, so it asks no
+ * question (the consent dialog is for schedules the agent sets); its reply names the schedule, its end and the spend cap.
+ */
 export function loopCommand(host: CronCommandHost): Subcommand {
 	return {
 		description: builtinDescription("loop"),
-		argumentHint: "<5m|1h|1d> <prompt>",
+		argumentHint: "<interval> <prompt>",
 		async handler(args, ctx) {
-			const match = /^(\d+)([mhd])\s+(\S[\s\S]*)$/.exec(args);
-			if (!match) return say(ctx, "Usage: /loop <interval such as 10m, 2h or 1d> <prompt>", "warning");
+			const parsed = loopArgs(args);
+			if (typeof parsed === "string") return say(ctx, parsed, "warning");
 			const session = ctx.sessionManager.getSessionId();
 			const { db } = host.db();
 			if (timers.activeCount(db, session) >= MAX_ACTIVE)
@@ -101,14 +138,14 @@ export function loopCommand(host: CronCommandHost): Subcommand {
 					`This session already has ${MAX_ACTIVE} active notifications, the most it may hold: delete one first.`,
 					"warning",
 				);
-			const schedule = loopSchedule(Number(match[1]), match[2] as "m" | "h" | "d");
+			const schedule = loopSchedule(parsed.amount, parsed.unit);
 			const now = host.now();
 			const agent = host.agent();
 			let inserted: TimerRow;
 			try {
 				inserted = timers.insert(
 					db,
-					timerFields({ cron: schedule.cron, note: match[3].trim() }, now, {
+					timerFields({ cron: schedule.cron, note: parsed.prompt }, now, {
 						workspaceId: host.workspaceId(ctx),
 						sessionId: session,
 						...(agent ? { agent } : {}),
@@ -122,7 +159,7 @@ export function loopCommand(host: CronCommandHost): Subcommand {
 			timers.reschedule(db, inserted.id, settledDue(inserted, now));
 			const row = timers.get(db, inserted.id) ?? inserted;
 			host.changed(ctx, row);
-			say(ctx, `Every ${schedule.every}: ${cronSetText(row, cronOf(row)!, now, host.cap())}`);
+			say(ctx, loopSetText(row, parsed.typed, schedule.every, now, host.cap()));
 		},
 	};
 }

@@ -4,7 +4,12 @@
  */
 
 import { isMcpToolName, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
-import { getMcpSessionStatus, MCP_STATUS_EVENT, type McpServerStatus } from "../../../../mcp/src/api.ts";
+import {
+	getMcpSessionStatus,
+	MCP_STATUS_EVENT,
+	mcpServerMayRun,
+	type McpServerStatus,
+} from "../../../../mcp/src/api.ts";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 
 /** The status of the server that owns the MCP tool: the one with the longest matching namespace. */
@@ -23,7 +28,7 @@ function serverOf(toolName: string, servers: readonly McpServerStatus[]): McpSer
 
 /** Whether a tool of this server can still register: it is connecting or connected. */
 function mayRegister(server: McpServerStatus | undefined, connectedCounts: boolean): boolean {
-	if (!server?.enabled) return false;
+	if (!server || !mcpServerMayRun(server)) return false;
 	return (
 		server.state === "starting" || server.state === "connecting" || (connectedCounts && server.state === "connected")
 	);

@@ -139,16 +139,57 @@ describe("footer zones (footer.md §4.3)", () => {
 		expect(visibleWidth(top)).toBeLessThanOrEqual(60);
 	});
 
-	it("writes Σ (sub) only when every priced reply was billed by a plan", () => {
+	it("shows money apart from what plan-billed replies would cost, never adding the two", () => {
 		const plan = { ...idle, planBilled: { replies: 3, cost: 6.51 } };
-		expect(render(plan, new Map(), 200)[0]).toMatch(/Σ \(sub\)$/);
-		// A mixed session: a metered reply or a live agent's spend shows the money, never `(sub)`.
+		expect(render(plan, new Map(), 200)[0]).toMatch(/Σ ~\$6\.51 plan$/);
+		// A mixed session: the metered part is money, the plan part an estimate beside it.
 		const mixed = render({ ...idle, planBilled: { replies: 2, cost: 4 } }, new Map(), 200)[0];
-		expect(mixed).toMatch(/Σ ≈\$6\.51$/);
+		expect(mixed).toMatch(/Σ ≈\$2\.51 · ~\$4\.00 plan$/);
+		// A live agent's spend is money until its report says otherwise.
 		expect(render({ ...plan, live: [{ id: "a", cost: 1, unpriced: false }] }, new Map(), 200)[0]).toMatch(
-			/Σ ≈\$7\.51$/,
+			/Σ ≈\$1\.00 · ~\$6\.51 plan$/,
 		);
-		expect(render(idle, new Map(), 200).join("\n")).not.toContain("(sub)");
+		// A live agent on a plan (its billing, as `subagents.maxCost` judges it) adds to the estimate, never to money.
+		const planChild = { id: "p", cost: 2, unpriced: false, billing: "plan" as const };
+		expect(render({ ...plan, live: [planChild] }, new Map(), 200)[0]).toMatch(/Σ ~\$8\.51 plan$/);
+		expect(render({ ...idle, live: [planChild, { id: "m", cost: 1, unpriced: false }] }, new Map(), 200)[0]).toMatch(
+			/Σ ≈\$7\.51 · ~\$2\.00 plan$/,
+		);
+		// A plan child under a parent that already reported is held by that report: not counted twice.
+		const held = { ...plan, reported: new Set(["m"]), live: [{ ...planChild, parentId: "m" }] };
+		expect(render(held, new Map(), 200)[0]).toMatch(/Σ ~\$6\.51 plan$/);
+		expect(render(idle, new Map(), 200).join("\n")).not.toContain("plan$");
+		// A plan paid for every reply and nothing priced them: no fake $0.
+		const free = { ...idle, usage: { ...idle.usage, cost: 0 }, planBilled: { replies: 2, cost: 0 } };
+		expect(render(free, new Map(), 200)[0]).toMatch(/Σ \(sub\)$/);
+	});
+
+	it("keeps a plan window past 90 % on a narrow row as a whole figure, and lets one at 70 % give way first", () => {
+		const resetsAt = Date.now() + 3_600_000;
+		const alarm = { ...idle, quota: { label: "5h", usedFraction: 0.92, resetsAt } };
+		const warn = { ...idle, quota: { label: "5h", usedFraction: 0.72, resetsAt } };
+		expect(render(alarm, new Map(), 200)[0]).toMatch(/quota 5h 92% · resets \d\d:\d\d · Σ/);
+		for (const width of [40, 60, 80]) {
+			const [top] = render(alarm, new Map(), width);
+			expect(top, `${width}`).toMatch(/5h 92%/);
+			expect(visibleWidth(top)).toBeLessThanOrEqual(width);
+		}
+		// Never a cut figure: the whole `5h 72%` or nothing.
+		for (let width = 30; width <= 120; width++) expect(render(warn, new Map(), width)[0]).not.toMatch(/5h 7…|5h …/);
+		expect(render({ ...idle, quota: undefined }, new Map(), 200)[0]).not.toContain("quota");
+	});
+
+	it("splits a session of $1.24 metered and $3.10 plan-estimated (RFC V8)", () => {
+		const state = { ...idle, usage: { ...idle.usage, cost: 4.34 }, planBilled: { replies: 4, cost: 3.1 } };
+		const calls: Array<[string, string]> = [];
+		const recording = { fg: (tone: string, text: string) => (calls.push([tone, text]), text), bold: (t: string) => t };
+		expect(footerLines(state, "main", new Map(), recording, 200)[0]).toMatch(/ Σ ≈\$1\.24 · ~\$3\.10 plan$/);
+		// Money in the text tone; the estimate muted, so the two never read as one figure.
+		expect(calls).toContainEqual(["text", "≈$1.24"]);
+		expect(calls).toContainEqual(["muted", "~$3.10 plan"]);
+		// An unpriced reply still warns beside the money.
+		const unpriced = { ...state, usage: { ...state.usage, unpriced: true } };
+		expect(footerLines(unpriced, "main", new Map(), plain, 200)[0]).toMatch(/ Σ ≈\$1\.24 \+ n\/a · ~\$3\.10 plan$/);
 	});
 
 	it("centers the middle zone between the outer ones, at least two columns from each", () => {

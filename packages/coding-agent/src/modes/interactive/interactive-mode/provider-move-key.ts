@@ -11,10 +11,11 @@ import { refreshAfterChange } from "./provider-custom-edit.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { successNotice } from "./provider-ui.ts";
 
-type MoveHost = ProviderManagerHost;
+/** What the move needs of the provider manager: the session to reload and the notices. */
+type MoveView = Pick<ProviderManagerHost, "session" | "showError" | "showStatus" | "updateAvailableProviderCount">;
 
 /** Every models.json that may read a keychain reference: the given file, Pi's global ones, the project's. */
-export function modelsFilesToCheck(file: string, cwd = process.cwd()): string[] {
+function modelsFilesToCheck(file: string, cwd = process.cwd()): string[] {
 	const dirs = [...providerFallbackDirs(), join(cwd, ".octocode"), join(cwd, ".pi")];
 	return [...new Set([file, ...dirs.map((dir) => join(dir, "models.json"))])];
 }
@@ -50,7 +51,7 @@ async function fileReferencing(
  * true when moved.
  */
 export async function moveKeyToKeychain(
-	host: MoveHost,
+	view: MoveView,
 	id: string,
 	name: string,
 	file: string,
@@ -58,7 +59,7 @@ export async function moveKeyToKeychain(
 	files: readonly string[] = modelsFilesToCheck(file),
 ): Promise<boolean> {
 	if (!keychain) {
-		host.showError(
+		view.showError(
 			`No system keychain is available on this machine, so the key of ${name} stays in ${file}. Use sign-in with an API key instead.`,
 		);
 		return false;
@@ -72,16 +73,16 @@ export async function moveKeyToKeychain(
 		const reference = await saveTemplateKey(keychain, id, key);
 		await replaceModelsProviderKey(file, id, key, reference);
 	} catch (error) {
-		host.showError(`The key of ${name} stays in ${file}: ${errorMessage(error)}`);
+		view.showError(`The key of ${name} stays in ${file}: ${errorMessage(error)}`);
 		return false;
 	}
-	host.showStatus(
+	view.showStatus(
 		successNotice("Moved the key of", name, `to the ${keychain.name}; models.json now holds only a reference.`),
 	);
 	try {
-		await refreshAfterChange(host);
+		await refreshAfterChange(view);
 	} catch (error) {
-		host.showError(`The key moved, but reloading providers failed; run /reload. ${errorMessage(error)}`);
+		view.showError(`The key moved, but reloading providers failed; run /reload. ${errorMessage(error)}`);
 	}
 	return true;
 }

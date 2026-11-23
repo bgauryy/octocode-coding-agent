@@ -71,6 +71,7 @@ describe("strict model generation", () => {
 				"--import",
 				pathToFileURL(preload).href,
 				"scripts/generate-models.ts",
+				"--live",
 				"--providers",
 				"mistral",
 				"--json-only",
@@ -200,7 +201,14 @@ describe("strict model generation", () => {
 
 		const result = spawnSync(
 			process.execPath,
-			["--conditions=source", "--import", pathToFileURL(preloadPath).href, "scripts/generate-models.ts", "--strict"],
+			[
+				"--conditions=source",
+				"--import",
+				pathToFileURL(preloadPath).href,
+				"scripts/generate-models.ts",
+				"--strict",
+				"--live",
+			],
 			{
 				cwd: isolatedPackageRoot,
 				encoding: "utf8",

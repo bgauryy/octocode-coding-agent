@@ -7,6 +7,7 @@ import { visibleWidth } from "../utils/width.ts";
 import { getOsc8LinkAtColumn } from "../utils/columns.ts";
 import type { LayoutHit } from "./mouse-gesture.ts";
 import { COPY_ERROR_FLASH_DURATION_MS, DOUBLE_CLICK_INTERVAL_MS } from "./constants.ts";
+import { SelectionAutoScroll } from "./selection-auto-scroll.ts";
 import {
 	applySelectionToScreen,
 	getSelectionBounds,
@@ -15,6 +16,7 @@ import {
 	rebasePoint,
 	scrollSelectionPoint,
 	selectionSourceLine,
+	selectedLines,
 	selectedTextLines,
 } from "./selection.ts";
 import {
@@ -37,6 +39,8 @@ export interface AltScreenSelectionHost {
 	getCopyOnSelect(): boolean;
 	/** Copy text with the configured clipboard; when omitted, write OSC 52. */
 	readonly copySelection?: (text: string) => Promise<boolean | string>;
+	/** A hint for the next copy confirmation, shown once (how to select with the terminal instead). */
+	copyHint?(): string | undefined;
 	flash(message: string, durationMs?: number): void;
 	openUrl?(url: string): void;
 	createMouseEvent(
@@ -59,9 +63,7 @@ export class AltScreenSelection {
 	selectionGranularity: SelectionGranularity = "character";
 	selectionInitialRange?: SelectionRange;
 	lastClick?: ClickTarget;
-	private selectionDragPointer?: { x: number; y: number };
-	private selectionAutoScrollDirection: -1 | 0 | 1 = 0;
-	private selectionAutoScrollTimer?: NodeJS.Timeout;
+	private readonly autoScroll: SelectionAutoScroll;
 	selectionPressActive = false;
 	private copyGeneration = 0;
 	pressedUrl?: string;
@@ -72,6 +74,18 @@ export class AltScreenSelection {
 
 	constructor(host: AltScreenSelectionHost) {
 		this.host = host;
+		this.autoScroll = new SelectionAutoScroll({
+			visibleRows: () => {
+				const scrollView = this.selectionAnchor?.scrollView;
+				const visible = scrollView && this.getVisibleScrollViewRows(scrollView);
+				return visible ? { scrollView, ...visible } : undefined;
+			},
+			extendTo: (scrollView, x, y) => {
+				const point = this.getScrollSelectionPoint(scrollView, x, y);
+				if (point) this.updateSelectionFocus(point);
+			},
+			requestRender: () => this.host.requestRender(),
+		});
 	}
 
 	clearTextSelection(): void {
@@ -212,50 +226,8 @@ export class AltScreenSelection {
 		return count;
 	}
 
-	private updateSelectionAutoScroll(event: SgrMouseEvent): void {
-		const scrollView = this.selectionAnchor?.scrollView;
-		const visible = scrollView && this.getVisibleScrollViewRows(scrollView);
-		if (!visible) {
-			this.stopSelectionAutoScroll();
-			return;
-		}
-		const { visibleTop, visibleBottom } = visible;
-		this.selectionDragPointer = { x: event.x, y: event.y };
-		this.selectionAutoScrollDirection = event.y <= visibleTop ? -1 : event.y >= visibleBottom ? 1 : 0;
-		if (this.selectionAutoScrollDirection === 0) {
-			this.stopSelectionAutoScroll();
-			return;
-		}
-		if (this.selectionAutoScrollTimer) return;
-		this.selectionAutoScrollTimer = setInterval(() => this.autoScrollSelection(), 50);
-		this.selectionAutoScrollTimer.unref();
-	}
-
-	private autoScrollSelection(): void {
-		const scrollView = this.selectionAnchor?.scrollView;
-		const pointer = this.selectionDragPointer;
-		const direction = this.selectionAutoScrollDirection;
-		if (!scrollView || !pointer || direction === 0) {
-			this.stopSelectionAutoScroll();
-			return;
-		}
-		const remaining = scrollView.scrollBy(direction);
-		if (remaining === direction) {
-			this.stopSelectionAutoScroll();
-			return;
-		}
-		const point = this.getScrollSelectionPoint(scrollView, pointer.x, pointer.y);
-		if (point) this.updateSelectionFocus(point);
-		this.host.requestRender();
-	}
-
 	stopSelectionAutoScroll(): void {
-		if (this.selectionAutoScrollTimer) {
-			clearInterval(this.selectionAutoScrollTimer);
-			this.selectionAutoScrollTimer = undefined;
-		}
-		this.selectionAutoScrollDirection = 0;
-		this.selectionDragPointer = undefined;
+		this.autoScroll.stop();
 	}
 
 	handleSelectionMouseEvent(event: SgrMouseEvent): void {
@@ -316,7 +288,7 @@ export class AltScreenSelection {
 				this.pressedUrl = undefined;
 			}
 			this.updateSelectionFocus(point);
-			this.updateSelectionAutoScroll(event);
+			this.autoScroll.update(event);
 			this.host.requestRender();
 			return;
 		}
@@ -379,7 +351,7 @@ export class AltScreenSelection {
 	async copySelectionToClipboard(): Promise<boolean> {
 		const generation = ++this.copyGeneration;
 		const result = await collectSelectionText(
-			selectedTextLines(this.getSelectionBounds(), this.host.getPreviousScreen(), this.host.getCurrentLayout()),
+			selectedLines(this.getSelectionBounds(), this.host.getPreviousScreen(), this.host.getCurrentLayout()),
 			this.host.copySelection ? NATIVE_CLIPBOARD_BYTES : TERMINAL_CLIPBOARD_BYTES,
 			() => generation !== this.copyGeneration,
 		);

@@ -11,6 +11,7 @@ import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { embeddedJson, renderBacklogHtml } from "@octocodeai/octocode-webview";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { type Snapshot, STATES } from "@octocodeai/octocode-contracts/snapshot";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { backlogSnapshot } from "../../src/octocode/backlog/snapshot.ts";
@@ -285,6 +286,13 @@ describe("/backlog html", () => {
 		// `/backlog` runs `/web backlogs`: the same page and the same words.
 		expect(new URLSearchParams(url.hash.slice(1)).get("view")).toBe("board");
 		expect(ctx.ui.notes.at(-1)?.message).toContain("Opened the web workspace at");
+		// The address holds the server's token: the terminal shows it, and the copy of the notice the session's pages and an
+		// attached daemon's tabs (a view link's included) receive is redacted.
+		const token = new URLSearchParams(url.hash.slice(1)).get("access")!;
+		const said = ctx.ui.notes.at(-1)!.message;
+		expect(said).toContain(`#access=${token}`);
+		expect(redactSecrets(said)).not.toContain(token);
+		expect(redactSecrets(said)).toContain("#access=[redacted]");
 		await t.fire("session_shutdown", {}, ctx);
 		await expect(fetch(url.origin)).rejects.toThrow();
 	});

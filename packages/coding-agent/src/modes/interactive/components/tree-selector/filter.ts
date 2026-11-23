@@ -64,10 +64,13 @@ export function matchesTreeFilter(
 	return true;
 }
 
-const searchGraphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+let searchGraphemesCache: Intl.Segmenter | undefined;
+/** Made on first use: a segmenter loads ICU data (about 10 ms), which a process that never needs it should not pay at load. */
+const searchGraphemes = (): Intl.Segmenter =>
+	(searchGraphemesCache ??= new Intl.Segmenter(undefined, { granularity: "grapheme" }));
 
 /** Backspace removes the last displayed character, including joined emoji and combining marks. */
 export function removeLastSearchGrapheme(query: string): string {
-	const last = Array.from(searchGraphemes.segment(query)).at(-1);
+	const last = Array.from(searchGraphemes().segment(query)).at(-1);
 	return query.slice(0, last?.index ?? 0);
 }

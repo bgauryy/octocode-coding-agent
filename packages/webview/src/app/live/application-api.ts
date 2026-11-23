@@ -3,11 +3,13 @@ import {
 	type ApplicationAsset,
 	type ApplicationAssetPayload,
 	type ApplicationHistory,
+	type EvidenceRead,
 } from "@octocodeai/octocode-contracts";
 
 import { bearer } from "../../access.ts";
 import { requestJson } from "../../request.ts";
 import { scopedRoute } from "../../scope.ts";
+import { isEvidenceRead } from "@octocodeai/octocode-contracts/evidence";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /** Assets stay behind the same capability as the session. Only decoded bytes reach object URLs. */
@@ -46,6 +48,16 @@ export function createApplicationApi(access: string) {
 			});
 			if (!isRecord(value) || !isAsset(value.asset)) throw new Error("Invalid attachment response");
 			return value.asset;
+		},
+		/** One bounded read of a recorded message by its anchor string; the host resolves it and never trusts the page. */
+		async evidence(sessionId: string, anchor: string, cursor?: string): Promise<EvidenceRead> {
+			const value = await requestJson(
+				`${scopedRoute(WORKSPACE_ROUTES.evidence)}?${new URLSearchParams({ sessionId, anchor, ...(cursor ? { cursor } : {}) })}`,
+				{ headers: authorization },
+				"Could not read the recorded text",
+			);
+			if (!isEvidenceRead(value)) throw new Error("Invalid evidence response");
+			return value;
 		},
 		async history(sessionId: string, before?: string, activityBefore?: string): Promise<ApplicationHistory> {
 			const value = await requestJson(

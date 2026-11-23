@@ -15,9 +15,10 @@ import { isPendingPhase, phaseWords, type SessionPhase, type SessionPhaseStore }
 const animates = (phase: SessionPhase) => phase.state === "waiting" || phase.state === "resuming";
 
 /**
- * `◐ Waiting on 4 agents · 1 bash (4m02s)`: one line above the editor, where the host's working indicator sits during a
+ * `⠹ Waiting on 4 agents · 1 bash (4m02s)`: one line above the editor, where the host's working indicator sits during a
  * run. It draws the phase (never shown during a run of the session's own: the host indicator does) and the job's clock,
- * and repaints on the animation clock: the quadrant spinner (still in reduced motion) and the second counter.
+ * and repaints on the animation clock: the working spinner's frames (a full ⏺ in reduced motion) and the second
+ * counter.
  */
 export function phaseLine(tui: Pick<TUI, "requestRender">, theme: Theme, store: SessionPhaseStore) {
 	let frame = 0;
@@ -33,7 +34,7 @@ export function phaseLine(tui: Pick<TUI, "requestRender">, theme: Theme, store: 
 	const stopSpinner = animationClock.subscribe(
 		() => {
 			if (!animates(store.phase())) return;
-			frame = (frame + 1) % SPINNER.quadrant.length;
+			frame = (frame + 1) % SPINNER.braille.length;
 			tui.requestRender();
 		},
 		{ everyMs: MOTION.backgroundSpinnerMs, kind: "decor" },
@@ -53,7 +54,7 @@ export function phaseLine(tui: Pick<TUI, "requestRender">, theme: Theme, store: 
 			if (words === undefined) return [];
 			const phase = store.phase();
 			const still = !animates(phase) || animationClock.isReducedMotion();
-			const mark = animates(phase) ? SPINNER.quadrant[still ? 0 : frame] : GLYPH.waiting;
+			const mark = animates(phase) ? (still ? GLYPH.light : SPINNER.braille[frame]) : GLYPH.waiting;
 			const color = phase.state === "waiting" ? "accent" : "muted";
 			return ["", truncateToWidth(` ${theme.fg(color, mark)} ${theme.fg("muted", words)}`, Math.max(0, width), "…")];
 		},

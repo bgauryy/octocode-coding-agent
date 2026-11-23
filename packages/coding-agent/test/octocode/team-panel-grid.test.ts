@@ -5,7 +5,7 @@ import type { Finished } from "../../src/octocode/team/panel/compact.ts";
 import { widgetLines, widgetRows } from "../../src/octocode/team/panel/layout.ts";
 import { theme } from "./fake-host.ts";
 
-// Reduced motion pins a running light to its first frame, ◒.
+// Reduced motion draws a running light as a full ⏺: an animation or a state, never a half-filled circle held still.
 beforeEach(() => animationClock.setReducedMotion(true));
 afterEach(() => animationClock.setReducedMotion(false));
 
@@ -108,35 +108,35 @@ const separators = (line: string) => {
 const heads = (lines: string[]) => lines.filter((line) => /^ (🦑|[├└│ ]*[├└] )/.test(line));
 
 const AT_80 = [
-	" 🦑 jolly-seahorse ◒ · main:high         · TUI redesign RFC",
+	" 🦑 jolly-seahorse ⏺ · main:high         · TUI redesign RFC",
 	" │   ↳ agent: spawn researcher",
-	" ├ ◒ snappy-mantle   · implementer:high  · B657+B658: remove extension …  ≈$1.12",
+	" ├ ⏺ snappy-mantle   · implementer:high  · B657+B658: remove extension …  ≈$1.12",
 	" │   ↳ shell: ls .octocode/tmp/dd-myfile-with-a-long-name/output",
 	" │   ✉ #850 ↩#848 → other-peer · awaiting reply · 12s ago",
 	' │     "Do you still hold src/octocode/team/panel/rows.ts? I need to change',
 	' │      the grid helpers and the tree prefix; reply with a time or release it."',
-	" ├ ⏺ brave-otter     · general:low       · Count footer parts             ≈$0.02",
+	" ├ ✓ brave-otter     · general:low       · Count footer parts             ≈$0.02",
 	" │   ↳ Footer has 14 parts; 3 duplicate token counts",
-	" └ ⏺ cheeky-squid    · researcher:medium · Panel row audit                ≈$0.31",
+	" └ ◇ cheeky-squid    · researcher:medium · Panel row audit                ≈$0.31",
 	"     ↳ waits for your approval",
 	"   peers",
-	" 🦑 other-peer ◒     · main:high         · peer session A                 ≈$5.10",
-	" 🦑 second-peer ⏺    · main:medium       · peer session B                 ≈$0.40",
+	" 🦑 other-peer ⏺     · main:high         · peer session A                 ≈$5.10",
+	" 🦑 second-peer ○    · main:medium       · peer session B                 ≈$0.40",
 ];
 const AT_120 = [
-	" 🦑 jolly-seahorse ◒ · main:high         · TUI redesign RFC                 › agent: spawn researcher             18m30s",
-	" ├ ◒ snappy-mantle   · implementer:high  · B657+B658: remove extension sur…                                ≈$1.12 18m30s",
+	" 🦑 jolly-seahorse ⏺ · main:high         · TUI redesign RFC                 › agent: spawn researcher             18m30s",
+	" ├ ⏺ snappy-mantle   · implementer:high  · B657+B658: remove extension sur…                                ≈$1.12 18m30s",
 	" │                                         ↳ shell: ls .octocode/tmp/dd-myfile-with-a-long-name/output",
 	" │   ✉ #850 ↩#848 → other-peer · awaiting reply · 12s ago",
 	' │     "Do you still hold src/octocode/team/panel/rows.ts? I need to change the grid helpers and',
 	' │      the tree prefix; reply with a time or release it."',
-	" ├ ⏺ brave-otter     · general:low       · Count footer parts                                              ≈$0.02 18m20s",
+	" ├ ✓ brave-otter     · general:low       · Count footer parts                                              ≈$0.02 18m20s",
 	" │   ↳ Footer has 14 parts; 3 duplicate token counts",
-	" └ ⏺ cheeky-squid    · researcher:medium · Panel row audit                                                 ≈$0.31     5m",
+	" └ ◇ cheeky-squid    · researcher:medium · Panel row audit                                                 ≈$0.31     5m",
 	"     ↳ waits for your approval",
 	"   peers",
-	" 🦑 other-peer ◒     · main:high         · peer session A                                                  ≈$5.10 41m02s",
-	" 🦑 second-peer ⏺    · main:medium       · peer session B                                                  ≈$0.40  3m10s",
+	" 🦑 other-peer ⏺     · main:high         · peer session A                                                  ≈$5.10 41m02s",
+	" 🦑 second-peer ○    · main:medium       · peer session B                                                  ≈$0.40  3m10s",
 ];
 
 describe("agents panel grid (panel.md §4 mockups)", () => {
@@ -151,10 +151,10 @@ describe("agents panel grid (panel.md §4 mockups)", () => {
 	it("reproduces the 200-column mockup: tokens and the cached share join, the action stays inline", () => {
 		const lines = scene(200);
 		expect(lines[0]).toBe(
-			` 🦑 jolly-seahorse ◒ · main:high         · TUI redesign RFC${" ".repeat(44)}› agent: spawn researcher${" ".repeat(38)}66k tok 94% cached ·        18m30s`,
+			` 🦑 jolly-seahorse ⏺ · main:high         · TUI redesign RFC${" ".repeat(44)}› agent: spawn researcher${" ".repeat(38)}66k tok 94% cached ·        18m30s`,
 		);
 		expect(lines[1]).toBe(
-			" ├ ◒ snappy-mantle   · implementer:high  · B657+B658: remove extension surface and llama.cpp leftovers › shell: ls .octocode/tmp/dd-myfile-with-a-long-name/output    66k tok 94% cached · ≈$1.12 18m30s",
+			" ├ ⏺ snappy-mantle   · implementer:high  · B657+B658: remove extension surface and llama.cpp leftovers › shell: ls .octocode/tmp/dd-myfile-with-a-long-name/output    66k tok 94% cached · ≈$1.12 18m30s",
 		);
 		expect(lines.join("\n")).not.toContain("↳ shell:");
 	});
@@ -209,9 +209,9 @@ describe("agents panel row budget", () => {
 		expect(at).toBeGreaterThan(0);
 		expect(lines[at + 1]).toContain("↳ waits for your approval");
 		expect(lines.findIndex((line) => line.includes("agent-0"))).toBeLessThan(at);
-		expect(lines.at(-2)).toMatch(/^ \+\d more · ◒ \d$/);
+		expect(lines.at(-2)).toMatch(/^ \+\d more · ⏺ \d$/);
 		// Peers keep one row naming them all.
-		expect(lines.at(-1)).toBe(" 🦑 2 peers · other-peer ◒ second-peer ⏺");
+		expect(lines.at(-1)).toBe(" 🦑 2 peers · other-peer ⏺ second-peer ○");
 		// Every agent row still carries the tree.
 		for (const line of lines.slice(1, -1)) if (line.includes("agent-")) expect(line).toMatch(/^ [│ ]*[├└] /);
 	});
@@ -237,7 +237,7 @@ describe("agents panel C2 cell and message age", () => {
 		const runner = member("codex-9a1b", { role: "implementer", mailbox: "pull", model: "openai/gpt-5:high" });
 		const lines = widgetLines([main, runner], ME, NOW, theme, 120, []);
 		expect(rowOf(lines, "codex-9a1b")).toBe(
-			" └ ◒ codex-9a1b      · implementer:?                                                                       ≈$1.12 18m30s",
+			" └ ⏺ codex-9a1b      · implementer:?                                                                       ≈$1.12 18m30s",
 		);
 	});
 
@@ -246,10 +246,10 @@ describe("agents panel C2 cell and message age", () => {
 		const bare = member("general-77aa", { role: "general" });
 		const lines = widgetLines([main, named, bare], ME, NOW, theme, 120, []);
 		expect(rowOf(lines, "researcher-3fa9")).toBe(
-			" ├ ◒ researcher-3fa9 · researcher:medium                                                                   ≈$1.12 18m30s",
+			" ├ ⏺ researcher-3fa9 · researcher:medium                                                                   ≈$1.12 18m30s",
 		);
 		expect(rowOf(lines, "general-77aa")).toBe(
-			" └ ◒ general-77aa    · general                                                                             ≈$1.12 18m30s",
+			" └ ⏺ general-77aa    · general                                                                             ≈$1.12 18m30s",
 		);
 	});
 

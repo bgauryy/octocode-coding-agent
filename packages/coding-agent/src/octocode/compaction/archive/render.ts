@@ -82,7 +82,7 @@ export const isoTime = (timestamp: unknown): string | undefined =>
 		? new Date(timestamp).toISOString().replace(/\.\d{3}Z$/, "Z")
 		: undefined;
 
-/** The session entry a summarized message came from. Messages are the entries' own objects unless a context edit copied them, so a copy is found by role, time and call. */
+/** Legacy lookup, for a preparation that carries no entry ids: the session entry a summarized message came from. Messages are the entries' own objects unless a context edit copied them, so a copy is found by role, time and call. */
 export function entryIndex(entries: readonly SessionEntry[]): (message: unknown) => string | undefined {
 	const key = (message: Record<string, unknown>): string =>
 		`${stringOrEmpty(message.role)}|${String(message.timestamp)}|${stringOrEmpty(message.toolCallId)}${stringOrEmpty(message.customType)}`;
@@ -105,16 +105,16 @@ export function entryIndex(entries: readonly SessionEntry[]): (message: unknown)
 /** The messages as the segment file shows them: one `### role · time · entry id` section each, in order. */
 export function renderMessages(
 	messages: readonly unknown[],
-	entryOf: (message: unknown) => string | undefined,
+	entryOf: ((message: unknown) => string | undefined) | ReadonlyArray<string | undefined>,
 ): string {
 	return messages
-		.map((message) => {
+		.map((message, index) => {
 			const record = isRecord(message) ? message : { role: "unknown", value: message };
 			const role =
 				record.role === "custom"
 					? `custom (${oneLine(stringOrEmpty(record.customType))})`
 					: oneLine(stringOrEmpty(record.role)) || "unknown";
-			const entry = entryOf(message);
+			const entry = typeof entryOf === "function" ? entryOf(message) : entryOf[index];
 			const heading = [
 				"###",
 				role,

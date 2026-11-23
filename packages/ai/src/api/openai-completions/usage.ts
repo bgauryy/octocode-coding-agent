@@ -2,6 +2,11 @@ import { calculateCost } from "../../models/model-helpers.ts";
 import type { AssistantMessage, Model } from "../../types.ts";
 import { createUsage } from "../../utils/assistant-message.ts";
 
+/**
+ * Usage from a Chat Completions usage chunk, priced. `longCacheWrites`: every cache marker the request carried was a 1h
+ * marker (`applyAnthropicCacheControl`), so the writes are 1h writes; the endpoint (OpenRouter) reports one write count
+ * with no split by lifetime, as the Anthropic adapter's `longCache` handles a reply without `cache_creation`.
+ */
 export function parseChunkUsage(
 	rawUsage: {
 		prompt_tokens?: number;
@@ -12,6 +17,7 @@ export function parseChunkUsage(
 		completion_tokens_details?: { reasoning_tokens?: number };
 	},
 	model: Model<"openai-completions">,
+	longCacheWrites = false,
 ): AssistantMessage["usage"] {
 	const promptTokens = rawUsage.prompt_tokens ?? 0;
 	const cacheReadTokens =
@@ -39,6 +45,7 @@ export function parseChunkUsage(
 		cacheWrite: cacheWriteTokens,
 		reasoning: rawUsage.completion_tokens_details?.reasoning_tokens ?? 0,
 	});
+	if (longCacheWrites && cacheWriteTokens > 0) usage.cacheWrite1h = cacheWriteTokens;
 	calculateCost(model, usage);
 	return usage;
 }

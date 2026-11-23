@@ -1,5 +1,5 @@
 import { linearSrgbToRgb, okhslToRgb, oklabToLinearSrgb, rgbToOkhsl, rgbToOklab } from "./oklab.ts";
-import { ansi16Code, rgbToAnsi16 } from "./ansi16.ts";
+import { ANSI16_RGB, ansi16Code, rgbToAnsi16 } from "./ansi16.ts";
 import type { RgbColor } from "./terminal-colors.ts";
 
 export interface IndexedColor {
@@ -152,29 +152,11 @@ export function parseColor(value: string | number): Color {
 	throw new Error(`Invalid color value: ${value}`);
 }
 
-const BASIC_COLORS: readonly RgbColor[] = [
-	{ r: 0, g: 0, b: 0 },
-	{ r: 128, g: 0, b: 0 },
-	{ r: 0, g: 128, b: 0 },
-	{ r: 128, g: 128, b: 0 },
-	{ r: 0, g: 0, b: 128 },
-	{ r: 128, g: 0, b: 128 },
-	{ r: 0, g: 128, b: 128 },
-	{ r: 192, g: 192, b: 192 },
-	{ r: 128, g: 128, b: 128 },
-	{ r: 255, g: 0, b: 0 },
-	{ r: 0, g: 255, b: 0 },
-	{ r: 255, g: 255, b: 0 },
-	{ r: 0, g: 0, b: 255 },
-	{ r: 255, g: 0, b: 255 },
-	{ r: 0, g: 255, b: 255 },
-	{ r: 255, g: 255, b: 255 },
-];
 const CUBE_VALUES = [0, 95, 135, 175, 215, 255] as const;
 const GRAY_VALUES = Array.from({ length: 24 }, (_, index) => 8 + index * 10);
 
 function indexedToRgb(index: number): RgbColor {
-	if (index < 16) return { ...BASIC_COLORS[index] };
+	if (index < 16) return { ...ANSI16_RGB[index] };
 	if (index < 232) {
 		const cubeIndex = index - 16;
 		return {

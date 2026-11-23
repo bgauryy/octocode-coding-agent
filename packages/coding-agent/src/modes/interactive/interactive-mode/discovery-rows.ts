@@ -20,7 +20,7 @@ import { skillFolder } from "../../../core/discovery/display-paths.ts";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import type { KeybindingProblem } from "../../../core/keybindings.ts";
 import type { HarnessStatus } from "../../../core/discovery/vendors/types.ts";
-import { visibleWidth } from "@octocodeai/octocode-tui";
+import { visibleWidth, wrapTextWithAnsi } from "@octocodeai/octocode-tui";
 import { theme } from "../../../theme/theme.ts";
 import type { LoadedRowSpec } from "./loaded-row.ts";
 
@@ -104,6 +104,12 @@ export function viewRows(
 	return view.groups.map((group) => groupRow(group, formatPath, budgets[group.id]));
 }
 
+/** `on: a, b c, d` wrapped after a comma (or the `on:`), never inside a name such as `Claude Code`. */
+function wrapNames(group: string, width: number): string[] {
+	const held = group.replace(/(?<![,:]) /g, "\u00a0");
+	return wrapTextWithAnsi(held, width).map((line) => line.replaceAll("\u00a0", " "));
+}
+
 /**
  * `Harness ✓ 2  on: .agents, Pi · off: Claude Code · /harness`: every switchable harness, grouped on and off; the
  * count is how many are on. Octocode itself has no switch and is left out. When the line does not fit, the groups wrap;
@@ -133,18 +139,19 @@ export function harnessRow(statuses: readonly HarnessStatus[]): LoadedRowSpec {
 		fitSummary: (room) => {
 			const full = parts().join(separator);
 			if (visibleWidth(full) <= room) return [full];
-			// Whole harnesses per line; a wrapped line ends with ` ·`, so all but the last part keep two cells for it.
+			// Whole groups per line; a wrapped line ends with ` ·`, so all but the last part keep two cells for it. A group
+			// wider than the room wraps between its names rather than run past the edge.
 			const short = parts();
 			const lines: string[] = [];
 			for (const [index, part] of short.entries()) {
 				const reserve = index === short.length - 1 ? 0 : 2;
 				const last = lines.length - 1;
-				if (last < 0) lines.push(part);
-				else if (visibleWidth(lines[last] + separator + part) + reserve <= room) lines[last] += separator + part;
-				else {
-					lines[last] += theme.fg("dim", " \u00b7");
-					lines.push(part);
+				if (last >= 0 && visibleWidth(lines[last] + separator + part) + reserve <= room) {
+					lines[last] += separator + part;
+					continue;
 				}
+				if (last >= 0) lines[last] += theme.fg("dim", " \u00b7");
+				lines.push(...(visibleWidth(part) + reserve <= room ? [part] : wrapNames(part, Math.max(1, room - reserve))));
 			}
 			return lines;
 		},

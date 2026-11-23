@@ -130,8 +130,8 @@ describe("the /agents panel row keeps the effort", () => {
 		);
 		// The root row says `role:effort`; its model is the footer's. A child's full route is on its stats line.
 		expect(lines).toHaveLength(3);
-		expect(lines[0]).toMatch(/^ 🦑 salty-squid ⏺ · main:high +1m$/);
-		expect(lines[1]).toMatch(/^ └ ⏺ inky-kraken  · main:low +1m$/);
+		expect(lines[0]).toMatch(/^ 🦑 salty-squid ○ · main:high +1m$/);
+		expect(lines[1]).toMatch(/^ └ ○ inky-kraken  · main:low +1m$/);
 		expect(lines[2]).toBe("     gpt-5.5:low");
 		expect(lines.join("\n")).not.toMatch(/anthropic\/|openai\//);
 	});

@@ -62,6 +62,7 @@ describe("activityCard", () => {
 	it("records thinking time only when the detail is a number", () => {
 		expect(activityCard(event(1, "message", "x", { details: { thoughtMs: 1200 } })).thoughtMs).toBe(1200);
 		expect(activityCard(event(1, "message", "x", { details: { thoughtMs: "1200" } })).thoughtMs).toBeUndefined();
+		expect(activityCard(event(1, "message", "x", { details: { thoughtMs: 64 } })).thoughtMs).toBeUndefined();
 	});
 });
 
@@ -151,8 +152,8 @@ describe("feed shaping", () => {
 		expect(runPhase({ ...idle, phase: waiting })).toEqual({ kind: "job", phase: waiting });
 		expect(sessionBadge({ ...idle, phase: waiting })).toEqual({
 			state: "running",
+			tone: "working",
 			label: "Waiting on 2 agents · 1 bash",
-			warn: false,
 		});
 		expect(runPhase({ ...idle, phase: { state: "resuming", label: "report from kid" } })).toEqual({
 			kind: "job",
@@ -162,10 +163,26 @@ describe("feed shaping", () => {
 			"Waiting for timer t1 · in 1m",
 		);
 		const final: ApplicationPhase[] = [{ state: "done" }, { state: "idle" }, { state: "stopped", open: ["B1"] }];
-		for (const phase of final) {
-			expect(runPhase({ ...idle, phase })).toEqual({ kind: "idle" });
-			expect(sessionBadge({ ...idle, phase })).toBeUndefined();
-		}
+		for (const phase of final) expect(runPhase({ ...idle, phase })).toEqual({ kind: "idle" });
+		// The badge is the shared activity light (contract change: status dots, wave C): a job that stopped with items
+		// open, or failed, is red; done and idle have no badge.
+		expect(sessionBadge({ ...idle, phase: { state: "done" } })).toBeUndefined();
+		expect(sessionBadge({ ...idle, phase: { state: "idle" } })).toBeUndefined();
+		expect(sessionBadge({ ...idle, phase: { state: "stopped", open: ["B1"] } })).toEqual({
+			state: "failed",
+			tone: "error",
+			label: "Stopped",
+		});
+		expect(sessionBadge({ ...idle, phase: { state: "failed", error: "401" } })).toMatchObject({
+			tone: "error",
+			label: "Failed",
+		});
+		// A timer that will wake the session: no work runs, so the badge is neutral, and it says what it waits for.
+		expect(sessionBadge({ ...idle, phase: { state: "scheduled", timers: 1, id: "t1" } })).toEqual({
+			state: "pending",
+			tone: "idle",
+			label: "Waiting for timer t1",
+		});
 		// A run that is active shows its own phase, whatever the host last said.
 		expect(runPhase({ ...application, phase: waiting })).toMatchObject({ kind: "thinking" });
 	});
@@ -173,17 +190,23 @@ describe("feed shaping", () => {
 	it("sessionBadge maps the phase to the shared run state, and is absent while idle", () => {
 		const idle = { streaming: false } as const;
 		expect(sessionBadge(idle)).toBeUndefined();
-		expect(sessionBadge({ streaming: true })).toEqual({ state: "running", label: "Running", warn: false });
+		// Tones are the shared activity light (contract change: status dots, wave C): compaction and retries are work, so
+		// green, and the label says which; a dialog is yellow.
+		expect(sessionBadge({ streaming: true })).toEqual({ state: "running", tone: "working", label: "Running" });
 		expect(sessionBadge({ ...idle, status: "compacting" })).toEqual({
 			state: "running",
+			tone: "working",
 			label: "Compacting",
-			warn: false,
 		});
-		expect(sessionBadge({ ...idle, status: "retrying" })).toEqual({ state: "running", label: "Retrying", warn: true });
+		expect(sessionBadge({ ...idle, status: "retrying" })).toEqual({
+			state: "running",
+			tone: "working",
+			label: "Retrying",
+		});
 		expect(sessionBadge({ streaming: true, awaiting: { kind: "question" } })).toEqual({
 			state: "waiting",
+			tone: "waiting",
 			label: "Waiting for you",
-			warn: true,
 		});
 	});
 

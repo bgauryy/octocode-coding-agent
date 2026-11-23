@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { tmp } from "./octocode/helpers.ts";
 
 const lifecycle = new URL("../src/modes/interactive/interactive-mode/lifecycle.ts", import.meta.url).href;
+const uiStoreModule = new URL("../src/modes/interactive/state/store.ts", import.meta.url).href;
 const resolver = new URL("../scripts/source-resolver.ts", import.meta.url).href;
 
 /**
@@ -13,8 +14,9 @@ const resolver = new URL("../scripts/source-resolver.ts", import.meta.url).href;
 function quitWhileDisposeWaitsOnUnrefdHandle(fromSignal: boolean) {
 	const home = tmp("octocode-shutdown-loop-");
 	const script = `const { shutdown } = await import(${JSON.stringify(lifecycle)});
+		const { createUiStore } = await import(${JSON.stringify(uiStoreModule)});
 		const host = {
-			isShuttingDown: false,
+			uiStore: createUiStore(),
 			themeController: { disableAutoSync() {} },
 			ui: { terminal: { drainInput: async () => {}, drainOutput: async () => true } },
 			stop() {},

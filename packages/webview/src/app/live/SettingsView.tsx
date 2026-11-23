@@ -13,7 +13,7 @@ const SESSION_REPO_ID = "session";
  * session. On the web daemon's page for a session the routes carry that session (`/s/<id>/...`), so the Tools panel
  * shows what the running session declares; on the session's own server they are the plain routes.
  */
-export function SettingsPanel({ access, repo }: { access: string; repo: string }) {
+export function SettingsPanel({ access, repo, section }: { access: string; repo: string; section?: string }) {
 	const api = useMemo(() => createDaemonApi(access, (route) => scopedRoute(route)), [access]);
 	const harness = useMemo(() => ({ list: api.harness, set: api.setHarness, preview: api.previewHarness }), [api]);
 	const security = useMemo(() => ({ list: api.security, act: api.decideSecurity }), [api]);
@@ -35,10 +35,11 @@ export function SettingsPanel({ access, repo }: { access: string; repo: string }
 			runners={runners}
 			tools={tools}
 			repos={repos}
+			section={section}
 		/>
 	);
 }
 
-export function SettingsView({ index }: ViewProps) {
-	return <SettingsPanel access={takeAccess()} repo={index.repo} />;
+export function SettingsView({ index, params }: ViewProps) {
+	return <SettingsPanel access={takeAccess()} repo={index.repo} section={params.section} />;
 }

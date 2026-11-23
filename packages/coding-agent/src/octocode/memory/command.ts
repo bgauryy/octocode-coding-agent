@@ -4,9 +4,10 @@ import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { confirmAction, successNotice } from "../shared/page.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { type MemoryFileSync, syncDeletedMemory, syncSavedMemory } from "./file/sync.ts";
-import { lastInjection } from "./inject.ts";
+import { lastInjection, lastInjectionIds } from "./inject.ts";
 import { ADD_ROW, memoryDetailPage, memoryListPage, sectionOf } from "./page.ts";
 import { memoryLabel } from "./query.ts";
+import { sourcesLine } from "./sources.ts";
 import { MemoryChangedError } from "./errors.ts";
 import {
 	MEMORY_KINDS,
@@ -162,7 +163,14 @@ async function run(args: string, ctx: CommandContext, store: MemoryStore, deps: 
 		);
 	if (verb === "last") {
 		const last = lastInjection(ctx.sessionManager.getBranch());
-		return say(ctx, last ?? "No memories were injected on this branch yet.", "info");
+		if (last === undefined) return say(ctx, "No memories were injected on this branch yet.", "info");
+		// Provenance is shown here only: the injected text the model reads stays as it was.
+		const linked = lastInjectionIds(ctx.sessionManager.getBranch()).flatMap((id) => {
+			const memory = store.get(id);
+			const line = memory ? sourcesLine(store.sourcesOf(memory)) : "";
+			return line ? [`${memoryLabel(id)} ${line}`] : [];
+		});
+		return say(ctx, linked.length > 0 ? `${last}\n\n${linked.join("\n")}` : last, "info");
 	}
 	if (verb === "add") return add(ctx, store, rest, deps);
 	if (verb === "review") return review(ctx, store, rest, deps);
@@ -211,18 +219,24 @@ async function review(ctx: CommandContext, store: MemoryStore, rest: string, dep
 const autoStatus = (deps: Pick<MemoryCommandDeps, "autoEnv" | "sync">) =>
 	!deps.autoEnv() ? "off (OCTOCODE_MEMORY_AUTO=0)" : deps.sync.settings().recall;
 
+/** `/memory add <title> [— body]`: the title, and the body after the first dash set off by spaces (`—`, `-` or `--`). */
+function titleAndBody(text: string): { title: string; body: string } {
+	const [title = "", ...body] = text.split(/\s+[—-]{1,2}\s+/);
+	return { title, body: body.join(" — ") };
+}
+
 async function add(ctx: CommandContext, store: MemoryStore, text: string, deps: MemoryCommandDeps): Promise<void> {
 	const sourceSession = ctx.sessionManager.getSessionId();
+	const { title, body } = titleAndBody(text);
 	if (!ctx.hasUI) {
 		if (!text) return say(ctx, "Usage: /memory add <title> [— body]", "warning");
-		const [title = "", ...body] = text.split(/\s+[—-]{1,2}\s+/);
-		const { memory } = store.set({ title, body: body.join(" — "), author: USER_AUTHOR, sourceSession });
+		const { memory } = store.set({ title, body, author: USER_AUTHOR, sourceSession });
 		return say(ctx, `Saved ${memoryLine(memory, 60)}${await fileNote(ctx, store, deps, undefined, memory)}`, "info");
 	}
 	const saved = await editUntilValid(
 		ctx,
 		"New memory",
-		memoryTemplate({ title: text, kind: "fact", keywords: "", scope: "workspace", body: "", pinned: false }),
+		memoryTemplate({ title, kind: "fact", keywords: "", scope: "workspace", body, pinned: false }),
 		(edited) => store.set({ ...parseTemplate(edited), author: USER_AUTHOR, sourceSession }).memory,
 	);
 	if (saved) say(ctx, `Saved ${memoryLine(saved, 60)}${await fileNote(ctx, store, deps, undefined, saved)}`, "info");
@@ -308,7 +322,7 @@ async function act(
 			: await ctx.ui.select(`${label} ${memory.title}`, actions);
 	if (action === undefined) return memory;
 	if (action === "Show") {
-		say(ctx, describeMemory(memory), "info");
+		say(ctx, describeMemory(memory, Date.now(), store.sourcesOf(memory)), "info");
 		return memory;
 	}
 	if (action === "Delete") {

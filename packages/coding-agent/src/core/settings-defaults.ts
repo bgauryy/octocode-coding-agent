@@ -45,6 +45,8 @@ export const SETTINGS_DEFAULTS = {
 		},
 		fallbackModels: [] as string[],
 		fallbackCooldownMs: 15 * 60_000,
+		/** 0: an unattended run fails at once on a usage limit, naming its reset. */
+		maxUsageWaitMs: 0,
 	},
 	toolExecution: { earlyStart: false },
 	hideThinkingBlock: true,

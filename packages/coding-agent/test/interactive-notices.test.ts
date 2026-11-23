@@ -12,15 +12,29 @@ import { createFakeHost } from "./interactive-mode-host.ts";
 beforeAll(() => initTheme("dark"));
 
 describe("/compact", () => {
-	function compactHost(compact: () => Promise<unknown>) {
+	/** A session with one message on its branch (an empty one is answered before `compact` runs), or with `branch`. */
+	function compactHost(compact: () => Promise<unknown>, branch: unknown[] = [{ type: "message" }]) {
 		const fakeThis: any = {
 			session: { compact },
+			sessionManager: { getBranch: () => branch },
+			settingsManager: { getCompactionKeepRecentTokens: () => 20_000 },
 			clearStatusIndicator: vi.fn(),
 			showStatus: vi.fn(),
 			showError: vi.fn(),
 		};
 		return { fakeThis, host: createFakeHost(fakeThis) };
 	}
+
+	test("an empty session is told there is nothing to compact, before any model is needed", async () => {
+		const compact = vi.fn(() => Promise.reject(new Error("No model selected.")));
+		const { fakeThis, host } = compactHost(compact, []);
+
+		await sessionCommands.handleCompactCommand(host);
+
+		expect(fakeThis.showStatus).toHaveBeenCalledWith("Nothing to compact yet: the session has no messages yet");
+		expect(compact).not.toHaveBeenCalled();
+		expect(fakeThis.showError).not.toHaveBeenCalled();
+	});
 
 	test("a session with nothing to compact gets a status line, not an error", async () => {
 		const { fakeThis, host } = compactHost(() =>
@@ -54,7 +68,6 @@ describe("notices", () => {
 		const chatContainer = new Container();
 		const host = createFakeHost({
 			chatContainer,
-			outputPad: 1,
 			uiStore: createUiStore(),
 			ui: { requestRender: vi.fn() },
 		} as any);
@@ -69,7 +82,7 @@ describe("notices", () => {
 		["showError", display.showError, "✗ ◆", "Compaction failed: model returned no summary"],
 	] as const)("%s is one `<glyph> <tone> <sentence>` line at the transcript pad", (_name, show, glyph, message) => {
 		const chatContainer = new Container();
-		const host = createFakeHost({ chatContainer, outputPad: 1, ui: { requestRender: vi.fn() } } as any);
+		const host = createFakeHost({ chatContainer, ui: { requestRender: vi.fn() } } as any);
 
 		show(host, message);
 
@@ -78,7 +91,11 @@ describe("notices", () => {
 
 	test("notices follow the transcript pad setting", () => {
 		const chatContainer = new Container();
-		const host = createFakeHost({ chatContainer, outputPad: 0, ui: { requestRender: vi.fn() } } as any);
+		const host = createFakeHost({
+			chatContainer,
+			uiStore: createUiStore({ view: { outputPad: 0 } }),
+			ui: { requestRender: vi.fn() },
+		} as any);
 
 		display.showError(host, "boom");
 		chatContainer.addChild(display.noticeLine("success", "New session started", 0));
@@ -93,6 +110,20 @@ describe("notices", () => {
 		// A long warning is not a wall of amber: only its marks are.
 		expect(line("warning")).toContain(`${theme.fg("warning", "⚠ ▲")} ${theme.fg("text", "x")}`);
 		expect(line("error")).toContain(theme.fg("error", "✗ ◆ x"));
+	});
+
+	test("a wrapped report row keeps its indent, and a wrapped marked line hangs under its text", () => {
+		const report = "Usage today\n  No usage recorded so far in this period of time.";
+		const rows = display
+			.noticeLine("info", report, 0)
+			.render(30)
+			.map((row) => stripAnsi(row).trimEnd());
+		expect(rows).toEqual(["System · Usage today", "  No usage recorded so far in", "  this period of time."]);
+		const warning = display
+			.noticeLine("warning", "Unknown command /session. Search commands with /help.", 0)
+			.render(30)
+			.map((row) => stripAnsi(row).trimEnd());
+		expect(warning[1]?.startsWith("  ")).toBe(true);
 	});
 
 	test("a notice strips terminal controls from its message", () => {

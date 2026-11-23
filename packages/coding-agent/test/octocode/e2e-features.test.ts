@@ -277,7 +277,8 @@ describe("Native features through the SDK", () => {
 		await session.prompt("/permissions manual");
 		expect(session.systemPrompt).toBe(prompt);
 		await session.prompt("/permissions");
-		expect(note(/^Permission mode: manual —/)).toMatch(/not a sandbox/);
+		// The report is the newest note: choosing a mode without a UI also says "Permission mode: manual — …".
+		expect(ui.notes.at(-1)?.message).toMatch(/^Permission mode: manual —[\s\S]*Session grants:[\s\S]*not a sandbox/);
 		await session.prompt("/permissions workspace");
 		const notes = session.sessionManager
 			.getEntries()

@@ -16,6 +16,7 @@ import { handleRunStateEvent, type RunStateEventsHost } from "./run-state-events
 import { applicationRenderer } from "./application-events.ts";
 import { bindSessionPhase } from "./session-phase.ts";
 import { bindQueueState } from "../state/bind-queue.ts";
+import { selectInitialized } from "../state/lifecycle-slice.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
 const applicationDriven = new WeakSet<object>();
@@ -38,12 +39,10 @@ type AgentEventsHost = Pick<
 	| "handleEvent"
 	| "uiStore"
 	| "init"
-	| "isInitialized"
 	| "maybeShowCacheMissNotice"
 	| "maybeShowInstallChangeWarning"
 	| "maybeShowThinkingDropNotice"
 	| "maybeSuggestBugReport"
-	| "outputPad"
 	| "pendingMessagesContainer"
 	| "pendingTools"
 	| "programStatus"
@@ -53,7 +52,6 @@ type AgentEventsHost = Pick<
 	| "settingsManager"
 	| "showWorkingStatusIndicator"
 	| "streamingComponent"
-	| "streamingMessage"
 	| "ui"
 	| "unsubscribe"
 	| "updateAvailableProviderCount"
@@ -97,7 +95,7 @@ export function subscribeToAgent(host: AgentEventsHost): void {
 }
 
 export async function handleEvent(host: AgentEventsHost, event: AgentSessionEvent): Promise<void> {
-	if (!host.isInitialized) {
+	if (!selectInitialized(host.uiStore.getState())) {
 		await host.init();
 	}
 
@@ -203,16 +201,12 @@ function handleNativeContentNotice(host: AgentEventsHost, event: AgentSessionEve
 	if (event.type !== "message_start" && event.type !== "message_update" && event.type !== "message_end") return false;
 	if (event.message.role === "user" || event.message.role === "toolResult") return true;
 	if (event.message.role !== "assistant") return false;
-	if (event.type !== "message_end") {
-		host.streamingMessage = event.message;
-		return true;
-	}
+	if (event.type !== "message_end") return true;
 	if (event.message.stopReason === "error" || event.message.stopReason === "aborted")
 		host.maybeSuggestBugReport(event.message);
 	else {
 		host.maybeShowThinkingDropNotice(event.message);
 		host.maybeShowCacheMissNotice(event.message);
 	}
-	host.streamingMessage = undefined;
 	return true;
 }

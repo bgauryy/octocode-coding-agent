@@ -1,7 +1,11 @@
 import { modelAvailableToChild, modelEnabled } from "./task-model-visibility.ts";
+import type { FallbackSwitch } from "../../core/agent-session/fallback-switch.ts";
 import type { FeatureContext } from "../../core/features/index.ts";
+import type { SessionEntry } from "../../core/session-manager.ts";
+import { fallbackSwitch } from "./event-ran.ts";
 import { renderPrompt } from "../../core/prompt-template.ts";
-import { type Catalog, readCatalog } from "./catalog.ts";
+import type { Catalog } from "../../core/model-catalog/index-shape.ts";
+import { routingCatalog } from "../../core/model-catalog/index-store.ts";
 import { registryBilling } from "./model.ts";
 import { type RoutingFacts, routingFacts } from "./models-command.ts";
 import { providerHealth } from "./provider-health.ts";
@@ -18,17 +22,32 @@ export interface RoutingReading {
 	catalog: Catalog | undefined;
 	/** The same registry and profiles read against another index. */
 	under(catalog: Catalog | undefined): RoutingFacts | undefined;
+	/** The `retry.fallbackModels` switch that chose this session's model, if one did (read only when the model changed). */
+	switched?(): FallbackSwitch | undefined;
 }
 
-/** The routing facts for this session's model and providers now, from the saved models.dev index only (no fetch). */
+/**
+ * The `retry.fallbackModels` switch behind the session's model now: the branch's latest model choice, when it is one. A
+ * switch appends its `model_change` and then its switch entry, so a later `model_change` (a person's `/model`) ends it.
+ */
+export function latestFallback(branch: readonly SessionEntry[]): FallbackSwitch | undefined {
+	const latest = branch.findLast((entry) => entry.type === "model_change" || fallbackSwitch(entry) !== undefined);
+	return latest && fallbackSwitch(latest);
+}
+
+/**
+ * The routing facts for this session's model and providers now, from the saved models.dev index only (no fetch), as
+ * `routingCatalog` reads it: the built-in providers' listings without parsing the whole index.
+ */
 export function currentRouting(
-	ctx: Pick<FeatureContext, "model" | "modelRegistry">,
+	ctx: Pick<FeatureContext, "model" | "modelRegistry" | "sessionManager">,
 	profiles: Iterable<AgentProfile>,
 ): RoutingReading {
 	const model = ctx.model;
-	const catalog = readCatalog();
+	const catalog = routingCatalog();
 	// Without a session model nothing routes (`routingFacts`), so the registry is not read.
 	if (!model) return { facts: undefined, catalog, under: () => undefined };
+	const switched = () => latestFallback(ctx.sessionManager.getBranch());
 	const available = ctx.modelRegistry
 		.getAvailable()
 		.filter((candidate) => modelAvailableToChild(ctx.modelRegistry, candidate));
@@ -49,7 +68,7 @@ export function currentRouting(
 			list,
 			gone,
 		);
-	return { facts: under(catalog), catalog, under };
+	return { facts: under(catalog), catalog, under, switched };
 }
 
 /** Why each model a profile pins is not offered now (hidden by the user, or no longer served); empty when all are offered. */
@@ -104,7 +123,8 @@ const quote = (value: string) => (/\s/.test(value) ? value : `\`${value}\``);
  * reload) is kept, so the cached prefix does not change mid-session. A later change made through a command (a provider
  * enabled, disabled or signed in, a model switch) reaches the running agent as one short hidden notice instead; the
  * next reload states the new facts in the prompt. A notice names its cause: a provider that refused its credential or
- * accepts it again (`isRefused`, the provider health the routing read), otherwise the user. A models.dev index saved since (the refresh each session starts)
+ * accepts it again (`isRefused`, the provider health the routing read), a `retry.fallbackModels` switch of the session
+ * model (`RoutingReading.switched`), otherwise the user. A models.dev index saved since (the refresh each session starts)
  * changes no fact on its own: the agent hears of it only with a change of the registry.
  */
 export class RoutingWatch {
@@ -158,14 +178,20 @@ export class RoutingWatch {
 		const on = now.filter((provider) => !was.includes(provider));
 		const refused = off.filter(this.#isRefused);
 		const recovered = on.filter((provider) => this.#refusedOff.has(provider));
+		const moved = before?.sessionModel !== current.sessionModel;
+		const switched = moved ? reading?.switched?.() : undefined;
+		// The fallback chose the model the session runs now: what follows from the session model (the tiers) is its doing too.
+		const fallback = switched?.to === current.sessionModel ? switched : undefined;
 		const user =
-			off.length + on.length === 0 ||
+			(off.length + on.length === 0 && !fallback) ||
 			refused.length < off.length ||
 			recovered.length < on.length ||
-			before?.sessionModel !== current.sessionModel;
+			(moved && !fallback);
 		this.#refusedOff = new Set([...this.#refusedOff, ...refused].filter((provider) => !now.includes(provider)));
-		return renderPrompt("notices/routing-changed.md", {
+		return renderPrompt("notices/subagents/routing-changed.md", {
 			id: ROUTING_NOTICE_ID,
+			fallbackFrom: fallback ? quote(fallback.from) : "",
+			fallbackReason: fallback?.reason ?? "",
 			user,
 			refused: refused.map(quote).join(", "),
 			recovered: recovered.map(quote).join(", "),

@@ -5,7 +5,9 @@
 import { Spacer } from "@octocodeai/octocode-tui";
 import type { SessionUI } from "../../../core/features/index.ts";
 import { getThemeByName, Theme, theme } from "../../../theme/theme.ts";
-import { noticeLine } from "./display.ts";
+import { isCancelledText } from "../../../octocode/shared/commands.ts";
+import { countProblem, noticeLine } from "./display.ts";
+import { DEFAULT_WORKING_MESSAGE } from "../state/status-slice.ts";
 import { askInTerminal } from "./ask-dialog.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { pickSession } from "./session-picker.ts";
@@ -19,12 +21,10 @@ type SessionUIHost = Pick<
 	| "chatContainer"
 	| "createSessionUI"
 	| "defaultEditor"
-	| "defaultWorkingMessage"
 	| "editor"
 	| "editorChangeListeners"
 	| "editorComponentFactory"
 	| "keybindings"
-	| "outputPad"
 	| "restoreQueuedMessagesToEditor"
 	| "session"
 	| "sessionManager"
@@ -44,11 +44,9 @@ type SessionUIHost = Pick<
 	| "showSelectorDialog"
 	| "showStatus"
 	| "showWarning"
-	| "shutdownRequested"
 	| "themeController"
 	| "uiStore"
 	| "ui"
-	| "workingMessage"
 >;
 
 export function createSessionUI(host: SessionUIHost): SessionUI {
@@ -61,9 +59,9 @@ export function createSessionUI(host: SessionUIHost): SessionUI {
 		onTerminalInput: (handler) => host.addFeatureTerminalInputListener(handler),
 		setStatus: (key, text, tone) => host.setFeatureStatus(key, text, tone),
 		setWorkingMessage: (message) => {
-			host.workingMessage = message;
+			host.uiStore.getState().setWorkingMessage(message);
 			if (host.activeStatusIndicator?.kind === "working") {
-				host.activeStatusIndicator.setMessage(message ?? host.defaultWorkingMessage);
+				host.activeStatusIndicator.setMessage(message ?? DEFAULT_WORKING_MESSAGE);
 			}
 		},
 		setWorkingIndicator: (options) => host.setWorkingIndicator(options),
@@ -114,10 +112,11 @@ function showNotify(host: SessionUIHost, message: string, type?: "info" | "warni
 	} else if (type === "warning") {
 		host.showWarning(message);
 	} else {
+		// A declined confirmation is no success either: the command's next-step hint stays out.
+		if (isCancelledText(message)) countProblem(host);
+		const { view } = host.uiStore.getState();
 		host.chatContainer.addChild(new Spacer(1));
-		host.chatContainer.addChild(
-			noticeLine("info", message, host.outputPad, host.uiStore.getState().view.toolsExpanded),
-		);
+		host.chatContainer.addChild(noticeLine("info", message, view.outputPad, view.toolsExpanded));
 		host.ui.requestRender();
 	}
 }

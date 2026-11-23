@@ -110,7 +110,7 @@ describe("two sessions", () => {
 		expect(box.survivors()).toEqual([]);
 	});
 
-	it("`coordinate list` shows other sessions with folder, busy state and the coordinator", async () => {
+	it("`coordinate list` shows other sessions with folder, what each is doing and the coordinator", async () => {
 		const box = sandbox(endpoint);
 		const main = await session(box);
 		const busy = script([{ hang: true }]);
@@ -124,7 +124,9 @@ describe("two sessions", () => {
 		await reachedStep(endpoint, steps, 1, "the list");
 		const results = resultsOf(endpoint, steps);
 		expect(results).toContain(`${main.name} · idle · ${main.instance.cwd} · coordinator of this repository`);
-		expect(results).toContain(`${other.name} · busy · ${other.instance.cwd}`);
+		// Contract change (RFC app-state T4): a peer reads as its own light, which its process records while it streams,
+		// in the words every surface uses ("working", "needs you"), not the API's busy/idle.
+		expect(results).toContain(`${other.name} · working · ${other.instance.cwd}`);
 		expect(results).not.toContain(`${worktree.name} ·`);
 		// A session learns its own name here, not from its prompt.
 		expect(results).toContain(`You are ${worktree.name}.`);

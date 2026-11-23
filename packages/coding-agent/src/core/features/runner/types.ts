@@ -147,6 +147,7 @@ export interface RunnerBindings {
 	isMessageQueuedFn: (details: object) => boolean;
 	replaceQueuedMessageFn: (details: object, content: string) => boolean;
 	getContextUsageFn: () => ContextUsage | undefined;
+	getCacheWarmingReportFn: () => string[];
 	compactFn: (options?: CompactOptions) => void;
 	getSystemPromptFn: () => string;
 	getSystemPromptOptionsFn: () => BuildSystemPromptOptions;

@@ -144,6 +144,7 @@ export function desktopPreset(env: NodeJS.ProcessEnv = process.env, runner?: Dri
 		},
 		defineTool: defineDesktopTool,
 		instructionsOnDemand: true,
+		startsOutsideServer: "Starting it starts the Cua Driver app, which keeps running",
 		// Once per process, and only for a server that will run: a Driver older than the recorded floor, or a missing macOS permission (which otherwise surfaces as a closed connection). Shown to the user, never the model.
 		takeWarnings: () =>
 			driver.executable && envFlag(env, MCP_DESKTOP_ENV, true) ? takeDriverWarnings(driver.executable, runner) : [],

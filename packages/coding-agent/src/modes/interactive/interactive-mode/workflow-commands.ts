@@ -73,8 +73,10 @@ export async function handleWorkflowCommand(host: Host, name: string, args: stri
 		const block = appendReport(host, "Repository diff", "Reading repository changes…");
 		try {
 			const diff = await port.invoke("getRepositoryDiff", args || undefined);
-			// Fences sized to the content: a diff that itself contains ``` cannot close the block early.
-			let text = `Snapshot: ${new Date().toISOString()}\nAll repository changes; ownership is not inferred.\n\n## Staged\n\n${fence(diff.staged || "No staged changes.", "diff")}\n\n## Unstaged\n\n${fence(diff.unstaged || "No unstaged changes.", "diff")}\n\n## Untracked\n\n${diff.untracked.map((file) => JSON.stringify(file)).join("\n") || "None."}${diff.truncated ? "\n\n[Output truncated.]" : ""}`;
+			// Fences sized to the content: a diff that itself contains ``` cannot close the block early. An empty section is
+			// a sentence, not a code block labelled "diff" around it.
+			const section = (changes: string, none: string) => (changes ? fence(changes, "diff") : none);
+			let text = `Snapshot: ${new Date().toISOString()}\nEvery change in the repository, whoever made it.\n\n## Staged\n\n${section(diff.staged, "No staged changes.")}\n\n## Unstaged\n\n${section(diff.unstaged, "No unstaged changes.")}\n\n## Untracked\n\n${diff.untracked.map((file) => JSON.stringify(file)).join("\n") || "No untracked files."}${diff.truncated ? "\n\n[Output truncated.]" : ""}`;
 			if (diff.selectedUntracked) {
 				const file = diff.selectedUntracked;
 				const content = await port.invoke("getUntrackedDiff", diff.root, file);

@@ -27,6 +27,7 @@ export function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
 	);
 }
 
+/** What an agent holds until a model is given, so the loop's types stay non-optional; no provider serves it. */
 const DEFAULT_MODEL = {
 	id: "unknown",
 	name: "unknown",
@@ -39,6 +40,11 @@ const DEFAULT_MODEL = {
 	contextWindow: 0,
 	maxTokens: 0,
 } satisfies Model<any>;
+
+/** Whether `model` is the placeholder an agent was created with because none was given: no model is selected. */
+export function isUnsetModel(model: Model<any>): boolean {
+	return model === DEFAULT_MODEL;
+}
 
 export type MutableAgentState = Omit<
 	AgentState,

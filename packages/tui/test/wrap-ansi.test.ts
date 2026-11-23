@@ -17,6 +17,16 @@ describe("wrapTextWithAnsi", () => {
 		assert.ok(lines.slice(1).every((line) => line.startsWith(WRAP_JOIN_MARK)));
 	});
 
+	it("breaks at a styled space: the next row starts with the text, keeps its style, and is no cut word", () => {
+		const dim = (text: string) => `\x1b[2m${text}\x1b[22m`;
+		const text = `\x1b[90msettings.json\x1b[39m${dim(" · ")}${dim("/harness")}${dim(" · ")}${dim("/settings")}`;
+		const lines = wrapTextWithAnsi(text, 24);
+		const plain = (line: string) => line.replace(/\x1b\[[0-9;]*m/g, "");
+		assert.deepStrictEqual(lines.map(plain), ["settings.json · /harness", "· /settings"]);
+		assert.ok(!lines[1].startsWith(WRAP_JOIN_MARK), "a break at a space joins nothing");
+		assert.ok(lines[1].startsWith("\x1b[2m·"), JSON.stringify(lines[1]));
+	});
+
 	it("puts a wide character wider than the width on its own row without empty rows", () => {
 		assert.deepStrictEqual(wrapTextWithAnsi("日本", 1), ["日", `${WRAP_JOIN_MARK}本`]);
 		assert.deepStrictEqual(unmarked(wrapTextWithAnsi("a日b", 1)), ["a", "日", "b"]);

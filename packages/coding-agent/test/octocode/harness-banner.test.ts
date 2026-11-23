@@ -295,6 +295,20 @@ describe("harnesses", () => {
 		for (const line of lines.slice(1)) expect(line.startsWith("              ")).toBe(true);
 	});
 
+	it("wraps a group wider than the room between its names at 40 columns, cutting none", () => {
+		const lines = drawn(40);
+		for (const line of lines) expect(line.length, line).toBeLessThanOrEqual(40);
+		const text = lines.join(" ").replace(/\s+/g, " ");
+		expect(text).toBe("Harness ✓ 3 on: .agents, root .mcp.json, Pi · off: Claude Code, Codex, Cursor · /harness");
+		expect(lines.at(-1)?.endsWith("/harness")).toBe(true);
+		// A wrap falls after a comma, never inside a name.
+		for (const name of ["root .mcp.json", "Claude Code"])
+			expect(
+				lines.some((line) => line.includes(name)),
+				name,
+			).toBe(true);
+	});
+
 	it("shows a switched-off harness's hooks off in /harness, whatever their own switch, and on once the harness is on", async () => {
 		const root = mkdtempSync(join(tmpdir(), "harness-hooks-"));
 		try {

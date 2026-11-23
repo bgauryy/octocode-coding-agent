@@ -128,6 +128,27 @@ describe("process sampler", () => {
 		sampler.stop();
 	});
 
+	it("reads the table once more after a pending read when a sample is asked for meanwhile", async () => {
+		let answer: (rows: ProcessRow[]) => void = () => undefined;
+		const read = vi
+			.fn<() => Promise<ProcessRow[]>>()
+			.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+			.mockImplementation(table);
+		const sampler = start(read, 60_000);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(read).toHaveBeenCalledTimes(1);
+		// A server started while the first read ran: that read's table may not hold it. Two requests make one more read.
+		sampler.sampleNow();
+		sampler.sampleNow();
+		answer(await table());
+		// The first read, then the one it queued.
+		await sampler.idle();
+		await sampler.idle();
+		// (The frozen clock gives both samples one instant, which keeps one row: the read count is what tells.)
+		expect(read).toHaveBeenCalledTimes(2);
+		sampler.stop();
+	});
+
 	it("does not launch queued process reads after shutdown", async () => {
 		let answer: (rows: ProcessRow[]) => void = () => undefined;
 		const read = vi

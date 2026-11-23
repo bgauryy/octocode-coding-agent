@@ -1,4 +1,4 @@
-import { isPendingApplicationPhase, type ApplicationPhase } from "@octocodeai/octocode-contracts";
+import { activity, type ActivityFacts } from "@octocodeai/octocode-projections";
 import type { ProgramStatus, Terminal } from "@octocodeai/octocode-tui";
 import { APP_NAME } from "../../config.ts";
 import type { AgentSessionEvent } from "../../core/agent-session.ts";
@@ -10,74 +10,36 @@ function firstLine(text: string | undefined): string {
 }
 
 /**
- * Reports interactive-mode state to the terminal (OSC 7501): `working` during agent runs and
- * compaction, `blocked` while a dialog waits for the user, then `done`, `error`, or `idle` once the run
- * settles, except while the session's phase is waiting, resuming or scheduled: background work or a wake continues the
- * job, so it stays `working` until the phase is final. Messages are limited to the session name, dialog titles, and the first line of errors; prompts
- * and assistant output are never reported.
+ * Reports interactive-mode state to the terminal (OSC 7501), with the tab progress (OSC 9;4) on while it is `working`:
+ * the session's activity light (`activity`, which the footer and the web read too) from the facts of its application
+ * state (`setPhase`). `working` for a run, compaction, a retry, background work or a wake; `blocked` while a dialog
+ * waits; `error` for a failed or stopped job; `done` after a job that ended well and `idle` otherwise, a pending timer
+ * included. A host dialog (`setBlocked`: a login, a feature selector) reports `blocked` over it. Before the facts are
+ * bound nothing runs: `idle`. Messages are limited to the session name, dialog titles, and the first line of errors;
+ * prompts and assistant output are never reported.
  */
 export class SessionStatusReporter {
 	private readonly getTerminal: () => Terminal;
 	private readonly getSessionName: () => string | undefined;
-	private runActive = false;
-	private compacting = false;
-	/** Outcome of the current run, reported once it settles. */
-	private runResult: ProgramStatus = { state: "done" };
-	/** Status while no run is active. */
-	private restingStatus: ProgramStatus = { state: "idle" };
 	/** Open dialogs by source, in the order they opened. The most recent one is reported. */
 	private readonly blocked = new Map<string, BlockedStatus>();
-	/** The session's job goes on without a run (background agents, a wake, a timer). */
-	private phasePending = false;
+	/** The session's application state facts its light reads; undefined until a port is bound. */
+	private facts: ActivityFacts | undefined;
 	private lastReport: string | undefined;
+	/** Whether the tab progress is on: the terminal starts without it. */
+	private progress = false;
+	private readonly showProgress: () => boolean;
 
-	constructor(getTerminal: () => Terminal, getSessionName: () => string | undefined) {
+	/** `showProgress`: whether the tab progress (OSC 9;4) is wanted (`terminal.showTerminalProgress`), read when it changes. */
+	constructor(getTerminal: () => Terminal, getSessionName: () => string | undefined, showProgress = () => false) {
 		this.getTerminal = getTerminal;
 		this.getSessionName = getSessionName;
+		this.showProgress = showProgress;
 	}
 
+	/** The session name is part of working and done reports: a rename reports again. Every other event is the facts'. */
 	handleEvent(event: AgentSessionEvent): void {
-		switch (event.type) {
-			case "agent_start":
-				this.runActive = true;
-				this.runResult = { state: "done" };
-				break;
-			case "message_end":
-				// The latest response decides the outcome, so a retried error is replaced by its successful retry.
-				if (event.message.role !== "assistant") return;
-				this.runResult =
-					event.message.stopReason === "error"
-						? { state: "error", message: firstLine(event.message.errorMessage) }
-						: { state: "done" };
-				break;
-			case "compaction_start":
-				this.compacting = true;
-				break;
-			case "compaction_end":
-				this.compacting = false;
-				if (this.runActive) {
-					// A failed recovery compaction ends the run unless a later response succeeds.
-					if (event.aborted) this.runResult = { state: "idle" };
-					else if (event.errorMessage) this.runResult = { state: "error", message: firstLine(event.errorMessage) };
-				} else if (event.aborted) {
-					this.restingStatus = { state: "idle" };
-				} else if (event.reason === "manual") {
-					this.restingStatus = event.errorMessage
-						? { state: "error", message: firstLine(event.errorMessage) }
-						: { state: "done" };
-				}
-				break;
-			case "agent_settled":
-				this.runActive = false;
-				this.restingStatus = event.aborted ? { state: "idle" } : this.runResult;
-				break;
-			case "session_info_changed":
-				// The session name is part of working and done reports.
-				break;
-			default:
-				return;
-		}
-		this.report();
+		if (event.type === "session_info_changed") this.report();
 	}
 
 	/** Report `blocked` for a dialog until it is cleared with `undefined`. Reopening a source replaces it. */
@@ -87,24 +49,26 @@ export class SessionStatusReporter {
 		this.report();
 	}
 
-	/** The session's phase from the application state; undefined forgets it. */
-	setPhase(phase: ApplicationPhase | undefined): void {
-		this.phasePending = phase !== undefined && isPendingApplicationPhase(phase);
+	/** The facts of the session's application state (its phase, dialog, status and run); undefined forgets them. */
+	setPhase(facts: ActivityFacts | undefined): void {
+		this.facts = facts;
 		this.report();
 	}
 
-	/** Forget the previous session's run, for example after switching sessions. */
+	/** Forget the previous session's facts, for example after switching sessions. */
 	reset(): void {
-		this.runActive = false;
-		this.compacting = false;
-		this.phasePending = false;
-		this.runResult = { state: "done" };
-		this.restingStatus = { state: "idle" };
+		this.facts = undefined;
 		this.report();
 	}
 
+	/** Sends the status when it changed, and turns the tab progress on or off as the status becomes or stops being working. */
 	report(): void {
 		const status: ProgramStatus = { ...this.currentStatus(), app: APP_NAME };
+		const working = status.state === "working";
+		if (working !== this.progress) {
+			this.progress = working;
+			if (this.showProgress()) this.getTerminal().setProgress(working);
+		}
 		const key = JSON.stringify(status);
 		if (key === this.lastReport) return;
 		this.lastReport = key;
@@ -114,9 +78,32 @@ export class SessionStatusReporter {
 	private currentStatus(): ProgramStatus {
 		const blocked = [...this.blocked.values()].at(-1);
 		if (blocked) return { state: "blocked", ...blocked };
-		if (this.compacting) return { state: "working", message: "Compacting context" };
-		const status = this.runActive || this.phasePending ? { state: "working" as const } : this.restingStatus;
-		if (status.state === "working" || status.state === "done") return { ...status, message: this.getSessionName() };
-		return status;
+		return this.facts ? this.lit(this.facts) : { state: "idle" };
+	}
+
+	/** The program status of the session's light, with the details its facts carry. */
+	private lit(facts: ActivityFacts): ProgramStatus {
+		const light = activity(facts);
+		const { awaiting, phase } = facts;
+		switch (light.tone) {
+			case "waiting": {
+				const title =
+					typeof awaiting === "object" ? awaiting.title : phase?.state === "blocked" ? phase.title : undefined;
+				const kind = typeof awaiting === "object" && awaiting.kind === "approval" ? "permission" : "question";
+				return { state: "blocked", kind, ...(title ? { message: title } : {}) };
+			}
+			case "working":
+				return {
+					state: "working",
+					message: light.label === "compacting" ? "Compacting context" : this.getSessionName(),
+				};
+			case "error": {
+				if (phase?.state === "failed") return { state: "error", message: firstLine(phase.error) };
+				const open = phase?.state === "stopped" ? phase.open.slice(0, 5) : [];
+				return { state: "error", message: open.length ? `Stopped: ${open.join(", ")} still open` : "Stopped" };
+			}
+			case "idle":
+				return light.label === "done" ? { state: "done", message: this.getSessionName() } : { state: "idle" };
+		}
 	}
 }

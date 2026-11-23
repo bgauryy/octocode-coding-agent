@@ -32,7 +32,7 @@ describe("tool header at narrow widths", () => {
 		const [line] = draw(header, width);
 		expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 		expect(line).not.toContain("()");
-		expect(line).toMatch(/^ ?⏺ Search/);
+		expect(line).toMatch(/^ ?✓ Search/);
 		if (width >= 40) expect(line).toContain("1.2s");
 	});
 
@@ -114,10 +114,10 @@ describe("a tool without a renderer", () => {
 		// The title is the tool word and its server is meta, which drops whole before the argument is cut.
 		expect(lines[0].trim()).toBe(
 			width === 20
-				? "⏺ lookup · 1.2s"
+				? "✓ lookup · 1.2s"
 				: width === 40
-					? "⏺ lookup(needle in src/very/l…) · 1.2s"
-					: "⏺ lookup(needle in src/very/long/path) · server · 1.2s",
+					? "✓ lookup(needle in src/very/l…) · 1.2s"
+					: "✓ lookup(needle in src/very/long/path) · server · 1.2s",
 		);
 		expect(lines[0]).not.toContain("query=");
 		expect(lines.slice(1).join("\n")).toContain("⎿");

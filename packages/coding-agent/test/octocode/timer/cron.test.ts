@@ -425,12 +425,53 @@ describe("/cron and /loop", () => {
 		const [row] = timers.forSession(agent.db, "s1");
 		expect(cronOf(row)).toMatchObject({ expr: "*/10 * * * *" });
 		expect(row.note).toBe("run the tests");
+		// The user's reply: the next run, its limits and the command that stops it, never the tool's `notify` fields.
+		const set = ctx.ui.notes.at(-1)!.message;
+		expect(set).toContain(
+			`Every 10m: Scheduled task #${row.id} sends "run the tests" once this session is idle; next in `,
+		);
+		expect(set).toMatch(
+			/\(\d\d:\d\d\)\. It stops after 20 runs, on [A-Z][a-z]{2} \d+, or once this session spends \$\d+\.\d\d\./,
+		);
+		expect(set).toContain(`/cron delete ${row.id} stops it now.`);
+		expect(set).not.toMatch(/notify|GMT/);
 		await commands.get("cron")!.handler("list", ctx as never);
-		expect(ctx.ui.notes.at(-1)!.message).toContain(`#${row.id} cron */10 * * * *`);
+		// Counted as /jobs and the footer count it: the run it is on, of the limit.
+		expect(ctx.ui.notes.at(-1)!.message).toContain(`#${row.id} cron */10 * * * * · run 1 of 20 · next in`);
 		await commands.get("cron")!.handler(`delete ${row.id}`, ctx as never);
 		expect(timers.get(agent.db, row.id)!.status).toBe("cancelled");
 		await commands.get("cron")!.handler("list", ctx as never);
 		expect(ctx.ui.notes.at(-1)!.message).toContain("No scheduled tasks");
+	});
+
+	it("/loop says when it rounded the interval, and asks no question: the user typed it", async () => {
+		// A question would take this `false` and set nothing.
+		const { commands, ctx } = await session({ confirms: [false] });
+		await commands.get("loop")!.handler("1m check the build", ctx as never);
+		const [row] = timers.forSession(agent.db, "s1");
+		expect(cronOf(row)).toMatchObject({ expr: "*/5 * * * *" });
+		expect(ctx.ui.notes.at(-1)!.message).toMatch(
+			/^Every 5m \(1m rounded: a loop runs at least 5m apart, on a step that divides the hour or day evenly\): Scheduled task/,
+		);
+		expect(ctx.ui.confirms).toEqual([false]);
+	});
+
+	it("/loop names a bad interval and a missing prompt instead of printing only the usage", async () => {
+		const { commands, ctx } = await session();
+		const loop = (args: string) => commands.get("loop")!.handler(args, ctx as never);
+		await loop("5x check the build");
+		expect(ctx.ui.notes.at(-1)).toMatchObject({
+			type: "warning",
+			message:
+				'"5x" is not an interval: use a number and m, h or d, such as 10m, 2h or 1d. Usage: /loop <interval> <prompt>',
+		});
+		await loop("10m");
+		expect(ctx.ui.notes.at(-1)!.message).toBe("/loop 10m needs a prompt to run. Usage: /loop <interval> <prompt>");
+		await loop("");
+		expect(ctx.ui.notes.at(-1)!.message).toBe(
+			"Usage: /loop <interval> <prompt>, the interval a number and m, h or d (10m, 2h, 1d)",
+		);
+		expect(timers.forSession(agent.db, "s1")).toEqual([]);
 	});
 
 	it("/cron delete leaves a wait that is not a cron schedule alone", async () => {

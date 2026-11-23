@@ -4,6 +4,7 @@ import {
 	type Api,
 	isCredentialError,
 	isModelAccessError,
+	isNoFundsError,
 	isRateLimitedText,
 	isUsageLimitError,
 	type Model,
@@ -11,6 +12,7 @@ import {
 } from "@octocodeai/octocode-ai";
 import { checkCredentialByList } from "@octocodeai/octocode-ai/providers/discovery";
 import type { ModelRegistry } from "../../core/model-registry.ts";
+import { captureSpend } from "../../core/spend-capture.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { redactSecrets, sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { currentPrice, type ModelRef } from "./model.ts";
@@ -19,20 +21,14 @@ import { onCredentialChange } from "../../core/model-runtime/credential-operatio
 import { defaultRefusalStore, type RefusalStore } from "./provider-refusals.ts";
 
 /**
- * The account cannot pay for the request (402, "Insufficient account funds", no credit or quota left): the key is
- * fine, funds or a plan are missing, and every priced model of that provider fails the same way; its free models
- * still run (OpenCode Go: beam-free answered while a paid model said 402).
- */
-export const BILLING_ERROR =
-	/\b402\b|payment required|insufficient[ _](?:account[ _])?(?:quota|credit|balance|funds)|billing|out of credit/i;
-
-/**
- * A provider refused the credential or the account: a credential error, no funds, or a usage limit (the shared
- * classifier the session retry uses). Narrower than a request refusal: a model-level or request-shape refusal says
- * nothing about the other models of that provider.
+ * A provider refused the credential or the account: a credential error, or a usage limit, no funds included (the
+ * shared classifiers the session retry uses). Narrower than a request refusal: a model-level or request-shape refusal
+ * says nothing about the other models of that provider. With no funds (`isNoFundsError`: 402, "Insufficient account
+ * funds") the key is fine and every priced model of the provider fails the same way; its free models still run
+ * (OpenCode Go: beam-free answered while a paid model said 402).
  */
 const credentialRefused = (text: string): boolean =>
-	!isModelAccessError(text) && (isCredentialError(text) || BILLING_ERROR.test(text) || isUsageLimitError(text));
+	!isModelAccessError(text) && (isCredentialError(text) || isUsageLimitError(text));
 /** A known price of zero for input and output; an unknown price is not free. */
 const costsNothing = (cost: ModelRef["cost"]): boolean => {
 	const rates = currentPrice(cost);
@@ -69,6 +65,13 @@ export const refusedBeforeWork = (error: string, nothingSpent: boolean): boolean
 	nothingSpent && (CLIENT_ERROR.test(error) || isModelAccessError(error));
 
 const withoutThinking = (model: string) => model.replace(/:(?:off|minimal|low|medium|high|xhigh|max)$/, "");
+
+/**
+ * The model a finished run is news about: the one that answered last (`ran`, after a `retry.fallbackModels` switch in
+ * the child) rather than the planned route; undefined for a run on this session's model, as {@link ProviderHealth.noteRun} takes it.
+ */
+export const healthModel = (planned: string | undefined, ran: { model: string } | undefined): string | undefined =>
+	planned && (ran?.model ?? planned);
 
 /** Provider error text reaches the model listing: credentials are redacted, nothing is cut. */
 const clean = (text: string) => redactSecrets(sanitizeTerminalText(text)).replace(/\s+/g, " ").trim();
@@ -170,7 +173,7 @@ export class ProviderHealth {
 		if (!credentialCaused(status) && Date.now() - status.at >= REFUSAL_ROUTING_MS) return false;
 		const detail = status.detail ?? "";
 		// Missing funds stop only what costs money: a model priced at zero (`cost` given and free) still routes.
-		if (BILLING_ERROR.test(detail) && !isCredentialError(detail) && costsNothing(cost)) return false;
+		if (isNoFundsError(detail) && !isCredentialError(detail) && costsNothing(cost)) return false;
 		return credentialRefused(detail);
 	}
 }
@@ -188,7 +191,7 @@ export function describeHealth(status: ProviderStatus | undefined): string {
 	if (status.ok) return ` ✓ credential worked (${source}, ${when})`;
 	const detail = status.detail ?? "";
 	const modelAccess = isModelAccessError(detail);
-	const billing = !modelAccess && BILLING_ERROR.test(detail);
+	const billing = !modelAccess && isNoFundsError(detail);
 	const limited = !modelAccess && !billing && !isCredentialError(detail) && isUsageLimitError(detail);
 	const refused = billing || limited || credentialRefused(detail);
 	// A throttle (the shared classifier's rate limit) is not a broken provider: it clears by waiting.
@@ -244,7 +247,7 @@ type CheckRegistry = Pick<ModelRegistry, "streamSimple"> &
 	Partial<Pick<ModelRegistry, "getProvider" | "getProviderAuth">>;
 
 /** A refusal a model list cannot disprove: listing models works without credit or quota. */
-const BILLING_REFUSED = new RegExp(`${BILLING_ERROR.source}|quota`, "i");
+const billingRefused = (detail: string): boolean => isUsageLimitError(detail) || /quota/i.test(detail);
 
 /**
  * Whether the provider's own model list accepted the credential, without an inference request. Only a success counts:
@@ -269,11 +272,15 @@ async function listAccepted(registry: CheckRegistry, providerId: string, signal:
 	return listed?.ok === true;
 }
 
-/** One tiny request; the provider's error text, or undefined when it answered. */
+/**
+ * One tiny request; the provider's error text, or undefined when it answered. No session entry carries it, so with the
+ * workspace's `cwd` what it spent goes to `/usage` (`captureSpend`), answered or refused.
+ */
 async function tinyRequest(
 	registry: CheckRegistry,
 	model: Model<Api>,
 	signal: AbortSignal,
+	cwd: string,
 ): Promise<string | undefined> {
 	try {
 		const reply = await registry
@@ -286,6 +293,7 @@ async function tinyRequest(
 				{ maxTokens: 64, signal, sessionId: `credential-check-${randomUUID()}` },
 			)
 			.result();
+		captureSpend({ cwd, kind: "provider_check", provider: model.provider, model: model.id, usage: reply.usage });
 		if (reply.stopReason === "error" || reply.stopReason === "aborted")
 			return reply.errorMessage ?? `the request ended: ${reply.stopReason}`;
 		return undefined;
@@ -299,13 +307,14 @@ async function tinyRequest(
  * tiny request. An entry may list several models of one provider: a refusal that is not about the credential tries the
  * next, since one model can be closed to an account that others serve; a rate limit stops there, since every model of
  * the provider shares the throttled key. Providers run in parallel with a 20 s bound each; results of a check the caller
- * cancelled are not recorded.
+ * cancelled are not recorded. `cwd` is the workspace the check runs for: its requests' spend is filed under it.
  */
 export async function checkProviders(
 	registry: CheckRegistry,
 	entries: readonly (Model<Api> | readonly Model<Api>[])[],
 	health: ProviderHealth,
-	signal?: AbortSignal,
+	signal: AbortSignal | undefined,
+	cwd: string,
 ): Promise<void> {
 	await Promise.all(
 		entries.map(async (entry) => {
@@ -320,13 +329,13 @@ export async function checkProviders(
 				if (accepted) {
 					const known = health.get(model.provider);
 					// A listed key may still lack credit: keep a run's billing refusal until a run succeeds.
-					if (!(known && !known.ok && known.via === "run" && known.detail && BILLING_REFUSED.test(known.detail)))
+					if (!(known && !known.ok && known.via === "run" && known.detail && billingRefused(known.detail)))
 						health.noteCheck(model.provider, undefined, "list");
 					return;
 				}
 				let error: string | undefined;
 				for (const candidate of candidates) {
-					const refused = await tinyRequest(registry, candidate, bounded);
+					const refused = await tinyRequest(registry, candidate, bounded, cwd);
 					error = refused && candidates.length > 1 ? `${candidate.id}: ${refused}` : refused;
 					if (!refused || credentialRefused(refused) || isRateLimitedText(refused) || bounded.aborted) break;
 				}

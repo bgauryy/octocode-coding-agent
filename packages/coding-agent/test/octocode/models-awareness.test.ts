@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ToolDefinition } from "../../src/core/features/index.ts";
 import { credentialSourceLabel } from "../../src/core/provider-composer/types.ts";
-import { MODELS_DEV_ENV } from "../../src/octocode/subagents/catalog.ts";
+import { MODELS_DEV_ENV } from "../../src/core/model-catalog/index-store.ts";
 import { canRunTask, type ModelRef, routeModel } from "../../src/octocode/subagents/model.ts";
 import { registerModelsTool } from "../../src/octocode/native/tools/models/tool.ts";
 import { meteredBilling, asSetup } from "./fake-host.ts";
@@ -60,7 +60,11 @@ describe("credential labels", () => {
 function modelsTool(available: ModelRef[] = refs) {
 	let tool: ToolDefinition | undefined;
 	registerModelsTool(
-		asSetup({ registerTool: (definition: ToolDefinition) => void (tool = definition) }) as never,
+		asSetup({
+			registerTool: (definition: ToolDefinition) => void (tool = definition),
+			// The quota notice registers with the tool (`models-quota-notice.ts`); no event fires here.
+			on: () => () => undefined,
+		}) as never,
 		() => new Map(),
 	);
 	return async (input: Record<string, unknown>) => {

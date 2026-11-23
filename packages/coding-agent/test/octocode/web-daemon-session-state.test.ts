@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ApplicationFrame, ApplicationPort } from "@octocodeai/octocode-contracts";
+import type { Activity, ApplicationFrame, ApplicationPort } from "@octocodeai/octocode-contracts";
 import { byAttention, SessionWatch } from "../../src/octocode/web-daemon/session-state.ts";
 import { fakeSession } from "./web-daemon-fixture.ts";
 
@@ -24,6 +24,12 @@ const snapshot = (streaming: boolean, awaiting?: { kind: "approval"; title: stri
 });
 const event = (sequence: number, body: Record<string, unknown>): ApplicationFrame =>
 	({ ...at(sequence), type: "event", event: body }) as ApplicationFrame;
+const light = (tone: Activity["tone"], state: Activity["state"], label: string): Activity => ({ tone, state, label });
+// The light the list shows beside `busy` and `needsYou` (the shared `activity` mapping), in the states these tests reach.
+const WORKING = light("working", "running", "working");
+const NEEDS_YOU = light("waiting", "waiting", "needs you");
+const IDLE = light("idle", "pending", "idle");
+const DONE = light("idle", "pending", "done");
 
 describe("session watch", () => {
 	it("reports a frame it cannot read and reconnects instead of going quiet", async () => {
@@ -35,7 +41,7 @@ describe("session watch", () => {
 		await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(1));
 		await vi.waitFor(() => expect(session.connects).toHaveLength(2), { timeout: 3000 });
 		session.push(snapshot(true));
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true, activity: WORKING }));
 		watch.close();
 	});
 
@@ -80,14 +86,16 @@ describe("session watch", () => {
 		await vi.waitFor(() => expect(session.connects).toHaveLength(1));
 		expect(watch.state).toBeUndefined();
 		session.push(snapshot(true, { kind: "approval", title: "Run rm -rf build?" }));
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true, needsYou: "Run rm -rf build?" }));
+		await vi.waitFor(() =>
+			expect(watch.state).toEqual({ busy: true, needsYou: "Run rm -rf build?", activity: NEEDS_YOU }),
+		);
 		session.push(event(2, { type: "session.awaiting" }));
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true, activity: WORKING }));
 		session.push(event(3, { type: "run.settled", runId: "r", outcome: "completed" }));
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, activity: IDLE }));
 		session.push(event(4, { type: "run.started", runId: "r2" }));
 		session.push(event(5, { type: "session.awaiting", awaiting: { kind: "question", title: "Branch?" } }));
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true, needsYou: "Branch?" }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true, needsYou: "Branch?", activity: NEEDS_YOU }));
 		expect(changes).toHaveBeenCalledTimes(5);
 		watch.close();
 	});
@@ -97,15 +105,21 @@ describe("session watch", () => {
 		const watch = new SessionWatch(session.workspace.application!, "s", () => {});
 		await vi.waitFor(() => expect(session.connects).toHaveLength(1));
 		session.push(snapshot(false, { kind: "approval", title: "Subagent asks: run rm?" }));
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, needsYou: "Subagent asks: run rm?" }));
+		await vi.waitFor(() =>
+			expect(watch.state).toEqual({ busy: false, needsYou: "Subagent asks: run rm?", activity: NEEDS_YOU }),
+		);
 		session.push(event(2, { type: "run.started", runId: "r" }));
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true, needsYou: "Subagent asks: run rm?" }));
+		await vi.waitFor(() =>
+			expect(watch.state).toEqual({ busy: true, needsYou: "Subagent asks: run rm?", activity: NEEDS_YOU }),
+		);
 		session.push(event(3, { type: "run.settled", runId: "r", outcome: "completed" }));
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, needsYou: "Subagent asks: run rm?" }));
+		await vi.waitFor(() =>
+			expect(watch.state).toEqual({ busy: false, needsYou: "Subagent asks: run rm?", activity: NEEDS_YOU }),
+		);
 		session.push(event(4, { type: "session.awaiting" }));
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, activity: IDLE }));
 		session.push(event(5, { type: "session.awaiting", awaiting: { kind: "question", title: "Branch?" } }));
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, needsYou: "Branch?" }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, needsYou: "Branch?", activity: NEEDS_YOU }));
 		watch.close();
 	});
 
@@ -114,15 +128,15 @@ describe("session watch", () => {
 		const watch = new SessionWatch(session.workspace.application!, "s", () => {});
 		await vi.waitFor(() => expect(session.connects).toHaveLength(1));
 		session.push(snapshot(true));
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true, activity: WORKING }));
 		const waiting = { state: "waiting", agents: 4, queued: 0, bash: 0, external: 0 };
 		session.push(event(2, { type: "session.phase", phase: waiting, jobStartedAt: 1 }));
 		session.push(event(3, { type: "run.settled", runId: "r", outcome: "completed" }));
 		session.push(event(4, { type: "session.awaiting", awaiting: { kind: "question", title: "Branch?" } }));
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true, needsYou: "Branch?" }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: true, needsYou: "Branch?", activity: NEEDS_YOU }));
 		session.push(event(5, { type: "session.awaiting" }));
 		session.push(event(6, { type: "session.phase", phase: { state: "done" } }));
-		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false }));
+		await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, activity: DONE }));
 		watch.close();
 	});
 
@@ -149,10 +163,62 @@ describe("session watch", () => {
 			expect(changes).toHaveBeenCalledTimes(2);
 			await vi.waitFor(() => expect(session.connects).toHaveLength(2), { timeout: 3000 });
 			session.push(snapshot(false));
-			await vi.waitFor(() => expect(watch.state).toEqual({ busy: false }));
+			await vi.waitFor(() => expect(watch.state).toEqual({ busy: false, activity: IDLE }));
 		} finally {
 			watch.close();
 		}
+	});
+
+	it("carries the shared activity light: a failed or stopped phase is an error, compaction and a retry are working", async () => {
+		const session = fakeSession("s");
+		const changes = vi.fn();
+		const watch = new SessionWatch(session.workspace.application!, "s", changes);
+		try {
+			await vi.waitFor(() => expect(session.connects).toHaveLength(1));
+			session.push(snapshot(false));
+			await vi.waitFor(() => expect(watch.state?.activity).toEqual(light("idle", "pending", "idle")));
+			session.push(event(2, { type: "session.phase", phase: { state: "failed", error: "provider error" } }));
+			await vi.waitFor(() => expect(watch.state?.activity).toEqual(light("error", "failed", "failed")));
+			expect(watch.state?.busy).toBe(false);
+			session.push(event(3, { type: "session.phase", phase: { state: "stopped", open: ["B1", "B2"] } }));
+			await vi.waitFor(() => expect(watch.state?.activity).toEqual(light("error", "failed", "stopped")));
+			session.push(event(4, { type: "session.status", status: "compacting" }));
+			await vi.waitFor(() => expect(watch.state?.activity).toEqual(light("working", "running", "compacting")));
+			session.push(event(5, { type: "session.status", status: "retrying", until: 9 }));
+			await vi.waitFor(() => expect(watch.state?.activity).toEqual(light("working", "running", "retrying")));
+			session.push(event(6, { type: "session.status", status: "idle" }));
+			session.push(event(7, { type: "session.awaiting", awaiting: { kind: "approval", title: "Run it?" } }));
+			await vi.waitFor(() => expect(watch.state?.activity).toEqual(light("waiting", "waiting", "needs you")));
+			// A frame that changes nothing the list shows (a usage update) repaints nothing.
+			const before = changes.mock.calls.length;
+			session.push(event(8, { type: "session.usage", usage: { cost: 1 } }));
+			session.push(event(9, { type: "session.awaiting" }));
+			await vi.waitFor(() => expect(watch.state?.activity.tone).toBe("error"));
+			expect(changes.mock.calls.length).toBe(before + 1);
+		} finally {
+			watch.close();
+		}
+	});
+
+	it("ranks by the light when the list has it: needs you, then working, then failed, then idle", () => {
+		const sessions = [
+			{ id: "idle", startedAt: 9, busy: false, activity: light("idle", "pending", "idle") },
+			{ id: "failed", startedAt: 8, busy: false, activity: light("error", "failed", "failed") },
+			{ id: "compacting", startedAt: 1, busy: false, activity: light("working", "running", "compacting") },
+			{
+				id: "blocked",
+				startedAt: 2,
+				busy: true,
+				needsYou: "Approve?",
+				activity: light("waiting", "waiting", "needs you"),
+			},
+		];
+		expect([...sessions].sort(byAttention).map((session) => session.id)).toEqual([
+			"blocked",
+			"compacting",
+			"failed",
+			"idle",
+		]);
 	});
 
 	it("orders sessions by attention: blocked first, then working, then idle, newest first within each", () => {

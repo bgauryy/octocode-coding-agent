@@ -2,11 +2,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import * as lifecycle from "../src/modes/interactive/interactive-mode/lifecycle.ts";
 import { holdTerminalForChild } from "../src/utils/foreground-child.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+import { createUiStore, type UiStore } from "../src/modes/interactive/state/store.ts";
 
 type SignalContext = {
 	signalCleanupHandlers: Array<() => void>;
 	shutdown: (options?: { fromSignal?: boolean }) => Promise<void>;
-	isShuttingDown: boolean;
+	uiStore: UiStore;
 	unregisterSignalHandlers: () => void;
 	emergencyTerminalExit: () => never;
 	uncaughtCrash: (error: Error) => never;
@@ -22,7 +23,7 @@ function createContext(mode: "fullscreen" | "regular" = "fullscreen"): SignalCon
 	const context: SignalContext = {
 		signalCleanupHandlers: [],
 		shutdown: vi.fn(async () => {}),
-		isShuttingDown: false,
+		uiStore: createUiStore(),
 		unregisterSignalHandlers: () => lifecycle.unregisterSignalHandlers(createFakeHost(context)),
 		emergencyTerminalExit: () => {
 			throw new Error("unexpected emergency exit");
@@ -217,7 +218,7 @@ describe("interactive mode signals", () => {
 
 		test("during shutdown it stops the process without a suspend", () => {
 			context = createContext();
-			context.isShuttingDown = true;
+			context.uiStore.getState().beginShutdown();
 			const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
 			lifecycle.registerSignalHandlers(createFakeHost(context));
 

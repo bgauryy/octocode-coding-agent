@@ -32,7 +32,7 @@ export const SubagentSettingsSchema = Type.Object(
 			Type.Number({
 				exclusiveMinimum: 0,
 				description:
-					"US dollars of recorded spend, the session's own and its subagents', past which a new spawn is refused with the total; what runs keeps running. You are told the first time it refuses, once per session for each value.",
+					"US dollars billed per token, the session's own and its subagents' (a plan's share is an estimate, not money, and never counts), past which a new spawn, a resume and a message to a lingering subagent are refused with the total; what runs keeps running. You are told the first time it refuses, once per session for each value.",
 			}),
 		),
 		queuedStarts: Type.Optional(

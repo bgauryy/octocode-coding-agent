@@ -24,8 +24,10 @@ describe("network connection lost retry", () => {
 		await harness.session.prompt("test");
 
 		expect(harness.faux.state.callCount).toBe(2);
+		// The retry line names the provider and model that failed.
+		const { provider, id } = harness.session.model!;
 		expect(harness.eventsOfType("auto_retry_start").map((event) => event.errorMessage)).toEqual([
-			"Network connection lost.",
+			`${provider}/${id}: Network connection lost.`,
 		]);
 		expect(harness.eventsOfType("auto_retry_end").map((event) => event.success)).toEqual([true]);
 		expect(getAssistantTexts(harness)).toContain("recovered after reconnect");

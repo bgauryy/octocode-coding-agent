@@ -1,5 +1,5 @@
-- Delegate when parallel work or a clean context repays the brief and you can check the result. Give related tasks to one child, together or with `resume`. Brief it with the goal, check, files and facts it cannot find. For shared work, name its teammates by ID or say which IDs are pending. Run independent tasks together. Verify their outputs before starting dependent tasks. If a child stays silent after one question or fails twice for the same cause, stop it and give a fresh child the rest, with its findings.
-- {{#if backlog}}Take ready items in the graph notice's order (priority, what it unblocks, age). {{/if}}Children run focused checks; you run the full ones.
+- Delegate when parallel work or a clean context repays the brief and you can check the result. Give related tasks to one child, together or with `resume`. For shared work, name its teammates by ID or say which IDs are pending.
+- {{#if backlog}}Take ready items in the graph notice's order. {{/if}}Children run focused checks; you run the full ones.
 {{#if browserProfiles}}
 - {{browserProfiles}} runs the browser on a small model: give it the whole page task (URL, goal, evidence needed), solving included, and do not read the page yourself first. A short page task (open, read, one click) you do yourself with the on-demand `mcp__browser__*` tools. Reuse the specialist while it is reachable.
 {{/if}}
@@ -13,7 +13,7 @@
 {{profiles}}
 {{/if}}
 {{#if providers}}
-- Models: you run {{sessionModel}}; providers: {{providers}}; `small`: {{smallRoute}}; `medium`: {{mediumRoute}} (default).
+- Models: you run {{sessionModel}}; providers: {{providers}}; `small`: {{smallRoute}}; `medium`: {{mediumRoute}}.
 - Route by the task, not by your own model: `small` for research, search, triage and mechanical edits; `medium` for implementation, review and backlog items that carry a goal and check. `large` only for sensitive work (security, permissions, credentials, data loss, migrations, releases) or heavy design or root-cause work, only after a medium child reports it could not settle it. Thinking `:low` or `:medium`; `:high` only for that sensitive work.
 {{/if}}
 - Save under `.octocode/agent/`: durable results and shared briefs as named Markdown in `<topic>/` (never cleared), throwaways in `tmp/`. {{retention}}

@@ -13,7 +13,8 @@ import type { RemoteSettings } from "../../core/settings-schema.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { cancelledText, say, type Subcommand, wordCompletions } from "../shared/commands.ts";
 import { daemonRequest, type LaunchedDaemon } from "../web-daemon/launcher.ts";
-import { describeLink, describeStatus } from "./links.ts";
+import { registerSecretValue } from "@octocodeai/octocode-common/sanitize";
+import { describeLink, describeStatus, linkSecret } from "./links.ts";
 
 export interface RemoteHost {
 	/** The daemon with this session attached, started when none runs; rejects when it cannot start or be reached. */
@@ -41,7 +42,10 @@ const isLinkAnswer = (value: unknown): value is { link: RemoteLink } =>
 	typeof value === "object" && value !== null && Value.Check(RemoteLinkSchema, (value as { link?: unknown }).link);
 const isStatus = (value: unknown): value is RemoteStatus => Value.Check(RemoteStatusSchema, value);
 
-/** Publishes one link with the configured transport. */
+/**
+ * Publishes one link with the configured transport and registers its capability as a secret (`linkSecret`): the link
+ * is said once, in this terminal, and a view link's holder following this session never reads a control link from it.
+ */
 async function publishLink(host: RemoteHost, ctx: FeatureContext, access: RemoteAccess): Promise<RemoteLink> {
 	const daemon = await host.daemon(ctx);
 	const settings = host.settings();
@@ -50,7 +54,9 @@ async function publishLink(host: RemoteHost, ctx: FeatureContext, access: Remote
 		access,
 		...(settings.relayUrl ? { relayUrl: settings.relayUrl } : {}),
 	};
-	return (await answer(daemon, { method: "POST", body: request }, isLinkAnswer)).link;
+	const { link } = await answer(daemon, { method: "POST", body: request }, isLinkAnswer);
+	registerSecretValue(linkSecret(link));
+	return link;
 }
 
 /**

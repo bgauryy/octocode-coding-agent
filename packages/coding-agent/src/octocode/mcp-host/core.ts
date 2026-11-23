@@ -35,6 +35,7 @@ import { calls } from "./calls.ts";
 import { plugins } from "./plugins.ts";
 import { review } from "./review.ts";
 import { userResearchRoots } from "./research-roots.ts";
+import { shippedSkillRoots } from "./shipped-skills.ts";
 import { vendors } from "./vendors.ts";
 
 const identity: McpHostPorts["identity"] = {
@@ -53,6 +54,10 @@ const paths: McpHostPorts["paths"] = {
 	contextOptimizationDirs: (cwd, agentDir) => contextOptimizationDirs(cwd, agentDir),
 	sessionRoots: (cwd, env) => [sessionsRoot(env, cwd), sessionTempRoot(env, cwd)],
 	researchRoots: (env) => userResearchRoots(env),
+	// The skills Octocode ships that the session loads, which a root session's resource discovery adds
+	// (`registerSkills`) and a subagent has from its parent's inventory: the default research server then starts with the
+	// session instead of after discovery. Loaded skill folders compare as realpaths.
+	announcedSkillRoots: (context) => shippedSkillRoots(context),
 	mcpDocsPath: () => join(getDocsPath(), "mcp.md"),
 	serverRecordsDir: () => join(getAgentDir(), "mcp-server-owners"),
 };

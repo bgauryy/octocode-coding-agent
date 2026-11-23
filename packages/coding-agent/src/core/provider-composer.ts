@@ -15,17 +15,14 @@ import { getApiProvider } from "@octocodeai/octocode-ai/compat";
 import { withCacheCapabilities } from "@octocodeai/octocode-ai/utils/cache-capabilities";
 import { classifierErrorResult, imageErrorResult } from "@octocodeai/octocode-ai/utils/model-operations";
 import type { ModelConfig, ModelsJsonProvider } from "./model-config.ts";
-import { composeApiKeyAuth, composeOAuthAuth, configuredApiKey, configuredHeaders } from "./provider-composer/auth.ts";
+import { composeApiKeyAuth, composeOAuthAuth, configuredHeaders } from "./provider-composer/auth.ts";
 import { applyFeature, applyModelOverride, applyModelsJson, getAllProviderModels } from "./provider-composer/models.ts";
 import type { KnownModelLookup } from "./provider-composer/known-models.ts";
-import type { AuthStatus, ProviderConfigInput } from "./provider-composer/types.ts";
-import {
-	getConfigValueEnvVarNames,
-	isCommandConfigValue,
-	isConfigValueConfigured,
-	resolveHeadersOrThrow,
-} from "./config-value.ts";
+import { countingPublications, publishedModelLists } from "./provider-composer/model-lists.ts";
+import type { ProviderConfigInput } from "./provider-composer/types.ts";
+import { resolveHeadersOrThrow } from "./config-value.ts";
 
+export { configuredRequestAuthStatus } from "./provider-composer/auth.ts";
 export type { AuthStatus, ProviderConfigInput } from "./provider-composer/types.ts";
 
 function rawModelHeaders(
@@ -75,7 +72,7 @@ export function composeModelProvider(
 		feature && refreshedFeatureModels ? { ...feature, models: refreshedFeatureModels } : feature;
 	// models.json modelOverrides are the topmost user-config layer: they apply once,
 	// after custom-model upserts and feature model replacement.
-	const getAllModels = (): AnyModel[] => {
+	const composeModels = (): AnyModel[] => {
 		const models = applyFeature(
 			providerId,
 			applyModelsJson(providerId, getAllProviderModels(base), config, known),
@@ -89,8 +86,21 @@ export function composeModelProvider(
 			return override ? applyModelOverride(stamped, override) : stamped;
 		});
 	};
+	// The base, the built-in models custom entries name and the refreshed feature models change only when a provider
+	// publishes (`model-lists.ts`); models.json is fixed for this composition (a reload composes again). Reads between
+	// publications reuse one composition, each caller getting its own array.
+	let composed: { published: number; all: readonly AnyModel[]; chat: readonly Model<Api>[] } | undefined;
+	const current = () => {
+		const published = publishedModelLists();
+		if (composed?.published !== published) {
+			const all = composeModels();
+			composed = { published, all, chat: all.filter((model) => isModelType(model, "chat")) };
+		}
+		return composed;
+	};
+	const getAllModels = (): AnyModel[] => [...current().all];
 	// Validate eagerly so registration/reload reports structural errors immediately.
-	getAllModels();
+	current();
 	const apiKey = composeApiKeyAuth(providerId, base, config, feature);
 	const oauth = composeOAuthAuth(providerId, base, config, feature);
 	if (!apiKey && !oauth) throw new Error(`Provider ${providerId}: no authentication method configured.`);
@@ -120,11 +130,13 @@ export function composeModelProvider(
 		baseUrl: feature?.baseUrl ?? config?.baseUrl ?? base?.baseUrl,
 		headers: base?.headers,
 		auth: { ...(apiKey ? { apiKey } : {}), ...(oauth ? { oauth } : {}) },
-		getModels: () => getAllModels().filter((model) => isModelType(model, "chat")),
+		getModels: () => [...current().chat],
 		getAllModels,
 		refreshModels:
 			base?.refreshModels || feature?.refreshModels
-				? async (context) => {
+				? async (given) => {
+						// Counted, so the composition above is read again once the base or the feature publishes.
+						const context = countingPublications(given);
 						await base?.refreshModels?.(context);
 						let refreshed: NonNullable<ProviderConfigInput["models"]> | undefined;
 						if (feature?.refreshModels) refreshed = await feature.refreshModels(context);
@@ -219,20 +231,4 @@ export function resolveCompatibilityRequestConfig(
 		headers: model.headers || configured ? { ...model.headers, ...configured } : undefined,
 		authHeader: feature?.authHeader ?? config?.authHeader ?? false,
 	};
-}
-
-export function configuredRequestAuthStatus(
-	config: ModelsJsonProvider | undefined,
-	feature: ProviderConfigInput | undefined,
-): AuthStatus | undefined {
-	const value = configuredApiKey(config, feature);
-	if (value === undefined) return undefined;
-	if (isCommandConfigValue(value)) return { configured: true, source: "models_json_command" };
-	const names = getConfigValueEnvVarNames(value);
-	if (names.length > 0) {
-		return isConfigValueConfigured(value)
-			? { configured: true, source: "environment", label: names.join(", ") }
-			: { configured: false };
-	}
-	return { configured: true, source: feature?.apiKey !== undefined ? "fallback" : "models_json_key" };
 }

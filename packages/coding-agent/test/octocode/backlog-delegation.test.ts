@@ -15,12 +15,6 @@ import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "@octocodeai/octocode-commo
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const READY = { goal: "Expected result", why: "Required work" };
-const completed = (status: "passed" | "not_applicable" = "passed") => ({
-	summary: "Implemented",
-	files: [],
-	verification: { status, summary: "Focused check passed" },
-	operationKey: crypto.randomUUID(),
-});
 
 let tmp: string;
 let savedDb: string | undefined;
@@ -194,32 +188,22 @@ describe("the item a parent hands to a child", () => {
 		expect(notes.every((note) => note.author === "session-test")).toBe(true);
 	});
 
-	it("records the named checks as completion evidence when done and the completion passed", () => {
+	// Contract change: a child no longer finishes its coordinator's item, so a done report is the child's word and the
+	// note lists the checks it names for the coordinator to verify, never a completion's evidence.
+	it("notes the checks a done report names, or that it names none", () => {
 		const b = backlog();
 		b.store.add({ ...READY, title: "held", state: "todo", createdBy: "user" });
 		b.store.update("B1", { state: "ongoing" }, { id: "session-test" });
-		const child = { id: "inky-kraken", owners: new Set(["session-test"]) };
-		// Done reported, but the child never closed the item: no evidence, and the note says so.
-		attachReport(b, "B1", { agent: "inky-kraken", outcome: "done", checks: ["yarn test"] });
-		b.store.update("B1", { state: "done", completion: completed() }, child);
 		attachReport(b, "B1", { agent: "inky-kraken", outcome: "done", checks: ["yarn test: 3 passed", "tsc"] });
 		attachReport(b, "B1", { agent: "inky-kraken", outcome: "done" });
+		attachReport(b, "B1", { agent: "inky-kraken", outcome: "partial", checks: ["yarn test"] });
 		const notes = b.store.notes(b.store.get("B1")!, -1).filter((note) => note.kind === "note");
 		expect(notes.map((note) => note.text)).toEqual([
-			"Report from inky-kraken: done. B1 is ongoing without a passed completion.",
-			"Report from inky-kraken: done. Completion evidence, the checks its report names: yarn test: 3 passed; tsc.",
-			"Report from inky-kraken: done. Completion evidence: no checks named.",
+			"Report from inky-kraken: done. Checks it names: yarn test: 3 passed; tsc.",
+			"Report from inky-kraken: done. It names no checks.",
+			"Report from inky-kraken: partial.",
 		]);
-	});
-
-	it("takes no evidence from a completion that was not run", () => {
-		const b = backlog();
-		b.store.add({ ...READY, title: "held", state: "todo", createdBy: "user" });
-		b.store.update("B1", { state: "ongoing" }, { id: "session-test" });
-		b.store.update("B1", { state: "done", completion: completed("not_applicable") }, { id: "session-test" });
-		attachReport(b, "B1", { agent: "inky-kraken", outcome: "done", checks: ["yarn test"] });
-		const notes = b.store.notes(b.store.get("B1")!, -1).filter((note) => note.kind === "note");
-		expect(notes.at(-1)!.text).toBe("Report from inky-kraken: done. B1 is done without a passed completion.");
+		expect(b.store.get("B1")!.state).toBe("ongoing");
 	});
 
 	it("refuses to note a removed item", () => {

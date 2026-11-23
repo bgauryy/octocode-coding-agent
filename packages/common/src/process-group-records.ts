@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { ownStartAsync } from "./own-start.ts";
 import { processStartAsync } from "./process-start.ts";
 
 /**
@@ -38,11 +39,11 @@ const fileFor = (dir: string, pid: number): string => path.join(dir, `${pid}${SU
 
 /** Writes the record of group `pid` owned by this process. Resolves to a function that removes it. */
 export async function recordProcessGroup(dir: string, pid: number, label: string): Promise<() => void> {
-	const [leader, owner] = await Promise.all([processStartAsync(pid), processStartAsync(process.pid)]);
+	const [leader, owner] = await Promise.all([processStartAsync(pid), ownStartAsync()]);
 	const record: ProcessGroupRecord = {
 		pid,
 		...(leader ? { started: leader.started } : {}),
-		owner: { pid: process.pid, ...(owner ? { started: owner.started } : {}) },
+		owner: { pid: process.pid, ...(owner ? { started: owner } : {}) },
 		host: os.hostname(),
 		label,
 	};

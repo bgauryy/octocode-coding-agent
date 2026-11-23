@@ -2,16 +2,16 @@ import path from "node:path";
 import { DAEMON_PROTOCOL_VERSION, type DaemonRecord } from "@octocodeai/octocode-contracts/daemon";
 import { privateDir } from "../shared/home.ts";
 import { processStartTime } from "../shared/process.ts";
+import { processTitle, setProcessTitle, WEB_DAEMON_ROLE } from "../shared/process-title.ts";
+import { TEST_GUARD_FILE_ENV, TEST_PROTECTED_HOMES_ENV } from "../../storage/state-paths.ts";
 import { RotatingLog } from "../shared/rotating-log.ts";
 import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { acquireRegistryLock } from "../backlog/shared-web-lock.ts";
 import type { DaemonPage } from "./build.ts";
 import { createConfigRoutes } from "./config-factory.ts";
-import { WEB_DAEMON_IDLE_ENV, webDaemonPaths } from "./paths.ts";
+import { webDaemonIdleMinutes, webDaemonPaths } from "./paths.ts";
 import { removeRecord, writeDaemonRecord } from "./records.ts";
 import { startDaemonServer, type DaemonServer } from "./server.ts";
-
-const DEFAULT_IDLE_MINUTES = 10;
 
 const DRAIN_LIMIT_MS = 30_000;
 const LOCK_WAIT_MS = 2000;
@@ -21,11 +21,6 @@ export interface RunningDaemon {
 	/** Resolves after the daemon stopped listening and removed its record. */
 	stopped: Promise<void>;
 	shutdown(): Promise<void>;
-}
-
-function idleMs(env: NodeJS.ProcessEnv): number {
-	const minutes = Number.parseFloat(env[WEB_DAEMON_IDLE_ENV] ?? "");
-	return (Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_IDLE_MINUTES) * 60_000;
 }
 
 /**
@@ -50,7 +45,8 @@ export async function startWebDaemon(
 	} catch {
 		return undefined;
 	}
-	const idleLimit = idleMs(env);
+	const idleMinutes = webDaemonIdleMinutes(env);
+	const idleLimit = idleMinutes * 60_000;
 	let lastActivity = Date.now();
 	let stopping: Promise<void> | undefined;
 	let drainTimer: ReturnType<typeof setInterval> | undefined;
@@ -86,6 +82,7 @@ export async function startWebDaemon(
 			env,
 			page: options.page,
 			onActivity: () => (lastActivity = Date.now()),
+			idleMinutes,
 			...configRoutes,
 			onDrain: () => {
 				if (!server || server.draining) return;
@@ -164,6 +161,17 @@ function keepServing(running: RunningDaemon, env: NodeJS.ProcessEnv): void {
 	process.on("unhandledRejection", guard("unhandledRejection"));
 }
 
+/**
+ * The name the daemon gives its process, `octocode-agent-web-<pid>`, so `ps`, `pgrep -f octocode-agent` and `/processes`
+ * list it as Octocode's own (and a session's samples never record it as an orphan child). Inside this repository's test
+ * runs it keeps its command line: on macOS `ps` shows no environment for a renamed process, and the run's teardown finds
+ * a daemon a test left running by its environment.
+ */
+export function daemonProcessTitle(env: NodeJS.ProcessEnv, pid: number): string | undefined {
+	if (env[TEST_GUARD_FILE_ENV] || env[TEST_PROTECTED_HOMES_ENV]) return undefined;
+	return processTitle(WEB_DAEMON_ROLE, String(pid));
+}
+
 /** The detached process's entry: serve until idle, drained or signalled, then exit. */
 export async function runWebDaemon(
 	env: NodeJS.ProcessEnv = process.env,
@@ -171,6 +179,8 @@ export async function runWebDaemon(
 ): Promise<void> {
 	const running = await startWebDaemon(env, options);
 	if (!running) return;
+	const title = daemonProcessTitle(env, process.pid);
+	if (title) setProcessTitle(title);
 	const stop = () => void running.shutdown();
 	process.once("SIGTERM", stop);
 	process.once("SIGINT", stop);

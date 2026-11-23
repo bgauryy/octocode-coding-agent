@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { indexCatalog, lookup } from "../../src/octocode/subagents/catalog.ts";
+import { indexCatalog, lookup } from "../../src/core/model-catalog/index-shape.ts";
 import { type ModelRef, MODEL_TIERS, resolveTierChoice, routeModel } from "../../src/octocode/subagents/model.ts";
 import { guessSizeClass } from "../../src/octocode/subagents/size-class.ts";
 
@@ -79,7 +79,8 @@ describe("tiers for a parent with no price", () => {
 });
 
 describe("catalog facts", () => {
-	it("keeps the output limit, cache prices and reasoning options", () => {
+	// Reasoning option lists are no longer kept in the index: nothing read them, and they were an eighth of the file (N11).
+	it("keeps the output limit and cache prices, not reasoning option lists", () => {
 		const catalog = indexCatalog(
 			{
 				anthropic: {
@@ -100,10 +101,10 @@ describe("catalog facts", () => {
 		const x = lookup(catalog, "anthropic", "claude-x");
 		expect(x?.output).toBe(64_000);
 		expect(x?.cost).toEqual({ input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 });
-		expect(x?.reasoningOptions).toEqual([{ type: "effort", values: ["low", "high"] }, { type: "bogus" }]);
+		expect(x).not.toHaveProperty("reasoningOptions");
 		const y = lookup(catalog, "anthropic", "claude-y");
 		expect(y?.output).toBeUndefined();
 		expect(y?.cost).toEqual({ input: 1, output: 2 });
-		expect(y?.reasoningOptions).toBeUndefined();
+		expect(y).not.toHaveProperty("reasoningOptions");
 	});
 });

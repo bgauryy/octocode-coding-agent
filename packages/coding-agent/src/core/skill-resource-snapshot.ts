@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { Type } from "typebox";
-import { Compile } from "typebox/compile";
+import { compileLazily } from "../utils/compile-lazily.ts";
 import { getSkillCommands } from "./skill-commands.ts";
 import { isSyntheticPath } from "./source-info.ts";
 import { explicitSkillIdentity, type ExplicitSkill, type LoadSkillsResult, type Skill } from "./skills.ts";
@@ -49,7 +49,7 @@ const skillSchema = Type.Object(
 	},
 	{ additionalProperties: false },
 );
-const validator = Compile(
+const validator = compileLazily(
 	Type.Object(
 		{
 			version: Type.Literal(1),
@@ -97,7 +97,7 @@ export interface SkillResourceSnapshot {
 }
 
 function validate(snapshot: unknown): asserts snapshot is SkillResourceSnapshot {
-	if (!validator.Check(snapshot) || Buffer.byteLength(JSON.stringify(snapshot)) > MAX_BYTES)
+	if (!validator().Check(snapshot) || Buffer.byteLength(JSON.stringify(snapshot)) > MAX_BYTES)
 		throw new Error("Invalid or oversized child skill resource snapshot");
 	for (const resource of snapshot.resources) {
 		const { skill, canonicalPath, discoveryPath } = resource;

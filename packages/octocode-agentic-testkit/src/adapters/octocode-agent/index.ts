@@ -133,6 +133,8 @@ export function octocodeAgentAdapter(opts: OctocodeAgentAdapterOptions = {}): Ag
 				TMPDIR: join(root, "tmp"),
 				NO_COLOR: "1",
 				CI: "1",
+				// No browser window or other application opens from a scenario (Octocode's `OCTOCODE_OPEN_BROWSER`).
+				OCTOCODE_OPEN_BROWSER: "0",
 				...(key ? { [PROVIDER_KEY_ENV]: key } : {}),
 				...ctx.env,
 			};

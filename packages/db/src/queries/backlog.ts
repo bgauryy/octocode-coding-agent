@@ -267,12 +267,12 @@ export function saveItem(db: DatabaseSync, rowId: number, c: ItemChanges): void 
 }
 
 /**
- * Sets one item's manual `rank` and bumps its version, and nothing else: no other row, and not `updated_at`, so ordering a
- * card is neither a state change nor fresh activity. Returns the new version.
+ * Sets one item's manual `rank` and nothing else: not its version, so a copy read before the move still writes, and not
+ * `updated_at`, so ordering a card is neither an edit, a state change nor fresh activity. The audit still records it;
+ * `auditAfter` passes over such rows.
  */
-export function setItemRank(db: DatabaseSync, rowId: number, rank: number): number {
-	db.prepare("UPDATE backlog SET rank = ?, version = version + 1 WHERE id = ?").run(rank, rowId);
-	return num((db.prepare("SELECT version FROM backlog WHERE id = ?").get(rowId) as { version: number }).version);
+export function setItemRank(db: DatabaseSync, rowId: number, rank: number): void {
+	db.prepare("UPDATE backlog SET rank = ? WHERE id = ?").run(rank, rowId);
 }
 
 /** Ongoing backlog items assigned to session `sessionId` in `repoKey` (most important first), for the resume brief. */

@@ -6,6 +6,7 @@ import { KeybindingsManager } from "../src/core/keybindings.ts";
 import * as lifecycle from "../src/modes/interactive/interactive-mode/lifecycle.ts";
 import { CustomEditor } from "../src/theme/custom-editor.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
 class ProcessExit extends Error {}
 
@@ -18,7 +19,7 @@ describe("signal shutdown restores the terminal before it disposes", () => {
 		});
 		const order: string[] = [];
 		const host = {
-			isShuttingDown: false,
+			uiStore: createUiStore(),
 			unregisterSignalHandlers: vi.fn(),
 			runtimeHost: { dispose: vi.fn(async () => void order.push("dispose")) },
 			ui: {

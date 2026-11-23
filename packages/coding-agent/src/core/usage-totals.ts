@@ -1,5 +1,6 @@
 import type { AssistantMessage, Usage } from "@octocodeai/octocode-ai/compat";
 import type { SessionEntry, SessionManager, UsageEntry } from "./session-manager.ts";
+import type { Billing } from "./spend-capture.ts";
 
 export interface UsageTotals {
 	input: number;
@@ -133,6 +134,79 @@ export function entryUsage(entry: SessionEntry): { key: string; usage: Usage; pl
 	const usage = customMessageUsage(entry);
 	if (!usage) return undefined;
 	return { key: TOOLS_AND_SUMMARIES, ...(entry.type === "custom_message" ? planBilled(entry.details) : {}), usage };
+}
+
+/**
+ * What decides who paid for an entry that does not say (`entryBilling`), and what the spend capture stores on a new one:
+ * each provider's billing (`ModelRegistry.getProviderBilling`) and the session's provider.
+ */
+export interface BillingFacts {
+	billingOf(provider: string, scope?: "child"): Billing;
+	/** A summary, and a subagent run on the session's own model, name no provider of their own. */
+	provider?: string | undefined;
+}
+
+/** `BillingFacts` from a session's registry and model. */
+export function billingFacts(ctx: {
+	modelRegistry: { getProviderBilling(provider: string, scope?: "child"): Billing };
+	model?: { provider: string } | undefined;
+}): BillingFacts {
+	return {
+		billingOf: (provider, scope) => ctx.modelRegistry.getProviderBilling(provider, scope),
+		provider: ctx.model?.provider,
+	};
+}
+
+const textField = (record: object, key: string): string | undefined => {
+	const value = (record as Record<string, unknown>)[key];
+	return typeof value === "string" && value ? value : undefined;
+};
+
+/**
+ * Who paid for a subagent's run, from its `agent` result's or report's details: the `billing` its runner named (a CLI on
+ * its own plan), else the billing of the provider it last ran on (`ran`, then the `model` it started on, both
+ * `provider/id`) as a child's, else of the session's provider, else `metered`: a cap errs toward stopping.
+ */
+export function runBilling(details: unknown, facts: BillingFacts): Billing {
+	const record = details && typeof details === "object" ? details : {};
+	const named = textField(record, "billing");
+	if (named === "plan" || named === "metered") return named;
+	const ran = (record as { ran?: unknown }).ran;
+	const model = (ran && typeof ran === "object" ? textField(ran, "model") : undefined) ?? textField(record, "model");
+	const provider = model?.split("/")[0] || facts.provider;
+	return provider ? facts.billingOf(provider, "child") : "metered";
+}
+
+/**
+ * Who paid for the spend an entry carries (`entryUsage`), judged from `facts`: a reply or `usage` entry by its provider;
+ * a subagent's `agent` result or background report by `runBilling`; another tool's model usage and a summary by the
+ * session's provider, `metered` without one. The spend capture stores this on each entry as it is appended.
+ */
+export function judgeBilling(entry: SessionEntry, facts: BillingFacts): Billing {
+	if (entry.type === "usage") return facts.billingOf(entry.provider);
+	if (entry.type === "message") {
+		const message = entry.message;
+		if (message.role === "assistant") return facts.billingOf(message.provider);
+		if (message.role === "toolResult" && message.toolName === "agent") return runBilling(message.details, facts);
+	}
+	if (entry.type === "custom_message") return runBilling(entry.details, facts);
+	return facts.provider ? facts.billingOf(facts.provider) : "metered";
+}
+
+/**
+ * Who paid for the spend an entry carries: what was stored on it when it was appended (`SessionEntry.billing`), else, for
+ * an entry written before that, `judgeBilling` now. Every surface reads billing through this one function: the footer's
+ * `Σ`, the web's spend split, `subagents.maxCost`, the delegated-cost notice and `/usage`.
+ */
+export function entryBilling(entry: SessionEntry, facts: BillingFacts): Billing {
+	return entry.billing === "plan" || entry.billing === "metered" ? entry.billing : judgeBilling(entry, facts);
+}
+
+/** The money an entry's spend cost: its `entryUsage` total, or 0 when a plan paid for it (`entryBilling`). */
+export function meteredCost(entry: SessionEntry, facts: BillingFacts): number {
+	const spend = entryUsage(entry);
+	if (!spend || spend.plan) return 0;
+	return entryBilling(entry, facts) === "plan" ? 0 : (spend.usage?.cost?.total ?? 0);
 }
 
 /** Group model-attributed usage by model and all other usage into a separate bucket. */

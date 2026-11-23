@@ -77,6 +77,7 @@ describe("the slash command menu", () => {
 			.split("\n")
 			.find((row) => row.includes("/tree"))!
 			.indexOf("Browse");
-		expect(column, picker).toBeLessThanOrEqual(Math.max(...labelEnds) + 2);
+		// The column is never narrower than 12 (`labelColumn(labels, 12, max)`): rows start with a 2-column marker.
+		expect(column, picker).toBeLessThanOrEqual(Math.max(...labelEnds, 2 + 12) + 2);
 	});
 });

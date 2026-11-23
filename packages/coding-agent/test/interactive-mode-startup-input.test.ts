@@ -5,6 +5,8 @@ import {
 } from "../src/modes/interactive/interactive-mode/command-dispatch.ts";
 import { getUserInput } from "../src/modes/interactive/interactive-mode/input-handlers.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+import { selectSubmittedInputs } from "../src/modes/interactive/state/input-slice.ts";
+import { createUiStore, type UiStore } from "../src/modes/interactive/state/store.ts";
 
 type SubmitContext = {
 	defaultEditor: { onSubmit?: (text: string) => void };
@@ -20,13 +22,7 @@ type SubmitContext = {
 	};
 	flushPendingBashComponents: () => void;
 	showWorkingStatusIndicator: () => void;
-	onInputCallback?: (text: string) => void;
-	pendingUserInputs: string[];
-};
-
-type InputContext = {
-	onInputCallback?: (text: string) => void;
-	pendingUserInputs: string[];
+	uiStore: UiStore;
 };
 
 type StartupSubmitContext = {
@@ -49,7 +45,7 @@ function createSubmitContext(): SubmitContext {
 		},
 		flushPendingBashComponents: vi.fn(),
 		showWorkingStatusIndicator: vi.fn(),
-		pendingUserInputs: [],
+		uiStore: createUiStore(),
 	};
 }
 
@@ -73,19 +69,29 @@ describe("InteractiveMode startup input", () => {
 
 		await context.defaultEditor.onSubmit?.(" early prompt ");
 
-		expect(context.pendingUserInputs).toEqual(["early prompt"]);
+		expect(selectSubmittedInputs(context.uiStore.getState())).toEqual(["early prompt"]);
 		expect(context.flushPendingBashComponents).toHaveBeenCalledTimes(1);
 		expect(context.editor.addToHistory).toHaveBeenCalledWith("early prompt");
 		expect(context.showWorkingStatusIndicator).toHaveBeenCalledTimes(1);
 	});
 
-	it("returns queued startup input before installing a new input callback", async () => {
-		const context: InputContext = {
-			pendingUserInputs: ["queued prompt"],
-		};
+	it("returns queued startup input before waiting for the next submit", async () => {
+		const uiStore = createUiStore({ input: { submitted: ["queued prompt"] } });
+		const listeners = vi.spyOn(uiStore, "subscribe");
 
-		await expect(getUserInput(createFakeHost(context))).resolves.toBe("queued prompt");
-		expect(context.onInputCallback).toBeUndefined();
-		expect(context.pendingUserInputs).toEqual([]);
+		await expect(getUserInput(createFakeHost({ uiStore }))).resolves.toBe("queued prompt");
+		expect(listeners).not.toHaveBeenCalled();
+		expect(selectSubmittedInputs(uiStore.getState())).toEqual([]);
+	});
+
+	it("waits for the next submit when nothing is queued, and takes only that one", async () => {
+		const uiStore = createUiStore();
+		const next = getUserInput(createFakeHost({ uiStore }));
+
+		uiStore.getState().submitInput("first");
+		uiStore.getState().submitInput("second");
+
+		await expect(next).resolves.toBe("first");
+		expect(selectSubmittedInputs(uiStore.getState())).toEqual(["second"]);
 	});
 });

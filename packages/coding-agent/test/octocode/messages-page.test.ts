@@ -261,6 +261,22 @@ describe("messages page over the team database and transcript files", () => {
 		vi.unstubAllEnvs();
 	});
 
+	it("reads a session whose transcript is not written yet (no message sent) as one with no notices", async () => {
+		store.join(member("alpha", { sessionId: "s-alpha", checkout: root, cwd: root }));
+		const ports = messagesPorts({
+			db: db.db,
+			team: store.team,
+			members: () => store.list(),
+			root,
+			ownId: "alpha",
+			ownFile: () => path.join(root, "not-written-yet.jsonl"),
+		});
+		const { show, shown } = script([escape]);
+		await messagesPage({ ...ports, ui, show, internal: true });
+		expect(rowsOf(shown[0]).map((row) => row.name)).toEqual(["none"]);
+		expect(messagesText(ports.feed, true)).toBe("No messages yet.");
+	});
+
 	it("links the sender's reply near the send and reads the notices its own transcript holds", async () => {
 		store.join(member("alpha", { sessionId: "s-alpha", checkout: root, cwd: root }));
 		store.join(member("beta", { role: "implementer", parentId: "alpha", checkout: root, cwd: root }));

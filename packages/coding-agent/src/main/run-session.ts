@@ -20,7 +20,8 @@ import { shouldRunFirstTimeSetup, showFirstTimeSetup } from "../cli/startup-ui.t
 import { ENV_SESSION_DIR, VERSION } from "../config.ts";
 import { prepareAgentDb } from "../storage/database.ts";
 import { createAgentSessionRuntime } from "../core/agent-session-runtime.ts";
-import { formatNoModelsAvailableMessage } from "../core/auth-guidance.ts";
+import { isCommandLine } from "../core/agent-session/prompt-expansion.ts";
+import { formatNoModelsAvailableMessage, setAuthGuidanceSurface } from "../core/auth-guidance.ts";
 import { exportFromFile } from "../core/export-html/index.ts";
 import { applyHttpProxySettings, configureHttpDispatcher } from "../core/http-dispatcher.ts";
 import { restoreStdout, takeOverStdout } from "../core/output-guard.ts";
@@ -30,7 +31,8 @@ import { collectSettingsDiagnostics, deduplicateDiagnostics } from "../core/sett
 import { SettingsManager } from "../core/settings-manager.ts";
 import { readSkillResourceSnapshot } from "../core/skill-resource-snapshot.ts";
 import { printTimings, time } from "../core/timings.ts";
-import { InteractiveMode, runPrintMode, runRpcMode } from "../modes/index.ts";
+import { runPrintMode } from "../modes/print-mode.ts";
+import { runRpcMode } from "../modes/rpc/rpc-mode.ts";
 import { folderTrustResolver } from "../octocode/trust/port.ts";
 import { initTheme, stopThemeWatcher } from "../theme/theme.ts";
 import { isTruthyEnvFlag } from "../utils/env-flag.ts";
@@ -72,6 +74,14 @@ interface SessionRunContext {
  */
 function withoutDesktopWhenNobodyCanAnswer(mode: AppMode): void {
 	if (mode === "print" || mode === "json") process.env[MCP_DESKTOP_ENV] = "0";
+}
+
+/**
+ * A headless run's sign-in errors reach a shell or a client program, where /providers cannot be typed, so they say how
+ * to reach it; a subagent's reach its coordinator's terminal, where it can.
+ */
+function guideSignInFromShell(mode: AppMode): void {
+	if (mode !== "interactive" && !envFlag(process.env, SUBAGENT_ENV)) setAuthGuidanceSurface("cli");
 }
 
 export async function runSession(
@@ -128,6 +138,7 @@ export async function runSession(
 
 	let appMode = resolveAppMode(parsed, process.stdin.isTTY, process.stdout.isTTY);
 	withoutDesktopWhenNobodyCanAnswer(appMode);
+	guideSignInFromShell(appMode);
 	const shouldTakeOverStdout = appMode !== "interactive" && !isPlainRuntimeMetadataCommand(parsed);
 	if (shouldTakeOverStdout) {
 		takeOverStdout();
@@ -165,6 +176,13 @@ export async function runSession(
 		(parsed.sessionDir ? normalizePath(parsed.sessionDir) : undefined) ??
 		(envSessionDir ? normalizePath(envSessionDir) : undefined) ??
 		startupSettingsManager.getSessionDir();
+	const requireTrust = !parsed.help && parsed.listModels === undefined;
+	const gate = (folder: string) =>
+		gateStartup({ parsed, appMode, cwd: folder, settingsManager: startupSettingsManager });
+	// A new, continued or forked session runs in `cwd`, so the gate goes first and a refused run writes nothing there.
+	// `--session` and `--resume` open a saved session whose folder is known only once it is open.
+	const gated = requireTrust && parsed.session === undefined && !parsed.resume ? cwd : undefined;
+	if (gated) await gate(gated);
 	let sessionManager = await createSessionManager(parsed, cwd, sessionDir, startupSettingsManager);
 	const missingSessionCwdIssue = getMissingSessionCwdIssue(sessionManager, cwd);
 	if (missingSessionCwdIssue) {
@@ -179,6 +197,7 @@ export async function runSession(
 			process.exit(1);
 		}
 	}
+	if (requireTrust && sessionManager.getCwd() !== gated) await gate(sessionManager.getCwd());
 	if (parsed.name !== undefined) {
 		const name = normalizeSessionName(parsed.name);
 		if (name === undefined) {
@@ -189,9 +208,6 @@ export async function runSession(
 	}
 	time("createSessionManager");
 
-	const requireTrust = !parsed.help && parsed.listModels === undefined;
-	if (requireTrust)
-		await gateStartup({ parsed, appMode, cwd: sessionManager.getCwd(), settingsManager: startupSettingsManager });
 	if (appMode === "interactive" && requireTrust && shouldRunFirstTimeSetup()) {
 		await showFirstTimeSetup(startupSettingsManager);
 		time("firstTimeSetup");
@@ -236,14 +252,18 @@ export async function runSession(
 	}
 
 	if (parsed.listModels !== undefined) {
-		reportDiagnostics(startupSettingsDiagnostics);
+		// What the terminal shows at startup about models.json (an unknown field, a provider with no credential) explains
+		// a provider missing from the list.
+		reportDiagnostics(deduplicateDiagnostics([...startupSettingsDiagnostics, ...runtime.diagnostics]));
 		const searchPattern = typeof parsed.listModels === "string" ? parsed.listModels : undefined;
-		await listModels(modelRuntime, searchPattern, AbortSignal.timeout(15_000), {
-			provider: parsed.provider,
-			size: parsed.modelSize,
-			checkAccess: parsed.checkModelAccess,
-		});
-		process.exit(0);
+		// An unknown or unconnected provider filter exits 1, as `listModels` reports it.
+		process.exit(
+			await listModels(modelRuntime, searchPattern, AbortSignal.timeout(15_000), {
+				provider: parsed.provider,
+				size: parsed.modelSize,
+				checkAccess: parsed.checkModelAccess,
+			}),
+		);
 	}
 
 	// Read piped stdin content (if any) - skip for RPC mode which uses stdin for JSON-RPC
@@ -253,6 +273,7 @@ export async function runSession(
 		if (stdinContent !== undefined && appMode === "interactive") {
 			appMode = "print";
 			withoutDesktopWhenNobodyCanAnswer(appMode);
+			guideSignInFromShell(appMode);
 		}
 	}
 	time("readPipedStdin");
@@ -274,7 +295,11 @@ export async function runSession(
 	}
 	time("createSession");
 
-	if (appMode !== "interactive" && !session.model) {
+	// RPC starts without a model: a client can set one, and a prompt is refused as `authRequired` so it can route to sign-in.
+	// A headless run of commands only (`-p "/backlog"`) needs none: each command answers or says why it cannot.
+	const prompts = [initialMessage, ...parsed.messages].filter((text) => text !== undefined);
+	const commandsOnly = prompts.every((text) => isCommandLine(session.featureHost, text));
+	if ((appMode === "print" || appMode === "json") && !session.model && !commandsOnly) {
 		console.error(cliStyle.error(formatNoModelsAvailableMessage("cli")));
 		process.exit(1);
 	}
@@ -303,6 +328,9 @@ export async function runSession(
 			leanEvents: parsed.rpcLeanEvents,
 		});
 	} else if (appMode === "interactive") {
+		// Loaded only here: print, RPC and subagent processes never evaluate the terminal UI's modules (the Mermaid
+		// renderer alone builds an ICU segmenter as it loads, about 11 ms).
+		const { InteractiveMode } = await import("../modes/interactive/interactive-mode.ts");
 		const interactiveMode = new InteractiveMode(runtime, {
 			startupDiagnostics,
 			modelFallbackMessage,

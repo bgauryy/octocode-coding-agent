@@ -330,6 +330,10 @@ export class AttachClient {
 			}),
 	};
 
+	/** One bounded read of a source anchor in the session's history scope, as the session resolves it. */
+	readonly evidence = (anchor: string, cursor?: string): Promise<unknown> =>
+		this.request("application.evidence", { anchor, ...(cursor ? { cursor } : {}) });
+
 	private execute(command: ApplicationCommand): Promise<ApplicationReceipt> {
 		return this.request<ApplicationReceipt>("application.execute", { command });
 	}

@@ -82,6 +82,23 @@ describe("classifyProcesses", () => {
 		expect(report.orphans).toEqual([]);
 	});
 
+	it("never takes the web daemon for an orphan of the session that started it", () => {
+		// The session recorded the detached daemon among its children, then exited; the daemon names itself, so it is listed.
+		const table = [row(300, 1, "9300", "octocode-agent-web-300")];
+		const samples = [
+			sample({
+				pid: 100,
+				started: "9000",
+				at: NOW - ORPHAN_GRACE_MS - 1,
+				ended: true,
+				children: [child(300, 100, "9300", "child")],
+			}),
+		];
+		const report = classifyProcesses({ table, samples, now: NOW });
+		expect(report.orphans).toEqual([]);
+		expect(report.processes).toEqual([expect.objectContaining({ pid: 300, role: "web", id: "300" })]);
+	});
+
 	it("flags a child whose owner process is gone", () => {
 		const table = [row(101, 1, "9100", "node /x/octocode-mcp/dist/index.js", 4096)];
 		const samples = [sample({ pid: 100, started: "9000", children: [child(101, 100, "9100")] })];

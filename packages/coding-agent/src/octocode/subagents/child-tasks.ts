@@ -33,6 +33,10 @@ export function isolatedChildSteps(cwd: string, agent: string): string {
 	}
 }
 
+/** The footer line of a run whose parent-side bookkeeping failed (its worktree, its item, the delegated-cost note). */
+export const bookkeepingFailed = (error: unknown): string =>
+	`\n\n(The parent's record of this run could not be updated: ${errorMessage(error)}.)`;
+
 /**
  * Capture worktree-local steps before cleanup; the usual item report and same-workspace adoption follow cleanup.
  * `lingers`: the child stays reachable after its report (the item's graph line says so).

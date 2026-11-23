@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { isWithin } from "@octocodeai/octocode-common/paths";
 import type { McpServerEntry } from "./config.ts";
 import { hostPaths } from "./host.ts";
 import { warnOnce } from "./warnings.ts";
@@ -40,16 +41,20 @@ function repositoryRoot(cwd: string): string {
  * The folders a research server's readers may reach, comma-separated: the workspace, the session folders (spilled
  * output, logs, archives), loaded skills and the folders the user added (`McpPathsPort.researchRoots`, whose rejected
  * entries become launch warnings). Not the agent home itself: credentials and the agent database stay out of reach.
+ * A skill folder the host announces for discovery (`McpPathsPort.announcedSkillRoots`) stands for the loaded skill
+ * folders inside it, so discovering them does not change the launch.
  */
 function researchRoots(context: McpLaunchContext): string {
 	const paths = hostPaths();
 	const user = paths.researchRoots?.(context.env);
 	for (const warning of user?.warnings ?? []) warnOnce(warning);
+	const announced = paths.announcedSkillRoots?.({ cwd: context.cwd, projectTrusted: context.projectTrusted }) ?? [];
+	const skills = (context.skillDirectories ?? []).filter((dir) => !announced.some((root) => isWithin(dir, root)));
 	return [
 		...new Set([
 			context.cwd,
 			...paths.sessionRoots(context.cwd, context.env),
-			...[...new Set(context.skillDirectories)].sort(),
+			...[...new Set([...announced, ...skills])].sort(),
 			...(user?.roots ?? []),
 		]),
 	].join(",");
@@ -87,6 +92,19 @@ function expand(
 		if (argument !== undefined) throw new Error(`${where}: launch template \${${name}} takes no value`);
 		return escape(value(name), offset === 0);
 	});
+}
+
+/**
+ * Whether the launch is complete only once the host discovers the session's resources: it names the session's skill
+ * folders (`${researchRoots}`) and the host does not announce the folders discovery adds (`announcedSkillRoots`).
+ * Such a launch differs before then; other launches do not.
+ */
+export function waitsForDiscoveredFolders(entry: McpServerEntry): boolean {
+	const { config } = entry;
+	if ("url" in config || hostPaths().announcedSkillRoots) return false;
+	return [...(config.args ?? []), ...Object.values(config.env ?? {})].some((text) =>
+		[...text.matchAll(TEMPLATE)].some((match) => match[1] === "researchRoots"),
+	);
 }
 
 /** Configured env values resolve `${NAME}` and a leading `!`: `$` becomes `$$` and a leading `!` becomes `$!`. */

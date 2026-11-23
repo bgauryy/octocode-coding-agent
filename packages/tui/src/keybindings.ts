@@ -61,6 +61,7 @@ export interface Keybindings {
 	"tui.altScreen.searchClose": true;
 	"tui.altScreen.top": true;
 	"tui.altScreen.bottom": true;
+	"tui.altScreen.toggleMouse": true;
 }
 
 export type Keybinding = keyof Keybindings;
@@ -214,6 +215,10 @@ export const TUI_KEYBINDINGS = {
 	},
 	"tui.altScreen.top": { defaultKeys: "ctrl+home", description: "Scroll viewport to top" },
 	"tui.altScreen.bottom": { defaultKeys: "ctrl+end", description: "Scroll viewport to bottom" },
+	"tui.altScreen.toggleMouse": {
+		defaultKeys: "alt+m",
+		description: "Hand the mouse to the terminal's own selection, or take it back",
+	},
 } as const satisfies KeybindingDefinitions;
 
 export interface KeybindingConflict {

@@ -26,18 +26,66 @@ export const STATE_COLOR = {
 } as const satisfies Readonly<Record<UiState, ThemeColor>>;
 
 /**
- * The colour role of each state on the state light (`MarkOptions.light`, the mark of agent and work rows): a steady ⏺
- * green when done, red when it failed or was stopped, yellow when it needs the user, dim when idle or queued. A
- * running light is the spinner (`LIGHT_SPINNER`) in `accent`. It differs from `STATE_COLOR` only where `stopped` is
- * `error`.
+ * The colour role of each state on the state light (`MarkOptions.light`, the mark of tool, agent and work rows and of
+ * every activity light): green while it works (the `LIGHT_FRAMES` spinner, or a steady ⏺ where it cannot move) and
+ * when done (✓), yellow when it needs the user (◇), red when it failed (✗) or was stopped (◼), dim when idle or queued
+ * (○). It differs from `STATE_COLOR` where `running` is `success` (green means alive; the accent spinner stays the main
+ * working line's) and `stopped` is `error`.
  */
 export const LIGHT_COLOR = {
 	...STATE_COLOR,
+	running: "success",
 	stopped: "error",
 } as const satisfies Readonly<Record<UiState, ThemeColor>>;
 
-/** The frames of a running state light, a half-filled circle turning clockwise. */
-export const LIGHT_SPINNER = ["◒", "◐", "◓", "◑"] as const;
+/**
+ * The frames of a running state light where it moves: the main working spinner's (`SPINNER.braille`), in the light's
+ * green. Where a light cannot move (a still list, the footer, `+N more`, reduced motion) a running light is a full
+ * steady ⏺ instead: never a frame of a spinner held still, which reads as half done.
+ */
+export const LIGHT_FRAMES = SPINNER.braille;
+
+/**
+ * The light's glyph for a state drawn still: a full ⏺ for running, and only for running; every settled state draws
+ * its own glyph (`○ ◇ ✓ ✗ ◼`), in colour and without, so a still running light never looks like a done one.
+ */
+function lightGlyph(state: UiState): string {
+	return state === "running" ? GLYPH.light : GLYPH[state];
+}
+
+/**
+ * The state light drawn still, for places that never animate (the footer, a `+N more` count, a list): one cell in
+ * `LIGHT_COLOR`, the shape of `lightGlyph`.
+ */
+export function stillLight(theme: Pick<MarkTheme, "fg" | "getColorMode">, state: UiState): string {
+	return theme.fg(LIGHT_COLOR[state], lightGlyph(state));
+}
+
+/** The colour of an activity light's word: loud only when it asks for the user or reports a failure. */
+const ACTIVITY_WORD: Readonly<Partial<Record<UiState, ThemeColor>>> = {
+	running: "muted",
+	waiting: "warning",
+	failed: "error",
+};
+
+/**
+ * An activity light (`activity` of the application projections: one state of running, waiting, failed or pending, and
+ * a word) drawn still: `⏺ needs you`, the word in warning or error when it asks for attention, else quiet. `word: false`
+ * draws the light alone.
+ */
+export function activityMark(
+	theme: Pick<MarkTheme, "fg" | "getColorMode">,
+	shown: { state: UiState; label: string },
+	word = true,
+): string {
+	const light = stillLight(theme, shown.state);
+	return word ? `${light} ${activityWord(theme, shown)}` : light;
+}
+
+/** An activity light's word alone, painted as `activityMark` paints it. */
+export function activityWord(theme: Pick<MarkTheme, "fg">, shown: { state: UiState; label: string }): string {
+	return theme.fg(ACTIVITY_WORD[shown.state] ?? "dim", shown.label);
+}
 
 /** A footer status (text and tone as data) painted in the live theme; a status without a tone as written. */
 export function paintStatus(
@@ -53,6 +101,8 @@ export interface MarkTheme {
 	style?(text: string, options: { fg?: Color }): string;
 	readonly colors?: Readonly<Partial<Record<string, Color>>>;
 	readonly appearance?: "dark" | "light";
+	/** The theme's colour mode (`none` is NO_COLOR); the light's glyphs are the same in every mode. */
+	getColorMode?(): string;
 }
 
 export interface MarkOptions {
@@ -62,7 +112,7 @@ export interface MarkOptions {
 	since?: number;
 	/** A mark of work running in the background: it spins at `MOTION.backgroundSpinnerMs`, its owner repaints at that pace. */
 	background?: boolean;
-	/** Draw the state light (a steady ⏺ in `LIGHT_COLOR`, the `LIGHT_SPINNER` while `running`) instead of the state's glyph and spinner. */
+	/** Draw the state light (the `LIGHT_FRAMES` spinner, or a still ⏺, while `running`; each settled state's own glyph, in `LIGHT_COLOR`) instead of the state's glyph and spinner. */
 	light?: boolean;
 }
 
@@ -115,13 +165,12 @@ export function stateMark(theme: MarkTheme, state: UiState, options: MarkOptions
 	}
 }
 
-/** The state light: a spinner while `running` (a still frame in reduced motion), a steady ⏺ in the state's colour otherwise. */
+/** The state light: the working spinner while `running` (a full ⏺ in reduced motion), the state's steady glyph otherwise. */
 function lightMark(theme: MarkTheme, state: UiState, options: MarkOptions, reduced: boolean): string {
 	const color = LIGHT_COLOR[state];
-	if (state !== "running") return theme.fg(color, GLYPH.light);
-	if (reduced) return theme.fg(color, LIGHT_SPINNER[0]);
+	if (state !== "running" || reduced) return stillLight(theme, state);
 	const frame = Math.floor((options.now ?? animationClock.frameTime()) / markFrameMs(state, { light: true }));
-	return theme.fg(color, LIGHT_SPINNER[frame % LIGHT_SPINNER.length]);
+	return theme.fg(color, LIGHT_FRAMES[frame % LIGHT_FRAMES.length]);
 }
 
 /**

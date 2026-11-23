@@ -5,7 +5,8 @@ import type { ModelRef } from "../../src/octocode/subagents/model.ts";
 import { routingFacts } from "../../src/octocode/subagents/models-command.ts";
 import type { AgentProfile } from "../../src/octocode/subagents/profiles.ts";
 import { ProviderHealth } from "../../src/octocode/subagents/provider-health.ts";
-import { ROUTING_NOTICE_ID, RoutingWatch } from "../../src/octocode/subagents/routing-watch.ts";
+import { latestFallback, ROUTING_NOTICE_ID, RoutingWatch } from "../../src/octocode/subagents/routing-watch.ts";
+import { FALLBACK_ENTRY } from "../../src/core/agent-session/fallback-switch.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost, meteredBilling } from "./fake-host.ts";
 import { allSections, tmp } from "./helpers.ts";
@@ -172,6 +173,42 @@ describe("RoutingWatch notice cause", () => {
 		}
 	});
 
+	it("names a retry.fallbackModels switch of the session model as the cause, not the user", () => {
+		const before = facts(["p", "q"]);
+		const after = { ...before, sessionModel: "q/mini", medium: "q/mini" };
+		const switched = { from: "p/opus", to: "q/mini", reason: "hit a usage limit", billingChanged: false };
+		const reading = (fallback?: typeof switched) => ({
+			catalog: undefined,
+			under: () => undefined,
+			switched: () => fallback,
+		});
+		const watch = new RoutingWatch(() => false);
+		watch.prompt(before);
+		const notice = watch.notice(after, reading(switched));
+		expect(notice).toContain("`p/opus` hit a usage limit");
+		// The user's cause is the part a user switch adds before the facts; the fallback's notice has none of it.
+		const userOnly = noticeFor(() => false, before, after) ?? "";
+		const userCause = userOnly
+			.slice(`[${ROUTING_NOTICE_ID}] `.length, userOnly.indexOf("`<delegation>`"))
+			.split(". ")[0];
+		expect(userOnly).toContain(userCause);
+		expect(notice).not.toContain(userCause);
+		// A switch to another model than the one the session runs, or none, leaves the user's cause.
+		const other = new RoutingWatch(() => false);
+		other.prompt(before);
+		expect(other.notice(after, reading({ ...switched, to: "q/other" }))).toBe(userOnly);
+	});
+
+	it("reads the switch behind the session model from the branch: a later model choice ends it", () => {
+		const choice = (provider: string, modelId: string) => ({ type: "model_change", provider, modelId }) as never;
+		const data = { from: "p/opus", to: "q/mini", reason: "hit a usage limit", billingChanged: false };
+		const switchEntry = { type: "custom", customType: FALLBACK_ENTRY, data } as never;
+		const reply = { type: "message", message: { role: "assistant" } } as never;
+		expect(latestFallback([choice("p", "opus"), choice("q", "mini"), switchEntry, reply])).toEqual(data);
+		expect(latestFallback([choice("q", "mini"), switchEntry, choice("p", "opus"), reply])).toBeUndefined();
+		expect(latestFallback([choice("p", "opus"), reply])).toBeUndefined();
+	});
+
 	it("gives a provider the user re-enabled the user's cause, not a recovery", () => {
 		const watch = new RoutingWatch(() => false);
 		watch.prompt(facts(["p"]));
@@ -220,7 +257,7 @@ describe("coordinator prompt routing", () => {
 
 		const first = await start();
 		expect(first.prompt).toContain(
-			"- Models: you run `p/opus`; providers: `p` (3), `q` (1); `small`: `p/haiku`; `medium`: `p/sonnet` (default)",
+			"- Models: you run `p/opus`; providers: `p` (3), `q` (1); `small`: `p/haiku`; `medium`: `p/sonnet`.",
 		);
 		expect(first.prompt).toContain("  - researcher (`p/haiku:medium`): Reads code");
 		expect(first.message).toBeUndefined();
@@ -296,5 +333,39 @@ describe("coordinator prompt routing", () => {
 		const notice = (await start()).message?.content;
 		expect(notice).toContain("Providers (models that can run a task): `p` (2), `q` (0)");
 		expect((await start()).message).toBeUndefined();
+	});
+
+	it("tells the coordinator after a turn that retry.fallbackModels moved its model, naming the cause", async () => {
+		const fake = fakeHost();
+		for (const name of ["bash", "file", "agent"]) fake.tools.set(name, { name });
+		fake.api.tools.setActive(["bash", "file", "agent"]);
+		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => new Map() });
+		const branch: unknown[] = [{ type: "model_change", provider: "p", modelId: "opus" }];
+		const ctx = {
+			hasUI: true,
+			model: opus,
+			modelRegistry: {
+				...meteredBilling,
+				getProviderKind: () => "API key",
+				getAvailable: () => [opus, sonnet, haiku, other],
+				getAll: () => [opus, sonnet, haiku, other],
+				isModelHidden: () => false,
+			},
+			sessionManager: { getBranch: () => branch, getEntries: () => branch },
+		};
+		const event = { systemPromptOptions: { sections: {} as Record<string, string>, baseSections: {} } };
+		await fake.emit("before_agent_start", event, ctx);
+		// The session's switch (`retry-fallback.ts`): its model choice, then the switch entry.
+		branch.push({ type: "model_change", provider: "q", modelId: "mini" });
+		branch.push({
+			type: "custom",
+			customType: FALLBACK_ENTRY,
+			data: { from: "p/opus", to: "q/mini", reason: "hit a usage limit", billingChanged: true },
+		});
+		ctx.model = other;
+		await fake.emit("turn_end", {}, ctx);
+		const notice = String(fake.sent.at(-1)?.message.content);
+		expect(notice).toContain("`p/opus` hit a usage limit");
+		expect(notice).toContain("You run `q/mini`.");
 	});
 });

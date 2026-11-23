@@ -104,7 +104,7 @@ In `/harness`, open **Skills** and choose **+ Add skill from a folder**. Enter t
 | `/settings disable harness:pi`                | Switch off every Pi skill (Pi's own list is read-only here) |
 | `--disable skill:<name>` / `--enable skill:<name>` | The same, for one run                                       |
 
-A switch applies after `/reload`. It changes Octocode settings only. Rows exist only for harnesses that are on. Two skills of one name get the id `skill:<path>` (see `/settings list skill`), except when one is a core skill: the copy that loads keeps `skill:<name>`, so `disable skill:<name>` switches it, and a switched-on copy that does not load is listed as `shadowed` under its path id. A core skill beats the Octocode collection's copy of the same name. Core skills switch globally only; Octocode-collection skills can also switch with `--local`. A session-only skill (`--skill`) has no row.
+A switch applies after `/reload`. It changes Octocode settings only. Rows exist only for harnesses that are on. Two skills of one name get the id `skill:<path>` (see `/settings list skill`), except when one is a core skill: the copy that loads keeps `skill:<name>`, so `disable skill:<name>` switches it, and a switched-on copy that does not load is listed as `shadowed` under its path id. Where the Octocode collection ships a skill of a core skill's name, only the core skill is offered: it replaces the collection's copy, so that copy is neither listed nor reported as a duplicate. Core skills switch globally only; Octocode-collection skills can also switch with `--local`. A session-only skill (`--skill`) has no row.
 
 The `skills` setting takes patterns and also filters auto-discovered skills: `"skills": ["!octocode-roast"]` drops one, `["!octocode-*"]` the collection, and a trusted project can bring one back with `["+octocode-roast/SKILL.md"]`.
 
@@ -165,7 +165,7 @@ sequenceDiagram
 - When the list exceeds 1% of the model's context window in characters (8,000 on 200,000 tokens), startup warns `Skill listing over budget`; the list is unchanged. Shorten descriptions with [`octocode context`](#optimized-descriptions) or switch skills off.
 - A profile can drop the tool with `excludeTools: skill`. The tool is left out while no skill allows model invocation. A task's `skills` still name which skills a child loads first.
 - Compaction may summarize a loaded skill; its name stays in the summary so the model can load it again.
-- The Octocode MCP server may read inside every loaded skill folder. Folders you add (`research.allowedPaths` in global settings, `ALLOWED_PATHS` in the environment or `~/.octocode/.env`) extend that; `ALLOWED_PATHS` in the server entry's `env` replaces it ([MCP](mcp-reference.md)).
+- The Octocode MCP server may read inside every loaded skill folder: the shipped skills folder whole while all its skills are on, or else only the folders of the shipped skills that are on. Switching a shipped skill off during a session restarts the server once without it. Folders you add (`research.allowedPaths` in global settings, `ALLOWED_PATHS` in the environment or `~/.octocode/.env`) extend that; `ALLOWED_PATHS` in the server entry's `env` replaces it ([MCP](mcp-reference.md)).
 
 ### Optimized descriptions
 

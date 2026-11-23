@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
 import { AltScreenSelection, type AltScreenSelectionHost } from "../src/tui-alt-screen/selection-controller.ts";
+import { copiedMessage } from "../src/tui-alt-screen/selection-copy.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
 
 it("rejects oversized terminal clipboard transfers and permits a later small copy", async () => {
@@ -98,7 +99,9 @@ for (const rows of [1_000, 10_000, 100_000]) {
 		assert.equal(copied.length, 1);
 		assert.equal(copied[0].split("\n").length, rows);
 		assert.equal(copied[0].split("\n")[rows - 1], `行${rows - 1} 界界界界 text`);
-		assert.deepEqual(messages, ["Copied!"]);
+		// The confirmation says how much was copied.
+		assert.deepEqual(messages, [copiedMessage(copied[0])]);
+		assert.match(messages[0], new RegExp(`^Copied ${rows.toLocaleString("en-US")} lines · `));
 		if (rows >= 100_000) {
 			assert.ok(yields > 5, `extraction yielded to the event loop (${yields})`);
 			assert.ok(maxGap < 150, `event loop gap ${maxGap}ms`);

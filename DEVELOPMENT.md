@@ -6,7 +6,7 @@ Octocode is a fork of [Pi](https://github.com/earendil-works/pi): Pi's agent loo
 
 ## Run from source
 
-Needs Node.js 24.15 or newer within Node 24 (`.node-version` pins the line) and the sibling `octocode` repository checked out at `../octocode` on the `octocode-20.0.0` branch (its default branch lacks the needed packages). `packages/coding-agent/package.json` links the sibling packages `octocode`, `octocode-mcp`, `octocode-native` and `octocode-chrome-devtools` with `link:`; build them first, native binaries included.
+Needs Node.js 24.15 or newer within Node 24 (`.node-version` pins the line) and the sibling `octocode` repository checked out at `../octocode` on the `octocode-20.0.0` branch (its default branch lacks the needed packages). `packages/coding-agent/package.json` links the sibling packages `octocode`, `octocode-mcp`, `octocode-native` and `octocode-chrome-devtools` with `link:`; build them first, native binaries included. It also links `@octocodeai/octocode-sandbox-runtime`, Octocode's fork of `@anthropic-ai/sandbox-runtime`, from a checkout at `../octocode-sandbox-runtime` on its `octocode` branch: build it with `npm ci && npm run build` and add its prebuilt helpers as its `FORK.md` describes.
 
 ```sh
 yarn install --immutable
@@ -14,7 +14,7 @@ yarn run hydrate:model-data   # downloads the provider model catalog
 yarn start                    # run from source; `yarn start --help` lists options
 ```
 
-To update one hydrated provider, run `yarn run generate:models --providers openrouter`. The [AI catalog guide](packages/ai/docs/development.md#3-model-generation-scriptsgenerate-modelsts) explains source selection, registration, and how the generator handles failed refreshes.
+To update one hydrated provider, run `yarn run generate:models --providers openrouter`. The generator reads the models.dev snapshot that the pinned `@opencode-ai/models` package ships; add `--live` to fetch models.dev itself. The [AI catalog guide](packages/ai/docs/development.md#3-model-generation-scriptsgenerate-modelsts) explains source selection, registration, and how the generator handles failed refreshes.
 
 Inside the app: `/providers` connects an account, `/model` picks a model, `/help` lists commands.
 
@@ -49,7 +49,7 @@ flowchart LR
 
 - Paid tests live in `*.live.test.ts`; every vitest config excludes them unless `OCTOCODE_LIVE_TESTS=1` (set by `test:live`), and `yarn run check:live-tests` fails when a default run would collect one or a test gated on provider credentials. Local Ollama tests are not paid.
 - Run builds and full suites in the background; write long output to `.octocode/agent/tmp/`. Never run two builds or generators at once.
-- One full run at a time on this machine, across sessions, checkouts and worktrees: a whole vitest suite (no file filters) or `yarn run check` waits while another holds `~/.octocode/locks/full-run` and prints the holder (label, pid, session, folder, and the agent, backlog item and bash job when the `bash` tool started the run). Runs that name test files never wait. A killed holder's lock is taken over at once; `OCTOCODE_RUN_LOCK=off` skips it. To wait for the lock, poll `node scripts/full-run-lock.ts --status` (exit 0 when free; it clears a dead holder's lock) rather than the lock file. The core suite, like native and e2e, uses at most 4 workers.
+- One full run at a time on this machine, across sessions, checkouts and worktrees: a whole vitest suite (no file filters) or `yarn run check` waits while another holds `~/.octocode/locks/full-run` and prints the holder (label, pid, session, folder, and the agent, backlog item and bash job when the `bash` tool started the run). Runs that name test files never wait. A killed holder's lock is taken over at once; `OCTOCODE_RUN_LOCK=off` skips it. To wait for the lock, poll `node scripts/test/full-run-lock.ts --status` (exit 0 when free; it clears a dead holder's lock) rather than the lock file. The core suite, like native and e2e, uses at most 4 workers.
 - After browser source changes run `yarn run generate:workspace`. After prompt, tool description or MCP preset changes run `yarn workspace @octocodeai/octocode-agent run generate:prompts` and read `.octocode/agent/tmp/agent-prompts/`.
 - Harness-based session tests: [suite rules](packages/coding-agent/test/suite/README.md).
 - Known flakes: `team-interpreter-parsed` "gates a 2000-stage pipeline quickly" (400 ms limit) under heavy load; the real-browser e2e can leave a Chrome process behind.
@@ -89,11 +89,11 @@ the same checks on Linux and macOS with Node 24 and 26.
 Staging runs after `yarn run build:offline`, rewrites no development manifest and publishes nothing. Supply a reviewed JSON map: `schemaVersion: 1` and a `packages` object keyed by dependency name, each with an exact `version`, its `sourceRevision` and the registry's `sha512-…` `integrity` (include reviewed native platform packages and other sibling transitive packages). Seed a disposable registry with the candidate and the reviewed sibling tarballs, then:
 
 ```sh
-node scripts/stage-registry-release.mjs --prepare --map /path/to/map.json \
+node scripts/release/stage-registry-release.mjs --prepare --map /path/to/map.json \
   --registry http://127.0.0.1:4873/ --out /tmp/octocode-registry-candidate
 
 # once the registry serves the exact tarballs:
-node scripts/stage-registry-release.mjs --verify --map /path/to/map.json \
+node scripts/release/stage-registry-release.mjs --verify --map /path/to/map.json \
   --registry http://127.0.0.1:4873/ --out /tmp/octocode-registry-candidate
 ```
 
@@ -126,7 +126,7 @@ A disposable-registry result is not a production lock: after the dependency tarb
 | [terminal](packages/terminal/README.md)                                 | hosted   | `!`-line shell completion and history ranking                                                                                                                           |
 | [octocode-agentic-testkit](packages/octocode-agentic-testkit/README.md) | test kit | Behavior tests for any agent harness: suites with runs and USD caps, scripted models, MCP mocks, guards, traces, matchers; no workspace depends on it                   |
 
-Allowed imports, enforced by `yarn run check:boundaries` (`PACKAGE_POLICY` in `scripts/check-package-boundaries.mjs`). Not drawn: `common` and `contracts`, which most packages use.
+Allowed imports, enforced by `yarn run check:boundaries` (`PACKAGE_POLICY` in `scripts/check/check-package-boundaries.mjs`). Not drawn: `common` and `contracts`, which most packages use.
 
 ```mermaid
 flowchart LR

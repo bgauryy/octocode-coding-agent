@@ -377,7 +377,7 @@ describe("agent tool with a scripted child", () => {
 		expect(failed).toBe("  ⎿  Subagent x failed\n     detail");
 		expect(
 			rendered(s.agent.renderCall({ task: "look\nmore", profile: "researcher", goal: "map the auth flow" }, theme, {})),
-		).toBe("⏺ Agent(map the auth flow)");
+		).toBe("○ Agent(map the auth flow)");
 		expect(
 			rendered(
 				s.agent.renderCall({ task: "bg", background: true }, theme, {
@@ -386,8 +386,8 @@ describe("agent tool with a scripted child", () => {
 					isError: false,
 				}),
 			),
-		).toMatch(/^⏺ Agent · background/);
-		expect(rendered(s.agent.renderCall({}, theme, {}))).toBe("⏺ Agent");
+		).toMatch(/^✓ Agent · background/);
+		expect(rendered(s.agent.renderCall({}, theme, {}))).toBe("○ Agent");
 	});
 
 	it("routes the model: profile preference, parent provider first, fallback to the parent's model, strict explicit", async () => {
@@ -837,6 +837,33 @@ describe("agent tool with a scripted child", () => {
 			await expect(s.run({ task: "report" })).rejects.toThrow(/spent \$0\.75, and subagents\.maxCost is \$0\.50/);
 		});
 
+		it("counts money only: $1.24 metered and $3.10 a plan paid for start a child under maxCost 2 (RFC V8)", async () => {
+			limit({ maxCost: 2 });
+			const reply = (provider: string, total: number) => ({
+				type: "message",
+				message: {
+					role: "assistant",
+					provider,
+					model: "model",
+					usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total } },
+				},
+			});
+			s.ctx.sessionManager.getEntries = () => [reply("faux", 1.24), reply("codex", 3.1)] as never;
+			const billing = vi
+				.spyOn(s.ctx.modelRegistry, "getProviderBilling")
+				.mockImplementation((provider: string) => (provider === "codex" ? "plan" : "metered"));
+			try {
+				const result = await s.run({ task: "report" });
+				expect(result.isError).not.toBe(true);
+				expect(result.details.status).toBe("done");
+				// The same spend all metered is past the limit.
+				billing.mockImplementation(() => "metered");
+				await expect(s.run({ task: "report" })).rejects.toThrow(/spent \$4\.34, and subagents\.maxCost is \$2\.00/);
+			} finally {
+				billing.mockRestore();
+			}
+		});
+
 		it("tells the user once per limit and value, as a notice line and a spend_limit notice", async () => {
 			const notices: unknown[] = [];
 			s.flat.events = {
@@ -1050,7 +1077,8 @@ describe("agent tool with a scripted child", () => {
 		const shown = rendered(renderer(answer.message, { expanded: false }, theme));
 		// A finished row names its time only from 1s on; this scripted run's time depends on machine load.
 		expect(shown).toMatch(
-			/^ ⏺ Agent\([a-z]+-[a-z]+ · check things\) · background(?: · \S+)?\n {3}⎿ {2}Done · 1 tool call/,
+			// A settled agent row draws its state's glyph (✓ done, ✗ failed, ◼ cancelled): ⏺ means running only.
+			/^ ✓ Agent\([a-z]+-[a-z]+ · check things\) · background(?: · \S+)?\n {3}⎿ {2}Done · 1 tool call/,
 		);
 		expect(shown).toContain("report");
 
@@ -1065,7 +1093,7 @@ describe("agent tool with a scripted child", () => {
 			summary: "Failed: provider down",
 		});
 		expect(rendered(renderer(s.sent[1].message, { expanded: false }, theme))).toMatch(
-			/^ ⏺ Agent\([a-z]+-[a-z]+[^\n]*\n {3}⎿ {2}Failed: provider down/,
+			/^ ✗ Agent\([a-z]+-[a-z]+[^\n]*\n {3}⎿ {2}Failed: provider down/,
 		);
 
 		const kill = {
@@ -1106,7 +1134,7 @@ describe("agent tool with a scripted child", () => {
 		);
 		// A stop the user asked for is an interruption, not a failure; the prompt is one expand away.
 		expect(rendered(renderer(s.sent[2].message, { expanded: false }, theme))).toMatch(
-			/^ ⏺ Agent.*\n {3}⎿ {2}Cancelled by the user\n {6}… prompt \(ctrl\+o to expand\)$/,
+			/^ ◼ Agent.*\n {3}⎿ {2}Cancelled by the user\n {6}… prompt \(ctrl\+o to expand\)$/,
 		);
 		expect(s.sent[2].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 	});
@@ -2088,7 +2116,10 @@ describe("a child bound to a backlog item", () => {
 		const id = started.details.id as string;
 		await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
 		expect(String(s.sent[0].message.content)).toMatch(/reported done[\s\S]*>>>\n[\s\S]*Noted on B1\./);
-		expect(notes().at(-1)!.text).toBe(`Report from ${id}: done. B1 is ongoing without a passed completion.`);
+		// A child no longer finishes its coordinator's item (contract change): a done report notes the checks it names.
+		expect(notes().at(-1)!.text).toBe(
+			`Report from ${id}: done. Checks it names: yarn vitest run a.test.ts: 3 passed; yarn tsc: clean.`,
+		);
 	});
 
 	it("records a run for the item whose outcome and agent agree with the note its report left (B38)", async () => {

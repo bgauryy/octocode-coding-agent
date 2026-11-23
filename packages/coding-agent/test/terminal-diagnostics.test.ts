@@ -5,6 +5,7 @@ import {
 	describeTerminalStalls,
 	showTerminalDiagnostics,
 } from "../src/modes/interactive/terminal-diagnostics.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
 afterEach(() => resetCapabilitiesCache());
 
@@ -26,7 +27,7 @@ it("reports fallback capabilities and aggregate rendering counters without inspe
 		},
 		ui: { mode: "regular", terminal: { columns: 80, rows: 24, pendingOutputBytes: 0 }, requestRender: vi.fn() },
 		chatContainer: { addChild },
-		outputPad: 1,
+		uiStore: createUiStore(),
 		settingsManager: {
 			getTerminalCapabilityOverrides: () => ({ hyperlinks: false }),
 			isReduceMotionActive: () => true,
@@ -94,7 +95,7 @@ function diagnosticsText(output: Record<string, number> | undefined): string {
 		},
 		ui: { mode: "regular", terminal: { columns: 80, rows: 24 }, requestRender: vi.fn() },
 		chatContainer: { addChild },
-		outputPad: 1,
+		uiStore: createUiStore(),
 		settingsManager: {
 			getTerminalCapabilityOverrides: () => ({}),
 			isReduceMotionActive: () => false,

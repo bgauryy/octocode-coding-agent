@@ -11,7 +11,6 @@ function Spark({ values }: { values: readonly number[] }) {
 			width="60"
 			height="16"
 			viewBox="0 0 60 16"
-			// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- an inline svg chart, not an image file
 			role="img"
 			aria-label={`Hit rate trend over the last ${values.length} requests`}
 		>

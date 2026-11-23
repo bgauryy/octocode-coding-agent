@@ -11,8 +11,8 @@ import {
 	ThinkingLevelMapSchema,
 } from "@octocodeai/octocode-ai/providers/model-schema";
 import { type Static, Type } from "typebox";
-import { Compile } from "typebox/compile";
 import { formatValidationPath } from "@octocodeai/octocode-ai/utils/validation";
+import { compileLazily } from "../utils/compile-lazily.ts";
 import { getModelsPath, providerFallbackDirs } from "../config.ts";
 import { configDiscovery, discoveryInput } from "./discovery/service.ts";
 import { providerSourceGate } from "./provider-sources/gate.ts";
@@ -145,7 +145,8 @@ export const ModelsJsonSchemas = {
 	modelOverride: ModelOverrideSchema,
 };
 
-const validateModelsConfig = Compile(ModelsConfigSchema);
+/** The models.json validator, shared with the `/providers` editor (`provider-templates/models-file.ts`). */
+export const modelsConfigValidator = compileLazily(ModelsConfigSchema);
 
 const FIELD_NAMES: ModelsJsonFieldNames = {
 	root: Object.keys(ModelsConfigSchema.properties),
@@ -265,7 +266,7 @@ export class ModelConfig {
 			paths.map((file) => ModelConfig.loadFile(file, { fallback: fallbackFiles.has(file) })),
 		);
 		for (const [index, config] of configs.entries()) {
-			const isProject = projectFiles.has(paths[index]!);
+			const isProject = projectFiles.has(paths[index]);
 			// An unreadable project file is skipped, not fatal: the global providers keep loading.
 			if (config.error) {
 				if (isProject) warnings.push(`Project models.json skipped: ${config.error}`);
@@ -279,9 +280,7 @@ export class ModelConfig {
 				if (winner) {
 					const winnerFile = files.get(id);
 					if (!isProject && winnerFile && projectFiles.has(winnerFile))
-						warnings.push(
-							projectShadowWarning(id, winnerFile, file ?? paths[index]!, winner.baseUrl, provider.baseUrl),
-						);
+						warnings.push(projectShadowWarning(id, winnerFile, file ?? paths[index], winner.baseUrl, provider.baseUrl));
 					continue;
 				}
 				providers.set(id, provider);
@@ -313,6 +312,7 @@ export class ModelConfig {
 			return new ModelConfig(new Map(), `Failed to parse models.json: ${jsonErrorLocation(error)}\n\nFile: ${path}`);
 		}
 
+		const validateModelsConfig = modelsConfigValidator();
 		if (!validateModelsConfig.Check(parsed)) {
 			const errors =
 				validateModelsConfig

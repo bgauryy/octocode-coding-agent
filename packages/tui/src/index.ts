@@ -138,6 +138,7 @@ export { Key, type KeyId } from "./keys/key-id.ts";
 export { isKittyProtocolActive, setKittyProtocolActive } from "./keys/state.ts";
 export { isKeyRelease, isKeyRepeat, type KeyEventType } from "./keys/sequences.ts";
 export { decodeKittyPrintable, parseKey } from "./keys/parse.ts";
+export { formatKeyText } from "./keys/display.ts";
 export { splitDoubleEscape } from "./keys/double-escape.ts";
 // LaTeX rendering
 export { type RenderLatexOptions, renderLatex } from "./latex.ts";
@@ -255,7 +256,8 @@ export {
 	type TuiStopOptions,
 	type ViewportTUI,
 } from "./tui/exports.ts";
-export type { TuiAltScreenOptions } from "./tui-alt-screen/types.ts";
+export type { ScrollToEndIndicatorLabel, TuiAltScreenOptions } from "./tui-alt-screen/types.ts";
+export { copiedAmount, copiedMessage } from "./tui-alt-screen/selection-copy.ts";
 export { TuiAltScreen } from "./tui-alt-screen.ts";
 export type { TuiMainScreenRenderState } from "./tui-main-screen/render-diff.ts";
 export { TuiMainScreen } from "./tui-main-screen.ts";

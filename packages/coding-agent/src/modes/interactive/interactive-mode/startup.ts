@@ -19,8 +19,10 @@ import { formatKeyText, keyHint, keyText, rawKeyHint } from "../../../theme/them
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { onThemeChange, theme } from "../../../theme/theme.ts";
 import { bindFooterUntilStop } from "../state/bind-footer.ts";
+import { selectInitialized } from "../state/lifecycle-slice.ts";
 import { ExpandableText } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { type NoModelStartHost, openProvidersWithoutModel } from "./no-model-start.ts";
 import { offerForkOfTornSession } from "./session-navigation.ts";
 import { renderInitialSessionState } from "./resume-notice.ts";
 import { cancelStartupSubmit, dispatchStartupSubmit } from "./command-dispatch.ts";
@@ -32,7 +34,6 @@ import { withStartupCleanup } from "./startup-cleanup.ts";
 type StartupHost = Pick<
 	InteractiveModeHost,
 	| "builtInHeader"
-	| "changelogMarkdown"
 	| "chatContainer"
 	| "checkForPackageUpdates"
 	| "checkTmuxKeyboardSetup"
@@ -42,21 +43,18 @@ type StartupHost = Pick<
 	| "editor"
 	| "editorContainer"
 	| "ensurePngTranscoder"
-	| "fdPath"
 	| "footerContainer"
 	| "footerDataProvider"
 	| "fullscreenLayoutRoot"
 	| "getChangelogForDisplay"
 	| "getStartupExpansionState"
 	| "getUserInput"
-	| "escapeAbortedRun"
 	| "handleCtrlC"
 	| "handleCtrlD"
 	| "handleResumeSession"
 	| "handleStartupSubmit"
 	| "headerContainer"
 	| "init"
-	| "isInitialized"
 	| "keybindings"
 	| "maybeWarnAboutAnthropicSubscriptionAuth"
 	| "mountInteractiveTui"
@@ -95,10 +93,11 @@ type StartupHost = Pick<
 	| "version"
 	| "widgetContainerAbove"
 	| "widgetContainerBelow"
->;
+> &
+	NoModelStartHost;
 
 export async function init(host: StartupHost): Promise<void> {
-	if (host.isInitialized) return;
+	if (selectInitialized(host.uiStore.getState())) return;
 	return withStartupCleanup(host, async () => {
 		// The compile cache is written at exit here, never while the keyboard is in use (`cli/compile-cache.ts`).
 		holdCompileCacheFlush();
@@ -106,7 +105,7 @@ export async function init(host: StartupHost): Promise<void> {
 		host.registerSignalHandlers();
 
 		// Load changelog (only show new entries, skip for resumed sessions)
-		host.changelogMarkdown = host.getChangelogForDisplay();
+		host.uiStore.getState().setChangelog(host.getChangelogForDisplay());
 
 		if (host.session.scopedModels.length > 0 && host.shouldShowStartupDetails()) {
 			const modelList = host.session.scopedModels
@@ -158,7 +157,7 @@ export async function init(host: StartupHost): Promise<void> {
 
 		// Start the UI before initializing features so session_start handlers can use interactive dialogs
 		host.ui.start();
-		host.isInitialized = true;
+		host.uiStore.getState().setInitialized(true);
 		host.programStatus.report();
 		host.ensurePngTranscoder();
 
@@ -239,7 +238,7 @@ export async function init(host: StartupHost): Promise<void> {
 			ensureTool("rg", (status) => host.showManagedToolStatus(status)),
 		]);
 		const [, [fdPath]] = await Promise.all([host.rebindCurrentSession(), managedTools]);
-		host.fdPath = fdPath;
+		host.uiStore.getState().setFdPath(fdPath);
 
 		// Enable remaining input only after both independent setup paths complete, and keep resources before messages.
 		host.setupKeyHandlers();
@@ -310,7 +309,7 @@ export async function run(host: StartupHost): Promise<void> {
 		.finally(() => {
 			// On Windows, npm can overwrite the shared console title while checking
 			// feature package versions. Restore Octocode's title after the startup check.
-			if (process.platform === "win32" && host.isInitialized) {
+			if (process.platform === "win32" && selectInitialized(host.uiStore.getState())) {
 				host.updateTerminalTitle();
 			}
 		});
@@ -339,7 +338,9 @@ export async function run(host: StartupHost): Promise<void> {
 	}
 	announceReloadErrors(host);
 
-	if (modelFallbackMessage) {
+	// With no usable model, /providers opens on + Provider in place of the warning (below).
+	const hasModel = Boolean(host.session.model);
+	if (modelFallbackMessage && hasModel) {
 		host.showWarning(modelFallbackMessage);
 	}
 
@@ -352,6 +353,7 @@ export async function run(host: StartupHost): Promise<void> {
 	}
 
 	void host.maybeWarnAboutAnthropicSubscriptionAuth();
+	if (!hasModel) await openProvidersWithoutModel(host);
 
 	if (initialMessage) {
 		try {

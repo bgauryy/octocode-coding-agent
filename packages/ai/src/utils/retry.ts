@@ -5,6 +5,7 @@ import { clearsWithWaiting, isNetworkFailureText, isOfflineText, isRetryableAssi
 
 export {
 	isNetworkFailureText,
+	isNoFundsError,
 	isOfflineText,
 	isRateLimitedText,
 	isRetryableAssistantError,
@@ -357,8 +358,15 @@ export async function retryAssistantCall(
 	}
 }
 
-/** Appends how long a retried request series ran and how many attempts it made, so a long stall explains itself. */
+/**
+ * Adds how long a retried request series ran and how many attempts it made, so a long stall explains itself. The note
+ * goes on the error's first line: lines after it (a fix to apply) stay last.
+ */
 export function describeRetryOutcome(errorMessage: string, attempts: number, elapsedMs: number): string {
 	const seconds = Math.round(elapsedMs / 1000);
-	return `${errorMessage} (${attempts} attempt${attempts === 1 ? "" : "s"} over ${seconds}s)`;
+	const note = ` (${attempts} attempt${attempts === 1 ? "" : "s"} over ${seconds}s)`;
+	const lineEnd = errorMessage.indexOf("\n");
+	return lineEnd === -1
+		? `${errorMessage}${note}`
+		: `${errorMessage.slice(0, lineEnd)}${note}${errorMessage.slice(lineEnd)}`;
 }

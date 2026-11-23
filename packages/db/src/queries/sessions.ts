@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import type { ActivityTone } from "@octocodeai/octocode-contracts";
 import { allRows } from "../rows.ts";
 import * as compactions from "./compactions.ts";
 import { inTransaction } from "./transaction.ts";
@@ -25,6 +26,12 @@ export interface SessionExtra {
 	unpriced: number;
 	/** The session dir it last ran from (resolved); null in rows from before it was recorded. */
 	dir: string | null;
+	/**
+	 * The last light tone the process that has it open wrote (`setActivity`); null when none is known, and when the row's
+	 * process is not the one that wrote it (`activity_by`). It describes that process only: a reader trusts it while
+	 * `pid` is alive.
+	 */
+	activity: ActivityTone | null;
 }
 
 /** What the catalog columns of a `sessions` row hold: a session file's listing facts, so a listing need not parse it. */
@@ -119,7 +126,11 @@ export function catalog(db: DatabaseSync, cwd?: string): CatalogRow[] {
 		: allRows<CatalogRow>(db.prepare(`SELECT ${columns} FROM sessions WHERE file IS NOT NULL AND cwd = ?`), cwd);
 }
 
-const EXTRA_COLUMNS = "id, workspace_id, branch, head, cost, tokens, files_changed, pid, pid_started, unpriced, dir";
+/** The process a row names now, as `activity_by` records a writer: a light is read only when the two agree. */
+const ROW_PROCESS = "pid || ':' || IFNULL(pid_started, '')";
+
+const EXTRA_COLUMNS = `id, workspace_id, branch, head, cost, tokens, files_changed, pid, pid_started, unpriced, dir,
+	CASE WHEN activity_by = ${ROW_PROCESS} THEN activity END AS activity`;
 
 /** The session extras of `id`, or undefined when it has no row. */
 export function byId(db: DatabaseSync, id: string): SessionExtra | undefined {
@@ -137,11 +148,23 @@ export function pidOf(db: DatabaseSync, id: string): { pid: number | null; pid_s
 		| undefined;
 }
 
-/** This process has the session open now, from session dir `dir` when known. Keeps what earlier runs recorded. */
+/**
+ * This process has the session open now, from session dir `dir` when known. Keeps what earlier runs recorded, except the
+ * light: a session that just started runs nothing (`idle`), whatever an earlier process last wrote.
+ */
 export function start(db: DatabaseSync, id: string, pid: number, pidStarted: string | null, dir: string | null): void {
 	db.prepare(
-		"INSERT INTO sessions (id, pid, pid_started, dir) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, pid_started = excluded.pid_started, dir = COALESCE(excluded.dir, sessions.dir)",
-	).run(id, pid, pidStarted, dir);
+		"INSERT INTO sessions (id, pid, pid_started, dir, activity, activity_by) VALUES (?, ?, ?, ?, 'idle', ?) ON CONFLICT(id) DO UPDATE SET pid = excluded.pid, pid_started = excluded.pid_started, dir = COALESCE(excluded.dir, sessions.dir), activity = 'idle', activity_by = excluded.activity_by",
+	).run(id, pid, pidStarted, dir, `${pid}:${pidStarted ?? ""}`);
+}
+
+/** The light of session `id` as process `pid`, which has it open, shows it now; a row another process owns is left alone. */
+export function setActivity(db: DatabaseSync, id: string, pid: number, activity: ActivityTone | null): void {
+	db.prepare(`UPDATE sessions SET activity = ?, activity_by = ${ROW_PROCESS} WHERE id = ? AND pid = ?`).run(
+		activity,
+		id,
+		pid,
+	);
 }
 
 /**
@@ -200,9 +223,11 @@ export function saveGit(db: DatabaseSync, id: string, branch: string | null, hea
 	);
 }
 
-/** The process `pid` no longer has session `id` open. */
+/** The process `pid` no longer has session `id` open: no process, so no light. */
 export function clearPid(db: DatabaseSync, id: string, pid: number): void {
-	db.prepare("UPDATE sessions SET pid = NULL, pid_started = NULL WHERE id = ? AND pid = ?").run(id, pid);
+	db.prepare(
+		"UPDATE sessions SET pid = NULL, pid_started = NULL, activity = NULL, activity_by = NULL WHERE id = ? AND pid = ?",
+	).run(id, pid);
 }
 
 /** Rows removed by `erase`, per table. */
@@ -281,7 +306,7 @@ export function forget(db: DatabaseSync, mirror: DatabaseSync, id: string): void
 	if (!transcripts.has(mirror, id) && !compactions.has(mirror, id))
 		db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
 	db.prepare(`UPDATE sessions SET branch=NULL, head=NULL, cost=0, tokens=0, files_changed=0, pid=NULL,
-		pid_started=NULL, unpriced=0 WHERE id=?`).run(id);
+		pid_started=NULL, unpriced=0, activity=NULL, activity_by=NULL WHERE id=?`).run(id);
 }
 
 /** Bind once. A copied file with an existing ID cannot replace another workspace's history. */

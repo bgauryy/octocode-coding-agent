@@ -146,18 +146,23 @@ export function completionsMapping(
 		toolChoice,
 		onPart,
 		includeRawChunks: true,
-		augmentRequest: (body: Record<string, unknown>) => augmentCompletionsRequest(model, options, body, context),
+		augmentRequest: (body: Record<string, unknown>) => {
+			completionsState.longCacheWrites = augmentCompletionsRequest(model, options, body, context);
+		},
 		providerOptions: { octocode: { reasoningEffort: options.reasoningEffort } },
 	};
 }
 
-/** Fields not represented by openai-compatible's provider options are added to its serialized request. */
+/**
+ * Fields not represented by openai-compatible's provider options are added to its serialized request. Returns whether
+ * every cache marker it placed was a 1h marker (`applyAnthropicCacheControl`).
+ */
 function augmentCompletionsRequest(
 	model: Model<"openai-completions">,
 	options: OpenAICompletionsOptions,
 	body: Record<string, unknown>,
 	context?: TranscriptContext,
-): void {
+): boolean {
 	const compat = getCompat(model);
 	if (context) augmentGrammarTools(model, context, body);
 	if (options.toolChoice) body.tool_choice = options.toolChoice;
@@ -171,7 +176,8 @@ function augmentCompletionsRequest(
 				? (options.instructionCacheRetention ?? "none")
 				: "none"
 			: (resolveInstructionCacheRetention(options) ?? retention);
-	if (Array.isArray(body.messages))
+	const longCacheWrites =
+		Array.isArray(body.messages) &&
 		applyAnthropicCacheControl(
 			body.messages as Parameters<typeof applyAnthropicCacheControl>[0],
 			body.tools as Parameters<typeof applyAnthropicCacheControl>[1],
@@ -280,4 +286,5 @@ function augmentCompletionsRequest(
 	if (model.compat?.openRouterRouting) body.provider = model.compat.openRouterRouting;
 	if (model.compat?.vercelGatewayRouting) body.providerOptions = { gateway: model.compat.vercelGatewayRouting };
 	Object.assign(body, resolveSamplingParams(model, options.reasoningEffort ?? "off", options.samplingParams));
+	return longCacheWrites;
 }

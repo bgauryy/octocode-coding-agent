@@ -36,9 +36,6 @@ type InputHandlersHost = Pick<
 	| "handleDequeue"
 	| "handleFollowUp"
 	| "loadEarlierFromKey"
-	| "lastEscapeTime"
-	| "escapeQuietUntil"
-	| "escapeAbortedRun"
 	| "renderer"
 	| "restoreQueuedMessagesToEditor"
 	| "session"
@@ -60,49 +57,35 @@ type InputHandlersHost = Pick<
 const hasQueuedMessages = (host: Pick<InputHandlersHost, "session" | "uiStore">) =>
 	host.session.getQueuedInputs().length > 0 || host.uiStore.getState().queue.compaction.length > 0;
 
-/**
- * How long after an Esc that aborted or interrupted something further Esc presses are ignored by the double-Esc action.
- * 500 ms is the double-Esc window itself: a press that close to the last one belongs to the same burst, whoever mashes
- * Esc to stop a run does not mean "open the tree", and each ignored press extends the quiet time, so one long burst
- * (100 ms apart in the audit) never ends in a tree. Only a pause of this length makes the next two Esc presses a gesture.
- */
-const ESCAPE_BURST_MS = 500;
-
 export function setupKeyHandlers(host: InputHandlersHost): void {
+	// The store lives as long as the host; the session and the active editor are read at each press.
+	const { uiStore: store } = host;
 	// Set up handlers on defaultEditor - they use host.editor for text access
 	// so they work correctly regardless of which editor is active
 	host.defaultEditor.onEscape = () => {
 		const now = Date.now();
+		const state = store.getState();
 		if (host.session.isStreaming) {
-			host.escapeQuietUntil = now + ESCAPE_BURST_MS;
-			host.escapeAbortedRun = true;
+			state.quietEscapes(now, true);
 			host.restoreQueuedMessagesToEditor({ abort: true });
 		} else if (host.session.isBashRunning) {
-			host.escapeQuietUntil = now + ESCAPE_BURST_MS;
+			state.quietEscapes(now);
 			getApplicationPort(host.session).invoke("abortBash");
-		} else if (host.uiStore.getState().editor.bashMode) {
+		} else if (state.editor.bashMode) {
 			host.editor.setText("");
-			host.uiStore.getState().setBashMode(false);
+			state.setBashMode(false);
 		} else if (hasQueuedMessages(host)) {
 			// Idle with messages still queued (carried over a session switch): they return to the editor.
 			host.restoreQueuedMessagesToEditor();
-		} else if (now < host.escapeQuietUntil) {
-			// The tail of a burst that aborted something: not the start of a double-Esc.
-			host.escapeQuietUntil = now + ESCAPE_BURST_MS;
-			host.lastEscapeTime = 0;
-		} else if (!host.editor.getText().trim()) {
-			// Double-escape with empty editor triggers /tree, /fork, or nothing based on setting
+		} else if (!state.escapeInBurst(now) && !host.editor.getText().trim()) {
+			// Not the tail of a burst that aborted something: a double-escape with an empty editor triggers /tree, /fork,
+			// or nothing based on setting
 			const action = host.settingsManager.getDoubleEscapeAction();
-			if (action !== "none") {
-				if (now - host.lastEscapeTime < ESCAPE_BURST_MS) {
-					if (action === "tree") {
-						host.showTreeSelector();
-					} else {
-						host.showUserMessageSelector();
-					}
-					host.lastEscapeTime = 0;
+			if (action !== "none" && state.doubleEscape(now)) {
+				if (action === "tree") {
+					host.showTreeSelector();
 				} else {
-					host.lastEscapeTime = now;
+					host.showUserMessageSelector();
 				}
 			}
 		}
@@ -137,7 +120,7 @@ export function setupKeyHandlers(host: InputHandlersHost): void {
 	host.defaultEditor.onAction("app.session.resume", () => host.showSessionSelector());
 
 	host.defaultEditor.onChange = (text: string) => {
-		host.uiStore.getState().setBashMode(text.trimStart().startsWith("!"));
+		store.getState().setBashMode(text.trimStart().startsWith("!"));
 		for (const listener of host.editorChangeListeners) {
 			try {
 				listener(text);
@@ -239,18 +222,18 @@ async function handleOpenExternalEditor(host: InputHandlersHost): Promise<void> 
 	}
 }
 
-export async function getUserInput(
-	host: Pick<InteractiveModeHost, "pendingUserInputs" | "onInputCallback">,
-): Promise<string> {
-	const queuedInput = host.pendingUserInputs.shift();
-	if (queuedInput !== undefined) {
-		return queuedInput;
-	}
-
+/** The next prompt the user submits: the oldest one the main loop has not read, or the next one submitted. */
+export async function getUserInput(host: Pick<InteractiveModeHost, "uiStore">): Promise<string> {
+	const { uiStore: store } = host;
+	const queued = store.getState().takeInput();
+	if (queued !== undefined) return queued;
 	return new Promise((resolve) => {
-		host.onInputCallback = (text: string) => {
-			host.onInputCallback = undefined;
-			resolve(text);
-		};
+		const stop = store.subscribe((state) => {
+			if (state.input.submitted.length === 0) return;
+			// Unsubscribed before taking it, so the change the take publishes does not reach this listener again.
+			stop();
+			const text = store.getState().takeInput();
+			if (text !== undefined) resolve(text);
+		});
 	});
 }

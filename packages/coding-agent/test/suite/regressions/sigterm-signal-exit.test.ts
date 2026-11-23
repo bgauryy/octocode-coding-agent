@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { shutdown } from "../../../src/modes/interactive/interactive-mode/lifecycle.ts";
 import { createFakeHost } from "../../interactive-mode-host.ts";
+import { createUiStore, type UiStore } from "../../../src/modes/interactive/state/store.ts";
 
 // `proper-lockfile` installs `signal-exit`, whose signal listener re-sends
 // SIGTERM/SIGHUP when it observes no other process listeners during the same
@@ -8,7 +9,7 @@ import { createFakeHost } from "../../interactive-mode-host.ts";
 // registered until async terminal cleanup has completed.
 
 type ShutdownThis = {
-	isShuttingDown: boolean;
+	uiStore: UiStore;
 	unregisterSignalHandlers: () => void;
 	runtimeHost: { dispose: () => Promise<void> };
 	ui: { terminal: { drainInput: (ms: number) => Promise<void> } };
@@ -50,7 +51,7 @@ describe("InteractiveMode SIGTERM shutdown with signal-exit", () => {
 		const order: string[] = [];
 		const dispose = deferred();
 		const context: ShutdownThis = {
-			isShuttingDown: false,
+			uiStore: createUiStore(),
 			unregisterSignalHandlers: vi.fn(() => {
 				order.push("unregister");
 			}),

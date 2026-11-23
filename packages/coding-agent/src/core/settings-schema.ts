@@ -45,7 +45,7 @@ export const SettingsSchema = Type.Object(
 		providerModels: Type.Optional(
 			Type.Record(Type.String(), Type.String(), {
 				description:
-					'Default model id per provider, e.g. { "anthropic": "claude-opus-5-5" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults. With neither defaultModel nor defaultProvider set, a provider a subscription pays for (a subscription sign-in or a coding plan) starts the session before a metered one.',
+					'Default model id per provider, e.g. { "anthropic": "claude-opus-5-5" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults. With neither defaultModel nor defaultProvider set, a provider a subscription pays for (a subscription sign-in or a coding plan) starts the session before one billed per token.',
 			}),
 		),
 		defaultThinkingLevel: Type.Optional(ModelThinkingLevelSchema),
@@ -285,7 +285,8 @@ export const SettingsSchema = Type.Object(
 		),
 		httpProxy: Type.Optional(
 			Type.String({
-				description: "Proxy URL applied as HTTP_PROXY and HTTPS_PROXY for Octocode-managed HTTP clients.",
+				description:
+					"Proxy URL applied as HTTP_PROXY and HTTPS_PROXY for Octocode-managed HTTP clients. Read from the global settings file; a project file cannot set it.",
 			}),
 		),
 		httpIdleTimeoutMs: Type.Optional(

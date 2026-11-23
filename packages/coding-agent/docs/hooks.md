@@ -2,7 +2,7 @@
 
 A hook is a handler run at a lifecycle event. Command hooks run a shell command that receives the event as JSON on stdin and answers with an exit code or JSON. Hooks are separate from [plugins](plugins.md) (containers) and [skills](skills.md) (instructions). Octocode reads a subset of Claude and Codex hook configuration; it implements neither host's whole protocol. [Hook events](hook-events.md) (generated from the hook catalog; `/harness hooks events` prints it) lists every event with the handler types, timeouts and input fields each profile accepts; this page owns discovery, trust, behavior and the differences from Claude Code and Codex.
 
-Hooks run with your operating-system privileges and are not sandboxed. The runner caps captured output and sanitizes displayed context. Cancellation and timeout wait for a bounded process-tree cleanup attempt before the hook completes. A detached process or one whose identity cannot be verified may survive; cleanup does not provide process isolation.
+Hooks run with your operating-system privileges and are not sandboxed unless their entry sets `sandbox: true` ([sandbox](sandbox.md)). The runner caps captured output and sanitizes displayed context. Cancellation and timeout wait for a bounded process-tree cleanup attempt before the hook completes. A detached process or one whose identity cannot be verified may survive; cleanup does not provide process isolation.
 
 ## Quick start
 

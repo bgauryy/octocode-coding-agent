@@ -41,7 +41,6 @@ type SessionRenderHost = Pick<
 	| "chatContainer"
 	| "editor"
 	| "getRegisteredToolDefinition"
-	| "outputPad"
 	| "pendingTools"
 	| "renderSessionEntries"
 	| "renderSessionItems"
@@ -59,13 +58,7 @@ type SessionRenderHost = Pick<
 /** Interactive-mode members needed to show a tool call. */
 type ToolExecutionHost = Pick<
 	InteractiveModeHost,
-	| "chatContainer"
-	| "getRegisteredToolDefinition"
-	| "outputPad"
-	| "sessionManager"
-	| "settingsManager"
-	| "uiStore"
-	| "ui"
+	"chatContainer" | "getRegisteredToolDefinition" | "sessionManager" | "settingsManager" | "uiStore" | "ui"
 >;
 
 /** Adds a tool call component to the chat, expanded to match the current tool-output setting. */
@@ -83,7 +76,7 @@ export function addToolExecution(
 		{
 			showImages: host.settingsManager.getShowImages(),
 			imageWidthCells: host.settingsManager.getImageWidthCells(),
-			outputPad: host.outputPad,
+			outputPad: host.uiStore.getState().view.outputPad,
 		},
 		host.getRegisteredToolDefinition(toolName),
 		host.ui,
@@ -229,7 +222,11 @@ export function addCompactionCostNotice(host: SessionRenderHost, notice: Compact
 	const cached = usage.cacheRead > 0 ? `, ${formatTokens(usage.cacheRead)} read from cache` : "";
 	host.chatContainer.addChild(new Spacer(1));
 	host.chatContainer.addChild(
-		noticeLine("warning", `${label}: ${formatTokens(tokens)} tokens billed${cached}${cost}`, host.outputPad),
+		noticeLine(
+			"warning",
+			`${label}: ${formatTokens(tokens)} tokens billed${cached}${cost}`,
+			host.uiStore.getState().view.outputPad,
+		),
 	);
 }
 
@@ -271,7 +268,11 @@ export function maybeShowThinkingDropNotice(host: SessionRenderHost, message: As
 	const noun = droppedCount === 1 ? "thinking block" : "thinking blocks";
 	host.chatContainer.addChild(new Spacer(1));
 	host.chatContainer.addChild(
-		noticeLine("warning", `Anthropic dropped ${droppedCount} ${noun} (details in session)`, host.outputPad),
+		noticeLine(
+			"warning",
+			`Anthropic dropped ${droppedCount} ${noun} (details in session)`,
+			host.uiStore.getState().view.outputPad,
+		),
 	);
 }
 
@@ -306,7 +307,11 @@ function addCacheMissNotice(host: SessionRenderHost, miss: CacheMiss, message: A
 	const label = cacheMissLabel(miss, ttlMs);
 	host.chatContainer.addChild(new Spacer(1));
 	host.chatContainer.addChild(
-		noticeLine("warning", `${label}: ${reBilled}${idleWarmingHint(host, miss, message, ttlMs)}`, host.outputPad),
+		noticeLine(
+			"warning",
+			`${label}: ${reBilled}${idleWarmingHint(host, miss, message, ttlMs)}`,
+			host.uiStore.getState().view.outputPad,
+		),
 	);
 }
 

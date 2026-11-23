@@ -185,7 +185,7 @@ export function CommandButton({
 				: item?.blockedBy?.length
 					? `Blocked by ${item.blockedBy.join(", ")}. Complete the dependencies first.`
 					: item && (!item.goal.trim() || !item.why.trim())
-						? "Add a goal and reason in Edit / change status before implementing."
+						? "Add a goal and reason (Actions → Edit) before implementing."
 						: comment.trim()
 							? "Post or clear your comment draft before implementing so the agent receives all comments."
 							: disabledReason;

@@ -1,6 +1,6 @@
 import { renderPrompt } from "../../../core/prompt-template.ts";
 import { storedText } from "@octocodeai/octocode-common/sanitize";
-import { addReply, emptyTotals, type UsageTotals } from "../../shared/util.ts";
+import { addReply, emptyTotals, type TokenTotals } from "../../shared/util.ts";
 import { type HeldLeases, LEASE_IDLE_MS } from "../held.ts";
 import { LINE_MAX } from "../identity.ts";
 import type { Mail } from "../mail.ts";
@@ -40,7 +40,7 @@ export class Activity {
 	 * Replies of this session that finished before it joined (a resumed session's first reply can end before the join):
 	 * they belong to this agent's row too, so the panel and `coordinate list` add them on join.
 	 */
-	private early: { usage: UsageTotals; model?: string } = { usage: emptyTotals() };
+	private early: { usage: TokenTotals; model?: string } = { usage: emptyTotals() };
 
 	constructor(host: ActivityHost) {
 		this.host = host;

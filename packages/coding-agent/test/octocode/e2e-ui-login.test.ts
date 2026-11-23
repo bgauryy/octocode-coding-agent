@@ -31,9 +31,13 @@ const slash = async (line: string) => {
 	await new Promise((resolve) => setTimeout(resolve, 500));
 	t!.press(KEY.enter);
 };
-/** Opens `/providers openrouter` on its "Add API key" row and returns once the key prompt shows. */
+/**
+ * Opens `/providers openrouter` on its "Add API key" row and returns once the key prompt shows. An argument typed in
+ * full runs on the first Enter (its completion would change nothing), so this presses Enter once.
+ */
 const openKeyPrompt = async () => {
-	await slash("/providers openrouter");
+	await t!.type("/providers openrouter");
+	t!.press(KEY.enter);
 	await t!.until(shows("Add API key"), "provider menu");
 	const selected = async () =>
 		(await t!.text())

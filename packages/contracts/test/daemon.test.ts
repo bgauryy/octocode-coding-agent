@@ -16,6 +16,7 @@ import {
 	RemotePublishSchema,
 	RemoteStatusSchema,
 } from "../src/daemon.ts";
+import { ActivitySchema } from "../src/activity-light.ts";
 import { DAEMON_ROUTES } from "../src/protocol.ts";
 
 const record = {
@@ -40,17 +41,11 @@ it("keeps the unauthenticated health answer to compatibility only", () => {
 	const health = { ok: true, protocolVersion: DAEMON_PROTOCOL_VERSION, build: "b" };
 	expect(Value.Check(DaemonHealthSchema, health)).toBe(true);
 	expect(Value.Check(DaemonHealthSchema, { ...health, nonce: "n" })).toBe(false);
-	expect(
-		Value.Check(DaemonStatusSchema, {
-			...health,
-			nonce: "n",
-			pid: 1,
-			startedAt: 1,
-			tabs: 0,
-			sessions: 0,
-			draining: false,
-		}),
-	).toBe(true);
+	const status = { ...health, nonce: "n", pid: 1, startedAt: 1, tabs: 0, sessions: 0, draining: false };
+	expect(Value.Check(DaemonStatusSchema, status)).toBe(true);
+	// The idle limit is optional (an older daemon sends none) and positive; decimals are allowed, as in the setting.
+	expect(Value.Check(DaemonStatusSchema, { ...status, idleMinutes: 0.5 })).toBe(true);
+	expect(Value.Check(DaemonStatusSchema, { ...status, idleMinutes: 0 })).toBe(false);
 });
 
 it("validates attach records, requests, responses and events", () => {
@@ -110,6 +105,19 @@ it("lets a listed session say it is busy or needs the user, and keeps older list
 		true,
 	);
 	expect(Value.Check(DaemonSessionsSchema, { sessions: [{ ...session, needsYou: 1 }] })).toBe(false);
+});
+
+it("lets a listed session carry its activity light, the one `activity` mapping's tone, mark and words", () => {
+	const session = { id: "s", repoId: "r", repoName: "demo", cwd: "/w", startedAt: 1, attached: true, busy: false };
+	const failed = { tone: "error", state: "failed", label: "failed" };
+	expect(Value.Check(DaemonSessionsSchema, { sessions: [{ ...session, activity: failed }] })).toBe(true);
+	expect(Value.Check(DaemonSessionsSchema, { sessions: [{ ...session, activity: { ...failed, tone: "red" } }] })).toBe(
+		false,
+	);
+	expect(Value.Check(DaemonSessionsSchema, { sessions: [{ ...session, activity: { ...failed, extra: true } }] })).toBe(
+		false,
+	);
+	expect(Value.Check(ActivitySchema, { tone: "waiting", state: "waiting", label: "needs you" })).toBe(true);
 });
 
 it("describes remote publication: a transport, an access level, links with their capability in the fragment", () => {

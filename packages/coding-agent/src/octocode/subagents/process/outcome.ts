@@ -11,6 +11,14 @@ export const SUBAGENT_STOP_GRACE_MS = 5_000;
 export const USER_STOP_GRACE_MS = 1_000;
 /** How long an aborted child gets to report `agent_settled` before the stop falls back to signals. */
 export const ABORT_SETTLE_MS = 1_000;
+/**
+ * How long the parent's loop waits for a foreground `agent` call to settle after its turn is aborted (Esc) before it
+ * abandons the call, losing the child's record and spend with it. A user stop waits up to `ABORT_SETTLE_MS` for the child
+ * to settle, up to `USER_STOP_GRACE_MS` for it to exit, and up to `USER_STOP_GRACE_MS` for its tree after SIGTERM
+ * (`shutdown.ts`); the rest covers the process-table reads (~20 ms each) and removing an isolated worktree. Measured with
+ * the scripted child: ~50 ms for one that settles at once, ~100-200 ms isolated, ~1.1 s for one that ignores the abort.
+ */
+export const FOREGROUND_ABORT_GRACE_MS = ABORT_SETTLE_MS + 2 * USER_STOP_GRACE_MS + 500;
 /** Abort reason of a stop the user asked for; any other reason gets the full grace. */
 export const USER_STOP = "user stop";
 /** JSON events can contain images; a malformed child must not grow an unterminated frame forever. */

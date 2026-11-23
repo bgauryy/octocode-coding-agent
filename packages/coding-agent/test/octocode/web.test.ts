@@ -145,7 +145,9 @@ describe("web private-address guard", () => {
 		["64:ff9b::a9fe:a9fe", true],
 		["169.254.169.253", false],
 		["10.0.0.1", false],
-		["fd00:ec2::253", false],
+		// AWS's whole IPv6 service block (fd00:ec2::/32, its DNS ::253 too) is listed, as the sandbox library lists it.
+		["fd00:ec2::253", true],
+		["fd00:ec3::254", false],
 		["8.8.8.8", false],
 		["not an address", false],
 	])("%s metadata=%s", (ip, metadata) => {

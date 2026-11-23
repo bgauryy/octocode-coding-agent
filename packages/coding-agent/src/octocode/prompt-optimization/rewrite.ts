@@ -1,5 +1,6 @@
 import { renderPrompt } from "../../core/prompt-template.ts";
 import type { FeatureContext } from "../../core/features/index.ts";
+import { captureSpend } from "../../core/spend-capture.ts";
 import { INTERACTIVE_RETRY } from "../shared/side-retry.ts";
 import { type CompleteSmall, callSmallModel } from "../subagents/small-call.ts";
 
@@ -19,7 +20,7 @@ function rewriteFromReply(reply: string): string {
 /**
  * One small-tier call (the session's model when no cheaper one resolves) that rewrites `prompt` for a coding agent. The
  * user waits on it, so a rate limit or transient failure gets a short retry. Never rejects: a failed, cancelled or empty
- * call gives `{ error }`.
+ * call gives `{ error }`. What an answered call spent goes to `/usage` (`captureSpend`), whether or not the rewrite is used.
  */
 export async function rewritePrompt(
 	ctx: FeatureContext,
@@ -28,6 +29,7 @@ export async function rewritePrompt(
 	complete?: CompleteSmall,
 ): Promise<{ text: string; model: string } | { error: string }> {
 	const quoted = prompt.replaceAll("</request>", "");
+	const cwd = ctx.cwd;
 	const reply = await callSmallModel(ctx, {
 		text: `${REWRITE_PROMPT}\n\n<request>\n${quoted}\n</request>`,
 		signal,
@@ -37,6 +39,7 @@ export async function rewritePrompt(
 		...(complete ? { complete } : {}),
 	});
 	if ("error" in reply) return reply;
+	captureSpend({ cwd, kind: "prompt_rewrite", provider: reply.provider, model: reply.modelId, usage: reply.usage });
 	const text = rewriteFromReply(reply.text);
 	return text ? { text, model: reply.model } : { error: `${reply.model} returned an empty rewrite` };
 }

@@ -75,6 +75,21 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 		return typeof ms === "number" && Number.isFinite(ms) && ms >= 0 ? ms : SETTINGS_DEFAULTS.retry.fallbackCooldownMs;
 	}
 
+	/** Appends `selector` to the global `retry.fallbackModels`, unless it is listed already. */
+	addRetryFallbackModel(selector: string): void {
+		this.globalSettings.retry ??= {};
+		const models = this.globalSettings.retry.fallbackModels ?? [];
+		if (models.includes(selector)) return;
+		this.globalSettings.retry.fallbackModels = [...models, selector];
+		this.markModified("retry", "fallbackModels");
+		this.save();
+	}
+
+	getRetryMaxUsageWaitMs(): number {
+		const ms = this.settings.retry?.maxUsageWaitMs;
+		return typeof ms === "number" && Number.isFinite(ms) && ms >= 0 ? ms : SETTINGS_DEFAULTS.retry.maxUsageWaitMs;
+	}
+
 	/** `toolExecution.earlyStart`: start read-only, approval-free tool calls while the message still streams. */
 	getToolExecutionEarlyStart(): boolean {
 		return this.settings.toolExecution?.earlyStart ?? SETTINGS_DEFAULTS.toolExecution.earlyStart;

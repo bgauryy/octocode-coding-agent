@@ -1,6 +1,6 @@
 ---
 name: octocode-subagents
-description: "Use before delegating, briefing, coordinating, merging or relaying for subagents, when running a multi-step workflow (stages, retries, checkpoints, rollback), or to design, review or evaluate an AI agent or LLM system."
+description: "Use to plan work across several children or stages (retries, checkpoints, rollback), or to design or evaluate an agent. Your first child task delivers it unasked."
 metadata:
   audience: coordinator
 ---

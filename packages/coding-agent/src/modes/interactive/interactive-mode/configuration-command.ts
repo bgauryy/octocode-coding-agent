@@ -11,7 +11,7 @@ import { type ConfigCatalog, createConfiguration } from "../../../configuration/
 import { theme } from "../../../theme/theme.ts";
 import { ConfigurationSelectorComponent } from "../components/configuration-selector.ts";
 import type { InteractiveModeHost } from "./host.ts";
-import { applyLiveSetting } from "./live-settings.ts";
+import { applyLiveSetting, isLiveSetting } from "./live-settings.ts";
 import { createLiveSettingsSelector } from "./settings-selector.ts";
 
 export type ConfigurationHost = Pick<
@@ -22,7 +22,6 @@ export type ConfigurationHost = Pick<
 	| "defaultEditor"
 	| "editor"
 	| "uiStore"
-	| "outputPad"
 	| "pendingMessagesContainer"
 	| "rebuildChatFromMessages"
 	| "renderer"
@@ -51,7 +50,8 @@ function sessionCatalog(host: ConfigurationHost): ConfigCatalog {
 		live: {
 			...(mcpSwitch ? { mcpSwitch } : {}),
 			...(events ? { mcpReload: () => requestMcpReload(events), mcpStatus: () => getMcpSessionStatus(events) } : {}),
-			applySetting: (key, value) => applyLiveSetting(host, key, value),
+			applySetting: (key) => applyLiveSetting(host, key),
+			appliesLive: isLiveSetting,
 			toolNames: () => host.session.getAllTools().map((tool) => tool.name),
 		},
 	});

@@ -1,20 +1,25 @@
 import { eastAsianWidth } from "get-east-asian-width";
 import { ansiCodeLength } from "./ansi-codes.ts";
 
-// segmenters (shared instance)
-export const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-const wordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
-
 /**
- * Get the shared grapheme segmenter instance.
+ * An `Intl.Segmenter` made on first use. The first segmenter a process makes loads ICU's break data (about 10 ms), so
+ * none is made while modules load; one shared instance per granularity serves every caller.
  */
+function lazySegmenter(granularity: "grapheme" | "word"): Intl.Segmenter {
+	let segmenter: Intl.Segmenter | undefined;
+	const get = (): Intl.Segmenter => (segmenter ??= new Intl.Segmenter(undefined, { granularity }));
+	return { segment: (input) => get().segment(input), resolvedOptions: () => get().resolvedOptions() };
+}
+
+export const graphemeSegmenter: Intl.Segmenter = lazySegmenter("grapheme");
+const wordSegmenter = lazySegmenter("word");
+
+/** The shared grapheme segmenter. */
 export function getGraphemeSegmenter(): Intl.Segmenter {
 	return graphemeSegmenter;
 }
 
-/**
- * Get the shared word segmenter instance.
- */
+/** The shared word segmenter. */
 export function getWordSegmenter(): Intl.Segmenter {
 	return wordSegmenter;
 }
@@ -46,7 +51,9 @@ const markCharRegex = /^\p{Mark}$/v;
 // This includes Unicode spacing marks and non-spacing exceptions in legacy wcwidth tables.
 const terminalSpacingMarkRegex =
 	/^(?:[\p{Spacing_Mark}--[\u1734\u302E\u302F]]|[\u065F\u0F7F\u102B\u102C\u1031\u1033-\u1035\u1038\u103A-\u103E])+$/v;
-const rgiEmojiRegex = /^\p{RGI_Emoji}$/v;
+// Made on first use, like the segmenters.
+let rgiEmojiRegex: RegExp | undefined;
+const isRgiEmoji = (segment: string): boolean => (rgiEmojiRegex ??= /^\p{RGI_Emoji}$/v).test(segment);
 
 /**
  * Widths of strings measured recently. A row is measured again by the passes that handle it one after the other
@@ -106,7 +113,7 @@ export function graphemeWidth(segment: string): number {
 	}
 
 	// Emoji check with pre-filter
-	if (couldBeEmoji(segment) && rgiEmojiRegex.test(segment)) {
+	if (couldBeEmoji(segment) && isRgiEmoji(segment)) {
 		return 2;
 	}
 
@@ -258,14 +265,50 @@ function asciiVisibleWidth(str: string): number {
 }
 
 /**
+ * Symbols and letters below U+3000 that are a grapheme of their own whatever text surrounds them (Grapheme_Cluster_Break
+ * Other: no mark, joiner, format or control character, Prepend or Hangul jamo among them): Latin-1 to IPA without the
+ * soft hyphen, Greek and Cyrillic without the combining marks, general punctuation without the zero-width, bidi and
+ * line-separator characters, and the symbol blocks from super- and subscripts through CJK radicals (arrows, box
+ * drawing, blocks, shapes, dingbats, braille). `test/width-standalone.test.ts` checks every one against the segmenter.
+ */
+const STANDALONE_RANGES: ReadonlyArray<readonly [number, number]> = [
+	[0x00a0, 0x00ac],
+	[0x00ae, 0x02ff],
+	[0x0370, 0x0482],
+	[0x048a, 0x052f],
+	[0x2010, 0x2027],
+	[0x2030, 0x205e],
+	[0x2070, 0x20cf],
+	[0x2100, 0x2bff],
+	[0x2e00, 0x2fff],
+];
+/** `standaloneWidth` of each code unit below U+3000 plus two (-1 for one that is not standalone), filled on first use; 0 is not yet known. */
+const standaloneWidths = new Int8Array(0x3000);
+
+function isStandaloneBelowCjk(code: number): boolean {
+	for (const [from, to] of STANDALONE_RANGES) {
+		if (code < from) return false;
+		if (code <= to) return true;
+	}
+	return false;
+}
+
+/**
  * Width of a code unit that is a grapheme of its own whatever text surrounds it, -1 for any other: printable ASCII,
- * and the CJK, kana, Hangul syllable and fullwidth characters, none of which is a mark, a joiner or a surrogate. Two such
- * characters in a row always have a grapheme break between them (no Prepend or CR among them), so text made of them
- * needs no segmenter, which costs most of the time of measuring and wrapping CJK text.
+ * `STANDALONE_RANGES`, and the CJK, kana, Hangul syllable and fullwidth characters, none of which is a mark, a joiner or
+ * a surrogate. Two such characters in a row always have a grapheme break between them (no Prepend or CR among them), so
+ * text made of them needs no segmenter, which costs most of the time of measuring and wrapping such text. A width is
+ * the one `graphemeWidth` gives the character alone, so it matches the segmenting path.
  */
 function standaloneWidth(code: number): number {
 	if (code >= 0x20 && code <= 0x7e) return 1;
-	if (code < 0x3000) return -1;
+	if (code < 0x3000) {
+		const known = standaloneWidths[code];
+		if (known !== 0) return known - 2;
+		const width = isStandaloneBelowCjk(code) ? graphemeWidth(String.fromCharCode(code)) : -1;
+		standaloneWidths[code] = width + 2;
+		return width;
+	}
 	// East Asian Width Wide or Fullwidth throughout.
 	if (
 		(code >= 0x4e00 && code <= 0x9fff) || // CJK unified ideographs

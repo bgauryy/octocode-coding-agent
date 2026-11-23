@@ -72,7 +72,8 @@ describe("backlog implementation controls", () => {
 		const view = live(<ItemImplementation item={ready({ goal: "" })} />);
 		await view.push();
 		expect(screen.getByRole("button", { name: "Implement B7" })).toBeDisabled();
-		expect(screen.getByText(/Add a goal and reason/)).toBeInTheDocument();
+		// The hint names where the goal is edited: the Actions menu's Edit (the "Edit / change status" button is gone).
+		expect(screen.getByText("Add a goal and reason (Actions → Edit) before implementing.")).toBeInTheDocument();
 		view.show(<ItemImplementation item={ready({ blockedBy: ["B2"] })} />);
 		expect(screen.getByText("Blocked by B2. Complete the dependencies first.")).toBeInTheDocument();
 		expect(screen.getByRole("button", { name: "Implement B7" })).toBeDisabled();

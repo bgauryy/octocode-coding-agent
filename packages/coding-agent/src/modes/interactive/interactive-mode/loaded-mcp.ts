@@ -3,7 +3,7 @@
 import { ELLIPSIS, GLYPH, SEPARATOR, type StateSource, type UiState } from "@octocodeai/octocode-tui";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
-import { getMcpSessionStatus, MCP_STATUS_EVENT } from "../../../../../mcp/src/api.ts";
+import { getMcpSessionStatus, MCP_STATUS_EVENT, mcpServerMayRun } from "../../../../../mcp/src/api.ts";
 import { getAgentDir, getLegacyConfigDirs } from "../../../config.ts";
 import { buildContextView, sourceSummary } from "../../../core/discovery/context-view.ts";
 import { STATE_COLOR } from "../../../theme/status.ts";
@@ -16,15 +16,10 @@ export function mcpRow(events: EventBus): LoadedRowSpec {
 		label: "MCP",
 		count: () => mcp.getState().length,
 		source: mcp,
-		state: () =>
-			mcp.getState().some(mcpFailed)
-				? "broken"
-				: mcp.getState().some((s) => s.enabled && s.state !== "unselected")
-					? "ready"
-					: "off",
+		state: () => (mcp.getState().some(mcpFailed) ? "broken" : mcp.getState().some(mcpCanStart) ? "ready" : "off"),
 		summary: () => {
-			const on = mcp.getState().filter((s) => s.enabled && s.state !== "unselected");
-			const off = mcp.getState().filter((s) => !s.enabled || s.state === "unselected");
+			const on = mcp.getState().filter(mcpCanStart);
+			const off = mcp.getState().filter((s) => !mcpCanStart(s));
 			return sanitizeTerminalText(
 				`${on.length} on (${on.map((s) => s.name).join(", ")})${off.length ? ` · ${off.length} off (${off.map((s) => s.name).join(", ")})` : ""} · /mcp`,
 			);
@@ -97,6 +92,9 @@ const MCP_STATE: Readonly<Record<string, UiState>> = {
 	closed: "stopped",
 };
 
+/** A server this session starts: switched on, approved by the security review (`mcpServerMayRun`) and selected. */
+const mcpCanStart = (server: McpStatus): boolean => mcpServerMayRun(server) && server.state !== "unselected";
+
 /** Wording as `/mcp` uses it (`describeState`). */
 const MCP_LABEL: Readonly<Record<string, string>> = {
 	unselected: "not selected",
@@ -107,8 +105,7 @@ const MCP_LABEL: Readonly<Record<string, string>> = {
 
 /** The collapsed row's entry: `name`, or `○ name disabled` / `✗ name failed` for a server that does not apply or failed. Connection state is in the details. */
 function mcpListed(server: McpStatus): string {
-	if (server.enabled && server.state !== "unselected" && !mcpFailed(server))
-		return theme.fg("muted", sanitizeTerminalText(server.name));
+	if (mcpCanStart(server) && !mcpFailed(server)) return theme.fg("muted", sanitizeTerminalText(server.name));
 	return mcpSummary(server);
 }
 

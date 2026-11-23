@@ -11,6 +11,8 @@
  * - Reset (0)
  */
 
+import { stripTerminalSequences } from "./ansi.ts";
+
 // Standard ANSI color palette (0-15)
 const ANSI_COLORS = [
 	"#000000", // 0: black
@@ -60,8 +62,12 @@ function color256ToHex(index: number): string {
 /**
  * Escape HTML special characters.
  */
+/**
+ * Text as HTML. Escape sequences other than SGR (handled by the caller) are dropped first: a row mark
+ * (`ESC _ … ESC \`), an OSC 8 link or a cursor code is not text, and escaping it would show its payload.
+ */
 function escapeHtml(text: string): string {
-	return text
+	return stripTerminalSequences(text)
 		.replace(/&/g, "&amp;")
 		.replace(/</g, "&lt;")
 		.replace(/>/g, "&gt;")

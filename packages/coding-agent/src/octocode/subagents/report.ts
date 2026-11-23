@@ -1,3 +1,4 @@
+import { withoutCredentialFix } from "../../core/agent-session/credential-error-context.ts";
 import { renderPrompt } from "../../core/prompt-template.ts";
 import { createHash } from "node:crypto";
 import path from "node:path";
@@ -25,6 +26,13 @@ import { isWaitingLine } from "./pending-waits.ts";
 import { type OutcomeSource, reportOutcome } from "./report-outcome.ts";
 
 const SEPARATOR = "\n\n---\n\n";
+
+/**
+ * A credential failure ends with a `Fix:` line for the person at the child's session (`aws sso login`, `/model`,
+ * `/providers`; `core/agent-session/credential-error-context.ts`). Its parent is a model that can run none of it: the
+ * failure it reads names the provider, and the parent's own advice (`failedNext`) says what to do.
+ */
+const withoutUserFix = withoutCredentialFix;
 const preview = (text: string) => capOutput(text, REPORT_MAX_BYTES, REPORT_MAX_LINES);
 
 /**
@@ -186,9 +194,11 @@ export class ReportTracker {
 		this.failure = failed
 			? redactSecrets(
 					visibleControls(
-						describeError(
-							errorMessage ??
-								(stopReason === "length" ? "Model output limit reached; the report is incomplete" : stopReason),
+						withoutUserFix(
+							describeError(
+								errorMessage ??
+									(stopReason === "length" ? "Model output limit reached; the report is incomplete" : stopReason),
+							),
 						),
 					),
 				)

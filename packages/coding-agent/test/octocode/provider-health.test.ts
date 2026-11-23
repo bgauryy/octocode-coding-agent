@@ -7,6 +7,9 @@ import {
 	ProviderHealth,
 } from "../../src/octocode/subagents/provider-health.ts";
 
+/** The workspace a check spends for: `checkProviders` files its request under it (`/usage`). */
+const WORKSPACE = "/work/repo";
+
 const model = (provider: string, id: string, input: number, output: number) =>
 	({ provider, id, cost: { input, output } }) as unknown as Model<Api>;
 
@@ -152,6 +155,8 @@ describe("provider health", () => {
 			registry,
 			[model("good", "a", 1, 1), model("expired", "b", 1, 1), model("broken", "c", 1, 1)],
 			health,
+			undefined,
+			WORKSPACE,
 		);
 		expect(health.get("good")).toMatchObject({ ok: true, via: "check" });
 		expect(describeHealth(health.get("expired"))).toContain("✗ credential refused (check");
@@ -184,7 +189,13 @@ describe("provider health", () => {
 				getProvider: (id: string) => ({ ...providers[id], getModels: () => [] }) as never,
 				getProviderAuth: async () => ({ auth: { apiKey: "key" }, source: "environment" }) as never,
 			};
-			await checkProviders(registry, [model("deepseek", "a", 1, 1), model("groq", "b", 1, 1)], health);
+			await checkProviders(
+				registry,
+				[model("deepseek", "a", 1, 1), model("groq", "b", 1, 1)],
+				health,
+				undefined,
+				WORKSPACE,
+			);
 			expect(streamSimple).toHaveBeenCalledTimes(1);
 			expect(streamSimple.mock.calls[0][0].provider).toBe("groq");
 			expect(health.get("deepseek")).toMatchObject({ ok: true, via: "list" });
@@ -222,7 +233,7 @@ describe("provider health", () => {
 				getProvider: () => ({ id: "deepseek", baseUrl: "https://api.deepseek.com", getModels: () => [] }) as never,
 				getProviderAuth: async () => ({ auth: { apiKey: "key" }, source: "environment" }) as never,
 			};
-			await checkProviders(registry, [model("deepseek", "a", 1, 1)], health);
+			await checkProviders(registry, [model("deepseek", "a", 1, 1)], health, undefined, WORKSPACE);
 			expect(health.get("deepseek")).toMatchObject({ ok: false, via: "run" });
 		} finally {
 			vi.unstubAllGlobals();
@@ -254,7 +265,7 @@ describe("provider health", () => {
 			model("key", "a", 1, 1),
 			model("key", "b", 2, 2),
 		];
-		await checkProviders(registry, checkCandidates(available, undefined), health);
+		await checkProviders(registry, checkCandidates(available, undefined), health, undefined, WORKSPACE);
 		// Providers run in parallel: compare the set, and the order within one provider.
 		expect([...tried].sort()).toEqual(["go/contributor", "go/open", "key/a"]);
 		expect(tried.indexOf("go/contributor")).toBeLessThan(tried.indexOf("go/open"));
@@ -274,7 +285,7 @@ describe("provider health", () => {
 			},
 		};
 		const available = ["a", "b", "c"].map((id, index) => model("busy", id, index + 1, 1));
-		await checkProviders(registry, checkCandidates(available, undefined), health);
+		await checkProviders(registry, checkCandidates(available, undefined), health, undefined, WORKSPACE);
 		expect(tried).toEqual(["a"]);
 		const line = describeHealth(health.get("busy"));
 		expect(line).toMatch(/⚠ rate limited \(check, .*\): .*429.* wait, then check again/);
@@ -297,9 +308,9 @@ describe("provider health", () => {
 					},
 				}) as never,
 		};
-		await expect(checkProviders(registry, [model("p", "m", 1, 1)], health, controller.signal)).rejects.toThrow(
-			"stopped",
-		);
+		await expect(
+			checkProviders(registry, [model("p", "m", 1, 1)], health, controller.signal, WORKSPACE),
+		).rejects.toThrow("stopped");
 		expect(health.get("p")).toBeUndefined();
 	});
 
@@ -317,7 +328,13 @@ describe("provider health", () => {
 				} as never;
 			},
 		};
-		await checkProviders(registry, [[model("gateway", "restricted", 1, 1), model("gateway", "allowed", 2, 2)]], health);
+		await checkProviders(
+			registry,
+			[[model("gateway", "restricted", 1, 1), model("gateway", "allowed", 2, 2)]],
+			health,
+			undefined,
+			WORKSPACE,
+		);
 		expect(tried).toEqual(["restricted", "allowed"]);
 		expect(health.get("gateway")).toMatchObject({ ok: true, via: "check" });
 		expect(health.refused("gateway", "allowed")).toBe(false);

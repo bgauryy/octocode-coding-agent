@@ -14,8 +14,9 @@ export const CONFIGURATION_FLAGS: readonly FlagSpec[] = [
 		arg: "<id>",
 		completion: "text",
 		help: [
-			"Enable a tool, MCP server, skill, harness or boolean setting for this run only (repeatable)",
+			"Enable a tool, skill, harness or boolean setting for this run only (repeatable)",
 			"An id is kind:name, e.g. tool:backlog; `octocode configuration list` shows them",
+			"mcp:<name> has no run form: --no-mcp runs without MCP; `octocode configuration` saves a switch",
 		],
 		apply: (a, v) => void (a.enable = push(a.enable, v!)),
 	},

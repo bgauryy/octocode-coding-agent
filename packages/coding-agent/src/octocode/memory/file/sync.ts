@@ -276,14 +276,11 @@ export async function syncDeletedMemory(
 	});
 }
 
-/** Notes read when matching file lines to notes; far more than a person keeps. */
-const MEMBER_SCAN = 500;
-
 /** The notes whose title is a line the prompt already carries (`keys`, normalized), so recall skips them. */
-export function fileMemberIds(store: Pick<MemoryStore, "list">, keys: ReadonlySet<string>): number[] {
+export function fileMemberIds(store: Pick<MemoryStore, "titles">, keys: ReadonlySet<string>): number[] {
 	if (keys.size === 0) return [];
 	return store
-		.list("all", MEMBER_SCAN)
+		.titles()
 		.filter((memory) => keys.has(normalizeTitle(memory.title)))
 		.map((memory) => memory.id);
 }

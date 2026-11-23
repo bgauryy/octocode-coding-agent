@@ -25,6 +25,7 @@ function setup() {
 		uiStore,
 		ui,
 		chatContainer,
+		pendingMessagesContainer: new Container(),
 		loadedResourcesContainer: new Container(),
 		customHeader: undefined,
 		builtInHeader: undefined,
@@ -37,7 +38,6 @@ function setup() {
 		session: {},
 		sessionManager: { getCwd: () => "/tmp" },
 		hiddenThinkingLabel: "Thinking…",
-		outputPad: 1,
 		streamingComponent: undefined,
 		getMarkdownThemeWithSettings: () => undefined,
 		getMarkdownTransformers: () => [],
@@ -219,6 +219,21 @@ describe("interactive view store", () => {
 		const text = rows(chatContainer).join("\n");
 		expect(text).toContain("first");
 		expect(text).toContain("second");
+	});
+
+	it("pads the live rows of the transcript and the pending area once per real change of the pad", () => {
+		const { host, uiStore, requestRender, chatContainer } = setup();
+		const row = { setOutputPad: vi.fn(), render: () => [], invalidate: () => {} };
+		const pending = { setOutputPad: vi.fn(), render: () => [], invalidate: () => {} };
+		chatContainer.addChild(row);
+		host.pendingMessagesContainer.addChild(pending);
+
+		uiStore.getState().setOutputPad(0);
+		uiStore.getState().setOutputPad(0);
+
+		expect(row.setOutputPad).toHaveBeenCalledExactlyOnceWith(0);
+		expect(pending.setOutputPad).toHaveBeenCalledExactlyOnceWith(0);
+		expect(requestRender).toHaveBeenCalledTimes(1);
 	});
 
 	it("stops following the store after unbind", () => {

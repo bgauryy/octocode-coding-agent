@@ -1,5 +1,6 @@
 import { fuzzyFilter } from "../fuzzy.ts";
 import { getKeybindings } from "../keybindings.ts";
+import { formatKeyText } from "../keys/display.ts";
 import type { Component, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
 import { wrapTextWithAnsi } from "../utils/wrap.ts";
 import { visibleWidth } from "../utils/width.ts";
@@ -330,9 +331,9 @@ export class SettingsList implements Component {
 		const [up] = kb.getKeys("tui.select.up");
 		const [down] = kb.getKeys("tui.select.down");
 		if (up && down) hints.unshift(`${arrowKey(up)}/${arrowKey(down)} move`);
-		if (changeKeys.length > 0) hints.push(`${[...new Set(changeKeys)].join("/")} change`);
+		if (changeKeys.length > 0) hints.push(`${formatKeyText([...new Set(changeKeys)].join("/"))} change`);
 		const cancelKeys = kb.getKeys("tui.select.cancel");
-		if (cancelKeys.length > 0) hints.push(`${cancelKeys.join("/")} cancel`);
+		if (cancelKeys.length > 0) hints.push(`${formatKeyText(cancelKeys.join("/"))} cancel`);
 		const padding = width > 2 ? "  " : "";
 		for (const line of wrapTextWithAnsi(hints.join(" · "), Math.max(1, width - padding.length))) {
 			lines.push(truncateToWidth(this.theme.hint(padding + line), width, ""));

@@ -123,9 +123,56 @@ export function isLoopbackIp(ip: string): boolean {
 	);
 }
 
-/** Cloud instance metadata addresses: a request there returns the machine's credentials to whoever asked. AWS, GCP and Azure IMDS, Azure WireServer, AWS ECS task credentials, Alibaba Cloud and Oracle Cloud. */
-const METADATA_ADDRESSES = ["169.254.169.254", "168.63.129.16", "169.254.170.2", "100.100.100.200", "192.0.0.192"];
-const METADATA_V6 = expandIpv6("fd00:ec2::254")!;
+/**
+ * Cloud instance metadata addresses: a request there returns the machine's credentials to whoever asked. AWS, GCP and
+ * Azure IMDS, Azure WireServer, AWS ECS task credentials and EKS Pod Identity, Alibaba Cloud and Oracle Cloud. Kept in
+ * step with the command sandbox library's list (`CLOUD_METADATA_ADDRESSES` in its resolved-address guard).
+ */
+const METADATA_ADDRESSES = [
+	"169.254.169.254",
+	"168.63.129.16",
+	"169.254.170.2",
+	"169.254.170.23",
+	"100.100.100.200",
+	"192.0.0.192",
+];
+/**
+ * The IPv6 ones, as `[address, prefix bits]`: AWS's service block (IMDS `::254`, EKS Pod Identity `::23`, its DNS and NTP),
+ * Google Cloud, Oracle Cloud, Scaleway, Akamai (Linode) and Alibaba Cloud.
+ */
+const METADATA_V6: ReadonlyArray<readonly [number[], number]> = (
+	[
+		["fd00:ec2::", 32],
+		["fd20:ce::254", 128],
+		["fd00:c1::a9fe:a9fe", 128],
+		["fd00:42::42", 128],
+		["fd00:a9fe:a9fe::1", 128],
+		["fd00:100::100:200", 128],
+	] as const
+).map(([address, bits]) => [expandIpv6(address)!, bits] as const);
+
+/** Whether the first `bits` of the address `groups` equal `base`'s. */
+function inV6(groups: number[], base: number[], bits: number): boolean {
+	return groups.every((group, at) => {
+		const left = Math.max(0, Math.min(16, bits - at * 16));
+		const mask = left === 0 ? 0 : (0xffff << (16 - left)) & 0xffff;
+		return (group & mask) === (base[at] & mask);
+	});
+}
+
+/**
+ * The non-public ranges a hostname may resolve to on an ordinary network, as CIDR text: every IPv4 block above except
+ * "this network", loopback, link-local and multicast (which a resolver check refuses on its own), the IPv6 unique-local
+ * (fc00::/7) and deprecated site-local (fec0::/10) ranges. For a check that denies by range, such as the command
+ * sandbox's proxy refusing a public name that resolves privately.
+ */
+export const PRIVATE_NETWORK_RANGES: readonly string[] = [
+	...V4_BLOCKS.filter(([base]) => !["0.0.0.0", "127.0.0.0", "169.254.0.0", "224.0.0.0"].includes(base)).map(
+		([base, bits]) => `${base}/${bits}`,
+	),
+	"fc00::/7",
+	"fec0::/10",
+];
 
 /** Whether `ip` is a cloud metadata address, also spelled inside an IPv6 address (`::ffff:169.254.169.254`). */
 export function isMetadataIp(ip: string): boolean {
@@ -135,5 +182,5 @@ export function isMetadataIp(ip: string): boolean {
 	if (version !== 6) return false;
 	const groups = expandIpv6(bare);
 	if (groups === null) return false;
-	return groups.every((group, at) => group === METADATA_V6[at]) || embeddedIpv4(groups).some(isMetadataIp);
+	return METADATA_V6.some(([base, bits]) => inV6(groups, base, bits)) || embeddedIpv4(groups).some(isMetadataIp);
 }

@@ -194,18 +194,14 @@ describe("skills in /harness", () => {
 	});
 
 	it.skipIf(!fs.existsSync(path.join(getOctocodeSkillsDir() ?? "", "octocode-debugging", "SKILL.md")))(
-		"say the core skill wins over the Octocode collection's copy of the same name",
+		"list only the core skill where the Octocode collection ships a copy of the same name",
 		async () => {
 			const f = fixture();
 			const { rows } = await skillRows(f);
+			// Both ship with Octocode and the core one always wins: the collection copy is not offered, so no row says it lost.
 			const copies = rows.filter((item) => item.label === "octocode-debugging");
-			expect(copies).toHaveLength(2);
-			const collectionCopy = copies.find((item) => item.detail.includes("Octocode (collection)"));
-			expect(collectionCopy).toMatchObject({
-				on: true,
-				detail: expect.stringMatching(/^not loaded: Octocode \(core\) wins · Octocode \(collection\)/),
-			});
-			expect(copies.find((item) => item !== collectionCopy)?.detail).toMatch(/^Octocode \(core\)/);
+			expect(copies).toHaveLength(1);
+			expect(copies[0]).toMatchObject({ on: true, detail: expect.stringMatching(/^Octocode \(core\)/) });
 		},
 	);
 

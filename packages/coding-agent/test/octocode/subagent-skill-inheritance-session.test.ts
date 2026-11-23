@@ -349,7 +349,8 @@ it("declares the mcp tool to a real child, so it can restart its own servers", a
 		expect(declared).toContain("mcp");
 		// The child adopted the parent's skills, so it can load one by name.
 		expect(declared).toContain("skill");
-		expect(childSkillList(f.requests[0])).toContain("Load skills, several per call");
+		// Behavior, not the tool description's wording: the parent's accepted skill is in the child's skill tool.
+		expect(childSkillList(f.requests[0])).toContain("Model-only accepted resource");
 	} finally {
 		await f.close();
 	}

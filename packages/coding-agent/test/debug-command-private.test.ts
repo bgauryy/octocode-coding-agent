@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ENV_AGENT_DIR, getDebugLogPath } from "../src/config.ts";
 import { handleDebugCommand } from "../src/modes/interactive/interactive-mode/info-commands.ts";
 import { initTheme } from "../src/theme/theme.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
 const SECRET = "sk-ant-api03-" + "A".repeat(40);
 
@@ -18,7 +19,7 @@ function host(): Parameters<typeof handleDebugCommand>[0] {
 		},
 		session: { messages: [{ role: "user", content: `my key is ${SECRET}`, timestamp: 0 }] },
 		chatContainer: { addChild: (child: unknown) => children.push(child) },
-		outputPad: 1,
+		uiStore: createUiStore(),
 	} as unknown as Parameters<typeof handleDebugCommand>[0];
 }
 

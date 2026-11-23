@@ -91,6 +91,16 @@ describe("ConfigView Harness panel", () => {
 		expect(screen.getByRole("status")).toHaveTextContent("Harness claude enabled. Run /reload to apply.");
 	});
 
+	it("shows a held-back server's state in place of On, and its switch still turns it off", async () => {
+		const held = "not checked: off until you approve it in /security";
+		const rows = list.rows.map((row) => (row.id === "mcp:docs" ? { ...row, state: held } : row));
+		render(<HarnessPanel api={{ list: vi.fn(async () => ({ rows })), set: vi.fn() }} reloadKey="1" />);
+		const servers = await screen.findByRole("list", { name: "MCP servers" });
+		expect(within(servers).getByText(held)).toBeInTheDocument();
+		expect(within(servers).queryByText("On")).toBeNull();
+		expect(within(servers).getByRole("button", { name: "Turn off docs" })).toBeInTheDocument();
+	});
+
 	it("shows the host's refusal beside the row and filters by name", async () => {
 		const api = harnessApi(async () => {
 			throw new Error("The global settings file is invalid, so it was not changed.");

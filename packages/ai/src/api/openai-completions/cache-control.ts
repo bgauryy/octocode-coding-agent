@@ -72,7 +72,9 @@ export function getCompatCacheControl(
 
 /**
  * Marks the leading instructions and last tool with `instructionCacheControl` and the last
- * conversation message with `cacheControl`. Either may be undefined to skip that layer. A second history breakpoint
+ * conversation message with `cacheControl`, and returns whether every marker placed was a 1h marker: the endpoint reports
+ * one write count with no split by lifetime, so that is when the write is billed at the 1h rate (`parseChunkUsage`).
+ * Either control may be undefined to skip that layer. A second history breakpoint
  * on the previous request's tail uses the free slot, so a long assistant turn cannot push the last cache write out of
  * the 20-block lookback window.
  *
@@ -92,7 +94,11 @@ export function applyAnthropicCacheControl(
 	instructionCacheControl: OpenAICompatCacheControl | undefined,
 	splitSystem?: InstructionBlocks,
 	toolCacheBoundary?: string,
-): void {
+): boolean {
+	const ttls = new Set<string>();
+	const placed = (control: OpenAICompatCacheControl, marked: boolean) => {
+		if (marked) ttls.add(control.ttl ?? "5m");
+	};
 	if (instructionCacheControl) {
 		const sharedEnd = toolCacheBoundary
 			? Math.max(
@@ -101,44 +107,57 @@ export function applyAnthropicCacheControl(
 				)
 			: 0;
 		const sharedTool = sharedEnd > 0 ? tools?.[sharedEnd - 1] : undefined;
-		const split =
-			splitSystem && addSplitCacheControlToSystemPrompt(messages, splitSystem, instructionCacheControl, !!sharedTool);
-		if (!split) addCacheControlToSystemPrompt(messages, instructionCacheControl);
-		if (sharedTool) markTool(sharedTool, instructionCacheControl);
-		else if (!split || keepsToolBreakpoint(splitSystem)) addCacheControlToLastTool(tools, instructionCacheControl);
+		const splitMarks = splitSystem
+			? addSplitCacheControlToSystemPrompt(messages, splitSystem, instructionCacheControl, !!sharedTool)
+			: undefined;
+		const split = splitMarks !== undefined;
+		placed(
+			instructionCacheControl,
+			split ? splitMarks > 0 : addCacheControlToSystemPrompt(messages, instructionCacheControl),
+		);
+		if (sharedTool) placed(instructionCacheControl, markTool(sharedTool, instructionCacheControl));
+		else if (!split || keepsToolBreakpoint(splitSystem))
+			placed(instructionCacheControl, addCacheControlToLastTool(tools, instructionCacheControl));
 	}
 	if (cacheControl) {
-		addCacheControlToLastConversationMessage(messages, cacheControl);
-		addHistoryLookbackBreakpoint(messages, cacheControl, countCacheBreakpoints([messages, tools]));
+		placed(cacheControl, addCacheControlToLastConversationMessage(messages, cacheControl));
+		placed(
+			cacheControl,
+			addHistoryLookbackBreakpoint(messages, cacheControl, countCacheBreakpoints([messages, tools])),
+		);
 	}
+	return ttls.size === 1 && ttls.has("1h");
 }
 
 /**
- * Marks the user or tool-result message that precedes the final assistant turn, the previous request's tail.
- * Does nothing without a free slot, without a conversation breakpoint to anchor on, or when the previous tail cannot
- * carry a marker.
+ * Marks the user or tool-result message that precedes the final assistant turn, the previous request's tail, and says
+ * whether it did. Does nothing without a free slot, without a conversation breakpoint to anchor on, or when the
+ * previous tail cannot carry a marker.
  */
 function addHistoryLookbackBreakpoint(
 	messages: ChatCompletionMessageParam[],
 	cacheControl: OpenAICompatCacheControl,
 	usedBreakpoints: number,
-): void {
-	if (usedBreakpoints >= MAX_CACHE_BREAKPOINTS) return;
+): boolean {
+	if (usedBreakpoints >= MAX_CACHE_BREAKPOINTS) return false;
 	const tailIndex = findPreviousTailIndex(messages);
-	if (tailIndex < 0) return;
+	if (tailIndex < 0) return false;
 	const message = messages[tailIndex];
-	if (message.role === "user" || message.role === "tool") addCacheControlToMessage(message, cacheControl);
+	return (message.role === "user" || message.role === "tool") && addCacheControlToMessage(message, cacheControl);
 }
 
-/** `sharedTools`: a shared-tool marker takes the base block's slot when there are two cached blocks. */
+/**
+ * The markers placed on the leading prompt split into its blocks, or undefined when it is not the blocks joined (it then
+ * stays one block). `sharedTools`: a shared-tool marker takes the base block's slot when there are two cached blocks.
+ */
 function addSplitCacheControlToSystemPrompt(
 	messages: ChatCompletionMessageParam[],
 	blocks: InstructionBlocks,
 	cacheControl: OpenAICompatCacheControl,
 	sharedTools: boolean,
-): boolean {
+): number | undefined {
 	const message = messages.find((candidate) => candidate.role === "system" || candidate.role === "developer");
-	if (!message || message.content !== instructionBlockTexts(blocks).join("")) return false;
+	if (!message || message.content !== instructionBlockTexts(blocks).join("")) return undefined;
 	const skipBase = sharedTools && blocks.cached.length > 1;
 	message.content = [
 		...blocks.cached.map((text, index) =>
@@ -146,48 +165,46 @@ function addSplitCacheControlToSystemPrompt(
 		),
 		...(blocks.volatile === undefined ? [] : [{ type: "text", text: blocks.volatile }]),
 	] as ChatCompletionTextPartWithCacheControl[];
-	return true;
+	return skipBase ? blocks.cached.length - 1 : blocks.cached.length;
 }
 
 function addCacheControlToSystemPrompt(
 	messages: ChatCompletionMessageParam[],
 	cacheControl: OpenAICompatCacheControl,
-): void {
-	for (const message of messages) {
-		if (message.role === "system" || message.role === "developer") {
-			addCacheControlToInstructionMessage(message, cacheControl);
-			return;
-		}
-	}
+): boolean {
+	const message = messages.find((candidate) => candidate.role === "system" || candidate.role === "developer");
+	return !!message && addCacheControlToInstructionMessage(message, cacheControl);
 }
 
 function addCacheControlToLastConversationMessage(
 	messages: ChatCompletionMessageParam[],
 	cacheControl: OpenAICompatCacheControl,
-): void {
+): boolean {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];
 		if (message.role === "user" || message.role === "assistant" || message.role === "tool") {
 			if (addCacheControlToMessage(message, cacheControl)) {
-				return;
+				return true;
 			}
 		}
 	}
+	return false;
 }
 
 function addCacheControlToLastTool(
 	tools: ChatCompletionTool[] | undefined,
 	cacheControl: OpenAICompatCacheControl,
-): void {
+): boolean {
 	if (!tools || tools.length === 0) {
-		return;
+		return false;
 	}
 
-	markTool(tools[tools.length - 1], cacheControl);
+	return markTool(tools[tools.length - 1], cacheControl);
 }
 
-function markTool(tool: ChatCompletionTool, cacheControl: OpenAICompatCacheControl): void {
+function markTool(tool: ChatCompletionTool, cacheControl: OpenAICompatCacheControl): true {
 	(tool as ChatCompletionToolWithCacheControl).cache_control = cacheControl;
+	return true;
 }
 
 function toolName(tool: ChatCompletionTool): string {

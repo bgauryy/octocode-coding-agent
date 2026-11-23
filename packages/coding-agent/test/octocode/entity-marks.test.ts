@@ -7,7 +7,7 @@ import { ENTITY, entityOfRole } from "../../src/octocode/shared/entity.ts";
 import { widgetLines } from "../../src/octocode/team/panel.ts";
 import { theme } from "./fake-host.ts";
 
-// Reduced motion pins a running light to its first frame, ◒.
+// Reduced motion draws a running light as a full ⏺: an animation or a state, never a half-filled circle held still.
 beforeEach(() => animationClock.setReducedMotion(true));
 afterEach(() => animationClock.setReducedMotion(false));
 
@@ -83,7 +83,7 @@ describe("entity marks", () => {
 		const wide = widgetLines(team, "main-aaaaaa", NOW, theme, 120);
 		expect(wide[0].startsWith(` ${ENTITY.main} main-aaaaaa`)).toBe(true);
 		expect(wide[0]).not.toMatch(/main-aaaaaa +main\b/);
-		expect(wide[1]).toMatch(/^ └ ◒ busy-aaaa +· /);
+		expect(wide[1]).toMatch(/^ └ ⏺ busy-aaaa +· /);
 		for (const width of [200, 120, 119, 80, 40]) {
 			const lines = widgetLines(team, "main-aaaaaa", NOW, theme, width);
 			expect(lines[0]).toContain(ENTITY.main);

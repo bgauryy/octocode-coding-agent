@@ -13,7 +13,7 @@ import {
 	type PermissionMode,
 } from "../mode.ts";
 import type { PermissionRequest } from "../request.ts";
-import { publishChip } from "../chip-store.ts";
+import { chipOf, publishChip } from "../chip-store.ts";
 import type { Snapshot } from "../snapshot.ts";
 import type { ActionEvent, Decided } from "./types.ts";
 
@@ -151,7 +151,7 @@ export class PermissionTrail {
 	}
 
 	typed(command: string, cwd: string): void {
-		this.record({ action: "shell", what: auditLines([command, `cwd: ${cwd}`]), allowed: true, via: "typed" });
+		this.record({ action: "shell", what: auditLines([command, `cwd: ${cwd}`]), allowed: true, via: "typed" }, false);
 	}
 
 	paint(ctx: Pick<FeatureContext, "hasUI" | "ui" | "mode">): undefined {
@@ -160,26 +160,29 @@ export class PermissionTrail {
 		const mode = this.#chipMode();
 		const chip = CHIPS[mode];
 		ctx.ui.setStatus(PERMISSION_ID, chipText(mode, this.#log.count), chip.color);
-		publishChip(chipParts(mode, this.#log.count));
+		publishChip(chipOf(this.#api), chipParts(mode, this.#log.count));
 		return undefined;
 	}
 
 	decided(request: PermissionRequest, verdict: Decided, note?: string, snapshot?: Snapshot): Decided {
 		const reasons = [...new Set(request.reasons)];
 		const action = request.action ?? "call";
-		this.record({
-			action,
-			...(reasons.length > 0 ? { reasons } : {}),
-			...(request.askedAt === undefined ? {} : { askedAt: request.askedAt }),
-			what: auditLines(request.what),
-			...(request.purpose ? { purpose: auditLine(request.purpose) } : {}),
-			...(request.reasonDerived ? { reasonDerived: true } : {}),
-			allowed: verdict.allowed,
-			via: verdict.via,
-			// Gate-made parts (a replaced input, applied updates) or a hook's denial message: each part clipped, as `what` is.
-			...(note ? { note: auditLines(note.split("\n")).join("⏎") } : {}),
-			...(snapshot && "ref" in snapshot ? { snapshot: snapshot.ref } : {}),
-		});
+		this.record(
+			{
+				action,
+				...(reasons.length > 0 ? { reasons } : {}),
+				...(request.askedAt === undefined ? {} : { askedAt: request.askedAt }),
+				what: auditLines(request.what),
+				...(request.purpose ? { purpose: auditLine(request.purpose) } : {}),
+				...(request.reasonDerived ? { reasonDerived: true } : {}),
+				allowed: verdict.allowed,
+				via: verdict.via,
+				// Gate-made parts (a replaced input, applied updates) or a hook's denial message: each part clipped, as `what` is.
+				...(note ? { note: auditLines(note.split("\n")).join("⏎") } : {}),
+				...(snapshot && "ref" in snapshot ? { snapshot: snapshot.ref } : {}),
+			},
+			!request.byUser,
+		);
 		if (verdict.allowed) {
 			const event: ActionEvent = {
 				action,
@@ -219,13 +222,14 @@ export class PermissionTrail {
 		});
 	}
 
-	record(entry: Omit<AuditEntry, "at" | "mode" | "agent">): void {
-		this.write({ at: Date.now(), mode: this.#mode(), agent: this.#agent(), ...entry });
+	/** `agentRan` false: the user's own command, recorded but not counted as what the mode ran (`AuditLog.count`). */
+	record(entry: Omit<AuditEntry, "at" | "mode" | "agent">, agentRan = true): void {
+		this.write({ at: Date.now(), mode: this.#mode(), agent: this.#agent(), ...entry }, agentRan);
 	}
 
-	write(entry: AuditEntry): void {
+	write(entry: AuditEntry, agentRan = true): void {
 		const before = this.#log.count;
-		this.#log.record(entry);
+		this.#log.record(entry, agentRan);
 		if (this.#log.count !== before && this.#paintCtx) {
 			try {
 				this.paint(this.#paintCtx);

@@ -22,6 +22,7 @@ export function createRunnerBindings(cwd: string): RunnerBindings {
 		isMessageQueuedFn: () => false,
 		replaceQueuedMessageFn: () => false,
 		getContextUsageFn: () => undefined,
+		getCacheWarmingReportFn: () => [],
 		compactFn: () => {},
 		getSystemPromptFn: () => "",
 		getSystemPromptOptionsFn: () => normalizeBuildSystemPromptOptions({ cwd }),
@@ -85,6 +86,7 @@ export function bindRunnerCore(
 	host.bindings.replaceQueuedMessageFn = contextActions.replaceQueuedMessage ?? (() => false);
 	host.bindings.shutdownHandler = contextActions.shutdown;
 	host.bindings.getContextUsageFn = contextActions.getContextUsage;
+	host.bindings.getCacheWarmingReportFn = contextActions.getCacheWarmingReport ?? (() => []);
 	host.bindings.compactFn = contextActions.compact;
 	host.bindings.getSystemPromptFn = contextActions.getSystemPrompt;
 	host.bindings.getSystemPromptOptionsFn =

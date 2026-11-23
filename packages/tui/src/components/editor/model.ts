@@ -63,6 +63,8 @@ export class EditorModel implements EditorAutocompleteHost {
 	history: HistoryEntry[] = [];
 	historyIndex: number = -1; // -1 = not browsing, 0 = most recent, 1 = older, etc.
 	historyDraft: EditorSnapshot | null = null;
+	/** Where a history recall left the cursor: while it stays there, Up and Down keep browsing entries. */
+	historyRecallCursor: { line: number; col: number } | null = null;
 
 	/**
 	 * The draft the last submit cleared (markers, cursor, undo) with the text it sent, kept until the editor is edited
@@ -129,6 +131,7 @@ export class EditorModel implements EditorAutocompleteHost {
 	exitHistoryBrowsing(): void {
 		this.historyIndex = -1;
 		this.historyDraft = null;
+		this.historyRecallCursor = null;
 	}
 
 	/** Internal setText that doesn't reset history state - used by navigateHistory */

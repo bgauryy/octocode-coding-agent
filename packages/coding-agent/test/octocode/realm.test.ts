@@ -7,6 +7,8 @@ import type { CommandContext } from "../../src/core/features/index.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../src/core/slash-commands.ts";
 import { realmCommand } from "../../src/octocode/realm/command.ts";
 import { buildRealms, findRealm, type RealmFolder, type RealmSession } from "../../src/octocode/realm/model.ts";
+import { realmSession } from "../../src/octocode/realm/sessions.ts";
+import type { SessionExtra } from "../../src/octocode/sessions/store.ts";
 import { worktreesDir } from "../../src/octocode/worktree-paths/own-worktree.ts";
 import { GIT_TEST_ENV, makeRepo, sh, type TestRepo } from "./worktree-fixture.ts";
 
@@ -133,7 +135,7 @@ describe("/realm listing", () => {
 		expect(text).toContain("/somewhere/else");
 		// The legend names only the badge states shown.
 		expect(text).toContain("✓ ready  ✗ broken");
-		expect(text).not.toContain("○ off");
+		expect(text).not.toContain("∅ off");
 	});
 
 	it("prints text without a UI and opens no picker", async () => {
@@ -375,5 +377,45 @@ describe("/realm switch and resume", () => {
 		const { ctx } = contextAt(repo.root);
 		await realmCommand(deps()).handler("main destroy", ctx);
 		expect(output()).toBe("Usage: /realm [<name> [switch|resume]]");
+	});
+});
+
+describe("each live session's activity light in /realm", () => {
+	const deps = (sessions: RealmSession[]) => ({ members: () => [], sessions: async () => sessions, now: () => NOW });
+	const extra = (fields: Partial<SessionExtra>): SessionExtra => ({
+		id: "s",
+		workspace_id: null,
+		branch: null,
+		head: null,
+		cost: 0,
+		tokens: 0,
+		files_changed: 0,
+		pid: null,
+		pid_started: null,
+		unpriced: 0,
+		dir: null,
+		activity: null,
+		...fields,
+	});
+	const info = { id: "s-hot-1", name: "fix", cwd: "", modified: new Date(NOW - 5 * 60_000), path: "/s/s-hot-1.jsonl" };
+
+	it("reads the light another live process wrote, never this session's own or a gone process's", () => {
+		const live = extra({ pid: process.pid, activity: "waiting" });
+		expect(realmSession(info, live, "cur", "/w")).toMatchObject({ live: true, activity: "waiting", cwd: "/w" });
+		expect(realmSession({ ...info, id: "cur" }, live, "cur", "/w")).not.toHaveProperty("activity");
+		const gone = realmSession(info, extra({ pid: 2147483646, activity: "waiting" }), "cur", "/w");
+		expect(gone).toMatchObject({ live: false });
+		expect(gone).not.toHaveProperty("activity");
+	});
+
+	it("shows it beside the live mark in the realm page and in the resume list", async () => {
+		addWorktree("hotfix");
+		const sessions = [session("s-hot-1", worktreeFolder("hotfix"), { live: true, name: "fix", activity: "waiting" })];
+		const page = contextAt(repo.root);
+		await realmCommand(deps(sessions)).handler("hotfix", page.ctx);
+		expect(output()).toContain("live (needs you) fix · 5m ago");
+		const { ctx } = contextAt(repo.root);
+		await realmCommand(deps(sessions)).handler("hotfix resume", ctx);
+		expect(stderr).toContain("  live (needs you)  fix · s-hot-1");
 	});
 });

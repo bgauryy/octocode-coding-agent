@@ -38,19 +38,20 @@ afterEach(() => {
 describe("completion gate and git", () => {
 	const linked = { links: [{ relation: "output", target: "refs/octocode/abc" }], ref: "B1" } as never;
 
-	it("refuses completion, naming git, when git cannot answer instead of treating the ref as absent", () => {
+	// `checkMerged` is asynchronous (contract change): git runs before the write, outside its database transaction.
+	it("refuses completion, naming git, when git cannot answer instead of treating the ref as absent", async () => {
 		vi.stubEnv("PATH", path.join(dir, "empty"));
-		expect(() => checkMerged({ repoRoot: dir }, linked)).toThrow(/git could not check/);
+		await expect(checkMerged({ repoRoot: dir }, linked)).rejects.toThrow(/git could not check/);
 	});
 
-	it("treats a ref git reports missing as merged or discarded", () => {
+	it("treats a ref git reports missing as merged or discarded", async () => {
 		const repo = path.join(dir, "repo");
 		fs.mkdirSync(repo);
-		expect(() => checkMerged({ repoRoot: repo }, linked)).toThrow(/git could not check/);
+		await expect(checkMerged({ repoRoot: repo }, linked)).rejects.toThrow(/git could not check/);
 		// A repository where the ref is simply absent lets the item complete.
 		fs.writeFileSync(path.join(repo, ".gitkeep"), "");
 		execFileSync("git", ["init", "-q", repo]);
-		expect(() => checkMerged({ repoRoot: repo }, linked)).not.toThrow();
+		await expect(checkMerged({ repoRoot: repo }, linked)).resolves.toEqual(["refs/octocode/abc"]);
 	});
 });
 

@@ -4,6 +4,7 @@ import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "@octocodeai/octocode-commo
 import { historyWindows } from "../../storage/retention.ts";
 import { registeredWorkspace, registeredWorkspaceWhenReady } from "../../storage/workspace-database.ts";
 import { sessionWorkspace } from "../shared/home/workspace.ts";
+import { type ReceiptLookup, receiptLookup } from "./receipts.ts";
 import { type Actor, BacklogStore } from "./store.ts";
 import { type AgentDb, type WorkspaceIdentity, scheduleHistoryArchive } from "../../../../db/src/api.ts";
 
@@ -22,6 +23,8 @@ export interface Backlog {
 	repoName: string;
 	/** The checkout root whose `.octocode/` report folders the workspace board may serve. */
 	repoRoot: string;
+	/** Finds a shell receipt of this session by id; absent where no session ran the check (a `completion.receipt` is then refused). */
+	receipts?: ReceiptLookup;
 }
 
 /** A workspace owns its board. A child delegated an item works on the board that issued it. */
@@ -55,6 +58,7 @@ function backlogContext(
 	const env = options.env ?? process.env;
 	const store = new BacklogStore(() => agent, workspace.id);
 	const session = ctx.sessionManager.getSessionId();
+	const receipts = receiptLookup(() => ctx.sessionManager.getBranch());
 	if (!options.isSubagent) {
 		// Daily history housekeeping (the parent session runs it; its subagents share the database).
 		scheduleHistoryArchive(
@@ -67,6 +71,7 @@ function backlogContext(
 			session,
 			repoName: workspace.name,
 			repoRoot: workspace.root,
+			receipts,
 		};
 	}
 	const id = options.agentId?.() || session;
@@ -78,7 +83,7 @@ function backlogContext(
 		);
 	const item = env[BACKLOG_ITEM_ENV];
 	const actor: Actor = { id, surface: "tool", owners: new Set([parent]), ...(item ? { item } : {}) };
-	return { store, actor, session, repoName: workspace.name, repoRoot: workspace.root };
+	return { store, actor, session, repoName: workspace.name, repoRoot: workspace.root, receipts };
 }
 
 /** The user acting from `/backlog`: the session's actor as a human, recorded in the audit with the command surface. */

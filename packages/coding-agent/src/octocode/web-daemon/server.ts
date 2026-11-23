@@ -45,6 +45,8 @@ export interface DaemonServerOptions {
 	page?: DaemonPage;
 	/** Called on each sign of use (a tab, an attached session, an authenticated request) so the idle timer restarts. */
 	onActivity: () => void;
+	/** The idle limit the caller enforces, reported in the authenticated health answer so `/web` can say it. */
+	idleMinutes?: number;
 	/** Builds the configuration answer for `GET /api/config`; the caller validates its shape. */
 	config: ConfigRoutes["config"];
 	/** Checks whether a complete running MCP registry is available before showing the add form. */
@@ -186,6 +188,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 		tabs: tabs.count,
 		sessions: registry.attached,
 		draining: state.draining,
+		...(options.idleMinutes ? { idleMinutes: options.idleMinutes } : {}),
 	});
 
 	// The page's own script and the Mermaid text its docs view runs inline; the rest of the policy is the page's own.

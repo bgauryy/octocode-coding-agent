@@ -1,5 +1,4 @@
 import { stripBom } from "@octocodeai/octocode-common/text";
-import { FileSettingsStorage } from "../core/settings-manager/storage.ts";
 import type { Settings } from "../core/settings-schema.ts";
 import type { ConfigContext } from "./types.ts";
 
@@ -24,9 +23,9 @@ export function nestPath(key: string, value: unknown): Partial<Settings> {
 }
 
 /**
- * Write one dotted key of a scope's settings file, keeping every other key, then reload the manager so the change is
- * read back. The manager has no generic keyed setter, and this uses the storage class it persists through (same file, same
- * lock, same atomic write). `undefined` removes the key and any section left empty. Throws when the file does not parse.
+ * Write one dotted key of a scope's settings file, keeping every other key, through the manager's own storage
+ * (`rewriteScope`: same file, lock and atomic write; memory for an in-memory manager), which then reloads, so the change
+ * is read back. `undefined` removes the key and any section left empty. Throws when the file does not parse.
  */
 export async function writeSettingsKey(
 	ctx: ConfigContext,
@@ -47,10 +46,8 @@ export async function updateSettingsKey(
 	key: string,
 	compute: (current: unknown) => unknown,
 ): Promise<void> {
-	// Writes the manager queued come first, so this one does not overwrite them with a stale snapshot.
-	await ctx.settings.flush();
-	const storage = new FileSettingsStorage(ctx.cwd, ctx.agentDir);
-	storage.withLock(scope, (current) => {
+	// Through the manager's own storage, after the writes it queued: it reads back exactly what this wrote.
+	await ctx.settings.rewriteScope(scope, (current) => {
 		const parsed: unknown = current === undefined ? {} : JSON.parse(stripBom(current));
 		if (!isObject(parsed)) throw new Error(`The ${scope} settings file is not a JSON object.`);
 		const value = compute(readPath(parsed, key));
@@ -77,5 +74,4 @@ export async function updateSettingsKey(
 		}
 		return JSON.stringify(parsed, null, 2);
 	});
-	await ctx.settings.reload();
 }

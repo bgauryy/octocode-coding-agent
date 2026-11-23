@@ -185,7 +185,8 @@ describe("/permissions and editor shortcut", () => {
 			await run("");
 			expect(stderr).toHaveBeenLastCalledWith(expect.stringContaining("Permission mode: workspace"));
 			await run("manual");
-			expect(stderr).toHaveBeenLastCalledWith(expect.stringContaining("Permission mode: manual"));
+			// One sentence, as /permissions shows it: the summary follows a dash, not a full stop before a lowercase word.
+			expect(stderr).toHaveBeenLastCalledWith(expect.stringContaining("Permission mode: manual — it asks before"));
 			expect(stdout).not.toHaveBeenCalled();
 		} finally {
 			stderr.mockRestore();

@@ -61,6 +61,8 @@ export interface PermissionRequest {
 	sourceGrant?: SourceGrant;
 	/** Issued by another tool (`parentToolCallId` set). */
 	nested?: boolean;
+	/** The user's own command (a `!cmd`): audited like any call, never counted as what the mode ran unasked. */
+	byUser?: true;
 	/** The mode whose rules judge this call, when a stricter constraint than the session's mode holds it (plan). */
 	asMode?: PermissionMode;
 	/** When the ask was shown; set by the check, read by the audit entry (`AuditEntry.askedAt`). */

@@ -98,7 +98,9 @@ export async function preparePatch(
 				const lost = lostAnchor(hunk.path, edits, checked.data.toString("utf8"), guard.reader, by, checked.unread);
 				if (lost || !edits.length) throw new Error(lost ?? staleRefusal(hunk.path, guard.reader, by));
 			}
-			const content = transformPatch(checked.data.toString("utf8"), hunk.chunks);
+			// The patch's lines are the text's, as the model read it: a byte order mark stays in front, outside them.
+			const { bom, text } = splitBom(checked.data.toString("utf8"));
+			const content = bom + transformPatch(text, hunk.chunks);
 			if (hunk.move_path !== null) {
 				const destination: FileQuery = {
 					type: "write",

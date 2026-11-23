@@ -259,7 +259,6 @@ describe("ctx.ui.custom components closed by whatever takes their place or reset
 		const env = createHost({
 			editorComponentFactory: undefined,
 			activeStatusIndicator: undefined,
-			defaultWorkingMessage: "Working",
 			featureWidgetsAbove: new Map(),
 			featureWidgetsBelow: new Map(),
 			autocompleteProviderWrappers: [],

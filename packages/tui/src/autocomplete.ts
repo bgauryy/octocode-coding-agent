@@ -59,7 +59,8 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 		}
 
 		const commandText = textBeforeCursor.trimStart();
-		if (!options.force && commandText.startsWith("/")) {
+		// A command name holds no `/`: `//note` and `/usr/bin` are text (the app sends them as a prompt), not a command.
+		if (!options.force && /^\/[^\s/]*(?:\s|$)/.test(commandText)) {
 			const spaceIndex = commandText.search(/\s/);
 
 			if (spaceIndex === -1) {
@@ -179,12 +180,11 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			return { lines: newLines, cursorLine, cursorCol: beforePrefix.length + cursorOffset };
 		};
 
-		// Check if we're completing a slash command (prefix starts with "/" but NOT a file path)
-		// Slash commands are at the start of the line and don't contain path separators after the first /
+		// A command always goes in as `/name `, never its bare name: a bare name would be sent as a prompt. Slash commands
+		// are otherwise at the start of the line and hold no path separator after the first `/`.
 		const isSlashCommand =
-			prefix.startsWith("/") &&
-			!prefix.slice(1).includes("/") &&
-			(beforePrefix.trim() === "" || item.kind === "command");
+			item.kind === "command" ||
+			(prefix.startsWith("/") && !prefix.slice(1).includes("/") && beforePrefix.trim() === "");
 		if (isSlashCommand) {
 			return replaceLine(`/${item.value} `, item.value.length + 2); // +2 for "/" and space
 		}

@@ -37,6 +37,11 @@ export interface ConfigEntry {
 	valueType: ConfigValueType;
 	/** What applies now: the merged value of all scopes. For a toggle, `true` is on. */
 	value: unknown;
+	/**
+	 * What the entry is in effect, in words, when `value` alone would say otherwise: an MCP server the security review
+	 * holds back is off until approved, whatever its switch. Front-ends show it in place of the value.
+	 */
+	state?: string;
 	/** The value each scope holds itself; a scope that does not set the entry is absent. */
 	scopes: Partial<Record<ConfigScope, unknown>>;
 	/** The scope that decides `value`, or `default` when nothing sets it. */
@@ -95,8 +100,13 @@ export interface ConfigLiveHooks {
 	mcpReload?: () => Promise<McpReloadResult | undefined>;
 	/** The MCP owner's status snapshot (`getMcpSessionStatus(events)`): the connection state the MCP rows show. */
 	mcpStatus?: () => McpServerStatus[];
-	/** Applies a settings key to the running terminal at once (theme, TUI mode, paddings); true when it did. */
-	applySetting?: (key: string, value: unknown) => boolean;
+	/**
+	 * Applies a settings key to the running terminal at once (theme, TUI mode, paddings), as the files hold it after a
+	 * write: an unset key gets its default back. It never saves. True when it did.
+	 */
+	applySetting?: (key: string) => boolean;
+	/** Whether `applySetting` applies `key` at once: its entry then says it applies now, not after /reload. */
+	appliesLive?: (key: string) => boolean;
 	/** The names of the tools the running session has registered, feature tools included. */
 	toolNames?: () => readonly string[];
 }

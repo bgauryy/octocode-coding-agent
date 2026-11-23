@@ -1,5 +1,5 @@
+import { getEffortThinkingLevelMap } from "../../src/catalog/models-dev-fields.ts";
 import type { Api, Model, ModelCost, OpenAICompletionsCompat } from "../../src/types.ts";
-import { getEffortThinkingLevelMap } from "../models-dev-reasoning-options.ts";
 import { getModelKey, modelsDevReasoningOptions } from "./thinking-levels.ts";
 
 /** Mistral Medium 3.5 until models.dev lists it, and the OpenRouter router aliases. */

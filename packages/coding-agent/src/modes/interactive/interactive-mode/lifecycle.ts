@@ -8,10 +8,14 @@ import { onHighlightLanguagesLoaded } from "../../../utils/syntax-highlight.ts";
 
 import { join } from "node:path";
 import { getAgentDir } from "../../../config.ts";
+import { clearPromptNote, showPromptNote } from "../../../octocode/ui/prompt-note.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
 import { theme } from "../../../theme/theme.ts";
 import { foregroundChildActive } from "../../../utils/foreground-child.ts";
 import { killTrackedDetachedChildren } from "../../../utils/shell.ts";
 import { endIfStalled, watchMainThread } from "../../../utils/stall-guard.ts";
+import { selectInterruptAt } from "../state/input-slice.ts";
+import { selectInitialized, selectShutdownRequested, selectShuttingDown } from "../state/lifecycle-slice.ts";
 import { isDeadTerminalError, formatResumeCommand } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { disposeLoadedResources } from "./loaded-resources.ts";
@@ -32,19 +36,17 @@ type LifecycleHost = Pick<
 	| "clearEditor"
 	| "clearFeatureTerminalInputListeners"
 	| "clearStatusIndicator"
+	| "defaultEditor"
 	| "disposeActiveSelector"
 	| "backgroundError"
 	| "emergencyTerminalExit"
 	| "footerDataProvider"
-	| "isInitialized"
-	| "isShuttingDown"
-	| "lastSigintTime"
 	| "runtimeHost"
+	| "session"
 	| "sessionManager"
 	| "settingsManager"
 	| "showStatus"
 	| "shutdown"
-	| "shutdownRequested"
 	| "signalCleanupHandlers"
 	| "stop"
 	| "stopInteractiveTui"
@@ -52,18 +54,33 @@ type LifecycleHost = Pick<
 	| "ui"
 	| "uncaughtCrash"
 	| "unregisterSignalHandlers"
+	| "uiStore"
 	| "unsubscribe"
 	| "loadedResourcesContainer"
 >;
 
+/** How soon a second Ctrl+C must follow the first to exit; the prompt says so for as long. */
+export const EXIT_PRESS_WINDOW_MS = 1000;
+
+/**
+ * The first Ctrl+C stops a run (a turn, a `!` command or a compaction) as Esc does and keeps the draft; with nothing
+ * running it clears the prompt. Either way it says a second one exits, and a second within the window exits: a run that
+ * does not stop never holds the user in.
+ */
 export function handleCtrlC(host: LifecycleHost): void {
 	const now = Date.now();
-	if (now - host.lastSigintTime < 500) {
+	const state = host.uiStore.getState();
+	if (now - selectInterruptAt(state) < EXIT_PRESS_WINDOW_MS) {
+		clearPromptNote();
 		void host.shutdown();
-	} else {
-		host.clearEditor();
-		host.lastSigintTime = now;
+		return;
 	}
+	const { session } = host;
+	// The Esc handler in force knows what is running (a compaction swaps in its own).
+	if (session.isStreaming || session.isBashRunning || session.isCompacting) host.defaultEditor.onEscape?.();
+	else host.clearEditor();
+	state.noteInterrupt(now);
+	showPromptNote(`${keyText("app.clear")} again to exit`, EXIT_PRESS_WINDOW_MS);
 }
 
 export function handleCtrlD(host: LifecycleHost): void {
@@ -77,8 +94,7 @@ export function handleCtrlD(host: LifecycleHost): void {
  * repaint the final frame while the process is exiting.
  */
 export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boolean }): Promise<void> {
-	if (host.isShuttingDown) return;
-	host.isShuttingDown = true;
+	if (!host.uiStore.getState().beginShutdown()) return;
 	// Stopping the terminal UI releases the last handles that keep the event loop alive, while the dispose still waits on
 	// unref'd ones (the database writer worker, the session API server, job and child handles). Without a ref'd timer Node
 	// ends the process mid-dispose: exit 13 for the top-level await in `cli.ts`, and no resume hint.
@@ -164,7 +180,7 @@ const deadTerminals = new WeakSet<object>();
 function onDeadTerminal(host: LifecycleHost): void {
 	if (deadTerminals.has(host)) return;
 	deadTerminals.add(host);
-	host.isShuttingDown = true;
+	host.uiStore.getState().beginShutdown();
 	void disposeOnce(host)
 		.catch(() => undefined)
 		.finally(() => host.emergencyTerminalExit());
@@ -174,7 +190,7 @@ function onDeadTerminal(host: LifecycleHost): void {
  * Check if shutdown was requested and perform shutdown if so.
  */
 export async function checkShutdownRequested(host: LifecycleHost): Promise<void> {
-	if (!host.shutdownRequested) return;
+	if (!selectShutdownRequested(host.uiStore.getState())) return;
 	await host.shutdown();
 }
 
@@ -194,8 +210,8 @@ let stopping = false;
  * signal while a foreground child owns the terminal (the child and its terminal modes are its own, as without a listener).
  * A signal while the suspend is still draining its restore output is that same suspend: it stops the group when done.
  */
-function handleSigtstp(host: Pick<LifecycleHost, "ui" | "showStatus" | "isShuttingDown">): void {
-	if (stopping || foregroundChildActive() || host.isShuttingDown) {
+function handleSigtstp(host: Pick<LifecycleHost, "ui" | "showStatus" | "uiStore">): void {
+	if (stopping || foregroundChildActive() || selectShuttingDown(host.uiStore.getState())) {
 		process.kill(process.pid, "SIGSTOP");
 		return;
 	}
@@ -250,7 +266,7 @@ export function registerSignalHandlers(host: LifecycleHost): void {
 	// listener set is module-wide: removed with the rest, or every replaced mode would stay reachable from it.
 	host.signalCleanupHandlers.push(
 		onHighlightLanguagesLoaded(() => {
-			if (!host.isInitialized) return;
+			if (!selectInitialized(host.uiStore.getState())) return;
 			host.ui.invalidate();
 			host.ui.requestRender();
 		}),
@@ -356,10 +372,11 @@ export function stop(host: LifecycleHost, fullscreenExitOutput = host.settingsMa
 		if (host.unsubscribe) {
 			host.unsubscribe();
 		}
-		if (host.isInitialized) {
+		const lifecycle = host.uiStore.getState();
+		if (selectInitialized(lifecycle)) {
 			// Leaving raw mode waits for the terminal to read pending output; one that stopped reading must not hold the exit.
 			endIfStalled(() => host.stopInteractiveTui(fullscreenExitOutput));
-			host.isInitialized = false;
+			lifecycle.setInitialized(false);
 		}
 		// Final transcript output still needs live rows; release their clocks only after the renderer stops.
 		disposeTranscript(host.chatContainer);

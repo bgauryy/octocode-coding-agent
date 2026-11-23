@@ -17,6 +17,7 @@
 			"registerStallRecorder@octocode/profiler/stalls.ts",
 			"registerCompaction@octocode/compaction/register.ts",
 			"registerNotify@octocode/ui/notify.ts",
+			"registerUsageRecording@octocode/usage/record.ts",
 			"OctocodeApi.observe@octocode/api/bridge.ts"
 		],
 		"agent_interrupted": [
@@ -72,6 +73,7 @@
 			"registerMemorySection@octocode/memory/file/section.ts",
 			"registerMemory@octocode/memory/register.ts",
 			"registerAgentTool@octocode/subagents/tool.ts",
+			"registerQuotaNotice@octocode/subagents/models-quota-notice.ts",
 			"registerSkillDescriptions@octocode/context-optimization/skills.ts",
 			"registerTurnSetup@octocode/turn.ts",
 			"registerBackgroundHooks@octocode/hooks/background.ts",
@@ -119,6 +121,7 @@
 			"registerActivity@octocode/ui/activity.ts",
 			"registerTurnBudget@octocode/compaction/turn-budget.ts",
 			"registerLoopGuard@octocode/loop-guard.ts",
+			"registerUsageRecording@octocode/usage/record.ts",
 			"OctocodeApi.observe@octocode/api/bridge.ts"
 		],
 		"message_start": [
@@ -190,6 +193,7 @@
 			"registerDeferredSchemaRestore@octocode/compaction/deferred-schemas.ts",
 			"registerArchiveLifecycle@octocode/archive/lifecycle.ts",
 			"registerNoticeLines@octocode/ui/notice-lines.ts",
+			"registerUsageRecording@octocode/usage/record.ts",
 			"OctocodeApi.observe@octocode/api/bridge.ts"
 		],
 		"session_compact_failed": [
@@ -252,6 +256,7 @@
 			"registerCompaction@octocode/compaction/register.ts",
 			"registerNotify@octocode/ui/notify.ts",
 			"registerMonitor@octocode/monitor/register.ts",
+			"registerUsageRecording@octocode/usage/record.ts",
 			"registerWakeRetry@octocode/wake-retry.ts",
 			"registerTimers@octocode/timer/register.ts",
 			"registerNativeSessionLifecycle@octocode/session-lifecycle.ts",
@@ -287,6 +292,7 @@
 			"registerTerminal@octocode/terminal/register.ts",
 			"registerStalledItems@octocode/subagents/stalled-items.ts",
 			"registerAgentTool@octocode/subagents/tool.ts",
+			"registerQuotaNotice@octocode/subagents/models-quota-notice.ts",
 			"registerSkillDescriptions@octocode/context-optimization/skills.ts",
 			"registerUnpricedNotice@octocode/ui/footer/notices.ts",
 			"registerReasoningNotice@octocode/ui/footer/notices.ts",
@@ -320,6 +326,7 @@
 			"registerNoticeLines@octocode/ui/notice-lines.ts",
 			"registerNotify@octocode/ui/notify.ts",
 			"registerMonitor@octocode/monitor/register.ts",
+			"registerUsageRecording@octocode/usage/record.ts",
 			"octocode@octocode/index.ts",
 			"registerWakeRetry@octocode/wake-retry.ts",
 			"registerTimers@octocode/timer/register.ts"
@@ -398,6 +405,7 @@
 		"turn_end": [
 			"registerTeamEvents@octocode/team/tools/events.ts",
 			"registerAgentTool@octocode/subagents/tool.ts",
+			"registerQuotaNotice@octocode/subagents/models-quota-notice.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerTurnSetup@octocode/turn.ts",

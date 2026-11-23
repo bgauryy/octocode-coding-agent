@@ -5,11 +5,12 @@ import { textResult } from "../shared/util.ts";
 import type { Backlog } from "./context.ts";
 import { itemHead, itemLine } from "./format.ts";
 import { BacklogError } from "./item.ts";
-import { checkMerged } from "./merge-gate.ts";
+import { refuseUnchecked } from "./merge-gate.ts";
 import { endedNotice } from "./graph-notice.ts";
 import { PRIORITIES } from "./store.ts";
 import { epicCompletion, splitIds } from "./tool-arguments.ts";
 import { getResult } from "./tool-get.ts";
+import { withEvidence } from "./receipts.ts";
 import { entities, keyed, replayText } from "./tool-support.ts";
 
 /**
@@ -43,6 +44,8 @@ interface RunOptions {
 	audits?: BacklogAudit[];
 	/** The items queued children start once the one a write completed is done (`endedNotice`). */
 	queued?: (ref: string) => ReadonlySet<string>;
+	/** A done's isolated-change refs that git found merged before this write (`checkMerged`); any other is refused. */
+	merged?: readonly string[];
 }
 
 /** The descriptive fields a call sets, only those it names. */
@@ -81,7 +84,20 @@ function updated(
 export function runBacklog(backlog: Backlog, args: RunParams, options: RunOptions): ReturnType<typeof textResult> {
 	const { subagent } = options;
 	const word = options.word ?? args.op;
-	const given: RunParams = keyed(closingEpic(backlog, args));
+	const { completion: cited, ...keyedRest } = keyed(closingEpic(backlog, args));
+	const given: RunParams = {
+		...keyedRest,
+		...(cited
+			? {
+					completion: withEvidence(
+						cited,
+						backlog.receipts,
+						args.note,
+						args.id ? backlog.store.get(args.id)?.completions : undefined,
+					),
+				}
+			: {}),
+	};
 	const { store, actor, session } = backlog;
 	// Every role is told that a claim needs why and goal. A subagent's items have both, set by the parent, which
 	// `updateItem` keeps: drop the child's copies here and say so, rather than refuse a claim the description asked
@@ -158,7 +174,7 @@ export function runBacklog(backlog: Backlog, args: RunParams, options: RunOption
 		throw new Error(`${word} cannot clear the goal: give the new done criterion, a check someone else can run.`);
 	const before = store.get(params.id);
 	if (before && params.state === "done" && params.close === undefined && before.state !== "done")
-		checkMerged(backlog, before);
+		refuseUnchecked(before, options.merged);
 	const reopened = params.state !== undefined && params.state !== "done" && before?.state === "done";
 	const key = params.completion?.operationKey;
 	const replayed = key === undefined ? undefined : before?.completions.find((c) => c.operationKey === key);

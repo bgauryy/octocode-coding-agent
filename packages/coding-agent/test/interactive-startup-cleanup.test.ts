@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import * as lifecycle from "../src/modes/interactive/interactive-mode/lifecycle.ts";
 import { init } from "../src/modes/interactive/interactive-mode/startup.ts";
 import { withStartupCleanup } from "../src/modes/interactive/interactive-mode/startup-cleanup.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
 
 function listenerCounts() {
@@ -18,7 +19,7 @@ describe("interactive startup cleanup", () => {
 		const before = listenerCounts();
 		const failure = new Error("Startup failed before mounting the terminal");
 		const host = createFakeHost({
-			isInitialized: false,
+			uiStore: createUiStore(),
 			signalCleanupHandlers: [] as Array<() => void>,
 			getChangelogForDisplay: () => {
 				throw failure;
@@ -40,7 +41,7 @@ describe("interactive startup cleanup", () => {
 		for (let attempt = 0; attempt < 20; attempt++) {
 			const failure = new Error(`Startup attempt ${attempt}`);
 			const host = createFakeHost({
-				isInitialized: false,
+				uiStore: createUiStore(),
 				signalCleanupHandlers: [] as Array<() => void>,
 				getChangelogForDisplay: () => {
 					throw failure;
@@ -62,7 +63,7 @@ describe("interactive startup cleanup", () => {
 		const before = listenerCounts();
 		const report = vi.spyOn(fs, "writeSync").mockReturnValue(0);
 		const host = createFakeHost({
-			isInitialized: false,
+			uiStore: createUiStore(),
 			signalCleanupHandlers: [] as Array<() => void>,
 			getChangelogForDisplay: () => {
 				throw failure;
@@ -88,7 +89,7 @@ describe("interactive startup cleanup", () => {
 			throw new Error("Diagnostic stream unavailable");
 		});
 		const host = createFakeHost({
-			isInitialized: false,
+			uiStore: createUiStore(),
 			signalCleanupHandlers: [] as Array<() => void>,
 			getChangelogForDisplay: () => {
 				throw failure;

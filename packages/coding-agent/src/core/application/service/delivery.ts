@@ -118,6 +118,10 @@ export class ApplicationDelivery {
 			}
 		}
 	}
+	/** Whether a listener follows the published events or the snapshots (native listeners get neither). */
+	followed(): boolean {
+		return this.events.size > 0 || this.subscriptions.size > 0;
+	}
 	subscribe(listener: (event: ApplicationEvent) => void, onError?: ListenerErrorHandler): () => void {
 		this.events.set(listener, { report: listenerFailureReporter("Application listener failed", onError), onError });
 		return () => {

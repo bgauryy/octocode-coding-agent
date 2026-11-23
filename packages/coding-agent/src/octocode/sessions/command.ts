@@ -7,6 +7,8 @@ import type { SessionExtras } from "../../core/session-picker.ts";
 import { liveProcess, sameProcessAsync } from "../shared/process.ts";
 import { cancelledText, notify, type Subcommands, say, wordCompletions } from "../shared/commands.ts";
 import { formatCost } from "../shared/format.ts";
+import { activityBadge } from "../../theme/page-kit.ts";
+import { liveActivityOf } from "../activity/session-activity.ts";
 import { currentSessionWorkspace, sessionDir, sessionDirName, sessionsRoot, sessionTempRoot } from "../shared/home.ts";
 import { contentText } from "../shared/util.ts";
 import { shortDuration } from "./brief.ts";
@@ -52,6 +54,15 @@ function childCounts(index: SessionIndex | undefined, ids: readonly string[]): M
 /** Whether a session's process is running now (this one included). */
 const live = ({ extra }: ListedSession): boolean => liveProcess(extra?.pid, extra?.pid_started);
 
+/**
+ * What the process that has the session open last said it is doing, as the activity badge; undefined for a saved
+ * session (a dead pid's light is stale) or a light it never wrote (an older Octocode).
+ */
+const liveActivity = (extra: SessionExtra | undefined) => {
+	const tone = liveActivityOf(extra);
+	return tone && activityBadge(tone);
+};
+
 function title({ info, parentPrompt }: ListedSession): string {
 	// A fork has no prompt of its own until its first new one: show what it was forked from.
 	return shownLine(info.name || info.firstMessage || (parentPrompt ? `↳ ${parentPrompt}` : "(no prompt yet)"), 60);
@@ -60,7 +71,10 @@ function title({ info, parentPrompt }: ListedSession): string {
 /** `● name-or-first-prompt · cwd · branch · 2h ago · ≈$1.84 · 7 files · 12 messages · 3f9a2c`, `(current)` for this session. */
 function sessionLine(row: ListedSession, current: string | undefined, all: boolean, now = Date.now()): string {
 	const { info, extra } = row;
-	const parts = [`${live(row) ? GLYPH.live : GLYPH.pending} ${title(row)}`];
+	// Another live session says what it is doing; this one's own state is the screen the list is printed on.
+	const shown = info.id === current ? undefined : liveActivity(extra);
+	const parts = [`${shown?.glyph ?? (live(row) ? GLYPH.live : GLYPH.pending)} ${title(row)}`];
+	if (shown) parts.push(shown.word);
 	if (all) parts.push(shownLine(path.basename(info.cwd) || info.cwd || "?", 40));
 	const checkout = checkoutText(info.cwd);
 	if (extra?.branch) parts.push(shownLine(extra.branch, 40));
@@ -172,8 +186,10 @@ function pickerExtras(
 	links: SessionLinks | undefined,
 	children: number | undefined,
 ): SessionExtras {
+	const activity = liveActivityOf(extra);
 	return {
 		...(children ? { children } : {}),
+		...(activity ? { activity } : {}),
 		...(extra
 			? {
 					live: liveProcess(extra.pid, extra.pid_started),

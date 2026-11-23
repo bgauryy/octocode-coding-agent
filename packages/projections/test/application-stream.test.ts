@@ -32,6 +32,29 @@ it("updates and clears model input capabilities without changing the transcript"
 	expect(stream.accept(frame(2, { type: "event", event: { type: "session.model" } }))).toBe("applied");
 	expect(stream.snapshot?.model).toBeUndefined();
 });
+it("replaces spend, quota and the model list from their events", () => {
+	const stream = new ApplicationStream();
+	stream.accept(frame(0, { type: "snapshot", snapshot }));
+	const usage = { metered: 1.24, planEstimate: 3.1, unpriced: 0, contextPercent: 42 };
+	expect(stream.accept(frame(1, { type: "event", event: { type: "session.usage", usage } }))).toBe("applied");
+	const quota = [
+		{
+			provider: "openai-codex",
+			window: "primary",
+			label: "5h",
+			usedFraction: 0.62,
+			kind: "plan",
+			source: "header",
+			observedAt: 1,
+		},
+	];
+	expect(stream.accept(frame(2, { type: "event", event: { type: "session.quota", quota } }))).toBe("applied");
+	const models = [{ provider: "openai", id: "gpt-6.1", name: "GPT-6.1", billing: "metered" }];
+	expect(stream.accept(frame(3, { type: "event", event: { type: "session.models", models } }))).toBe("applied");
+	expect(stream.snapshot).toMatchObject({ usage, quota, models, messages: [] });
+	expect(stream.accept(frame(4, { type: "event", event: { type: "session.quota", quota: [] } }))).toBe("applied");
+	expect(stream.snapshot?.quota).toEqual([]);
+});
 it("applies partial output once and replaces it with authoritative final content", () => {
 	const stream = new ApplicationStream();
 	stream.accept(frame(0, { type: "snapshot", snapshot }));

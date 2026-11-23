@@ -37,7 +37,6 @@ export function Minimap({ events, bounds, view, width, height, laneCount, onBrus
 			className="pf-t-minimap"
 			width={width}
 			height={height}
-			// oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- an SVG drawing named for assistive technology; the keyboard path is the plot.
 			role="img"
 			aria-label="Session overview: drag to select a range"
 			onPointerDown={(event) => {

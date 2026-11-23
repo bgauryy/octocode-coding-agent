@@ -1,3 +1,4 @@
+import { stripTerminalSequences } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KEY, startUi, type UiHarness } from "./e2e-ui-flows/ui.ts";
 
@@ -31,7 +32,20 @@ async function longTranscript(): Promise<void> {
 	t!.press(KEY.enter);
 	await t!.until(async () => (await t!.text()).includes("row-79"), "long reply at the bottom");
 }
-const rows = async () => (await t!.grid()).map((line) => line.trim());
+/** The screen rows, trimmed, without the scrollbar column: its track and thumb come and go as the view scrolls. */
+const rows = async () => (await t!.grid()).map((line) => line.replace(/[│┃█]\s*$/, "").trim());
+/** The transcript view's scroll position: the first line of its document on screen. */
+const scrollTop = () => t!.host.transcriptScrollView!.scrollTop;
+/**
+ * Whether the terminal shows the transcript at its current scroll position: `marker` on the screen row its line in the
+ * document puts it. A frame drawn before the view moved, or while its layout still settles, puts it elsewhere.
+ */
+const shownAt = async (marker: string) => {
+	const line = t!.host.documentContainer
+		.render(120)
+		.findIndex((row) => stripTerminalSequences(row).trim().startsWith(marker));
+	return line >= 0 && (await rows()).findIndex((row) => row.startsWith(marker)) === line - scrollTop();
+};
 const has = (all: string[], text: string) => all.some((row) => row.startsWith(text));
 const jump = "Jump to latest message";
 
@@ -82,27 +96,15 @@ describe("fullscreen transcript", () => {
 		expect(await t.text()).toContain(jump);
 
 		t.press(CTRL_HOME);
-		await t.until(async () => has(await rows(), "row-00") || has(await rows(), "row-01"), "top of the transcript");
-		const atTop = await rows();
+		await t.until(async () => scrollTop() === 0 && (await shownAt("row-00")), "top of the transcript");
 
 		t.press(wheelDown());
-		await t.until(
-			async () =>
-				!has(
-					await rows(),
-					atTop.find((r) => r.startsWith("row-"))!,
-				),
-			"wheel scrolled down",
-		);
+		await t.until(async () => scrollTop() > 0 && (await shownAt("row-00")), "wheel scrolled down");
+		// A wheel event closer than a notch (100 ms) to the one before moves fewer lines. The first one has been handled, so
+		// one sent at least a notch later moves as far back, whatever the load: the view returns to where it started.
+		await wait(150);
 		t.press(wheelUp());
-		await t.until(
-			async () =>
-				has(
-					await rows(),
-					atTop.find((r) => r.startsWith("row-"))!,
-				),
-			"wheel scrolled back up",
-		);
+		await t.until(async () => scrollTop() === 0 && (await shownAt("row-00")), "wheel scrolled back up");
 
 		t.press(CTRL_END);
 		await t.until(async () => has(await rows(), "row-79"), "back at the bottom");

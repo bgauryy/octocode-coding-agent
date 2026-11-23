@@ -154,11 +154,21 @@ describe("/purge", () => {
 		it("refuses without a UI and deletes nothing", async () => {
 			const here = workspace("noui", ["cur", "old"]);
 			const { run, input } = setup(here, false);
-			const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-			await run("workspace");
-			stderr.mockRestore();
+			// A refusal, not a notice, so a print or RPC run that asked for a purge fails (print mode exits 1).
+			await expect(run("workspace")).rejects.toThrow("Refusing to purge without a terminal to confirm in");
 			expect(input).not.toHaveBeenCalled();
 			expect(fs.existsSync(path.join(here.state, "sessions", "old.jsonl"))).toBe(true);
+		});
+
+		it("previews every kind it removes, naming the ones it found none of", async () => {
+			const here = workspace("preview", ["cur"]);
+			const { run, notify } = setup(here, true, "no");
+			await run("workspace");
+			const preview = notify.mock.calls.map(([text]) => String(text)).find((text) => text.includes("would delete"));
+			expect(preview).toContain("1 temp entries");
+			expect(preview).toContain("none found: session transcripts, session data folders\n");
+			expect(preview).toContain("1 .octocode/agent/tmp entries");
+			expect(preview).toContain("shrunk afterwards");
 		});
 
 		it("deletes only when the typed word matches the scope", async () => {

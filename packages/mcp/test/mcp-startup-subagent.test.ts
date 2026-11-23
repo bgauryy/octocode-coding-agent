@@ -78,13 +78,20 @@ describe("MCP startup of a subagent on its coordinator's skill snapshot", () => 
 		expect(host.state.findServer("rooted")?.connection?.state).toBe("connected");
 	});
 
-	it("waits for discovery without a snapshot, as every other session does", async () => {
+	// Contract change: the host announces the skill folders its discovery may add (`announcedSkillRoots`), so a
+	// subagent without a snapshot no longer waits for discovery either.
+	it("launches at session start without a snapshot too, once: its discovery cannot change the launch", async () => {
 		vi.stubEnv(SUBAGENT_ENV, "1");
 		vi.stubEnv(SKILL_SNAPSHOT_FILE_ENV, "");
 		const { host, launches } = snapshotHost();
 		await host.fire("session_start", {}, host.ctx);
 		await settle();
-		expect(launches).toEqual([]);
+		expect(launches).toHaveLength(1);
+		await host.fire(
+			"resources_discover",
+			{ type: "resources_discover", cwd: host.ctx.cwd, reason: "startup" },
+			host.ctx,
+		);
 		await host.prompt();
 		expect(launches).toHaveLength(1);
 	});

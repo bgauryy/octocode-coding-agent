@@ -1,7 +1,7 @@
 /**
  * The MCP workspace's host API: the one door coding-agent (its source and scripts) reaches this workspace through.
  * Everything else in `src/` is private: a host file that needs another name adds it here instead of importing the module
- * that defines it, and `scripts/check-mcp-boundary.mjs` fails on any other `mcp/src/` import. The published client
+ * that defines it, and `scripts/check/check-mcp-boundary.mjs` fails on any other `mcp/src/` import. The published client
  * subpaths (`@octocodeai/octocode-agent/mcp` and `/mcp/oauth`) re-export `client/index.ts` and `client/oauth/index.ts`
  * from the bundle entry, and other workspaces use the `exports` of this package.
  */
@@ -26,6 +26,7 @@ export { loadMcpCommand } from "./cli.lazy.ts";
 export { MCP_COMMANDS } from "./cli/commands.ts";
 export { parseMcpAddArgs } from "./cli/edit.ts";
 export { saveMcpDefinition, McpAddError } from "./add.ts";
+export { reviewBeforeAdding } from "./review-first.ts";
 
 // Configuration, presets and server records.
 export {
@@ -50,7 +51,7 @@ export { MCP_EXPOSURES, McpServerRegistry, validateMcpServerConfig } from "./ser
 export { mcpLaunchIdentity } from "./launch-identity.ts";
 
 // Session state the host reads: status, reloads, roles, tool states and subagent hand-offs.
-export { getMcpSessionStatus, MCP_STATUS_EVENT, type McpServerStatus } from "./status.ts";
+export { getMcpSessionStatus, MCP_STATUS_EVENT, mcpServerMayRun, type McpServerStatus } from "./status.ts";
 export { getMcpSwitch, requestMcpReload, type McpReloadResult, type McpSwitch } from "./switch.ts";
 export { currentToolRoles, type ResolvedRoles } from "./roles.ts";
 export {
@@ -67,7 +68,7 @@ export {
 } from "./session-servers.ts";
 export { MCP_DEFER_ROLES, type McpDeferRole, promotionBudget } from "./deferral.ts";
 export { getMcpHookCaller, type BoundMcpHookCaller, type McpHookCaller } from "./hook-caller.ts";
-export { liveStdioServerPids } from "./client/transports/stdio.ts";
+export { liveStdioServerPids, onStdioServersChange } from "./client/transports/stdio-live.ts";
 
 // Tool declarations and the prompt section.
 export { createMcpToolName } from "./tool-names.ts";

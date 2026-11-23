@@ -179,6 +179,15 @@ export const BEDROCK_END_OF_LIFE_MODEL_IDS = new Set(
 	["", "us.", "eu.", "apac.", "global."].map((prefix) => `${prefix}anthropic.claude-sonnet-4-20250514-v1:0`),
 );
 export const MODELS_DEV_OPENAI_UNSUPPORTED_MODEL_IDS = new Set(["gpt-5.6"]);
+/** MiniMax asked to hide older models from its direct providers (#2596). */
+export const MINIMAX_HIDDEN_MODEL_IDS = new Set([
+	"MiniMax-M2",
+	"MiniMax-M2.1",
+	"MiniMax-M2.5",
+	"MiniMax-M2.5-highspeed",
+]);
+/** Listed by OpenCode Zen and Go, but not built for them. */
+export const OPENCODE_EXCLUDED_MODEL_IDS = new Set(["gpt-5.3-codex-spark"]);
 export const OPENAI_TOOL_SEARCH_MODEL_IDS = new Set([
 	"gpt-5.4",
 	"gpt-5.4-mini",

@@ -26,7 +26,6 @@ type Host = Pick<
 	| "getMarkdownThemeWithSettings"
 	| "getMarkdownTransformers"
 	| "uiStore"
-	| "outputPad"
 	| "pendingTools"
 	| "session"
 	| "settingsManager"
@@ -61,10 +60,9 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 	const fullContent = transcriptContent;
 	const readAsset = (id: string) => port.readAsset(id);
 	const showError = (message: string) => {
+		const { view } = host.uiStore.getState();
 		host.chatContainer.addChild(new Spacer(1));
-		host.chatContainer.addChild(
-			noticeLine("error", message, host.outputPad, host.uiStore.getState().view.toolsExpanded),
-		);
+		host.chatContainer.addChild(noticeLine("error", message, view.outputPad, view.toolsExpanded));
 		host.ui.requestRender();
 	};
 	const contentOptions = () => ({
@@ -102,16 +100,17 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 			let component = assistants.get(message.id);
 			if (!component) {
 				forgetDetached();
+				const { view } = host.uiStore.getState();
 				component = new AssistantMessageComponent(
 					undefined,
-					host.uiStore.getState().view.hideThinking,
+					view.hideThinking,
 					host.getMarkdownThemeWithSettings(),
 					undefined,
-					host.outputPad,
+					view.outputPad,
 					host.getMarkdownTransformers(),
 					contentOptions(),
 				);
-				component.setExpanded(host.uiStore.getState().view.toolsExpanded);
+				component.setExpanded(view.toolsExpanded);
 				assistants.set(message.id, component);
 				host.chatContainer.addChild(component);
 			}

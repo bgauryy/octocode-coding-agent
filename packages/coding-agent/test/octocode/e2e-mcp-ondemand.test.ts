@@ -10,7 +10,7 @@ import {
 	getCurrentTools,
 	type TranscriptContext,
 } from "@octocodeai/octocode-ai";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import type { FeatureRegister } from "../../src/core/features/index.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
@@ -116,6 +116,10 @@ async function startSession(capable: boolean) {
 		fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	});
 	await agent.bindFeatures({ mode: "json", shutdownHandler: () => undefined } as never);
+	// A fast server can finish registering before the first model is selected on either transport.
+	await vi.waitFor(() =>
+		expect(agent.featureHost.getAllRegisteredTools().some((tool) => tool.definition.name === TOOL)).toBe(true),
+	);
 	await agent.setModel(agent.modelRuntime.getModel("faux", "faux-1")!);
 
 	return { agent, faux };

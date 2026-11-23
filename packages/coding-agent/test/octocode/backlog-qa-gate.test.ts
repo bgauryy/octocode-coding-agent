@@ -159,6 +159,22 @@ describe("done on an important item", () => {
 		expect(t.store().get("B1")?.state).toBe("done");
 	});
 
+	it("is refused by the store's own checks before a review is paid for: a stale version, an open step", async () => {
+		const t = setup();
+		await t.open();
+		const stale = t.store().get("B1")!.version;
+		await t.call({ op: "note", id: "B1", note: "progress" });
+		await expect(t.call({ op: "done", id: "B1", completion: DONE, version: stale })).rejects.toThrow(
+			/changed elsewhere/,
+		);
+		t.store().tasks.add({ item: "B1", goal: "a step" }, { id: "user", kind: "human" });
+		await expect(t.call({ op: "done", id: "B1", completion: DONE })).rejects.toThrow(/open tasks/);
+		expect(t.requests).toHaveLength(0);
+		const item = t.store().get("B1")!;
+		expect(item.state).toBe("ongoing");
+		expect(item.completions).toHaveLength(0);
+	});
+
 	it("completes with a note when no reviewer could run (no priced small model, a refused start)", async () => {
 		const t = setup();
 		await t.open();

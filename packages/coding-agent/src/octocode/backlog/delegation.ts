@@ -85,8 +85,8 @@ export interface ChildReport {
 
 /**
  * Notes a child's report on its item, as the parent: the outcome word, the saved report's path and the agent. A `done`
- * report on an item closed with a passed completion records the named checks as that completion's evidence (or that
- * none were named); a `done` report without such a completion says so, since the status alone is the child's word.
+ * report adds the checks it names (or that it names none): the child's word, which the coordinator verifies before it
+ * completes the item itself (a child never finishes its coordinator's item, `writes.ts`).
  */
 export function attachReport(backlog: Backlog, ref: string, report: ChildReport): Item {
 	const { store, actor } = backlog;
@@ -94,12 +94,7 @@ export function attachReport(backlog: Backlog, ref: string, report: ChildReport)
 	if (!item) throw new BacklogError(`No backlog item ${ref}.`);
 	const parts = [`Report from ${report.agent}: ${report.outcome ?? "no outcome word"}.`];
 	if (report.file) parts.push(`Saved at ${report.file}.`);
-	if (report.outcome === "done") {
-		const passed = item.state === "done" && item.completions.at(-1)?.verification.status === "passed";
-		if (!passed) parts.push(`${item.ref} is ${item.state} without a passed completion.`);
-		else if (report.checks?.length)
-			parts.push(`Completion evidence, the checks its report names: ${report.checks.join("; ")}.`);
-		else parts.push("Completion evidence: no checks named.");
-	}
+	if (report.outcome === "done")
+		parts.push(report.checks?.length ? `Checks it names: ${report.checks.join("; ")}.` : "It names no checks.");
 	return store.update(item.ref, { note: parts.join(" ") }, actor);
 }

@@ -2,7 +2,7 @@ import { visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
 import { chipParts, chipText } from "../../src/octocode/permission/mode.ts";
 import { STATUS } from "../../src/octocode/shared/status.ts";
-import { publishLiveAgents } from "../../src/octocode/shared/team-spend.ts";
+import { liveAgentsOf, publishLiveAgents } from "../../src/octocode/shared/team-spend.ts";
 import * as importedModule2 from "../../src/octocode/ui/footer.ts";
 import { contextBar, type FooterState, footerLines as paintFooter } from "../../src/octocode/ui/footer.ts";
 import { reasoningTwin } from "../../src/octocode/ui/footer/notices.ts";
@@ -105,11 +105,11 @@ describe("footer", () => {
 		);
 	});
 
-	it("names the provider's kind beside the model, writes Σ (sub) for plan-billed replies, and drops the kind right after the hints", () => {
+	it("names the provider's kind beside the model, writes plan-billed replies as a plan estimate, and drops the kind right after the hints", () => {
 		const sub: FooterState = { ...state, kind: "subscription", planBilled: { replies: 1, cost: 0.84 } };
 		const [top, wide] = footerLines(sub, "main", statuses, theme, 200);
 		expect(wide).toMatch(/^claude-opus-5-5:high · subscription · fix login /);
-		expect(top).toMatch(/ Σ \(sub\)$/);
+		expect(top).toMatch(/ Σ ~\$0\.84 plan$/);
 		const rows = Array.from({ length: 160 }, (_, i) => footerLines(sub, "main", statuses, theme, 200 - i)[1]);
 		// Only the hints leave before the kind; the speed and the session name outlast it.
 		expect(rows.filter((row) => row.includes("/providers") && !row.includes("subscription"))).toHaveLength(0);
@@ -531,7 +531,9 @@ describe("footer wiring", () => {
 		expect(initialTop).toBe(
 			zones("/work/app ⎇ main", "ctx ▰▱▱▱▱▱▱▱ 10% of 100k · 1.8k tok (↑1.5k ↓250) · 67% cached", "Σ ≈$0.15", 120),
 		);
-		expect(bottom).toBe(ends("model-x:medium · API key", "✓ GitHub · mcp 1/1 · /providers · /model · /resume", 120));
+		// The session's activity light leads the model (contract change: status dots, wave C): idle with no port, light alone.
+		// Idle draws its own glyph, ○: ⏺ means running only.
+		expect(bottom).toBe(ends("○ model-x:medium · API key", "✓ GitHub · mcp 1/1 · /providers · /model · /resume", 120));
 		percent = 64;
 		await fake.emit(
 			"message_end",
@@ -552,6 +554,51 @@ describe("footer wiring", () => {
 		component.dispose();
 		await fake.emit("agent_end", {}, ctx);
 		expect(renders).toBe(2);
+	});
+
+	it("shows the model's provider's plan window from 70 %, red from 90 %, and nothing below (RFC V5)", async () => {
+		const { fakeCtx, fakeHost } = await Promise.resolve(importedModule1);
+		const { registerFooter } = await Promise.resolve(importedModule2);
+		const fake = fakeHost();
+		const now = Date.now();
+		let used = 0.91;
+		const asked: string[] = [];
+		const reading = (usedFraction: number, kind: "plan" | "rate" = "plan") => ({
+			provider: "openai-codex",
+			window: kind === "plan" ? "primary" : "requests",
+			label: kind === "plan" ? "5h" : "requests",
+			usedFraction,
+			resetsAt: now + 3_600_000,
+			kind,
+			source: "header" as const,
+			observedAt: now,
+		});
+		registerFooter(fake.api, {
+			current: (provider: string) => (asked.push(provider), [reading(0.99, "rate"), reading(used)]),
+		});
+		const ctx = fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
+		ctx.model = { provider: "openai-codex", id: "gpt-5", contextWindow: 100_000 };
+		await fake.emit("session_start", {}, ctx);
+		const data = {
+			getGitBranch: () => null,
+			getFeatureStatuses: () => new Map(),
+			onBranchChange: () => () => undefined,
+		};
+		painted.length = 0;
+		const component = ctx.ui.footer({ requestRender: () => 0 }, recording, data);
+		expect(asked).toContain("openai-codex");
+		// A rate limit refills within a minute and never shows; the plan window does, with its reset.
+		expect(component.render(160)[0]).toMatch(/quota 5h 91% · resets \d\d:\d\d$/);
+		expect(painted).toContainEqual(["error", "quota 5h 91%"]);
+		used = 0.75;
+		await fake.emit("model_select", {}, ctx);
+		painted.length = 0;
+		expect(component.render(160)[0]).toContain("quota 5h 75%");
+		expect(painted).toContainEqual(["warning", "quota 5h 75%"]);
+		used = 0.4;
+		await fake.emit("model_select", {}, ctx);
+		expect(component.render(160).join("\n")).not.toContain("quota");
+		component.dispose();
 	});
 
 	it("rebuilds the footer only when an input changed, samples context on replies and tree moves, not on tool results", async () => {
@@ -688,7 +735,7 @@ describe("footer wiring", () => {
 			ctx,
 		);
 		try {
-			publishLiveAgents([{ id: "sly-crab", parentId: "me", cost: 1, unpriced: false }]);
+			publishLiveAgents(liveAgentsOf(fake.api), [{ id: "sly-crab", parentId: "me", cost: 1, unpriced: false }]);
 			expect(money()).toEqual(["Σ ≈$1.25"]);
 			// The report arrives while the panel still lists the child: its spend moves to the ledger, not counted twice.
 			const usage = { input: 100, output: 10, cacheRead: 0, cacheWrite: 0, cost: { total: 1 } };
@@ -698,10 +745,10 @@ describe("footer wiring", () => {
 				ctx,
 			);
 			expect(money()).toEqual(["Σ ≈$1.25"]);
-			publishLiveAgents([]);
+			publishLiveAgents(liveAgentsOf(fake.api), []);
 			expect(money()).toEqual(["Σ ≈$1.25"]);
 		} finally {
-			publishLiveAgents([]);
+			publishLiveAgents(liveAgentsOf(fake.api), []);
 		}
 	});
 
@@ -714,7 +761,8 @@ describe("footer wiring", () => {
 		const ctx = fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
 		const rates = (rate: number) => ({ cost: { input: rate, output: rate, cacheRead: rate, cacheWrite: rate } });
 		ctx.modelRegistry = {
-			billedBySubscription: () => false,
+			// Who paid is read through `entryBilling`, from each provider's billing, as on `/web` and for `maxCost`.
+			getProviderBilling: () => "metered",
 			getProviderKind: () => "local",
 			find: (provider: string) => (provider === "local" ? rates(0) : rates(3)),
 		};
@@ -913,7 +961,7 @@ describe("permission chip in the footer", () => {
 
 	it("repaints when the published chip changes, and not when it repeats", async () => {
 		const { fakeCtx, fakeHost } = await Promise.resolve(importedModule1);
-		const { publishChip } = await import("../../src/octocode/permission/chip-store.ts");
+		const { chipOf, publishChip } = await import("../../src/octocode/permission/chip-store.ts");
 		const fake = fakeHost();
 		importedModule2.registerFooter(fake.api);
 		const ctx = fakeCtx({ cwd: "/work/app" }) as unknown as Record<string, any>;
@@ -924,12 +972,14 @@ describe("permission chip in the footer", () => {
 			getFeatureStatuses: () => new Map(),
 			onBranchChange: () => () => undefined,
 		});
-		publishChip(chipParts("manual"));
+		// The chip of this session (its feature setup): a process hosting several keeps one per session.
+		const chip = chipOf(fake.api);
+		publishChip(chip, chipParts("manual"));
 		requestRender.mockClear();
-		publishChip(chipParts("full"));
+		publishChip(chip, chipParts("full"));
 		expect(requestRender).toHaveBeenCalledTimes(1);
 		expect(component.render(120).join("\n")).toContain("⏵⏵ permission: full");
-		publishChip(chipParts("full"));
+		publishChip(chip, chipParts("full"));
 		expect(requestRender).toHaveBeenCalledTimes(1);
 		component.dispose();
 	});

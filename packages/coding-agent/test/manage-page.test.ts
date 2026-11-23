@@ -109,4 +109,25 @@ describe("ManagePageComponent", () => {
 			expect(footer).not.toContain("enter");
 		});
 	});
+
+	it("aligns the detail column of names longer than 24 columns on a wide terminal", () => {
+		const page = new ManagePageComponent({
+			title: "Models",
+			sections: [
+				{
+					heading: "Bedrock",
+					rows: [
+						{ id: "a", name: "amazon.nova-2-lite-v1:0", detail: "Nova" },
+						{ id: "b", name: "anthropic.claude-haiku-4-5-20251001-v1:0", detail: "Haiku" },
+					],
+				},
+			],
+			onSelect: vi.fn(),
+			onCancel: vi.fn(),
+		});
+		const lines = stripAnsi(page.render(160).join("\n")).split("\n");
+		const column = (text: string) => lines.find((line) => line.includes(text))?.indexOf(text);
+		expect(column("Nova")).toBeGreaterThan(0);
+		expect(column("Nova")).toBe(column("Haiku"));
+	});
 });

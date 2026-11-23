@@ -14,8 +14,8 @@ export interface ListedModel {
 }
 
 /**
- * Where a template's models come from. Core owns neither: the vendor models are the built-in providers (through
- * `vendorChatModels`), and the host listing is the models.dev catalog, which the feature layer reads and passes in.
+ * Where a template's models come from: the vendor models are the built-in providers (through `vendorChatModels`), and
+ * the host listing is the models.dev index (`core/model-catalog`), which the caller loads and passes in.
  */
 export interface TemplateModelSources {
 	vendorModels?: (api: Api) => readonly Model<Api>[];

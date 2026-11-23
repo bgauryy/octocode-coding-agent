@@ -6,6 +6,7 @@ import {
 	forwardSearch,
 	replaceThrough,
 	rewrite,
+	tagFollowedBy,
 	tagScanner,
 } from "./scan.ts";
 
@@ -285,8 +286,8 @@ function* elementsWith(html: string, name: string, attribute?: RegExp): Generato
 const APP_MARKERS =
 	/__NEXT_DATA__|__NUXT__|window\.__INITIAL_STATE__|__APOLLO_STATE__|data-reactroot|ng-version=|wix-warmup-data|data-server-rendered|id=["']__next["']|id=["']root["']><\/div>|id=["']app["']><\/div>/;
 
-/** An app's mount point left empty for its script to fill (`<div id="root"></div>` and the like). */
-const EMPTY_MOUNT = /<div\b[^>]*\bid=["']?(?:root|app|__next|__nuxt|svelte)["']?[^>]*>\s*<\/div>/i;
+/** The id of an app's mount point, left empty for its script to fill (`<div id="root"></div>` and the like). */
+const MOUNT_ID = /\bid=["']?(?:root|app|__next|__nuxt|svelte)/gi;
 /** Text this short says nothing on its own (a "Loading", a menu label). */
 const EMPTY_TEXT_CHARS = 50;
 /** Text under this share of the HTML is what markup and scripts left over (a common "low text-to-markup" cut-off). */
@@ -303,7 +304,7 @@ export function staticHtmlNote(html: string, text: string): string | undefined {
 			html,
 		);
 	if (text.length < SHELL_TEXT_CHARS) {
-		const mount = EMPTY_MOUNT.test(html);
+		const mount = tagFollowedBy(html, /<div\b/gi, MOUNT_ID, /\s*<\/div>/iy);
 		const sparse =
 			/<script\b/i.test(html) &&
 			(text.trim().length < EMPTY_TEXT_CHARS || text.length < html.length * SHELL_TEXT_SHARE);

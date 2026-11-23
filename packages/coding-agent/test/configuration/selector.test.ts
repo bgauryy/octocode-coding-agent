@@ -1,6 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 import "../../src/octocode/mcp-host/core-install.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ConfigEntry, ConfigOp, ConfigResult } from "../../src/configuration/index.ts";
 import { ConfigurationSelectorComponent } from "../../src/modes/interactive/components/configuration-selector.ts";
 import { initTheme } from "../../src/theme/theme.ts";
 import { type Sandbox, createSandbox } from "../discovery/fixtures.ts";
@@ -88,6 +89,53 @@ describe("configuration selector", () => {
 		expect(selected()).toBe(id);
 		selector.handleInput("\t");
 		expect(selected()).toBe(id);
+	});
+
+	it("shows a held-back entry's state where on and off show, and Enter still flips its switch", async () => {
+		const held = "not checked: off until you approve it in /security";
+		let on = true;
+		const entry = (): ConfigEntry => ({
+			id: "mcp:fresh",
+			kind: "mcp",
+			label: "fresh",
+			valueType: { type: "toggle" },
+			value: on,
+			...(on ? { state: held } : {}),
+			scopes: { global: on },
+			setBy: "global",
+			appliesWhen: "next-session",
+		});
+		const apply = vi.fn(async (op: ConfigOp): Promise<ConfigResult> => {
+			on = op.verb === "enable";
+			return {
+				status: "applied",
+				id: op.id,
+				verb: "enable",
+				scope: "global",
+				appliesWhen: "next-session",
+				message: "ok",
+			};
+		});
+		const selector = new ConfigurationSelectorComponent({
+			entries: [entry()],
+			apply,
+			get: async () => entry(),
+			onClose: vi.fn(),
+			requestRender: vi.fn(),
+			projectAvailable: false,
+		});
+		const text = () => stripVTControlCharacters(selector.render(120).join("\n"));
+		expect(text()).toMatch(new RegExp(`mcp:fresh +${held}`));
+		selector.handleInput("\r");
+		await vi.waitFor(() =>
+			expect(apply).toHaveBeenLastCalledWith({ verb: "disable", id: "mcp:fresh", scope: "global" }),
+		);
+		await vi.waitFor(() => expect(text()).toMatch(/mcp:fresh +off/));
+		selector.handleInput("\r");
+		await vi.waitFor(() =>
+			expect(apply).toHaveBeenLastCalledWith({ verb: "enable", id: "mcp:fresh", scope: "global" }),
+		);
+		await vi.waitFor(() => expect(text()).toMatch(new RegExp(`mcp:fresh +${held}`)));
 	});
 
 	it("keeps global scope when the folder is not trusted", async () => {

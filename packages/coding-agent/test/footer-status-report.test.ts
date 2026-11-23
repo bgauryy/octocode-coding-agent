@@ -4,6 +4,7 @@ import type { StatusEntry } from "../src/core/footer-data-provider.ts";
 import { showFooterStatusReport } from "../src/modes/interactive/interactive-mode/footer-status-report.ts";
 import type { InteractiveModeHost } from "../src/modes/interactive/interactive-mode/host.ts";
 import { initTheme } from "../src/theme/theme.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
 beforeEach(() => initTheme("dark"));
 
@@ -12,7 +13,7 @@ function fixture(statuses: Map<string, StatusEntry>) {
 	const requestRender = vi.fn();
 	const host = {
 		chatContainer,
-		outputPad: 0,
+		uiStore: createUiStore({ view: { outputPad: 0 } }),
 		footerDataProvider: { getState: () => ({ statuses }) },
 		ui: { requestRender },
 	} as unknown as InteractiveModeHost;

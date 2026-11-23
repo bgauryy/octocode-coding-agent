@@ -54,7 +54,7 @@ describe("sanitizeTerminalText", () => {
 				),
 			),
 		).toBe("  ⎿  done\n     red\n     evil");
-		expect(rendered(toolHeader(theme, {}, "Mcp", "\u001b[2Jx\u202ey"))).toBe("⏺ Mcp(xy)");
+		expect(rendered(toolHeader(theme, {}, "Mcp", "\u001b[2Jx\u202ey"))).toBe("○ Mcp(xy)");
 	});
 
 	it("is applied to every notification, since Octocode draws notify text as is", () => {

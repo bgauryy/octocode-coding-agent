@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { type Sandbox, createSandbox } from "../discovery/fixtures.ts";
+import { runConfigWords } from "../../src/configuration/command.ts";
+import { settingLeaves } from "../../src/configuration/settings-leaves.ts";
+import { GLOBAL_ONLY_SETTINGS, globalOnlyRoot } from "../../src/core/settings-manager/global-only.ts";
+import { type Sandbox, createSandbox, write } from "../discovery/fixtures.ts";
 import { configuration, globalSettingsFile, projectSettingsFile, readJson } from "./helpers.ts";
 
 let sandbox: Sandbox;
@@ -113,6 +116,62 @@ describe("settings entries", () => {
 		expect(readJson(projectSettingsFile(sandbox))).toBeUndefined();
 		expect(await catalog.get("retry.maxRetries")).toMatchObject({ value: 9 });
 		expect((await catalog.apply({ verb: "unset", id: "retry.maxRetries", scope: "run" })).status).toBe("refused");
+	});
+
+	it("reports a global-only key's global value and notes that the project value is ignored", async () => {
+		write(globalSettingsFile(sandbox), JSON.stringify({ sandbox: { mode: "on" } }));
+		write(
+			projectSettingsFile(sandbox),
+			JSON.stringify({ sandbox: { mode: "off" }, bash: { inheritProviderKeys: true } }),
+		);
+		const catalog = configuration(sandbox);
+		expect(await catalog.get("sandbox.mode")).toMatchObject({
+			value: "on",
+			setBy: "global",
+			scopes: { global: "on", project: "off" },
+			detail: expect.stringMatching(/global settings only.*project value "off" is ignored/),
+		});
+		expect(await catalog.get("bash.inheritProviderKeys")).toMatchObject({ value: false, setBy: "default" });
+		expect((await catalog.get("sandbox.allowUnsandboxed"))?.detail).toMatch(/global settings only/);
+		const text = (await runConfigWords(catalog, ["get", "sandbox.mode"], "/settings")).lines.join("\n");
+		expect(text).toContain("value: on (set by global");
+		expect(text).toContain('the project value "off" is ignored');
+	});
+
+	it("refuses --local and a per-run value for a global-only key with the reason, and still unsets a project value", async () => {
+		write(projectSettingsFile(sandbox), JSON.stringify({ sandbox: { mode: "off" } }));
+		const catalog = configuration(sandbox);
+		for (const op of [
+			{ verb: "set", id: "sandbox.mode", value: "off", scope: "project" },
+			{ verb: "enable", id: "bash.inheritProviderKeys", scope: "project" },
+			{ verb: "set", id: "sandbox.mode", value: "on", scope: "run" },
+			{ verb: "set", id: "retention.days", value: "1", scope: "project" },
+		] as const)
+			expect(await catalog.apply(op)).toMatchObject({
+				status: "refused",
+				reason: expect.stringContaining("read from the global settings only"),
+			});
+		expect(readJson(projectSettingsFile(sandbox))).toEqual({ sandbox: { mode: "off" } });
+		const local = await runConfigWords(catalog, ["set", "sandbox.mode", "off", "--local"], "/settings");
+		expect(local).toMatchObject({ ok: false });
+		expect(local.lines[0]).toMatch(/^Refused set sandbox\.mode: .*project value would do nothing/);
+		expect(await catalog.apply({ verb: "unset", id: "sandbox.mode", scope: "project" })).toMatchObject({
+			status: "applied",
+		});
+		expect(readJson(projectSettingsFile(sandbox))).toEqual({});
+		expect((await catalog.apply({ verb: "set", id: "sandbox.mode", value: "auto" })).status).toBe("applied");
+		expect(readJson(globalSettingsFile(sandbox))?.sandbox).toEqual({ mode: "auto" });
+	});
+
+	it("names only settings keys as global-only", () => {
+		const keys = settingLeaves().map((leaf) => leaf.key);
+		for (const root of GLOBAL_ONLY_SETTINGS)
+			expect(
+				keys.some((key) => key === root || key.startsWith(`${root}.`)),
+				root,
+			).toBe(true);
+		expect(globalOnlyRoot("sandbox.mode")).toBe("sandbox");
+		expect(globalOnlyRoot("bash.spillMaxBytes")).toBeUndefined();
 	});
 
 	it("refuses add and remove at run scope for every kind", async () => {

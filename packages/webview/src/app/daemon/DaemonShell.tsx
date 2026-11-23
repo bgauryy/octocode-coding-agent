@@ -3,6 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import { ConfigView } from "../config/ConfigView.tsx";
 import { useHashRoute } from "../hooks.ts";
 import { hashFor } from "../model/route.ts";
+import { activity } from "@octocodeai/octocode-projections";
+import { ACTIVITY_BADGE_TONE } from "../live/model.ts";
+import { StateMark } from "../ui/StateMark.tsx";
 import { Badge, Button, cx, EmptyState, RelativeTime, Skeleton, SkeletonLine } from "../ui/primitives.tsx";
 import { createDaemonApi } from "./api.ts";
 
@@ -75,18 +78,22 @@ function List<T>({
 	return <ul className="row-list panel daemon-list">{children(state.value)}</ul>;
 }
 
+/** A listed session's badge words: the light's own words, capitalized ("Needs you", "Failed", "Compacting"). */
+const sessionWords = (label: string) => label.charAt(0).toUpperCase() + label.slice(1);
+
 function SessionRow({ session, now }: { session: DaemonSession; now: number }) {
+	// The shared activity light the daemon read from the session's state (the terminal footer and the session panel read
+	// the same mapping); from `busy` and `needsYou` when the daemon has not seen that state yet.
+	const shown = session.activity ?? activity({ awaiting: Boolean(session.needsYou), streaming: session.busy });
 	return (
-		<li className={`daemon-row${session.needsYou ? " needs-you" : ""}`}>
+		<li className={`daemon-row${shown.tone === "waiting" ? " needs-you" : ""}`}>
 			<div className="daemon-row-main">
-				<strong>{session.repoName}</strong>{" "}
-				{session.needsYou ? (
-					<Badge tone="warning">Needs you</Badge>
-				) : session.busy ? (
-					<Badge tone="accent">Working</Badge>
-				) : (
-					<Badge tone="success">Live</Badge>
-				)}
+				<div className="daemon-row-title">
+					<strong>{session.repoName}</strong>
+					<Badge tone={ACTIVITY_BADGE_TONE[shown.tone]} icon={<StateMark state={shown.state} size={12} />}>
+						{sessionWords(shown.label)}
+					</Badge>
+				</div>
 				{session.needsYou ? <div className="daemon-needs-you">{session.needsYou}</div> : null}
 				<div className="muted daemon-path">{session.cwd}</div>
 				<div className="muted">
@@ -109,7 +116,7 @@ function RepoRow({ repo }: { repo: DaemonRepo }) {
 	const base = `/?r=${encodeURIComponent(repo.id)}`;
 	return (
 		<li className="daemon-row">
-			<div className="daemon-row-main">
+			<div className="daemon-row-main daemon-row-title">
 				<strong>{repo.name}</strong>
 				{repo.sessions > 0 ? <Badge tone="success">{repo.sessions} live</Badge> : <Badge>no session</Badge>}
 			</div>

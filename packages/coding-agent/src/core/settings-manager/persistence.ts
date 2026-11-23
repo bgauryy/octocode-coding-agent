@@ -1,12 +1,23 @@
 import { retentionProblems } from "../../storage/retention.ts";
 import { stripBom } from "@octocodeai/octocode-common/text";
 import type { Settings } from "../settings-schema.ts";
+import { globalOnlyKeysIn } from "./global-only.ts";
 import { describeIgnoredKeys, ignoredSettingsKeys } from "./ignored-keys.ts";
 import { settingsObject } from "./load.ts";
 import { effectiveSettings } from "./merge.ts";
 import type { SettingsState } from "./state.ts";
 import { type SettingsScope, toSettingsError } from "./storage.ts";
 import { settingsWritesDeferred } from "./storage-deferred.ts";
+
+/** The one warning for the global-only keys a project settings file sets, or none. */
+function globalOnlyWarning(keys: readonly string[]): string[] {
+	if (keys.length === 0) return [];
+	const names = keys.map((key) => `"${key}"`);
+	if (names.length === 1)
+		return [`Setting ${names[0]} is global only; a project settings file cannot set it, so it does nothing.`];
+	const list = `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+	return [`Settings ${list} are global only; a project settings file cannot set them, so they do nothing.`];
+}
 
 /** The warning for a settings file that still has the `extensions` key of earlier versions. */
 const REMOVED_EXTENSIONS_KEY =
@@ -68,8 +79,8 @@ export class SettingsPersistence {
 
 	/**
 	 * Queue one warning naming every key of freshly loaded `settings` that Octocode does not read, one for a leftover
-	 * `extensions` key (extensions are not supported), and one for each invalid `retention` value (a project file's
-	 * `retention` is ignored: retention is global).
+	 * `extensions` key (extensions are not supported), one naming every global-only key a project file sets (each does
+	 * nothing there, `GLOBAL_ONLY_SETTINGS`), and one for each invalid global `retention` value.
 	 */
 	recordIgnoredKeys(scope: SettingsScope, settings: Settings): void {
 		const path = this.state.settingsPaths[scope];
@@ -81,12 +92,7 @@ export class SettingsPersistence {
 		const messages = [
 			...(ignored ? [ignored] : []),
 			...(ignoredKeys.includes("extensions") ? [REMOVED_EXTENSIONS_KEY] : []),
-			...(scope === "project" && settings.retention !== undefined
-				? ['Setting "retention" is global only; a project settings file cannot set it, so it does nothing.']
-				: retentionProblems(settings.retention)),
-			...(scope === "project" && settings.security !== undefined
-				? ['Setting "security" is global only; a project settings file cannot set it, so it does nothing.']
-				: []),
+			...(scope === "project" ? globalOnlyWarning(globalOnlyKeysIn(settings)) : retentionProblems(settings.retention)),
 		];
 		for (const message of messages) this.state.warnings.push({ scope, ...(path ? { path } : {}), message });
 	}

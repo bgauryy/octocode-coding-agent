@@ -65,7 +65,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		name: "loop",
 		requiresNative: true,
 		description: "Run a prompt on a repeating schedule",
-		argumentHint: "<5m|1h|1d> <prompt>",
+		argumentHint: "<interval> <prompt>",
 	},
 	{
 		name: "realm",
@@ -155,9 +155,22 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 		name: "status",
 		description: "Show session usage, skills and MCP status",
 	},
+	{
+		name: "usage",
+		requiresNative: true,
+		description: "Show spend by provider and model",
+		argumentHint: "[today|7d|30d]",
+		argumentValues: ["today", "7d", "30d"],
+	},
 	{ name: "changelog", description: "Show what's new" },
 	{ name: "keys", description: "Show keyboard shortcuts" },
 	{ name: "find", description: "Search the transcript (fullscreen mode)" },
+	{
+		name: "mouse",
+		description: "Give the mouse to the terminal, or take it back",
+		argumentHint: "[on|off]",
+		argumentValues: ["on", "off"],
+	},
 	{
 		name: "fork",
 		description: "Start a new session from an earlier message",
@@ -209,7 +222,6 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 export const SLASH_MENU_ORDER: readonly string[] = [
 	"help",
 	"model",
-	"models",
 	"providers",
 	"effort",
 	"new",
@@ -217,6 +229,7 @@ export const SLASH_MENU_ORDER: readonly string[] = [
 	"compact",
 	"context",
 	"status",
+	"usage",
 	"btw",
 	"plan",
 	"diff",
@@ -264,8 +277,8 @@ export const SLASH_MENU_ORDER: readonly string[] = [
 ];
 
 /**
- * Names Claude Code users type from habit, each run as the Octocode command it maps to. The `/` menu shows only the
- * target; `/clear` and `/reset` stay separate hidden entries of `/new`.
+ * Names Claude Code (and Pi: `/hotkeys`) users type from habit, each run as the Octocode command it maps to. The `/` menu
+ * shows only the target; `/clear` and `/reset` stay separate hidden entries of `/new`.
  */
 export const COMMAND_ALIASES: ReadonlyMap<string, string> = new Map([
 	["exit", "quit"],
@@ -282,6 +295,8 @@ export const COMMAND_ALIASES: ReadonlyMap<string, string> = new Map([
 	["bashes", "processes"],
 	["plugins", "harness"],
 	["hooks", "harness"],
+	["cost", "usage"],
+	["hotkeys", "keys"],
 ]);
 
 /** Words an alias puts before the typed arguments: `/hooks events` runs `/harness hooks events`. */

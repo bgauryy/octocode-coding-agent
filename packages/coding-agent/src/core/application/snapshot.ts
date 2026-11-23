@@ -13,6 +13,9 @@ export function applicationSnapshot(
 	return {
 		sessionId: state.sessionId,
 		...(state.model ? { model: cloneDisplay(state.model) } : {}),
+		...(state.usage ? { usage: { ...state.usage } } : {}),
+		...(state.quota ? { quota: cloneDisplay(state.quota) } : {}),
+		...(state.models ? { models: cloneDisplay(state.models) } : {}),
 		...transcript.window(),
 		...activities.window(),
 		errors: cloneDisplay(state.errors),
@@ -30,6 +33,6 @@ export function applicationSnapshot(
 			...receipt,
 			...(receipt.message ? { message: receipt.message.slice(0, 1000) } : {}),
 		})),
-		capabilities: ["prompt", "steer", "followUp", "abort", "answer"],
+		capabilities: ["prompt", "steer", "followUp", "abort", "answer", "setModel", "setThinking"],
 	};
 }

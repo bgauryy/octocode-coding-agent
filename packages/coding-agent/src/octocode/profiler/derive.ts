@@ -137,6 +137,8 @@ function assign(drafts: Draft[], usage: ProfileUsage, tooShort: boolean): { laye
 			kind: draft.kind,
 			label: draft.label,
 			...(draft.entry === undefined ? {} : { entry: draft.entry }),
+			...(draft.structure === undefined ? {} : { structure: draft.structure }),
+			...(draft.link === undefined ? {} : { link: draft.link }),
 		};
 		const cuts = [
 			start,

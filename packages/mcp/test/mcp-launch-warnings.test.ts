@@ -19,28 +19,45 @@ const entry = (env: Record<string, string>, args: string[] = []): McpServerEntry
 });
 const envOf = (prepared: McpServerEntry) => (prepared.config as { env: Record<string, string> }).env;
 
-const allowed = (): string[] => {
+const allowed = (skillDirectories = ["/skills/one"]): string[] => {
 	const prepared = expandLaunchTemplates(entry({ ROOTS: "${researchRoots}" }), {
 		cwd: "/work/app",
 		projectTrusted: true,
-		skillDirectories: ["/skills/one"],
+		skillDirectories,
 	});
 	return resolveConfigValueOrThrow(envOf(prepared).ROOTS, "ROOTS").split(",");
 };
 
 describe("launch templates", () => {
+	// The host's bundled skill folder, which its resource discovery adds: an automatic root from session start.
+	const skills = [
+		...(original.announcedSkillRoots?.({ cwd: "/work/app", projectTrusted: true }) ?? []),
+		"/skills/one",
+	].sort();
+
 	it("${researchRoots}: the automatic roots without the host's port", () => {
 		withRoots(undefined);
-		expect(allowed()).toEqual(["/work/app", ...original.sessionRoots("/work/app"), "/skills/one"]);
+		expect(allowed()).toEqual(["/work/app", ...original.sessionRoots("/work/app"), ...skills]);
 	});
 
 	it("${researchRoots}: the port's roots after the automatic ones, its warnings queued once", () => {
 		const warning = `Allowed folder "rel" ${Math.random()} is not absolute; ignored.`;
 		withRoots(() => ({ roots: ["/user/a", "/skills/one"], warnings: [warning] }));
-		expect(allowed()).toEqual(["/work/app", ...original.sessionRoots("/work/app"), "/skills/one", "/user/a"]);
+		expect(allowed()).toEqual(["/work/app", ...original.sessionRoots("/work/app"), ...skills, "/user/a"]);
 		allowed();
 		expect(takeLaunchWarnings()).toEqual([warning]);
 		expect(takeLaunchWarnings()).toEqual([]);
+	});
+
+	it("${researchRoots}: an announced skill folder stands for the loaded skill folders inside it", () => {
+		installMcpHost({ paths: { ...original, researchRoots: undefined, announcedSkillRoots: () => ["/app/skills"] } });
+		expect(allowed(["/other/three", "/app/skills/one", "/app/skills-two", "/app/skills/one"])).toEqual([
+			"/work/app",
+			...original.sessionRoots("/work/app"),
+			"/app/skills",
+			"/app/skills-two",
+			"/other/three",
+		]);
 	});
 
 	it("expands agentDir, projectTrusted and workspace in env and args, keeping values literal", () => {

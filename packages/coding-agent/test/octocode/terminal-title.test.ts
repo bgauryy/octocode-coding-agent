@@ -1,3 +1,4 @@
+import { activity, type ActivityFacts } from "@octocodeai/octocode-projections";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	plainTitle,
@@ -119,7 +120,11 @@ describe("TitlePainter", () => {
 });
 
 describe("TitleTracker", () => {
-	it("follows a run: thinking, running while any tool runs, waiting on a dialog, then the outcome until seen", () => {
+	// Contract change (RFC app-state T2): the tab's state is the session's activity light, refined during its own run;
+	// the outcome and background work come from the light, not from the tracker's events.
+	const light = (facts: ActivityFacts) => activity(facts);
+
+	it("follows a run: thinking, running while any tool runs, waiting on a dialog, then the light's outcome until seen", () => {
 		const t = new TitleTracker();
 		t.toolStart("before-run");
 		expect(t.state).toBe("idle");
@@ -134,41 +139,46 @@ describe("TitleTracker", () => {
 		t.promptEnd("p");
 		t.toolEnd("b");
 		expect(t.state).toBe("thinking");
-		t.settle("failed");
+		t.settle();
+		t.setLight(light({ phase: { state: "failed", error: "rate limited" } }));
 		expect(t.state).toBe("failed");
 		t.seen();
 		expect(t.state).toBe("idle");
+		// A new outcome is not seen yet.
+		t.setLight(light({ phase: { state: "done" } }));
+		expect(t.state).toBe("done");
 	});
 
-	it("waits while background work outlives the run, and shows the outcome when the last of it ends", () => {
-		const title = new TitleTracker();
-		title.start();
-		title.setPending(true);
+	it("waits while the light works after the run, and shows the outcome once it is final; a timer alone is idle", () => {
+		const t = new TitleTracker();
+		t.start();
+		t.setLight(light({ streaming: true, phase: { state: "waiting", agents: 1, queued: 0, bash: 0, external: 0 } }));
 		// Its own run still goes on: that run's state wins over the background work.
-		expect(title.state).toBe("thinking");
-		title.settle("failed");
-		expect(title.state).toBe("background");
-		title.seen();
-		expect(title.state).toBe("background");
-		title.promptStart("ask", true);
-		expect(title.state).toBe("waiting");
-		title.promptEnd("ask");
-		title.setPending(false);
-		expect(title.state).toBe("failed");
-		title.seen();
-		expect(title.state).toBe("idle");
+		expect(t.state).toBe("thinking");
+		t.settle();
+		t.setLight(light({ phase: { state: "waiting", agents: 1, queued: 0, bash: 0, external: 0 } }));
+		expect(t.state).toBe("background");
+		t.seen();
+		expect(t.state).toBe("background");
+		t.setLight(light({ status: "compacting" }));
+		expect(t.state).toBe("background");
+		t.setLight(light({ phase: { state: "stopped", open: ["B1"] } }));
+		expect(t.state).toBe("failed");
+		t.setLight(light({ phase: { state: "scheduled", timers: 1, id: "t1" } }));
+		expect(t.state).toBe("idle");
 	});
 
-	it("shows waiting for a blocking dialog with no run active, and ignores a dialog the user opened", () => {
+	it("shows waiting for a blocking dialog or a light that needs you, and ignores a dialog the user opened", () => {
 		const t = new TitleTracker();
 		t.promptStart("picker", false);
 		expect(t.state).toBe("idle");
 		t.promptEnd("picker");
 		t.promptStart("approval", true);
 		expect(t.state).toBe("waiting");
-		t.setPending(true);
-		expect(t.state).toBe("waiting");
 		t.promptEnd("approval");
+		t.setLight(light({ awaiting: { kind: "approval", title: "Run it?" } }));
+		expect(t.state).toBe("waiting");
+		t.setLight(light({ phase: { state: "waiting", agents: 1, queued: 0, bash: 0, external: 0 } }));
 		expect(t.state).toBe("background");
 	});
 
@@ -186,16 +196,24 @@ describe("TitleTracker", () => {
 		expect(t.state).toBe("idle");
 	});
 
-	it("keeps a run's state when the user returns mid-run, and reset forgets an open dialog", () => {
+	it("keeps a run's state when the user returns mid-run, and reset forgets an open dialog and the light", () => {
 		const t = new TitleTracker();
 		t.start();
 		t.seen();
 		expect(t.state).toBe("thinking");
 		t.promptStart("p");
+		t.setLight(light({ phase: { state: "done" } }));
 		t.reset();
+		expect(t.state).toBe("idle");
 		t.start();
 		expect(t.state).toBe("thinking");
 		t.promptEnd("p");
+		expect(t.state).toBe("thinking");
+	});
+
+	it("reads the session's own run from the light before its run events arrive", () => {
+		const t = new TitleTracker();
+		t.setLight(light({ phase: { state: "working" } }));
 		expect(t.state).toBe("thinking");
 	});
 });

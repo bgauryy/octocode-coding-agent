@@ -78,9 +78,13 @@ const KEPT = "(SELECT value FROM json_each(?2))";
 /** The session ids a statement spares: `?2` is the JSON list of kept ids. */
 const notKept = (column: string) => `COALESCE(${column}, '') NOT IN ${KEPT}`;
 
-/** Children first: cascades cover backlog links, notes, comments; completions and audits do not cascade. `?1` workspace, `?2` kept ids. */
+/**
+ * Children first: cascades cover backlog links, notes, comments; completions, handoffs (no foreign key) and audits do not
+ * cascade. `?1` workspace, `?2` kept ids.
+ */
 const WORKSPACE: readonly Statement[] = [
 	["backlog_tasks", `DELETE FROM backlog_tasks WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
+	["item_handoffs", "DELETE FROM item_handoffs WHERE item_id IN (SELECT id FROM backlog WHERE workspace_id = ?1)"],
 	[
 		"backlog_completions",
 		"DELETE FROM backlog_completions WHERE item IN (SELECT id FROM backlog WHERE workspace_id = ?1)",
@@ -98,6 +102,7 @@ const WORKSPACE: readonly Statement[] = [
 	["messages", "DELETE FROM messages WHERE workspace_id = ?1"],
 	["leases", "DELETE FROM leases WHERE workspace_id = ?1"],
 	["edits", "DELETE FROM edits WHERE workspace_id = ?1"],
+	["usage_daily", "DELETE FROM usage_daily WHERE workspace_id = ?1"],
 	["agent_runs", `DELETE FROM agent_runs WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
 	["agents", "UPDATE agents SET lease_workspace_id = NULL WHERE lease_workspace_id = ?1 AND workspace_id <> ?1"],
 	[
@@ -115,13 +120,14 @@ const WORKSPACE: readonly Statement[] = [
 /**
  * Removes everything the workspace owns, in one transaction of the transcript mirror (`mirror`: its sessions'
  * transcripts, entries and compaction summaries) and then one of the coordination file: its sessions with their forks,
- * compaction summaries, events and tasks (`erase`), backlog items with links, notes, comments, completions, tasks
- * and audits, command receipts, workspace-scoped memories, agent events, compaction summaries, team messages (with their
+ * compaction summaries, events and tasks (`erase`), backlog items with links, notes, comments, completions, tasks,
+ * the handoffs of its items to children and audits, command receipts, workspace-scoped memories, agent events, compaction summaries, team messages (with their
  * deliveries), leases, edits, its team members with their runs and its backlog counters, then the `workspaces` row. A member of another
  * workspace that leased files here only loses the lease link (`agents.lease_workspace_id`).
  *
  * Kept: `config_audits` (not workspace-scoped), project- and global-scope memories, `trusted_folders` (a trust decision
- * names a folder, not a workspace), all other `meta` rows, other workspaces, and what `options.keepSessions` names (with
+ * names a folder, not a workspace), machine-wide rows (samples, provider quota readings and cool-downs), all other `meta`
+ * rows, other workspaces, and what `options.keepSessions` names (with
  * the `workspaces` row of a kept session of this workspace). Sessions without a workspace are not this workspace's.
  * Returns the rows removed per table (counts with zero rows are included).
  */
@@ -170,6 +176,7 @@ const ALL: readonly Statement[] = [
 	["messages", "DELETE FROM messages"],
 	["leases", "DELETE FROM leases"],
 	["edits", "DELETE FROM edits"],
+	["usage_daily", "DELETE FROM usage_daily"],
 	["tickets", `DELETE FROM tickets WHERE ${outside("session_id")}`],
 	["event_subscriptions", `DELETE FROM event_subscriptions WHERE ${outside("session_id")}`],
 	["event_log", `DELETE FROM event_log WHERE ${outside("session_id")}`],
@@ -180,6 +187,9 @@ const ALL: readonly Statement[] = [
 	["sessions", `DELETE FROM sessions WHERE ${outside("id")}`],
 	["memories", "DELETE FROM memories"],
 	["shell_history", "DELETE FROM shell_history"],
+	// Machine-wide provider caches belong to no session: the next response records a reading or a cool-down again.
+	["provider_quota", "DELETE FROM provider_quota"],
+	["provider_cooldowns", "DELETE FROM provider_cooldowns"],
 	["meta", `DELETE FROM meta WHERE ${marks("key")}`],
 	// A kept agent may lease a workspace that goes next: drop that link first, or the workspace delete fails its FK.
 	[
@@ -195,7 +205,8 @@ const ALL: readonly Statement[] = [
 /**
  * Empties every data table, in one transaction of the transcript mirror (`mirror`) and then one of the coordination
  * file, and keeps the schema (tables, indexes, triggers, FTS index, application id and `user_version`), so both files
- * open as before. Kept: `trusted_folders` (security decisions, like settings and
+ * open as before. Machine-wide rows (samples, provider quota readings and rate-limit cool-downs) go too: they belong to no
+ * session, and the next response records quota and cool-downs again. Kept: `trusted_folders` (security decisions, like settings and
  * authentication outside the database), `meta` rows other than the workspace backlog counters (memory auto-save
  * setting, registered session folders, sweep claims), and what `options.keepSessions` names with the `workspaces` rows
  * they reference. Run `maintenance.vacuum` on each file after it to give the space back.

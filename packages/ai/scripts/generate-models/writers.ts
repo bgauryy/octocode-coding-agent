@@ -17,7 +17,9 @@ import {
 	MODEL_DATA_MANIFEST_FILE,
 	type ModelCatalogEntry,
 	type ModelDataStructure,
+	type ModelsDevStamp,
 	readModelDataProviderIds,
+	readModelsDevStamp,
 	validateGeneratedModelData,
 	validateModelDataDirectory,
 } from "../model-data.ts";
@@ -120,12 +122,14 @@ function writeTypeScriptCatalog(providersDir: string, aggregatorPath: string, so
 	console.log("Generated provider catalogs and src/models.generated.ts");
 }
 
-/** Stages, validates and installs the provider data and TypeScript catalog, and writes the JSON catalog when asked. */
-export function writeModelCatalogs({
-	sortedProviderIds,
-	jsonChatProviders,
-	jsonAllProviders,
-}: SortedProviderCatalogs): void {
+/**
+ * Stages, validates and installs the provider data and TypeScript catalog, and writes the JSON catalog when asked.
+ * `modelsDev` stamps the manifest; a run that read no models.dev data keeps the installed data's stamp.
+ */
+export function writeModelCatalogs(
+	{ sortedProviderIds, jsonChatProviders, jsonAllProviders }: SortedProviderCatalogs,
+	modelsDev: ModelsDevStamp | undefined,
+): void {
 	const generatedDataProviderIds = generatorOptions.dataOnly
 		? readModelDataProviderIds(packageRoot)
 		: sortedProviderIds;
@@ -169,7 +173,12 @@ export function writeModelCatalogs({
 			}
 			writeJson(
 				join(stagedDataDir, MODEL_DATA_MANIFEST_FILE),
-				createModelDataManifest(modelDataStructure, fileContents, generatedAt),
+				createModelDataManifest(
+					modelDataStructure,
+					fileContents,
+					generatedAt,
+					modelsDev ?? readModelsDevStamp(dataDir),
+				),
 			);
 			validateModelDataDirectory(modelDataStructure, stagedDataDir);
 

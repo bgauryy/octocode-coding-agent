@@ -25,6 +25,13 @@ export const ModelAvailabilitySettingsProperties = {
 				"Per provider, the model ids hidden by unticking them on its /providers page or the web provider page. Hidden models leave the model selector, cycling and subagent routing; a provider with no entry shows all its models. Global only.",
 		}),
 	),
+	modelCatalogUpdates: Type.Optional(
+		Type.Boolean({
+			description:
+				"Apply the daily models.dev index to the built-in catalog: newer prices and limits, deprecation marks, and new models of a known family on providers built from models.dev. Off keeps the catalog shipped with Octocode; OCTOCODE_MODELS_DEV=0 also turns it off, and --offline keeps the saved index without fetching. Global only; read once per process, so a change applies after a restart.",
+			default: true,
+		}),
+	),
 	providerSources: Type.Optional(
 		Type.Object(
 			{

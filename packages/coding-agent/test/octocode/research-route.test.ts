@@ -15,11 +15,15 @@ const policy = (overrides: Partial<Parameters<typeof octocodePromptSections>[0]>
 describe("research route", () => {
 	useResearchRoles();
 
-	it("names the research server by namespace and its reader by role, with bash only after the research tool fails", () => {
+	it("names the research server by namespace and its reader by role, defers to its route, with bash after a refusal", () => {
 		const research = policy().research;
 		expect(research).toContain(`\`${FAKE_RESEARCH.prefix}*\``);
 		expect(research).toContain(`read with \`${RESEARCH.reader.slice(FAKE_RESEARCH.prefix.length)}\``);
-		expect(research).toContain("not rg, grep, cat or sed, unless it refuses the path or fails");
+		// Contract change: the server's own route sends quick exact lookups (a known spelling, a line range, a count) to the
+		// shell, so the section follows that route instead of forbidding the shell readers it names.
+		expect(research).not.toMatch(/\bnot (?:rg|grep|cat|sed)\b/);
+		expect(research).toContain("`<mcps>` block routes each question, shell lookups included");
+		expect(research).toContain("if one refuses the path or fails, use bash");
 	});
 
 	it("names the reader only while it is declared, and bash only while the agent has a shell", () => {

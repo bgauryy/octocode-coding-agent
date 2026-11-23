@@ -11,6 +11,8 @@ import { applyRunFlags } from "../../src/configuration/run-flags.ts";
 import { parseArgs } from "../../src/cli/args.ts";
 import { type Sandbox, createSandbox } from "../discovery/fixtures.ts";
 import { configuration, context, globalSettingsFile, readJson } from "./helpers.ts";
+import { createConfiguration } from "../../src/configuration/index.ts";
+import { SettingsManager } from "../../src/core/settings-manager.ts";
 
 let sandbox: Sandbox;
 beforeEach(() => {
@@ -121,10 +123,52 @@ describe("harness switches reload MCP once per command", () => {
 });
 
 describe("live settings", () => {
+	it("applies an unset live key at once, with the value that now applies, and never writes it back", async () => {
+		await run("set theme light");
+		const applied: string[][] = [];
+		const applySetting = vi.fn((key: string) => {
+			applied.push([key]);
+			return key === "theme";
+		});
+		const outcome = await run("unset theme", { live: { applySetting, appliesLive: (key) => key === "theme" } });
+		expect(outcome.ok).toBe(true);
+		expect(outcome.lines.join("\n")).toContain("applies now");
+		// The applier applies what the files now hold (the default again) and saves nothing: the key stays removed.
+		expect(applied).toEqual([["theme"]]);
+		expect(readJson(globalSettingsFile(sandbox))?.theme).toBeUndefined();
+	});
+
+	it("writes through the session's own settings manager, so a live key applies the new value whatever it stores in", async () => {
+		// A host may run on an in-memory manager (an SDK embedder, the e2e harness): the write must reach what it reads.
+		const settings = SettingsManager.inMemory({ outputPad: 1 });
+		const seen: unknown[] = [];
+		const catalog = createConfiguration({
+			...context(sandbox),
+			settings,
+			live: { applySetting: (key) => (seen.push(settings.getOutputPad()), key === "outputPad") },
+		});
+		const outcome = await runConfigWords(catalog, splitConfigWords("set outputPad 0"), "/settings");
+		expect(outcome.lines.join("\n")).toContain("applies now");
+		expect(seen).toEqual([0]);
+		expect(settings.getOutputPad()).toBe(0);
+		await runConfigWords(catalog, splitConfigWords("unset outputPad"), "/settings");
+		expect(settings.getGlobalSettings().outputPad).toBeUndefined();
+	});
+
+	it("says a live key applies now in get and list, not after /reload", async () => {
+		const live = { applySetting: () => true, appliesLive: (key: string) => key === "theme" };
+		const got = (await run("get theme", { live })).lines.join("\n");
+		expect(got).toContain("applies now");
+		expect(got).not.toContain("after /reload");
+		const other = (await run("get retry.maxRetries", { live })).lines.join("\n");
+		expect(other).toContain("applies after /reload");
+	});
+
 	it("applies a live key through the host applier and reports now", async () => {
 		const applySetting = vi.fn((key: string) => key === "theme");
 		const outcome = await run("set theme dark", { live: { applySetting } });
-		expect(applySetting).toHaveBeenCalledWith("theme", "dark");
+		// Contract change (wave D): the hook takes no value; it applies what the files now hold, so an unset applies too.
+		expect(applySetting).toHaveBeenCalledWith("theme");
 		expect(outcome.lines.join("\n")).toContain("applies now");
 		const other = await run("set retry.maxRetries 4", { live: { applySetting } });
 		expect(other.lines.join("\n")).toContain("Interface and session");
@@ -167,29 +211,25 @@ const collectionHasDebugging =
 
 describe("a core skill the Octocode collection also ships", () => {
 	it.skipIf(!collectionHasDebugging)(
-		"lists the core copy, which loads, under the name, and the collection copy as shadowed",
+		"lists only the core copy, under the name: the collection's copy of a core skill is not offered",
 		async () => {
 			const listed = (await configuration(sandbox).list({ kinds: ["skill"] })).filter(
 				(entry) => entry.label === "octocode-debugging",
 			);
-			expect(listed).toHaveLength(2);
-			const loaded = listed.find((entry) => entry.id === "skill:octocode-debugging");
-			expect(loaded?.detail).toContain("native/skills");
-			expect(loaded?.detail).not.toMatch(/^shadowed/);
-			const shadowed = listed.find((entry) => entry !== loaded);
-			expect(shadowed?.id).toMatch(/^skill:.*octocode-debugging[/\\]SKILL\.md$/);
-			expect(shadowed?.detail).toMatch(/^shadowed: skill:octocode-debugging loads instead · /);
-			// `disable skill:<name>` switches the copy that loads: the core skill's global pattern.
+			// Both ship with Octocode and the core one always wins, so no row says the collection copy lost.
+			expect(listed).toHaveLength(1);
+			expect(listed[0]).toMatchObject({ id: "skill:octocode-debugging", value: true });
+			expect(listed[0]?.detail).toContain("native/skills");
+			expect(listed[0]?.detail).not.toMatch(/^shadowed/);
+			// `disable skill:<name>` switches the copy that loads: the core skill's global pattern, and the name is off.
 			expect((await run("disable skill:octocode-debugging")).ok).toBe(true);
 			expect(readJson(globalSettingsFile(sandbox))?.skills).toEqual(["-octocode-debugging/SKILL.md"]);
 			const after = (await configuration(sandbox).list({ kinds: ["skill"] })).filter(
 				(entry) => entry.label === "octocode-debugging",
 			);
-			// The pattern is relative to each skills folder, so it matches the collection copy too: the name is off.
-			expect(after.find((entry) => entry.id === "skill:octocode-debugging")).toMatchObject({ value: false });
-			expect(after.find((entry) => entry.id === "skill:octocode-debugging")?.detail).toContain("native/skills");
-			expect(after.map((entry) => entry.value)).toEqual([false, false]);
-			expect(after.some((entry) => entry.detail?.startsWith("shadowed"))).toBe(false);
+			expect(after).toHaveLength(1);
+			expect(after[0]).toMatchObject({ id: "skill:octocode-debugging", value: false });
+			expect(after[0]?.detail).toContain("native/skills");
 		},
 	);
 });

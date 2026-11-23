@@ -7,7 +7,7 @@ import { createMemoryTool } from "../../src/octocode/native/tools/memory/tool.ts
 import { fakeCtx, fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
-const fields = { title: "", body: "", kind: "fact" as const, pinned: false };
+const fields = { title: "", body: "", kind: "fact" as const, pinned: false, sources: undefined };
 
 function toolContext(): ToolContext {
 	return {

@@ -1,5 +1,6 @@
 import { Input } from "../components/input.ts";
 import { getKeybindings } from "../keybindings.ts";
+import { formatKeyText } from "../keys/display.ts";
 import type { Component, Focusable } from "../tui.ts";
 import { truncateToWidth } from "../utils/truncate.ts";
 import { visibleWidth } from "../utils/width.ts";
@@ -188,14 +189,12 @@ export class AltScreenSearchComponent implements Component, Focusable {
 	render(width: number): string[] {
 		const safeWidth = Math.max(1, width);
 		const innerWidth = Math.max(0, safeWidth - 2);
+		// The search buttons capitalize each part of the hint text (`Shift+Enter`, `Option+N` on macOS).
 		const formatKey = (key: string | undefined): string =>
 			key
-				? key
+				? formatKeyText(key)
 						.split("+")
-						.map((part) => {
-							if (process.platform === "darwin" && part.toLowerCase() === "alt") return "Option";
-							return part.charAt(0).toUpperCase() + part.slice(1);
-						})
+						.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 						.join("+")
 				: "Unbound";
 		const keybindings = getKeybindings();

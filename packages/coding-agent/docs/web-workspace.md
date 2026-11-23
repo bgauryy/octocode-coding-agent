@@ -7,6 +7,7 @@
 | `/web`          | Activity: live agent output, composer, approvals |
 | `/web backlogs` | The task board                                   |
 | `/web item B90` | The sheet of one backlog item                    |
+| `/web stop`     | Nothing: stops the [web daemon](#web-daemon)     |
 
 ```mermaid
 flowchart LR
@@ -26,11 +27,13 @@ flowchart LR
 | `web.theme`  | `system`, `light`, `dark` | `system` | Page colours; the theme control in the page changes it.                                                                                                                                                                                                                  |
 | `web.sound`  | boolean                   | `false`  | A chime with each notification; the **Sound** toggle in the page changes it.                                                                                                                                                                                             |
 
-Run `/web` again to reopen a disconnected workspace. Over SSH, or on Linux with no display, `/web item` prints the address instead of opening a browser; VS Code and Cursor terminals turn it into a link their port forwarding resolves. In fullscreen mode, backlog ids in tool results are links (see [terminal UI](tui.md#links-images-notifications)); a click runs `/web item <id>` and opens a fresh one-time address, so no credential sits in your scrollback.
+Run `/web` again to reopen a disconnected workspace. Over SSH, or on Linux with no display, `/web item` prints the address instead of opening a browser; VS Code and Cursor terminals turn it into a link their port forwarding resolves. With `OCTOCODE_OPEN_BROWSER=0`, `/web` prints it too. A printed address carries a one-time code: it opens the page once, within 5 minutes, then answers `401`, so the copy in your scrollback is soon spent or expired. Only the terminal shows the code; the copy of the notice that reaches the session's pages and the devices following it reads `[redacted]`. In fullscreen mode, backlog ids in tool results are links (see [terminal UI](tui.md#links-images-notifications)); a click runs `/web item <id>` with a fresh code.
 
 ## Web daemon
 
-`/web` starts one detached, user-level daemon, or reuses the one running, and opens its page on the current session. Every top-level session accepts the daemon when it starts (an owner-only local endpoint), so the page lists them all; subagents are never listed. The daemon keeps running after the session that started it closes and exits after ten idle minutes with no tab and no session (`OCTOCODE_WEB_DAEMON_IDLE_MINUTES`).
+`/web` starts one detached, user-level daemon, or reuses the one running, and opens its page on the current session. Every top-level session accepts the daemon when it starts (an owner-only local endpoint), so the page lists them all; subagents are never listed. The daemon keeps running after the session that started it closes and exits ten minutes after its last tab, attached session or relay device (`OCTOCODE_WEB_DAEMON_IDLE_MINUTES`).
+
+The daemon's process is `octocode-agent-web-<pid>`, and `/processes` lists it in every folder. `/web stop` ends it now: it gives up its address at once, so the next `/web` starts a new daemon, and closes its pages and published links within 30 seconds; sessions keep running. A script stops it with `kill <pid>`, the pid from `octocode remote list --json`. `/remote stop` only stops publishing. Scripts read the session list with [`octocode remote list --json`](remote.md#remote-list-output); the daemon's HTTP routes serve its page and are not an interface.
 
 If the daemon cannot start or this session cannot reach it, `/web` warns with the reason and opens the session's own server instead. That fallback page closes with its session.
 
@@ -41,6 +44,8 @@ If the daemon cannot start or this session cannot reach it, `/web` warns with th
 | Board edits from the launch page and control links, never view links                                  | Board edits from the launch page        |
 | Settings on the session's page and a Settings tab for every repository                                | Settings view for this repository       |
 | [`/remote`](remote.md) publishes it to another device                                                 | Not available                           |
+
+Each listed session shows its activity light with the terminal footer's word, capitalized: **Working**, **Needs you**, **Compacting**, **Failed**, **Stopped**, **Idle** and the rest ([activity light](tui-design.md#activity-light)), the words `octocode remote list` prints. The session header shows the same light in its own words while the session works, waits or failed (for example **Running**, **Waiting for you**, **Stopped**) and nothing while it is idle.
 
 A board edit on either page is recorded the same way (you, on the web, under the session whose page sent it) and repaints the backlog counts in that session's footer; an edit on the daemon page repaints every attached session of that repository.
 
@@ -59,7 +64,7 @@ A session's page has a Settings view for that session and its repository, on the
 
 A key set here asks for the same optional host as the terminal sign-in (OpenAI, Anthropic and Amazon Bedrock, which also asks for a region and, for a host whose name does not tell, the API). The host must be https, or http for localhost, with no user, password, query or fragment. Replacing only the key keeps the saved host; **Clear** removes key and host together. Key and host are saved as one credential: in the OS keychain with only a reference in `auth.json`, or in `auth.json` after you confirm plain text when there is no keychain. Edit host, Edit limits and Remove on a custom provider change Octocode's `models.json` as the terminal's provider page does; Remove also deletes the provider's saved key from the keychain. A `models.json` with comments is left unchanged and the page shows the reason.
 
-The Harness panel writes the same settings and MCP files as `/settings enable|disable` and never changes Claude Code, Codex or Cursor files. Filter by name or path; a row that is always on has no switch. A running session applies a switch on `/reload` (MCP servers in the next session); the panel shows what each switch did. Only the page opened from the terminal sees the panel: a published link cannot read or change it, because its rows name your files.
+The Harness panel writes the same settings and MCP files as `/settings enable|disable` and never changes Claude Code, Codex or Cursor files. Filter by name or path; a row that is always on has no switch, and a server the security review holds back reads `not checked: off until you approve it in /security` in place of On or Off. A running session applies a switch on `/reload` (MCP servers in the next session); the panel shows what each switch did. Only the page opened from the terminal sees the panel: a published link cannot read or change it, because its rows name your files.
 
 The Security panel lists what `/security` lists and records decisions through the same guard, so a decision made here holds in the terminal and the reverse. Approving or denying asks for a confirmation of the content shown. Like the Harness panel, only the page opened from the terminal sees it.
 
@@ -79,9 +84,11 @@ Like the Harness panel, only the page opened from the terminal reads or changes 
 - **Approvals and questions:** the page and the terminal race for the first answer, and the page says why an answer was not taken (for example, already answered in the terminal). The permission gate still decides. Every permission prompt shows as an approval; editor and custom dialogs stay terminal-only. A background subagent's approval relayed to the session also shows as needing you.
 - **Agent mail** shows as a card: the sender, its role and the recipient, then the message number, kind, forwarder and time. Bodies render as Markdown and fold after three lines.
 - **Tool output** that is a JSON document is indented and coloured by token type.
+- **Under the composer** a usage strip reads as the terminal footer does: `Context 41% of 115k` (warning from half the window, danger as compaction nears), `Σ` with money apart from the plan's share (`Σ ≈$1.24 · ~$3.10 plan`; the tooltip explains it), and each plan quota window at 70% or more, fullest first (`quota 5h 82% · resets 14:20`, danger from 90%; another provider's window names it).
+- **Model and thinking**: the model chip names the model and its provider's kind (subscription, local and so on), and it and the thinking select switch the running session. With no usable model the chip reads **No model** and opens Settings → Providers. A reply that failed on a credential links to Settings → Providers.
 - Requests time out after 15 seconds. A timeout does not prove a write failed: check the item or activity before retrying. Retries keep their request id, so an accepted request is not repeated.
 
-Earlier conversation and session updates show up to 100 cards at a time. **Older loaded** and **Newer loaded** move through the records already fetched; **Load earlier** fetches another page from the session. **Search loaded history** searches those fetched records, including pages currently out of view. Clear the search to return to your previous page.
+Earlier conversation and session updates show up to 100 cards at a time. **Older loaded** and **Newer loaded** move through the records already fetched; **Load earlier** fetches another page from the session. **Search loaded history** searches those fetched records, including pages currently out of view. Clear the search to return to your previous page. An `archive:…` or `transcript:…` anchor in a message opens the recorded text it names (author, time and **More** for long text) and reads as unavailable when the history is missing or expired; a view-only link can read it.
 
 In an interactive session, open **Commands** to search the same slash commands, aliases, extensions and skills as the terminal. Select a command, enter its arguments and choose **Run**. For example, run `/settings` to open its configuration picker. Use the dialog controls to select or cancel. Commands operate on the attached terminal session. Host actions such as copying use that machine’s clipboard. The local launch link grants access to Commands.
 
@@ -136,6 +143,8 @@ What a drop does: **In progress** checks the goal and reason and claims the item
 Tree view: an epic has **Add item**; an item has an **Epic** select and **Add task**; each task has a state select, **Edit** and move up/down (`Alt+ArrowUp` / `Alt+ArrowDown`). **Session tasks** groups tasks with no item, with **Promote to item** and **Move under item**.
 
 An agent can finish an existing checklist step with `backlog step`, giving its task reference and a result note. The board updates the task tally and shows the saved result beneath the step. Finishing a step leaves its item open; the item still needs its own completion and verification. Agents can update only steps their session or assigned item permits.
+
+An agent's completion can cite a shell receipt from a `bash` call with `verify: true` (`receipt`: the id the result printed, or `latest`); a receipt from another session is refused. The item's text details then show **Evidence**: **Recorded check** (the command finished with exit 0 and nothing changed the workspace since), **Reported** (no receipt, or a nonzero exit), **Skipped** (the QA review did not run) or **Stale** (a later edit or another process moved the workspace on). A zero exit proves the command succeeded, not that the goal is met. The stored command has credentials redacted.
 
 The terminal footer and the connected session's web header show completed steps out of the total for that session and its ongoing items. Dropped steps are included in the total and labelled separately. The web header links to the task tree; after disconnection it marks the progress as cached. Changes from a child agent or another board refresh the terminal counts while work continues.
 

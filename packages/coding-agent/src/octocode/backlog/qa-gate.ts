@@ -1,5 +1,6 @@
 import type { FeatureContext } from "../../core/features/index.ts";
 import type { Item } from "./item.ts";
+import { type CompletionReceipt, QA_SKIPPED_PREFIX } from "./receipts.ts";
 
 /** `backlog.qa`: which items a reviewer checks before `done` completes them. */
 export type QaMode = "important" | "all" | "off";
@@ -21,6 +22,8 @@ export interface QaRequest {
 	goal: string;
 	summary: string;
 	verification: string;
+	/** What the shell receipt the completion cites showed, when it cites one; also stated in `verification`. */
+	receipt?: CompletionReceipt;
 	files: string[];
 	/** The pull request the item links, when it links one: the review then follows the pull-request skill. */
 	pullRequest?: string;
@@ -78,7 +81,7 @@ export type QaSendBack = (ref: string, state: "ongoing" | "backlog", note: strin
  * throw the refusal the holder reads (so the holder is told in the same call that asked).
  */
 export async function applyReview(item: Item, review: QaReview, sendBack: QaSendBack): Promise<string> {
-	if ("skipped" in review) return `QA skipped: ${review.skipped}`;
+	if ("skipped" in review) return `${QA_SKIPPED_PREFIX} ${review.skipped}`;
 	const note = qaNote(review);
 	if (review.verdict.verdict === "Ready") return note;
 	await sendBack(item.ref, review.verdict.verdict === "Verification incomplete" ? "backlog" : "ongoing", note);

@@ -6,6 +6,7 @@ import { validateMcpServerConfig } from "../servers.ts";
 import { type McpServerConfig } from "@octocodeai/octocode-contracts/mcp-server";
 import { addMcpServerConfig, loadMcpConfig, removeMcpServerConfig } from "../config.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { reviewBeforeAdding } from "../review-first.ts";
 import { helpHint, type McpCommandOptions, parseOptions } from "./shared.ts";
 
 /** Parse `KEY=VALUE` pairs of a repeatable option into a record. */
@@ -23,7 +24,7 @@ function parsePairs(option: string, pairs: string[] | undefined, error: (line: s
 	return record;
 }
 
-/** A server definition read from `add` arguments: what `octocode mcp add` and `/settings add mcp` both write. */
+/** A server definition read from `add` arguments, off and unassigned: what `octocode mcp add` and `/settings add mcp` write. */
 export interface ParsedMcpAdd {
 	name: string;
 	/** Validated definition: `{ url, headers?, oauth? }` or `{ command, args?, env?, cwd? }`, with `exposure` and `description`. */
@@ -119,6 +120,10 @@ export function parseMcpAddArgs(
 	if (exposure !== undefined) config.exposure = exposure;
 	const description = value("description");
 	if (description !== undefined) config.description = description;
+	// A new definition is saved off and unassigned, as Add MCP saves it (`saveMcpDefinition`): it stays off until the
+	// user approves its launch in the security review and switches it on.
+	config.enabled = false;
+	config.defaultActive = false;
 	const validated = validateMcpServerConfig(name, config);
 	if (typeof validated === "string") {
 		error(validated);
@@ -144,12 +149,19 @@ export async function add(
 	const scope = project ? "project" : "global";
 	let replaced: boolean;
 	try {
+		reviewBeforeAdding(options);
 		replaced = addMcpServerConfig(path, name, validated);
 	} catch (addError) {
 		error(`Could not update ${path}: ${errorMessage(addError)}`);
 		return 1;
 	}
-	log(`${replaced ? "Replaced" : "Added"} ${scope} MCP server "${name}" in ${path}.`);
+	const app = hostIdentity().appName;
+	log(
+		`Saved ${scope} MCP server "${name}" off and unassigned in ${path}${replaced ? " (replacing the earlier one)" : ""}.`,
+	);
+	log(
+		`Nothing was started. Review and approve it (\`${app} security show mcp:${name}\`, then \`${app} security approve mcp:${name}\`), then switch it on: \`${app} configuration enable mcp:${name}\`, and choose its agents in /mcp.`,
+	);
 	if (project && !hostTrust().folderTrusted(options.cwd)) {
 		log(
 			`The folder is not trusted, so ${path} is ignored until you trust it: run \`${hostIdentity().appName} trust add\` in it, or start ${hostIdentity().appName} there.`,
@@ -159,9 +171,7 @@ export async function add(
 	const mayNeedSignIn =
 		"url" in validated &&
 		!Object.keys(validated.headers ?? {}).some((header) => header.toLowerCase() === "authorization");
-	log(
-		`Check it with: ${hostIdentity().appName} mcp list${mayNeedSignIn ? `. If it requires sign-in: ${hostIdentity().appName} mcp login ${name}` : ""}`,
-	);
+	if (mayNeedSignIn) log(`If it requires sign-in: ${app} mcp login ${name}`);
 	return 0;
 }
 

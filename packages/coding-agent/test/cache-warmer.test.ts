@@ -27,6 +27,7 @@ import {
 	type CacheWarmerIdleOptions,
 } from "../src/core/cache-warmer.ts";
 import { IdleContinuationPool } from "../src/core/cache-warmer/idle-pool.ts";
+import { cacheWarmingReport } from "../src/core/cache-warmer/report.ts";
 import { createEventBus } from "@octocodeai/octocode-agent-core";
 import { createFeatureRuntime, loadFeatureFromFactory } from "./helpers/features.ts";
 import { FeatureHost } from "../src/core/features/runner.ts";
@@ -111,6 +112,7 @@ function fakeRuntime(
 					result: () => (options.result ?? (async (m: Model<Api>) => response(m)))(model),
 				} as unknown as AssistantMessageEventStream;
 			},
+			getProviderBilling: () => "metered",
 		},
 		{
 			captureUsageWriter: () => appendUsage,
@@ -653,7 +655,7 @@ describe("cache warming", () => {
 			action: "warm",
 		};
 		expect(formatCacheWarmingStatus({ state: "scheduled", nextWarmAt: 222_000, decision }, 0)).toBe(
-			"Decision in 3m 42s (60% continuation probability, expected savings $0.360 >= $0.050 -> warm)",
+			"Decision in 3m 42s (60% continuation probability, expected savings ≈$0.360 >= $0.050 -> warm)",
 		);
 		const usage = {
 			...warmUsage,
@@ -666,7 +668,37 @@ describe("cache warming", () => {
 			usage,
 			"feature override",
 		);
-		expect(formatCacheWarmingUsage(entry)).toBe("Cache warmed (feature override): $0.029497");
+		expect(formatCacheWarmingUsage(entry)).toBe("Cache warmed (feature override): ≈$0.029497");
+	});
+
+	it("writes every warming amount as an estimate, with the decimals a decision compares", () => {
+		const decision: CacheWarmingDecision = {
+			phase: "idle",
+			warmCost: 0.013,
+			missCost: 0.0021,
+			continuationProbability: 0.5,
+			expectedSavings: -0.012,
+			economicsAvailable: true,
+			action: "stop",
+		};
+		const status = { state: "inactive" as const, reason: "expected savings below threshold", decision };
+		expect(formatCacheWarmingStatus(status, 0)).toBe(
+			"Stopped (50% continuation probability, expected savings ≈-$0.012 < $0.050 -> stop)",
+		);
+		const lines = cacheWarmingReport({
+			model: undefined,
+			cacheWarmingStatus: status,
+			modelRuntime: { getCachePolicy: () => undefined as never, isUsingSubscription: () => false },
+			settingsManager: { getCachePreferenceLayers: () => [] as never, getCacheWarmingMode: () => "idle" },
+		});
+		expect(lines).toContain("Estimated cache miss penalty: ≈$0.002");
+		expect(lines).toContain("Estimated refresh cost: ≈$0.013");
+		const noHit = SessionManager.inMemory().appendUsage("cache_warm", adaptiveModel.provider, adaptiveModel.id, {
+			...warmUsage,
+			cacheRead: 0,
+			cost: { input: 0.0004, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.0004 },
+		});
+		expect(formatCacheWarmingUsage(noHit)).toBe("Cache refresh (no hit): ≈$0.0004");
 	});
 });
 

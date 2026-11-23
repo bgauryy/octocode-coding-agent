@@ -8,6 +8,7 @@ import type { FlatSessionNode } from "./session-tree.ts";
 import type { SessionExtras } from "./types.ts";
 import { formatAge, formatSessionTime, shortenPath } from "./utils.ts";
 import { cursorMark } from "../../../../theme/theme-tui-helpers.ts";
+import { activityBadge } from "../../../../theme/page-kit.ts";
 
 /** At this width or less, line 2 leaves out the changed-file count. */
 const NARROW_WIDTH = 80;
@@ -56,11 +57,20 @@ interface Part {
 	drop?: number;
 }
 
+/** The activity badge of a live session whose process wrote its light; undefined for a saved one or an unknown light. */
+const liveActivity = (extras: SessionExtras | undefined) =>
+	extras?.live && extras.activity ? activityBadge(extras.activity) : undefined;
+
 function detailParts(view: RowView): Part[] {
 	const { node, extras, width } = view;
 	const session = node.session;
 	const narrow = width <= NARROW_WIDTH;
-	const parts: Part[] = [{ text: formatAge(session.modified) }];
+	const parts: Part[] = [];
+	// What another live session is doing comes first and never drops: it is why a live row reads differently.
+	// The current session's own state is the screen behind the picker.
+	const shown = view.current ? undefined : liveActivity(extras);
+	if (shown) parts.push({ text: shown.word });
+	parts.push({ text: formatAge(session.modified) });
 	const time = formatSessionTime(session.created, session.modified);
 	// Kept longer than anything else that may drop: the start time tells sessions of one day apart.
 	if (time) parts.push({ text: time, drop: 0 });
@@ -110,13 +120,16 @@ export function renderSessionRow(view: RowView): string[] {
 	const session = node.session;
 	const prefix = treePrefix(node, width);
 	const cursor = cursorMark(selected);
+	const shown = current ? undefined : liveActivity(view.extras);
 	const mark = view.marked
 		? theme.fg("error", GLYPH.failed)
 		: current
 			? theme.fg("accent", "◆")
-			: view.extras?.live
-				? theme.fg("success", GLYPH.live)
-				: " ";
+			: shown
+				? theme.fg(shown.tone, shown.glyph)
+				: view.extras?.live
+					? theme.fg("success", GLYPH.live)
+					: " ";
 	const indent = 2 + visibleWidth(prefix) + 2;
 
 	const title = truncateToWidth(rowTitle(session, view.parentTitle), Math.max(1, width - indent), "…");

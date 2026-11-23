@@ -9,6 +9,7 @@ import { showTreeNavigationResult } from "../src/modes/interactive/interactive-m
 import { resultBlock, toolHeader } from "../src/octocode/render/tool.ts";
 import { initTheme, theme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
 const ROWS = 20;
 
@@ -94,7 +95,7 @@ describe("transcript rows are disposed when dropped", () => {
 			clearFeatureTerminalInputListeners: vi.fn(),
 			footerDataProvider: { dispose: vi.fn() },
 			unsubscribe: vi.fn(),
-			isInitialized: true,
+			uiStore: createUiStore({ lifecycle: { initialized: true } }),
 			stopInteractiveTui: vi.fn(() => {
 				expect(animationClock.isRunning()).toBe(true);
 				expect(chat.children).toEqual(rows);

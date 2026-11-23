@@ -45,6 +45,11 @@ const TERMINAL_PROVIDER_LIMIT_ERROR_PATTERN = buildProviderErrorPattern([
 	// Sign in with ChatGPT: the subscription's shared usage limit, which resets
 	// after hours rather than seconds.
 	"subscription_sharing_usage_limit_exceeded",
+	// Subscription plans' usage windows (hours to days): Codex `usage_limit_reached` ("The usage limit has been
+	// reached"), "You have hit your ChatGPT usage limit", Claude "Claude AI usage limit reached|<reset>", "You've
+	// hit your usage limit", "You have reached your usage limit".
+	"usage[ _]limit[ _](?:has[ _]been[ _]|was[ _])?reached",
+	"(?:hit|reached) (?:your|the) (?:[A-Za-z]+ )?usage limit",
 	// Sign in with ChatGPT on a ChatGPT Business plan: a usage limit set by the
 	// workspace admin. Only the admin can raise it.
 	"subscription_sharing_workplace_individual_usage_limit_exceeded",
@@ -93,12 +98,17 @@ const NO_FUNDS_PATTERN = buildProviderErrorPattern([
 	"out of credit",
 ]);
 
+/** Whether provider error text says the account has no funds: payment required, or no credit, balance or funds left. */
+export function isNoFundsError(errorText: string): boolean {
+	return NO_FUNDS_PATTERN.test(errorText);
+}
+
 /**
  * Whether provider error text names a usage limit: an account, subscription, quota or billing limit, or no funds. The
  * same request to that account fails until the limit resets or funds are added, so callers may move to another model.
  */
 export function isUsageLimitError(errorText: string): boolean {
-	return isTerminalProviderLimitError(errorText) || NO_FUNDS_PATTERN.test(errorText);
+	return isTerminalProviderLimitError(errorText) || isNoFundsError(errorText);
 }
 
 /** The machine has no route to the network (sleep, VPN drop, network switch) or DNS failed for now. Not `ENOTFOUND`. */

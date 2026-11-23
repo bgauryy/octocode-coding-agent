@@ -12,6 +12,7 @@ import { type StatusIndicator, WorkingStatusIndicator } from "../components/stat
 import { LongResponse } from "../components/long-response.ts";
 import { styleNotice } from "../../../theme/notice.ts";
 import { theme } from "../../../theme/theme.ts";
+import { selectWorkingIndicator, selectWorkingMessage } from "../state/status-slice.ts";
 import { webCommandContext } from "./web-command-context.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
@@ -21,17 +22,14 @@ import type { StatusLink, StatusText } from "./types.ts";
 type StatusIndicatorsHost = Pick<
 	InteractiveModeHost,
 	| "activeStatusIndicator"
-	| "activeWorkingIndicatorEmbedded"
 	| "chatContainer"
 	| "clearStatusIndicator"
 	| "defaultEditor"
-	| "defaultWorkingMessage"
 	| "editor"
 	| "footerDataProvider"
 	| "idleStatus"
 	| "lastStatusSpacer"
 	| "lastStatusText"
-	| "managedToolStatusStarted"
 	| "options"
 	| "session"
 	| "setEditorWorkingStatusIndicator"
@@ -40,8 +38,7 @@ type StatusIndicatorsHost = Pick<
 	| "statusContainer"
 	| "streamingComponent"
 	| "ui"
-	| "workingIndicatorOptions"
-	| "workingMessage"
+	| "uiStore"
 >;
 
 /** Set feature status text in the footer; the footer data subscription draws it when it changed. */
@@ -64,17 +61,16 @@ export function setEditorWorkingStatusIndicator(
 	return true;
 }
 
+/**
+ * Shows `indicator` in the editor when the editor embeds status lines, otherwise on its own row: an active indicator is
+ * embedded exactly when the status row does not hold it, so that is never stored separately.
+ */
 export function showStatusIndicator(host: StatusIndicatorsHost, indicator: StatusIndicator): void {
 	host.activeStatusIndicator?.dispose();
 	host.activeStatusIndicator = indicator;
-	host.activeWorkingIndicatorEmbedded = false;
 	host.statusContainer.clear();
 	host.setEditorWorkingStatusIndicator(undefined);
-	if (host.setEditorWorkingStatusIndicator(indicator)) {
-		host.activeWorkingIndicatorEmbedded = true;
-		return;
-	}
-	host.statusContainer.addChild(indicator);
+	if (!host.setEditorWorkingStatusIndicator(indicator)) host.statusContainer.addChild(indicator);
 }
 
 export function clearStatusIndicator(host: StatusIndicatorsHost, kind?: StatusIndicator["kind"]): void {
@@ -82,10 +78,10 @@ export function clearStatusIndicator(host: StatusIndicatorsHost, kind?: StatusIn
 		return;
 	}
 	const clearedIndicator = host.activeStatusIndicator;
-	const clearedIndicatorWasEmbedded = host.activeWorkingIndicatorEmbedded;
+	const clearedIndicatorWasEmbedded =
+		clearedIndicator !== undefined && !host.statusContainer.children.includes(clearedIndicator);
 	clearedIndicator?.dispose();
 	host.activeStatusIndicator = undefined;
-	host.activeWorkingIndicatorEmbedded = false;
 	host.statusContainer.clear();
 	host.setEditorWorkingStatusIndicator(undefined);
 	if (
@@ -103,18 +99,14 @@ export function showWorkingStatusIndicator(host: StatusIndicatorsHost): void {
 		? (text: string) =>
 				(host.editor.borderColor ?? theme.getThinkingBorderColor(host.session.thinkingLevel || "off"))(text)
 		: undefined;
+	const state = host.uiStore.getState();
 	host.showStatusIndicator(
-		new WorkingStatusIndicator(
-			host.ui,
-			host.workingMessage ?? host.defaultWorkingMessage,
-			host.workingIndicatorOptions,
-			colorFn,
-		),
+		new WorkingStatusIndicator(host.ui, selectWorkingMessage(state), selectWorkingIndicator(state), colorFn),
 	);
 }
 
 export function setWorkingIndicator(host: StatusIndicatorsHost, options?: WorkingIndicatorOptions): void {
-	host.workingIndicatorOptions = options;
+	host.uiStore.getState().setWorkingIndicator(options);
 	if (host.activeStatusIndicator?.kind === "working") {
 		host.activeStatusIndicator.setIndicator(options);
 	}
@@ -122,10 +114,7 @@ export function setWorkingIndicator(host: StatusIndicatorsHost, options?: Workin
 }
 
 export function showManagedToolStatus(host: StatusIndicatorsHost, status: ToolStatus): void {
-	if (!host.managedToolStatusStarted) {
-		host.chatContainer.addChild(new Spacer(1));
-		host.managedToolStatusStarted = true;
-	}
+	if (host.uiStore.getState().startManagedToolStatus()) host.chatContainer.addChild(new Spacer(1));
 	const message = status.type === "warning" ? `Warning: ${status.message}` : status.message;
 	const color = status.type === "warning" ? "warning" : "dim";
 	host.chatContainer.addChild(new ThemedText(() => theme.fg(color, message), 1, 0));

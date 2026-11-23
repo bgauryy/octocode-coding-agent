@@ -51,7 +51,7 @@ async function warmCostFor(apiKey: string): Promise<number> {
 	const decisions: number[] = [];
 	const streamSimple = vi.fn(() => ({ result: async () => undefined }) as unknown as AssistantMessageEventStream);
 	const warmer = new CacheWarmer(
-		{ streamSimple, getAuth: async () => ({ auth: { apiKey } }) },
+		{ streamSimple, getAuth: async () => ({ auth: { apiKey } }), getProviderBilling: () => "metered" },
 		{ captureUsageWriter: () => vi.fn(), getSessionId: () => "s", getBranch: branch },
 		() => "streaming",
 		async (event) => {

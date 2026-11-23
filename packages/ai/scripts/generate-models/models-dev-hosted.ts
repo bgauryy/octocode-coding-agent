@@ -1,6 +1,12 @@
-import { modelsDevLimits } from "./models-dev-limits.ts";
+import {
+	getEffortThinkingLevelMap,
+	getModelsDevCost,
+	modelsDevInput,
+	modelsDevLimits,
+	modelsDevReasoning,
+	modelsDevToolCall,
+} from "../../src/catalog/models-dev-fields.ts";
 import type { Model } from "../../src/types.ts";
-import { getEffortThinkingLevelMap } from "../models-dev-reasoning-options.ts";
 import {
 	NVIDIA_BASE_URL,
 	NVIDIA_HEADERS,
@@ -10,7 +16,7 @@ import {
 	XAI_RESPONSES_COMPAT,
 } from "./constants.ts";
 import { normalizeNvidiaModelId } from "./fetchers.ts";
-import { getModelsDevCost, roundCost } from "./pricing.ts";
+import { roundCost } from "./pricing.ts";
 import { processBasetenModels, processFireworksModels, processZaiModels } from "./processors.ts";
 import { getTogetherCompat, getTogetherThinkingLevelMap, recordModelsDevReasoningOptions } from "./thinking-levels.ts";
 import type { ModelsDevCatalog } from "./types.ts";
@@ -25,7 +31,7 @@ export function addModelsDevHostedModels(
 	if (data.xai?.models) {
 		for (const [modelId, model] of Object.entries(data.xai.models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 
 			models.push({
 				id: modelId,
@@ -34,8 +40,8 @@ export function addModelsDevHostedModels(
 				provider: "xai",
 				baseUrl: "https://api.x.ai/v1",
 				compat: { ...XAI_RESPONSES_COMPAT },
-				reasoning: m.reasoning === true,
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: modelsDevReasoning(m),
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				...modelsDevLimits(m.limit),
 			});
@@ -47,7 +53,7 @@ export function addModelsDevHostedModels(
 	if (data.meta?.models) {
 		for (const [modelId, model] of Object.entries(data.meta.models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 
 			models.push({
 				id: modelId,
@@ -55,8 +61,8 @@ export function addModelsDevHostedModels(
 				api: "openai-responses",
 				provider: "meta",
 				baseUrl: "https://api.meta.ai/v1",
-				reasoning: m.reasoning === true,
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: modelsDevReasoning(m),
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				...modelsDevLimits(m.limit),
 			});
@@ -70,7 +76,7 @@ export function addModelsDevHostedModels(
 	if (data.mistral?.models) {
 		for (const [modelId, model] of Object.entries(data.mistral.models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 
 			// Models with effort values use `reasoning_effort` with these levels.
 			// Reasoning models without them (Magistral) use `prompt_mode`.
@@ -82,9 +88,9 @@ export function addModelsDevHostedModels(
 				api: "mistral-conversations",
 				provider: "mistral",
 				baseUrl: "https://api.mistral.ai",
-				reasoning: m.reasoning === true,
+				reasoning: modelsDevReasoning(m),
 				...(thinkingLevelMap ? { thinkingLevelMap } : {}),
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				input: modelsDevInput(m.modalities),
 				cost: {
 					input: m.cost?.input ?? 0,
 					output: m.cost?.output ?? 0,
@@ -100,7 +106,7 @@ export function addModelsDevHostedModels(
 	if (data.huggingface?.models) {
 		for (const [modelId, model] of Object.entries(data.huggingface.models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 
 			models.push({
 				id: modelId,
@@ -108,8 +114,8 @@ export function addModelsDevHostedModels(
 				api: "openai-completions",
 				provider: "huggingface",
 				baseUrl: "https://router.huggingface.co/v1",
-				reasoning: m.reasoning === true,
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				reasoning: modelsDevReasoning(m),
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				compat: {
 					supportsDeveloperRole: false,
@@ -126,7 +132,7 @@ export function addModelsDevHostedModels(
 	if (data.nvidia?.models) {
 		for (const [modelId, model] of Object.entries(data.nvidia.models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 			if (!m.modalities?.input?.includes("text")) continue;
 			if (!m.modalities?.output?.includes("text")) continue;
 
@@ -141,7 +147,7 @@ export function addModelsDevHostedModels(
 				provider: "nvidia",
 				baseUrl: NVIDIA_BASE_URL,
 				headers: { ...NVIDIA_HEADERS },
-				reasoning: m.reasoning === true,
+				reasoning: modelsDevReasoning(m),
 				input: m.modalities.input.includes("image") ? ["text", "image"] : ["text"],
 				cost: getModelsDevCost(m.cost),
 				compat: NVIDIA_OPENAI_COMPAT,
@@ -156,10 +162,10 @@ export function addModelsDevHostedModels(
 	if (togetherProvider?.models) {
 		for (const [modelId, model] of Object.entries(togetherProvider.models)) {
 			const m = model;
-			if (m.tool_call !== true) continue;
+			if (!modelsDevToolCall(m)) continue;
 			if (m.status === "deprecated") continue;
 
-			const reasoning = m.reasoning === true;
+			const reasoning = modelsDevReasoning(m);
 			const thinkingLevelMap = getTogetherThinkingLevelMap(modelId, reasoning);
 			models.push({
 				id: modelId,
@@ -169,7 +175,7 @@ export function addModelsDevHostedModels(
 				baseUrl: TOGETHER_BASE_URL,
 				reasoning,
 				...(thinkingLevelMap ? { thinkingLevelMap } : {}),
-				input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
+				input: modelsDevInput(m.modalities),
 				cost: getModelsDevCost(m.cost),
 				compat: getTogetherCompat(modelId, reasoning),
 				...modelsDevLimits(m.limit),

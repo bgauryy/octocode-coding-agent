@@ -7,12 +7,14 @@ import { bypassMergeLine } from "./permission/ask/text.ts";
 import type { PermissionMode } from "./permission/mode.ts";
 import { type Subcommand, say } from "./shared/commands.ts";
 import { formatSessionReport } from "./shared/session-report.ts";
+import { quotaLines, sessionProviders } from "./status-quota.ts";
 import { workersLine } from "./status-workers.ts";
 
 /**
  * `/status`: one message with the session summary, what bypass mode does with merges (in `permission`'s bypass mode), the loaded
- * skills, where background work runs (`status-workers.ts`), each MCP server's connection status and the session's token,
- * cache and cost totals.
+ * skills, where background work runs (`status-workers.ts`), each MCP server's connection status, the quota windows of
+ * the providers the session used (`status-quota.ts`), the session's token, cache and cost totals and its Cache Warming
+ * section (`cacheWarmingReport`).
  */
 export function statusCommand(
 	api: FeatureSetup,
@@ -30,17 +32,23 @@ export function statusCommand(
 				.sort((a, b) => a.name.localeCompare(b.name));
 			const servers = getMcpSessionStatus(api.channels);
 			const model = ctx.model;
+			const entries = ctx.sessionManager.getEntries();
+			const quota = quotaLines(sessionProviders(entries, model?.provider));
 			const report = formatSessionReport({
 				stats: computeSessionStats(ctx.sessionManager, {
 					sessionFile: ctx.sessionManager.getSessionFile(),
 					sessionId: ctx.sessionManager.getSessionId(),
 					contextUsage: ctx.getContextUsage(),
 				}),
-				entries: ctx.sessionManager.getEntries(),
+				entries,
 				branch: ctx.sessionManager.getBranch(),
 				prices: { getModel: (provider, id) => ctx.modelRegistry.find(provider, id) },
 				selectedModelKey: `${model?.provider}/${model?.id}`,
+				model: model
+					? `${model.provider}/${model.id}${model.reasoning ? `:${api.models.getThinkingLevel()}` : ""}`
+					: "none (/model picks one)",
 				name: ctx.sessionManager.getSessionName(),
+				afterCache: ctx.getCacheWarmingReport().join("\n"),
 			});
 			say(
 				ctx,
@@ -60,12 +68,11 @@ export function statusCommand(
 								(server) =>
 									`  ${server.name}: ${server.enabled ? server.state : "disabled"}; ${server.exposure}; ${server.toolCount} tools${server.group ? ` — ${mcpGroupLabel(server.group)}` : ""}`,
 							)
-						: ["  none"]),
+						: ["  none · /mcp adds one"]),
 					...(servers.length ? ["  Sources and tools: /harness list <server name>, /mcp tools <server>"] : []),
+					...(quota.length ? ["", ...quota] : []),
 					"",
 					report,
-					"",
-					"Configure servers with /mcp.",
 				].join("\n"),
 			);
 		},

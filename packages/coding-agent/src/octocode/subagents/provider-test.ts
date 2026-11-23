@@ -19,6 +19,8 @@ export interface ProviderTestHost {
 	model?: { provider: string; id: string };
 	fetch?: typeof fetch;
 	health?: ProviderHealth;
+	/** The workspace a test's request is spent for (`/usage`); default: this process's working directory. */
+	cwd?: string;
 }
 
 const MAX_MESSAGE = 800;
@@ -53,7 +55,13 @@ export async function testProvider(
 	// Only `streamSimple`: without `getProvider`/`getProviderAuth` the check skips the model-list shortcut.
 	const requestOnly = { streamSimple: registry.streamSimple.bind(registry) };
 	const [, served] = await Promise.all([
-		checkProviders(requestOnly, checkCandidates(available, host.model as never), health, signal),
+		checkProviders(
+			requestOnly,
+			checkCandidates(available, host.model as never),
+			health,
+			signal,
+			host.cwd ?? process.cwd(),
+		),
 		servedModelReport(host.runtime, id, { signal, fetch: host.fetch }),
 	]);
 	const status = health.get(id);

@@ -45,15 +45,16 @@ describe("backlog rank queries", () => {
 		expect(rowOf(2).rank).toBe(1024);
 	});
 
-	it("writes one row when a card moves between neighbours, and leaves its update time alone", () => {
+	it("writes one row when a card moves between neighbours, and leaves its version and update time alone", () => {
 		const { agent, rows, rowOf } = setup();
 		backlog.setItemRank(agent.db, rowOf(1).id, 1024);
 		backlog.setItemRank(agent.db, rowOf(2).id, 2048);
 		const before = new Map(rows().map((row) => [row.seq, { ...row }]));
-		const version = backlog.setItemRank(agent.db, rowOf(3).id, 1536);
+		backlog.setItemRank(agent.db, rowOf(3).id, 1536);
 		const changed = rows().filter((row) => JSON.stringify(row) !== JSON.stringify(before.get(row.seq)));
 		expect(changed.map((row) => row.seq)).toEqual([3]);
-		expect(version).toBe(before.get(3)!.version + 1);
+		// Contract change: ordering is not an edit, so a rank keeps the version (a copy read before the move still writes).
+		expect(rowOf(3).version).toBe(before.get(3)!.version);
 		expect(rowOf(3).updated_at).toBe(before.get(3)!.updated_at);
 		expect(rows().map((row) => row.seq)).toEqual([1, 3, 2]);
 	});

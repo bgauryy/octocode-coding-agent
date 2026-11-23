@@ -31,7 +31,7 @@ Schema version 10. There are no upgrade steps: a file at another version is refu
 | `backlog_audits`, `workspace_commands`                                      | Item history (survives item removal) and web command receipts keyed by workspace, session and client request id                                      |
 | `agents`, `agent_events`, `messages`, `deliveries`, `agent_runs`            | See [agents, runs and mail](#agents-runs-and-mail)                                                                                                   |
 | `leases`, `edits`                                                           | Checkout-level reservations and observed edits                                                                                                       |
-| `timers`                                                                    | The `notify` tool's wakes                                                                                                                              |
+| `timers`                                                                    | The `notify` tool's wakes                                                                                                                            |
 | `jobs`                                                                      | Background `bash` jobs of every session (command, folder, pid, log, state), so an identical start can join a running one; rebuildable, never carried |
 | `memories`                                                                  | Scoped to exactly one of: a workspace, a project key or the global collection; full-text search when SQLite supports it                              |
 | `meta`, `config_audits`, `trusted_folders`                                  | Housekeeping, configuration audit history, project trust grants                                                                                      |
@@ -83,13 +83,13 @@ stateDiagram-v2
   done --> todo: reopened with a note
 ```
 
-| Relation       | Answers               | Rule                                                                                                                                                                                                            |
-| -------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `parentId`     | Part of what?         | A parent finishes only when no descendants are open and its own goal is confirmed; reopening a child flags a done ancestor for review; a parent with children cannot be deleted                                 |
-| `dependsOn`    | Waiting for what?     | Unresolved prerequisites block starting or completing; only `done` satisfies one. Omitted leaves dependencies unchanged, `[]` clears, an array replaces atomically; self-links and missing targets are rejected |
-| `derived_from` | Discovered from what? | Provenance only; never inferred from the other two                                                                                                                                                              |
+| Relation       | Answers               | Rule                                                                                                                                                                                                                                |
+| -------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parentId`     | Part of what?         | A parent finishes only when no descendants are open and its own goal is confirmed; reopening a child flags a done ancestor for review; items are never deleted, only closed                                                         |
+| `dependsOn`    | Waiting for what?     | Unresolved prerequisites block starting or completing; a finished one (done or closed) satisfies one. Omitted leaves dependencies unchanged, `[]` clears, an array replaces atomically; self-links and missing targets are rejected |
+| `derived_from` | Discovered from what? | Provenance only; never inferred from the other two                                                                                                                                                                                  |
 
-Parent and dependency checks share one waiting graph (a child waiting on its own epic, or two children on each other's epics, is refused). Adding an unresolved prerequisite to ongoing or done work first returns it to `todo`. When a prerequisite reopens, downstream history stays and affected work is flagged. Dependencies are within one repository.
+Parent and dependency checks share one waiting graph (a child waiting on its own epic, or two children on each other's epics, is refused). Adding an unresolved prerequisite to ongoing or done work is refused (`Blocked by …`): return the work to `todo` first. When a prerequisite reopens, downstream history stays and affected work is flagged. Dependencies are within one repository.
 
 Example: B22 (a Kanban view) is a child of epic B20 and depends on B21 (the backlog API): it belongs to B20 but waits for B21. The board shows **Blocked by** and **Blocks**, a dependency count and a Ready filter.
 
@@ -109,6 +109,8 @@ Example: `{ "summary": "Added searchable columns", "files": [{ "path": "src/boar
 
 Completions are immutable history: reopening keeps earlier results and a correction appends a replacement. Failed attempts live in runs, reports and notes.
 
+A subagent never finishes its coordinator's item: it notes progress and steps on it and reports, and the coordinator marks it done (after its QA review and the merge of any isolated change) or closes it. Before a QA review is paid for, the store's own checks run (version, open steps, prerequisites).
+
 `backlogPlan` applies each entry of an `add` or `edit` batch separately. Cancelling the batch keeps earlier commits and reports applied, refused, uncertain and unattempted entries. Inspect applied and uncertain entries before retrying; replaying the whole batch can create duplicate items. `backlog` (`note`, `claim`, `done`, `close`, `step`), `memory` (`set`, `delete`) and `notify` (`set`, `on`, `off`) take the same kind of batch: `items` holds entries of the single call's fields, each runs as its own call, and the reply has one line per entry. `backlogPlan` `stat` takes the `list` filters and returns counts by state, priority and type, with no rows.
 
 ### Checklist steps
@@ -125,7 +127,7 @@ A step (`T12`) belongs to an item or a session and stores its goal, state and re
 
 ### Board behavior
 
-Four columns; cards show title, type, priority, assignee and child progress, with details for why, goal, files, links, notes and completion history. `/backlog` opens a live loopback page with forms, keyboard and drag controls, conflict handling and WebSocket updates that preserve open drafts; `/backlog html` writes an offline snapshot. Edits and deletes need the expected version and return a conflict with current data when stale. The server checks the database revision every 500 ms to see other processes' writes. **Implement** claims an item and queues its context for the current agent; delegation requests still pass the `agent` tool's checks, and stop applies to the session's own background agents. Permission and question dialogs are available in the terminal and the connected session's web page. The feed shows up to 200 recent events (about 256 KiB); item details show the latest 50 audit events and older ones load by cursor. More: [web workspace](../packages/coding-agent/docs/web-workspace.md).
+Four columns; cards show title, type, priority, assignee and child progress, with details for why, goal, files, links, notes and completion history. `/backlog` opens a live loopback page with forms, keyboard and drag controls, conflict handling and WebSocket updates that preserve open drafts; `/backlog html` writes an offline snapshot. Edits need the expected version and return a conflict with current data when stale; reordering a card within its column changes no version and announces no change. A claim made on a session's page is held by that session, as from `/backlog` in its terminal. The server checks the database revision every 500 ms to see other processes' writes. **Implement** claims an item and queues its context for the current agent; delegation requests still pass the `agent` tool's checks, and stop applies to the session's own background agents. Permission and question dialogs are available in the terminal and the connected session's web page. The feed shows up to 200 recent events (about 256 KiB); item details show the latest 50 audit events and older ones load by cursor. More: [web workspace](../packages/coding-agent/docs/web-workspace.md).
 
 ### Work graph
 

@@ -57,6 +57,7 @@ import { isVirtualModel, type ModelRoute, type ModelRouteReason } from "../virtu
 import { type CooldownRequestOptions, cooldownStep } from "./cooldown-request.ts";
 import { instructionCacheBoundaryOption } from "./instruction-boundary.ts";
 import type { ProviderLayers } from "./provider-layers.ts";
+import { quotaStep } from "./quota-request.ts";
 import type { ModelRuntimeAuthOverrides } from "./types.ts";
 
 type CacheOptions = ReturnType<typeof resolveConfiguredCache>["options"];
@@ -193,6 +194,7 @@ export function streamChatModel<TApi extends Api>(
 ): AssistantMessageEventStream {
 	const transcript = normalizeContext(context);
 	const cooldown = cooldownStep(model, options);
+	const onResponse = quotaStep(model, options);
 	return lazyStream(
 		model,
 		async () => {
@@ -201,6 +203,7 @@ export function streamChatModel<TApi extends Api>(
 			const prepared = await prepareModelRequest(host, model, {
 				...options,
 				...chatCacheOptions(host, model, transcript.messages, options, hints?.resolveCache, hints?.roleVariantTools),
+				onResponse,
 			});
 			return (
 				(await cooldown.ready()) ??
@@ -242,6 +245,7 @@ export function streamSimpleChatModel(
 	// once; a virtual one waits in the request it routes to.
 	const { resolveCache, roleVariantTools, onCooldownWait: _onCooldownWait, ...requestOptions } = options ?? {};
 	const cooldown = cooldownStep(model, options);
+	const onResponse = quotaStep(model, requestOptions);
 	return lazyStream(
 		model,
 		async () => {
@@ -250,6 +254,7 @@ export function streamSimpleChatModel(
 			const prepared = await prepareModelRequest(host, model, {
 				...requestOptions,
 				...chatCacheOptions(host, model, transcript.messages, requestOptions, resolveCache, roleVariantTools),
+				onResponse,
 			});
 			return (await cooldown.ready()) ?? prepared.provider.streamSimple(prepared.model, transcript, prepared.options);
 		},

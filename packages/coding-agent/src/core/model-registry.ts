@@ -27,6 +27,7 @@ import type {
 	ProviderPlan,
 } from "@octocodeai/octocode-ai";
 import type { CachePreferenceLayer, CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
+import type { CatalogUpdate } from "./model-catalog/merge.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 import type { ModelOrigin } from "./model-runtime/provider-layers.ts";
 import type { CredentialKind, ProviderKind } from "./model-runtime/catalog.ts";
@@ -86,6 +87,16 @@ export class ModelRegistry {
 	}
 	isModelAvailableToChild(model: Pick<Model<Api>, "provider" | "id">): boolean {
 		return this.runtime.isModelAvailableToChild(model);
+	}
+
+	/** What the models.dev catalog update changed for a built-in model (`ModelRuntime.getCatalogUpdate`); undefined when nothing. */
+	getCatalogUpdate(model: Pick<Model<Api>, "provider" | "id">): CatalogUpdate | undefined {
+		return this.runtime.getCatalogUpdate(model);
+	}
+
+	/** True when models.dev lists the built-in model as deprecated: pickers dim it, routing and fallback skip it. */
+	isModelDeprecated(model: Pick<Model<Api>, "provider" | "id">): boolean {
+		return this.runtime.isModelDeprecated(model);
 	}
 
 	getAvailable(): Model<Api>[] {

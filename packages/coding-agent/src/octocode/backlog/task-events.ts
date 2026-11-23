@@ -118,7 +118,8 @@ class TaskEvents {
 		const shown = changed.slice(0, MAX_CHANGED);
 		if (changed.length > MAX_CHANGED) shown.push(`${changed.length - MAX_CHANGED} more`);
 		const line = taskLine(snap, b.session, [], b.actor.item);
-		if (line !== this.lastLine || changed.length > 0) lines.push(taskLine(snap, b.session, shown, b.actor.item));
+		if (line !== this.lastLine || changed.length > 0)
+			lines.push(shown.length > 0 ? taskLine(snap, b.session, shown, b.actor.item) : line);
 		this.lastLine = line;
 		this.changed.clear();
 		return lines.length > 0 ? lines.join("\n") : undefined;

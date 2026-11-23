@@ -36,22 +36,43 @@ Octocode starts with a bundled catalog; cached catalog data works offline. `OCTO
 - Untick models you never use on a provider's page in `/providers` (**Choose models**) or on the web provider page: they disappear from `/model`, `Ctrl+P` and subagent routing, and a provider you have not touched shows all its models. See [providers](providers.md).
 - A model switch keeps your last chosen level (from `/effort` or `--thinking`), lowered to what the new model supports; switching back restores it. A level in `modelThinkingLevels` or the `--models` pattern wins; before you choose one, `defaultThinkingLevel` applies.
 - Context budgets apply to the selected physical model in this session, cannot exceed its catalog capacity, have a minimum of 8,192 tokens (or the full capacity of smaller models), need an idle session and are not saved.
-- The compact picker shows context, output limits, image/reasoning support and billing. **Ctrl+D** toggles full identifiers, names, catalog prices and cache lifetimes; **PgUp/PgDn** scroll those details. A time-limited price (`cost.until` with `cost.after`) shows today's rates. For subscription routes, catalog API prices are reference estimates. Account terms, retention, long-context tiers, service tiers, credits and regional premiums can change totals.
+- A model models.dev added after this release shipped is marked `new`; one models.dev lists as deprecated is dimmed and marked `deprecated` ([catalog updates](#catalog-updates-from-modelsdev)).
+- The compact picker shows context, output limits, image/reasoning support and billing (**billed per token** or **billed by plan**, as in `/providers`). **Alt+I** toggles full identifiers, names, billing and prices first, then limits and cache lifetimes; **PgUp/PgDn** scroll those details. A price you set in `models.json` reads "(your price)" and its billing line "billed per token at your price". A time-limited price (`cost.until` with `cost.after`) shows today's rates. For a provider billed by plan, the API prices shown are estimates at list price. Account terms, retention, long-context tiers, service tiers, credits and regional premiums can change totals.
 - A session records model and thinking changes; resuming restores them without changing defaults.
 
 ### Model defaults
 
-| Setting | How Octocode chooses it |
-| --- | --- |
-| Context and output | A custom model uses its explicit `contextWindow` and `maxTokens`, then matching bundled model values. An unknown custom model defaults to 128,000 context tokens and 16,384 output tokens. The default session budget is the smaller of 300,000 tokens and 90% of the model’s context window. Use `/context` to change it. When the endpoint declares a separate prompt ceiling, compaction uses the smaller of that ceiling and the working window after reserving reply space. Set `inputLimits.maxInputTokens` in a custom model entry to supply that ceiling. The simple chat adapters cap it at the model’s output ceiling and leave room for the estimated transcript. |
-| Thinking and effort | The agent starts with `high` unless a saved choice, model setting or launch option applies. The model’s supported levels determine the effective choice. The adapter sends the control its route accepts, such as an on/off switch, named effort, or token budget. A provider-managed model can have no selectable levels. |
-| Prompt caching | The agent requests short retention for conversation history and long retention for instructions. The endpoint and model determine whether that becomes a cache marker, a key, automatic caching, or no cache control. Cache read and write prices describe billing. Configure retention separately. |
+| Setting             | How Octocode chooses it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Context and output  | A custom model uses its explicit `contextWindow` and `maxTokens`, then matching bundled model values. An unknown custom model defaults to 128,000 context tokens and 16,384 output tokens. The default session budget is the smaller of 300,000 tokens and 90% of the model’s context window. Use `/context` to change it. When the endpoint declares a separate prompt ceiling, compaction uses the smaller of that ceiling and the working window after reserving reply space. Set `inputLimits.maxInputTokens` in a custom model entry to supply that ceiling. The simple chat adapters cap it at the model’s output ceiling and leave room for the estimated transcript. |
+| Thinking and effort | The agent starts with `high` unless a saved choice, model setting or launch option applies. The model’s supported levels determine the effective choice. The adapter sends the control its route accepts, such as an on/off switch, named effort, or token budget. A provider-managed model can have no selectable levels.                                                                                                                                                                                                                                                                                                                                                   |
+| Prompt caching      | The agent requests short retention for conversation history and long retention for instructions. The endpoint and model determine whether that becomes a cache marker, a key, automatic caching, or no cache control. Cache read and write prices describe billing. Configure retention separately.                                                                                                                                                                                                                                                                                                                                                                          |
 
 The bundled catalog takes provider-specific facts from models.dev and the supported gateway catalogs. For a custom endpoint, check the values with `/model`. The coordinator’s `models` tool uses the configured reasoning capability, including when its optional models.dev lookup is offline.
 
-### List models by size
+### Catalog updates from models.dev
+
+Octocode fetches the models.dev index at most once a day, in the background, and applies it to the built-in catalog of each provider that was built from a models.dev listing:
+
+| Change            | Rule                                                                                                                                                                                                                                                            |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New models        | Added when a model of the same family is already bundled for that provider, it comes from the listing the provider was built from, it calls tools, answers in text and has a price. Ids Octocode leaves out on purpose are never added. `/model` marks it `new` |
+| Prices and limits | Replaced when the listing changed after the bundled data was taken; a missing or zero listed price never replaces a bundled one                                                                                                                                 |
+| Deprecation       | A model models.dev lists as deprecated stays listed, dimmed and marked `deprecated`; automatic choices skip it                                                                                                                                                  |
+| Wiring            | Host, API, headers and sign-in always stay as bundled                                                                                                                                                                                                           |
+
+| To                                    | Do                                                                                                                                                                |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Turn updates off                      | Set `modelCatalogUpdates: false` in your global settings (read once per process: restart to apply), or export `OCTOCODE_MODELS_DEV=0`, which also stops the fetch |
+| Stop fetching but keep the last index | Start with `--offline` or `OCTOCODE_OFFLINE=1`: the saved index still applies                                                                                     |
+
+Without an index, or with updates off, the catalog shipped with Octocode is used as it is. The `models` tool says when updates do not apply in full.
+
+### Models your account cannot use
 
 When the provider refuses a specific model for your account or endpoint, Octocode leaves it out of the current session’s model choices for five minutes. Other models on the same provider stay available. Reconnecting the provider or a successful access check restores the model immediately. Your saved defaults and enabled models stay in settings.
+
+### List models by size
 
 Run `octocode --list-models` to see configured models grouped by provider and ordered from small to large. The size class is an estimate from the model name and token limits. The context and max-output columns give the catalog’s actual token limits. Filter the same list with `octocode --provider amazon-bedrock --list-models kimi` or `octocode --model-size small`.
 
@@ -59,11 +80,11 @@ The lead agent’s `models` tool accepts the same `size` filter. Combine it with
 
 ### Save a startup default
 
-Open `/model` or `/models`, highlight a model and press Enter. Choose whether to switch this chat, save a startup default, do both, or make this the selected provider’s preferred model. **Ctrl+S** saves the startup default directly. In a trusted workspace, choose project or global scope. Saving only a preference keeps the current chat on its existing model.
+In `/model`, highlight a model: **Enter** switches this chat, and **Ctrl+S** switches it and saves it as the startup default (in a trusted workspace, choose this project or every project). With the details open (**Alt+I**), **Ctrl+P** makes it its provider's preferred model and leaves the chat on its current model. In `/models`, `d` saves the highlighted model as the default for new chats.
 
 To start new chats with a provider and follow its preferred model, open `/providers`, select the provider, and choose **Set as default provider for new chats**. This clears a previously pinned global model. If that provider has no preferred model, Octocode uses its built-in default or an available model from its catalog. Web Settings offers the same global controls in the provider’s model settings.
 
-The saved global default applies to new sessions. Trusted workspace or run settings can override it; the picker says when they do. Resuming an existing session restores its prior available model. Disabled or unavailable providers are skipped rather than reactivated by a saved selection.
+The saved global default applies to new sessions. Trusted workspace or run settings can override it; the picker says when they do. Resuming an existing session restores its prior available model. Disabled or unavailable providers are skipped rather than reactivated by a saved selection. When Octocode picks the start model itself (no saved default, or the default provider's built-in choice), it skips models models.dev lists as deprecated, unless nothing else is available; a model you named still applies. When the saved default is not used, the startup warning names it, says why (provider not configured, off or paused, no credentials, model not in the catalog or hidden) and names the model used instead, with its billing when that may differ: `Saved default p/m not used: no credentials. Using q/n (billed per token).`
 
 Saving a global default preserves existing global shortcut ordering. Workspace/run shortcut lists keep their own scope and are not copied into global settings.
 
@@ -72,10 +93,11 @@ Saving a global default preserves existing global shortcut ordering. Workspace/r
 | Terminal picker            | Enter, or `/model <provider>/<id>`               | Ctrl+S in `/model`                                                                                         |
 | CLI                        | `octocode --model <provider>/<id>`               | `octocode configuration set defaultProvider <provider>` and `octocode configuration set defaultModel <id>` |
 | Configuration/web settings | Changing defaults keeps the current chat's model | Set global defaults or trusted workspace defaults; new sessions use them                                   |
-| SDK                        | `await session.setModel(model)`                  | `await session.setModel(model, { persist: true })`                                                         |
 | RPC                        | `set_model`                                      | No persistence option; use configuration separately                                                        |
 
-The CLI configuration commands edit the two fields independently. Prefer the picker or SDK paired save when changing provider and model together.
+The CLI configuration commands edit the two fields independently. Prefer the picker's paired save when changing provider and model together.
+
+`octocode --model <name>` without a provider resolves the name across providers. When more than one provider serves it, or none of the matching providers has credentials, it does not choose: it exits listing the matching `provider/id` names. Pass `--provider` or `provider/id`.
 
 API/subscription models, configured local-server models and connected `claude-code/*` models can be defaults. Codex, OpenCode and Gemini **CLI task runners** are separate task backends; their CLI models cannot be this chat's default. Omit a runner task's model to use that vendor's own default, or pass its model ID for that task when its adapter supports model configuration.
 
@@ -156,7 +178,7 @@ The dummy key makes the model available; Ollama ignores it. `apiKey` and header 
 | Goal                                      | Use                                                                                                                                                                 |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Add a model to a custom provider          | A `models` entry on your own provider id (a known vendor id starts from that model)                                                                                 |
-| Tune an official provider's model         | `modelOverrides` on the official id, limited to `compat`, `contextWindow`, `maxTokens` and `inputLimits` (unknown ids are ignored)                                  |
+| Tune an official provider's model         | `modelOverrides` on the official id, limited to `compat`, `contextWindow`, `maxTokens`, `inputLimits` and `cost` (unknown ids are ignored); any other field refuses the whole entry |
 | Use another host for an official provider | `/providers`, then the provider, then sign in: the optional host is saved with the key. For a fully custom host, use the **Custom OpenAI-compatible host** template |
 | Describe verified request differences     | `compat` (never enable it just because an endpoint claims OpenAI or Anthropic compatibility)                                                                        |
 
@@ -209,7 +231,7 @@ Each file is attached once, up to 8 images per message or the model's lower `ima
 
 ### Describe model input and caching
 
-Image support belongs to the exact model and endpoint. `octocode --list-models` shows an `images` column and `/model` shows it in the details. Mark a verified image-capable custom model with `"input": ["text", "image"]` (default `["text"]`); it works in `models.json` and `modelOverrides`.
+Image support belongs to the exact model and endpoint. `octocode --list-models` shows an `images` column and `/model` shows it in the details. Mark a verified image-capable custom model with `"input": ["text", "image"]` (default `["text"]`); it works in a custom provider's `models` and `modelOverrides`. An official provider's `modelOverrides` cannot set `input` ([fields it may set](models-configuration.md#providers)).
 
 ```json
 {
@@ -219,8 +241,7 @@ Image support belongs to the exact model and endpoint. `octocode --list-models` 
 			"baseUrl": "http://localhost:11434/v1",
 			"apiKey": "ollama",
 			"models": [{ "id": "your-installed-vision-model", "input": ["text", "image"] }]
-		},
-		"openai": { "modelOverrides": { "gpt-4o": { "input": ["text", "image"] } } }
+		}
 	}
 }
 ```
@@ -236,7 +257,7 @@ Declaring image input adds no vision to a text-only server. New images are rejec
 
 Resize defaults: 2000 by 2000 pixels, 4.5 MiB encoded, JPEG quality 80. Images are encoded once; changing models rewrites nothing. Limits are checked on the final provider payload (JSON size, images counted as base64); provider SDK overhead and server limits can still reject a request: reduce attachments or start a new session.
 
-Without a declared `promptCache`, warming uses the lifetime the adapter sends for the tier: 5m and 1h for Anthropic-style markers, 30m and 12h for OpenAI explicit caching, 24h for long history on OpenAI and listed Azure models. A model with neither is not eligible for [cache warming](configuration.md#prompt-cache-warming). A `modelOverrides` entry may set `inputLimits` or `promptCache` for a built-in model, also behind a validated proxy.
+Without a declared `promptCache`, warming uses the lifetime the adapter sends for the tier: 5m and 1h for Anthropic-style markers, 30m and 12h for OpenAI explicit caching, 24h for long history on OpenAI and listed Azure models. A model with neither is not eligible for [cache warming](configuration.md#prompt-cache-warming). A custom provider's `modelOverrides` entry may set `inputLimits` or `promptCache` for a built-in model behind a validated proxy; an official provider's may set `inputLimits` but not `promptCache`.
 
 **Azure OpenAI Responses.** 24h retention applies only to models Microsoft lists, matched by `id`. A deployment-named model opts in with `"compat": { "supportsLongCacheRetention": true }` (set it only when the deployment runs a listed model; `false` turns it off). Standard (pay-as-you-go) GPT-5.6 or later deployments may add `"supportsExplicitPromptCacheMode": true`: requests then carry `prompt_cache_options` (12h TTL when history or instruction retention is long, since breakpoints inherit it; `supportsLongCacheRetention: false` keeps 30m) and breakpoints on the leading instructions. Leave it unset on provisioned deployments, which reject breakpoints.
 

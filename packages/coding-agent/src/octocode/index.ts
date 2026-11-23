@@ -59,6 +59,7 @@ import { stopConfirmation } from "./permission/stop-confirm.ts";
 import { registerProcesses } from "./processes/register.ts";
 import { registerMonitor } from "./monitor/register.ts";
 import { registerMonitorRoom } from "./monitor-room/command.ts";
+import { registerUsage } from "./usage/command.ts";
 import { registerWorktrees } from "./worktrees/register.ts";
 import { Subcommands } from "./shared/commands.ts";
 import { envFlag, LEAN_ENV, READ_ONLY_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
@@ -73,7 +74,7 @@ import { registerSkillTool } from "./native/tools/skill/tool.ts";
 import { registerSkillFirstUse } from "./skill/first-use.ts";
 import { SkillCatalog } from "./skill/catalog.ts";
 import { statusCommand } from "./status-command.ts";
-import { refreshCatalog } from "./subagents/catalog.ts";
+import { refreshCatalog } from "../core/model-catalog/index-store.ts";
 import { maxSubagents } from "./subagents/claim.ts";
 import { registerModels } from "./subagents/models-command.ts";
 import { registerModelsTool } from "./native/tools/models/tool.ts";
@@ -352,6 +353,7 @@ export default function octocode(host: FeatureSetup): void {
 	// After `registerProcesses`, which titles the process: an alert wakes the session whose title owns its cause.
 	registerMonitor(api, { isSubagent, jobs: () => [...jobs.jobs.values()], notify: hooks.notification });
 	registerMonitorRoom(commands, api);
+	registerUsage(api, commands); // spend by day (every session, children too) and `/usage`
 	const externalApi = isSubagent
 		? undefined
 		: registerExternalApi(api, commands, { team, messaging, permission, planning, external: () => external });

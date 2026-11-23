@@ -11,7 +11,8 @@ import { NOTIFY_ENV, NOTIFY_METHOD_ENV } from "@octocodeai/octocode-common/env";
 import { promptTitle } from "../shared/locks.ts";
 import { agentNameOf } from "../shared/agent-name.ts";
 import { runningWorkOf } from "../shared/running-work.ts";
-import { isPendingPhase, sessionPhaseOf } from "../shared/session-phase.ts";
+import { sessionPhaseOf } from "../shared/session-phase.ts";
+import { followSessionActivity } from "../activity/session-activity.ts";
 import { beginRun, getRunClock, lastRunStart, settleRun } from "../../utils/run-clock.ts";
 import { clipText, contentText, firstLine } from "../shared/util.ts";
 import { plainTitle, TitleTracker, terminalTitle } from "./terminal-title.ts";
@@ -21,9 +22,10 @@ import { registerPresentWarming } from "./present-warming.ts";
 
 /**
  * "Answer ready" and "waiting for you" signals for a terminal in the background: a desktop notification (OSC 9, OSC 777 or Kitty's OSC 99, else
- * the bell). The terminal title carries the session state, `🦑⠋ shy-barnacle Running - fix login · repo · 2 agents`: thinking and
- * running animate, `⏳` waits on background work, then `⚠️` needs you, `🟢` done or `🔴` error until the user is back (focus
- * returns or a key is pressed), else idle.
+ * the bell). The terminal title carries the session state, `◈⠋ shy-barnacle Running - fix login · repo · 2 agents` (`🦑`
+ * with emoji marks): the activity light the footer shows, refined during a run (thinking and running animate), so `⏳`
+ * waits on background work, then `⚠️` needs you, `🟢` done or `🔴` error until the user is back (focus returns or a key is
+ * pressed), else idle.
  *
  * This enables focus reports (CSI ?1004) and reads `ESC [ I` / `ESC [ O` in both TUI modes. A terminal without focus
  * reports leaves focus unknown; then it falls back to idleness: a run that took long while the user typed nothing.
@@ -166,9 +168,9 @@ export function registerNotify(api: FeatureSetup, options: NotifyOptions = {}): 
 	const phase = sessionPhaseOf(api);
 	/** The first prompt of the session, its description in the tab until it has a name. */
 	let firstPrompt: string | undefined;
-	/** Outcome of the latest response, applied to the title when the run settles. */
-	let outcome: "idle" | "done" | "failed" = "idle";
 	let unsubscribe: (() => void) | undefined;
+	/** Stops following the session's activity light, which the title shows. */
+	let stopLight: (() => void) | undefined;
 	let idleTimer: ReturnType<typeof setTimeout> | undefined;
 	let lastAnswer = "";
 	// Focus reporting outlives the process unless turned off: a crash or a terminal hand-off without session_shutdown
@@ -180,12 +182,8 @@ export function registerNotify(api: FeatureSetup, options: NotifyOptions = {}): 
 		current?.mode === "tui" && current.hasUI;
 	const painter = new TitlePainter(
 		{
-			// Done, Error or Idle only once every subagent has finished: a running child keeps the tab waiting.
-			state: () => {
-				const state = title.state;
-				const settled = state === "done" || state === "failed" || state === "idle";
-				return settled && (work.agents() ?? work.background().length) > 0 ? "background" : state;
-			},
+			// The session's light (a running child keeps it working, so the tab waits) refined by its own run.
+			state: () => title.state,
 			target: () => (tui(ctx) ? { cwd: ctx.cwd, setTitle: (text) => ctx?.ui.setTitle(text) } : undefined),
 			description: () => api.session.getName()?.trim() || firstPrompt,
 			agents: () => work.agents() ?? work.background().length,
@@ -222,14 +220,10 @@ export function registerNotify(api: FeatureSetup, options: NotifyOptions = {}): 
 		write(notificationSequence(notifyMethod(env), notice.title, notice.message, env));
 	};
 
-	// Background subagents, jobs, wakes and timers outlive the run: the tab says finished only once the phase is final.
+	// Background subagents and jobs change the count the title ends with.
 	work.subscribe(() => paintTitle());
 	// Joining, rejoining or leaving the team renames the tab at once, not at the next state change.
 	name.subscribe(() => paintTitle(true));
-	phase.subscribe((next) => {
-		title.setPending(isPendingPhase(next));
-		paintTitle();
-	});
 	// The answer is ready when the job ends, not at a settle that agents or a report are about to continue.
 	phase.onJobEnd((end) => {
 		const answer = lastAnswer;
@@ -256,11 +250,17 @@ export function registerNotify(api: FeatureSetup, options: NotifyOptions = {}): 
 		painter.reset();
 		ctx = current;
 		title.reset();
-		title.setPending(isPendingPhase(phase.phase()));
-		outcome = "idle";
+		stopLight?.();
+		stopLight = undefined;
 		firstPrompt = firstPromptOf(current);
 		if (!tui(current)) return;
 		paintTitle(true);
+		// What the session is doing, as the footer's light shows it: someone watching has seen how a job ended.
+		stopLight = followSessionActivity(current.sessionManager.getSessionId(), (light) => {
+			title.setLight(light);
+			if (focus === "focused") title.seen();
+			paintTitle();
+		});
 		unsubscribe = current.ui.onTerminalInput((data) => {
 			if (data === FOCUS_IN || data === FOCUS_OUT) {
 				focus = data === FOCUS_IN ? "focused" : "unfocused";
@@ -290,16 +290,16 @@ export function registerNotify(api: FeatureSetup, options: NotifyOptions = {}): 
 		unsubscribe = undefined;
 		dropExitHook();
 		if (tui(ctx) && condition !== "off") write(FOCUS_OFF);
-		title.reset();
+		stopLight?.();
+		stopLight = undefined;
 		// Work still running after exit is no longer this tab's: leave the plain title, without a state.
-		title.setPending(false);
+		title.reset();
 		painter.leave();
 		ctx = undefined;
 	});
 	api.bus.on("agent_start", async () => {
 		beginRun(Date.now());
 		lastAnswer = "";
-		outcome = "idle";
 		clearIdle();
 		title.start();
 		paintTitle();
@@ -318,17 +318,14 @@ export function registerNotify(api: FeatureSetup, options: NotifyOptions = {}): 
 			.reverse()
 			.find((message): message is Extract<Message, { role: "assistant" }> => message.role === "assistant");
 		// An interrupted run (Esc) means the user is right here; an error is worth a notice.
-		if (!last) return;
-		outcome = last.stopReason === "aborted" ? "idle" : last.stopReason === "error" ? "failed" : "done";
-		if (last.stopReason === "aborted") return;
+		if (!last || last.stopReason === "aborted") return;
 		lastAnswer =
 			last.stopReason === "error"
 				? `Failed: ${last.errorMessage ?? "the run stopped with an error"}`
 				: contentText(last.content) || "Ready for input";
 	});
 	api.bus.on("agent_settled", async (event, next) => {
-		title.settle(event.aborted ? "idle" : outcome);
-		outcome = "idle";
+		title.settle();
 		// Someone watching the terminal has already seen the outcome.
 		if (focus === "focused") title.seen();
 		paintTitle();

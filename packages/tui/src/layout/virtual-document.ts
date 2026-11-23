@@ -19,6 +19,7 @@ import {
 	unlinkRenderChild,
 	renderSerial,
 } from "../tui/render-signal.ts";
+import { withSoftWrapMarks } from "../utils/row-marks.ts";
 import { RowHeights } from "./row-heights.ts";
 
 /** Time one measuring slice between frames may take before it yields. */
@@ -233,7 +234,8 @@ export class VirtualDocument {
 		// Linked first, so a change the item signals while rendering is heard too.
 		linkRenderChild(this.listener, item);
 		const before = renderSerial();
-		const lines = renderIsolated(item, this.width);
+		// Measured between frames too: scroll-view content, so soft wraps are marked for copy as in a frame.
+		const lines = withSoftWrapMarks(() => renderIsolated(item, this.width));
 		const unstable = !isRenderStable(item, before) || renderFailed(item);
 		const delta = lines.length - this.heights[index];
 		this.heights[index] = lines.length;

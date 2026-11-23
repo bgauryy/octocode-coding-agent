@@ -1,12 +1,13 @@
 import type { Component, TuiMouseEvent } from "@octocodeai/octocode-tui";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { FeatureContext } from "../../core/features/index.ts";
+import { billingFacts, runBilling } from "../../core/usage-totals.ts";
 import type { StatusTone } from "../../core/footer-data-provider.ts";
 import { notify } from "../shared/commands.ts";
 import { type QueuedWork, RunningWork, type WorkRow, workCounts } from "../shared/running-work.ts";
 import { ENTITY } from "../shared/entity.ts";
 import { STATUS } from "../shared/status.ts";
-import { publishLiveAgents } from "../shared/team-spend.ts";
+import { createLiveAgentsStore, type LiveAgentsStore, publishLiveAgents } from "../shared/team-spend.ts";
 import { needsYou } from "./panel/attention.ts";
 import { FINISHED_MS, safe } from "./panel/compact.ts";
 import { FinishedTracker } from "./panel/finished.ts";
@@ -103,9 +104,13 @@ export class AgentsView {
 
 	private readonly team: Team;
 	private readonly work: RunningWork;
-	constructor(team: Team, work: RunningWork = new RunningWork()) {
+	/** Where this session's footer reads the live descendants it adds to `Σ` (`liveAgentsOf` the session's setup). */
+	private readonly live: LiveAgentsStore;
+
+	constructor(team: Team, work: RunningWork = new RunningWork(), live: LiveAgentsStore = createLiveAgentsStore()) {
 		this.team = team;
 		this.work = work;
+		this.live = live;
 		this.finished = new FinishedTracker((id) => team.approvals?.endOf(id));
 	}
 
@@ -159,8 +164,13 @@ export class AgentsView {
 			this.finished.update(self, this.members, live, now);
 			live = compute();
 			this.finished.update(self, this.members, live, now);
-			// The footer's one total adds what these agents spent until their results reach this session's ledger.
-			publishLiveAgents(live);
+			// The footer's one total adds what these agents spent until their results reach this session's ledger, each
+			// on the side of `Σ` its billing puts it (a plan's estimate apart from money), judged as `subagents.maxCost` does.
+			const facts = this.ctx ? billingFacts(this.ctx) : undefined;
+			publishLiveAgents(
+				this.live,
+				facts ? live.map((member) => ({ ...member, billing: runBilling(member, facts) })) : live,
+			);
 		}
 		this.liveIds = new Set(live.map((member) => member.id));
 		return live;
@@ -228,7 +238,7 @@ export class AgentsView {
 		this.motion.dispose();
 		this.ctx = undefined;
 		this.liveIds = new Set();
-		publishLiveAgents([]);
+		publishLiveAgents(this.live, []);
 		this.work.setAgents(undefined);
 		if (ctx && this.runningStatus !== undefined) {
 			this.runningStatus = undefined;

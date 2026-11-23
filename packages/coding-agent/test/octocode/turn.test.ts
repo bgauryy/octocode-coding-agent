@@ -7,6 +7,9 @@ import type { SkillCatalog } from "../../src/octocode/skill/catalog.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost } from "./fake-host.ts";
 import { RESEARCH, useResearchRoles } from "./fake-research-roles.ts";
+import { setMcpSessionStatus } from "../../../mcp/src/status.ts";
+import { createEventBus } from "@octocodeai/octocode-agent-core";
+import { BROWSER_SERVER } from "@octocodeai/octocode-common/mcp-names";
 import { tmp, allSections } from "./helpers.ts";
 
 describe("registerTurnSetup", () => {
@@ -279,5 +282,47 @@ describe("the lean main policy", () => {
 		expect(filled(off.first)).toContain("delegation");
 		const on = await request(model("big", 400_000), { leanPrompt: "on" });
 		expect(filled(on.first)).toEqual(["lean"]);
+	});
+});
+
+describe("servers the security review holds back", () => {
+	useResearchRoles();
+	beforeEach(() => vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", tmp()));
+	afterEach(() => vi.unstubAllEnvs());
+	const status = (fake: ReturnType<typeof fakeHost>, name: string, state: string) =>
+		setMcpSessionStatus(fake.api.channels, [
+			{ name, enabled: true, state, exposure: "direct", toolCount: 0, source: "test" },
+		]);
+	const prompt = async (fake: ReturnType<typeof fakeHost>, selectedTools: string[]) => {
+		const event = { systemPromptOptions: { sections: {}, baseSections: {}, selectedTools } };
+		await fake.emit("before_agent_start", event, {});
+		return Object.values(allSections(event)).join("\n\n");
+	};
+	const host = () => {
+		const fake = fakeHost();
+		// A real bus: the MCP status snapshot is requested over it.
+		fake.flat.events = createEventBus();
+		// The research server's tools are registered (deferred until its server connects), not selected.
+		for (const name of ["read", "bash", "file", "mcp", "agent", RESEARCH.reader, RESEARCH.search])
+			fake.tools.set(name, { name });
+		// The shipped profiles: the delegation text names the browser specialist while this agent cannot browse itself.
+		const profiles = loadProfiles(tmp(), tmp(), false, {});
+		registerTurnSetup(fake.api, { isSubagent: false, profiles: () => profiles });
+		return fake;
+	};
+
+	it("route no research through, and offer no browsing of, a server that is not checked", async () => {
+		const selected = ["read", "bash", "file", "mcp", "agent"];
+		const none = host();
+		const baseline = await prompt(none, selected);
+		for (const name of [RESEARCH.server, BROWSER_SERVER]) {
+			const running = host();
+			status(running, name, "starting");
+			expect(await prompt(running, selected), `${name} may run`).not.toBe(baseline);
+			const held = host();
+			status(held, name, "not checked");
+			// The model is told nothing a held-back server would serve: the same prompt as without it.
+			expect(await prompt(held, selected), `${name} held back`).toBe(baseline);
+		}
 	});
 });

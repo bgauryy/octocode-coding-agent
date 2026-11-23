@@ -1,3 +1,4 @@
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { cliStyle } from "../utils/cli-style.ts";
 import { parseArgs } from "../cli/args.ts";
 import {
@@ -82,6 +83,9 @@ export async function runAuthCommand(args: string[]): Promise<boolean> {
 		try {
 			const credentials = createDefaultCredentialStore({ readOnlyCredentials: command.noRefresh });
 			modelRuntime = await createAuthCheckModelRuntime(credentials, signal);
+			// `--model` resolves as a session's does, which prefers a matching provider with credentials: that needs the
+			// availability pass a session start runs (local reads and credential checks only, no refresh or download).
+			if (parsed.model) await modelRuntime.refresh({ allowNetwork: false, signal });
 			result = await checkProviderAuth(parsed, modelRuntime, { refresh: !command.noRefresh, signal });
 			if (command.credentials && result.status === "ready") {
 				credential = await getProviderCredential(result.provider, modelRuntime, credentials, {
@@ -97,7 +101,11 @@ export async function runAuthCommand(args: string[]): Promise<boolean> {
 					};
 				}
 			}
-		} catch {
+		} catch (error) {
+			// A `--model` or `--provider` the resolver refuses is the user's input: its own message, below.
+			if (error instanceof AuthCommandError) throw error;
+			// Anything else is unreadable credential state: the result says so, and the cause stays visible.
+			console.error(cliStyle.dim(`auth check: ${errorMessage(error)}`));
 			result = {
 				status: "invalid",
 				provider: requestedAuth.provider ?? requestedAuth.model!,

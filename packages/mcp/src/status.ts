@@ -16,6 +16,13 @@ export interface McpServerStatus {
 	group?: McpServerGroup;
 }
 
+/**
+ * Whether the server may run in this session: switched on, and not held back by the security review (state
+ * `not checked`, whatever its switch). Only then may its tools, its research route or its reader be offered.
+ */
+export const mcpServerMayRun = (server: Pick<McpServerStatus, "enabled" | "state">): boolean =>
+	server.enabled && server.state !== "not checked";
+
 export const MCP_STATUS_EVENT = "mcp:status";
 const REQUEST_STATUS = "mcp:status:request";
 

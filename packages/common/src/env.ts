@@ -3,6 +3,13 @@ import fs from "node:fs";
 
 /** Environment switches: one spelling rule for every `OCTOCODE_*` flag and number. */
 
+/**
+ * Set to `0` and no browser or other application starts from this process or the processes it starts (`openTarget`,
+ * the `/web` app window): the page's address is given instead. Test runs set it (`vitest.tmp.global.ts`, the suites'
+ * `setup-env.ts`), so a suite never opens a window on the machine that runs it; a scripted session can export it too.
+ */
+export const OPEN_BROWSER_ENV = "OCTOCODE_OPEN_BROWSER";
+
 /** Set by the ACP broker (`1`) in the native worker it spawns: the broker, not the worker, owns that session's transcript identity. */
 export const ACP_WORKER_ENV = "OCTOCODE_INTERNAL_ACP_WORKER";
 

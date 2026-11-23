@@ -16,9 +16,9 @@ import {
 } from "../components/status-indicator.ts";
 import { cooldownWaitText, modelWaitText, offlineRetryText } from "../../../core/agent-session/model-wait.ts";
 import { theme } from "../../../theme/theme.ts";
+import { selectWorkingMessage } from "../state/status-slice.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
-import { phaseKeepsJobGoing } from "./session-phase.ts";
 import { markRetriedAttempt } from "./retried-attempts.ts";
 
 type RetryScheduledEvent = Extract<AgentSessionEvent, { type: "auto_retry_start" | "summarization_retry_scheduled" }>;
@@ -41,7 +41,6 @@ export type RunStateEventsHost = Pick<
 	| "checkShutdownRequested"
 	| "clearStatusIndicator"
 	| "defaultEditor"
-	| "defaultWorkingMessage"
 	| "editor"
 	| "entriesRenderedByRebuild"
 	| "flushCompactionQueue"
@@ -49,15 +48,13 @@ export type RunStateEventsHost = Pick<
 	| "renderSessionEntries"
 	| "session"
 	| "sessionManager"
-	| "settingsManager"
-	| "workingMessage"
 	| "showError"
 	| "showStatus"
 	| "showStatusIndicator"
 	| "showWarning"
 	| "streamingComponent"
-	| "streamingMessage"
 	| "ui"
+	| "uiStore"
 >;
 
 /** Renders the run-state events and ignores the rest, which agent-events.ts handles. */
@@ -83,7 +80,6 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 				disposeComponent(host.streamingComponent);
 				host.chatContainer.removeChild(host.streamingComponent);
 				host.streamingComponent = undefined;
-				host.streamingMessage = undefined;
 			}
 			host.pendingTools.clear();
 
@@ -94,14 +90,8 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 			showRunOutcome(event.outcome, host);
 			// A new run that already started keeps the indicator its own `turn_start` shows.
 			if (!host.session.isStreaming) {
-				// Background agents, a wake or a timer continue the job: the tab progress stays until the phase is final
-				// (`bindSessionPhase` clears it then). The working indicator goes either way; the phase line replaces it.
-				if (
-					host.settingsManager.getShowTerminalProgress() &&
-					!phaseKeepsJobGoing(getApplicationPort(host.session).stateSource)
-				) {
-					host.ui.terminal.setProgress(false);
-				}
+				// The tab progress follows the activity light (`bindSessionPhase`): background agents or a wake keep it on.
+				// The working indicator goes either way; the phase line replaces it.
 				host.clearStatusIndicator("working");
 				host.ui.requestRender();
 			}
@@ -109,9 +99,6 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 			break;
 
 		case "compaction_start": {
-			if (host.settingsManager.getShowTerminalProgress()) {
-				host.ui.terminal.setProgress(true);
-			}
 			// Keep editor active; submissions are queued during compaction.
 			host.autoCompactionEscapeHandler = host.defaultEditor.onEscape;
 			host.defaultEditor.onEscape = () => {
@@ -136,7 +123,7 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 						? `${cooldownWaitText(event.cooldown.provider)} (${cooldownS}s)`
 						: event.idleMs > 0
 							? modelWaitText(event.idleMs)
-							: (host.workingMessage ?? host.defaultWorkingMessage),
+							: selectWorkingMessage(host.uiStore.getState()),
 				);
 				host.ui.requestRender();
 			}
@@ -153,9 +140,6 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 		}
 
 		case "compaction_end": {
-			if (host.settingsManager.getShowTerminalProgress()) {
-				host.ui.terminal.setProgress(false);
-			}
 			if (host.autoCompactionEscapeHandler) {
 				host.defaultEditor.onEscape = host.autoCompactionEscapeHandler;
 				host.autoCompactionEscapeHandler = undefined;

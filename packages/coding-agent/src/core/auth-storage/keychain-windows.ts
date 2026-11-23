@@ -6,7 +6,7 @@
  */
 
 /** Exit code the scripts use for "no such credential", distinct from a real failure (1). */
-export const WINDOWS_NOT_FOUND_EXIT = 44;
+const WINDOWS_NOT_FOUND_EXIT = 44;
 /** CRED_MAX_CREDENTIAL_BLOB_SIZE is 2560 bytes; the secret is stored as UTF-8. */
 const WINDOWS_MAX_SECRET_BYTES = 2500;
 const ERROR_NOT_FOUND = 1168;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentSessionEvent } from "../src/core/agent-session.ts";
 import { toJsonEvent } from "../src/modes/json-event.ts";
-import { toLeanJsonEvent } from "../src/modes/json-event-lean.ts";
+import { childProgressOutput, toLeanJsonEvent } from "../src/modes/json-event-lean.ts";
 import { type ChildEffect, newChildState, parseEvent, reduceEvent } from "../src/octocode/subagents/events.ts";
 import { AcpEventProjector } from "../../acp/src/server/events.ts";
 
@@ -78,6 +78,35 @@ function parentEffects(lines: string[]): unknown[] {
 }
 
 describe("lean RPC events", () => {
+	it("coalesces native child liveness before serialization and preserves ordered final results", () => {
+		let clock = 0;
+		const wire: string[] = [];
+		const write = childProgressOutput(
+			(event) => wire.push(JSON.stringify(toLeanJsonEvent(event))),
+			() => clock,
+		);
+		const partial = {
+			type: "tool_execution_update",
+			toolCallId: "c1",
+			toolName: "bash",
+			args: { command: "x" },
+			partialResult: "x".repeat(128 * 1024),
+		} as const;
+		write({ ...partial, parentToolCallId: "nested" });
+		for (let i = 0; i < 1000; i++) write(partial);
+		expect(wire).toHaveLength(1);
+		expect(Buffer.byteLength(wire[0])).toBeLessThan(100);
+		const state = newChildState();
+		expect(reduceEvent(state, parseEvent(wire[0])!, LIMITS, 1234)).toEqual([]);
+		expect(state.progressAt).toBe(1234);
+		clock += 250;
+		write(partial);
+		const rest = turn().slice(5);
+		for (const event of rest) write(event);
+		expect(wire.slice(2)).toEqual(rest.map((event) => JSON.stringify(toLeanJsonEvent(event))));
+		expect(toLeanJsonEvent(partial)).toMatchObject({ partialResult: partial.partialResult });
+	});
+
 	it("carry each tool result once and lead a subagent's parent to the same effects", () => {
 		const events = turn();
 		const full = events.map((event) => JSON.stringify(toJsonEvent(event)));

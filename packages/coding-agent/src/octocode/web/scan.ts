@@ -181,3 +181,26 @@ export function firstTagWith(
 	}
 	return undefined;
 }
+
+/**
+ * Whether a tag `opener` (global) starts, whose text before its first `>` matches `attribute` (global), is followed by
+ * `after` (sticky) at once: `<x\b[^>]*attribute[^>]*>after`, read once front to back. An opener inside a tag already
+ * read ends where that tag ends, so its answer is that tag's and it is skipped.
+ */
+export function tagFollowedBy(html: string, opener: RegExp, attribute: RegExp, after: RegExp): boolean {
+	const tagEnd = forwardSearch(html, />/g);
+	const find = forwardSearch(html, attribute);
+	let readTo = 0;
+	for (const open of html.matchAll(opener)) {
+		if (open.index < readTo) continue;
+		const from = open.index + open[0].length;
+		const hit = find(from);
+		const end = tagEnd(from);
+		if (!hit || !end) return false;
+		readTo = end.index + 1;
+		if (hit.index > end.index) continue;
+		after.lastIndex = readTo;
+		if (after.test(html)) return true;
+	}
+	return false;
+}

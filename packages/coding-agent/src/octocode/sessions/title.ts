@@ -3,6 +3,7 @@ import { GOAL_HEADING, summarySection } from "../../core/compaction/summary-form
 import { splitSummary } from "../../core/compaction/summary-view.ts";
 import { cleanTitle, SESSION_TITLE_MAX } from "../../core/session-manager/title.ts";
 import { renderPrompt } from "../../core/prompt-template.ts";
+import { captureSpend } from "../../core/spend-capture.ts";
 import type { SideRetry } from "../shared/side-retry.ts";
 import { type CompleteSmall, callSmallModel } from "../subagents/small-call.ts";
 import { deadline } from "@octocodeai/octocode-common/deadline";
@@ -57,7 +58,8 @@ export function titleFromReply(reply: string): string | undefined {
 /**
  * One small-tier call for a title of a user request: no tools, no reasoning, `TITLE_TIMEOUT_MS`. `none` when the model
  * says the request names no task. Undefined when no model qualifies (the parent's price is unknown, or nothing cheaper
- * is connected), the model cannot be authenticated, the call fails or its reply is empty. Never rejects.
+ * is connected), the model cannot be authenticated, the call fails or its reply is empty. Never rejects. What an answered
+ * call spent goes to `/usage` (`captureSpend`), whatever the session does with the title.
  */
 async function requestTitle(
 	ctx: FeatureContext,
@@ -66,6 +68,8 @@ async function requestTitle(
 	complete?: CompleteTitle,
 ): Promise<{ title: string } | "none" | undefined> {
 	const quoted = cleanTitle(request, INPUT_MAX).replaceAll("</request>", "");
+	// Read before the call: a session replaced meanwhile leaves this context stale.
+	const cwd = ctx.cwd;
 	const reply = await callSmallModel(ctx, {
 		text: `${TITLE_PROMPT}\n\n<request>\n${quoted}\n</request>`,
 		signal,
@@ -74,6 +78,7 @@ async function requestTitle(
 		...(complete ? { complete } : {}),
 	});
 	if ("error" in reply) return undefined;
+	captureSpend({ cwd, kind: "session_title", provider: reply.provider, model: reply.modelId, usage: reply.usage });
 	const title = titleFromReply(reply.text);
 	if (title?.toUpperCase() === NO_TASK) return "none";
 	return title ? { title } : undefined;

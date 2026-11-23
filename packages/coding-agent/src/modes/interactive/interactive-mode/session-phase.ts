@@ -1,37 +1,33 @@
 /**
- * The session's phase as the host reads it: from the application state, never from the footer or the feature API. While
- * the phase is waiting, resuming or scheduled, no run is active but the job goes on (background agents, a wake, a
- * timer), so the terminal's tab progress (OSC 9;4) and program status (OSC 7501) stay `working` until it is final.
+ * The session's phase as the host reads it: from the application state, never from the footer or the feature API. The
+ * terminal's program status (OSC 7501) and tab progress (OSC 9;4) follow the session's activity light (`activity`, which
+ * the footer and the web read too): progress shows exactly while the light is working (a run, compaction, a retry,
+ * background agents or a wake), and a pending timer alone is idle, as the light shows it (RFC app-state, T2 and Q1).
  */
 
-import { isPendingApplicationPhase, type ApplicationPhase } from "@octocodeai/octocode-contracts";
+import type { ActivityFacts } from "@octocodeai/octocode-projections";
 import { watchSelection } from "@octocodeai/octocode-tui";
-import type { ApplicationStateSource } from "../../../core/application/state.ts";
+import type { ApplicationRuntimeState, ApplicationStateSource } from "../../../core/application/state.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
-export type SessionPhaseHost = Pick<InteractiveModeHost, "programStatus" | "session" | "settingsManager" | "ui">;
+export type SessionPhaseHost = Pick<InteractiveModeHost, "programStatus">;
 
-/** Whether the phase in `source` keeps the job going after the run settled. */
-export function phaseKeepsJobGoing(source: ApplicationStateSource): boolean {
-	const phase = source.getState().phase;
-	return phase !== undefined && isPendingApplicationPhase(phase);
-}
-
-const samePhase = (a: ApplicationPhase | undefined, b: ApplicationPhase | undefined) =>
-	JSON.stringify(a) === JSON.stringify(b);
+/** The facts the light reads, picked from the application state; a new object only when one of them changed. */
+const factsOf = ({ phase, awaiting, status, streaming }: ApplicationRuntimeState): ActivityFacts => ({
+	phase,
+	awaiting,
+	status,
+	streaming,
+});
+const sameFacts = (a: ActivityFacts, b: ActivityFacts) =>
+	a.phase === b.phase && a.awaiting === b.awaiting && a.status === b.status && a.streaming === b.streaming;
 
 /**
- * Follows the phase of `source`: the program status reports `working` while it is pending, and the tab progress follows
- * it when no run or compaction of the session shows progress itself. Returns the function that stops it.
+ * Follows the light of `source` into the terminal's program status, which shows it (OSC 7501) and keeps the tab progress
+ * (OSC 9;4) on while it is working. Binding a session reads no settings: the reporter writes only what changed. Returns
+ * the function that stops it.
  */
 export function bindSessionPhase(host: SessionPhaseHost, source: ApplicationStateSource): () => void {
-	const apply = (phase: ApplicationPhase | undefined, previous: ApplicationPhase | undefined) => {
-		host.programStatus.setPhase(phase);
-		const pending = phase !== undefined && isPendingApplicationPhase(phase);
-		const wasPending = previous !== undefined && isPendingApplicationPhase(previous);
-		if (pending === wasPending || host.session.isStreaming || host.session.isCompacting) return;
-		if (host.settingsManager.getShowTerminalProgress()) host.ui.terminal.setProgress(pending);
-	};
-	apply(source.getState().phase, undefined);
-	return watchSelection(source, (state) => state.phase, apply, samePhase);
+	host.programStatus.setPhase(factsOf(source.getState()));
+	return watchSelection(source, factsOf, (facts) => host.programStatus.setPhase(facts), sameFacts);
 }

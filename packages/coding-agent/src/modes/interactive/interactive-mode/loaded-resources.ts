@@ -4,6 +4,7 @@
  */
 
 import { type Component, type Container, GLYPH, SEPARATOR, Spacer, ThemedText } from "@octocodeai/octocode-tui";
+import { plural } from "@octocodeai/octocode-common/clip";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { getAgentDir } from "../../../config.ts";
 import { contextFilesBudgetWarning, projectContextOf } from "../../../core/context-budget.ts";
@@ -148,7 +149,7 @@ export function showLoadedResources(
 			count: () => 1,
 			state: () => (host.session.model ? "ready" : "attention"),
 			summary: () =>
-				`${sanitizeTerminalText(host.session.model?.id ?? "none selected")} · ${new Set(models.map((m) => m.provider)).size} providers · ${models.length} models · /model · /providers`,
+				`${sanitizeTerminalText(host.session.model?.id ?? "none selected")} · ${plural(new Set(models.map((m) => m.provider)).size, "provider")} · ${plural(models.length, "model")} · /model · /providers`,
 			details: () => models.map((m) => `  ${m.provider}/${m.id}`).join("\n"),
 		});
 		rows.push(...viewRow("keybinding").map((spec) => withCommand({ ...spec, label: "Keys" }, "/keys")));

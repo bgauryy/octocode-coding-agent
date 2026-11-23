@@ -120,6 +120,21 @@ describe("archive index", () => {
 			}
 	});
 
+	it("ranks as a scan does when the full-text tables are dropped after the index was opened", async () => {
+		const files = corpus(2);
+		const index = open();
+		await syncFiles(
+			index,
+			files.map(({ file }) => file),
+			none,
+		);
+		index.db.exec("DROP TABLE passages_terms; DROP TABLE passages_fts;");
+		for (const keywords of queries) {
+			const expected = summary(await rankIndexed(open(), files, keywords, undefined, none, 0));
+			expect(summary(await rankIndexed(index, files, keywords, undefined, none))).toEqual(expected);
+		}
+	});
+
 	it("re-indexes a changed file, drops a deleted one and adds a new one", async () => {
 		const files = corpus(2);
 		const index = open();

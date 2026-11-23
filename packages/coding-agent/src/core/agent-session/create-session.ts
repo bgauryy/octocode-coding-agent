@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { Agent, setDefaultStreamFn, type ThinkingLevel } from "@octocodeai/octocode-agent-core";
+import { Agent, type AgentTool, setDefaultStreamFn, type ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { Context, ModelsSimpleStreamOptions } from "@octocodeai/octocode-ai";
 import { clampThinkingLevel, type Model, streamSimple } from "@octocodeai/octocode-ai/compat";
 import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
@@ -21,9 +21,34 @@ import type { SessionManager } from "../session-manager.ts";
 import { applyToolModifiers, getToolListError, isToolModifier } from "../settings-manager.ts";
 import { getBranchSelection, isVirtualModel } from "../virtual-models.ts";
 import { createConvertToLlmWithBlockImages } from "./block-images.ts";
-import { withRequestTrace } from "./request-trace.ts";
+import { branchTraceSource, withRequestTrace } from "./request-trace.ts";
 import type { AgentSessionConfig } from "./types.ts";
 import { listenerErrorReporter } from "../listener-diagnostics.ts";
+
+/**
+ * The declared tools as compared text (`JSON.stringify` of their names, descriptions and parameters), kept per tools
+ * array and per tool: the agent state copies the array on every set, never in place, and a request's loadout declares
+ * the same registered tool objects again, none changed in place.
+ */
+const declarations = new WeakMap<readonly AgentTool[], string>();
+const declaration = new WeakMap<AgentTool, string>();
+function toolDeclarations(tools: readonly AgentTool[]): string {
+	let text = declarations.get(tools);
+	if (text === undefined) {
+		const each = tools.map((tool) => {
+			let own = declaration.get(tool);
+			if (own === undefined) {
+				const { name, description, parameters } = tool;
+				own = JSON.stringify({ name, description, parameters });
+				declaration.set(tool, own);
+			}
+			return own;
+		});
+		text = `[${each.join(",")}]`;
+		declarations.set(tools, text);
+	}
+	return text;
+}
 
 /** Session inputs resolved against already-created, cwd-bound services. */
 export interface CreateSessionFromServicesOptions {
@@ -73,7 +98,7 @@ export interface CreateSessionResult {
 	session: AgentSession;
 	/** Features result (for UI context setup in interactive mode). */
 	featuresResult: LoadedFeatures;
-	/** Warning if the session was restored with a different model than saved. */
+	/** Warning if the session was restored with a different model than saved, or the saved default was not used. */
 	modelFallbackMessage?: string;
 }
 
@@ -137,10 +162,16 @@ export async function createSessionFromServices(
 			modelRuntime,
 		});
 		model = result.model;
+		// `result.fallbackMessage` says why a saved default was not used; with a model it also names that model.
+		const replaced = result.fallbackMessage;
 		if (!model) {
-			modelFallbackMessage = formatNoModelsAvailableMessage();
+			modelFallbackMessage = replaced
+				? `${replaced} ${formatNoModelsAvailableMessage()}`
+				: formatNoModelsAvailableMessage();
 		} else if (modelFallbackMessage) {
-			modelFallbackMessage += `. Using ${model.provider}/${model.id}`;
+			modelFallbackMessage += replaced ? `. ${replaced}` : `. Using ${model.provider}/${model.id}`;
+		} else {
+			modelFallbackMessage = replaced;
 		}
 	}
 
@@ -237,9 +268,8 @@ export async function createSessionFromServices(
 	const cacheContextIsCurrent = (requestModel: Model<any>) => {
 		const messages = agent.state.messages;
 		const systemPrompt = agent.state.systemPrompt;
-		const toolSnapshot = () =>
-			JSON.stringify(agent.state.tools.map(({ name, description, parameters }) => ({ name, description, parameters })));
-		const tools = toolSnapshot();
+		const toolArray = agent.state.tools;
+		const tools = toolDeclarations(toolArray);
 		const sessionId = sessionManager.getSessionId();
 		const thinkingLevel = agent.state.thinkingLevel;
 		const cachePreferences = JSON.stringify(settingsManager.getCachePreferences());
@@ -253,7 +283,7 @@ export async function createSessionFromServices(
 				currentModel.api === requestModel.api &&
 				currentModel.baseUrl === requestModel.baseUrl &&
 				agent.state.systemPrompt === systemPrompt &&
-				toolSnapshot() === tools &&
+				(agent.state.tools === toolArray || toolDeclarations(agent.state.tools) === tools) &&
 				currentModel.provider === requestModel.provider &&
 				currentModel.id === requestModel.id &&
 				messages.length <= currentMessages.length &&
@@ -281,8 +311,10 @@ export async function createSessionFromServices(
 			if (turnRequest) cacheWarmer.start({ model, context, options: requestOptions }, cacheContextIsCurrent(model));
 			// Added after the warmer took its copy: a cache refresh that waits out a cool-down is not the turn's wait.
 			const onCooldownWait = turnRequest ? cooldownWaitRef.current : undefined;
-			return withRequestTrace(requestOptions, (traced) =>
-				modelRuntime.streamSimple(model, context, onCooldownWait ? { ...traced, onCooldownWait } : traced),
+			return withRequestTrace(
+				requestOptions,
+				(traced) => modelRuntime.streamSimple(model, context, onCooldownWait ? { ...traced, onCooldownWait } : traced),
+				turnRequest ? branchTraceSource(context.messages, sessionManager.getBranch()) : undefined,
 			);
 		},
 		sessionId: sessionManager.getSessionId(),

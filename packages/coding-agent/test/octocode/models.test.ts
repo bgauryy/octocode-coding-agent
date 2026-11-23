@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { indexCatalog, loadCatalog, lookup, readCatalog } from "../../src/octocode/subagents/catalog.ts";
+import { indexCatalog, lookup } from "../../src/core/model-catalog/index-shape.ts";
+import { loadCatalog, readCatalog } from "../../src/core/model-catalog/index-store.ts";
 // The catalog is fresh for a day.
 import { DAY_MS as CATALOG_TTL_MS } from "../../src/octocode/shared/util.ts";
 import { type ModelRef, resolveTier, routeModel } from "../../src/octocode/subagents/model.ts";
@@ -57,11 +58,15 @@ describe("models.dev catalog", () => {
 			knowledge: "2025-03",
 			input: ["text", "image"],
 		});
-		expect(catalog.models["reseller/claude-small-1"]).toMatchObject({ cost: { input: 2, output: 9 } });
-		expect(catalog.models["anthropic/claude-small-1"]).toBeUndefined();
+		// Provider listings live apart from bare ids (N3: a key `provider/id` was both a listing and a router's bare id).
+		expect(catalog.listings?.reseller?.["claude-small-1"]).toMatchObject({ cost: { input: 2, output: 9 } });
+		expect(catalog.listings?.anthropic?.["claude-small-1"]).toBe(0);
+		expect(catalog.models["reseller/claude-small-1"]).toBeUndefined();
 		expect(lookup(catalog, "reseller", "claude-small-1")?.cost).toEqual({ input: 2, output: 9 });
 		expect(lookup(catalog, "my-gateway", "claude-small-1")?.cost).toEqual({ input: 1, output: 5 });
-		expect(lookup(catalog, "openrouter", "anthropic/claude-small-1")?.description).toBe("small one");
+		// A router's id names the model by its last part; descriptions are no longer kept (nothing read them).
+		expect(lookup(catalog, "openrouter", "anthropic/claude-small-1")?.knowledge).toBe("2025-03");
+		expect(lookup(catalog, "openrouter", "anthropic/claude-small-1")).not.toHaveProperty("description");
 		expect(lookup(undefined, "a", "b")).toBeUndefined();
 	});
 
@@ -198,6 +203,37 @@ describe("model purposes", () => {
 		expect(resolveTier("medium", all, parent, catalog)?.id).toBe("mid-2");
 		// Only an older generation of a family, and only that: it is still better than staying on the parent.
 		expect(resolveTier("small", [parent, all[5]], parent, catalog)?.id).toBe("mini-old");
+	});
+
+	it("judges a family's newest release among priced models, so an unpriced newer sibling does not hide it (N8)", () => {
+		const catalog = indexCatalog(
+			{
+				anthropic: {
+					models: {
+						opus: { tool_call: true, family: "claude-opus", release_date: "2026-01-01", limit: { context: 200_000 } },
+						"sonnet-4": {
+							tool_call: true,
+							family: "claude-sonnet",
+							release_date: "2025-09-01",
+							limit: { context: 200_000 },
+						},
+						// A fresh listing models.dev has not priced yet.
+						"sonnet-5": {
+							tool_call: true,
+							family: "claude-sonnet",
+							release_date: "2026-11-01",
+							limit: { context: 200_000 },
+						},
+					},
+				},
+			},
+			1,
+		);
+		const opus = m("anthropic", "opus", 5, 25);
+		const sonnet4 = m("anthropic", "sonnet-4", 3, 15);
+		const sonnet5 = m("anthropic", "sonnet-5", 0, 0);
+		expect(resolveTier("medium", [opus, sonnet4], opus, catalog)?.id).toBe("sonnet-4");
+		expect(resolveTier("medium", [opus, sonnet4, sonnet5], opus, catalog)?.id).toBe("sonnet-4");
 	});
 
 	it("keeps a purpose on the parent's provider, whose auth is proven, before a cheaper same-lab model elsewhere", () => {

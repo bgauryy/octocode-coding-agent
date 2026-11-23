@@ -16,3 +16,10 @@ it("marks only the daemon page, embeds no data, and has one inline script for th
 		"data-daemon",
 	);
 });
+
+it("titles a live page Octocode until its script names the view, and keeps Backlog for the offline export", () => {
+	expect(renderDaemonHtml()).toContain("<title>Octocode</title>");
+	const snapshot = { repo: "r", generatedAt: 0, states: [], idleMs: 1, items: [] };
+	expect(renderBacklogHtml(snapshot, true)).toContain("<title>Octocode</title>");
+	expect(renderBacklogHtml(snapshot)).toContain("<title>Backlog</title>");
+});

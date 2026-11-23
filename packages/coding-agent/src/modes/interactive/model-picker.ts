@@ -1,12 +1,14 @@
-/** The /model picker: choosing a model for this chat, or saving it as the global or project default. */
+/**
+ * The /model picker: Enter switches this chat; the save key switches it and saves the global or project default; the
+ * details' key saves the provider's preferred model.
+ */
 
 import { isBedrockCandidate, preflightBedrockSelection } from "../../core/bedrock-model-access.ts";
 import type { Model } from "@octocodeai/octocode-ai/compat";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { DefaultModelSaveError, includeDefaultModel } from "../../core/agent-session/model-default.ts";
+import { DefaultModelSaveError } from "../../core/agent-session/model-default.ts";
 import { getApplicationPort } from "../../core/application/index.ts";
-import { ModelSelectorComponent } from "./components/model-selector.ts";
-import type { SwitchChoice } from "./components/model-selector/switch-choice.ts";
+import { type ModelSave, ModelSelectorComponent } from "./components/model-selector.ts";
 import type { InteractiveModeHost } from "./interactive-mode/host.ts";
 
 type ModelPickerHost = Pick<
@@ -33,7 +35,7 @@ export function showModelSelector(host: ModelPickerHost, initialSearchInput?: st
 	host.showSelector((done) => {
 		const closed = new AbortController();
 		let checking = false;
-		const selectModel = async (model: Model<any>, choice: SwitchChoice) => {
+		const selectModel = async (model: Model<any>, choice: "chat" | ModelSave) => {
 			if (checking || closed.signal.aborted) return;
 			if (isBedrockCandidate(model)) {
 				checking = true;
@@ -52,7 +54,7 @@ export function showModelSelector(host: ModelPickerHost, initialSearchInput?: st
 					checking = false;
 				}
 			}
-			const persist = choice === "default" || choice === "both";
+			const persist = choice === "both";
 			if (choice === "provider") {
 				try {
 					await settingsManager.saveProviderModel(model.provider, model.id);
@@ -81,17 +83,9 @@ export function showModelSelector(host: ModelPickerHost, initialSearchInput?: st
 			}
 			if (persist) host.showStatus(`Saving default model: ${model.provider}/${model.id}…`);
 			try {
-				if (choice === "default") {
-					const enabledModels =
-						scope === "global"
-							? includeDefaultModel(settingsManager.getGlobalSettings().enabledModels, model)
-							: undefined;
-					await settingsManager.saveDefaultModelSelection(model.provider, model.id, { scope, enabledModels });
-				} else {
-					await getApplicationPort(session).invoke("setModel", model, { persist, scope });
-					host.updateAvailableProviderCount();
-					host.updateEditorBorderColor();
-				}
+				await getApplicationPort(session).invoke("setModel", model, { persist, scope });
+				host.updateAvailableProviderCount();
+				host.updateEditorBorderColor();
 				done();
 				const scopedOverride =
 					Boolean(settingsManager.getEnabledModels()?.length) &&
@@ -119,7 +113,7 @@ export function showModelSelector(host: ModelPickerHost, initialSearchInput?: st
 							}`
 						: `Model: ${model.id}`,
 				);
-				if (choice !== "default") void host.maybeWarnAboutAnthropicSubscriptionAuth(model);
+				void host.maybeWarnAboutAnthropicSubscriptionAuth(model);
 			} catch (error) {
 				done();
 				if (error instanceof DefaultModelSaveError) {
@@ -127,9 +121,7 @@ export function showModelSelector(host: ModelPickerHost, initialSearchInput?: st
 					host.updateEditorBorderColor();
 					host.showWarning(error.message);
 				} else {
-					host.showError(
-						choice === "default" ? `Could not save the default model: ${errorMessage(error)}` : errorMessage(error),
-					);
+					host.showError(errorMessage(error));
 				}
 			}
 		};
@@ -157,7 +149,7 @@ export function showModelSelector(host: ModelPickerHost, initialSearchInput?: st
 				host.ui.requestRender();
 			},
 			initialSearchInput,
-			(model, choice = "default") => void selectModel(model, choice),
+			(model, save) => void selectModel(model, save),
 			defaultProvider && startupModel ? { provider: defaultProvider, id: startupModel } : undefined,
 			{ source, providerOnly: defaultProvider },
 		);

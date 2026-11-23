@@ -4,6 +4,7 @@ import { unlinkSync, writeFileSync } from "node:fs";
 import { platform } from "node:os";
 import { join } from "node:path";
 import { getNativeClipboard } from "@octocodeai/octocode-tui";
+import { tmuxPaneAllowsPassthrough, wrapTmuxPassthrough } from "@octocodeai/octocode-tui/multiplexer";
 import { runClipboardCommand } from "./clipboard-command.ts";
 import { isWSL } from "./wsl.ts";
 
@@ -18,11 +19,34 @@ function isRemoteSession(env: NodeJS.ProcessEnv): boolean {
 	return Boolean(env.SSH_CONNECTION || env.SSH_CLIENT || env.MOSH_CONNECTION || env.OCTOCODE_CLIPBOARD_OSC52 === "1");
 }
 
-function emitOsc52(text: string): boolean {
+/** GNU screen passes a DCS string through to its terminal, in pieces it can hold: base64 split at 76 characters. */
+function screenOsc52(encoded: string): string {
+	const pieces = encoded.match(/.{1,76}/g) ?? [""];
+	return `\x1bP\x1b]52;c;${pieces.join("\x1b\\\x1bP")}\x07\x1b\\`;
+}
+
+/**
+ * Write OSC 52 so it reaches the terminal outside a multiplexer: tmux passes it on in DCS passthrough when the pane
+ * allows it (otherwise only with `set-clipboard on`, so it goes as is), GNU screen in its own DCS pieces.
+ */
+function emitOsc52(text: string, env: NodeJS.ProcessEnv): boolean {
 	if (Math.ceil(Buffer.byteLength(text) / 3) * 4 > MAX_OSC52_ENCODED_LENGTH) return false;
 	const encoded = Buffer.from(text).toString("base64");
-	process.stdout.write(`\x1b]52;c;${encoded}\x07`);
+	const sequence = `\x1b]52;c;${encoded}\x07`;
+	if (env.TMUX) process.stdout.write(tmuxPaneAllowsPassthrough(env) ? wrapTmuxPassthrough(sequence) : sequence);
+	else process.stdout.write(env.STY ? screenOsc52(encoded) : sequence);
 	return true;
+}
+
+/**
+ * tmux keeps the text as a paste buffer and, with `-w` (tmux 3.2+), sends it to the attached terminal's clipboard
+ * through its own OSC 52, whatever `set-clipboard` says: tmux's default (`external`) drops an application's OSC 52.
+ * False when tmux is missing, older or failed, so OSC 52 is tried next.
+ */
+async function copyViaTmux(text: string): Promise<boolean> {
+	return (
+		(await runClipboardCommand("tmux", ["load-buffer", "-w", "-"], { input: text, timeoutMs: 2000 })) !== undefined
+	);
 }
 
 /**
@@ -119,7 +143,7 @@ export async function copyToClipboard(text: string): Promise<void> {
 	let osc52Emitted = false;
 	if (!copied && p === "linux" && isWSL(env)) {
 		// Windows Terminal supports OSC 52; prefer it over the slower PowerShell round trip.
-		if (env.WT_SESSION) osc52Emitted = emitOsc52(text);
+		if (env.WT_SESSION) osc52Emitted = emitOsc52(text, env);
 		copied = osc52Emitted || (await copyViaWindowsClipboard(text));
 	}
 	// OSC 52 cannot be verified, so a desktop session with a display reports the failure
@@ -128,7 +152,8 @@ export async function copyToClipboard(text: string): Promise<void> {
 	const headless = p === "linux" && !env.DISPLAY && !env.WAYLAND_DISPLAY && !env.TERMUX_VERSION;
 	let oversized = false;
 	if (!osc52Emitted && (isRemoteSession(env) || (!copied && headless))) {
-		if (emitOsc52(text)) copied = true;
+		if (env.TMUX && (await copyViaTmux(text))) copied = true;
+		else if (emitOsc52(text, env)) copied = true;
 		else oversized = true;
 	}
 	if (copied) return;

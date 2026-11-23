@@ -2,6 +2,7 @@ import type { FeatureContext } from "../../core/features/index.ts";
 import type { Backlog } from "./context.ts";
 import type { Item } from "./item.ts";
 import { applyReview, linkedPullRequest, type QaMode, qaRequired, type QaReviewer } from "./qa-gate.ts";
+import { evidenceLine } from "./receipts.ts";
 import { completionInput } from "./tool-arguments.ts";
 import { runBacklog } from "./tool-run.ts";
 import { oneWrite } from "./tool-support.ts";
@@ -23,13 +24,15 @@ export async function reviewBeforeDone(
 ): Promise<string | undefined> {
 	if (!qaRequired(item, mode) || completion === undefined) return undefined;
 	const given = completionInput(completion);
+	const receipt = given.receipt === undefined ? undefined : backlog.receipts?.(given.receipt);
 	const outcome = await review(
 		{
 			ref: item.ref,
 			title: item.title,
 			goal: item.goal,
 			summary: given.summary,
-			verification: `${given.verification.summary} (status: ${given.verification.status})`,
+			verification: `${given.verification.summary} (status: ${given.verification.status})${receipt ? `\n${evidenceLine({ receipt })}` : ""}`,
+			...(receipt ? { receipt } : {}),
 			files: given.files.map((file) => file.path),
 			pullRequest: linkedPullRequest(item.links),
 		},

@@ -1,5 +1,5 @@
 import { setKeybindings, visibleWidth } from "@octocodeai/octocode-tui";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import type { SessionInfo } from "../src/core/session-manager.ts";
 import { SessionSelectorComponent } from "../src/modes/interactive/components/session-selector.ts";
@@ -42,6 +42,30 @@ describe("session picker feedback", () => {
 		expect(output).not.toContain("No sessions in current folder");
 		picker.getSessionList().setQuery("");
 		expect(picker.getSessionList().getSelectedSessionPath()).toBe(session.path);
+	});
+
+	it("says Esc clears a typed search, and closes the picker on the next Esc", async () => {
+		const cancel = vi.fn();
+		const picker = new SessionSelectorComponent(
+			async () => [session],
+			async () => [],
+			() => {},
+			cancel,
+			() => {},
+			() => {},
+		);
+		opened.push(picker);
+		await flush();
+		const footer = () => picker.render(200).join("\n");
+		expect(footer()).toMatch(/esc\S* close/);
+		picker.getSessionList().setQuery("unmatched");
+		expect(footer()).toMatch(/esc\S* clear search/);
+		expect(footer()).not.toMatch(/esc\S* close/);
+		picker.handleInput("\x1b");
+		expect(cancel).not.toHaveBeenCalled();
+		expect(footer()).toMatch(/esc\S* close/);
+		picker.handleInput("\x1b");
+		expect(cancel).toHaveBeenCalledOnce();
 	});
 
 	it("renders load errors as a single safe status row", async () => {

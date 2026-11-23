@@ -102,7 +102,7 @@ The window is `contextBudget` (default 300,000 tokens) capped at 90% of the mode
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
 | Reserve     | at least 24,576 (summary room in the cached request; `min(16,384, window/8)` when window/6 < 20,485), raised for the thinking budget plus answer room, at most window/6 | 24,576                    |
 | Trigger     | context tokens > window − reserve                                                                                                                                       | > 175,424                 |
-| Kept recent | `min(20,000, window/4)` tokens of the newest history, verbatim                                                                                                          | 20,000                    |
+| Kept recent | `min(20,000, window/4)` tokens of the newest conversation, verbatim; the system prompt and its updates do not count toward it                                           | 20,000                    |
 
 Automatic compaction pauses after three consecutive failures for a session and model, or after the context refilled within 3 turns of compacting 3 times in a row. `/compact` resets both; an hour after the last failure one more attempt runs.
 

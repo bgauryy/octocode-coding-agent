@@ -12,11 +12,12 @@ import type { ModelsJsonProvider } from "../model-config.ts";
 import {
 	getConfigValueEnvVarNames,
 	isCommandConfigValue,
+	isConfigValueConfigured,
 	resolveConfigValueOrThrow,
 	resolveHeadersOrThrow,
 } from "../config-value.ts";
 import { registerAuthSecrets } from "../secret-redaction.ts";
-import type { FeatureOAuthConfig, ProviderConfigInput } from "./types.ts";
+import { type AuthStatus, credentialSourceLabel, type FeatureOAuthConfig, type ProviderConfigInput } from "./types.ts";
 
 function adaptOAuth(config: FeatureOAuthConfig): OAuthAuth {
 	return {
@@ -53,11 +54,28 @@ function withConfiguredAuth(
 	return { ...auth, headers: mergedHeaders };
 }
 
-export function configuredApiKey(
+function configuredApiKey(
 	config: ModelsJsonProvider | undefined,
 	feature: ProviderConfigInput | undefined,
 ): string | undefined {
 	return feature?.apiKey ?? config?.apiKey;
+}
+
+/** How the provider's own configuration supplies a key: a secret command, variables, or the key itself; undefined for none. */
+export function configuredRequestAuthStatus(
+	config: ModelsJsonProvider | undefined,
+	feature: ProviderConfigInput | undefined,
+): AuthStatus | undefined {
+	const value = configuredApiKey(config, feature);
+	if (value === undefined) return undefined;
+	if (isCommandConfigValue(value)) return { configured: true, source: "models_json_command" };
+	const names = getConfigValueEnvVarNames(value);
+	if (names.length > 0) {
+		return isConfigValueConfigured(value)
+			? { configured: true, source: "environment", label: names.join(", ") }
+			: { configured: false };
+	}
+	return { configured: true, source: feature?.apiKey !== undefined ? "fallback" : "models_json_key" };
 }
 
 export function configuredHeaders(
@@ -90,6 +108,9 @@ export function composeApiKeyAuth(
 ): ApiKeyAuth | undefined {
 	const inherited = base?.auth.apiKey;
 	const rawKey = configuredApiKey(config, feature);
+	// Where a configured key comes from, in the words a provider's page uses (`models.json`, a variable name); set with `rawKey`.
+	const configuredStatus = configuredRequestAuthStatus(config, feature);
+	const configuredSource = configuredStatus && credentialSourceLabel(configuredStatus);
 	const oauth = feature?.oauth ?? base?.auth.oauth;
 	// OAuth-only providers get no fabricated API-key login method.
 	if (!inherited && rawKey === undefined && oauth) return undefined;
@@ -111,12 +132,12 @@ export function composeApiKeyAuth(
 				return resolved ? { type: "api_key", source: resolved.source } : undefined;
 			}
 			if (rawKey !== undefined) {
-				if (isCommandConfigValue(rawKey)) return { type: "api_key", source: "configured API key" };
+				if (isCommandConfigValue(rawKey)) return { type: "api_key", source: configuredSource };
 				const envNames = getConfigValueEnvVarNames(rawKey);
 				for (const name of envNames) {
 					if ((await input.ctx.env(name)) === undefined) return undefined;
 				}
-				return { type: "api_key", source: "configured API key" };
+				return { type: "api_key", source: configuredSource };
 			}
 			if (inherited?.check) return inherited.check(input);
 			const resolved = await inherited?.resolve(input);
@@ -135,7 +156,7 @@ export function composeApiKeyAuth(
 				const key = resolveConfigValueOrThrow(rawKey, `API key for provider "${providerId}"`, env);
 				result = inherited
 					? await inherited.resolve({ ...input, credential: { type: "api_key", key } })
-					: { auth: { apiKey: key }, source: "configured API key" };
+					: { auth: { apiKey: key }, source: configuredSource };
 			} else {
 				result = await inherited?.resolve(input);
 			}

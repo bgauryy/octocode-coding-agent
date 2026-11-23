@@ -7,6 +7,7 @@ import { archiveFolder, ownArchives, type Segment, segmentFiles, segmentsIn, ses
 import { PARENT_SESSION_ENV, TEAM_WORKSPACE_ENV } from "@octocodeai/octocode-common/env";
 import { HISTORY_BYTES, scanCursor, scanHistory, scanResume } from "./search.ts";
 import { sessionsRoot } from "../shared/home.ts";
+import { hitAnchors } from "./archive/entries.ts";
 import { RECORD_FILE, type RecordHeader, readRecordHeader } from "./archive/record.ts";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { isWithin } from "@octocodeai/octocode-common/paths";
@@ -332,6 +333,9 @@ export async function searchHistory(
 			}
 			end = Math.max(end, index + HIT_CONTEXT);
 		}
+		// A hit in a message of a segment with authoritative entry ids names it: `get` reads it by that anchor.
+		const anchors = hitAnchors(file, matched);
+		if (anchors.length > 0) shown.push(`     anchor${anchors.length > 1 ? "s" : ""}: ${anchors.join(" ")}`);
 		blocks.push({ heading: `## ${file} · ${session.id} (${session.relation}) · ${label}`, lines: shown });
 	}
 	const pages = paginate(blocks);

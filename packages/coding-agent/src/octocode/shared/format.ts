@@ -1,8 +1,9 @@
 /** Compact numbers, durations, clock times, paths, tokens and cost for the agents panel, the footer and `coordinate list`. */
+import { formatEstimate } from "@octocodeai/octocode-common/money";
 import { shortPath } from "../../utils/display-path.ts";
 import { formatDuration } from "../../utils/duration.ts";
 import { plural } from "./text.ts";
-import { DAY_MS, HOUR_MS, type UsageTotals } from "./util.ts";
+import { DAY_MS, HOUR_MS, type TokenTotals } from "./util.ts";
 
 /**
  * The line that goes before the end of a captured stream (`shown` of its `total` characters): how much it shows and where
@@ -34,7 +35,7 @@ export function cachedPercent(read: number, prompt: number, digits = 0): number 
 }
 
 /** Prompt tokens that were not read from cache: uncached input and cache writes. */
-export const newPromptTokens = (usage: Pick<UsageTotals, "input" | "cacheRead">): number =>
+export const newPromptTokens = (usage: Pick<TokenTotals, "input" | "cacheRead">): number =>
 	Math.max(0, usage.input - usage.cacheRead);
 
 /**
@@ -42,7 +43,7 @@ export const newPromptTokens = (usage: Pick<UsageTotals, "input" | "cacheRead">)
  * writes); `cached` is the cache reads, shown when there are any. Every request re-reads the whole conversation, so cache
  * reads grow with each turn and dwarf the rest while costing a fraction of it. Empty when nothing was spent.
  */
-export function formatTokenUsage(usage: Pick<UsageTotals, "input" | "cacheRead" | "output">): string {
+export function formatTokenUsage(usage: Pick<TokenTotals, "input" | "cacheRead" | "output">): string {
 	if (!usage.input && !usage.output) return "";
 	const cached = usage.cacheRead > 0 ? ` +${formatTokens(usage.cacheRead)} cached` : "";
 	return `↑${formatTokens(newPromptTokens(usage))}${cached} ↓${formatTokens(usage.output)}`;
@@ -53,14 +54,14 @@ export function formatTokenUsage(usage: Pick<UsageTotals, "input" | "cacheRead" 
  * reads as an estimate: `≈$2.28`. Usage from a model without pricing is never shown as free: `≈$2.28 + n/a`, or
  * `cost n/a` when no part was priced. Empty when nothing was spent.
  */
-export function formatCost(usage: Pick<UsageTotals, "cost" | "unpriced">): string {
-	const money = usage.cost > 0 ? `≈$${usage.cost < 0.01 ? "<0.01" : usage.cost.toFixed(2)}` : "";
+export function formatCost(usage: Pick<TokenTotals, "cost" | "unpriced">): string {
+	const money = usage.cost > 0 ? (usage.cost < 0.01 ? "≈$<0.01" : formatEstimate(usage.cost)) : "";
 	if (!usage.unpriced) return money;
 	return money ? `${money} + n/a` : "cost n/a";
 }
 
 /** A run's cost as `formatCost` writes it, or `(sub)` when a plan paid for its tokens: a plan shows no fake $0. */
-export function formatSpend(usage: Pick<UsageTotals, "cost" | "unpriced">, billing: string | undefined): string {
+export function formatSpend(usage: Pick<TokenTotals, "cost" | "unpriced">, billing: string | undefined): string {
 	return billing === "plan" ? "(sub)" : formatCost(usage);
 }
 
@@ -86,6 +87,6 @@ export const toolCallCount = (count: number) => plural(count, "tool call");
 export const formatClock = (at: number) => new Date(at).toTimeString().slice(0, 8);
 
 /** `7 tool calls · ↑12k +4k cached ↓3k · ≈$0.02`: an agent's work in `coordinate list` and /agents. */
-export function memberStats(member: { toolCalls: number } & UsageTotals): string {
+export function memberStats(member: { toolCalls: number } & TokenTotals): string {
 	return [toolCallCount(member.toolCalls), formatTokenUsage(member), formatCost(member)].filter(Boolean).join(" · ");
 }

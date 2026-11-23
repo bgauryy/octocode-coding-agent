@@ -344,7 +344,8 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 
 	startup.defer(() => {
 		stopped = true;
-		host.onInputCallback?.("");
+		// Wakes the input loop's pending read, which then sees `stopped`.
+		host.uiStore.getState().submitInput("");
 	});
 	const cleanup = startup.move();
 	const stop = () => cleanup.disposeAsync();

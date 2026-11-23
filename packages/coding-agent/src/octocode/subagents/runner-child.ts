@@ -11,6 +11,7 @@ import type { RunnerBilling, RunnerReply, Runners } from "./runner-port.ts";
 import type { Team } from "../team/session.ts";
 import { readOnlyRole } from "../permission/read-only-role.ts";
 import { renderPrompt } from "../../core/prompt-template.ts";
+import { captureSpend } from "../../core/spend-capture.ts";
 
 /** ACP stop reasons as a report reads them: a cut-off turn is incomplete, a refusal failed, a cancelled turn aborted. */
 const STOP_REASONS: Record<string, string> = {
@@ -109,6 +110,15 @@ export async function runRunnerChild(
 			ctx: input.ctx,
 		});
 		usage = usageOf(reply);
+		// No session entry of this process carries a runner turn's spend: `/usage` records it here, once.
+		captureSpend({
+			cwd: input.cwd,
+			kind: "runner",
+			provider: input.runner,
+			model: model || input.runner,
+			usage,
+			billing: reply.billing,
+		});
 		progress({ requests: 1 });
 		const stop = STOP_REASONS[reply.stopReason ?? "end_turn"] ?? "stop";
 		report.answer(reply.text, stop, stop === "error" ? `${input.runner} refused the task` : undefined);

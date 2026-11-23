@@ -204,3 +204,28 @@ it("gives the messages a Stop withdrew from the queue back to the message box, o
 	await view.session({ streaming: false, receipts: [{ ...stopped }] });
 	expect(box).toHaveValue("queued guidance\n\nqueued follow-up\n\nmy draft");
 });
+
+it("lists the requests this tab sent and the host's words, not a bare receipt of another tab's request", async () => {
+	const view = await composer();
+	await view.session({ receipts: [{ id: "other-tab", status: "completed" }] });
+	expect(screen.queryByRole("list", { name: "Recent session requests" })).toBeNull();
+	await view.session({
+		receipts: [
+			{ id: "other-tab", status: "completed" },
+			{ id: "stop", status: "completed", message: "Run stopped" },
+		],
+	});
+	const list = screen.getByRole("list", { name: "Recent session requests" });
+	expect(list).toHaveTextContent("Run stopped");
+	expect(list.querySelectorAll("li")).toHaveLength(1);
+	await userEvent.type(screen.getByRole("textbox", { name: "Message" }), "Mine");
+	await userEvent.click(screen.getByRole("button", { name: "Send" }));
+	const id = posted().at(-1).id;
+	await view.session({
+		receipts: [
+			{ id: "other-tab", status: "completed" },
+			{ id, status: "completed" },
+		],
+	});
+	expect(screen.getByRole("list", { name: "Recent session requests" })).toHaveTextContent("HandledMine");
+});

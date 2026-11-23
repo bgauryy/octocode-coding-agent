@@ -15,7 +15,7 @@ function fakeBundle(): string {
 		file,
 		`const fs = require("node:fs");
 const home = process.env.OCTOCODE_HOME;
-console.log(JSON.stringify({ args: process.argv.slice(2), home, cwd: process.cwd(), models: fs.readFileSync(home + "/models.json", "utf8"), mcp: fs.existsSync(home + "/mcp.json") ? fs.readFileSync(home + "/mcp.json", "utf8") : null, extra: process.env.EXTRA }));`,
+console.log(JSON.stringify({ args: process.argv.slice(2), home, cwd: process.cwd(), models: fs.readFileSync(home + "/models.json", "utf8"), mcp: fs.existsSync(home + "/mcp.json") ? fs.readFileSync(home + "/mcp.json", "utf8") : null, extra: process.env.EXTRA, openBrowser: process.env.OCTOCODE_OPEN_BROWSER }));`,
 	);
 	return file;
 }
@@ -48,11 +48,14 @@ describe("octocode-agent adapter", () => {
 			models: string;
 			mcp: string;
 			extra: string;
+			openBrowser?: string;
 		};
 		expect(out.args.at(-1)).toBe("hello");
 		expect(JSON.parse(out.models).providers.testkit.baseUrl).toBe("http://127.0.0.1:1234/v1");
 		expect(JSON.parse(out.mcp).mcpServers.docs.url).toBe("http://127.0.0.1:9/mcp");
 		expect(out.extra).toBe("1");
+		// A scenario never opens a browser window on the machine that runs it.
+		expect(out.openBrowser).toBe("0");
 		expect(readFileSync(join(run.workspace, "a/b.txt"), "utf8")).toBe("hi");
 		await session.close();
 		expect(existsSync(run.home)).toBe(false);

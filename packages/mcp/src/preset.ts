@@ -15,6 +15,11 @@ export interface McpServerPreset {
 	instructionsOnDemand?: boolean;
 	/** Warnings raised while preparing launches since the last call, for the host to show the user. */
 	takeWarnings?: () => string[];
+	/**
+	 * What starting the server starts besides it, when that outlives the connection (the desktop's starts the Cua Driver
+	 * app). A listing command (`octocode mcp list --check`, `mcp tools`) connects such a server only when it names it.
+	 */
+	startsOutsideServer?: string;
 	/** Stops what the preset started outside its server (a proxy, say); called on session shutdown with the session's folder, so it must be idempotent. */
 	dispose?: (cwd?: string) => void | Promise<void>;
 }

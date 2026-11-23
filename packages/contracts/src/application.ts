@@ -14,12 +14,23 @@ import { ApplicationPhaseSchema, SessionStatusEventSchema, SessionStatusSchema }
 import { ReplySchema } from "./question.ts";
 import { ApplicationToolProgressSchema } from "./tool-progress.ts";
 import { ToolDisplaySchema } from "./tool-display.ts";
+import {
+	ApplicationCapabilitySchema,
+	ApplicationErrorKindSchema,
+	ApplicationModelSchema,
+	applicationCommandIdentity,
+	applicationModelSnapshotFields,
+	modelCommandFields,
+	SessionModelsEventSchema,
+	SessionQuotaEventSchema,
+	SessionUsageEventSchema,
+	SetModelCommandSchema,
+	SetThinkingCommandSchema,
+} from "./application-model.ts";
+export * from "./application-model.ts";
 
 export const APPLICATION_PROTOCOL_VERSION = 1 as const;
-const identity = {
-	id: Type.String({ minLength: 1, maxLength: 128 }),
-	sessionId: Type.String({ minLength: 1 }),
-};
+const identity = applicationCommandIdentity;
 export const ApplicationCommandSchema = Type.Union([
 	Type.Object(
 		{
@@ -65,6 +76,8 @@ export const ApplicationCommandSchema = Type.Union([
 		{ ...identity, action: Type.Literal("hold"), dialogId: Type.String({ minLength: 1, maxLength: 64 }) },
 		{ additionalProperties: false },
 	),
+	SetModelCommandSchema,
+	SetThinkingCommandSchema,
 ]);
 export type ApplicationCommand = Static<typeof ApplicationCommandSchema>;
 export type ApplicationCursor = Static<typeof ApplicationCursorSchema>;
@@ -123,6 +136,7 @@ const MessageSchema = Type.Object({
 	responseId: Type.Optional(Type.String()),
 	stopReason: Type.Optional(Type.String()),
 	errorMessage: Type.Optional(Type.String()),
+	errorKind: Type.Optional(ApplicationErrorKindSchema),
 	usage: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 	toolCallId: Type.Optional(Type.String()),
 	customType: Type.Optional(Type.String()),
@@ -177,12 +191,6 @@ const activityState = {
 	activityBefore: Type.Optional(Type.String()),
 	hasMoreActivities: Type.Optional(Type.Boolean()),
 };
-const ApplicationModelSchema = Type.Object({
-	provider: Type.String(),
-	id: Type.String(),
-	name: Type.String(),
-	input: Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")])),
-});
 export const ApplicationEventSchema = Type.Union([
 	ApplicationErrorSchema,
 	Type.Object({ type: Type.Literal("session.model"), model: Type.Optional(ApplicationModelSchema) }),
@@ -257,6 +265,9 @@ export const ApplicationEventSchema = Type.Union([
 		type: Type.Literal("command.receipt"),
 		receipt: ReceiptSchema,
 	}),
+	SessionUsageEventSchema,
+	SessionQuotaEventSchema,
+	SessionModelsEventSchema,
 ]);
 export const ApplicationCursorSchema = Type.Object({
 	sessionId: Type.String(),
@@ -283,15 +294,8 @@ export const ApplicationSnapshotSchema = Type.Object({
 	steering: Type.Array(Type.String()),
 	followUp: Type.Array(Type.String()),
 	receipts: Type.Array(ReceiptSchema),
-	capabilities: Type.Array(
-		Type.Union([
-			Type.Literal("prompt"),
-			Type.Literal("steer"),
-			Type.Literal("followUp"),
-			Type.Literal("abort"),
-			Type.Literal("answer"),
-		]),
-	),
+	capabilities: Type.Array(ApplicationCapabilitySchema),
+	...applicationModelSnapshotFields,
 });
 const frameFields = {
 	protocolVersion: Type.Literal(APPLICATION_PROTOCOL_VERSION),
@@ -374,17 +378,19 @@ export function applicationCommandFingerprint(command: ApplicationCommand): stri
 		id: command.id,
 		sessionId: command.sessionId,
 		action: command.action,
-		...(command.action === "abort"
-			? { runId: command.runId }
-			: command.action === "hold"
-				? { dialogId: command.dialogId }
-				: command.action === "answer"
-					? {
-							dialogId: command.dialogId,
-							...(command.choice !== undefined ? { choice: command.choice } : {}),
-							...(command.text !== undefined ? { text: command.text } : {}),
-							...(command.replies !== undefined ? { replies: command.replies } : {}),
-						}
-					: { text: command.text, ...(command.attachments?.length ? { attachments: command.attachments } : {}) }),
+		...(command.action === "setModel" || command.action === "setThinking"
+			? modelCommandFields(command)
+			: command.action === "abort"
+				? { runId: command.runId }
+				: command.action === "hold"
+					? { dialogId: command.dialogId }
+					: command.action === "answer"
+						? {
+								dialogId: command.dialogId,
+								...(command.choice !== undefined ? { choice: command.choice } : {}),
+								...(command.text !== undefined ? { text: command.text } : {}),
+								...(command.replies !== undefined ? { replies: command.replies } : {}),
+							}
+						: { text: command.text, ...(command.attachments?.length ? { attachments: command.attachments } : {}) }),
 	});
 }

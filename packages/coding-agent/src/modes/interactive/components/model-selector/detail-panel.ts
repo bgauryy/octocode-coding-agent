@@ -4,7 +4,7 @@ import type { ModelRuntime } from "../../../../core/model-runtime.ts";
 import { positionLabel } from "../../../../theme/page-kit.ts";
 import { hintText, keyText } from "../../../../theme/theme-tui-helpers.ts";
 import { theme } from "../../../../theme/theme.ts";
-import { compactModelDetails, modelDetails } from "./details.ts";
+import { compactModelDetails, modelDetails, userSetPrice } from "./details.ts";
 import type { ModelItem } from "./model-items.ts";
 
 /** What the panel under the model list shows: the highlighted model's facts and the catalog refresh status. */
@@ -13,15 +13,23 @@ export interface ModelPanelView {
 	runtime: ModelRuntime;
 	/** The full pricing and cache details instead of the two compact lines. */
 	details: boolean;
+	/** The open details offer the key that saves the highlighted model as its provider's preferred model. */
+	canPrefer: boolean;
 	error?: string;
 	refresh: string;
 	refreshed: boolean;
 }
 
+/** The action the details offer, as the switch question named it before Enter switched directly. */
+const PREFER_LABEL = "set as this provider’s preferred model";
+
 /** Detail lines in view at once; page keys scroll the rest. */
 const DETAIL_ROWS = 5;
 
-/** The facts under the model list; the full details scroll by page keys with their own `a–b/total`. */
+/**
+ * The facts under the model list; the full details scroll by page keys with their own `a–b/total`, and name the key
+ * that makes the model its provider's preferred one.
+ */
 export class ModelDetailPanel implements Component {
 	private offset = 0;
 	private readonly view: () => ModelPanelView;
@@ -51,7 +59,7 @@ export class ModelDetailPanel implements Component {
 			const kind = providerAccessLabel(view.runtime, selected.provider);
 			const billing = view.runtime.getProviderBilling(selected.provider);
 			const details = view.details
-				? modelDetails(selected.model, Date.now(), kind, billing)
+				? modelDetails(selected.model, Date.now(), kind, billing, userSetPrice(view.runtime, selected.model))
 						.split("\n")
 						.flatMap((line) => wrapTextWithAnsi(line, Math.max(1, width)))
 				: compactModelDetails(selected.model, kind, billing);
@@ -63,6 +71,10 @@ export class ModelDetailPanel implements Component {
 				const range = positionLabel(this.offset + 1, Math.min(details.length, this.offset + count), details.length);
 				const keys = hintText([[`${keyText("tui.select.pageUp")}/${keyText("tui.select.pageDown")}`, "details"]]);
 				lines.push(theme.fg("muted", truncateToWidth(` ${range} · ${keys}`, width, "…")));
+			}
+			if (view.details && view.canPrefer) {
+				const prefer = hintText([[keyText("app.models.preferred"), PREFER_LABEL]]);
+				lines.push(theme.fg("muted", truncateToWidth(` ${prefer}`, width, "…")));
 			}
 		}
 		if (view.error) lines.push(theme.fg("warning", truncateToWidth(` ${view.error}`, width, "…")));

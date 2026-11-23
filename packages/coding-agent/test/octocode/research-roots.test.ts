@@ -8,7 +8,9 @@ import { expandLaunchTemplates } from "../../../mcp/src/launch-templates.ts";
 import { presetEntries } from "../../../mcp/src/preset.ts";
 import { recommendedPresets } from "../../../mcp/src/recommended/index.ts";
 import { takeLaunchWarnings } from "../../../mcp/src/warnings.ts";
-import { ENV_AGENT_DIR } from "../../src/config.ts";
+import { SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
+import { hostPaths } from "../../../mcp/src/host.ts";
+import { ENV_AGENT_DIR, getNativeSkillsDir } from "../../src/config.ts";
 import { userResearchRoots } from "../../src/octocode/mcp-host/research-roots.ts";
 import { tmp } from "./helpers.ts";
 
@@ -193,7 +195,34 @@ describe("launch environment with user roots", () => {
 		return resolveConfigValueOrThrow(env.ALLOWED_PATHS, "ALLOWED_PATHS").split(",");
 	};
 	const defaultServer = (skills: string[] = []): string[] => launchRoots(skills);
-	const automatic = (skills: string[] = []) => [cwd, ...sessions(), ...skills];
+	// The bundled skill folder the session's discovery adds is named from session start, whole (`announcedSkillRoots`).
+	const bundled = real(getNativeSkillsDir());
+	const automatic = (skills: string[] = []) => [cwd, ...sessions(), ...[bundled, ...skills].sort()];
+
+	it("announces the bundled skill folder as a realpath, in a subagent too, whose parent's inventory holds it", () => {
+		expect(hostPaths().announcedSkillRoots?.({ cwd, projectTrusted: true })).toEqual([bundled]);
+		vi.stubEnv(SUBAGENT_ENV, "1");
+		expect(hostPaths().announcedSkillRoots?.({ cwd, projectTrusted: true })).toEqual([bundled]);
+	});
+
+	it("default server: a shipped skill the user switched off stays outside ALLOWED_PATHS, before and after discovery", () => {
+		// The pattern `/skills` writes for a core skill switched off globally (`harness-skills.test.ts`).
+		fs.writeFileSync(path.join(u.octo, "settings.json"), JSON.stringify({ skills: ["-octocode-debugging/SKILL.md"] }));
+		const shipped = fs.readdirSync(bundled).filter((name) => fs.existsSync(path.join(bundled, name, "SKILL.md")));
+		expect(shipped).toContain("octocode-debugging");
+		const enabled = shipped.filter((name) => name !== "octocode-debugging").map((name) => path.join(bundled, name));
+		const atStart = defaultServer();
+		expect(atStart).not.toContain(bundled);
+		expect(atStart).not.toContain(path.join(bundled, "octocode-debugging"));
+		expect(atStart).toEqual([cwd, ...sessions(), ...enabled.sort()]);
+		// Discovery loads those same folders: the launch does not change, so the server keeps its early start.
+		expect(defaultServer(enabled)).toEqual(atStart);
+	});
+
+	it("default server: a loaded bundled skill's folder is reached through the bundled folder", () => {
+		const skill = path.join(bundled, fs.readdirSync(bundled)[0]);
+		expect(defaultServer([skill, "/skills/one"])).toEqual(automatic(["/skills/one"]));
+	});
 
 	it("default server: automatic roots alone when the user adds none", () => {
 		expect(defaultServer(["/skills/one"])).toEqual(automatic(["/skills/one"]));

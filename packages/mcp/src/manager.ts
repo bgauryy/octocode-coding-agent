@@ -10,7 +10,7 @@ import { showServerTools } from "./tools-page.ts";
 
 export { toolCatalog } from "./inspection.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { attentionRank, describeState, describeTransport, isEnabled, type McpServer } from "./server.ts";
+import { describeState, describeTransport, inServerOrder, isEnabled, type McpServer } from "./server.ts";
 import type { McpFeatureState } from "./state.ts";
 import type { McpMenu, McpMenuItem, McpUi } from "./ui.ts";
 
@@ -44,15 +44,13 @@ function serversMenu(state: McpFeatureState): McpMenu {
 		details: `Global: ${state.configLocations().globalWrite}\nWorkspace: ${state.configLocations().projectWrite}${projectTrusted ? "" : " (requires trust)"}\n/mcp add saves a new server; /mcp config shows read order; /mcp tools lists tools.`,
 		error: notices(state).join("\n") || undefined,
 		items: [
-			...[...state.servers]
-				.sort((a, b) => attentionRank(a) - attentionRank(b) || a.entry.name.localeCompare(b.entry.name))
-				.map((server) => ({
-					value: server.entry.name,
-					label: server.entry.name,
-					description: `${exposureOf(server.entry)} · ${server.entry.override ? `global, ${server.entry.overrideScope ?? "project"} override` : (server.entry.scope ?? server.entry.source)}`,
-					badge: describeState(server, false),
-					tone: stateTone(server),
-				})),
+			...inServerOrder(state.servers).map((server) => ({
+				value: server.entry.name,
+				label: server.entry.name,
+				description: `${exposureOf(server.entry)} · ${server.entry.override ? `global, ${server.entry.overrideScope ?? "project"} override` : (server.entry.scope ?? server.entry.source)}`,
+				badge: describeState(server, false),
+				tone: stateTone(server),
+			})),
 			{ value: "@add", label: "Add MCP", description: "Save a new stdio or HTTP definition, off until reviewed" },
 		],
 		empty: `No MCP servers configured. Add them to ${state.configLocations().globalWrite} or ${state.configLocations().projectWrite}.`,

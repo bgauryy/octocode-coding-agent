@@ -81,7 +81,9 @@ function addIndexed(
 		pass.totalLength += file.words;
 	}
 	const found = new Map<number, RankedPassage>();
-	for (const [id, fileId, term, count, start, end, length] of archiveIndex.termCounts(index.db, query.terms)) {
+	// Without indexed files there is nothing to read, so a file lacking the FTS tables is not queried.
+	const rows = indexed.size === 0 ? [] : archiveIndex.termCounts(index.db, query.terms, [...indexed.keys()]);
+	for (const [id, fileId, term, count, start, end, length] of rows) {
 		const file = indexed.get(fileId);
 		if (!file) continue;
 		let passage = found.get(id);
@@ -147,7 +149,8 @@ export async function rankIndexed(
 	const pass = firstPass(query);
 	const indexed = new Map<number, { fileIndex: number; stamp: string; passages: number; words: number }>();
 	const scanned: number[] = [];
-	if (index.fts) {
+	// The flag is read at open; the tables may have been dropped since, so a ranking checks them again and scans if gone.
+	if (index.fts && archiveIndex.hasFts(index.db)) {
 		const { current } = await syncFiles(
 			index,
 			files.map(({ file }) => file),

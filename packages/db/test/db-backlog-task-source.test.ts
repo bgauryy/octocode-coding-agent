@@ -57,6 +57,16 @@ function claim(rowId: number, assignee: string | null, state: string, actor: { i
 }
 
 describe("backlog task source queries", () => {
+	it("cursor equals snapshot().cursor for an empty board, after inserts and per workspace", () => {
+		expect(backlog.cursor(agent.db, "ws")).toBe(0);
+		add("ws", 1);
+		add("ws", 2);
+		add("other", 1);
+		expect(backlog.cursor(agent.db, "ws")).toBe(backlog.snapshot(agent.db, "ws").cursor);
+		expect(backlog.cursor(agent.db, "ws")).toBeGreaterThan(0);
+		expect(backlog.cursor(agent.db, "other")).toBe(backlog.snapshot(agent.db, "other").cursor);
+	});
+
 	it("snapshot returns the open rows with versions and the newest audit id of the workspace as the cursor", () => {
 		expect(backlog.snapshot(agent.db, "ws")).toEqual({ cursor: 0, items: [] });
 		const one = add("ws", 1);
@@ -109,6 +119,25 @@ describe("backlog task source queries", () => {
 		expect(rest.more).toBe(false);
 		const none = backlog.auditAfter(agent.db, "ws", rest.cursor, 10);
 		expect(none).toEqual({ resync: false, cursor: rest.cursor, rows: [], more: false });
+	});
+
+	it("auditAfter passes over rows that only order a card, moving its cursor past them, and keeps them in the audit", () => {
+		const one = add("ws", 1);
+		const cursor = backlog.snapshot(agent.db, "ws").cursor;
+		agent.withActor({ id: "user", surface: "web" }, () => backlog.setItemRank(agent.db, one, 1024));
+		expect(agent.db.prepare("SELECT version FROM backlog WHERE id = ?").get(one)).toEqual({ version: 1 });
+		const ranked = backlog.snapshot(agent.db, "ws").cursor;
+		expect(ranked).toBeGreaterThan(cursor);
+		expect(backlog.auditAfter(agent.db, "ws", cursor, 10)).toEqual({
+			resync: false,
+			cursor: ranked,
+			rows: [],
+			more: false,
+		});
+		claim(one, "s1", "ongoing", { id: "s1", surface: "tool" });
+		const page = backlog.auditAfter(agent.db, "ws", cursor, 10);
+		if (page.resync) throw new Error("unexpected resync");
+		expect(page.rows.map((row) => row.state)).toEqual(["ongoing"]);
 	});
 
 	it("auditAfter answers resync when the row at the cursor was pruned", () => {

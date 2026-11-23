@@ -5,13 +5,15 @@
 
 import { inputRoomTokens } from "../compaction/settings.ts";
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
-import { isCredentialError, isModelAccessError, isUsageLimitError } from "@octocodeai/octocode-ai";
+import { isCredentialError, isModelAccessError, isRateLimitedText, isUsageLimitError } from "@octocodeai/octocode-ai";
 import type { AssistantMessage, Model } from "@octocodeai/octocode-ai/compat";
 import { isValidThinkingLevel } from "../thinking-level.ts";
 import { isVirtualModel } from "../virtual-models.ts";
+import { FALLBACK_ENTRY, type FallbackFacts, fallbackNotice, fallbackRecord } from "./fallback-switch.ts";
 import type { SessionInternals } from "./host.ts";
 import type { SessionModelControl } from "./model-control.ts";
 import { recordRunWarning } from "./run-outcome.ts";
+import { UsageLimitRecovery } from "./usage-limit-recovery.ts";
 
 /**
  * Models that failed in this process, by `provider/id`, and when; `provider/*` after a refused credential, which fails
@@ -35,9 +37,7 @@ const REASON_TEXT: Record<FallbackReason, string> = {
 	outage: "kept failing after retries",
 };
 
-const billingText = (billing: string) => (billing === "plan" ? "by plan" : "per token");
-
-export interface FallbackHost extends Pick<SessionInternals, "session" | "run"> {
+export interface FallbackHost extends Pick<SessionInternals, "session" | "run" | "emit"> {
 	readonly models: Pick<SessionModelControl, "setModel">;
 	omitRecoveryAttempt(message: AssistantMessage): void;
 	/** The session retry's own test (`SessionRetry.isRetryableError`): such a failure reaches here only after its retries. */
@@ -60,9 +60,16 @@ function parseSelector(selector: string): { provider: string; id: string; thinki
 
 export class SessionFallback {
 	private readonly host: FallbackHost;
+	/** What a usage limit with no fallback left turns into: a choice, a wait, or a failure naming the reset. */
+	private readonly usageLimit: UsageLimitRecovery;
 
 	constructor(host: FallbackHost) {
 		this.host = host;
+		this.usageLimit = new UsageLimitRecovery({
+			...host,
+			resume: (message) => this.resume(message),
+			continueOn: (message, model) => this.continueOn(message, { model }, "usage"),
+		});
 	}
 
 	/** Why a failed reply may move to another model; undefined for a failure another model would repeat. */
@@ -71,7 +78,9 @@ export class SessionFallback {
 		const text = message.errorMessage ?? "";
 		if (isModelAccessError(text)) return "model";
 		if (isUsageLimitError(text)) return "usage";
-		// Before the credential test: a rate limit that names the key is about waiting, not the key.
+		// A rate limit (not a usage limit, tested above) clears by waiting, which the retries did; another model would not
+		// help for long, and it would stay selected. Before the credential test: one that names the key is about waiting.
+		if (isRateLimitedText(text)) return undefined;
 		if (this.host.isRetryable(message)) return "outage";
 		return isCredentialError(text) ? "credential" : undefined;
 	}
@@ -79,13 +88,18 @@ export class SessionFallback {
 	/**
 	 * After a failure the session retry does not take: hand a usage limit once to a virtual model's router, or select the
 	 * first usable `retry.fallbackModels` entry for the rest of the session. A refused credential skips every entry of
-	 * that provider; the notice names a change between plan and per-token billing.
+	 * that provider; the notice names a change between plan and per-token billing, and the `FALLBACK_ENTRY` session entry
+	 * records the switch for a parent that runs this session as its child. A usage limit with no entry left goes to
+	 * `UsageLimitRecovery` (wait, switch or stop).
 	 * @returns true if the caller should continue the agent with `run.failedResponse` set
 	 */
 	async prepare(message: AssistantMessage): Promise<boolean> {
-		const { session, run } = this.host;
+		const { session } = this.host;
 		const reason = this.reasonOf(message);
-		if (!reason || !session.settingsManager.getRetryEnabled()) return false;
+		if (!reason) return false;
+		// The usage-limit choice is the person's, not an automatic retry: it comes with retries off too.
+		if (!session.settingsManager.getRetryEnabled())
+			return reason === "usage" ? this.usageLimit.recover(message) : false;
 		const failedKey = keyOf(message.provider, message.model);
 		const current = session.model;
 		if (current && isVirtualModel(current)) {
@@ -95,11 +109,9 @@ export class SessionFallback {
 					session.modelRuntime.isModelAccessRejected({ provider: message.provider, id: message.model }) &&
 					this.resume(message)
 				);
-			if (
-				reason !== "usage" ||
-				isExhausted(message.provider, message.model, session.settingsManager.getRetryFallbackCooldownMs())
-			)
-				return false;
+			if (reason !== "usage") return false;
+			if (isExhausted(message.provider, message.model, session.settingsManager.getRetryFallbackCooldownMs()))
+				return this.usageLimit.recover(message);
 			exhausted.set(failedKey, Date.now());
 			return this.resume(message);
 		}
@@ -110,7 +122,18 @@ export class SessionFallback {
 			reason === "model" ? failedKey : undefined,
 			session.settingsManager.getRetryFallbackCooldownMs(),
 		);
-		if (!candidate) return false;
+		if (!candidate) return reason === "usage" ? this.usageLimit.recover(message) : false;
+		return this.continueOn(message, candidate, reason);
+	}
+
+	/** Select `candidate` for the rest of the session after `message` failed for `reason`, say so once, and resume. */
+	private async continueOn(
+		message: AssistantMessage,
+		candidate: { model: Model<any>; thinking?: ThinkingLevel },
+		reason: FallbackReason,
+	): Promise<boolean> {
+		const { session, run } = this.host;
+		const failedKey = keyOf(message.provider, message.model);
 		await this.host.models.setModel(candidate.model, {
 			persist: false,
 			source: "fallback",
@@ -118,11 +141,20 @@ export class SessionFallback {
 			reason: REASON_TEXT[reason],
 		});
 		const runtime = session.modelRuntime;
-		const from = runtime.getProviderBilling(message.provider);
-		const to = runtime.getProviderBilling(candidate.model.provider);
-		const billing = from === to ? "" : `, billed ${billingText(to)} instead of ${billingText(from)}`;
-		const notice = `${failedKey} ${REASON_TEXT[reason]}; continuing on ${keyOf(candidate.model.provider, candidate.model.id)}${billing} (retry.fallbackModels). /model switches back.`;
-		recordRunWarning(run.outcome, notice);
+		const facts: FallbackFacts = {
+			from: failedKey,
+			to: keyOf(candidate.model.provider, candidate.model.id),
+			reason: REASON_TEXT[reason],
+			billing: {
+				from: runtime.getProviderBilling(message.provider),
+				to: runtime.getProviderBilling(candidate.model.provider),
+			},
+		};
+		recordRunWarning(run.outcome, fallbackNotice(facts));
+		const entry = session.sessionManager.getEntry(
+			session.sessionManager.appendCustomEntry(FALLBACK_ENTRY, fallbackRecord(facts)),
+		);
+		if (entry) this.host.emit({ type: "entry_appended", entry });
 		return this.resume(message);
 	}
 
@@ -132,7 +164,7 @@ export class SessionFallback {
 		return !this.host.run.agentRunAbortRequested;
 	}
 
-	/** The first entry that resolves, has credentials, is not exhausted and whose window holds the context. */
+	/** The first entry that resolves, has credentials, is not exhausted or deprecated and whose window holds the context. */
 	private async pick(
 		selectors: readonly string[],
 		rejectedModel: string | undefined,
@@ -152,7 +184,9 @@ export class SessionFallback {
 			if (
 				runtime.isProviderDisabled(parsed.provider) ||
 				runtime.isModelHidden(parsed) ||
-				runtime.isModelAccessRejected(parsed)
+				runtime.isModelAccessRejected(parsed) ||
+				// models.dev lists it as deprecated: it may stop answering, so it would not hold the session for long.
+				runtime.getCatalogUpdate(parsed)?.deprecated
 			)
 				continue;
 			const model = runtime.getPhysicalModel(parsed.provider, parsed.id);

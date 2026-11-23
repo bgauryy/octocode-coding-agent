@@ -3,7 +3,8 @@ import { sanitizeTerminalText } from "./sanitize.ts";
 /** The first line of a text (all of it when it has one line). */
 export const firstLine = (text: string): string => text.split("\n")[0] ?? "";
 
-const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+// Made on first use: the first segmenter a process makes loads ICU's break data (about 10 ms).
+let graphemes: Intl.Segmenter | undefined;
 
 /**
  * `text` cut to `max` characters (UTF-16 code units, so the result never exceeds `max` and callers can budget with
@@ -19,6 +20,7 @@ export function clipText(text: string, max: number): string {
 	// Code units below U+0300 stand alone, and so does the cut when the unit after it is one too: no segmenter needed.
 	if (!/[^\u0000-\u02ff]/.test(text.slice(0, room + 1))) return `${text.slice(0, room)}…`;
 	let kept = "";
+	graphemes ??= new Intl.Segmenter(undefined, { granularity: "grapheme" });
 	for (const { segment } of graphemes.segment(text)) {
 		if (kept.length + segment.length > room) break;
 		kept += segment;

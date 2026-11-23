@@ -38,7 +38,7 @@ export interface UsageRecord {
 }
 
 /** A lifetime in seconds as the providers spell it: `5m`, `1h`, `24h`. */
-export function formatTtl(seconds: number): string {
+function formatTtl(seconds: number): string {
 	if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
 	return `${Math.round(seconds / 3600)}h`;
 }

@@ -1,1670 +1,1718 @@
 {
-	"$schema": "https://json-schema.org/draft/2020-12/schema",
-	"$id": "urn:octocode:schemas/settings.schema.json",
-	"$comment": "This file is generated from TypeScript source. Do not edit it manually; run yarn run generate:schemas.",
-	"type": "object",
-	"properties": {
-		"cacheRetention": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "none"
-				},
-				{
-					"type": "string",
-					"const": "short"
-				},
-				{
-					"type": "string",
-					"const": "long"
-				}
-			],
-			"description": "Conversation cache retention; short by default, long for sessions that often pause 5 to 60 minutes. Without a separate instruction preference, applies to both layers."
-		},
-		"instructionCacheRetention": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "none"
-				},
-				{
-					"type": "string",
-					"const": "short"
-				},
-				{
-					"type": "string",
-					"const": "long"
-				}
-			],
-			"description": "Instruction cache retention, limited by endpoint capabilities; long by default. Long writes can cost more."
-		},
-		"$schema": {
-			"type": "string",
-			"description": "JSON Schema reference."
-		},
-		"lastChangelogVersion": {
-			"type": "string"
-		},
-		"defaultProvider": {
-			"type": "string"
-		},
-		"defaultModel": {
-			"type": "string"
-		},
-		"providerModels": {
-			"type": "object",
-			"patternProperties": {
-				"^.*$": {
-					"type": "string"
-				}
-			},
-			"description": "Default model id per provider, e.g. { \"anthropic\": \"claude-opus-5-5\" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults. With neither defaultModel nor defaultProvider set, a provider a subscription pays for (a subscription sign-in or a coding plan) starts the session before a metered one."
-		},
-		"defaultThinkingLevel": {
-			"$ref": "#/$defs/ModelThinkingLevel"
-		},
-		"modelThinkingLevels": {
-			"type": "object",
-			"patternProperties": {
-				"^.*$": {
-					"$ref": "#/$defs/ModelThinkingLevel"
-				}
-			},
-			"description": "Per-model default thinking level overrides keyed by \"provider/modelId\"."
-		},
-		"contextBudget": {
-			"anyOf": [
-				{
-					"type": "integer",
-					"minimum": 8192
-				},
-				{
-					"type": "string",
-					"const": "full"
-				}
-			],
-			"description": "Working context per session in tokens, capped at 90% of the model's capacity; \"full\" uses the whole capacity. /context overrides it for one session.",
-			"default": 300000
-		},
-		"transport": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "auto"
-				},
-				{
-					"type": "string",
-					"const": "sse"
-				}
-			],
-			"default": "auto"
-		},
-		"steeringMode": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "all"
-				},
-				{
-					"type": "string",
-					"const": "one-at-a-time"
-				}
-			],
-			"default": "all"
-		},
-		"followUpMode": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "all"
-				},
-				{
-					"type": "string",
-					"const": "one-at-a-time"
-				}
-			],
-			"default": "all"
-		},
-		"theme": {
-			"type": "string"
-		},
-		"branchSummary": {
-			"type": "object",
-			"properties": {
-				"reserveTokens": {
-					"type": "number",
-					"description": "Tokens reserved for the prompt and LLM response.",
-					"default": 16384
-				},
-				"skipPrompt": {
-					"type": "boolean",
-					"description": "When true, skips the \"Summarize branch?\" prompt and defaults to no summary.",
-					"default": false
-				}
-			}
-		},
-		"retry": {
-			"type": "object",
-			"properties": {
-				"enabled": {
-					"type": "boolean",
-					"default": true
-				},
-				"maxRetries": {
-					"type": "number",
-					"default": 3
-				},
-				"baseDelayMs": {
-					"type": "number",
-					"description": "Exponential backoff base delay in milliseconds: 2s, 4s, 8s.",
-					"default": 2000
-				},
-				"maxAgentDelayMs": {
-					"type": "number",
-					"default": 60000
-				},
-				"offlineIntervalMs": {
-					"type": "number",
-					"minimum": 1000,
-					"description": "Wait between retries while the machine is offline.",
-					"default": 60000
-				},
-				"offlineMaxMs": {
-					"type": "number",
-					"minimum": 0,
-					"description": "How long an outage may last before the request fails; 0 waits until the network returns. Unset: 0, and 30 minutes in print mode."
-				},
-				"provider": {
-					"type": "object",
-					"properties": {
-						"timeoutMs": {
-							"type": "number",
-							"description": "SDK or provider request timeout in milliseconds."
-						},
-						"maxRetries": {
-							"type": "number",
-							"description": "SDK or provider retry attempts."
-						},
-						"maxRetryDelayMs": {
-							"type": "number",
-							"description": "Maximum server-requested delay before failing.",
-							"default": 60000
-						}
-					}
-				},
-				"fallbackCooldownMs": {
-					"type": "number",
-					"minimum": 0,
-					"description": "Milliseconds a model that failed on a usage limit or a refused credential is skipped as a fallback or router target (limits usually reset after hours; `/model` can still pick it). 0 retries it at once.",
-					"default": 900000
-				},
-				"fallbackModels": {
-					"type": "array",
-					"items": {
-						"type": "string"
-					},
-					"description": "Models to continue on when the current one fails on a usage limit (quota, billing or plan limit), a refused credential (401, 403, an expired sign-in) or an outage that outlasts the retries, tried in order, each as `provider/id` with an optional `:thinking` level, for example `[\"openrouter/some-model\", \"openai/other-model:high\"]`. After a refused credential, entries of the same provider are skipped. The first one with credentials becomes the session model with a notice, which names a change between plan and per-token billing, and stays selected; `/model` switches back. Empty: such a failure ends the turn.",
-					"default": []
-				}
-			}
-		},
-		"toolExecution": {
-			"type": "object",
-			"properties": {
-				"earlyStart": {
-					"type": "boolean",
-					"description": "Start read-only tool calls that need no approval while the model is still writing its message, instead of after it ends.",
-					"default": false
-				}
-			},
-			"description": "When tool calls start."
-		},
-		"hideThinkingBlock": {
-			"type": "boolean",
-			"default": true
-		},
-		"showCacheMissNotices": {
-			"type": "boolean",
-			"description": "Show cache cost and provider recovery notices.",
-			"default": false
-		},
-		"externalEditor": {
-			"type": "string",
-			"description": "Editor for prompt text (Ctrl+G and edit dialogs); overrides VISUAL and EDITOR. referenceOpener decides how file references and editor diffs open."
-		},
-		"referenceOpener": {
-			"type": "string",
-			"description": "How file references and /diff --editor open: \"auto\" uses the IDE whose terminal runs Octocode, else the first of code, cursor, code-insiders, codium, zed or subl on PATH, else the system default app for the file (open, xdg-open); over SSH or on Linux without a display, the prompt editor; \"editor\" uses the prompt editor (externalEditor, VISUAL, EDITOR); any other value is the command to run. Code-family editors, Zed and Sublime Text open beside the session; other editors take the terminal until they exit.",
-			"default": "auto"
-		},
-		"shellPath": {
-			"type": "string",
-			"description": "Custom shell path, for example for Cygwin on Windows, with support for leading ~ expansion."
-		},
-		"quietStartup": {
-			"anyOf": [
-				{
-					"type": "boolean"
-				},
-				{
-					"type": "string",
-					"const": "header"
-				}
-			],
-			"description": "When true, hide all startup output. When \"header\", keep only the startup header.",
-			"default": false
-		},
-		"shellCommandPrefix": {
-			"type": "string",
-			"description": "Prefix prepended to every bash command, for example to enable shell aliases."
-		},
-		"bashBackgroundAfterSeconds": {
-			"type": "number",
-			"description": "Seconds a foreground bash command may run before it moves to the background as a job (its exit arrives as a message). 0 turns this off. The OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS environment variable overrides it.",
-			"minimum": 0,
-			"default": 90
-		},
-		"bashOutputMaxBytes": {
-			"type": "number",
-			"description": "Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (500 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens but never raise it. Output of the user's own `!` commands follows the same limit.",
-			"minimum": 1024,
-			"default": 20000
-		},
-		"bash": {
-			"type": "object",
-			"properties": {
-				"inheritProviderKeys": {
-					"type": "boolean",
-					"description": "Keep provider API keys (`OPENAI_API_KEY`, `HF_TOKEN`…) in the environment of bash commands. Off by default: a command's output reaches the model, and a build script or an injected command can read its environment. `GH_TOKEN` and other tool tokens are not provider keys and stay either way. A nested `octocode` still signs in through `auth.json`. Read from the global settings file; a project file cannot turn it on. Takes effect for new sessions.",
-					"default": false
-				},
-				"spillMaxBytes": {
-					"type": "integer",
-					"minimum": 0,
-					"description": "Most bytes the saved full output of one foreground bash command holds (commands the agent runs and the user's own `!` commands). Past it the file keeps the first half and the end of the output around a marker, and the result's header says how much was dropped, so a command stuck in a loop cannot fill the disk. What reaches the model below the cap does not change. 0 lifts the cap.",
-					"default": 1073741824
-				},
-				"longCommandAfterSeconds": {
-					"type": "number",
-					"minimum": 0,
-					"description": "Seconds a known long command (test runner, `yarn run check`, build, server, stream follower, or a `longCommandPatterns` match) may run in the foreground before it moves to the background as a job. It applies only when sooner than `bashBackgroundAfterSeconds`.",
-					"default": 30
-				},
-				"deliberateMaxSeconds": {
-					"type": "number",
-					"minimum": 1,
-					"description": "The longest a foreground bash call that names its own `timeout` holds the turn before the command moves to the background (it is still stopped at its timeout).",
-					"default": 600
-				},
-				"longCommandPatterns": {
-					"type": "array",
-					"items": {
-						"type": "string"
-					},
-					"description": "Regular expressions for commands that count as long, added to the built-in runners (vitest, jest, pytest, cargo, go, yarn test/check/build/dev…), for example `[\"bazel\\s+(?:test|build)\", \"make\\s+(?:test|check)\"]`. Each is matched where a command starts (the line, or after `;`, `&`, `|`, `(` and `VAR=value` words) and must end at a space or the end of a part. An entry that is not a valid regular expression is ignored.",
-					"default": []
-				}
-			},
-			"additionalProperties": false
-		},
-		"sandbox": {
-			"type": "object",
-			"properties": {
-				"mode": {
-					"anyOf": [
-						{
-							"type": "string",
-							"const": "off"
-						},
-						{
-							"type": "string",
-							"const": "auto"
-						},
-						{
-							"type": "string",
-							"const": "on"
-						}
-					],
-					"description": "`\"off\"` runs agent shell commands as you, with your rights. `\"auto\"` runs every command the agent starts (the `bash` tool and its background jobs) inside an operating-system sandbox in the `manual`, `workspace` and `full` permission modes, and unsandboxed in `bypass`; `\"on\"` sandboxes them in every mode. A sandboxed command reads everything; it writes the workspace (the repository root, or the working folder outside a repository), the system temporary folder and its scratch folder, and nowhere else. A read-only subagent writes only its scratch and throwaway folders, and an isolated subagent its own worktree, never the main tree. Paths later sessions load (git hooks and config, `.octocode/` configuration, instruction files, other agents' project folders) stay write-protected. Network goes through a filtering proxy: in `manual` and `workspace` each new host asks (a private address as a private-network ask), allowed once or for the session; `full` allows every host and records each; a read-only subagent gets none; loopback is always reachable. A refused write or host is named in the command's result. Your own `!` commands are never sandboxed. macOS only (Seatbelt): when the sandbox cannot start (another platform, a missing dependency) a warning says why and one question asks whether this session's commands run unsandboxed. Read from the global settings file; a project file cannot change it. Takes effect for new sessions.",
-					"default": "off"
-				},
-				"allowUnsandboxed": {
-					"type": "boolean",
-					"description": "Whether the agent may ask to run a command outside the sandbox (the `bash` tool's `sandbox: false`, and the question when the sandbox cannot start). Such a run asks in every permission mode but `bypass`, and allowing all shell commands never covers it. `false` refuses it without asking. Read from the global settings file only.",
-					"default": true
-				}
-			},
-			"additionalProperties": false
-		},
-		"externalAgents": {
-			"type": "boolean",
-			"description": "Allow model-directed external agent tasks and connections. Off by default; enable selected installed CLIs in /providers. enabledExternalAgents limits vendor CLIs; an existing explicit true without that list keeps all runners available. Discovery starts no CLI; sign-in is checked when used. Global only; project files cannot change it. Reload to apply changes.",
-			"default": false
-		},
-		"sessionApi": {
-			"type": "boolean",
-			"description": "Start the local session API on an owner-only Unix socket, so other processes of this user can find and message a running session. On by default; on Windows, which has no such socket here, it starts only with `/api on` or `OCTOCODE_API_HTTP`. Read from the global settings file; a project file cannot change it. `/api on` and `/api off` override it for the running process. Takes effect for new sessions.",
-			"default": true
-		},
-		"sessionApiTurnPermission": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "workspace"
-				},
-				{
-					"type": "string",
-					"const": "session"
-				}
-			],
-			"description": "The permission mode a turn the local session API starts runs under. `session` (default) follows the session's own mode: a session in full takes the message unasked and runs the turn in full, audited, so a remote agent is never stuck on a prompt; workspace and manual sessions ask as they always do. `workspace` holds API-started turns, and messages that steer a running turn, to workspace mode even when the session is in full: its user is asked about the message, and a tool call workspace asks about asks or, with nobody to ask, is refused. Read from the global settings file; a project file cannot change it. Applies to the next message.",
-			"default": "session"
-		},
-		"mcpPresentation": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "declared"
-				},
-				{
-					"type": "string",
-					"const": "compact"
-				},
-				{
-					"type": "string",
-					"const": "json"
-				}
-			],
-			"description": "How MCP contracts reach the model. In \"declared\" mode a direct tool carries the full server schema in its declaration. With the default \"usage\" exposure, an agent with the mcp tool sees unpinned MCP tools as deferred. Each starts with the server description and thin parameters. The agent can load its full contract with mcp. In \"compact\" and \"json\" modes declarations are thin and direct tools have their contracts in the system prompt as TypeScript or JSON. Every mode validates calls against the full server input schema.",
-			"default": "declared"
-		},
-		"mcpExposure": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "direct"
-				},
-				{
-					"type": "string",
-					"const": "deferred"
-				},
-				{
-					"type": "string",
-					"const": "recent"
-				},
-				{
-					"type": "string",
-					"const": "usage"
-				},
-				{
-					"type": "string",
-					"pattern": "^auto:[0-9]+$"
-				}
-			],
-			"description": "Initial exposure of MCP tools without a tool or server override. \"usage\" starts open tools deferred and can promote on-demand tools to thin declarations within mcpPromotedBytes. \"recent\" uses calls in this working directory in the last 24 hours to select direct tools. \"direct\" and \"deferred\" set a fixed default. \"auto:<bytes>\" keeps servers direct in name order while their contracts fit the budget. An agent without the mcp tool gets direct exposure.",
-			"default": "usage"
-		},
-		"mcpPromotedBytes": {
-			"type": "integer",
-			"minimum": 0,
-			"description": "Under mcpExposure \"usage\": the bytes, per role group (main or subagent), that promoted on-demand tools may add to the tool list at the start of a session, most used first; a promoted tool that does not fit stays on demand. 0 keeps every on-demand tool on demand. Bytes, not a share of the context window, so changing models never changes the tool list.",
-			"default": 8192
-		},
-		"nativeToolExposure": {
-			"type": "object",
-			"patternProperties": {
-				"^.*$": {
-					"anyOf": [
-						{
-							"type": "string",
-							"const": "direct"
-						},
-						{
-							"type": "string",
-							"const": "deferred"
-						}
-					]
-				}
-			},
-			"description": "Pins a deferrable native tool (archive, models, backlogPlan, configuration; memory and wait under \"usage\" only): \"direct\" always declares its full schema, \"deferred\" declares its description and top-level fields (types, the few values a field allows, required fields) only. Unpinned, the tool is deferred under mcpExposure \"recent\" until this working directory calls it, and always under \"usage\"; it is direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema. Where the model adds tools after the cached prompt and the agent has the `mcp` tool, an unpinned archive or models (and memory in a subagent) that would be deferred is on demand instead, unless the \"usage\" promotion snapshot names it: listed in the prompt, declared after its first call or a read with the `mcp` tool."
-		},
-		"research": {
-			"type": "object",
-			"properties": {
-				"allowedPaths": {
-					"type": "array",
-					"items": {
-						"type": "string"
-					},
-					"description": "Extra folders the research tools (localFetch, localSearch, structureSearch, astSearch, lspSearch) may read, added to the workspace, the session folders and loaded skill folders. Absolute paths or paths starting with ~/, for example [\"~/code/private-skills\"]. Read from the global settings only: a project settings file cannot add folders. Relative paths, \"..\", the filesystem root, your home folder, the Octocode home and credential folders such as ~/.ssh are refused with a warning. An edit applies after /reload, at the next turn."
-				}
-			},
-			"description": "Research tool settings."
-		},
-		"npmCommand": {
-			"type": "array",
-			"items": {
-				"type": "string"
-			},
-			"description": "Command used for npm package lookup and installation, in argv form such as [\"mise\", \"exec\", \"node@20\", \"--\", \"npm\"]."
-		},
-		"collapseChangelog": {
-			"type": "boolean",
-			"description": "Show the condensed changelog after update; use /changelog for the full changelog.",
-			"default": false
-		},
-		"enableInstallTelemetry": {
-			"type": "boolean",
-			"description": "Send an anonymous version and update ping after changelog-detected updates.",
-			"default": true
-		},
-		"enableAnalytics": {
-			"type": "boolean",
-			"description": "Opt in to analytics data sharing.",
-			"default": false
-		},
-		"trackingId": {
-			"type": "string",
-			"description": "Analytics tracking identifier, generated when analytics is enabled."
-		},
-		"plugins": {
-			"type": "array",
-			"items": {
-				"type": "object",
-				"required": ["path", "protocol"],
-				"properties": {
-					"path": {
-						"type": "string",
-						"description": "Absolute local plugin directory."
-					},
-					"protocol": {
-						"anyOf": [
-							{
-								"type": "string",
-								"const": "claude"
-							},
-							{
-								"type": "string",
-								"const": "codex"
-							}
-						]
-					},
-					"enabled": {
-						"type": "boolean",
-						"default": true
-					},
-					"source": {
-						"type": "object",
-						"required": ["marketplace", "plugin", "sha"],
-						"properties": {
-							"marketplace": {
-								"type": "string",
-								"description": "Marketplace name."
-							},
-							"plugin": {
-								"type": "string",
-								"description": "Plugin name in that marketplace."
-							},
-							"sha": {
-								"type": "string",
-								"description": "Pinned commit, or a content hash for a local directory marketplace."
-							}
-						},
-						"description": "Where the cached copy at `path` came from; written by `octocode plugin install`."
-					}
-				},
-				"additionalProperties": true
-			},
-			"description": "Local compatibility plugins. Activates namespaced skills, supported prompt commands, hooks and MCP servers; adding or enabling a plugin approves its hooks and MCP servers. Other components require their own adapters."
-		},
-		"marketplaces": {
-			"type": "object",
-			"patternProperties": {
-				"^.*$": {
-					"type": "object",
-					"required": ["source", "addedAt"],
-					"properties": {
-						"source": {
-							"anyOf": [
-								{
-									"type": "object",
-									"required": ["source", "path"],
-									"properties": {
-										"source": {
-											"type": "string",
-											"const": "directory"
-										},
-										"path": {
-											"type": "string",
-											"description": "Absolute directory."
-										}
-									}
-								},
-								{
-									"type": "object",
-									"required": ["source", "repo"],
-									"properties": {
-										"source": {
-											"type": "string",
-											"const": "github"
-										},
-										"repo": {
-											"type": "string",
-											"description": "owner/repo."
-										},
-										"ref": {
-											"type": "string",
-											"description": "Branch or tag; default branch when omitted."
-										}
-									}
-								},
-								{
-									"type": "object",
-									"required": ["source", "url"],
-									"properties": {
-										"source": {
-											"type": "string",
-											"const": "git"
-										},
-										"url": {
-											"type": "string",
-											"description": "https, ssh, git or file URL, or a local repository path; no credentials."
-										},
-										"ref": {
-											"type": "string",
-											"description": "Branch or tag; default branch when omitted."
-										}
-									}
-								}
-							]
-						},
-						"addedAt": {
-							"type": "string",
-							"description": "ISO time the marketplace was added."
-						}
-					}
-				}
-			},
-			"description": "Plugin marketplaces by name, as `octocode marketplace add` writes them. Global only: project settings cannot register one."
-		},
-		"toggles": {
-			"type": "object",
-			"patternProperties": {
-				"^.*$": {
-					"type": "boolean"
-				}
-			},
-			"description": "Harness, plugin and hook switches by ID, as `/settings` writes them: `harness:<vendor>` (`agents`, `mcp-json`, `pi`, `claude`, `codex`, `cursor`; `true` or `false` overrides the vendor's default, see [commands](commands.md)), `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<source>` or `hook:<id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository."
-		},
-		"packages": {
-			"type": "array",
-			"items": {
-				"anyOf": [
-					{
-						"type": "string",
-						"description": "Load all resources from the package."
-					},
-					{
-						"type": "object",
-						"required": ["source"],
-						"properties": {
-							"source": {
-								"type": "string"
-							},
-							"autoload": {
-								"type": "boolean",
-								"description": "When false, start empty and only apply explicit resource patterns."
-							},
-							"skills": {
-								"type": "array",
-								"items": {
-									"type": "string"
-								}
-							},
-							"prompts": {
-								"type": "array",
-								"items": {
-									"type": "string"
-								}
-							},
-							"themes": {
-								"type": "array",
-								"items": {
-									"type": "string"
-								}
-							}
-						}
-					}
-				],
-				"description": "Package source for npm or git packages. Use the string form to load all resources or the object form to filter resources."
-			},
-			"description": "npm or git package sources, as strings or objects with resource filtering."
-		},
-		"deviceId": {
-			"type": "string",
-			"description": "Stable installation UUID, generated when authentication first needs it. Global only."
-		},
-		"skills": {
-			"type": "array",
-			"items": {
-				"type": "string"
-			},
-			"description": "Local skill file paths or directories."
-		},
-		"prompts": {
-			"type": "array",
-			"items": {
-				"type": "string"
-			},
-			"description": "Local prompt template file paths or directories."
-		},
-		"themes": {
-			"type": "array",
-			"items": {
-				"type": "string"
-			},
-			"description": "Local theme file paths or directories."
-		},
-		"enableSkillCommands": {
-			"type": "boolean",
-			"description": "Register skills as /skill:name commands.",
-			"default": true
-		},
-		"terminal": {
-			"type": "object",
-			"properties": {
-				"showImages": {
-					"type": "boolean",
-					"description": "Show images when the terminal supports them.",
-					"default": true
-				},
-				"imageWidthCells": {
-					"type": "number",
-					"description": "Preferred inline image width in terminal cells.",
-					"default": 60
-				},
-				"clearOnShrink": {
-					"type": "boolean",
-					"description": "Clear empty rows when content shrinks.",
-					"default": false
-				},
-				"replayRows": {
-					"type": "integer",
-					"minimum": 0,
-					"description": "Regular mode: the most rows a full redraw writes back into the terminal (after a resize or a resume from the background); earlier rows are left out behind one marker row. 0 redraws every row.",
-					"default": 5000
-				},
-				"showTerminalProgress": {
-					"type": "boolean",
-					"description": "Show OSC 9;4 terminal progress indicators.",
-					"default": false
-				},
-				"reduceMotion": {
-					"anyOf": [
-						{
-							"type": "boolean"
-						},
-						{
-							"type": "string",
-							"const": "auto"
-						}
-					],
-					"description": "Freeze spinners, shimmer and glow; elapsed times still tick. \"auto\" is still without a terminal, in CI, or when OCTOCODE_REDUCE_MOTION, REDUCE_MOTION or NO_MOTION is 1 or true.",
-					"default": "auto"
-				},
-				"screenReader": {
-					"anyOf": [
-						{
-							"type": "boolean"
-						},
-						{
-							"type": "string",
-							"const": "auto"
-						}
-					],
-					"description": "Screen-reader text mode: words instead of spinner, shimmer and gauge glyphs, and no animation. \"auto\" follows OCTOCODE_SCREEN_READER (1 or true).",
-					"default": "auto"
-				},
-				"latencyFence": {
-					"anyOf": [
-						{
-							"type": "boolean"
-						},
-						{
-							"type": "string",
-							"const": "auto"
-						}
-					],
-					"description": "Probe the terminal's display lag (DSR 5n) and hold streaming frames while it is behind. \"auto\" is on in a terminal; OCTOCODE_LATENCY_FENCE=0 or 1 overrides the setting. Turn it off if a terminal misbehaves with the probe.",
-					"default": "auto"
-				},
-				"surfaceFills": {
-					"type": "boolean",
-					"description": "Paint user messages and notice panels with a quiet tint blended into the terminal background instead of the theme's panel colors.",
-					"default": false
-				},
-				"toolBands": {
-					"type": "boolean",
-					"description": "Tint each tool row with a quiet band blended from its state color into the terminal background. Themes that declare their own tool backgrounds keep them.",
-					"default": false
-				},
-				"emojiMarks": {
-					"type": "boolean",
-					"description": "Use the emoji marks (🐚 🦀 🦈 beside notices, 🦑 in the terminal title) instead of the width-safe glyphs. Emoji width varies by terminal.",
-					"default": false
-				},
-				"hyperlinks": {
-					"anyOf": [
-						{
-							"type": "boolean"
-						},
-						{
-							"type": "string",
-							"const": "auto"
-						}
-					]
-				},
-				"images": {
-					"anyOf": [
-						{
-							"type": "string",
-							"const": "kitty"
-						},
-						{
-							"type": "string",
-							"const": "iterm2"
-						},
-						{
-							"type": "string",
-							"const": "auto"
-						},
-						{
-							"type": "boolean",
-							"const": false
-						}
-					]
-				},
-				"trueColor": {
-					"anyOf": [
-						{
-							"type": "boolean"
-						},
-						{
-							"type": "string",
-							"const": "auto"
-						}
-					]
-				},
-				"completion": {
-					"type": "object",
-					"properties": {
-						"shell": {
-							"anyOf": [
-								{
-									"type": "string",
-									"const": "auto"
-								},
-								{
-									"type": "string",
-									"const": "zsh"
-								},
-								{
-									"type": "string",
-									"const": "bash"
-								},
-								{
-									"type": "string",
-									"const": "fish"
-								},
-								{
-									"type": "string",
-									"const": "pwsh"
-								},
-								{
-									"type": "string",
-									"const": "none"
-								}
-							],
-							"description": "The shell whose completions Tab offers after `!`: \"auto\" follows your login shell ($SHELL; PowerShell on Windows without it). \"none\" starts no shell: Tab then completes program names, git branches and paths only. The shell runs only in a trusted folder.",
-							"default": "auto"
-						},
-						"loadRc": {
-							"type": "boolean",
-							"description": "Start the completion shell with your own startup files (.zshrc, .bashrc, config.fish, the PowerShell profile), so plugin and custom completions work. Off loads only the shell's built-in completion system, which starts faster.",
-							"default": true
-						},
-						"carapace": {
-							"type": "boolean",
-							"description": "When the shell has no completion for a command and `carapace` is on PATH, ask carapace. Trusted folders only.",
-							"default": true
-						}
-					},
-					"additionalProperties": false,
-					"description": "Tab completion of `!` shell commands."
-				},
-				"suggestions": {
-					"type": "object",
-					"properties": {
-						"history": {
-							"type": "boolean",
-							"description": "Show ghost text while typing a `!` command: a command from the agent's last reply or your earlier `!` commands that starts with what you typed. Right or End accepts it.",
-							"default": true
-						},
-						"model": {
-							"type": "boolean",
-							"description": "When neither the last reply nor your history has a match, ask the cheapest connected model (the small tier, resolved from the providers you are signed in to) for the rest of the command. Costs a small call per pause in typing, recorded in the session's usage; no call is made when no cheaper model is available. Read from the global settings only: a project file cannot turn it on.",
-							"default": true
-						}
-					},
-					"additionalProperties": false,
-					"description": "Ghost text while typing a `!` command."
-				}
-			}
-		},
-		"images": {
-			"type": "object",
-			"properties": {
-				"autoResize": {
-					"type": "boolean",
-					"description": "Resize images to 2000x2000 maximum for better model compatibility.",
-					"default": true
-				},
-				"blockImages": {
-					"type": "boolean",
-					"description": "When true, prevents all images from being sent to LLM providers.",
-					"default": false
-				}
-			}
-		},
-		"enabledExternalAgents": {
-			"type": "array",
-			"items": {
-				"type": "string",
-				"minLength": 1
-			},
-			"description": "Vendor CLI ids allowed for external agent tasks when externalAgents is on. An empty list allows none; omitted preserves all runners for an existing explicit externalAgents: true. Global only; manage individual agents in /providers."
-		},
-		"enabledModels": {
-			"type": "array",
-			"items": {
-				"type": "string"
-			},
-			"description": "Model patterns for cycling, in the same format as the --models CLI flag."
-		},
-		"disabledProviders": {
-			"type": "array",
-			"items": {
-				"type": "string"
-			},
-			"description": "Provider ids turned off in /providers. Their models leave the model selector, cycling and subagent routing; saved credentials stay. Global only."
-		},
-		"hiddenModels": {
-			"type": "object",
-			"patternProperties": {
-				"^.*$": {
-					"type": "array",
-					"items": {
-						"type": "string"
-					}
-				}
-			},
-			"description": "Per provider, the model ids hidden by unticking them on its /providers page or the web provider page. Hidden models leave the model selector, cycling and subagent routing; a provider with no entry shows all its models. Global only."
-		},
-		"providerSources": {
-			"type": "object",
-			"properties": {
-				"pi": {
-					"type": "boolean",
-					"description": "Use Pi's auth.json (read-only fallback) and models.json. On by default; false leaves them out of availability without changing Pi's files."
-				},
-				"copilot-env": {
-					"type": "boolean",
-					"description": "Use the COPILOT_GITHUB_TOKEN environment variable as the github-copilot credential. Off by default."
-				}
-			},
-			"description": "Provider sources you changed from their defaults (Octocode and Pi on, COPILOT_GITHUB_TOKEN off), managed in /providers. Global only."
-		},
-		"defaultTools": {
-			"type": "array",
-			"items": {
-				"type": "string"
-			},
-			"description": "Initial tool selection. Plain names replace the inherited selection; +name and -name entries add or remove tools."
-		},
-		"doubleEscapeAction": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "fork"
-				},
-				{
-					"type": "string",
-					"const": "tree"
-				},
-				{
-					"type": "string",
-					"const": "none"
-				}
-			],
-			"description": "Action for double-escape with an empty editor.",
-			"default": "tree"
-		},
-		"treeFilterMode": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "default"
-				},
-				{
-					"type": "string",
-					"const": "no-tools"
-				},
-				{
-					"type": "string",
-					"const": "user-only"
-				},
-				{
-					"type": "string",
-					"const": "labeled-only"
-				},
-				{
-					"type": "string",
-					"const": "all"
-				}
-			],
-			"description": "Default filter when opening /tree.",
-			"default": "default"
-		},
-		"thinkingBudgets": {
-			"type": "object",
-			"properties": {
-				"minimal": {
-					"type": "number"
-				},
-				"low": {
-					"type": "number"
-				},
-				"medium": {
-					"type": "number"
-				},
-				"high": {
-					"type": "number"
-				}
-			},
-			"description": "Custom token budgets for thinking levels."
-		},
-		"editorPaddingX": {
-			"type": "number",
-			"description": "Horizontal padding for the input editor.",
-			"default": 0
-		},
-		"outputPad": {
-			"anyOf": [
-				{
-					"type": "number",
-					"const": 0
-				},
-				{
-					"type": "number",
-					"const": 1
-				}
-			],
-			"description": "Horizontal padding for transcript content.",
-			"default": 1
-		},
-		"autocompleteMaxVisible": {
-			"type": "number",
-			"description": "Maximum visible items in the autocomplete dropdown.",
-			"default": 5
-		},
-		"showHardwareCursor": {
-			"type": "boolean",
-			"description": "Show the terminal cursor while still positioning it for IME."
-		},
-		"markdown": {
-			"type": "object",
-			"properties": {
-				"codeBlockIndent": {
-					"type": "string",
-					"default": "  "
-				},
-				"mermaid": {
-					"anyOf": [
-						{
-							"type": "string",
-							"const": "off"
-						},
-						{
-							"type": "string",
-							"const": "final"
-						},
-						{
-							"type": "string",
-							"const": "streaming"
-						}
-					],
-					"default": "streaming"
-				}
-			}
-		},
-		"warnings": {
-			"type": "object",
-			"properties": {
-				"anthropicExtraUsage": {
-					"type": "boolean",
-					"default": true
-				}
-			}
-		},
-		"sessionDir": {
-			"type": "string",
-			"description": "Custom session storage directory, in the same format as the --session-dir CLI flag."
-		},
-		"httpProxy": {
-			"type": "string",
-			"description": "Proxy URL applied as HTTP_PROXY and HTTPS_PROXY for Octocode-managed HTTP clients."
-		},
-		"httpIdleTimeoutMs": {
-			"anyOf": [
-				{
-					"type": "number",
-					"minimum": 0
-				},
-				{
-					"type": "string",
-					"const": "disabled"
-				}
-			],
-			"description": "HTTP header or body idle timeout in milliseconds; a model stream or compaction summary attempt that receives nothing for this long is retried. 0 or \"disabled\" disables it."
-		},
-		"remote": {
-			"type": "object",
-			"properties": {
-				"transport": {
-					"anyOf": [
-						{
-							"type": "string",
-							"const": "ssh"
-						},
-						{
-							"type": "string",
-							"const": "relay"
-						}
-					],
-					"description": "How a published /remote link reaches the daemon: \"ssh\" prints a port forward to run; \"relay\" dials remote.relayUrl.",
-					"default": "ssh"
-				},
-				"relayUrl": {
-					"type": "string",
-					"description": "The ws:// or wss:// relay the daemon dials for relay links."
-				},
-				"autoStart": {
-					"anyOf": [
-						{
-							"type": "string",
-							"const": "off"
-						},
-						{
-							"type": "string",
-							"const": "view"
-						},
-						{
-							"type": "string",
-							"const": "control"
-						}
-					],
-					"description": "Publish a link of that access (\"view\" or \"control\") when a session starts and print it. A project settings file can set \"off\" but never turn it on; the global value stands.",
-					"default": "off"
-				}
-			},
-			"additionalProperties": false
-		},
-		"security": {
-			"type": "object",
-			"properties": {
-				"enforce": {
-					"type": "array",
-					"items": {
-						"anyOf": [
-							{
-								"type": "string",
-								"const": "hooks"
-							},
-							{
-								"type": "string",
-								"const": "mcp"
-							},
-							{
-								"type": "string",
-								"const": "skills"
-							}
-						]
-					},
-					"description": "The kinds that stay off until you check and approve them in /security: hooks, MCP servers and skills Octocode did not ship. A kind left out is still rated but loads unchecked. Global only.",
-					"default": ["hooks", "mcp", "skills"]
-				}
-			},
-			"additionalProperties": false
-		},
-		"web": {
-			"type": "object",
-			"properties": {
-				"sound": {
-					"type": "boolean",
-					"description": "Play a short chime with a web workspace notification (an approval or question waiting, a run finished or failed). The page makes the sound; the toggle in the workspace changes this setting. Notifications themselves need the browser's permission, which the page asks for from its own control.",
-					"default": false
-				},
-				"theme": {
-					"anyOf": [
-						{
-							"type": "string",
-							"const": "system"
-						},
-						{
-							"type": "string",
-							"const": "light"
-						},
-						{
-							"type": "string",
-							"const": "dark"
-						}
-					],
-					"description": "Colour theme of the web workspace: \"system\" follows the operating system, \"light\" and \"dark\" override it. The theme control in the workspace changes this setting.",
-					"default": "system"
-				},
-				"window": {
-					"anyOf": [
-						{
-							"type": "string",
-							"const": "app"
-						},
-						{
-							"type": "string",
-							"const": "browser"
-						}
-					],
-					"description": "Where /web opens the workspace: \"app\" is a Chrome, Edge, Chromium or Brave app window with a temporary profile apart from your own (no extensions, cookies or history; removed when it closes); \"browser\" uses the default browser. Without an installed Chromium browser \"app\" falls back to the default browser. Applies to the next /web.",
-					"default": "app"
-				}
-			},
-			"additionalProperties": false
-		},
-		"sessions": {
-			"type": "object",
-			"properties": {
-				"autoTitle": {
-					"type": "boolean",
-					"description": "Name an unnamed interactive or RPC session after its first turn with one call to a cheaper model, sending it the first message (a later one, up to the third, when that names no task); a session still unnamed at a compaction gets one more try from the summary's goal. Off: sessions keep their first prompt as title.",
-					"default": true
-				}
-			},
-			"additionalProperties": false
-		},
-		"timer": {
-			"type": "object",
-			"properties": {
-				"cron": {
-					"type": "object",
-					"properties": {
-						"enabled": {
-							"type": "boolean",
-							"description": "Let a session without a screen to confirm on (print, JSON, RPC) set cron schedules with wait. Each run is a model turn with nobody attending, so it is off until you turn it on here; a session with a screen asks once instead. Read from the global settings file; a project file cannot turn it on.",
-							"default": false
-						},
-						"maxUsdPerSession": {
-							"type": "number",
-							"description": "The most a session may spend, in USD, since its first cron schedule before cron runs stop. Read from the global settings file.",
-							"default": 2,
-							"minimum": 0
-						}
-					},
-					"additionalProperties": false
-				},
-				"check": {
-					"type": "object",
-					"properties": {
-						"enabled": {
-							"type": "boolean",
-							"description": "Let a notify request's check call a cheaper model to judge a condition after its event holds. It spends money, so it is off until you turn it on here or answer the first-use question; caps: 5 judgments and $0.05 per request, $0.25 per session. Read from the global settings file; a project file cannot turn it on.",
-							"default": false
-						}
-					},
-					"additionalProperties": false
-				}
-			},
-			"additionalProperties": false
-		},
-		"monitor": {
-			"type": "object",
-			"properties": {
-				"enabled": {
-					"type": "boolean",
-					"description": "Sample the machine (load, memory, swap, GPU, busiest processes) once per interval and tell the session whose processes cause a tripped threshold. One Octocode process per machine takes the samples; every session reads them.",
-					"default": true
-				},
-				"sampleSeconds": {
-					"type": "number",
-					"description": "Seconds between machine samples.",
-					"default": 60,
-					"minimum": 10,
-					"maximum": 3600
-				},
-				"samples": {
-					"type": "number",
-					"description": "Consecutive samples over a threshold before it alerts, so a short spike does not.",
-					"default": 3,
-					"minimum": 1,
-					"maximum": 60
-				},
-				"cooldownMinutes": {
-					"type": "number",
-					"description": "Minutes before the same threshold alerts again.",
-					"default": 15,
-					"minimum": 0
-				},
-				"loadPerCore": {
-					"type": "number",
-					"description": "Alert when the 1-minute load average per logical CPU reaches this (0 turns it off).",
-					"default": 3,
-					"minimum": 0
-				},
-				"memoryAvailablePercent": {
-					"type": "number",
-					"description": "Alert when the memory the system can still hand out falls to this percentage of the total (0 turns it off).",
-					"default": 10,
-					"minimum": 0,
-					"maximum": 100
-				},
-				"swapPercent": {
-					"type": "number",
-					"description": "Alert when used swap reaches this percentage of the swap in place (above 100 turns it off).",
-					"default": 90,
-					"minimum": 0
-				},
-				"gpuPercent": {
-					"type": "number",
-					"description": "Alert when GPU utilization reaches this percentage (above 100 turns it off).",
-					"default": 95,
-					"minimum": 0
-				},
-				"stuckJobMinutes": {
-					"type": "number",
-					"description": "Tell the session when one of its background bash jobs has written no output and used almost no CPU for this many minutes (0 turns it off).",
-					"default": 15,
-					"minimum": 0
-				},
-				"contextBands": {
-					"type": "array",
-					"items": {
-						"type": "number",
-						"exclusiveMinimum": 0,
-						"exclusiveMaximum": 1
-					},
-					"description": "Shares of the room before automatic compaction at which the model is told, once each, how much context it has used and how much is left. Each is above 0 and below 1; [] turns the notices off.",
-					"default": [0.5, 0.75, 0.9]
-				},
-				"checkInSeconds": {
-					"type": "number",
-					"description": "Seconds a running subagent and its parent may go without a message before the subagent's own harness asks it whether it needs something. The ping joins a request the subagent was about to make; the parent's model is not called, and nothing is stopped. 0 turns it off.",
-					"default": 300,
-					"minimum": 0
-				},
-				"idleAgentMinutes": {
-					"type": "number",
-					"description": "Minutes a working agent may make no progress (no model reply or tool event) before the agent responsible for it is told, once per silence: a subagent's parent, or a main session itself (a note and a footer mark). Checked once a minute; an agent waiting on the user, its children or its jobs is excused, and nothing is stopped. 0 turns it off.",
-					"default": 5,
-					"minimum": 0
-				}
-			},
-			"additionalProperties": false
-		},
-		"runtime": {
-			"type": "object",
-			"properties": {
-				"eventLoop": {
-					"anyOf": [
-						{
-							"type": "string",
-							"const": "old"
-						},
-						{
-							"type": "string",
-							"const": "shadow"
-						},
-						{
-							"type": "string",
-							"const": "new"
-						}
-					],
-					"description": "Which scheduler starts turns from background events. `old` (default): the wake gate, unchanged. `shadow`: the event loop runs beside the gate, decides which events would wake the session and in what order, acts on nothing, and records each difference from the gate as a problem (`/status`). `new`: the loop delivers the events it has taken over (a background `bash` job's exit, a child's report or end, and team mail, with the `runtime.eventWindowSeconds` window) and the gate the rest, which behave as in `shadow`. Reports and mail the loop has queued survive a restart or resume and are delivered once. Read at session start.",
-					"default": "old"
-				},
-				"eventWindowSeconds": {
-					"type": "number",
-					"description": "Seconds the event loop waits after a background event wakes an idle session, so events that arrive together become one message and one turn. User input is never held. Applies to the events the loop delivers (`runtime.eventLoop: new`: a background job's exit, a child's report or end, team mail); the wake gate keeps `subagents.wakeHoldSeconds` for the rest.",
-					"default": 2,
-					"minimum": 0,
-					"maximum": 10
-				}
-			},
-			"additionalProperties": false
-		},
-		"memory": {
-			"type": "object",
-			"properties": {
-				"file": {
-					"type": "boolean",
-					"description": "Load the global MEMORY.md (in the Octocode home) and the repository's .octocode/agent/MEMORY.md into the system prompt at session start. Off: neither is read or written.",
-					"default": true
-				},
-				"autoUpdate": {
-					"anyOf": [
-						{
-							"type": "string",
-							"const": "off"
-						},
-						{
-							"type": "string",
-							"const": "explicit"
-						},
-						{
-							"type": "string",
-							"const": "auto"
-						}
-					],
-					"description": "Who writes the MEMORY.md files: \"off\" nobody (the files are only read), \"explicit\" saves you or the agent make with memory set or /memory add, \"auto\" those plus the background passes that harvest and consolidate lessons.",
-					"default": "auto"
-				},
-				"subagents": {
-					"anyOf": [
-						{
-							"type": "string",
-							"const": "workspace"
-						},
-						{
-							"type": "string",
-							"const": "all"
-						},
-						{
-							"type": "string",
-							"const": "none"
-						}
-					],
-					"description": "Which MEMORY.md files a subagent gets: \"workspace\" the repository's, \"all\" the global one too, \"none\" neither. A lean subagent gets none.",
-					"default": "workspace"
-				},
-				"recall": {
-					"anyOf": [
-						{
-							"type": "string",
-							"const": "off"
-						},
-						{
-							"type": "string",
-							"const": "main"
-						},
-						{
-							"type": "string",
-							"const": "all"
-						}
-					],
-					"description": "Before each prompt, add pinned and word-matched notes from the notes database: \"off\" never, \"main\" in the main session only, \"all\" in subagents too. OCTOCODE_MEMORY_AUTO=0 turns it off for the process.",
-					"default": "main"
-				},
-				"reflection": {
-					"type": "boolean",
-					"description": "Let a long main session end with one call to the cheaper model (subagents.models.small) that proposes lessons for MEMORY.md. Needs autoUpdate \"auto\".",
-					"default": true
-				},
-				"subagentPinnedKind": {
-					"anyOf": [
-						{
-							"type": "string",
-							"const": "preference"
-						},
-						{
-							"type": "string",
-							"const": "fact"
-						},
-						{
-							"type": "string",
-							"const": "decision"
-						},
-						{
-							"type": "string",
-							"const": "gotcha"
-						},
-						{
-							"type": "string",
-							"const": "procedure"
-						},
-						{
-							"type": "string",
-							"const": "reference"
-						}
-					],
-					"description": "The one kind of pinned note a subagent's recall includes (with recall \"all\"); pinned notes of other kinds stay out of its prompt. The main session always gets every pinned kind.",
-					"default": "preference"
-				}
-			},
-			"additionalProperties": false
-		},
-		"cacheWarming": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "off"
-				},
-				{
-					"type": "string",
-					"const": "streaming"
-				},
-				{
-					"type": "string",
-					"const": "idle"
-				}
-			],
-			"description": "Cache-warming profile. \"idle\" also warms between agent runs. Global only because each refresh costs money.",
-			"default": "idle"
-		},
-		"retention": {
-			"type": "object",
-			"properties": {
-				"days": {
-					"type": "integer",
-					"minimum": 0,
-					"description": "Days Octocode keeps output, bash logs, subagent scratch, session data, `<workspace>/.octocode/agent/tmp` entries and database history after their last write. 0 keeps them forever. `OCTOCODE_CLEANUP_DAYS` overrides it.",
-					"default": 30
-				},
-				"sessionDays": {
-					"type": "integer",
-					"minimum": 0,
-					"description": "Days a session transcript (JSONL, in a workspace) is kept after its last write, then removed with its session data and database rows; the current and running sessions are never removed. 0 keeps transcripts forever. `OCTOCODE_SESSION_RETENTION_DAYS` overrides it.",
-					"default": 90
-				},
-				"archiveAfterDays": {
-					"type": "integer",
-					"minimum": 1,
-					"description": "Days after which backlog audit, configuration audit and workspace command history rows move from the database to gzip archive files; archived rows older than `days` are dropped. A window longer than `days` is cut to it.",
-					"default": 14
-				}
-			},
-			"description": "How long cleanup keeps data; one global policy for every project, so a project settings file cannot set it.",
-			"additionalProperties": false
-		},
-		"backlog": {
-			"type": "object",
-			"properties": {
-				"qa": {
-					"anyOf": [
-						{
-							"type": "string",
-							"const": "important"
-						},
-						{
-							"type": "string",
-							"const": "all"
-						},
-						{
-							"type": "string",
-							"const": "off"
-						}
-					],
-					"description": "Which items a small reviewer model checks before `backlog done` completes them. `important`: p0 and p1 features and bugs. `all`: every item except epics. `off`: none. A reviewer that finds a defect returns the item to ongoing, or to the backlog when evidence is missing, with its findings noted; without a priced small model the item completes with a note. Each review costs a small-model run.",
-					"default": "important"
-				}
-			},
-			"additionalProperties": false
-		},
-		"subagents": {
-			"type": "object",
-			"properties": {
-				"models": {
-					"type": "object",
-					"properties": {
-						"small": {
-							"type": "string",
-							"minLength": 1
-						},
-						"medium": {
-							"type": "string",
-							"minLength": 1
-						},
-						"large": {
-							"type": "string",
-							"minLength": 1
-						}
-					},
-					"description": "Model for the `small`, `medium` and `large` subagent purposes, each `provider/model` with an optional `:level` thinking suffix, e.g. { \"small\": \"openai/gpt-5-mini:low\" }. Used by every profile or task that names the purpose, before the automatic choice; a call's own `model` still wins. A model that is not available, cannot run a task or sits on a provider that refused its credential is skipped for the automatic choice, and the route says why. Read from the global settings file; a project file cannot set it.",
-					"additionalProperties": false
-				},
-				"maxChildren": {
-					"type": "integer",
-					"minimum": 1,
-					"description": "Subagents one session may start; a resume of a child it started is no new one. Past it a new spawn is refused with the total; what runs keeps running. You are told the first time it refuses, once per session for each value."
-				},
-				"maxCost": {
-					"type": "number",
-					"exclusiveMinimum": 0,
-					"description": "US dollars of recorded spend, the session's own and its subagents', past which a new spawn is refused with the total; what runs keeps running. You are told the first time it refuses, once per session for each value."
-				},
-				"queuedStarts": {
-					"type": "boolean",
-					"description": "Let a background `agent` task wait for prerequisites instead of being refused: its `after` list (backlog items `B<n>`, children `agent:<name>`) and the open `dependsOn` of its item. A queued child holds no slot, reservation or item claim; it starts when the last prerequisite ends well, and is held (the coordinator is told) when one fails. Off: such a task is refused as before.",
-					"default": true
-				},
-				"wakeHoldSeconds": {
-					"type": "number",
-					"minimum": 0,
-					"maximum": 10,
-					"description": "Seconds an idle session holds a wake (a child's report, a job's exit, mail) so wakes arriving close together share one turn. The first wake opens the window; everything arriving in it is delivered together when it ends. 0 delivers each wake at once. Costs up to this much latency per wake. Deprecated: with `runtime.eventLoop: \"new\"` it no longer applies to a background job's exit, a child's report or end, or team mail (`runtime.eventWindowSeconds` does), and it is removed when the last event kind moves to the loop.",
-					"default": 2
-				},
-				"peerOverlapWake": {
-					"type": "boolean",
-					"description": "Wake the holder of an ongoing item, or of a reservation, when another agent claims an item (or edits its paths) that overlaps its paths, once per pair. Off: the holder hears of it with its next turn instead.",
-					"default": true
-				}
-			},
-			"description": "Limits on the subagents a session starts, and how they are checked on.",
-			"additionalProperties": false
-		},
-		"optimizePrompts": {
-			"type": "boolean",
-			"description": "Rewrite each prompt you submit in the interactive terminal with one call to a cheaper model (the one the `small` purpose resolves to, else the session model), then show the rewrite and let you send it, edit it or send your original. Slash commands, `!` lines and empty input are never rewritten. `/optimize on` and `/optimize off` change it.",
-			"default": false
-		},
-		"leanPrompt": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "auto"
-				},
-				{
-					"type": "string",
-					"const": "on"
-				},
-				{
-					"type": "string",
-					"const": "off"
-				}
-			],
-			"description": "The main session's policy text. \"auto\" (the default) uses the lean policy for a model whose context window is under 64k tokens or the model subagents.models.small names, and the full policy otherwise; \"on\" always uses the lean policy, \"off\" never. The lean policy states the working, safety and reporting rules only: it leaves out delegation, the rules for running subagents and the list of skills (each stays loadable by name), so a small or local model keeps its window for the work.",
-			"default": "auto"
-		},
-		"tuiMode": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "regular"
-				},
-				{
-					"type": "string",
-					"const": "fullscreen"
-				}
-			],
-			"default": "fullscreen"
-		},
-		"fullscreenExitOutput": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "transcript"
-				},
-				{
-					"type": "string",
-					"const": "resume-hint"
-				}
-			],
-			"description": "No effect in regular TUI mode.",
-			"default": "transcript"
-		},
-		"fullscreenScrollbar": {
-			"anyOf": [
-				{
-					"type": "string",
-					"const": "auto"
-				},
-				{
-					"type": "string",
-					"const": "always"
-				},
-				{
-					"type": "string",
-					"const": "hidden"
-				}
-			],
-			"description": "No effect in regular TUI mode.",
-			"default": "auto"
-		},
-		"fullscreenCopyOnSelect": {
-			"type": "boolean",
-			"description": "No effect in regular TUI mode.",
-			"default": true
-		},
-		"fullscreenWheelScrollLines": {
-			"anyOf": [
-				{
-					"type": "number"
-				},
-				{
-					"type": "string",
-					"const": "auto"
-				}
-			],
-			"description": "Lines scrolled per wheel event in fullscreen mode; numeric values are clamped from 1 to 100.",
-			"default": "auto"
-		},
-		"fullscreenFrameQueueLimitKiB": {
-			"type": "number",
-			"description": "Queued output in KiB past which fullscreen frames are dropped while the terminal is not reading, then repainted whole once it reads again; 0 keeps every frame. Clamped to 64 to 65536.",
-			"default": 512
-		}
-	},
-	"additionalProperties": true,
-	"$defs": {
-		"ModelThinkingLevel": {
-			"enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
-		}
-	}
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:octocode:schemas/settings.schema.json",
+  "$comment": "This file is generated from TypeScript source. Do not edit it manually; run yarn run generate:schemas.",
+  "type": "object",
+  "properties": {
+    "cacheRetention": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "none"
+        },
+        {
+          "type": "string",
+          "const": "short"
+        },
+        {
+          "type": "string",
+          "const": "long"
+        }
+      ],
+      "description": "Conversation cache retention; short by default, long for sessions that often pause 5 to 60 minutes. Without a separate instruction preference, applies to both layers."
+    },
+    "instructionCacheRetention": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "none"
+        },
+        {
+          "type": "string",
+          "const": "short"
+        },
+        {
+          "type": "string",
+          "const": "long"
+        }
+      ],
+      "description": "Instruction cache retention, limited by endpoint capabilities; long by default. Long writes can cost more."
+    },
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference."
+    },
+    "lastChangelogVersion": {
+      "type": "string"
+    },
+    "defaultProvider": {
+      "type": "string"
+    },
+    "defaultModel": {
+      "type": "string"
+    },
+    "providerModels": {
+      "type": "object",
+      "patternProperties": {
+        "^.*$": {
+          "type": "string"
+        }
+      },
+      "description": "Default model id per provider, e.g. { \"anthropic\": \"claude-opus-5-5\" }. Used when defaultModel is unset or its provider is not connected; precedes the built-in per-provider defaults. With neither defaultModel nor defaultProvider set, a provider a subscription pays for (a subscription sign-in or a coding plan) starts the session before one billed per token."
+    },
+    "defaultThinkingLevel": {
+      "$ref": "#/$defs/ModelThinkingLevel"
+    },
+    "modelThinkingLevels": {
+      "type": "object",
+      "patternProperties": {
+        "^.*$": {
+          "$ref": "#/$defs/ModelThinkingLevel"
+        }
+      },
+      "description": "Per-model default thinking level overrides keyed by \"provider/modelId\"."
+    },
+    "contextBudget": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 8192
+        },
+        {
+          "type": "string",
+          "const": "full"
+        }
+      ],
+      "description": "Working context per session in tokens, capped at 90% of the model's capacity; \"full\" uses the whole capacity. /context overrides it for one session.",
+      "default": 300000
+    },
+    "transport": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "auto"
+        },
+        {
+          "type": "string",
+          "const": "sse"
+        }
+      ],
+      "default": "auto"
+    },
+    "steeringMode": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "all"
+        },
+        {
+          "type": "string",
+          "const": "one-at-a-time"
+        }
+      ],
+      "default": "all"
+    },
+    "followUpMode": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "all"
+        },
+        {
+          "type": "string",
+          "const": "one-at-a-time"
+        }
+      ],
+      "default": "all"
+    },
+    "theme": {
+      "type": "string"
+    },
+    "branchSummary": {
+      "type": "object",
+      "properties": {
+        "reserveTokens": {
+          "type": "number",
+          "description": "Tokens reserved for the prompt and LLM response.",
+          "default": 16384
+        },
+        "skipPrompt": {
+          "type": "boolean",
+          "description": "When true, skips the \"Summarize branch?\" prompt and defaults to no summary.",
+          "default": false
+        }
+      }
+    },
+    "retry": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "maxRetries": {
+          "type": "number",
+          "default": 3
+        },
+        "baseDelayMs": {
+          "type": "number",
+          "description": "Exponential backoff base delay in milliseconds: 2s, 4s, 8s.",
+          "default": 2000
+        },
+        "maxAgentDelayMs": {
+          "type": "number",
+          "default": 60000
+        },
+        "offlineIntervalMs": {
+          "type": "number",
+          "minimum": 1000,
+          "description": "Wait between retries while the machine is offline.",
+          "default": 60000
+        },
+        "offlineMaxMs": {
+          "type": "number",
+          "minimum": 0,
+          "description": "How long an outage may last before the request fails; 0 waits until the network returns. Unset: 0, and 30 minutes in print mode."
+        },
+        "provider": {
+          "type": "object",
+          "properties": {
+            "timeoutMs": {
+              "type": "number",
+              "description": "SDK or provider request timeout in milliseconds."
+            },
+            "maxRetries": {
+              "type": "number",
+              "description": "SDK or provider retry attempts."
+            },
+            "maxRetryDelayMs": {
+              "type": "number",
+              "description": "Maximum server-requested delay before failing.",
+              "default": 60000
+            }
+          }
+        },
+        "fallbackCooldownMs": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Milliseconds a model that failed on a usage limit or a refused credential is skipped as a fallback or router target (limits usually reset after hours; `/model` can still pick it). 0 retries it at once.",
+          "default": 900000
+        },
+        "maxUsageWaitMs": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Unattended runs (print mode, RPC and ACP hosts, subagents): how long to wait, in milliseconds, for a usage limit with a known reset time when no `fallbackModels` entry is left, then resume. A later reset, or 0, fails the run with an error that names the reset time. Interactive sessions (the terminal and /web) ask instead: wait and resume at the reset, switch to a connected model (optionally saved to `fallbackModels`), pick one, or stop.",
+          "default": 0
+        },
+        "fallbackModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Models to continue on when the current one fails on a usage limit (quota, billing or plan limit), a refused credential (401; an invalid, expired or revoked key or token; a 403 naming a key, token or authentication), a model unavailable for the account, or an outage that outlasts the retries, tried in order, each as `provider/id` with an optional `:thinking` level, for example `[\"openrouter/some-model\", \"openai/other-model:high\"]`. A rate limit never switches the model: it is retried on the same one. After a refused credential, entries of the same provider are skipped; entries models.dev lists as deprecated are skipped too. The first one with credentials becomes the session model with a notice, which names a change between plan and per-token billing, and stays selected; `/model` switches back. Empty: such a failure ends the turn.",
+          "default": []
+        }
+      }
+    },
+    "toolExecution": {
+      "type": "object",
+      "properties": {
+        "earlyStart": {
+          "type": "boolean",
+          "description": "Start read-only tool calls that need no approval while the model is still writing its message, instead of after it ends.",
+          "default": false
+        }
+      },
+      "description": "When tool calls start."
+    },
+    "hideThinkingBlock": {
+      "type": "boolean",
+      "default": true
+    },
+    "showCacheMissNotices": {
+      "type": "boolean",
+      "description": "Show cache cost and provider recovery notices.",
+      "default": false
+    },
+    "externalEditor": {
+      "type": "string",
+      "description": "Editor for prompt text (Ctrl+G and edit dialogs); overrides VISUAL and EDITOR. referenceOpener decides how file references and editor diffs open."
+    },
+    "referenceOpener": {
+      "type": "string",
+      "description": "How file references and /diff --editor open: \"auto\" uses the IDE whose terminal runs Octocode, else the first of code, cursor, code-insiders, codium, zed or subl on PATH, else the system default app for the file (open, xdg-open); over SSH or on Linux without a display, the prompt editor; \"editor\" uses the prompt editor (externalEditor, VISUAL, EDITOR); any other value is the command to run. Code-family editors, Zed and Sublime Text open beside the session; other editors take the terminal until they exit.",
+      "default": "auto"
+    },
+    "shellPath": {
+      "type": "string",
+      "description": "Custom shell path, for example for Cygwin on Windows, with support for leading ~ expansion."
+    },
+    "quietStartup": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string",
+          "const": "header"
+        }
+      ],
+      "description": "When true, hide all startup output. When \"header\", keep only the startup header.",
+      "default": false
+    },
+    "shellCommandPrefix": {
+      "type": "string",
+      "description": "Prefix prepended to every bash command, for example to enable shell aliases."
+    },
+    "bashBackgroundAfterSeconds": {
+      "type": "number",
+      "description": "Seconds a foreground bash command may run before it moves to the background as a job (its exit arrives as a message). 0 turns this off. The OCTOCODE_BASH_BACKGROUND_AFTER_SECONDS environment variable overrides it.",
+      "minimum": 0,
+      "default": 90
+    },
+    "bashOutputMaxBytes": {
+      "type": "number",
+      "description": "Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (500 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens but never raise it. Output of the user's own `!` commands follows the same limit.",
+      "minimum": 1024,
+      "default": 20000
+    },
+    "bash": {
+      "type": "object",
+      "properties": {
+        "inheritProviderKeys": {
+          "type": "boolean",
+          "description": "Keep provider API keys (`OPENAI_API_KEY`, `HF_TOKEN`…) and provider tokens (`AWS_BEARER_TOKEN_BEDROCK`, `OPENAI_CUSTOM_HEADERS`) in the environment of bash commands. Off by default: a command's output reaches the model, and a build script or an injected command can read its environment. `GH_TOKEN` and other tool tokens are not provider keys and stay either way. A nested `octocode` still signs in through `auth.json`. Read from the global settings file; a project file cannot turn it on. Takes effect for new sessions.",
+          "default": false
+        },
+        "spillMaxBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Most bytes the saved full output of one foreground bash command holds (commands the agent runs and the user's own `!` commands). Past it the file keeps the first half and the end of the output around a marker, and the result's header says how much was dropped, so a command stuck in a loop cannot fill the disk. What reaches the model below the cap does not change. 0 lifts the cap.",
+          "default": 1073741824
+        },
+        "longCommandAfterSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Seconds a known long command (test runner, `yarn run check`, build, server, stream follower, or a `longCommandPatterns` match) may run in the foreground before it moves to the background as a job. It applies only when sooner than `bashBackgroundAfterSeconds`.",
+          "default": 30
+        },
+        "deliberateMaxSeconds": {
+          "type": "number",
+          "minimum": 1,
+          "description": "The longest a foreground bash call that names its own `timeout` holds the turn before the command moves to the background (it is still stopped at its timeout).",
+          "default": 600
+        },
+        "longCommandPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Regular expressions for commands that count as long, added to the built-in runners (vitest, jest, pytest, cargo, go, yarn test/check/build/dev…), for example `[\"bazel\\s+(?:test|build)\", \"make\\s+(?:test|check)\"]`. Each is matched where a command starts (the line, or after `;`, `&`, `|`, `(` and `VAR=value` words) and must end at a space or the end of a part. An entry that is not a valid regular expression is ignored.",
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "sandbox": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "off"
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            },
+            {
+              "type": "string",
+              "const": "on"
+            }
+          ],
+          "description": "`\"off\"` runs agent shell commands as you, with your rights. `\"auto\"` runs every command the agent starts (the `bash` tool and its background jobs) inside an operating-system sandbox in the `manual`, `workspace` and `full` permission modes, and unsandboxed in `bypass`; `\"on\"` sandboxes them in every mode. A sandboxed command reads everything; it writes the workspace (the repository root, or the working folder outside a repository), the system temporary folder and its scratch folder, and nowhere else. A read-only subagent writes only its scratch and throwaway folders, and an isolated subagent its own worktree, never the main tree. Paths later sessions load (git hooks and config, `.octocode/` configuration, instruction files, other agents' project folders) stay write-protected. Network goes through a filtering proxy: in `manual` and `workspace` each new host asks (a private address as a private-network ask), allowed once or for the session; `full` allows every host and records each; a read-only subagent gets none; loopback is always reachable (on Linux, the container's own). A refused write or host is named in the command's result. Your own `!` commands are never sandboxed. macOS (Seatbelt) and Linux (bubblewrap): when the sandbox cannot start (another platform, a missing dependency) or starts weaker than it should (Linux without its seccomp filter), a warning says why and one question asks whether this session's commands run unsandboxed, or in the weaker sandbox. Read from the global settings file; a project file cannot change it. Takes effect for new sessions.",
+          "default": "off"
+        },
+        "allowUnsandboxed": {
+          "type": "boolean",
+          "description": "Whether the agent may ask to run a command outside the sandbox (the `bash` tool's `sandbox: false`, and the question when the sandbox cannot start). Such a run asks in every permission mode but `bypass`, and allowing all shell commands never covers it. `false` refuses it without asking. Read from the global settings file only.",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "externalAgents": {
+      "type": "boolean",
+      "description": "Allow model-directed external agent tasks and connections. Off by default; enable selected installed CLIs in /providers. enabledExternalAgents limits vendor CLIs; an existing explicit true without that list keeps all runners available. Discovery starts no CLI; sign-in is checked when used. Global only; project files cannot change it. Reload to apply changes.",
+      "default": false
+    },
+    "sessionApi": {
+      "type": "boolean",
+      "description": "Start the local session API on an owner-only Unix socket, so other processes of this user can find and message a running session. On by default; on Windows, which has no such socket here, it starts only with `/api on` or `OCTOCODE_API_HTTP`. Read from the global settings file; a project file cannot change it. `/api on` and `/api off` override it for the running process. Takes effect for new sessions.",
+      "default": true
+    },
+    "sessionApiTurnPermission": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "workspace"
+        },
+        {
+          "type": "string",
+          "const": "session"
+        }
+      ],
+      "description": "The permission mode a turn the local session API starts runs under. `session` (default) follows the session's own mode: a session in full takes the message unasked and runs the turn in full, audited, so a remote agent is never stuck on a prompt; workspace and manual sessions ask as they always do. `workspace` holds API-started turns, and messages that steer a running turn, to workspace mode even when the session is in full: its user is asked about the message, and a tool call workspace asks about asks or, with nobody to ask, is refused. Read from the global settings file; a project file cannot change it. Applies to the next message.",
+      "default": "session"
+    },
+    "mcpPresentation": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "declared"
+        },
+        {
+          "type": "string",
+          "const": "compact"
+        },
+        {
+          "type": "string",
+          "const": "json"
+        }
+      ],
+      "description": "How MCP contracts reach the model. In \"declared\" mode a direct tool carries the full server schema in its declaration. With the default \"usage\" exposure, an agent with the mcp tool sees unpinned MCP tools as deferred. Each starts with the server description and thin parameters. The agent can load its full contract with mcp. In \"compact\" and \"json\" modes declarations are thin and direct tools have their contracts in the system prompt as TypeScript or JSON. Every mode validates calls against the full server input schema.",
+      "default": "declared"
+    },
+    "mcpExposure": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "direct"
+        },
+        {
+          "type": "string",
+          "const": "deferred"
+        },
+        {
+          "type": "string",
+          "const": "recent"
+        },
+        {
+          "type": "string",
+          "const": "usage"
+        },
+        {
+          "type": "string",
+          "pattern": "^auto:[0-9]+$"
+        }
+      ],
+      "description": "Initial exposure of MCP tools without a tool or server override. \"usage\" starts open tools deferred and can promote on-demand tools to thin declarations within mcpPromotedBytes. \"recent\" uses calls in this working directory in the last 24 hours to select direct tools. \"direct\" and \"deferred\" set a fixed default. \"auto:<bytes>\" keeps servers direct in name order while their contracts fit the budget. An agent without the mcp tool gets direct exposure.",
+      "default": "usage"
+    },
+    "mcpPromotedBytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Under mcpExposure \"usage\": the bytes, per role group (main or subagent), that promoted on-demand tools may add to the tool list at the start of a session, most used first; a promoted tool that does not fit stays on demand. 0 keeps every on-demand tool on demand. Bytes, not a share of the context window, so changing models never changes the tool list.",
+      "default": 8192
+    },
+    "nativeToolExposure": {
+      "type": "object",
+      "patternProperties": {
+        "^.*$": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "direct"
+            },
+            {
+              "type": "string",
+              "const": "deferred"
+            }
+          ]
+        }
+      },
+      "description": "Pins a deferrable native tool (archive, models, backlogPlan, configuration; memory and wait under \"usage\" only): \"direct\" always declares its full schema, \"deferred\" declares its description and top-level fields (types, the few values a field allows, required fields) only. Unpinned, the tool is deferred under mcpExposure \"recent\" until this working directory calls it, and always under \"usage\"; it is direct otherwise. A deferred tool stays callable, and a call its schema rejects returns the schema. Where the model adds tools after the cached prompt and the agent has the `mcp` tool, an unpinned archive or models (and memory in a subagent) that would be deferred is on demand instead, unless the \"usage\" promotion snapshot names it: listed in the prompt, declared after its first call or a read with the `mcp` tool."
+    },
+    "research": {
+      "type": "object",
+      "properties": {
+        "allowedPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Extra folders the research tools (localFetch, localSearch, structureSearch, astSearch, lspSearch) may read, added to the workspace, the session folders and loaded skill folders. Absolute paths or paths starting with ~/, for example [\"~/code/private-skills\"]. Read from the global settings only: a project settings file cannot add folders. Relative paths, \"..\", the filesystem root, your home folder, the Octocode home and credential folders such as ~/.ssh are refused with a warning. An edit applies after /reload, at the next turn."
+        }
+      },
+      "description": "Research tool settings."
+    },
+    "npmCommand": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Command used for npm package lookup and installation, in argv form such as [\"mise\", \"exec\", \"node@20\", \"--\", \"npm\"]."
+    },
+    "collapseChangelog": {
+      "type": "boolean",
+      "description": "Show the condensed changelog after update; use /changelog for the full changelog.",
+      "default": false
+    },
+    "enableInstallTelemetry": {
+      "type": "boolean",
+      "description": "Send an anonymous version and update ping after changelog-detected updates.",
+      "default": true
+    },
+    "enableAnalytics": {
+      "type": "boolean",
+      "description": "Opt in to analytics data sharing.",
+      "default": false
+    },
+    "trackingId": {
+      "type": "string",
+      "description": "Analytics tracking identifier, generated when analytics is enabled."
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "protocol"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Absolute local plugin directory."
+          },
+          "protocol": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "claude"
+              },
+              {
+                "type": "string",
+                "const": "codex"
+              }
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "marketplace",
+              "plugin",
+              "sha"
+            ],
+            "properties": {
+              "marketplace": {
+                "type": "string",
+                "description": "Marketplace name."
+              },
+              "plugin": {
+                "type": "string",
+                "description": "Plugin name in that marketplace."
+              },
+              "sha": {
+                "type": "string",
+                "description": "Pinned commit, or a content hash for a local directory marketplace."
+              }
+            },
+            "description": "Where the cached copy at `path` came from; written by `octocode plugin install`."
+          }
+        },
+        "additionalProperties": true
+      },
+      "description": "Local compatibility plugins. Activates namespaced skills, supported prompt commands, hooks and MCP servers; adding or enabling a plugin approves its hooks and MCP servers. Other components require their own adapters."
+    },
+    "marketplaces": {
+      "type": "object",
+      "patternProperties": {
+        "^.*$": {
+          "type": "object",
+          "required": [
+            "source",
+            "addedAt"
+          ],
+          "properties": {
+            "source": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "path"
+                  ],
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "const": "directory"
+                    },
+                    "path": {
+                      "type": "string",
+                      "description": "Absolute directory."
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "repo"
+                  ],
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "const": "github"
+                    },
+                    "repo": {
+                      "type": "string",
+                      "description": "owner/repo."
+                    },
+                    "ref": {
+                      "type": "string",
+                      "description": "Branch or tag; default branch when omitted."
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "url"
+                  ],
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "const": "git"
+                    },
+                    "url": {
+                      "type": "string",
+                      "description": "https, ssh, git or file URL, or a local repository path; no credentials."
+                    },
+                    "ref": {
+                      "type": "string",
+                      "description": "Branch or tag; default branch when omitted."
+                    }
+                  }
+                }
+              ]
+            },
+            "addedAt": {
+              "type": "string",
+              "description": "ISO time the marketplace was added."
+            }
+          }
+        }
+      },
+      "description": "Plugin marketplaces by name, as `octocode marketplace add` writes them. Global only: project settings cannot register one."
+    },
+    "toggles": {
+      "type": "object",
+      "patternProperties": {
+        "^.*$": {
+          "type": "boolean"
+        }
+      },
+      "description": "Harness, plugin and hook switches by ID, as `/settings` writes them: `harness:<vendor>` (`agents`, `mcp-json`, `pi`, `claude`, `codex`, `cursor`; `true` or `false` overrides the vendor's default, see [commands](commands.md)), `plugin:<path>`, `hooks:<host>`, `hooks:<host>:<source>` or `hook:<id>`; `false` turns the item off. The most specific key wins, and a project key only switches items inside the repository."
+    },
+    "packages": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "description": "Load all resources from the package."
+          },
+          {
+            "type": "object",
+            "required": [
+              "source"
+            ],
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "autoload": {
+                "type": "boolean",
+                "description": "When false, start empty and only apply explicit resource patterns."
+              },
+              "skills": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "prompts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "themes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ],
+        "description": "Package source for npm or git packages. Use the string form to load all resources or the object form to filter resources."
+      },
+      "description": "npm or git package sources, as strings or objects with resource filtering."
+    },
+    "deviceId": {
+      "type": "string",
+      "description": "Stable installation UUID, generated when authentication first needs it. Global only."
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Local skill file paths or directories."
+    },
+    "prompts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Local prompt template file paths or directories."
+    },
+    "themes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Local theme file paths or directories."
+    },
+    "enableSkillCommands": {
+      "type": "boolean",
+      "description": "Register skills as /skill:name commands.",
+      "default": true
+    },
+    "terminal": {
+      "type": "object",
+      "properties": {
+        "showImages": {
+          "type": "boolean",
+          "description": "Show images when the terminal supports them.",
+          "default": true
+        },
+        "imageWidthCells": {
+          "type": "number",
+          "description": "Preferred inline image width in terminal cells.",
+          "default": 60
+        },
+        "clearOnShrink": {
+          "type": "boolean",
+          "description": "Clear empty rows when content shrinks.",
+          "default": false
+        },
+        "replayRows": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Regular mode: the most rows a full redraw writes back into the terminal (after a resize or a resume from the background); earlier rows are left out behind one marker row. 0 redraws every row.",
+          "default": 5000
+        },
+        "showTerminalProgress": {
+          "type": "boolean",
+          "description": "Show OSC 9;4 terminal progress: on while the session's activity light is working, off while it waits for you or only a timer is pending.",
+          "default": false
+        },
+        "reduceMotion": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            }
+          ],
+          "description": "Freeze spinners, shimmer and glow; elapsed times still tick. \"auto\" is still without a terminal, in CI, or when OCTOCODE_REDUCE_MOTION, REDUCE_MOTION or NO_MOTION is 1 or true.",
+          "default": "auto"
+        },
+        "screenReader": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            }
+          ],
+          "description": "Screen-reader text mode: words instead of spinner, shimmer and gauge glyphs, and no animation. \"auto\" follows OCTOCODE_SCREEN_READER (1 or true).",
+          "default": "auto"
+        },
+        "latencyFence": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            }
+          ],
+          "description": "Probe the terminal's display lag (DSR 5n) and hold streaming frames while it is behind. \"auto\" is on in a terminal; OCTOCODE_LATENCY_FENCE=0 or 1 overrides the setting. Turn it off if a terminal misbehaves with the probe.",
+          "default": "auto"
+        },
+        "surfaceFills": {
+          "type": "boolean",
+          "description": "Paint user messages and notice panels with a quiet tint blended into the terminal background instead of the theme's panel colors.",
+          "default": false
+        },
+        "toolBands": {
+          "type": "boolean",
+          "description": "Tint each tool row with a quiet band blended from its state color into the terminal background. Themes that declare their own tool backgrounds keep them.",
+          "default": false
+        },
+        "emojiMarks": {
+          "type": "boolean",
+          "description": "Use the emoji marks (🐚 🦀 🦈 beside notices, 🦑 in the terminal title) instead of the width-safe glyphs. Emoji width varies by terminal.",
+          "default": false
+        },
+        "hyperlinks": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            }
+          ]
+        },
+        "images": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "kitty"
+            },
+            {
+              "type": "string",
+              "const": "iterm2"
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            },
+            {
+              "type": "boolean",
+              "const": false
+            }
+          ]
+        },
+        "trueColor": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            }
+          ]
+        },
+        "completion": {
+          "type": "object",
+          "properties": {
+            "shell": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "auto"
+                },
+                {
+                  "type": "string",
+                  "const": "zsh"
+                },
+                {
+                  "type": "string",
+                  "const": "bash"
+                },
+                {
+                  "type": "string",
+                  "const": "fish"
+                },
+                {
+                  "type": "string",
+                  "const": "pwsh"
+                },
+                {
+                  "type": "string",
+                  "const": "none"
+                }
+              ],
+              "description": "The shell whose completions Tab offers after `!`: \"auto\" follows your login shell ($SHELL; PowerShell on Windows without it). \"none\" starts no shell: Tab then completes program names, git branches and paths only. The shell runs only in a trusted folder.",
+              "default": "auto"
+            },
+            "loadRc": {
+              "type": "boolean",
+              "description": "Start the completion shell with your own startup files (.zshrc, .bashrc, config.fish, the PowerShell profile), so plugin and custom completions work. Off loads only the shell's built-in completion system, which starts faster.",
+              "default": true
+            },
+            "carapace": {
+              "type": "boolean",
+              "description": "When the shell has no completion for a command and `carapace` is on PATH, ask carapace. Trusted folders only.",
+              "default": true
+            }
+          },
+          "additionalProperties": false,
+          "description": "Tab completion of `!` shell commands."
+        },
+        "suggestions": {
+          "type": "object",
+          "properties": {
+            "history": {
+              "type": "boolean",
+              "description": "Show ghost text while typing a `!` command: a command from the agent's last reply or your earlier `!` commands that starts with what you typed. Right or End accepts it.",
+              "default": true
+            },
+            "model": {
+              "type": "boolean",
+              "description": "When neither the last reply nor your history has a match, ask the cheapest connected model (the small tier, resolved from the providers you are signed in to) for the rest of the command. Costs a small call per pause in typing, recorded in the session's usage; no call is made when no cheaper model is available. Read from the global settings only: a project file cannot turn it on.",
+              "default": true
+            }
+          },
+          "additionalProperties": false,
+          "description": "Ghost text while typing a `!` command."
+        }
+      }
+    },
+    "images": {
+      "type": "object",
+      "properties": {
+        "autoResize": {
+          "type": "boolean",
+          "description": "Resize images to 2000x2000 maximum for better model compatibility.",
+          "default": true
+        },
+        "blockImages": {
+          "type": "boolean",
+          "description": "When true, prevents all images from being sent to LLM providers.",
+          "default": false
+        }
+      }
+    },
+    "enabledExternalAgents": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Vendor CLI ids allowed for external agent tasks when externalAgents is on. An empty list allows none; omitted preserves all runners for an existing explicit externalAgents: true. Global only; manage individual agents in /providers."
+    },
+    "enabledModels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Model patterns for cycling, in the same format as the --models CLI flag."
+    },
+    "disabledProviders": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Provider ids turned off in /providers. Their models leave the model selector, cycling and subagent routing; saved credentials stay. Global only."
+    },
+    "hiddenModels": {
+      "type": "object",
+      "patternProperties": {
+        "^.*$": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Per provider, the model ids hidden by unticking them on its /providers page or the web provider page. Hidden models leave the model selector, cycling and subagent routing; a provider with no entry shows all its models. Global only."
+    },
+    "modelCatalogUpdates": {
+      "type": "boolean",
+      "description": "Apply the daily models.dev index to the built-in catalog: newer prices and limits, deprecation marks, and new models of a known family on providers built from models.dev. Off keeps the catalog shipped with Octocode; OCTOCODE_MODELS_DEV=0 also turns it off, and --offline keeps the saved index without fetching. Global only; read once per process, so a change applies after a restart.",
+      "default": true
+    },
+    "providerSources": {
+      "type": "object",
+      "properties": {
+        "pi": {
+          "type": "boolean",
+          "description": "Use Pi's auth.json (read-only fallback) and models.json. On by default; false leaves them out of availability without changing Pi's files."
+        },
+        "copilot-env": {
+          "type": "boolean",
+          "description": "Use the COPILOT_GITHUB_TOKEN environment variable as the github-copilot credential. Off by default."
+        }
+      },
+      "description": "Provider sources you changed from their defaults (Octocode and Pi on, COPILOT_GITHUB_TOKEN off), managed in /providers. Global only."
+    },
+    "defaultTools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Initial tool selection. Plain names replace the inherited selection; +name and -name entries add or remove tools."
+    },
+    "doubleEscapeAction": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "fork"
+        },
+        {
+          "type": "string",
+          "const": "tree"
+        },
+        {
+          "type": "string",
+          "const": "none"
+        }
+      ],
+      "description": "Action for double-escape with an empty editor.",
+      "default": "tree"
+    },
+    "treeFilterMode": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "default"
+        },
+        {
+          "type": "string",
+          "const": "no-tools"
+        },
+        {
+          "type": "string",
+          "const": "user-only"
+        },
+        {
+          "type": "string",
+          "const": "labeled-only"
+        },
+        {
+          "type": "string",
+          "const": "all"
+        }
+      ],
+      "description": "Default filter when opening /tree.",
+      "default": "default"
+    },
+    "thinkingBudgets": {
+      "type": "object",
+      "properties": {
+        "minimal": {
+          "type": "number"
+        },
+        "low": {
+          "type": "number"
+        },
+        "medium": {
+          "type": "number"
+        },
+        "high": {
+          "type": "number"
+        }
+      },
+      "description": "Custom token budgets for thinking levels."
+    },
+    "editorPaddingX": {
+      "type": "number",
+      "description": "Horizontal padding for the input editor.",
+      "default": 0
+    },
+    "outputPad": {
+      "anyOf": [
+        {
+          "type": "number",
+          "const": 0
+        },
+        {
+          "type": "number",
+          "const": 1
+        }
+      ],
+      "description": "Horizontal padding for transcript content.",
+      "default": 1
+    },
+    "autocompleteMaxVisible": {
+      "type": "number",
+      "description": "Maximum visible items in the autocomplete dropdown.",
+      "default": 5
+    },
+    "showHardwareCursor": {
+      "type": "boolean",
+      "description": "Show the terminal cursor while still positioning it for IME."
+    },
+    "markdown": {
+      "type": "object",
+      "properties": {
+        "codeBlockIndent": {
+          "type": "string",
+          "default": "  "
+        },
+        "mermaid": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "off"
+            },
+            {
+              "type": "string",
+              "const": "final"
+            },
+            {
+              "type": "string",
+              "const": "streaming"
+            }
+          ],
+          "default": "streaming"
+        }
+      }
+    },
+    "warnings": {
+      "type": "object",
+      "properties": {
+        "anthropicExtraUsage": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "sessionDir": {
+      "type": "string",
+      "description": "Custom session storage directory, in the same format as the --session-dir CLI flag."
+    },
+    "httpProxy": {
+      "type": "string",
+      "description": "Proxy URL applied as HTTP_PROXY and HTTPS_PROXY for Octocode-managed HTTP clients. Read from the global settings file; a project file cannot set it."
+    },
+    "httpIdleTimeoutMs": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "const": "disabled"
+        }
+      ],
+      "description": "HTTP header or body idle timeout in milliseconds; a model stream or compaction summary attempt that receives nothing for this long is retried. 0 or \"disabled\" disables it."
+    },
+    "remote": {
+      "type": "object",
+      "properties": {
+        "transport": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "ssh"
+            },
+            {
+              "type": "string",
+              "const": "relay"
+            }
+          ],
+          "description": "How a published /remote link reaches the daemon: \"ssh\" prints a port forward to run; \"relay\" dials remote.relayUrl.",
+          "default": "ssh"
+        },
+        "relayUrl": {
+          "type": "string",
+          "description": "The ws:// or wss:// relay the daemon dials for relay links."
+        },
+        "autoStart": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "off"
+            },
+            {
+              "type": "string",
+              "const": "view"
+            },
+            {
+              "type": "string",
+              "const": "control"
+            }
+          ],
+          "description": "Publish a link of that access (\"view\" or \"control\") when a session starts and print it. A project settings file can set \"off\" but never turn it on; the global value stands.",
+          "default": "off"
+        }
+      },
+      "additionalProperties": false
+    },
+    "security": {
+      "type": "object",
+      "properties": {
+        "enforce": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "hooks"
+              },
+              {
+                "type": "string",
+                "const": "mcp"
+              },
+              {
+                "type": "string",
+                "const": "skills"
+              }
+            ]
+          },
+          "description": "The kinds that stay off until you check and approve them in /security: hooks, MCP servers and skills Octocode did not ship. A kind left out is still rated but loads unchecked. Global only.",
+          "default": [
+            "hooks",
+            "mcp",
+            "skills"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "web": {
+      "type": "object",
+      "properties": {
+        "sound": {
+          "type": "boolean",
+          "description": "Play a short chime with a web workspace notification (an approval or question waiting, a run finished or failed). The page makes the sound; the toggle in the workspace changes this setting. Notifications themselves need the browser's permission, which the page asks for from its own control.",
+          "default": false
+        },
+        "theme": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "system"
+            },
+            {
+              "type": "string",
+              "const": "light"
+            },
+            {
+              "type": "string",
+              "const": "dark"
+            }
+          ],
+          "description": "Colour theme of the web workspace: \"system\" follows the operating system, \"light\" and \"dark\" override it. The theme control in the workspace changes this setting.",
+          "default": "system"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "app"
+            },
+            {
+              "type": "string",
+              "const": "browser"
+            }
+          ],
+          "description": "Where /web opens the workspace: \"app\" is a Chrome, Edge, Chromium or Brave app window with a temporary profile apart from your own (no extensions, cookies or history; removed when it closes); \"browser\" uses the default browser. Without an installed Chromium browser \"app\" falls back to the default browser. Applies to the next /web.",
+          "default": "app"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sessions": {
+      "type": "object",
+      "properties": {
+        "autoTitle": {
+          "type": "boolean",
+          "description": "Name an unnamed interactive or RPC session after its first turn with one call to a cheaper model, sending it the first message (a later one, up to the third, when that names no task); a session still unnamed at a compaction gets one more try from the summary's goal. Off: sessions keep their first prompt as title.",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "timer": {
+      "type": "object",
+      "properties": {
+        "cron": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Let a session without a screen to confirm on (print, JSON, RPC) set cron schedules with wait. Each run is a model turn with nobody attending, so it is off until you turn it on here; a session with a screen asks once instead. Read from the global settings file; a project file cannot turn it on.",
+              "default": false
+            },
+            "maxUsdPerSession": {
+              "type": "number",
+              "description": "The most a session may spend, in USD, since its first cron schedule before cron runs stop. Read from the global settings file.",
+              "default": 2,
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "check": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Let a notify request's check call a cheaper model to judge a condition after its event holds. It spends money, so it is off until you turn it on here or answer the first-use question; caps: 5 judgments and $0.05 per request, $0.25 per session. Read from the global settings file; a project file cannot turn it on.",
+              "default": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "monitor": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Sample the machine (load, memory, swap, GPU, busiest processes) once per interval and tell the session whose processes cause a tripped threshold. One Octocode process per machine takes the samples; every session reads them.",
+          "default": true
+        },
+        "sampleSeconds": {
+          "type": "number",
+          "description": "Seconds between machine samples.",
+          "default": 60,
+          "minimum": 10,
+          "maximum": 3600
+        },
+        "samples": {
+          "type": "number",
+          "description": "Consecutive samples over a threshold before it alerts, so a short spike does not.",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 60
+        },
+        "cooldownMinutes": {
+          "type": "number",
+          "description": "Minutes before the same threshold alerts again.",
+          "default": 15,
+          "minimum": 0
+        },
+        "loadPerCore": {
+          "type": "number",
+          "description": "Alert when the 1-minute load average per logical CPU reaches this (0 turns it off).",
+          "default": 3,
+          "minimum": 0
+        },
+        "memoryAvailablePercent": {
+          "type": "number",
+          "description": "Alert when the memory the system can still hand out falls to this percentage of the total (0 turns it off).",
+          "default": 10,
+          "minimum": 0,
+          "maximum": 100
+        },
+        "swapPercent": {
+          "type": "number",
+          "description": "Alert when used swap reaches this percentage of the swap in place (above 100 turns it off).",
+          "default": 90,
+          "minimum": 0
+        },
+        "gpuPercent": {
+          "type": "number",
+          "description": "Alert when GPU utilization reaches this percentage (above 100 turns it off).",
+          "default": 95,
+          "minimum": 0
+        },
+        "stuckJobMinutes": {
+          "type": "number",
+          "description": "Tell the session when one of its background bash jobs has written no output and used almost no CPU for this many minutes (0 turns it off).",
+          "default": 15,
+          "minimum": 0
+        },
+        "contextBands": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 1
+          },
+          "description": "Shares of the room before automatic compaction at which the model is told, once each, how much context it has used and how much is left. Each is above 0 and below 1; [] turns the notices off.",
+          "default": [
+            0.5,
+            0.75,
+            0.9
+          ]
+        },
+        "checkInSeconds": {
+          "type": "number",
+          "description": "Seconds a running subagent and its parent may go without a message before the subagent's own harness asks it whether it needs something. The ping joins a request the subagent was about to make; the parent's model is not called, and nothing is stopped. 0 turns it off.",
+          "default": 300,
+          "minimum": 0
+        },
+        "idleAgentMinutes": {
+          "type": "number",
+          "description": "Minutes a working agent may make no progress (no model reply or tool event) before the agent responsible for it is told, once per silence: a subagent's parent, or a main session itself (a note and a footer mark). Checked once a minute; an agent waiting on the user, its children or its jobs is excused, and nothing is stopped. 0 turns it off.",
+          "default": 5,
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "runtime": {
+      "type": "object",
+      "properties": {
+        "eventLoop": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "old"
+            },
+            {
+              "type": "string",
+              "const": "shadow"
+            },
+            {
+              "type": "string",
+              "const": "new"
+            }
+          ],
+          "description": "Which scheduler starts turns from background events. `old` (default): the wake gate, unchanged. `shadow`: the event loop runs beside the gate, decides which events would wake the session and in what order, acts on nothing, and records each difference from the gate as a problem (`/status`). `new`: the loop delivers the events it has taken over (a background `bash` job's exit, a child's report or end, and team mail, with the `runtime.eventWindowSeconds` window) and the gate the rest, which behave as in `shadow`. Reports and mail the loop has queued survive a restart or resume and are delivered once. Read at session start.",
+          "default": "old"
+        },
+        "eventWindowSeconds": {
+          "type": "number",
+          "description": "Seconds the event loop waits after a background event wakes an idle session, so events that arrive together become one message and one turn. User input is never held. Applies to the events the loop delivers (`runtime.eventLoop: new`: a background job's exit, a child's report or end, team mail); the wake gate keeps `subagents.wakeHoldSeconds` for the rest.",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 10
+        }
+      },
+      "additionalProperties": false
+    },
+    "memory": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "boolean",
+          "description": "Load the global MEMORY.md (in the Octocode home) and the repository's .octocode/agent/MEMORY.md into the system prompt at session start. Off: neither is read or written.",
+          "default": true
+        },
+        "autoUpdate": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "off"
+            },
+            {
+              "type": "string",
+              "const": "explicit"
+            },
+            {
+              "type": "string",
+              "const": "auto"
+            }
+          ],
+          "description": "Who writes the MEMORY.md files: \"off\" nobody (the files are only read), \"explicit\" saves you or the agent make with memory set or /memory add, \"auto\" those plus the background passes that harvest and consolidate lessons.",
+          "default": "auto"
+        },
+        "subagents": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "workspace"
+            },
+            {
+              "type": "string",
+              "const": "all"
+            },
+            {
+              "type": "string",
+              "const": "none"
+            }
+          ],
+          "description": "Which MEMORY.md files a subagent gets: \"workspace\" the repository's, \"all\" the global one too, \"none\" neither. A lean subagent gets none.",
+          "default": "workspace"
+        },
+        "recall": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "off"
+            },
+            {
+              "type": "string",
+              "const": "main"
+            },
+            {
+              "type": "string",
+              "const": "all"
+            }
+          ],
+          "description": "Before each prompt, add pinned and word-matched notes from the notes database: \"off\" never, \"main\" in the main session only, \"all\" in subagents too. OCTOCODE_MEMORY_AUTO=0 turns it off for the process.",
+          "default": "main"
+        },
+        "reflection": {
+          "type": "boolean",
+          "description": "Let a long main session end with one call to the cheaper model (subagents.models.small) that proposes lessons for MEMORY.md. Needs autoUpdate \"auto\".",
+          "default": true
+        },
+        "subagentPinnedKind": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "preference"
+            },
+            {
+              "type": "string",
+              "const": "fact"
+            },
+            {
+              "type": "string",
+              "const": "decision"
+            },
+            {
+              "type": "string",
+              "const": "gotcha"
+            },
+            {
+              "type": "string",
+              "const": "procedure"
+            },
+            {
+              "type": "string",
+              "const": "reference"
+            }
+          ],
+          "description": "The one kind of pinned note a subagent's recall includes (with recall \"all\"); pinned notes of other kinds stay out of its prompt. The main session always gets every pinned kind.",
+          "default": "preference"
+        }
+      },
+      "additionalProperties": false
+    },
+    "cacheWarming": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "off"
+        },
+        {
+          "type": "string",
+          "const": "streaming"
+        },
+        {
+          "type": "string",
+          "const": "idle"
+        }
+      ],
+      "description": "Cache-warming profile. \"idle\" also warms between agent runs. Global only because each refresh costs money.",
+      "default": "idle"
+    },
+    "retention": {
+      "type": "object",
+      "properties": {
+        "days": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Days Octocode keeps output, bash logs, subagent scratch, session data, `<workspace>/.octocode/agent/tmp` entries and database history after their last write. 0 keeps them forever. `OCTOCODE_CLEANUP_DAYS` overrides it.",
+          "default": 30
+        },
+        "sessionDays": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Days a session transcript (JSONL, in a workspace) is kept after its last write, then removed with its session data and database rows; the current and running sessions are never removed. 0 keeps transcripts forever. `OCTOCODE_SESSION_RETENTION_DAYS` overrides it.",
+          "default": 90
+        },
+        "archiveAfterDays": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Days after which backlog audit, configuration audit and workspace command history rows move from the database to gzip archive files; archived rows older than `days` are dropped. A window longer than `days` is cut to it.",
+          "default": 14
+        }
+      },
+      "description": "How long cleanup keeps data; one global policy for every project, so a project settings file cannot set it.",
+      "additionalProperties": false
+    },
+    "backlog": {
+      "type": "object",
+      "properties": {
+        "qa": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "important"
+            },
+            {
+              "type": "string",
+              "const": "all"
+            },
+            {
+              "type": "string",
+              "const": "off"
+            }
+          ],
+          "description": "Which items a small reviewer model checks before `backlog done` completes them. `important`: p0 and p1 features and bugs. `all`: every item except epics. `off`: none. A reviewer that finds a defect returns the item to ongoing, or to the backlog when evidence is missing, with its findings noted; without a priced small model the item completes with a note. Each review costs a small-model run.",
+          "default": "important"
+        }
+      },
+      "additionalProperties": false
+    },
+    "subagents": {
+      "type": "object",
+      "properties": {
+        "models": {
+          "type": "object",
+          "properties": {
+            "small": {
+              "type": "string",
+              "minLength": 1
+            },
+            "medium": {
+              "type": "string",
+              "minLength": 1
+            },
+            "large": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "description": "Model for the `small`, `medium` and `large` subagent purposes, each `provider/model` with an optional `:level` thinking suffix, e.g. { \"small\": \"openai/gpt-5-mini:low\" }. Used by every profile or task that names the purpose, before the automatic choice; a call's own `model` still wins. A model that is not available, cannot run a task or sits on a provider that refused its credential is skipped for the automatic choice, and the route says why. Read from the global settings file; a project file cannot set it.",
+          "additionalProperties": false
+        },
+        "maxChildren": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Subagents one session may start; a resume of a child it started is no new one. Past it a new spawn is refused with the total; what runs keeps running. You are told the first time it refuses, once per session for each value."
+        },
+        "maxCost": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "US dollars billed per token, the session's own and its subagents' (a plan's share is an estimate, not money, and never counts), past which a new spawn, a resume and a message to a lingering subagent are refused with the total; what runs keeps running. You are told the first time it refuses, once per session for each value."
+        },
+        "queuedStarts": {
+          "type": "boolean",
+          "description": "Let a background `agent` task wait for prerequisites instead of being refused: its `after` list (backlog items `B<n>`, children `agent:<name>`) and the open `dependsOn` of its item. A queued child holds no slot, reservation or item claim; it starts when the last prerequisite ends well, and is held (the coordinator is told) when one fails. Off: such a task is refused as before.",
+          "default": true
+        },
+        "wakeHoldSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Seconds an idle session holds a wake (a child's report, a job's exit, mail) so wakes arriving close together share one turn. The first wake opens the window; everything arriving in it is delivered together when it ends. 0 delivers each wake at once. Costs up to this much latency per wake. Deprecated: with `runtime.eventLoop: \"new\"` it no longer applies to a background job's exit, a child's report or end, or team mail (`runtime.eventWindowSeconds` does), and it is removed when the last event kind moves to the loop.",
+          "default": 2
+        },
+        "peerOverlapWake": {
+          "type": "boolean",
+          "description": "Wake the holder of an ongoing item, or of a reservation, when another agent claims an item (or edits its paths) that overlaps its paths, once per pair. Off: the holder hears of it with its next turn instead.",
+          "default": true
+        }
+      },
+      "description": "Limits on the subagents a session starts, and how they are checked on.",
+      "additionalProperties": false
+    },
+    "optimizePrompts": {
+      "type": "boolean",
+      "description": "Rewrite each prompt you submit in the interactive terminal with one call to a cheaper model (the one the `small` purpose resolves to, else the session model), then show the rewrite and let you send it, edit it or send your original. Slash commands, `!` lines and empty input are never rewritten. `/optimize on` and `/optimize off` change it.",
+      "default": false
+    },
+    "leanPrompt": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "auto"
+        },
+        {
+          "type": "string",
+          "const": "on"
+        },
+        {
+          "type": "string",
+          "const": "off"
+        }
+      ],
+      "description": "The main session's policy text. \"auto\" (the default) uses the lean policy for a model whose context window is under 64k tokens or the model subagents.models.small names, and the full policy otherwise; \"on\" always uses the lean policy, \"off\" never. The lean policy states the working, safety and reporting rules only: it leaves out delegation, the rules for running subagents and the list of skills (each stays loadable by name), so a small or local model keeps its window for the work.",
+      "default": "auto"
+    },
+    "tuiMode": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "regular"
+        },
+        {
+          "type": "string",
+          "const": "fullscreen"
+        }
+      ],
+      "default": "fullscreen"
+    },
+    "fullscreenExitOutput": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "transcript"
+        },
+        {
+          "type": "string",
+          "const": "resume-hint"
+        }
+      ],
+      "description": "No effect in regular TUI mode.",
+      "default": "transcript"
+    },
+    "fullscreenScrollbar": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "auto"
+        },
+        {
+          "type": "string",
+          "const": "always"
+        },
+        {
+          "type": "string",
+          "const": "hidden"
+        }
+      ],
+      "description": "No effect in regular TUI mode.",
+      "default": "auto"
+    },
+    "fullscreenCopyOnSelect": {
+      "type": "boolean",
+      "description": "No effect in regular TUI mode.",
+      "default": true
+    },
+    "fullscreenWheelScrollLines": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "string",
+          "const": "auto"
+        }
+      ],
+      "description": "Lines scrolled per wheel event in fullscreen mode; numeric values are clamped from 1 to 100.",
+      "default": "auto"
+    },
+    "fullscreenFrameQueueLimitKiB": {
+      "type": "number",
+      "description": "Queued output in KiB past which fullscreen frames are dropped while the terminal is not reading, then repainted whole once it reads again; 0 keeps every frame. Clamped to 64 to 65536.",
+      "default": 512
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "ModelThinkingLevel": {
+      "enum": [
+        "off",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    }
+  }
 }

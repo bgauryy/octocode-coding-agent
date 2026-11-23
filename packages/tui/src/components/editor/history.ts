@@ -69,11 +69,24 @@ export function isOnLastVisualLine(editor: EditorModel): boolean {
 	return currentVisualLine === visualLines.length - 1;
 }
 
-/** Show `entry` with its own paste registry, so its markers expand and a new paste gets the next id. */
-function showEntry(editor: EditorModel, entry: HistoryEntry, cursorPlacement: "start" | "end"): void {
+/**
+ * Show `entry` with its own paste registry, so its markers expand and a new paste gets the next id. The cursor goes
+ * to the end, as a shell recalls a command: typing continues the prompt, and Up and Down keep browsing while the
+ * cursor stays where the recall put it.
+ */
+function showEntry(editor: EditorModel, entry: HistoryEntry): void {
 	editor.pastes = new Map(entry.pastes);
 	editor.pasteCounter = entry.pastes ? Math.max(0, ...entry.pastes.keys()) : 0;
-	editor.setTextInternal(entry.text, cursorPlacement);
+	editor.setTextInternal(entry.text, "end");
+	editor.historyRecallCursor = { line: editor.state.cursorLine, col: editor.state.cursorCol };
+}
+
+/** Whether the cursor is still where the last history recall put it. */
+export function atHistoryRecall(editor: EditorModel): boolean {
+	const at = editor.historyRecallCursor;
+	return (
+		editor.historyIndex > -1 && at !== null && at.line === editor.state.cursorLine && at.col === editor.state.cursorCol
+	);
 }
 
 export function navigateHistory(editor: EditorModel, direction: 1 | -1): void {
@@ -107,9 +120,10 @@ export function navigateHistory(editor: EditorModel, direction: 1 | -1): void {
 			editor.scrollOffset = 0;
 			editor.notifyChange();
 		} else {
-			showEntry(editor, { text: "" }, "end");
+			showEntry(editor, { text: "" });
 		}
+		editor.historyRecallCursor = null;
 	} else {
-		showEntry(editor, editor.history[editor.historyIndex] ?? { text: "" }, direction === -1 ? "start" : "end");
+		showEntry(editor, editor.history[editor.historyIndex] ?? { text: "" });
 	}
 }

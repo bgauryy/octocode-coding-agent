@@ -27,7 +27,7 @@ const help = (): string => `${chalk.bold("Usage:")}
   ${hostIdentity().appName} mcp add <server> [options] --url <url>
   ${hostIdentity().appName} mcp remove <server> [-l]
   ${hostIdentity().appName} mcp exposure <server> <${MCP_EXPOSURES.join("|")}> [-l]
-  ${hostIdentity().appName} mcp list [--json]
+  ${hostIdentity().appName} mcp list [--check] [--json]
   ${hostIdentity().appName} mcp tools [server] [tool] [--json]
   ${hostIdentity().appName} mcp config [--json]
   ${hostIdentity().appName} mcp login <server> [--timeout <seconds>]
@@ -61,6 +61,7 @@ Options for add:
   --description <text>    What the server offers, shown in the system prompt
 
 Other options:
+  --check                 Connect the servers and report their state and tools (list)
   --json                  Print the list as JSON
   --timeout <seconds>     Time limit for the whole sign-in (default: 300)`;
 
@@ -172,13 +173,15 @@ export async function runMcpCommand(args: string[], given: McpCommandOptions): P
 			return 0;
 		}
 		case "list": {
-			const parsed = parseOptions(rest, { json: "flag" }, error);
+			const parsed = parseOptions(rest, { json: "flag", check: "flag" }, error);
 			if (!parsed) return 1;
 			if (parsed.positional.length > 0) {
-				error(`Usage: ${hostIdentity().appName} mcp list [--json]\n${helpHint()}`);
+				error(`Usage: ${hostIdentity().appName} mcp list [--check] [--json]\n${helpHint()}`);
 				return 1;
 			}
-			return list(listed, parsed.values.has("json"), untrustedNote, options, credentials, log);
+			// Listing starts no server unless asked: a server's start can start more (`McpServerPreset.startsOutsideServer`).
+			const check = parsed.values.has("check");
+			return list(listed, parsed.values.has("json"), untrustedNote, options, credentials, log, undefined, check);
 		}
 		case "login":
 		case "logout": {

@@ -19,7 +19,8 @@ import type { QaReviewer } from "../../../backlog/qa-gate.ts";
 import { completeStep } from "../../../backlog/tool-step.ts";
 import { SETTINGS_DEFAULTS } from "../../../../core/settings-defaults.ts";
 import { closeField, completionField, legacyEntityFields } from "../../../backlog/tool-schema.ts";
-import { oneWrite } from "../../../backlog/tool-support.ts";
+import { checkMerged } from "../../../backlog/merge-gate.ts";
+import { oneWrite, rehearse } from "../../../backlog/tool-support.ts";
 import { backlogPrompt } from "../../../backlog/tool-text.ts";
 
 const OPS = ["get", "claim", "note", "done", "close", "step"] as const;
@@ -203,17 +204,25 @@ export function registerBacklogTool(
 		}),
 	);
 
-	/** One write: the done guard and TaskCompleted hooks, then the store write, alone in its transaction. */
+	/**
+	 * One write: the done guard, git's merge check and a rehearsal of the store write (its own refusals), then the
+	 * TaskCompleted hooks and the QA review, then the store write, alone in its transaction.
+	 */
 	async function write(args: Params, op: Exclude<Op, "get">, ctx: FeatureContext, signal?: AbortSignal) {
 		/** The QA note recorded with the completion, when a review ran or was skipped. */
 		let qa: string | undefined;
+		/** The isolated-change refs git found merged, checked before (never inside) the write's transaction. */
+		let merged: readonly string[] | undefined;
 		if ((op === "done" || op === "close") && args.id) {
-			// The built-in guard, then the TaskCompleted hooks, run before the write, here, in the process that writes; a refusal leaves the item as it is.
+			// The cheap checks, then the hooks and the paid review, all before the write, here, in the process that writes; a refusal leaves the item as it is.
 			const backlog = await openBacklogWhenReady(ctx, options, signal);
 			const item = backlog.store.get(args.id);
 			if (item && item.state !== "done") {
 				const held = op === "done" && options.holdings && doneRefusal(backlog.store, item, options.holdings, ctx.cwd);
 				if (held) throw new Error(held);
+				if (op === "done") merged = await checkMerged(backlog, item, signal);
+				const checked = merged;
+				await rehearse(backlog.store, () => work(backlog, args, op, checked, false), signal);
 				const change = op === "done" ? "done" : "closed";
 				const refusal = await options.completing?.(completionInfo(item, change, args), ctx, signal);
 				if (refusal)
@@ -236,17 +245,20 @@ export function registerBacklogTool(
 			signal?.throwIfAborted();
 			const backlog = await openBacklogWhenReady(ctx, options, signal);
 			const given = qa ? { ...args, note: [args.note, qa].filter(Boolean).join("\n\n") } : args;
-			return backlog.store.transactionWhenReady(() => work(backlog, given, op), signal);
+			return backlog.store.transactionWhenReady(() => work(backlog, given, op, merged), signal);
 		});
 		return qa
 			? { ...written, content: [{ type: "text" as const, text: `${written.content[0]?.text ?? ""}\n${qa}` }] }
 			: written;
 	}
 
-	/** Each work operation as the store write it is: the store applies every rule (who holds the item, what a state needs). */
-	function work(backlog: Backlog, args: Params, op: Exclude<Op, "get">) {
+	/**
+	 * Each work operation as the store write it is: the store applies every rule (who holds the item, what a state needs).
+	 * `announce` false (a rehearsal) leaves queued children unasked: the write is rolled back.
+	 */
+	function work(backlog: Backlog, args: Params, op: Exclude<Op, "get">, merged?: readonly string[], announce = true) {
 		const run = (params: Parameters<typeof runBacklog>[1]) =>
-			runBacklog(backlog, params, { subagent, word: op, queued: endedSignal(api) });
+			runBacklog(backlog, params, { subagent, word: op, merged, ...(announce ? { queued: endedSignal(api) } : {}) });
 		const { id, note, version } = args;
 		if (op === "step") return completeStep(backlog, { id, note, version });
 		const one = { op: "update" as const, id, note, version };

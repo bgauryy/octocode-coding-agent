@@ -6,7 +6,9 @@ import {
 	openImportedSession,
 	prepareImportDestination,
 	SessionImportFileNotFoundError,
+	SessionImportInvalidError,
 	SessionNameError,
+	sessionFileProblem,
 } from "./agent-session-runtime/import.ts";
 import { forkTarget } from "./agent-session-runtime/messages.ts";
 import type {
@@ -23,6 +25,7 @@ export {
 	SessionImportFileNotFoundError,
 	SessionImportInvalidError,
 	SessionNameError,
+	sessionFileProblem,
 } from "./agent-session-runtime/import.ts";
 export type {
 	CreateAgentSessionRuntimeFactory,
@@ -312,6 +315,9 @@ export class AgentSessionRuntime {
 		if (!existsSync(resolvedPath)) {
 			throw new SessionImportFileNotFoundError(resolvedPath);
 		}
+		// Checked before the switch is announced or the file copied, so the error names the file given and its bad line.
+		const problem = sessionFileProblem(resolvedPath);
+		if (problem) throw new SessionImportInvalidError(resolvedPath, problem);
 
 		const sessionDir = this.session.sessionManager.getSessionDir();
 		const destination = prepareImportDestination(resolvedPath, sessionDir);

@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const script = fileURLToPath(new URL("../../../scripts/build-workspace-state.mjs", import.meta.url));
+const script = fileURLToPath(new URL("../../../scripts/build/build-workspace-state.mjs", import.meta.url));
 
 type Run = (args: string[]) => { status: number | null; stderr: string };
 const runNode: Run = (args) => spawnSync(process.execPath, args, { encoding: "utf8" });

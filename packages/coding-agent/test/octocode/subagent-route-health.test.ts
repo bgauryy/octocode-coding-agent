@@ -86,13 +86,19 @@ describe("routing and provider health (B347 P2-5)", () => {
 		"401 Unauthorized for model tiny",
 		"403 Invalid API key for model tiny",
 		"403 API key has expired; no access to model tiny",
-		"403 forbidden",
 	])("keeps credential-wide refusals provider scoped: %s", (error) => {
 		const health = new ProviderHealth();
 		health.noteRun("cheap/tiny", error, true);
 		expect(health.refused("cheap", "allowed")).toBe(true);
 		expect(health.refused("cheap", "allowed", true)).toBe(false);
 		expect(health.refused("other", "tiny")).toBe(false);
+	});
+
+	it("a bare 403 names no credential: it marks the model that refused, not its provider", () => {
+		const health = new ProviderHealth();
+		health.noteRun("cheap/tiny", "403 forbidden", true);
+		expect(health.refused("cheap", "tiny")).toBe(true);
+		expect(health.refused("cheap", "allowed")).toBe(false);
 	});
 
 	it("counts a credential refusal until it is lifted, a usage limit only while recent, and not a timeout", () => {

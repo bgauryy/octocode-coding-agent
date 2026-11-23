@@ -68,9 +68,12 @@ export class SettingsListView implements Component {
 		return this.list.getSelectedItem()?.id;
 	}
 
-	updateValue(id: string, value: string): void {
+	/** Shows `value` on the row with `id`; `values` replaces what Enter cycles through, when the row's choices changed. */
+	updateValue(id: string, value: string, values?: string[]): void {
 		const item = this.list.getItems().find((candidate) => candidate.id === id);
-		if (item) item.currentValue = value;
+		if (!item) return;
+		item.currentValue = value;
+		if (values) item.values = values;
 	}
 
 	/** Moves the cursor to the row with `id`, when it is shown. */

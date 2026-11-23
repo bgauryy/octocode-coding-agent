@@ -42,7 +42,10 @@ describe("RPC session commands", () => {
 		const tempDir = join(tmpdir(), `octocode-rpc-commands-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 		mkdirSync(tempDir, { recursive: true });
 		const harness = await createHarness({
-			models: [{ id: "faux-reasoning", reasoning: true }],
+			models: [
+				{ id: "faux-reasoning", reasoning: true },
+				{ id: "faux-plain", reasoning: false, contextWindow: 200_000 },
+			],
 			sessionManager: SessionManager.create(tempDir, join(tempDir, "sessions")),
 			cwd: tempDir,
 			compactionPolicy,
@@ -200,6 +203,33 @@ describe("RPC session commands", () => {
 		expect(cycled.level).not.toBe(initial);
 		expect(levels).toContain(cycled.level);
 		expect((await send({ type: "get_state" })).data.thinkingLevel).toBe(cycled.level);
+	});
+
+	it("answers set_thinking_level with the level applied, clamped on a model without reasoning", async () => {
+		const { harness, send } = await createRpc();
+
+		expect((await send({ type: "set_thinking_level", level: "high" })).data).toEqual({ level: "high" });
+		await send({ type: "set_model", provider: harness.getModel().provider, modelId: "faux-plain" });
+		expect((await send({ type: "set_thinking_level", level: "high" })).data).toEqual({ level: "off" });
+		expect((await send({ type: "get_state" })).data.thinkingLevel).toBe("off");
+	});
+
+	it("reports one context window for the selected model from set_model and get_state", async () => {
+		const { harness, send } = await createRpc();
+		// The default working budget (the harness uses the full capacity).
+		harness.settingsManager.applyOverrides({ contextBudget: 300_000 });
+
+		const { data: selected } = await send({
+			type: "set_model",
+			provider: harness.getModel().provider,
+			modelId: "faux-plain",
+		});
+		const { data: state } = await send({ type: "get_state" });
+		const { data: available } = await send({ type: "get_available_models" });
+		// The session works within 90% of the 200,000-token capacity (`contextBudget`); the model list shows the capacity.
+		expect(selected.contextWindow).toBe(180_000);
+		expect(state.model.contextWindow).toBe(selected.contextWindow);
+		expect(available.models.find((m: { id: string }) => m.id === "faux-plain").contextWindow).toBe(200_000);
 	});
 
 	it("lists available models with their required fields", async () => {

@@ -29,19 +29,19 @@ import { getOctocodeUserAgent } from "../../../utils/user-agent.ts";
 import type { LatestOctocodeRelease } from "../../../utils/version-check.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { theme } from "../../../theme/theme.ts";
+import { selectChangelog } from "../state/notices-slice.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the startup checks and notices. */
 type StartupChecksHost = Pick<
 	InteractiveModeHost,
-	| "changelogMarkdown"
 	| "chatContainer"
 	| "getMarkdownThemeWithSettings"
 	| "session"
 	| "sessionManager"
 	| "settingsManager"
-	| "startupNoticesShown"
 	| "ui"
+	| "uiStore"
 	| "version"
 >;
 
@@ -138,12 +138,9 @@ function reportInstallTelemetry(host: StartupChecksHost, version: string): void 
 }
 
 export function showStartupNoticesIfNeeded(host: StartupChecksHost): void {
-	if (host.startupNoticesShown) {
-		return;
-	}
-	host.startupNoticesShown = true;
-
-	if (!host.changelogMarkdown) {
+	const notices = host.uiStore.getState();
+	const changelog = selectChangelog(notices);
+	if (!notices.claimNotice("startup") || !changelog) {
 		return;
 	}
 
@@ -152,14 +149,14 @@ export function showStartupNoticesIfNeeded(host: StartupChecksHost): void {
 	}
 	host.chatContainer.addChild(new DynamicBorder());
 	if (host.settingsManager.getCollapseChangelog()) {
-		const versionMatch = host.changelogMarkdown.match(/##\s+\[?(\d+\.\d+\.\d+)\]?/);
+		const versionMatch = changelog.match(/##\s+\[?(\d+\.\d+\.\d+)\]?/);
 		const latestVersion = versionMatch ? versionMatch[1] : host.version;
 		const condensedText = `Updated to v${latestVersion}. Use ${theme.bold("/changelog")} to view full changelog.`;
 		host.chatContainer.addChild(new Text(condensedText, 1, 0));
 	} else {
 		host.chatContainer.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "What's New")), 1, 0));
 		host.chatContainer.addChild(new Spacer(1));
-		host.chatContainer.addChild(new Markdown(host.changelogMarkdown.trim(), 1, 0, host.getMarkdownThemeWithSettings()));
+		host.chatContainer.addChild(new Markdown(changelog.trim(), 1, 0, host.getMarkdownThemeWithSettings()));
 		host.chatContainer.addChild(new Spacer(1));
 	}
 	host.chatContainer.addChild(new DynamicBorder());

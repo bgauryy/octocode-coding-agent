@@ -12,6 +12,12 @@ export interface RunOutcome {
 	stopReason?: AssistantMessage["stopReason"];
 	/** Why the run failed: the provider's message, or the failed recovery that followed it. */
 	errorMessage?: string;
+	/**
+	 * A provider failure as the retry lines name it (`<provider>/<model>[ at <host>]: <error>`, `retryFailureText`), for
+	 * reports to people; `errorMessage` keeps the provider's own text, which retry classification reads. Absent when a
+	 * failed recovery decided the status.
+	 */
+	failureText?: string;
 	/** What went wrong around a run that still produced its result, such as a held message that could not be saved yet. */
 	warning?: string;
 	/** Every assistant message of the run, including failed attempts the context no longer holds. */
@@ -22,14 +28,23 @@ export function createRunOutcome(): RunOutcome {
 	return { status: "completed", usage: createUsageTotals() };
 }
 
-/** Folds one finished assistant message in: a later good message supersedes an earlier failure, as a retry does. */
-export function recordRunMessage(outcome: RunOutcome, message: AssistantMessage): void {
+/**
+ * Folds one finished assistant message in: a later good message supersedes an earlier failure, as a retry does.
+ * `failureText` names a provider failure for people (`SessionRetry.failureText`); without it the report shows the bare error.
+ */
+export function recordRunMessage(
+	outcome: RunOutcome,
+	message: AssistantMessage,
+	failureText?: (message: AssistantMessage) => string,
+): void {
 	addUsageToTotals(outcome.usage, message.usage);
 	const { stopReason } = message;
+	outcome.failureText = undefined;
 	if (stopReason === "error" || stopReason === "aborted") {
 		outcome.status = stopReason === "error" ? "failed" : "aborted";
 		outcome.stopReason = stopReason;
 		outcome.errorMessage = message.errorMessage;
+		if (stopReason === "error" && failureText) outcome.failureText = failureText(message);
 	} else if (stopReason === "length") {
 		outcome.status = "truncated";
 		outcome.stopReason = stopReason;
@@ -48,6 +63,7 @@ export function recordRunFailure(outcome: RunOutcome, errorMessage: string): voi
 	outcome.status = "failed";
 	outcome.stopReason ??= "error";
 	outcome.errorMessage = errorMessage;
+	outcome.failureText = undefined;
 }
 
 export function recordRunWarning(outcome: RunOutcome, warning: string): void {

@@ -246,6 +246,15 @@ export class SettingsManager extends DisplaySettingsAccessors implements Setting
 		this.state.settings = deepMergeSettings(this.state.settings, overrides);
 	}
 
+	async rewriteScope(
+		scope: "global" | "project",
+		rewrite: (current: string | undefined) => string | undefined,
+	): Promise<void> {
+		await this.flush();
+		this.state.storage.withLock(scope, rewrite);
+		await this.reload();
+	}
+
 	async flush(): Promise<void> {
 		await this.persistence.pendingWrites;
 	}

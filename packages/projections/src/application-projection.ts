@@ -54,6 +54,7 @@ export class ApplicationProjection {
 		const availableTools = snapshot?.tools ?? [];
 		const toolIds = new Set(availableTools.map((tool) => tool.toolCallId));
 		const toolsById = new Map(availableTools.map((tool) => [tool.toolCallId, tool]));
+		const graph = toolGraph(availableTools);
 		const linked = new Set<string>();
 		const messages = new Map<string, FeedEvent>();
 		for (const message of snapshot?.messages ?? []) {
@@ -63,7 +64,7 @@ export class ApplicationProjection {
 			const references = new Set(
 				message.content?.flatMap((block) => (block.type === "toolCall" ? [block.toolCallId] : [])),
 			);
-			const tools = relatedTools(availableTools, references);
+			const tools = relatedTools(graph, references);
 			const sources = [snapshot?.sessionId, message, ...tools];
 			const previous = this.messages.get(message.id);
 			if (previous && sameSources(this.sources.get(previous), sources)) {
@@ -102,7 +103,7 @@ export class ApplicationProjection {
 		const tools = new Map<string, FeedEvent>();
 		for (const tool of availableTools) {
 			const previous = this.tools.get(tool.toolCallId);
-			const nested = relatedTools(availableTools, new Set([tool.toolCallId])).filter(
+			const nested = relatedTools(graph, new Set([tool.toolCallId])).filter(
 				(item) => item.toolCallId !== tool.toolCallId,
 			);
 			const embedded = linked.has(tool.toolCallId) || hasToolParent(tool, toolsById);
@@ -221,18 +222,46 @@ function hasToolParent(tool: ApplicationTool, byId: ReadonlyMap<string, Applicat
 	}
 }
 
-function relatedTools(tools: readonly ApplicationTool[], ids: Set<string>): ApplicationTool[] {
-	let changed = true;
-	while (changed) {
-		changed = false;
-		for (const tool of tools) {
-			if (!ids.has(tool.toolCallId) && tool.parentToolCallId && ids.has(tool.parentToolCallId)) {
-				ids.add(tool.toolCallId);
-				changed = true;
-			}
+interface ToolGraph {
+	tools: readonly ApplicationTool[];
+	/** Indexes of the tools carrying an id. */
+	byId: ReadonlyMap<string, number[]>;
+	/** Indexes of the tools hanging under a parent id. */
+	children: ReadonlyMap<string, number[]>;
+}
+
+/** One pass over the tools: every related-tools lookup afterwards follows only its own descendants. */
+function toolGraph(tools: readonly ApplicationTool[]): ToolGraph {
+	const byId = new Map<string, number[]>();
+	const children = new Map<string, number[]>();
+	tools.forEach((tool, index) => {
+		const same = byId.get(tool.toolCallId);
+		if (same) same.push(index);
+		else byId.set(tool.toolCallId, [index]);
+		if (!tool.parentToolCallId) return;
+		const siblings = children.get(tool.parentToolCallId);
+		if (siblings) siblings.push(index);
+		else children.set(tool.parentToolCallId, [index]);
+	});
+	return { tools, byId, children };
+}
+
+/** The tools with the given ids plus all their descendants, in snapshot order. A seen set keeps parent cycles finite. */
+function relatedTools(graph: ToolGraph, ids: ReadonlySet<string>): ApplicationTool[] {
+	const found = new Set<number>();
+	const seen = new Set<string>();
+	const pending = [...ids];
+	while (pending.length) {
+		const id = pending.pop() as string;
+		if (seen.has(id)) continue;
+		seen.add(id);
+		for (const index of graph.byId.get(id) ?? []) found.add(index);
+		for (const index of graph.children.get(id) ?? []) {
+			found.add(index);
+			pending.push(graph.tools[index].toolCallId);
 		}
 	}
-	return tools.filter((tool) => ids.has(tool.toolCallId));
+	return [...found].sort((a, b) => a - b).map((index) => graph.tools[index]);
 }
 
 /** Strips the placeholders `applicationContentText` writes into a text-only message. Rich blocks never pass through it. */

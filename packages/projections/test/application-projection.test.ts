@@ -183,4 +183,65 @@ describe("ApplicationProjection", () => {
 		projection.update(undefined, 8);
 		expect(projection.run).toBeUndefined();
 	});
+
+	describe("tool adjacency", () => {
+		type Tool = NonNullable<ApplicationSnapshot["tools"]>[number];
+		const tool = (id: string, parent?: string, order?: number): Tool => ({
+			toolCallId: id,
+			toolName: "read",
+			text: id,
+			status: "completed",
+			...(parent ? { parentToolCallId: parent } : {}),
+			...(order === undefined ? {} : { order }),
+		});
+		const rows = (tools: Tool[]) =>
+			new ApplicationProjection()
+				.update(
+					session({
+						messages: [
+							{
+								id: "m",
+								role: "assistant",
+								text: "x",
+								complete: true,
+								content: [{ type: "toolCall", toolCallId: "a" }],
+							} as never,
+						],
+						tools,
+					}),
+					1,
+				)
+				.map((event) => ({ ...event, id: 0 }));
+		const ids = (list: Tool[] | undefined) => list?.map((t) => t.toolCallId);
+
+		it("projects a parent chain the same in forward and reverse order", () => {
+			const chain = [tool("a"), tool("b", "a"), tool("c", "b")];
+			const forward = rows(chain);
+			const reverse = rows([...chain].reverse());
+			expect(ids(forward.find((e) => e.type === "message")?.tools)).toEqual(["a", "b", "c"]);
+			expect(ids(reverse.find((e) => e.type === "message")?.tools)).toEqual(["c", "b", "a"]);
+			const nested = (list: typeof forward) =>
+				Object.fromEntries(list.filter((e) => e.tool).map((e) => [e.tool?.toolCallId, ids(e.tools)?.sort()]));
+			expect(nested(reverse)).toEqual(nested(forward));
+			expect(nested(forward)).toEqual({ a: ["b", "c"], b: ["c"], c: undefined });
+		});
+
+		it("terminates on a parent cycle and a self-parent", () => {
+			const events = rows([tool("a", "b"), tool("b", "a"), tool("c", "c")]);
+			expect(events.filter((e) => e.tool)).toHaveLength(3);
+		});
+
+		it("reads the tool list O(messages + tools) times per update", () => {
+			let reads = 0;
+			const tools = Array.from({ length: 300 }, (_, i) => tool(`t${i}`, undefined, i));
+			const proxied = new Proxy(tools, {
+				get(target, key, receiver) {
+					if (typeof key === "string" && /^\d+$/.test(key)) reads++;
+					return Reflect.get(target, key, receiver);
+				},
+			});
+			new ApplicationProjection().update(session({ tools: proxied }), 1);
+			expect(reads).toBeLessThan(300 * 12);
+		});
+	});
 });

@@ -1,9 +1,15 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { createFauxCore, fauxAssistantMessage, type TranscriptContext } from "@octocodeai/octocode-ai";
+import {
+	createFauxCore,
+	fauxAssistantMessage,
+	type FauxResponseFactory,
+	type TranscriptContext,
+} from "@octocodeai/octocode-ai";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeatureRegister } from "../../src/core/features/index.ts";
+import { renderPrompt } from "../../src/core/prompt-template.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
@@ -14,15 +20,13 @@ import { testFeatures } from "../helpers/features.ts";
 import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
- * `/optimize` and the prompt hook through a real session, the native extension and a scripted main model. The helper
- * model call (`completeSimple`) is the one external boundary replaced; the dialogs are answered from a queue the way a
+ * `/optimize` and the prompt hook through a real session, the native extension and a scripted provider. The helper
+ * call goes through the session's model runtime like any request (`callSmallModel`), so the provider's reply to the
+ * rewrite request is the one external boundary replaced (`helper`); the dialogs are answered from a queue the way a
  * user would answer them.
  */
-const helper = vi.hoisted(() => vi.fn());
-vi.mock("@octocodeai/octocode-ai/compat", async (importActual) => ({
-	...(await importActual<Record<string, unknown>>()),
-	completeSimple: helper,
-}));
+const helper = vi.fn();
+const REWRITE_REQUEST = renderPrompt("workflows/optimize-prompt.md");
 
 const savedEnv = { ...process.env };
 const root = fs.realpathSync(tmp("octocode-optimize-"));
@@ -77,13 +81,16 @@ const lastUserText = (context: TranscriptContext): string => {
 		: message.content.map((part) => part.text ?? "").join("");
 };
 
+/** The provider's reply: the helper's to the rewrite request, the main model's ("done", recorded in `sent`) otherwise. */
+const reply: FauxResponseFactory = (context, options, _state, model) => {
+	if (lastUserText(context).startsWith(REWRITE_REQUEST)) return helper(model, context, options);
+	sent.push(lastUserText(context));
+	return fauxAssistantMessage("done");
+};
+
 async function prompt(text: string, options?: { source?: "interactive" | "rpc" | "feature" }): Promise<void> {
-	faux.setResponses([
-		(context: TranscriptContext) => {
-			sent.push(lastUserText(context));
-			return fauxAssistantMessage("done");
-		},
-	]);
+	// One step per request: the rewrite (and its retries) and the main turn.
+	faux.setResponses(Array.from({ length: 4 }, () => reply));
 	await session.prompt(text, options);
 	await vi.waitFor(() => expect(session.isStreaming).toBe(false));
 }
@@ -298,10 +305,14 @@ describe("prompt optimization on submit", () => {
 		});
 
 		it("keeps the prompt in the editor when the user cancels", async () => {
-			helper.mockResolvedValueOnce(fauxAssistantMessage("", { stopReason: "error", errorMessage: "rate limited" }));
+			// A failure a retry cannot clear: a rate limit is retried first (`INTERACTIVE_RETRY`, side-retry.test.ts).
+			helper.mockResolvedValueOnce(
+				fauxAssistantMessage("", { stopReason: "error", errorMessage: "the provider refused the request" }),
+			);
 			screen.answers.push("Cancel");
 			await prompt("fix teh login bug");
-			expect(screen.selects[0]?.title).toContain("rate limited");
+			expect(helper).toHaveBeenCalledTimes(1);
+			expect(screen.selects[0]?.title).toContain("the provider refused the request");
 			expect(sent).toEqual([]);
 			expect(screen.editorText).toEqual(["fix teh login bug"]);
 		});

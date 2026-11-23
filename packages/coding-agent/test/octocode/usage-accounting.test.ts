@@ -160,9 +160,9 @@ describe("plan-billed runner usage", () => {
 		const text = report(entries);
 		expect(text).toContain("claude-code/sonnet: (sub) (1.2k tokens)");
 		expect(text).toContain("codex: (sub)");
-		expect(text).toContain("Tools/summaries: $0.200");
+		expect(text).toContain("Tools/summaries: ≈$0.20");
 		// A plan-billed route never prints a dollar figure; the cache-warming line is about this session, not them.
-		expect(text).not.toMatch(/(sonnet|codex): \$/);
+		expect(text).not.toMatch(/(sonnet|codex): ≈?\$/);
 		const onlyPlan = [background];
 		const planStats = computeSessionStats({ getEntries: () => onlyPlan } as never, {
 			sessionFile: undefined,

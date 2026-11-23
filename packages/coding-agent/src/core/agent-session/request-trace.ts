@@ -12,6 +12,7 @@ import {
 	createAssistantMessageEventStream,
 	describePayloadLayers,
 	PayloadLayerMemo,
+	type RequestLayer,
 	type RequestTrace,
 	type SimpleStreamOptions,
 } from "@octocodeai/octocode-ai";
@@ -49,6 +50,63 @@ function conversationFor(sessionId: string | undefined): Conversation {
 	return conversation;
 }
 
+/** What the request's conversation was built from: the messages handed to the provider and each one's session entry. */
+export interface TraceSource {
+	messages: readonly { role: string }[];
+	/** The key (`message:<entry id>`) of the session entry whose message object this is, if any. */
+	entryKeyOf(message: object): string | undefined;
+}
+
+/** Wire roles each conversation role may be sent as (a tool result is a user turn in some APIs). */
+const WIRE_ROLES: Record<string, readonly string[]> = {
+	user: ["user"],
+	assistant: ["assistant", "model"],
+	toolResult: ["toolResult", "tool", "function_call_output", "user"],
+};
+
+/** The trace source of `messages` against the session branch `entries`: a message is a session entry's when it is that entry's own object. */
+export function branchTraceSource(
+	messages: readonly { role: string }[],
+	entries: readonly { type: string; id: string; message?: object }[],
+): TraceSource {
+	const keys = new Map<object, string>();
+	for (const entry of entries)
+		if (entry.type === "message" && entry.message) keys.set(entry.message, `message:${entry.id}`);
+	return { messages, entryKeyOf: (message) => keys.get(message) };
+}
+
+const messageLayers = (trace: RequestTrace): RequestLayer[] => trace.layers.filter((layer) => layer.kind === "message");
+
+/**
+ * `final` with `entryKey` on each message layer that provably is a session entry's message: the request as built
+ * (`built`, described before any payload hook ran) has one message layer per source message, the layer at the same
+ * place in `final` has the same hash and role, and the source message is a session entry's own object. A hook that
+ * reordered, rewrote or dropped a message changes the hash there, so that layer stays unstamped; position alone never
+ * stamps.
+ */
+function stampEntryKeys(built: RequestTrace, final: RequestTrace, source: TraceSource): RequestTrace {
+	// A system message travels as a system block, not a conversation item.
+	const sent = source.messages.filter((message) => message.role !== "system");
+	const before = messageLayers(built);
+	if (before.length !== sent.length) return final;
+	const after = messageLayers(final);
+	const keys = new Map<RequestLayer, string>();
+	after.forEach((layer, i) => {
+		const message = sent[i];
+		const was = before[i];
+		const key = message && was ? source.entryKeyOf(message) : undefined;
+		const roles = WIRE_ROLES[message?.role ?? ""];
+		if (!key || !was || was.hash !== layer.hash || was.role !== layer.role) return;
+		if (layer.role && roles && !roles.includes(layer.role)) return;
+		keys.set(layer, key);
+	});
+	if (!keys.size) return final;
+	return {
+		...final,
+		layers: final.layers.map((layer) => (keys.has(layer) ? { ...layer, entryKey: keys.get(layer) } : layer)),
+	};
+}
+
 /**
  * Runs `start` with `options.onPayload` chained (the caller's hook runs first, and the payload it
  * returns is the one described) and returns a stream whose messages carry `requestTrace`.
@@ -57,15 +115,20 @@ function conversationFor(sessionId: string | undefined): Conversation {
 export function withRequestTrace<TOptions extends Pick<SimpleStreamOptions, "onPayload" | "sessionId">>(
 	options: TOptions,
 	start: (options: TOptions) => AssistantMessageEventStream,
+	origin?: TraceSource,
 ): AssistantMessageEventStream {
 	let trace: RequestTrace | undefined;
 	const upstream = options.onPayload;
 	const source = start({
 		...options,
 		onPayload: async (payload, model) => {
+			const api = (model as { api: string }).api;
+			// Described before the hook runs (it may change the payload in place); only needed to vouch for identity.
+			const built = upstream && origin ? describePayloadLayers(api, payload) : undefined;
 			const replaced = await upstream?.(payload, model);
 			const conversation = conversationFor(options.sessionId);
-			const described = describePayloadLayers((model as { api: string }).api, replaced ?? payload, conversation.memo);
+			let described = describePayloadLayers(api, replaced ?? payload, conversation.memo);
+			if (origin && described) described = stampEntryKeys(built ?? described, described, origin);
 			trace = described && chainTrace(described, conversation.last);
 			if (trace) conversation.last = trace;
 			return replaced;

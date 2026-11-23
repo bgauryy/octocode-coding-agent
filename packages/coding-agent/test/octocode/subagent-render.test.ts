@@ -170,7 +170,7 @@ describe("subagent renderers", () => {
 		// The duration shows once, in the header; the outcome does not repeat it.
 		expect(finished).toContain("⎿  Done · general-0001 · 2 tool calls\n");
 		expect(finished).not.toContain("1m30s");
-		expect(rendered(renderAgentCall({ task: "x" }, theme, ctx({ durationMs: 90_000 })))).toBe("⏺ Agent · 1m30s");
+		expect(rendered(renderAgentCall({ task: "x" }, theme, ctx({ durationMs: 90_000 })))).toBe("✓ Agent · 1m30s");
 		const bare = rendered(
 			renderAgentResult(
 				{ content: [{ type: "text", text: "Subagent failed\ndetail" }], details: undefined },
@@ -320,7 +320,7 @@ describe("subagent renderers", () => {
 			);
 		for (const requested of [true, false]) {
 			// A stopped agent's light is red like a failed one; its words stay in the warning tone.
-			expect(stopped(requested)).toContain("<error>⏺");
+			expect(stopped(requested)).toContain("<error>◼");
 			expect(stopped(requested)).toContain("<warning>Stopped");
 		}
 	});

@@ -4,6 +4,176 @@ Entries are shown once by `octocode` after an update and on demand with `/change
 
 ## [Unreleased]
 
+### Providers and models
+
+- Models of a known family that models.dev adds appear without an Octocode release, priced, and only from the listing each provider was built from; ids Octocode leaves out are never added. `/model` marks them `new`.
+- Newer models.dev prices and limits replace the bundled ones, and models models.dev lists as deprecated are dimmed and marked `deprecated` in `/model`.
+- Catalog updates are off with `modelCatalogUpdates: false` (read at start) or `OCTOCODE_MODELS_DEV=0`; `--offline` keeps the saved index and never fetches it.
+- Fixed: a gateway listing a model under a provider's own id no longer gives that provider's model the gateway's price or drops its deprecation mark.
+- The bundled catalog is generated from the models.dev snapshot of the pinned `@opencode-ai/models` package; `generate:models --live` fetches models.dev instead.
+- Startup warns when the saved default model is not used: it says why (provider not configured, off or paused, no credentials, model not in the catalog or hidden) and names the model used instead, with its billing when that may differ.
+- With no usable model, an interactive start opens `/providers` on **+ Provider**; print and JSON runs exit with command-line guidance; RPC `get_state` reports no model.
+- A start model Octocode picks itself is never one models.dev lists as deprecated, unless nothing else is available.
+- `--model <name>` with no credentials lists the matching `provider/id` names instead of choosing one.
+- A refused credential ends with a `Fix:` line: `/providers → <Provider>`, the vendor CLI's own login (`claude auth login`), or for Bedrock signed in through an AWS profile `aws sso login --profile <name>`. Print, JSON and RPC runs say how to reach `/providers` from a shell.
+- AWS SSO, Google default credentials, the AWS CLI's "Unable to locate credentials", GitHub's "Bad credentials" and a ChatGPT reconnect count as refused credentials.
+- A bare `403`, "forbidden" or "permission denied" counts as a refused credential only when it names a key, a token or authentication.
+- Codex and Claude subscription usage limits are not retried.
+- A rate limit (a plain `429`) never switches to a `retry.fallbackModels` entry, and deprecated entries are skipped.
+- A usage limit with no fallback left asks what to do, in the terminal and `/web`: wait and resume at the reset, switch to a connected model (optionally saved to `retry.fallbackModels`), pick one with `/model`, or stop.
+- New `retry.maxUsageWaitMs` (default `0`): how long an unattended run waits for a usage limit to reset before it fails naming the reset time.
+- On a virtual model, a model unavailable for the account goes back to the router, as a usage limit does.
+- `/model`: Enter switches this chat with no question; Ctrl+S also saves it as the default; Alt+I opens the details (was Ctrl+D), where Ctrl+P sets the provider's preferred model.
+- `/providers` lists Ready, Needs attention, then **+ Provider**, **+ From template** and **+ External agent CLI**, then Available, Off, External agents, Test and Advanced, which now holds the `models.json` files.
+- An official provider's `modelOverrides` accepts `cost` (with `tiers`, `until` and `after`), and `/model` details mark that price "(your price)".
+- `auth check --model` resolves the model as a session does and shows the resolver's own error.
+- RPC `set_thinking_level` returns the level applied (clamped to what the model supports), and `set_model` returns the session's working context window, as `get_state` does.
+
+### Quota, spend and usage
+
+- `/status` has a Quota section: plan windows (share used, reset) and API rate limits, read from response headers and Claude Code's rate-limit events, with no extra requests.
+- The footer shows a plan window from 70% (`quota 5h 82% · resets 14:20`, error colour from 90%).
+- `Σ` shows money apart from a plan's estimate (`Σ ≈$1.24 · ~$3.10 plan`), running subagents included, in the footer and `/web`.
+- Who paid for each request (plan or per token) is stored when it is spent, so the footer, `/web`, `/usage` and `subagents.maxCost` agree.
+- New `/usage [today|7d|30d]` (also `/cost`): spend by provider and model, money apart from plan estimates, then current quota windows. History starts at this upgrade.
+- `/usage` counts every model call once: replies, branch summaries, session titles, prompt rewrites, prompt hooks, provider checks, external-runner turns and late cache refreshes.
+- `subagents.maxCost` and the delegated-cost notice count only money billed per token, and the notice also applies to plan-billed coordinators.
+- A message to a lingering subagent is refused past `subagents.maxCost`, as a new spawn or a resume is.
+- The `models` tool shows each provider's quota windows, health (cooling down, refused, deprecated models) and this session's spend.
+- The agent is told once per plan window when its provider passes 90% of it.
+- A headless Claude Code task stopped by a plan limit fails as a usage limit naming when it resets, and a parent's advice says when its child's limit resets.
+
+### Subagents
+
+- A foreground subagent moved to the background keeps its slot and isolated worktree until it ends, and its report arrives.
+- Esc on a foreground `agent` call keeps the child's record and spend.
+- A child's `Fix:` line no longer reaches the parent model.
+- After a child's fallback, its advice and provider health name the model that ran.
+- Routing notices name a `retry.fallbackModels` switch instead of saying "the user changed models".
+- File reservations also block an extension's `write` and `edit` tools.
+
+### Backlog
+
+- Subagents no longer mark their coordinator's item done or closed; they report, and the coordinator completes it after QA review and merge.
+- A web board drag claims the item for the page's session.
+- Reordering cards keeps item versions and fires no `edited` events.
+- `done` runs the store's checks before TaskCompleted hooks and the paid QA review.
+- `/purge all` also clears provider quota readings and rate-limit cool-downs, and `/purge workspace` clears its items' child handoffs.
+
+### Security
+
+- Sandboxed commands can no longer read Octocode's session, web and API tokens, `mcp-auth.json`, subagent handoffs or a `models.json` holding a key.
+- `sandbox: "false"` or `0` no longer gets past `sandbox.allowUnsandboxed: false`.
+- A sandbox the library warns is weaker than it should be (Linux without its seccomp filter) asks once whether to run in it, or refuses.
+- A host allowed as public that later resolves to a private address is refused when the sandboxed command connects.
+- More cloud metadata addresses are refused.
+- Shell commands no longer inherit `AWS_BEARER_TOKEN_BEDROCK` or `OPENAI_CUSTOM_HEADERS` unless `bash.inheritProviderKeys` is on.
+- The file tool compares protected names as case-insensitive file systems do (`ſ`, `ß`, the Kelvin sign, NFKC).
+- An approved write is refused if its path resolves somewhere else by the time it is written.
+- Writing a root or nested `AGENTS.md`, `AGENTS.override.md` or `CLAUDE.md`, `.cursor/`, or a project's `.octocode/models.json` asks in `manual` and `workspace`.
+- Writes to the agent directory, the agents-communication folder and the credential, model and settings files of `~/.octocode` and Pi's folders are refused in every mode.
+- A shell write no longer counts as reading the file.
+- A patch applies to a file with a byte-order mark and keeps it.
+
+### Sandbox
+
+- Agent shell commands can run inside an operating-system sandbox on macOS (Seatbelt) and Linux (bubblewrap): `sandbox.mode` `"auto"` or `"on"` (default `"off"`). See [Sandbox](docs/sandbox.md).
+- The sandbox runs on Octocode's maintained fork of the sandbox library, which reports every refusal a macOS command hits instead of losing those that arrive together.
+- The package ships the Linux seccomp filter and the JVM proxy agent beside the bundle, and `THIRD_PARTY_NOTICES.md` includes the fork's license and notice.
+- A refusal note lists at most 20 refusals, then `… and N more`, and says when reports were dropped.
+- A print run with the sandbox on exits when it finishes.
+- The web tool's HTML scan is linear: a large page no longer stalls the agent.
+
+### Caching
+
+- `/status` shows the Cache Warming section again: requested and effective cache lifetimes with their sources, the warming mode, and why the warmer is inactive (a plan-billed provider, among others).
+- Cache warming no longer refreshes on providers billed by plan.
+- OpenRouter Claude cache writes are priced at the 1h rate when every marker the request sent was 1h.
+- Warming prices a miss as the whole request's price with the miss less with a hit, so a context-size price tier applies.
+
+### Instructions
+
+- The `skill` tool loads the best-matching skill, and the bundled skills trigger only on their own work.
+- A model the provider refused points to `/model` and `/providers`.
+
+### Terminal
+
+- Status lights: green working, yellow needs you, red failed or stopped, dim idle, in the footer, the `/agents` picker, the `/web` session list and header, and the terminal tab.
+- `/resume`, `coordinate list` and `octocode remote list` show what other live sessions are doing; `/web` and `remote list` order sessions by what needs you first.
+- `/agents` Recent runs says "idle" for an idle main session instead of "running".
+- Without colour (`NO_COLOR`), each settled light draws its own shape.
+- The terminal tab no longer reports working while only a timer is pending.
+- 16-colour terminals keep the status colours.
+- The `octocode-light` theme's warning colour is a darker amber.
+- `/status` gains a Model line, `$` costs and readable labels.
+- A slash argument typed in full runs on one Enter.
+- The first Ctrl+C says `ctrl+c again to exit`, and a second within 1 s exits.
+- Prompt history brings a prompt back with the cursor at its end.
+- `--help` and `--list-models` are clearer, and an unknown provider filter exits 1.
+- Next-step hints never follow a warning, an error or a cancel, and never repeat the command just typed.
+- `/import` checks the file before it asks anything.
+- `/export` and `/share` say there is nothing to save before the first message.
+- `/loop` confirms in plain words and names `/cron delete <id>`.
+- `/cron` counts a task's runs the way `/jobs` and the footer do (`run 1 of 20`).
+- Ctrl+C during a turn, a `!` command or a compaction stops it as Esc does and keeps your draft; a second press within 1 s still exits.
+- `/keys` lists shift+tab, the session keys and, in fullscreen, the scrolling and search keys; the `!` working line shows its elapsed time.
+- `/settings unset` of a display key applies at once, and `get` and `list` say "applies now".
+- `/worktree new` in a session from a trusted checkout no longer asks for trust again; a headless run still needs `--trust`.
+- The GitHub sign-in notice shows once per process.
+- "Nothing to compact" counts tokens the way compaction does, and the agents.txt notes name the file's full path.
+- In fullscreen, dragging copies what you see: a wrapped line comes back as one line, the rows' shared padding is dropped, and the confirmation says how much was copied.
+- `alt+m` hands the mouse to the terminal's own selection, and again takes it back.
+- A drag held past the top or bottom scrolls faster the further past the edge and the longer it is held.
+- Copies reach the local clipboard through tmux (`load-buffer -w`) and screen.
+- A frame that changes nothing writes nothing to the terminal.
+- A doubled slash before a command name (`//status`) is kept with the unknown-command reason instead of being sent at once; `/hotkeys` runs `/keys`.
+- `/import` checks the file before asking to replace the session, and a file that is not a session names its bad line; `/rename` and `/new` say a session with no message is not saved, name and all.
+- With a search typed, the resume picker's key bar says Esc clears it; the next Esc closes the picker.
+- `/loop` says when it rounded the interval (`1m` runs every 5m) and names a bad interval or a missing prompt; it asks no question, since you typed it.
+- `/messages internal` before the first message shows an empty list instead of an error; `/compact` on an empty session says there is nothing to compact instead of asking for a model.
+- `/memory add <title> — <body>` fills both in the editor; the `/purge` preview names the kinds it found none of; the security start-up line names what is off.
+- Retry lines name the provider and model, and the endpoint's host when it could not be reached.
+
+### Web
+
+- The usage strip shows quota, context and `Σ` in the footer's words.
+- The model chip names the provider's kind, and with no model it reads **No model** and opens Settings → Providers.
+- A reply that failed on a credential links to Settings → Providers.
+- Approval choices sit beside their radio buttons, board filters wrap, and provider settings are tidier.
+- Security: a link `/remote` publishes and the one-time address `/web` prints when no browser opens show only in the terminal. The copy of that notice the session's pages and other devices receive reads `[redacted]`, so a view link can no longer pick up a control link or the launch code.
+- The web daemon names its process `octocode-agent-web-<pid>`; `/processes` lists it in every folder and never as an orphan of the session that started it. `/web stop` ends it, and `/web` names the idle limit the daemon actually uses (`OCTOCODE_WEB_DAEMON_IDLE_MINUTES`).
+- `octocode remote list --json` prints JSON when no daemon runs too (`"daemon": null`, exit status 2), and names the daemon's pid and port; the text form has a header row.
+- The live page's static title is Octocode instead of Backlog.
+
+### MCP and performance
+
+- `octocode mcp list` lists servers and configuration errors without starting any; `--check` connects the enabled servers and exits 1 when one fails.
+- The desktop server starts only for `octocode mcp tools desktop`, and main sessions no longer probe Cua Driver.
+- MCP servers start alongside the session instead of after it, the bundled Octocode server included (it restarts once if the session's skills add folders outside the shipped skills folder).
+- Routing reads a small file instead of the whole models.dev index.
+- No git process runs per turn unless HEAD moved.
+- Model lists are computed once per change, tool declarations are not re-serialized each turn, config validators compile on first use, and the socket sweep is off the start path.
+- `octocode --version` and `--help` answer without loading the bundle.
+- Prompts load from one packed file at start.
+- `/mcp`, `/mcp list` and `octocode mcp list` list servers in one order: those needing attention first, then by name.
+- Reopening `/model` within a minute reuses the last refresh.
+- Print, RPC and subagent processes no longer load the terminal interface; `--help` loads a 46 KiB file.
+- `OCTOCODE_OPEN_BROWSER=0` stops Octocode and its processes opening a browser or other application.
+- External runners no longer inherit `OPENAI_CUSTOM_HEADERS`.
+- `build-binaries.sh` builds working binaries again.
+
+### Dependencies
+
+- Third-party dependencies use caret ranges and were updated to their newest same-major releases; the AI SDK family stays pinned to one matching set (an `@ai-sdk/openai` update dropped deferred tool declarations).
+
+### More changes
+
+- A text or JSON run whose messages are all commands needs no provider: `octocode -p "/backlog"` (or `/realm`, `/archive`) prints its answer. A command whose model turn cannot start (`/plan add ...` with no model) exits `1`.
+- A command name after session options (`octocode --offline mcp list`) exits `2` with the corrected line instead of going to the model as a prompt.
+- A text or JSON run refused in an untrusted folder writes nothing there, says that `trust add` takes `--yes` in a script and that a grant lasts until `octocode trust remove`, and names the provider step too when none is connected.
+- `--list-models` prints the models.json warnings the terminal shows; an invalid `OCTOCODE_PERMISSION` is reported on stderr in a run with no UI; `octocode --help` lists `octocode-api`, and its `--model` thinking example names its provider.
+- `Archive persistence` warnings no longer repeat: each distinct problem warns once per session, a held lock warns once after its retries, and an `agents.txt` written by another database stops further projection until that file changes or is removed.
+- An expired or missing provider credential now fails with `<provider>/<model>: …` instead of the bare SDK text, so you can tell which default needs fixing. Bedrock credential errors (expired SSO session, missing credentials, rejected token) add the fix: with an AWS profile sign-in, run `aws sso login` (with `--profile` for a named profile), switch model with `/model`, or open `/providers → Amazon Bedrock`; otherwise open `/providers → Amazon Bedrock`.
 - `/providers` lists every catalog provider (Available group) and your models.json files first (Octocode and Pi, global and project, with trust state); Enter on a ready provider opens its model chooser; a literal models.json key can be moved to the keychain. `/models` opens a per-provider page to turn models on or off and pick a default. The selected row's detail no longer repeats or cuts the file path.
 - Trusted projects can define providers and override a provider's baseUrl and models in `.octocode/models.json` (and `.pi/models.json` while the Pi source is on); an untrusted project's file is not read and `/providers` warns about it. A project provider that replaces a global one warns with the new host; an invalid project file is skipped with a warning.
 - Windows: API keys and account sign-ins are stored in Windows Credential Manager (via PowerShell, secret on stdin) instead of plaintext `auth.json` when PowerShell is available (Windows PowerShell or PowerShell 7, `pwsh.exe`).

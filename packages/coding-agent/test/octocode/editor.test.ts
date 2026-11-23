@@ -338,6 +338,18 @@ describe("Octocode prompt box", () => {
 		expect(plain(editor.render(60).at(-1) ?? "")).toMatch(/^╰─+╯$/);
 	});
 
+	it("shows a passing note in the bottom rule over the word hint, then the plain rule again", async () => {
+		const { showPromptNote, clearPromptNote } = await import("../../src/octocode/ui/prompt-note.ts");
+		const { editor } = boxed({ value: false });
+		showPromptNote("ctrl+c again to exit", 30);
+		expect(plain(editor.render(60).at(-1) ?? "")).toMatch(/^╰── ctrl\+c again to exit ─+╯$/);
+		await new Promise((resolve) => setTimeout(resolve, 60));
+		expect(plain(editor.render(60).at(-1) ?? "")).toMatch(/^╰─+╯$/);
+		showPromptNote("again", 1_000);
+		clearPromptNote();
+		expect(plain(editor.render(60).at(-1) ?? "")).toMatch(/^╰─+╯$/);
+	});
+
 	it("drops the hint on the first keystroke and keeps the typed text inside the box", () => {
 		const { editor, input } = boxed();
 		input("hello");

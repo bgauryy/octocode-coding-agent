@@ -1,4 +1,4 @@
-import { truncateToWidth } from "@octocodeai/octocode-tui";
+import { truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 
 /**
  * The "OCTOCODE AGENT" header: two rows of half-block art and the beta notice. Pure in (paint, width, reveal): the header
@@ -64,6 +64,22 @@ function paintArt(paint: BannerPaint, line: string, revealed = line.length): str
 	return out;
 }
 
+/**
+ * The beta notice in the widest form that fits: its words go before the link loses a character, since a cut link opens
+ * nothing. Narrower than the shortest form, the line is cut and ends in `…`.
+ */
+function noticeLine(paint: BannerPaint, width: number): string {
+	const link = (url: string) => paint.fg("mdLink", url);
+	const beta = paint.fg("warning", "BETA");
+	const forms = [
+		`${paint.fg("warning", "BETA version")} ${paint.fg("muted", "; please assign issues here")} ${link(ISSUES_URL)}`,
+		`${beta}${paint.fg("muted", " · ")}${link(ISSUES_URL)}`,
+		`${beta}${paint.fg("muted", " · ")}${link(ISSUES_URL.replace(/^https:\/\//, ""))}`,
+	];
+	const fits = forms.find((form) => visibleWidth(form) <= width);
+	return fits ?? truncateToWidth(forms.at(-1)!, width, "…");
+}
+
 /** `status` (painted): one more line under the notice, such as the backlog counts (`backlog-status.ts`). */
 export function bannerLines(
 	paint: BannerPaint,
@@ -77,12 +93,14 @@ export function bannerLines(
 		width >= ART_WIDTH
 			? BANNER_ART.map((line) => paintArt(paint, line, revealed))
 			: [`${paint.fg("accent", "OCTOCODE")} ${paint.fg("mdLink", "AGENT")}`, ""];
-	const notice = `${paint.fg("warning", "BETA version")} ${paint.fg("muted", "; please assign issues here")} ${paint.fg("mdLink", ISSUES_URL)}`;
-	// Every line must fit the width, however narrow the terminal.
+	const fit = Math.max(1, width);
 	const extra = status?.(paint);
 	const settled = reveal >= 1;
-	// Until the art is whole the notice and the status line are blank rows, so the height never changes.
-	return [...art, settled ? notice : "", ...(extra ? [settled ? extra : ""] : [])].map((line) =>
-		truncateToWidth(line, Math.max(1, width), ""),
-	);
+	// Until the art is whole the notice and the status line are blank rows, so the height never changes. Every line fits
+	// the width, however narrow the terminal; a cut text line ends in `…`.
+	return [
+		...art.map((line) => truncateToWidth(line, fit, "")),
+		settled ? noticeLine(paint, fit) : "",
+		...(extra ? [settled ? truncateToWidth(extra, fit, "…") : ""] : []),
+	];
 }

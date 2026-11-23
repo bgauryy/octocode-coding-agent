@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type * as Config from "../../src/config.ts";
@@ -147,5 +148,55 @@ describe("a foreground agent task that outlasts the foreground budget", () => {
 		expect(reports()).toHaveLength(1);
 		expect(reports()[0].message.details).toMatchObject({ id, status: "stopped" });
 		expect(s.control.background()).toBe(0);
+	}, 30_000);
+});
+
+describe("a foreground child handed over to the background", () => {
+	const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+	const repo = (): string => {
+		const dir = fs.realpathSync(tmp("octocode-handover-repo-"));
+		git(dir, "init", "-q", "-b", "main");
+		git(dir, "config", "user.name", "Test");
+		git(dir, "config", "user.email", "test@example.com");
+		fs.writeFileSync(path.join(dir, "a.txt"), "one\n");
+		git(dir, "add", "-A");
+		git(dir, "commit", "-q", "-m", "init");
+		return dir;
+	};
+
+	it("keeps its slot until it really ends: with a limit of one, the next start queues", async () => {
+		s = setup();
+		process.env[MAX_SUBAGENTS_ENV] = "1";
+		try {
+			const gate = path.join(tmp(), "gate");
+			process.env.OCTOCODE_FAKE_GATE = gate;
+			const first = await s.run({ task: "gated foreground" });
+			expect(first.details.status).toBe("background");
+			const second = await s.run({ task: "report from the foreground", background: true });
+			expect(second.details.queued).toBe(true);
+			// The handed-over child's report is its real outcome, and its end frees the slot for the queued one.
+			fs.writeFileSync(gate, "");
+			await vi.waitFor(() => expect(reports()).toHaveLength(2), { timeout: 15_000 });
+			const firstReport = reports().find((entry) => entry.message.details.id === first.details.id);
+			expect(String(firstReport?.message.content)).toContain("finished after asking");
+		} finally {
+			delete process.env[MAX_SUBAGENTS_ENV];
+		}
+	}, 30_000);
+
+	it("keeps an isolated child's worktree while it runs", async () => {
+		s = setup();
+		const dir = repo();
+		Object.assign(s.ctx, { cwd: dir });
+		Object.assign(s.ctx.ui, { confirm: async () => true });
+		const gate = path.join(tmp(), "gate");
+		process.env.OCTOCODE_FAKE_GATE = gate;
+		const reply = await s.run({ task: "gated foreground", isolate: true });
+		expect(reply.details.status).toBe("background");
+		// The main checkout and the child's worktree.
+		expect(git(dir, "worktree", "list").split("\n")).toHaveLength(2);
+		fs.writeFileSync(gate, "");
+		await vi.waitFor(() => expect(reports()).toHaveLength(1), { timeout: 15_000 });
+		expect(reports()[0].message.details).toMatchObject({ id: reply.details.id, status: "done" });
 	}, 30_000);
 });

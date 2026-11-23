@@ -4,7 +4,9 @@
  */
 
 import { loadMcpCommand } from "../../../mcp/src/api.ts";
+import { parseArgs } from "../cli/args.ts";
 import { CLI_COMMAND_NAMES, isSubcommand } from "../cli/completion.ts";
+import { APP_NAME } from "../config.ts";
 import { handleConfigCommand, handlePackageCommand } from "../package-manager-cli.ts";
 import { prepareAgentDb } from "../storage/database.ts";
 import { drainStdio } from "./drain-stdio.ts";
@@ -42,6 +44,22 @@ function looksLikeMistypedSubcommand(args: readonly string[]): boolean {
 }
 
 /**
+ * A command name after session options (`--offline mcp list`), where a session would send it to the model as a prompt.
+ * Returns where it starts in `args`. A word after `--` is a message.
+ */
+function misplacedSubcommand(args: readonly string[]): number | undefined {
+	const end = args.indexOf("--");
+	const head = end === -1 ? args : args.slice(0, end);
+	const first = parseArgs([...head]).messages[0];
+	if (first === undefined || !isSubcommand([first])) return undefined;
+	// The same word can be an option's value earlier (`--name mcp mcp list`): the first prefix that yields it as a message.
+	const at = head.findIndex(
+		(word, index) => word === first && parseArgs(head.slice(0, index + 1)).messages[0] === first,
+	);
+	return at > 0 ? at : undefined;
+}
+
+/**
  * Runs the one-shot command `args` names, if any, and says whether it did. Package and config commands exit the
  * process, so a feature they load cannot keep it alive; the others set `process.exitCode` and return.
  */
@@ -70,6 +88,17 @@ export async function runSubcommand(args: string[], context: SubcommandContext):
 	}
 	const name = args[0];
 	const run = name !== undefined && Object.hasOwn(SUBCOMMANDS, name) ? SUBCOMMANDS[name] : undefined;
+	const misplaced = run ? undefined : misplacedSubcommand(args);
+	if (misplaced !== undefined) {
+		const command = args[misplaced];
+		process.stderr.write(
+			`octocode: "${command}" is a command, so it goes first: ${APP_NAME} ${args.slice(misplaced).join(" ")}\n` +
+				`The options before it (${args.slice(0, misplaced).join(" ")}) start a session; a command takes only its own (${APP_NAME} ${command} --help).\n` +
+				`To send "${command}" as a prompt, put it after --.\n`,
+		);
+		process.exitCode = 2;
+		return true;
+	}
 	if (!run) return false;
 	process.exitCode = await run(args.slice(1), context);
 	return true;

@@ -47,7 +47,6 @@ export function createSlotHost() {
 		// What `resetFeatureUI` touches besides the editor slot.
 		editorComponentFactory: undefined,
 		activeStatusIndicator: undefined,
-		defaultWorkingMessage: "Working",
 		featureWidgetsAbove: new Map(),
 		featureWidgetsBelow: new Map(),
 		autocompleteProviderWrappers: [],

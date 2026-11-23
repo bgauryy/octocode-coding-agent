@@ -43,7 +43,6 @@ type RenderSessionContextThis = {
 	sessionManager: { getCwd(): string; getEntries(): SessionEntry[] };
 	session: { retryAttempt: number; modelRegistry: { find(provider: string, modelId: string): undefined } };
 	uiStore: UiStore;
-	isInitialized: boolean;
 	updateEditorBorderColor(): void;
 	getRegisteredToolDefinition(toolName: string): undefined;
 	maybeShowAssistantDiagnostics(message: AssistantMessage): void;
@@ -64,8 +63,7 @@ function createFakeInteractiveModeThis(): RenderSessionContextThis {
 		},
 		sessionManager: { getCwd: () => process.cwd(), getEntries: () => [] },
 		session: { retryAttempt: 0, modelRegistry: { find: () => undefined } },
-		uiStore: createUiStore(),
-		isInitialized: true,
+		uiStore: createUiStore({ lifecycle: { initialized: true } }),
 		updateEditorBorderColor: vi.fn(),
 		getRegisteredToolDefinition: (_toolName: string) => undefined,
 		maybeShowAssistantDiagnostics: vi.fn(),

@@ -25,6 +25,8 @@ import { processStartTime } from "../shared/process.ts";
 import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import type { RevisedWorkspace } from "../workspace/revision.ts";
 import { LineReader } from "@octocodeai/octocode-common/line-splitter";
+import { parseAnchor } from "@octocodeai/octocode-contracts/evidence";
+import { readEvidence } from "../archive/evidence.ts";
 import { attachRecordPath, webDaemonPaths } from "./paths.ts";
 import { removeRecord, sweepAttachRecords, writeAttachRecord } from "./records.ts";
 
@@ -131,6 +133,11 @@ async function answer(source: AttachSource, peer: Peer, request: AttachRequest):
 		case "application.history":
 			if (!workspace.application?.history) throw new Error("History is unavailable in this session.");
 			return workspace.application.history({ ...request.params, sessionId: source.sessionId });
+		case "application.evidence": {
+			const anchor = parseAnchor(request.params.anchor);
+			if (!anchor) throw new Error("Not a source anchor.");
+			return readEvidence(source.cwd, anchor, { cursor: request.params.cursor });
+		}
 		case "workspace.snapshot":
 			return workspace.snapshot();
 		case "workspace.revision":

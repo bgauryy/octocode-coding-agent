@@ -230,6 +230,17 @@ describe.runIf(posix)("sweeping fallback socket folders", () => {
 		expect(fs.readdirSync(base)).toEqual([]);
 	});
 
+	it("reads its roots off the caller's turn, so a session start never waits for a large temp directory", async () => {
+		const base = root();
+		// Empty, with its owner gone: proved dead without connecting, so only reading the root stands before its removal.
+		const dead = folder(base, `octocode-${uid}-${deadPid()}-AbCdE2`);
+		const sweep = sweepSocketFolders({}, [base]);
+		// Nothing was read or removed before the call returned: the start that called it carries on first.
+		expect(fs.existsSync(dead)).toBe(true);
+		expect(await sweep).toBe(1);
+		expect(fs.existsSync(dead)).toBe(false);
+	});
+
 	it("never touches a live session's socket", async () => {
 		const base = root();
 		const earlier = folder(base, `octocode-${uid}-${deadPid()}-AbCdE3`);

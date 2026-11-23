@@ -189,8 +189,11 @@ export class Permission {
 		}
 		this.clearGrants();
 		this.#trail.reset(ctx);
-		if (warning && !this.#warned && interactive(ctx, this.#isSubagent)) notify(ctx.ui, warning, "warning");
-		if (warning) this.#warned = true;
+		if (warning && !this.#warned) {
+			if (interactive(ctx, this.#isSubagent)) notify(ctx.ui, warning, "warning");
+			else if (!this.#isSubagent) this.#stderr(`octocode: ${warning}\n`);
+			this.#warned = true;
+		}
 		// An RPC or ACP worker has dialogs but `full` raises none, so its driver needs the same line a headless run gets.
 		const unasked = (!ctx.hasUI || ctx.mode === "rpc") && !this.#isSubagent && unaskedRunLine(mode);
 		if (unasked) this.#stderr(unasked(ctx.sessionManager.getSessionFile()));
@@ -248,7 +251,7 @@ export class Permission {
 		this.paint(ctx);
 		this.#trail.record({ action: "mode", what: [`${from} → ${mode}`], allowed: true, via: "user" });
 		if (interactive(ctx, this.#isSubagent))
-			notify(ctx.ui, `Permission mode: ${mode}. ${modeSummary(mode)}`, runsUnasked(mode) ? "warning" : "info");
+			notify(ctx.ui, `Permission mode: ${mode} — ${modeSummary(mode)}`, runsUnasked(mode) ? "warning" : "info");
 		sendModeNotice(this.#api, mode, modeSummary(mode));
 	}
 

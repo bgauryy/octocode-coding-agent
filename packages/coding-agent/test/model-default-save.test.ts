@@ -279,7 +279,7 @@ describe("saving a default model", () => {
 		},
 	);
 
-	it("reports a failed default-only save and preserves the current chat", async () => {
+	it("reports a failed save after the save key switched the chat", async () => {
 		const context = await fixture();
 		await context.settings.saveDefaultModelSelection(context.initial.provider, context.initial.id);
 		rmSync(context.settingsPath);
@@ -287,19 +287,21 @@ describe("saving a default model", () => {
 		const { host, component, done } = picker(context);
 		component.handleInput("\x13");
 		await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
-		expect(host.showError).toHaveBeenCalledWith(expect.stringContaining("Could not save the default model"));
+		expect(host.showWarning).toHaveBeenCalledWith(
+			expect.stringMatching(/^Using .* for this chat\. Could not save the default model/),
+		);
 		expect(host.showStatus).not.toHaveBeenCalledWith(expect.stringMatching(/^(Default model:|Saved global default:)/));
-		expect(host.showWarning).not.toHaveBeenCalled();
-		expect(host.updateEditorBorderColor).not.toHaveBeenCalled();
-		expect(context.session.model?.id).toBe(context.initial.id);
+		expect(host.showError).not.toHaveBeenCalled();
+		expect(host.updateEditorBorderColor).toHaveBeenCalled();
+		expect(context.session.model?.id).toBe(context.selected.id);
 	});
 
-	it("switches and saves together once after a scope is chosen", async () => {
+	it("switches and saves together once with the save key", async () => {
 		const context = await fixture();
 		const { component, done } = picker(context);
 		const switchModel = vi.spyOn(context.session, "setModel");
 		const save = vi.spyOn(context.settings, "saveDefaultModelSelection");
-		for (const key of ["\r", "\x1b[B", "\x1b[B", "\r"]) component.handleInput(key);
+		for (const key of ["\x13", "\x13", "\r"]) component.handleInput(key);
 		await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
 		expect(switchModel).toHaveBeenCalledOnce();
 		expect(save).toHaveBeenCalledOnce();
@@ -349,8 +351,12 @@ describe("saving a default model", () => {
 		if (global) expect(stored.enabledModels).toEqual([...globals, selected]);
 		else expect(stored).not.toHaveProperty("enabledModels");
 		expect(context.settings.getEnabledModels()).toEqual([initial]);
-		expect(context.session.scopedModels.map(({ model }) => `${model.provider}/${model.id}`)).toEqual([initial]);
-		expect(context.session.model?.id).toBe(context.initial.id);
+		// The save key also switches this chat, which keeps its new model among the session's shortcuts.
+		expect(context.session.scopedModels.map(({ model }) => `${model.provider}/${model.id}`)).toEqual([
+			initial,
+			selected,
+		]);
+		expect(context.session.model?.id).toBe(context.selected.id);
 		expect(host.showStatus).toHaveBeenLastCalledWith(
 			`Saved global default: ${selected}. Workspace or run settings take precedence here.`,
 		);

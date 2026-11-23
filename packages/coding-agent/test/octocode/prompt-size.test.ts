@@ -154,9 +154,14 @@ const BACKLOG_ENTITIES_CEILING = 1_750;
  * (measured 33_129, 1.1% over) after the efficiency pass that folded duplicated policy lines into the MCP block and tools.
  * Lowered to 32_700 (measured 32_333, 1.1% over) after the concise rewording of every native tool's text. Raised to
  * 33_200 (measured 32_844) for the rules the user asked for: state the next move every reply, map the blast radius,
- * visuals over prose, ask only when it changes the result, each option with its trade-off (+511).
+ * visuals over prose, ask only when it changes the result, each option with its trade-off (+511). Raised to 33_284
+ * (user request) for the `agent` task's `maxRequests` field, a per-task request cap below the profile's: the field costs
+ * 126, of which 42 are paid by `agent` field text said twice (`resume`'s "needs task", `background`'s "Return at once",
+ * `paths`' second "files or dir/"), so +84. Raised to 33_400 (measured 33_394; user request "do all" of the evidence RFC)
+ * for source anchors: the memory tool's `sources` field (note provenance) and one archive sentence saying a search hit's
+ * anchor is a `get` id (the anchor rides on `id`, no new archive field); about 7 of the rest came from other changes.
  */
-const MAIN_CEILING = 33_200;
+const MAIN_CEILING = 33_400;
 /**
  * A specialist with the shared file and communication tools, excluding entity fields. It declares
  * `backlog` alone (five work operations), never `backlogPlan`. Raised from 21_050 for the rules that make every specialist
@@ -450,12 +455,13 @@ describe("first request with no usage data", () => {
 		const thin = named("main").tools.find((tool) => tool.name === "mcp__octocode__localSearch")!;
 		const full = named("main").deferred!.find((tool) => tool.name === "mcp__octocode__localSearch")!;
 		expect(full.fullBytes).toBeGreaterThan(bytes(thin.name + thin.description + JSON.stringify(thin.parameters)));
-		// A lean child defers only its thin web declaration.
+		// Contract change: `web` became a core tool every role declares in full, so a lean child (bash, file, web and agent,
+		// asserted below) defers no declaration; it used to defer only its thin `web`.
 		expect(
 			named("lean")
 				.deferred?.filter((tool) => tool.state === "deferred")
 				.map((tool) => tool.name),
-		).toEqual(["web"]);
+		).toEqual([]);
 	});
 
 	it("lists each child only its role's skills, and none to the browser child", () => {

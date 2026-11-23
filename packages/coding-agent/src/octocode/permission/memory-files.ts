@@ -9,6 +9,7 @@ import { workspaceDataRoot } from "../../storage/workspace.ts";
 import { repoKey, workspaceGit } from "../../utils/git-repository.ts";
 import { MEMORY_FILE } from "../../storage/agent-layout.ts";
 import { workspaceAgentDir } from "../shared/home.ts";
+import { foldName } from "./fold-name.ts";
 
 /**
  * Where each curated memory file lives: one global file, and one per repository shared by its worktrees. It sits in the
@@ -60,13 +61,15 @@ export function protectedFromTests(file: MemoryFileRef, env: NodeJS.ProcessEnv =
 	return underTest(env) && protectedHomes(env).some((home) => isWithin(file.path, home));
 }
 
+const MEMORY_NAME = foldName(MEMORY_FILE);
+
 /**
  * The curated MEMORY.md files above belong to the `memory` tool, which keeps their sections, caps and
  * secret checks and writes them under a revision check. Every session loads them into its prompt, so a change made around
  * that tool would steer later sessions unchecked. Refused here: the global file, the repository's own (in a linked
- * worktree, the main checkout's), and any other repository's file at the same place. Compared lower-cased, as macOS and
- * Windows open them; on a case-sensitive filesystem the extra match only refuses a file nothing loads. The file tool
- * and the permission layer (a shell write or delete) both refuse with it.
+ * worktree, the main checkout's), and any other repository's file at the same place. Compared folded (`foldName`), as
+ * macOS and Windows open them; on a case-sensitive filesystem the extra match only refuses a file nothing loads. The
+ * file tool and the permission layer (a shell write or delete) both refuse with it.
  */
 export function memoryFileRefusal(
 	file: string,
@@ -75,12 +78,12 @@ export function memoryFileRefusal(
 	cwd: string,
 	env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
-	if (path.basename(file).toLowerCase() !== "memory.md") return undefined;
-	const real = canonicalPath(file).toLowerCase();
+	if (foldName(path.basename(file)) !== MEMORY_NAME) return undefined;
+	const real = foldName(canonicalPath(file));
 	const workspace = workspaceMemoryFile(cwd);
-	// `.octocode/memory.md`: where every repository keeps its file.
-	const place = path.relative(workspace.root, workspace.path).toLowerCase();
-	const known = [globalMemoryFile(env).path, workspace.path].map((each) => canonicalPath(each).toLowerCase());
+	// `.octocode/agent/memory.md`: where every repository keeps its file.
+	const place = foldName(path.relative(workspace.root, workspace.path));
+	const known = [globalMemoryFile(env).path, workspace.path].map((each) => foldName(canonicalPath(each)));
 	if (!known.includes(real) && !real.endsWith(`${path.sep}${place}`)) return undefined;
 	return envFlag(env, SUBAGENT_ENV)
 		? `${shown} is a curated memory file; ${tool} does not change it, and a subagent's memory is read-only: put the note in your report's \`Noticed:\` line instead.`

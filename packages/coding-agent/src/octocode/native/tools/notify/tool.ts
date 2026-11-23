@@ -224,7 +224,7 @@ export function timerTool(host: TimerHost): ToolDefinition<typeof parameters, Ti
 		label: "Notify",
 		promptSnippet: renderPrompt("tools/notify/snippet.md"),
 		description:
-			"Receive scheduled or event notices. set a delay, interval or cron; repeats run until off. on filters by agent, item, path, load or check result. filter.command polls free and notifies on exit 0. check calls a paid model each time. list shows notices; off cancels by id.",
+			"Receive scheduled or event notices. set a delay or interval in seconds, or a cron; repeats run until off. on filters by agent, item, path, load or check result. filter.command polls free and notifies on exit 0. check calls a paid model each time. list shows notices; off cancels by id.",
 		parameters,
 		validationParameters: validation,
 		async execute(toolCallId, params: Params, signal, _onUpdate, ctx) {

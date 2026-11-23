@@ -24,6 +24,7 @@ const passage = (start: number, body: string, context: string | null = null) => 
 	context,
 	body,
 });
+const everyFile = (index: ArchiveIndexDb) => archiveIndex.files(index.db).map((file) => file.id);
 const stamp = (file: string, size = 1) => ({ path: file, size, mtime: 1.5, ino: 7 });
 
 describe("archive index queries", () => {
@@ -36,7 +37,11 @@ describe("archive index queries", () => {
 				passage(2, "registry cach cach οδοσ", '{"before":["## "],"after":[]}'),
 			]),
 		);
-		const counts = archiveIndex.termCounts(index.db, ["auth", "auth-storage/keychain.ts", "cach", "οδοσ", "missing"]);
+		const counts = archiveIndex.termCounts(
+			index.db,
+			["auth", "auth-storage/keychain.ts", "cach", "οδοσ", "missing"],
+			everyFile(index),
+		);
 		const seen = Object.fromEntries(counts.map(([, , term, count, start]) => [`${term}@${start}`, count]));
 		expect(seen).toEqual({ "auth@0": 2, "auth-storage/keychain.ts@0": 1, "cach@2": 2, "οδοσ@2": 1 });
 		const [passage2, file, , , start, end, length] = counts.find((count) => count[2] === "cach")!;
@@ -46,7 +51,44 @@ describe("archive index queries", () => {
 		expect(range).toMatchObject({ id: passage2, byteStart: 20, byteEnd: 29 });
 		expect(JSON.parse(range.context!)).toEqual({ before: ["## "], after: [] });
 		expect(archiveIndex.passageRanges(index.db, [999_999])).toEqual([]);
-		expect(archiveIndex.termCounts(index.db, [])).toEqual([]);
+		expect(archiveIndex.termCounts(index.db, [], everyFile(index))).toEqual([]);
+	});
+
+	it("counts only the scoped files' passages however large the unrelated corpus grows", () => {
+		const index = open(path.join(tmp(), "archive-index.db"));
+		index.transaction(() =>
+			archiveIndex.replaceFile(index.db, stamp("/scoped"), [passage(0, "shared term"), passage(2, "shared")]),
+		);
+		const [scoped] = archiveIndex.files(index.db);
+		const rows = () => archiveIndex.termCounts(index.db, ["shared"], [scoped.id]);
+		const before = rows();
+		expect(before).toHaveLength(2);
+		for (const size of [10, 200]) {
+			index.transaction(() => {
+				for (let n = 0; n < size; n++)
+					archiveIndex.replaceFile(index.db, stamp(`/other${size}-${n}`), [passage(0, "shared noise")]);
+			});
+			expect(rows()).toEqual(before);
+			expect(rows().every((row) => row[1] === scoped.id)).toBe(true);
+		}
+		expect(archiveIndex.termCounts(index.db, ["shared"], everyFile(index)).length).toBeGreaterThan(before.length);
+		expect(archiveIndex.termCounts(index.db, ["shared"], [])).toEqual([]);
+		const many = Array.from({ length: 50_000 }, (_, n) => n + 1_000_000);
+		expect(archiveIndex.termCounts(index.db, ["shared"], [...many, scoped.id])).toEqual(before);
+	});
+
+	it("looks each term row up in passages by key and never scans passages", () => {
+		const index = open(path.join(tmp(), "archive-index.db"));
+		index.transaction(() => archiveIndex.replaceFile(index.db, stamp("/a"), [passage(0, "word")]));
+		const plan = index.db
+			.prepare(
+				`EXPLAIN QUERY PLAN SELECT v.doc FROM passages_terms v JOIN passages p ON p.id = v.doc
+				WHERE v.term IN ('word') AND p.file IN (SELECT value FROM json_each(?)) GROUP BY v.doc, v.term`,
+			)
+			.all("[1]")
+			.map((row) => String(row.detail));
+		expect(plan.some((line) => line.startsWith("SEARCH p USING INTEGER PRIMARY KEY"))).toBe(true);
+		expect(plan.some((line) => /^SCAN p\b/.test(line))).toBe(false);
 	});
 
 	it("replaces a re-indexed file's passages and removes a deleted file's", () => {
@@ -56,10 +98,10 @@ describe("archive index queries", () => {
 			archiveIndex.replaceFile(index.db, stamp("/b"), [passage(0, "other old")]);
 		});
 		index.transaction(() => archiveIndex.replaceFile(index.db, stamp("/a", 2), [passage(0, "new"), passage(2, "new")]));
-		expect(archiveIndex.termCounts(index.db, ["old"]).map((row) => row[3])).toEqual([1]);
-		expect(archiveIndex.termCounts(index.db, ["new"])).toHaveLength(2);
+		expect(archiveIndex.termCounts(index.db, ["old"], everyFile(index)).map((row) => row[3])).toEqual([1]);
+		expect(archiveIndex.termCounts(index.db, ["new"], everyFile(index))).toHaveLength(2);
 		index.transaction(() => archiveIndex.deleteFiles(index.db, ["/b", "/never-indexed"]));
-		expect(archiveIndex.termCounts(index.db, ["old", "other"])).toEqual([]);
+		expect(archiveIndex.termCounts(index.db, ["old", "other"], everyFile(index))).toEqual([]);
 		expect(archiveIndex.files(index.db)).toEqual([
 			{ id: expect.any(Number), path: "/a", size: 2, mtime: 1.5, ino: 7, passages: 2, words: 2 },
 		]);
@@ -74,7 +116,7 @@ describe("archive index queries", () => {
 		index.transaction(() => archiveIndex.replaceFile(index.db, stamp("/a"), [passage(0, "word")]));
 		index.transaction(() => archiveIndex.clear(index.db));
 		expect(archiveIndex.files(index.db)).toEqual([]);
-		expect(archiveIndex.termCounts(index.db, ["word"])).toEqual([]);
+		expect(archiveIndex.termCounts(index.db, ["word"], [1])).toEqual([]);
 	});
 
 	it("refuses an index at an older schema version", () => {

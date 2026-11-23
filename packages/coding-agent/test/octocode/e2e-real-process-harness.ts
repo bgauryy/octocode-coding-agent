@@ -257,6 +257,8 @@ export function sandbox(endpoint: Endpoint): Sandbox {
 		OCTOCODE_MODELS_DEV: "0",
 		// The research server is the sibling repository's build; the MCP feature and the `mcp` tool stay.
 		OCTOCODE_MCP: "0",
+		// A session that runs `/web` gives the page's address and opens no window on this machine.
+		OCTOCODE_OPEN_BROWSER: "0",
 	};
 	const holder = path.join(root, "hold.cjs");
 	fs.writeFileSync(

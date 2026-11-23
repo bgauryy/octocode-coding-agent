@@ -25,7 +25,6 @@ type ChatMessagesHost = Pick<
 	| "getMarkdownThemeWithSettings"
 	| "getMarkdownTransformers"
 	| "uiStore"
-	| "outputPad"
 	| "session"
 	| "sessionManager"
 	| "settingsManager"
@@ -38,8 +37,9 @@ export function addCustomEntryToChat(host: ChatMessagesHost, entry: Extract<Sess
 	if (!renderer) {
 		return;
 	}
-	const component = new CustomEntryComponent(entry, renderer, host.outputPad);
-	component.setExpanded(host.uiStore.getState().view.toolsExpanded);
+	const { view } = host.uiStore.getState();
+	const component = new CustomEntryComponent(entry, renderer, view.outputPad);
+	component.setExpanded(view.toolsExpanded);
 	if (!component.hasContent()) {
 		return;
 	}
@@ -67,13 +67,15 @@ export function addMessageToChat(
 	message: AgentMessage,
 	options?: { populateHistory?: boolean },
 ): void {
+	// A new row starts as the view is now; the view binder updates it from then on.
+	const { view } = host.uiStore.getState();
 	switch (message.role) {
 		case "bashExecution": {
 			const component = new BashExecutionComponent(
 				message.command,
 				host.ui,
 				message.excludeFromContext,
-				host.outputPad,
+				view.outputPad,
 			);
 			if (message.output) {
 				component.appendOutput(message.output);
@@ -95,9 +97,9 @@ export function addMessageToChat(
 					message,
 					renderer,
 					host.getMarkdownThemeWithSettings(),
-					host.outputPad,
+					view.outputPad,
 				);
-				component.setExpanded(host.uiStore.getState().view.toolsExpanded);
+				component.setExpanded(view.toolsExpanded);
 				addAboveStreaming(host, component);
 			}
 			break;
@@ -107,10 +109,10 @@ export function addMessageToChat(
 			const component = new CompactionSummaryMessageComponent(
 				message,
 				host.getMarkdownThemeWithSettings(),
-				host.outputPad,
+				view.outputPad,
 				host.ui,
 			);
-			component.setExpanded(host.uiStore.getState().view.toolsExpanded);
+			component.setExpanded(view.toolsExpanded);
 			host.chatContainer.addChild(component);
 			break;
 		}
@@ -119,10 +121,10 @@ export function addMessageToChat(
 			const component = new BranchSummaryMessageComponent(
 				message,
 				host.getMarkdownThemeWithSettings(),
-				host.outputPad,
+				view.outputPad,
 				host.ui,
 			);
-			component.setExpanded(host.uiStore.getState().view.toolsExpanded);
+			component.setExpanded(view.toolsExpanded);
 			host.chatContainer.addChild(component);
 			break;
 		}
@@ -136,10 +138,10 @@ export function addMessageToChat(
 			const port = getApplicationPort(host.session);
 			const assistantComponent = new AssistantMessageComponent(
 				undefined,
-				host.uiStore.getState().view.hideThinking,
+				view.hideThinking,
 				host.getMarkdownThemeWithSettings(),
 				undefined,
-				host.outputPad,
+				view.outputPad,
 				host.getMarkdownTransformers(),
 				{
 					readAsset: (id) => port.readAsset(id),
@@ -150,7 +152,7 @@ export function addMessageToChat(
 					keepScrollbackOnCollapse: () => host.ui.keepScrollbackOnCollapse?.(),
 				},
 			);
-			assistantComponent.setExpanded(host.uiStore.getState().view.toolsExpanded);
+			assistantComponent.setExpanded(view.toolsExpanded);
 			assistantComponent.updateMessage(port.normalizeMessage(message), false);
 			host.chatContainer.addChild(assistantComponent);
 			break;

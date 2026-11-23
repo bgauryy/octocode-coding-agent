@@ -13,6 +13,7 @@ import { withInputOrigin } from "../../input-origin.ts";
 import type { ApplicationAssets } from "../assets.ts";
 import type { ApplicationSession } from "../session-port.ts";
 import { assertImageInputSupported, assertImageCounts } from "@octocodeai/octocode-ai/utils/image-input";
+import { type ModelCommandSession, selectModel, selectThinking } from "./model-commands.ts";
 
 /** Resolve attachment references before accepting a command, while the current session still owns them. */
 export function commandImages(
@@ -20,7 +21,7 @@ export function commandImages(
 	assets: ApplicationAssets,
 	session: Pick<ApplicationSession, "model">,
 ): ImageContent[] | undefined {
-	if (command.action === "abort" || command.action === "answer" || command.action === "hold") return undefined;
+	if (command.action !== "prompt" && command.action !== "steer" && command.action !== "followUp") return undefined;
 	if (!command.text.trim() && !command.attachments?.length) throw new Error("Enter a message or attach an image");
 	if (!command.attachments?.length) return undefined;
 	const images: ImageContent[] = command.attachments.map((id) => {
@@ -45,9 +46,14 @@ export function invokeCommand(
 	session: Pick<
 		ApplicationSession,
 		"abort" | "clearQueue" | "prompt" | "steer" | "followUp" | "answerDialog" | "holdDialog"
-	>,
+	> &
+		ModelCommandSession,
 ): unknown {
 	switch (command.action) {
+		case "setModel":
+			return selectModel(session, command.provider, command.modelId);
+		case "setThinking":
+			return selectThinking(session, command.level);
 		case "abort": {
 			// A Stop withdraws the queued input (`AgentSession.abort`): the receipt gives it back to the client that sent it.
 			const { steering, followUp } = session.clearQueue();

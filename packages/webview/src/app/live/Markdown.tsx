@@ -1,5 +1,6 @@
-import { createElement, Fragment, memo, type ReactNode, useMemo, useState } from "react";
+import { createElement, Fragment, memo, type ReactNode, useContext, useMemo, useState } from "react";
 import { codeLanguage, MARKDOWN_TAGS, sanitizeMarkdown } from "../../markdown.ts";
+import { EvidenceContext, linkAnchors } from "./evidence.tsx";
 import { useCopy } from "../hooks.ts";
 import { CheckIcon, CodeIcon, CopyIcon, WrapIcon } from "../ui/icons.tsx";
 import { Button, cx } from "../ui/primitives.tsx";
@@ -108,7 +109,11 @@ export const Markdown = memo(function Markdown({
 }) {
 	const [showSource, setShowSource] = useState(false);
 	const [copied, copy] = useCopy(text);
-	const content = useMemo(() => renderMarkdown(decorate ? decorate(text) : text), [text, decorate]);
+	const evidence = useContext(EvidenceContext);
+	const content = useMemo(
+		() => renderMarkdown(decorate ? decorate(text) : text, evidence ? { text: linkAnchors } : undefined),
+		[text, decorate, evidence],
+	);
 	if (isPlainLine(text))
 		return (
 			<div className="markdown-view">

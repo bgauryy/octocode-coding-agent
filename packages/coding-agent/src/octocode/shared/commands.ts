@@ -24,10 +24,15 @@ export function say(ctx: Pick<FeatureContext, "hasUI" | "ui">, text: string, lev
 	if (!ctx.hasUI) process.stderr.write(`${sanitizeTerminalText(text)}\n`);
 }
 
+const CANCELLED = "Cancelled: nothing was ";
+
 /** The one line a declined or abandoned confirmation says: `cancelledText("stopped")` is "Cancelled: nothing was stopped.". */
 export function cancelledText(verb: string): string {
-	return `Cancelled: nothing was ${verb}.`;
+	return `${CANCELLED}${verb}.`;
 }
+
+/** Whether a notice is `cancelledText`'s line: the command stopped at the user's word and did nothing. */
+export const isCancelledText = (text: string): boolean => text.startsWith(CANCELLED);
 
 /** A native command registered once under its canonical name. */
 export interface Subcommand {

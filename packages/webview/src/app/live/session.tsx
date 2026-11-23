@@ -16,7 +16,7 @@ import type {
 	WorkspaceReceipt,
 	WorkspaceSnapshot,
 } from "@octocodeai/octocode-contracts/workspace";
-import { createContext, type ReactNode, useContext, useEffect, useMemo } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo } from "react";
 import { useStore } from "zustand";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { createWorkspaceStore } from "../../state.ts";
@@ -25,6 +25,7 @@ import { bearer } from "../../access.ts";
 import { requestJson } from "../../request.ts";
 import { scopedRoute } from "../../scope.ts";
 import { BrowserConnection } from "../../transport.ts";
+import { EvidenceContext, type EvidenceReader } from "./evidence.tsx";
 import { createApplicationApi } from "./application-api.ts";
 import { createDocsApi } from "./docs-api.ts";
 import { createProfilerApi, ProfilerFeed } from "./profiler-api.ts";
@@ -327,7 +328,19 @@ export function LiveProvider({
 		};
 	}, [live, access]);
 
-	return <LiveContext.Provider value={live}>{children}</LiveContext.Provider>;
+	const readEvidence = useCallback<EvidenceReader>(
+		(anchor, cursor) => {
+			const sessionId = live.session.getState().application?.sessionId;
+			if (!sessionId) return Promise.reject(new Error("The session is not connected yet."));
+			return live.api.evidence(sessionId, anchor, cursor);
+		},
+		[live],
+	);
+	return (
+		<LiveContext.Provider value={live}>
+			<EvidenceContext.Provider value={readEvidence}>{children}</EvidenceContext.Provider>
+		</LiveContext.Provider>
+	);
 }
 
 export function ConnectionStatus() {

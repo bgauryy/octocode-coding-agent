@@ -164,6 +164,25 @@ describe("viewOf parity", () => {
 		expect(q.approval).toEqual({ toolCallId: "call-1", action: "shell", targets: ["npm test", "cd /tmp\nls"] });
 		expect(q.type).toBe("approval");
 	});
+
+	// The approval question reaches the web dialog as it is: a choice's description names no terminal key.
+	it("describes each approval choice in words the terminal and the web dialog both fit", () => {
+		const q = approvalFor(
+			"a2",
+			{ action: "shell", title: "Run it?", what: ["ls"] },
+			{
+				allowOnce: ALLOW_ONCE,
+				session: sessionOption("`ls`"),
+				kind: kindOption("shell") ?? "kind",
+				deny: DENY,
+				note: DENY_NOTE,
+				noteTitle: NOTE_TITLE,
+			},
+		);
+		const descriptions = (q.options ?? []).map((option) => option.description ?? "");
+		expect(descriptions.filter(Boolean)).toHaveLength(5);
+		for (const description of descriptions) expect(description).not.toMatch(/\b(esc|tab|enter|ctrl|shift)\b/i);
+	});
 });
 
 describe("decode", () => {

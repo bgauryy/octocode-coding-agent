@@ -159,7 +159,8 @@ describe("Editor component", () => {
 			editor.handleInput("\x1b[A"); // Up - shows "old prompt"
 			editor.handleInput("x"); // Type a character - exits history mode
 
-			assert.strictEqual(editor.getText(), "xold prompt");
+			// The recall puts the cursor at the end, so typing continues the prompt.
+			assert.strictEqual(editor.getText(), "old promptx");
 		});
 
 		it("exits history mode on setText", () => {
@@ -264,19 +265,19 @@ describe("Editor component", () => {
 			assert.strictEqual(editor.getText(), "new session prompt");
 		});
 
-		it("places cursor at start after browsing history upward", () => {
+		it("places cursor at end after browsing history upward, and Up again browses on", () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
 
 			editor.addToHistory("older entry");
 			editor.addToHistory("line1\nline2\nline3");
 
-			editor.handleInput("\x1b[A"); // Up - shows multi-line entry at start
+			editor.handleInput("\x1b[A"); // Up - shows multi-line entry with the cursor at its end
 			assert.strictEqual(editor.getText(), "line1\nline2\nline3");
-			assert.deepStrictEqual(editor.getCursor(), { line: 0, col: 0 });
+			assert.deepStrictEqual(editor.getCursor(), { line: 2, col: 5 });
 
-			editor.handleInput("\x1b[A"); // Up again - immediately navigates to older entry
+			editor.handleInput("\x1b[A"); // Up again - the cursor has not moved: navigates to the older entry
 			assert.strictEqual(editor.getText(), "older entry");
-			assert.deepStrictEqual(editor.getCursor(), { line: 0, col: 0 });
+			assert.deepStrictEqual(editor.getCursor(), { line: 0, col: 11 });
 		});
 
 		it("places cursor at end after browsing history downward", () => {
@@ -298,21 +299,28 @@ describe("Editor component", () => {
 			assert.strictEqual(editor.getText(), "newer entry");
 		});
 
-		it("allows opposite-direction cursor movement within multi-line history entry", () => {
+		it("moves within a recalled multi-line entry once the cursor has moved", () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
 
+			editor.addToHistory("older entry");
 			editor.addToHistory("line1\nline2\nline3");
 
-			editor.handleInput("\x1b[A"); // Up - shows entry at start
-			assert.deepStrictEqual(editor.getCursor(), { line: 0, col: 0 });
+			editor.handleInput("\x1b[A"); // Up - shows entry with the cursor at its end
+			assert.deepStrictEqual(editor.getCursor(), { line: 2, col: 5 });
 
-			editor.handleInput("\x1b[B"); // Down - cursor moves to line2
+			editor.handleInput("\x1b[D"); // Left - the cursor moved inside the entry
+			editor.handleInput("\x1b[A"); // Up - cursor moves to line2
 			assert.strictEqual(editor.getText(), "line1\nline2\nline3");
-			assert.deepStrictEqual(editor.getCursor(), { line: 1, col: 0 });
+			assert.deepStrictEqual(editor.getCursor(), { line: 1, col: 4 });
 
-			editor.handleInput("\x1b[A"); // Up - cursor moves back to line1
+			editor.handleInput("\x1b[B"); // Down - cursor moves back to line3
 			assert.strictEqual(editor.getText(), "line1\nline2\nline3");
-			assert.deepStrictEqual(editor.getCursor(), { line: 0, col: 0 });
+			assert.deepStrictEqual(editor.getCursor(), { line: 2, col: 4 });
+
+			editor.handleInput("\x1b[A"); // Up, Up - to line1, then the first line browses to the older entry
+			editor.handleInput("\x1b[A");
+			editor.handleInput("\x1b[A");
+			assert.strictEqual(editor.getText(), "older entry");
 		});
 	});
 
@@ -2843,11 +2851,17 @@ describe("Editor component", () => {
 			await flushAutocomplete();
 			assert.strictEqual(editor.isShowingAutocomplete(), true);
 
+			let submitted: string | undefined;
+			editor.onSubmit = (text) => {
+				submitted = text;
+			};
 			// Press Enter - should apply the exact typed value "two", not the first item
 			editor.handleInput("\r");
 
-			// The exact typed value "two" should be retained
-			assert.strictEqual(editor.getText(), "/argtest two");
+			// The exact typed value "two" is kept, and since the completion changed nothing the same Enter runs the
+			// command: an argument typed in full (`/backlog tui`) no longer needs a second Enter.
+			assert.strictEqual(submitted?.trim(), "/argtest two");
+			assert.strictEqual(editor.getText(), "");
 		});
 
 		it("selects first prefix match on Enter when typed arg is not exact match", async () => {
@@ -2896,9 +2910,15 @@ describe("Editor component", () => {
 			await flushAutocomplete();
 			assert.strictEqual(editor.isShowingAutocomplete(), true);
 
+			let submitted: string | undefined;
+			editor.onSubmit = (text) => {
+				submitted = text;
+			};
 			// Press Enter - "t" prefix matches "two" (first in list), so "two" is applied
 			editor.handleInput("\r");
 			assert.strictEqual(editor.getText(), "/argtest two");
+			// A completion that changed the text only inserts: the user sees what runs before a second Enter.
+			assert.strictEqual(submitted, undefined);
 		});
 
 		it("highlights unique prefix match as user types (before full exact match)", async () => {
@@ -3052,11 +3072,15 @@ describe("Editor component", () => {
 			await flushAutocomplete();
 			assert.strictEqual(editor.isShowingAutocomplete(), true);
 
+			let submitted: string | undefined;
+			editor.onSubmit = (text) => {
+				submitted = text;
+			};
 			// Press Enter - should retain exact typed value, not apply first highlighted item
 			editor.handleInput("\r");
 
-			// The exact typed value should be retained
-			assert.strictEqual(editor.getText(), "/model gpt-4o-mini");
+			// The exact typed value is what runs: a completion that changes nothing submits on the same Enter.
+			assert.strictEqual(submitted?.trim(), "/model gpt-4o-mini");
 		});
 
 		it("awaits async slash command argument completions", async () => {
@@ -3875,6 +3899,12 @@ describe("Editor component", () => {
 			const editor = new Editor(createTestTUI(), defaultEditorTheme);
 			const text = pasteWithMarker(editor);
 			assert.match(text, /\[paste #\d+ \+\d+ lines\]/);
+		});
+
+		it("counts the lines of a pasted file that ends in a newline, not one more", () => {
+			const editor = new Editor(createTestTUI(), defaultEditorTheme);
+			editor.handleInput(`\x1b[200~${"line\n".repeat(40)}\x1b[201~`);
+			assert.strictEqual(editor.getText(), "[paste #1 +40 lines]");
 		});
 
 		it("treats paste marker as single unit for right arrow", () => {

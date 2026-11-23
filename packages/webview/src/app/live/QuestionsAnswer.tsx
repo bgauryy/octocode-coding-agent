@@ -68,19 +68,19 @@ export function QuestionsAnswer({ questions, disabled, loading, counting, onSubm
 						/>
 					) : null}
 					{(question.options ?? []).map((option) => (
-						<label key={option.id} className="dialog-answer-option">
+						<label key={option.id} className="dialog-answer-choice">
 							<input
 								type={question.type === "multi" ? "checkbox" : "radio"}
 								name={question.id}
 								checked={pickedOf(question.id).includes(option.id)}
 								onChange={() => toggle(question, option.id)}
-							/>{" "}
+							/>
 							<span className={option.tone === "danger" || option.role === "deny" ? "danger" : undefined}>
 								{option.label}
 								{option.recommended ? " ★" : ""}
 							</span>
 							{option.description ? (
-								<span className="muted dialog-answer-description"> {option.description}</span>
+								<span className="muted dialog-answer-description">{option.description}</span>
 							) : null}
 						</label>
 					))}

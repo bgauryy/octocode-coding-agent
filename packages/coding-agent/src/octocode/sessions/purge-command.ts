@@ -40,11 +40,10 @@ async function purgeHandler(args: string, ctx: CommandContext, options: PurgeCom
 			"Usage: /purge workspace|all. It shows what would be deleted, then asks you to type the scope word.",
 			"warning",
 		);
+	// A refusal, not a notice: a print or RPC run that asked for a purge exits 1 (print mode counts a failed command).
 	if (!ctx.hasUI)
-		return say(
-			ctx,
+		throw new Error(
 			`Refusing to purge without a terminal to confirm in. Run /purge ${scope} in an interactive session.`,
-			"warning",
 		);
 	let index: SessionIndex;
 	try {

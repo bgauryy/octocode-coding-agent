@@ -1,3 +1,4 @@
+import type { ActivityTone } from "@octocodeai/octocode-contracts";
 import type { SessionInfo } from "./session-manager.ts";
 
 export type SessionScope = "current" | "all";
@@ -6,6 +7,8 @@ export type SessionScope = "current" | "all";
 export interface SessionExtras {
 	/** Another process (or this one) has the session open now. */
 	live?: boolean;
+	/** What that process last said it is doing (its light's tone); only with `live`. Absent: unknown (an older Octocode). */
+	activity?: ActivityTone;
 	branch?: string;
 	/** `main` or `worktree <name>`. */
 	checkout?: string;

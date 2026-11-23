@@ -64,17 +64,46 @@ describe("Esc before the run reaches the model", () => {
 });
 
 describe("Ctrl+C and Ctrl+D", () => {
-	it("a single Ctrl+C clears the draft and does not exit", async () => {
+	it("a single Ctrl+C clears the draft, says a second one exits, and does not exit", async () => {
 		t = await startUi();
 		await t.type("draft text");
 		expect(await t.text()).toContain("draft text");
 		t.press(KEY.ctrlC);
 		await sleep(150);
-		expect(await t.text()).not.toContain("draft text");
+		const screen = await t.text();
+		expect(screen).not.toContain("draft text");
+		expect(screen).toContain("ctrl+c again to exit");
+		expect(t.shutdowns).toBe(0);
+		// The note goes with the window.
+		await t.until(async () => !(await t!.text()).includes("again to exit"), "the exit note to go");
+	});
+
+	it("a single Ctrl+C on an empty editor says a second one exits, and does not exit", async () => {
+		t = await startUi();
+		t.press(KEY.ctrlC);
+		await t.until(async () => (await t!.text()).includes("ctrl+c again to exit"), "the exit note");
 		expect(t.shutdowns).toBe(0);
 	});
 
-	it("two Ctrl+C within 500 ms exit", async () => {
+	it("Ctrl+C during a run interrupts it as Esc does, keeps the draft and says a second one exits", async () => {
+		t = await startUi();
+		const reply = hang();
+		t.script(reply);
+		await t.type("work");
+		t.press(KEY.enter);
+		await t.until(() => t!.host.session.isStreaming, "turn to start");
+		await t.until(() => reply.started(), "the model call");
+		await t.type("next idea");
+		t.press(KEY.ctrlC);
+		await t.until(() => !t!.host.session.isStreaming, "turn to stop");
+		const messages = t.host.session.messages as Array<{ role: string; stopReason?: string }>;
+		expect(messages.at(-1)).toMatchObject({ role: "assistant", stopReason: "aborted" });
+		expect(t.host.editor.getText()).toBe("next idea");
+		expect(await t.text()).toContain("ctrl+c again to exit");
+		expect(t.shutdowns).toBe(0);
+	});
+
+	it("two Ctrl+C within the window exit", async () => {
 		t = await startUi();
 		t.press(KEY.ctrlC);
 		t.press(KEY.ctrlC);
@@ -85,7 +114,8 @@ describe("Ctrl+C and Ctrl+D", () => {
 	it("two slow Ctrl+C presses do not exit", async () => {
 		t = await startUi();
 		t.press(KEY.ctrlC);
-		await sleep(650);
+		// The window is 1 s (it was 500 ms): long enough to read the note the first press shows and act on it.
+		await sleep(1150);
 		t.press(KEY.ctrlC);
 		await sleep(200);
 		expect(t.shutdowns).toBe(0);

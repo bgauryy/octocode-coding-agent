@@ -3,6 +3,7 @@ import { globalPaths } from "../../../storage/state-paths.ts";
 import { repoKey } from "../../../utils/git-repository.ts";
 import { collectAutoPromptEntries, collectAutoThemeEntries } from "../../package-manager/auto-entries.ts";
 import { collectAncestorProjectSkillDirs } from "../../package-manager/discovery.ts";
+import { collectionSkillFiles } from "../../skills/collection.ts";
 import { hostPluginStore } from "../../extensibility/host-plugins.ts";
 import { insideProject } from "../../extensibility/toggles.ts";
 import { inspectPluginHooks } from "../../plugin-hooks.ts";
@@ -51,7 +52,9 @@ function skills(input: DiscoverInput): ConfigItem[] {
 			: []),
 		...skillItemsIn(globalDirs, global, input),
 		...(input.builtinSkillsDir
-			? skillItemsIn([input.builtinSkillsDir], { product: "octocode", scope: "builtin", origin: "bundled" }, input)
+			? skillItemsIn([input.builtinSkillsDir], { product: "octocode", scope: "builtin", origin: "bundled" }, input, {
+					collect: collectionSkillFiles,
+				})
 			: []),
 	];
 }
@@ -130,7 +133,10 @@ export const octocodeVendor: Vendor = {
 			discover: (input) => namedFileItems("keybinding", "keybindings.json", ["global"], roots(input), input),
 		},
 		// Layered files: every one that exists is read, Octocode's over Pi's and project over global within a product.
-		{ kind: "model", discover: (input) => namedFileItems("model", "models.json", ["project", "global"], roots(input), input) },
+		{
+			kind: "model",
+			discover: (input) => namedFileItems("model", "models.json", ["project", "global"], roots(input), input),
+		},
 		{
 			kind: "setting",
 			discover: (input) => namedFileItems("setting", "settings.json", ["project", "global"], roots(input), input),

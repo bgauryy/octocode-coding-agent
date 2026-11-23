@@ -2,8 +2,9 @@
  * A `!` command row uses the tool-row grammar: `<mark> ! cmd · you · time`, then the outcome in words under the `⎿`
  * gutter and the output hanging beneath it. A mark and words say how it ended; there is no frame to tint.
  */
-import { GLYPH, type TUI } from "@octocodeai/octocode-tui";
-import { beforeAll, describe, expect, test } from "vitest";
+import { GLYPH, setKeybindings, type TUI } from "@octocodeai/octocode-tui";
+import { beforeAll, describe, expect, test, vi } from "vitest";
+import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { BashExecutionComponent } from "../src/modes/interactive/components/bash-execution.ts";
 import { STOPPED_COLOR } from "../src/octocode/render/types.ts";
 import { initTheme, theme } from "../src/theme/theme.ts";
@@ -86,5 +87,30 @@ describe("BashExecutionComponent outcome", () => {
 		const rows = row.render(20);
 		expect(plain(rows).split("\n")[1]).toBe(` ${GLYPH.done} !! x · you`);
 		expect(rows.join("\n")).toContain(theme.fg("dim", theme.bold("!! x")));
+	});
+});
+
+describe("BashExecutionComponent while it runs", () => {
+	beforeAll(() => {
+		initTheme("dark");
+		setKeybindings(new KeybindingsManager());
+	});
+
+	test("says how long the command has run, from 1s on, before the cancel key", () => {
+		vi.useFakeTimers();
+		try {
+			const row = new BashExecutionComponent("sleep 30", ui);
+			const running = () => plain(row.render(60)).split("\n").at(-1) ?? "";
+			expect(running()).toMatch(/Running… · esc cancel$/);
+			vi.advanceTimersByTime(12_000);
+			expect(running()).toMatch(/Running… 12s · esc cancel$/);
+			row.setComplete(0, false, undefined, undefined, "[exit 0 · 12s · 0 lines · 0 B]");
+			// Finished, the time moves to the title and nothing ticks any more.
+			expect(plain(row.render(60)).split("\n")[1]).toBe(` ${GLYPH.done} ! sleep 30 · you · 12s`);
+			expect(vi.getTimerCount()).toBe(0);
+			row.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

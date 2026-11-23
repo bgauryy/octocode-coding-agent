@@ -13,16 +13,33 @@ export interface ModelRowMarks {
 	current: boolean;
 	isDefault: boolean;
 	kind?: string;
+	/** models.dev added it after this release shipped (`getCatalogUpdate(m)?.source === "models.dev"`): `new`. */
+	added?: boolean;
+	/** models.dev lists it as deprecated (`isModelDeprecated`): the id is dimmed and the row says `deprecated`. */
+	deprecated?: boolean;
 }
 
-/** One row of the model selector: cursor, current mark, the id and the default mark. */
+/**
+ * One row of the model selector: cursor, current mark, the id, then its badges (`default`, `new`, `deprecated`). A
+ * state never rests on colour alone: a deprecated id is dimmed and also says so. The badges keep their room; the id is
+ * cut first.
+ */
 function modelRow(id: string, state: ModelRowMarks & { selected: boolean }, width: number): string {
 	const cursor = cursorMark(state.selected);
 	const currentMarker = state.current ? theme.fg("accent", "✓ ") : "  ";
-	const defaultBadge = state.isDefault ? theme.fg("accent", " · default") : "";
-	const label = truncateToWidth(plainText(id), Math.max(0, width - 4 - visibleWidth(defaultBadge)), "…");
-	const modelText = state.selected ? theme.fg("accent", theme.bold(label)) : label;
-	return truncateToWidth(`${cursor}${currentMarker}${modelText}${defaultBadge}`, width, "…");
+	const badges = [
+		state.isDefault ? theme.fg("accent", "default") : "",
+		state.added ? theme.fg("success", "new") : "",
+		state.deprecated ? theme.fg("muted", "deprecated") : "",
+	].filter(Boolean);
+	const badgeText = badges.map((badge) => `${theme.fg("dim", " · ")}${badge}`).join("");
+	const label = truncateToWidth(plainText(id), Math.max(0, width - 4 - visibleWidth(badgeText)), "…");
+	const modelText = state.selected
+		? theme.fg("accent", theme.bold(label))
+		: state.deprecated
+			? theme.fg("dim", label)
+			: label;
+	return truncateToWidth(`${cursor}${currentMarker}${modelText}${badgeText}`, width, "…");
 }
 
 /**

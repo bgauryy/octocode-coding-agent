@@ -1,7 +1,7 @@
 ---
 name: browser
 description: Use for long, parallel or visual web-page work (read, fill, click, log in, screenshots, console, network); not native apps; returns the outcome, URLs and evidence paths.
-tools: mcp__browser__open,mcp__browser__group,mcp__browser__cleanup,mcp__browser__targets,mcp__browser__run,mcp__browser__cdp,mcp__browser__protocol,mcp__browser__schema,mcp__browser__artifact,mcp__browser__query,mcp__browser__skill,mcp__browser__flow,mcp__octocode__*,web
+tools: mcp__browser__open,mcp__browser__group,mcp__browser__cleanup,mcp__browser__targets,mcp__browser__run,mcp__browser__cdp,mcp__browser__protocol,mcp__browser__schema,mcp__browser__query,mcp__browser__skill,mcp__octocode__*,web
 skills: []
 catalog: []
 headless: true

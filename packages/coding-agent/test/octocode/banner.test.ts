@@ -1,4 +1,4 @@
-import { visibleWidth } from "@octocodeai/octocode-tui";
+import { stripTerminalSequences, visibleWidth } from "@octocodeai/octocode-tui";
 import { describe, expect, it } from "vitest";
 import { type BannerPaint, bannerLines, ISSUES_URL } from "../../src/octocode/ui/banner.ts";
 import { backlogStatusLine } from "../../src/octocode/ui/backlog-status.ts";
@@ -90,6 +90,16 @@ describe('banner "OCTOCODE AGENT"', () => {
 			expect(narrow).toHaveLength(4);
 			expect(narrow.every((row) => visibleWidth(row) <= width)).toBe(true);
 		}
+	});
+
+	it("keeps the issues link whole on a narrow terminal, and marks a notice it must cut with …", () => {
+		// 60 columns: the notice drops its words before the link loses a character.
+		expect(bannerLines(plain, 60)[2]).toBe(`BETA · ${ISSUES_URL}`);
+		expect(bannerLines(plain, 50)[2]).toBe(`BETA · ${ISSUES_URL.replace("https://", "")}`);
+		const cut = bannerLines(plain, 30)[2];
+		expect(stripTerminalSequences(cut).endsWith("…")).toBe(true);
+		expect(visibleWidth(cut)).toBe(30);
+		expect(bannerLines(plain, NOTICE.length)[2]).toBe(NOTICE);
 	});
 
 	it("keeps one height at every width and fits each line, with the plain name below the art's width", () => {

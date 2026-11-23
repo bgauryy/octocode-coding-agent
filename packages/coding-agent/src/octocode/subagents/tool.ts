@@ -8,6 +8,7 @@ import { timedTool } from "../render/rows.ts";
 import { modelLookup, settleWithin } from "../shared/util.ts";
 import { UserQuestions } from "../team/asks.ts";
 import { runningWorkOf } from "../shared/running-work.ts";
+import { liveAgentsOf } from "../shared/team-spend.ts";
 import { AgentsView } from "../team/panel.ts";
 import type { Team } from "../team/session.ts";
 import { RunningBudgets } from "./budget.ts";
@@ -112,7 +113,7 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 	const registerTool = options.registerTool ?? ((tool) => api.tools.register(tool));
 	registerAgentMessageRenderer(api);
 	// Per registration, not per module: a replaced session starts clean.
-	const panel = new AgentsView(team, runningWorkOf(api));
+	const panel = new AgentsView(team, runningWorkOf(api), liveAgentsOf(api));
 	const budgets = new RunningBudgets();
 	let current: FeatureContext | undefined; // The current session, for graph wakes and the graph watch.
 	let backlog: Backlog | undefined;
@@ -217,10 +218,10 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 		(run, ctx, { text, message }) => {
 			const session = childSession(run.identity);
 			const details = runDetails(run, session);
-			const track = tracker(run.identity, details, modelLookup(ctx), ctx);
+			const tracking = tracker(run.identity, details, modelLookup(ctx), ctx);
 			const args = buildRouteArgs(run.profile, run.route, session, run.identity.mcpNamed);
 			const host = relayHost(ctx);
-			const onProgress = track(undefined);
+			const onProgress = tracking(undefined);
 			const child = { task: message, args, cwd: ctx.cwd, profile: run.profile, identity: run.identity, host };
 			// Answered at once, its slot held: the child starts once its provider is not cooling down (`rate-gate.ts`).
 			const launch = (signal: AbortSignal) =>
@@ -228,7 +229,9 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 					run,
 					details,
 					session,
-					startGate.wait(run.route, signal).then(() => runSubagent({ ...child, signal, onProgress })),
+					tracking.withScreenshots(
+						startGate.wait(run.route, signal).then(() => runSubagent({ ...child, signal, onProgress })),
+					),
 				);
 			startBackground(
 				runs,

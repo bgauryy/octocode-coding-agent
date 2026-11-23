@@ -26,6 +26,7 @@ import {
 import { RUNNERS } from "../../../octocode/external/runners.ts";
 import { menuCommands } from "./command-menu.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { selectFdPath } from "../state/input-slice.ts";
 
 /** Interactive-mode members used by the slash-command autocomplete. */
 type AutocompleteHost = Pick<
@@ -35,13 +36,13 @@ type AutocompleteHost = Pick<
 	| "createBaseAutocompleteProvider"
 	| "defaultEditor"
 	| "editor"
-	| "fdPath"
 	| "getLoginProviderOptions"
 	| "getSlashCommands"
 	| "session"
 	| "sessionManager"
 	| "settingsManager"
 	| "skillCommands"
+	| "uiStore"
 >;
 
 function getAutocompleteSourceTag(sourceInfo?: SourceInfo): string | undefined {
@@ -247,7 +248,7 @@ export function createBaseAutocompleteProvider(host: AutocompleteHost): Autocomp
 	return new CombinedAutocompleteProvider(
 		menuCommands(host.getSlashCommands()),
 		host.sessionManager.getCwd(),
-		host.fdPath,
+		selectFdPath(host.uiStore.getState()),
 	);
 }
 

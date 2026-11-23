@@ -43,6 +43,35 @@ afterEach(() => {
 	fs.rmSync(root, { recursive: true, force: true });
 });
 
+/**
+ * Yields to the event loop until `done()` holds, advancing a faked `setTimeout` clock by one projection retry (250 ms)
+ * each round; fails after 10 s of real time. A projection is file work: its end is awaited, never a fixed number of turns.
+ */
+async function until(done: () => boolean, what: string): Promise<void> {
+	const deadline = performance.now() + 10_000;
+	while (!done()) {
+		if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
+		if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(250);
+		await new Promise((resolve) => setImmediate(resolve));
+	}
+}
+
+/** Commits an `init` event of `cwd`'s workspace to `agent`. */
+function appendInit(agent: AgentDb, cwd: string, id: string): void {
+	agent.transaction(() =>
+		agentEvents.append(agent.db, registeredWorkspace(cwd, agent).id, {
+			id,
+			time: new Date().toISOString(),
+			name: null,
+			parentId: null,
+			sessionId: "session",
+			type: "init",
+			version: 1,
+			data: { agentId: null, activationId: id, reason: "startup", parentSession: null },
+		}),
+	);
+}
+
 describe("durable agent lifecycle", () => {
 	it("commits identity and events together, separates name reuse and excludes heartbeats", () => {
 		const store = TeamStore.open(root, db.file);
@@ -126,6 +155,8 @@ describe("durable agent lifecycle", () => {
 		expect(agentEvents.list(db.db, registeredWorkspace(root, db).id, Number.MAX_SAFE_INTEGER, 100)).toHaveLength(55);
 		const other = openAgentDb(path.join(root, "other.db"));
 		await expect(projectAgents(other, root)).rejects.toThrow("another database");
+		// The note names the file to remove, not only its name: the user can act on it from anywhere.
+		await expect(projectAgents(other, root)).rejects.toThrow(`remove ${file} to rebind it`);
 		expect(fs.readFileSync(file, "utf8")).toBe(content);
 		other.close();
 		fs.unlinkSync(file);
@@ -133,6 +164,11 @@ describe("durable agent lifecycle", () => {
 		expect(fs.readFileSync(file, "utf8")).toBe(content);
 		fs.writeFileSync(file, JSON.stringify({ ...rows[0], time: "bad" }) + "\n");
 		await expect(projectAgents(db, root)).rejects.toThrow("another database or format");
+		fs.writeFileSync(file, "\n");
+		await expect(projectAgents(db, root)).rejects.toThrow(`remove ${file} to rebuild it`);
+		// A line that is not JSON is a file that is not a view: refused the same way, not reported as a parse error.
+		fs.writeFileSync(file, "not json\n");
+		await expect(projectAgents(db, root)).rejects.toThrow(`Invalid agents.txt; remove ${file} to rebuild it.`);
 	});
 	it("takes no lock when the view is current, and reports a held lock as ELOCKED for a quiet retry", async () => {
 		const event = (id: string) =>
@@ -338,6 +374,94 @@ describe("durable agent lifecycle", () => {
 		for (const spy of syncWrites) spy.mockRestore();
 		close();
 	});
+
+	it("warns once per problem, stops projecting into a foreign view until it changes, and recovers when it is removed", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout"] });
+		const view = path.join(root, ".octocode", "agent", "agents.txt");
+		fs.mkdirSync(path.dirname(view), { recursive: true });
+		const foreignRow = {
+			id: "old",
+			time: new Date(0).toISOString(),
+			name: null,
+			parentId: null,
+			sessionId: null,
+			type: "init",
+			version: 1,
+			data: { storeKey: "another-database" },
+		};
+		fs.writeFileSync(view, `${JSON.stringify(foreignRow)}\n`);
+		fs.mkdirSync(`${view}.lock`);
+		const fake = fakeHost();
+		const close = registerArchiveLifecycle(fake.api, {
+			canProject: () => true,
+			agentId: () => undefined,
+			parentId: () => undefined,
+		});
+		const ctx = fakeCtx({ cwd: root });
+		Object.assign(ctx.sessionManager, {
+			getSessionFile: () => path.join(root, "not-created.jsonl"),
+			getSessionId: () => "session",
+		});
+		const shared = sharedAgentDb();
+		const commit = (id: string) => appendInit(shared, root, id);
+		const warnings = (pattern: RegExp) =>
+			ctx.ui.notes.filter((note) => pattern.test(note.message) && note.type === "warning").length;
+		// The lock library creates the view's lock directory with callback `fs.mkdir`: one call is one attempt. (A spy on
+		// `fs.promises.mkdir` saw none, so the count stayed 0 and its assertions held whatever the lifecycle did.)
+		const locks = vi.spyOn(fs, "mkdir");
+		const lockAttempts = () => locks.mock.calls.filter(([target]) => String(target) === `${view}.lock`).length;
+		// A projection asked for while the view is known to be foreign starts by reading the view's signature.
+		const stats = vi.spyOn(fs.promises, "stat");
+		const viewChecks = () => stats.mock.calls.filter(([target]) => String(target) === view).length;
+		/** Commits `id` and waits until the projection it asks for has read the foreign view's signature. */
+		const commitAndCheck = async (id: string) => {
+			const checks = viewChecks();
+			commit(id);
+			await until(() => viewChecks() > checks, `the projection after commit ${id}`);
+		};
+		try {
+			// The lock is held the whole time: the retries run out, and the warning comes once.
+			await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
+			await until(() => warnings(/lock/i) > 0, "the held-lock warning");
+			expect(warnings(/lock/i)).toBe(1);
+			// One retry budget: every attempt from the first to the warning. A later commit gets a fresh one.
+			const budget = lockAttempts();
+			commit("held");
+			await until(() => lockAttempts() >= 2 * budget, "the second retry budget to run out");
+			expect(warnings(/lock/i)).toBe(1);
+			// The lock frees: the foreign view is the next problem, reported once however often the problems alternate.
+			fs.rmdirSync(`${view}.lock`);
+			commit("foreign");
+			await until(() => warnings(/another database/) > 0, "the foreign-view warning");
+			expect(warnings(/another database/)).toBe(1);
+			fs.mkdirSync(`${view}.lock`);
+			for (const id of ["a", "b", "c"]) await commitAndCheck(id);
+			// A permanent problem is not tried again: the held lock is never met, nothing warns more.
+			expect(warnings(/lock/i)).toBe(1);
+			expect(warnings(/another database/)).toBe(1);
+			fs.rmdirSync(`${view}.lock`);
+			const attempts = lockAttempts();
+			await commitAndCheck("d");
+			expect(lockAttempts()).toBe(attempts);
+			expect(fs.readFileSync(view, "utf8")).toContain("another-database");
+			// Removing the foreign file lets the next commit project.
+			fs.rmSync(view);
+			commit("e");
+			await until(
+				() => fs.existsSync(view) && fs.readFileSync(view, "utf8").includes('"id":"e"'),
+				"the view to be rebuilt",
+			);
+			expect(fs.readFileSync(view, "utf8")).toContain('"id":"e"');
+			// Projections run one at a time, so every earlier one has ended: the only lock taken since is the rebuild's.
+			expect(lockAttempts()).toBe(attempts + 1);
+			expect(ctx.ui.notes.filter((note) => note.type === "warning")).toHaveLength(2);
+		} finally {
+			locks.mockRestore();
+			stats.mockRestore();
+			vi.useRealTimers();
+			close();
+		}
+	});
 });
 
 it("retains a committed full summary when its detail folder cannot be written", async () => {
@@ -420,4 +544,92 @@ it("keeps the next start reading only appended lines after a compaction of this 
 	expect(transcript.mock.calls.map(([, from]) => from)).toEqual([0, end]);
 	expect(compactions.forSession(db.mirror.db, "long").map((row) => row.entryId)).toEqual(["one", "two"]);
 	close();
+});
+
+describe("archive warnings in a print run", () => {
+	/** One `octocode -p` run as the archive sees it: a session without UI, whose warnings go to stderr. */
+	async function printRun(project: string, sessionId: string, during?: () => Promise<void>): Promise<string[]> {
+		const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+		const fake = fakeHost();
+		const close = registerArchiveLifecycle(fake.api, {
+			canProject: () => true,
+			agentId: () => undefined,
+			parentId: () => undefined,
+		});
+		const ctx = fakeCtx({ cwd: project, hasUI: false });
+		Object.assign(ctx.sessionManager, {
+			getSessionFile: () => path.join(root, `${sessionId}.jsonl`),
+			getSessionId: () => sessionId,
+		});
+		try {
+			await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
+			await during?.();
+			return stderr.mock.calls.map(([text]) => String(text)).filter((text) => text.startsWith("Archive persistence"));
+		} finally {
+			close();
+			stderr.mockRestore();
+		}
+	}
+
+	it("prints none in a new workspace or over a view the home's database wrote before it moved, and one for another database's view", async () => {
+		const project = path.join(root, "project");
+		fs.mkdirSync(project);
+		// A normal home: without OCTOCODE_HOME or OCTOCODE_AGENT_DB the database is `~/.octocode/agent/workspaces.db`.
+		const home = path.join(root, "user");
+		vi.stubEnv("HOME", home);
+		vi.stubEnv("OCTOCODE_HOME", undefined);
+		vi.stubEnv("OCTOCODE_AGENT_DB", undefined);
+		expect(sharedAgentDb().file).toBe(path.join(home, ".octocode", "agent", "workspaces.db"));
+		const view = path.join(project, ".octocode", "agent", "agents.txt");
+		const keys = () =>
+			new Set(
+				fs
+					.readFileSync(view, "utf8")
+					.trim()
+					.split("\n")
+					.map((line) => JSON.parse(line).data.storeKey),
+			);
+		const viewFrom = async (file: string, id: string) => {
+			fs.rmSync(view, { force: true });
+			const other = openAgentDb(file);
+			appendInit(other, project, id);
+			await projectAgents(other, project);
+			other.close();
+		};
+
+		expect(await printRun(project, "first")).toEqual([]);
+		const own = keys();
+		expect(own.size).toBe(1);
+		expect(await printRun(project, "second")).toEqual([]);
+
+		// Before agent state moved to the shared root, the home's database was `~/.octocode/octocodecode/agent/workspaces.db`:
+		// every workspace a session used then holds a view bound to it. The next run rebinds it without a word.
+		const former = path.join(home, ".octocode", "octocodecode", "agent", "workspaces.db");
+		fs.mkdirSync(path.dirname(former), { recursive: true });
+		await viewFrom(former, "before-the-move");
+		expect(keys()).not.toEqual(own);
+		expect(await printRun(project, "after-the-move")).toEqual([]);
+		expect(keys()).toEqual(own);
+
+		// Another database's view is refused and kept: one warning, however many commits the run makes.
+		await viewFrom(path.join(root, "other.db"), "elsewhere");
+		const foreign = fs.readFileSync(view, "utf8");
+		const stats = vi.spyOn(fs.promises, "stat");
+		const viewChecks = () => stats.mock.calls.filter(([target]) => String(target) === view).length;
+		try {
+			const warned = await printRun(project, "foreign", async () => {
+				for (const id of ["one", "two"]) {
+					const checks = viewChecks();
+					appendInit(sharedAgentDb(), project, id);
+					await until(() => viewChecks() > checks, `the projection after commit ${id}`);
+				}
+			});
+			expect(warned).toEqual([
+				`Archive persistence: agents.txt belongs to another database or format; remove ${view} to rebind it.\n`,
+			]);
+		} finally {
+			stats.mockRestore();
+		}
+		expect(fs.readFileSync(view, "utf8")).toBe(foreign);
+	});
 });

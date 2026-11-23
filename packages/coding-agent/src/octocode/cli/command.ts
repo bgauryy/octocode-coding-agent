@@ -93,7 +93,13 @@ export const createOctocodeCommand = (
 });
 
 /**
- * Registers `/octocode` and, for a session a person watches, one background GitHub sign-in check per Octocode run
+ * Whether this process has had its GitHub sign-in answer. Process-wide on purpose: the answer is the user's, not a
+ * session's, and `/new`, `/clone` and `/reload` register the features again in the same process.
+ */
+let githubChecked = false;
+
+/**
+ * Registers `/octocode` and, for a session a person watches, one background GitHub sign-in check per Octocode process
  * (`githubLoginMissing`): a single notice when the CLI says GitHub is not connected, silence otherwise. Session end
  * cancels a check still running; a cancelled check runs again with the next session.
  */
@@ -108,16 +114,16 @@ export function registerOctocodeCli(
 			api.session.sendUserMessage(text, ctx.isIdle() ? undefined : { deliverAs: "followUp" }),
 		),
 	);
-	let done = false;
 	let running: AbortController | undefined;
 	api.bus.on("session_start", async (_event, ctx) => {
-		if (done || running || !ctx.hasUI) return;
+		if (githubChecked || running || !ctx.hasUI) return;
 		const check = new AbortController();
 		running = check;
 		void githubLoginMissing(check.signal, { cwd: ctx.cwd }).then((missing) => {
 			if (running === check) running = undefined;
-			if (check.signal.aborted) return;
-			done = true;
+			// Another session of this process may have had the answer meanwhile: one notice per process.
+			if (check.signal.aborted || githubChecked) return;
+			githubChecked = true;
 			if (!missing) return;
 			try {
 				say(ctx, GITHUB_LOGIN_NOTICE, "warning");

@@ -25,6 +25,7 @@ const commands: Record<string, readonly string[]> = {
 	trust: ["list", "add", "remove"],
 	security: [],
 	backlog: ["get", "list", "export", "groom", "graph"],
+	configuration: ["list", "get", "enable", "disable", "set", "unset", "add", "remove"],
 	profile: [],
 	marketplace: ["add", "list", "update", "remove"],
 	plugin: ["install", "update", "remove", "list"],
@@ -36,6 +37,7 @@ const commands: Record<string, readonly string[]> = {
 	research: [],
 	native: [],
 	completion: ["bash", "zsh", "fish"],
+	remote: ["list", "link", "stop"],
 };
 /** Every top-level command name: the one list completion, the parser and the unknown-command error read. */
 export const CLI_COMMAND_NAMES: readonly string[] = Object.keys(commands);

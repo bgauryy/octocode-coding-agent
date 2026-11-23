@@ -4,7 +4,7 @@ import { escapeRegExp } from "@octocodeai/octocode-common/regexp";
 /**
  * Every Octocode process names itself `octocode-agent-<role>-<id>` so `ps`, `pgrep -f` and `/processes` tell them
  * apart: a main session `octocode-agent-main-<last 8 characters of its session id>`, an RPC host
- * `octocode-agent-rpc-<id>`, a subagent `octocode-agent-<role>-<agent id>`. The prefix starts with the executable
+ * `octocode-agent-rpc-<id>`, the web daemon `octocode-agent-web-<pid>`, a subagent `octocode-agent-<role>-<agent id>`. The prefix starts with the executable
  * name, so tools that match `octocode` still find it. Readers identify a process by its whole title (`ps -o args`),
  * never by `comm`, whose first 15 bytes hold only the prefix.
  *
@@ -22,6 +22,13 @@ const BARE_TITLE = new RegExp(`^${PREFIX}-(main|rpc)(?:\\s|$)`);
 const SESSION_ID_LENGTH = 8;
 
 export type SessionRole = "main" | "rpc";
+
+/** The user-level web daemon's role: one process per user, serving every session, so its id is its own pid. */
+export const WEB_DAEMON_ROLE = "web";
+
+/** Whether a listed process is the web daemon: its title carries its own pid, which a subagent's agent id does not. */
+export const isWebDaemonTitle = (title: string, pid: number): boolean =>
+	title === processTitle(WEB_DAEMON_ROLE, String(pid));
 
 const safe = (text: string): string => text.replace(/[^A-Za-z0-9._-]/g, "_");
 
@@ -80,6 +87,12 @@ export function parseTitle(command: string): { role: string; id: string } | unde
 	return bare ? { role: bare[1], id: "" } : undefined;
 }
 
+/**
+ * Name this process `title`. On macOS every change also checks the process in with LaunchServices (Node's libuv loads
+ * two system frameworks each time: about 10 ms the first time, 4-6 ms after), so a title the process already has is not
+ * set again; a subagent starts with its final title.
+ */
 export function setProcessTitle(title: string): void {
+	if (process.title === title) return;
 	process.title = title;
 }

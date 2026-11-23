@@ -16,7 +16,7 @@ Read and write the board only with `backlog` and `backlogPlan`; ids such as `B12
 - Research: `plan` holds the trigger, root cause or hypothesis, evidence and the check that tells causes apart. Link saved research or RFCs as `evidence`.
 - Follow-ups: `from` the origin item, the trigger and the fix.
 - Finish with `done` (the result and the check that proved it) or `close` (obsolete, duplicate of, won't do). An unmet goal stays: split the rest into a new item with `from`.
-- Waiting on another item: `notify` `on` `item.state`, not polling.
+- Waiting on an item none of your planned items depends on: `notify` `on` `item.state`, not polling; a planned item's prerequisites wake you unasked.
 
 ## Groom the board
 
