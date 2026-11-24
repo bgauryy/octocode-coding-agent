@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { FeatureContext } from "../../core/features/index.ts";
+import { onEvery } from "../shared/clock.ts";
 import { USER_SENDER } from "../shared/messages.ts";
 import { newMember } from "./identity.ts";
 import { parentProofValid, userProofValid } from "./proof.ts";
@@ -11,7 +12,8 @@ import { sendMessage, type SendHost } from "./session/send.ts";
 import { HEARTBEAT_MS } from "./session/activity.ts";
 import type { TeamStore } from "./store.ts";
 import { Place } from "./store/place.ts";
-import { patiently } from "./store/patient.ts";
+import { busy, patiently } from "./store/patient.ts";
+import { recordProblem } from "../../core/diagnostics-log.ts";
 
 export interface RunnerMemberInput {
 	id: string;
@@ -29,7 +31,7 @@ export class RunnerMember {
 	private readonly db: TeamStore;
 	private readonly parent: Member;
 	private readonly context: FeatureContext;
-	private heartbeat: NodeJS.Timeout | undefined;
+	private stopHeartbeat: (() => void) | undefined;
 	private readonly signal: AbortSignal | undefined;
 	private readonly secret = randomBytes(32).toString("base64url");
 	private readonly fetched = new Set<number>();
@@ -52,8 +54,7 @@ export class RunnerMember {
 		if (!(await patiently(db, () => db.join(member, parent), input.signal)))
 			throw new Error(`The team name ${input.id} is already held.`);
 		runner.unvouch = vouch(input.id, runner.secret);
-		runner.heartbeat = setInterval(() => runner.beat(), HEARTBEAT_MS);
-		runner.heartbeat.unref();
+		runner.stopHeartbeat = onEvery(HEARTBEAT_MS, () => runner.beat());
 		return runner;
 	}
 
@@ -100,11 +101,15 @@ export class RunnerMember {
 	/** Refreshes the row; a busy database is never waited for (`quick`) and is tried again at the next heartbeat. */
 	private beat(): void {
 		try {
-			if (!this.current()) return;
-			this.member.updatedAt = Date.now();
-			this.db.quick(() => this.db.save(this.member));
-		} catch {
-			/* A busy database is retried at the next heartbeat. */
+			this.db.quick(() => {
+				if (!this.current()) return;
+				this.member.updatedAt = Date.now();
+				this.db.save(this.member);
+			});
+		} catch (error) {
+			// A busy database is retried at the next heartbeat.
+			// Anything else goes to the problems log: a throw out of this timer would end the session.
+			if (!busy(error)) recordProblem("team-runner-heartbeat", error);
 		}
 	}
 
@@ -172,7 +177,8 @@ export class RunnerMember {
 	close(): Promise<void> {
 		if (this.closed) return Promise.resolve();
 		this.closed = true;
-		clearInterval(this.heartbeat);
+		this.stopHeartbeat?.();
+		this.stopHeartbeat = undefined;
 		this.fetched.clear();
 		this.unvouch();
 		// The store removes only the row still naming this process identity.

@@ -82,7 +82,7 @@ async function attached(content = "export const transport = 1;\n") {
 	fs.writeFileSync(path.join(pair.a.cwd, "src", "transport.ts"), content);
 	const sent = await pair.send({ to: pair.b.team.id, message: "the file you wanted", attach: "src/transport.ts" });
 	const hash = createHash("sha256").update(content).digest("hex");
-	await vi.waitFor(() => expect(mailEntries(pair.b).length).toBeGreaterThan(0), { timeout: 3_000 });
+	await vi.waitFor(() => expect(mailEntries(pair.b).length).toBeGreaterThan(0));
 	const texts = mailEntries(pair.b).flatMap((entry) =>
 		(entry.details as { messages: Array<{ text: string }> }).messages.map((message) => message.text),
 	);

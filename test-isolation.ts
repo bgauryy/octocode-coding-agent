@@ -1,5 +1,14 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	readlinkSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { userInfo } from "node:os";
 import { processRow, type ProcessRow, visitProcesses } from "./test-process-list.ts";
 import { basename, delimiter, isAbsolute, join, relative, resolve } from "node:path";
@@ -20,6 +29,12 @@ const OWNER_FILE = ".owner-pid";
 const PREFIX = "vt-";
 /** The hidden CLI subcommand of the web daemon (`web-daemon/launcher.ts`). */
 const DAEMON_COMMAND = "__web-daemon";
+/**
+ * The native binary's warm server (`octocode serve --socket <run dir>/...`): the MCP server starts it detached, and by
+ * design it outlives every session until it is idle (ten minutes). It is stopped with the run's other processes, and is
+ * not a leak to report.
+ */
+const WARM_SERVER = "octocode serve";
 
 function pidIsAlive(pid: number): boolean {
 	try {
@@ -233,6 +248,27 @@ interface RunProcess {
 	pid: number;
 	started: string;
 	command: string;
+	/**
+	 * The name of its working folder, read for a process left at teardown: tests start processes in temporary folders whose
+	 * prefix names the test, while its arguments may hold private values and are never reported.
+	 */
+	folder?: string;
+}
+
+/** The name of `pid`'s working folder: `/proc` on Linux, `lsof` on macOS; undefined once it exited or when unreadable. */
+function workingFolder(pid: number): string | undefined {
+	if (process.platform === "linux") {
+		try {
+			return basename(readlinkSync(`/proc/${pid}/cwd`));
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			if (code === "ENOENT" || code === "EACCES") return undefined;
+			throw error;
+		}
+	}
+	const lsof = spawnSync("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"], { encoding: "utf8", timeout: 5_000 });
+	const line = lsof.stdout?.split("\n").find((each) => each.startsWith("n"));
+	return line ? basename(line.slice(1)) : undefined;
 }
 
 /**
@@ -266,8 +302,14 @@ export async function runProcesses(marker: string, pids?: readonly number[]): Pr
 		({ pid, ppid, started, command }) => {
 			if (owners.get(pid) !== started || ppid === process.pid || command.includes(prefix)) return;
 			const executable = basename(command.split(" ", 1)[0]);
-			const daemon = command.split(/\s+/).includes(DAEMON_COMMAND);
-			found.push({ pid, started, command: daemon ? `${executable} ${DAEMON_COMMAND}` : executable });
+			const words = command.split(/\s+/);
+			const daemon = words.includes(DAEMON_COMMAND);
+			const warm = executable === "octocode" && words[1] === "serve";
+			found.push({
+				pid,
+				started,
+				command: daemon ? `${executable} ${DAEMON_COMMAND}` : warm ? WARM_SERVER : executable,
+			});
 		},
 		[...owners.keys()],
 	);
@@ -303,17 +345,19 @@ async function signal(marker: string, processes: RunProcess[], name: NodeJS.Sign
 
 /**
  * Stops what the run left running once its tests are done: processes that are still exiting get time while they make
- * progress, then the rest get SIGTERM and finally SIGKILL. Returns what was found still running, daemons apart.
+ * progress, then the rest get SIGTERM and finally SIGKILL. Returns what was found still running, daemons apart; the
+ * native warm server (`WARM_SERVER`) is stopped and left out of both.
  */
 export async function stopRunProcesses(marker: string): Promise<{ daemons: RunProcess[]; others: RunProcess[] }> {
 	const left = await settle(marker, 2000);
 	if (left.length > 0) {
+		for (const each of left) each.folder = workingFolder(each.pid);
 		await signal(marker, left, "SIGTERM");
 		await signal(marker, await settle(marker, 3000), "SIGKILL");
 		await settle(marker, 1000);
 	}
 	return {
 		daemons: left.filter((each) => each.command.includes(DAEMON_COMMAND)),
-		others: left.filter((each) => !each.command.includes(DAEMON_COMMAND)),
+		others: left.filter((each) => !each.command.includes(DAEMON_COMMAND) && each.command !== WARM_SERVER),
 	};
 }

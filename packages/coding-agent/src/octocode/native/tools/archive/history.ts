@@ -13,6 +13,9 @@ import {
 	readHistory,
 	searchHistory,
 } from "../../../history/transcripts.ts";
+import { formatAnchor } from "@octocodeai/octocode-contracts/evidence";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
+import { searchTranscripts, type TranscriptSearch } from "../../../history/transcript-search.ts";
 import { findErrors, renderErrors, sinceTime } from "../../../history/errors.ts";
 import { rankHistory } from "../../../history/rank.ts";
 import { focusedSessionIds } from "../../../history/focus.ts";
@@ -104,7 +107,28 @@ function scanNote(found: HistorySearch, total: number, sessions: number, source:
 	const read = `Read ${found.scanned} of ${plural(total, "file")} (${plural(sessions, "session")}) for /${source}/i${skipped.length ? `; ${skipped.join(", ")}` : ""}.`;
 	return found.cursor
 		? `${read} The search stopped at its match or time budget; the rest is not read yet.`
-		: `${read} Every file was read.`;
+		: `${read} Every archive file was read.`;
+}
+
+/** What the transcript pass read, or why it did not run: the full transcripts are a second store beside the archive files. */
+function transcriptNote(found: TranscriptSearch | undefined, why: string): string {
+	if (!found) return `Transcripts not searched (${why}).`;
+	const read = `Transcripts (full messages, tool calls and results): ${found.scanned} of ${plural(found.sessions, "session")} read${found.unread ? `, ${found.unread} without a readable transcript` : ""}`;
+	return found.stopped
+		? `${read}; stopped at the time budget: narrow with sessionId or file.`
+		: `${read}; every readable one to its end.`;
+}
+
+function transcriptLines(found: TranscriptSearch): string {
+	if (found.total === 0) return "";
+	const shown = found.hits.map(
+		(hit) =>
+			`- ${formatAnchor({ kind: "transcript", sessionId: hit.session, entryId: hit.entryId })} · ${hit.role}${hit.time ? ` · ${hit.time}` : ""}: ${clip(redactSecrets(hit.line), 240)}`,
+	);
+	return [
+		`${plural(found.total, "transcript entry")} match${found.total === 1 ? "es" : ""}${found.total > found.hits.length ? ` (first ${found.hits.length})` : ""}; open one with get id.`,
+		...shown,
+	].join("\n");
 }
 
 export function createHistoryTool() {
@@ -267,7 +291,13 @@ export function createHistoryTool() {
 			if (!query) throw new Error("archive searches with query or keywords.");
 			const found = await searchHistory(files, query, page, signal, params.scan);
 			const sessions = new Set(files.map((file) => file.session.id)).size;
-			const coverage = scanNote(found, files.length, sessions, query.source);
+			// Transcripts are searched once, on the first page, and only when no file narrowed the search.
+			const inTranscripts =
+				target === undefined && !params.scan && page === 1
+					? await searchTranscripts(selected, query, signal)
+					: undefined;
+			const coverage = `${scanNote(found, files.length, sessions, query.source)} ${transcriptNote(inTranscripts, target === undefined ? "later pages continue the archive files" : "file narrows the search to archive files")}`;
+			const transcriptHits = inTranscripts?.total ?? 0;
 			const details = {
 				...why,
 				mode: "search",
@@ -277,13 +307,18 @@ export function createHistoryTool() {
 				files: found.files,
 				scan: { ...(params.scan ? { from: params.scan } : {}), ...(found.cursor ? { next: found.cursor } : {}) },
 			} satisfies ArchiveDetails;
-			if (found.hits === 0)
+			if (found.hits === 0 && transcriptHits === 0)
 				return textResult(
 					`No line matches /${query.source}/i. ${coverage} Try another term or spelling, a shorter pattern, keywords for a ranked search, or list the sessions.`,
 					{ ...details, page: 1, pages: 0 },
 				);
-			const head = `${plural(found.hits, "matching line")} in ${plural(found.files, "file")}, this session first, then the most recently active; > marks a hit. Read around one with file and line. ${coverage}`;
-			return textResult([head, found.text, pageLine(found.page, found.pages)].filter(Boolean).join("\n\n"), details);
+			const head = `${plural(found.hits, "matching line")} in ${plural(found.files, "archive file")}, this session first, then the most recently active; > marks a hit. Read around one with file and line. ${coverage}`;
+			return textResult(
+				[head, found.text, inTranscripts ? transcriptLines(inTranscripts) : "", pageLine(found.page, found.pages)]
+					.filter(Boolean)
+					.join("\n\n"),
+				{ ...details, hits: found.hits + transcriptHits },
+			);
 		},
 		renderCall(args, theme, context) {
 			const params = args as Partial<ArchiveParams>;

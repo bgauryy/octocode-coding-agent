@@ -288,12 +288,28 @@ export function cacheClock(session: BranchSource): {
 }
 
 /**
- * Whether a request beside the run would find no usable cache entry: the session has no cache lifetime (retention `none`,
- * or a provider without one), or the entry it would read has expired. Paying for a speculative request is only worth it
- * when it can read the cache; unlike `cacheCold`, an unknown lifetime counts as unusable.
+ * How long a cache whose provider declares no lifetime is trusted after a reply read or wrote it: the shortest lifetime
+ * the supported providers document (Anthropic's and Bedrock's five minutes).
  */
-export function cacheUnusable(session: BranchSource, ttlMs: number | undefined, now = Date.now()): boolean {
-	return ttlMs === undefined || cacheCold(session, ttlMs, now);
+const UNDECLARED_LIFETIME_MS = 300_000;
+
+/**
+ * Whether a request beside the run would find no usable cache entry. Paying for a speculative request is only worth it
+ * when it can read the cache, so unlike `cacheCold` this needs evidence: retention `none` is unusable; a declared
+ * lifetime is usable until the entry expires; an undeclared one (a provider that caches on its own terms, such as Kimi
+ * on Bedrock) only within `UNDECLARED_LIFETIME_MS` of a reply that used the cache, and never before one did.
+ */
+export function cacheUnusable(
+	session: BranchSource,
+	promptCache: PromptCache | undefined,
+	env: NodeJS.ProcessEnv = process.env,
+	now = Date.now(),
+): boolean {
+	if (env[CACHE_RETENTION_ENV] === "none") return true;
+	const ttlMs = promptCacheTtlMs(promptCache, env);
+	if (ttlMs !== undefined) return cacheCold(session, ttlMs, now);
+	const { useAt } = cacheClock(session);
+	return useAt === undefined || now - useAt > UNDECLARED_LIFETIME_MS;
 }
 
 /** Whether the entry a request would read has expired: it was last used longer ago than `ttlMs`. False when either is unknown. */

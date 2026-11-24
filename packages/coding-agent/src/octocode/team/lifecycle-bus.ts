@@ -1,4 +1,4 @@
-import type { agentEvents } from "../../../../db/src/api.ts";
+import { type agentEvents, isBusy } from "../../../../db/src/api.ts";
 
 /** One presence transition of an agent, derived from an `agent_events` row (never written separately, so it cannot disagree with the audit). */
 export interface LifecycleEvent {
@@ -75,7 +75,7 @@ function lifecycleEvent(row: agentEvents.EventRow, own = false): LifecycleEvent 
 interface BusHost {
 	/** The newest event sequence now (0 with no database): where a first listener starts. */
 	head(): number;
-	/** Presence events after `after`, oldest first. */
+	/** Presence events after `after`, oldest first; raises the busy error (`isBusy`) while another process holds the database. */
 	since(after: number): agentEvents.EventRow[];
 	/** The first listener arrived or the last left: the ticker starts or stops following the database. */
 	sync(): void;
@@ -127,11 +127,20 @@ export class AgentLifecycleBus {
 		if (this.listening) this.own.push([from, to]);
 	}
 
-	/** Reads the events after the cursor and emits each one; a listener that throws does not stop the others. */
-	poll(): void {
-		if (this.cursor === undefined) return;
+	/**
+	 * Reads the events after the cursor and emits each one; a listener that throws does not stop the others. False when
+	 * another process held the database: the cursor stays, and the caller polls again.
+	 */
+	poll(): boolean {
+		if (this.cursor === undefined) return true;
 		for (;;) {
-			const rows = this.host.since(this.cursor);
+			let rows: agentEvents.EventRow[];
+			try {
+				rows = this.host.since(this.cursor);
+			} catch (error) {
+				if (isBusy(error)) return false;
+				throw error;
+			}
 			if (rows.length === 0) break;
 			this.cursor = rows[rows.length - 1].seq;
 			for (const row of rows)
@@ -144,6 +153,7 @@ export class AgentLifecycleBus {
 			if (rows.length < 200) break;
 		}
 		this.own = this.own.filter(([, to]) => to > (this.cursor ?? 0));
+		return true;
 	}
 
 	private emit(event: LifecycleEvent): void {

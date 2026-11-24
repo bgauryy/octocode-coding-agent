@@ -15,6 +15,7 @@ import { agentDbPath } from "../shared/home.ts";
 import { processAlive } from "../shared/process.ts";
 import type { Ask } from "./asks.ts";
 import { EditLog } from "./edits.ts";
+import { EditingLeases } from "./store/editing.ts";
 import type { DeadLetter, Lease, LeaseConflict, LeaseRequest, Message, SendOptions } from "./model.ts";
 import { BUSY_MS, INBOX_BATCH_SIZE, LEASE_MS, PRUNE_INTERVAL_MS, QUICK_BUSY_MS } from "./store/limits.ts";
 import {
@@ -52,6 +53,7 @@ export class TeamStore {
 	private readonly db: Db;
 	/** Who changed which file recently, in the same database. */
 	readonly edits: EditLog;
+	readonly editing: EditingLeases;
 	/** Stored messages used by reference: read by id, forward, resume rows and relays (`store/refs.ts`). */
 	readonly refs: MessageRefs;
 	/** The event cursor, this connection's own writes and the parent's end hint (`store/presence.ts`). */
@@ -91,6 +93,7 @@ export class TeamStore {
 
 		this.db = agent.db;
 		this.edits = new EditLog(agent.db, leaseWorkspace.id);
+		this.editing = new EditingLeases(agent.db, this.edits, (id, at) => this.retireOwner(id, at));
 		this.callbacks = new TicketHandle(agent, leaseWorkspace.id);
 		this.refs = new MessageRefs(
 			agent.db,

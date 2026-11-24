@@ -23,6 +23,7 @@ import { resolveToolPath } from "../../shared/home.ts";
 import { type Capture, type Checkpoints, lastUserEntry } from "../checkpoint.ts";
 import { lineCount } from "../coverage.ts";
 import type { MutationReceipt, QueryOutcome } from "../outcome.ts";
+import { EditingNote } from "./concurrent-edit.ts";
 import { mutationEpoch, recordMutation } from "../feedback/revisions.ts";
 import { applyEdit, applyWrite } from "./apply.ts";
 import { resolveAnchoredEdits } from "./anchored.ts";
@@ -213,7 +214,7 @@ export async function runQuery(
 		if (outside) throw new Error(outside);
 		const inspection = guard.inspect(file, mode, query.path);
 		if (inspection.refusal) throw new Error(inspection.refusal);
-		const { current } = inspection;
+		const editing = new EditingNote(guard, file, query.path);
 		// Checked again right before the write: a peer may reserve the file while the change is prepared (asks, reads, checkpoint).
 		const reserved = () => {
 			if (canonicalPath(file) !== target) throw new Error(TARGET_MOVED);
@@ -222,7 +223,7 @@ export async function runQuery(
 		};
 		// The one read before the change: it serves the content check, the checkpoint and Octocode's edit engine. The atomic
 		// write's locked content check is the only other read.
-		const data = current
+		const data = inspection.current
 			? await fs.promises.readFile(file).catch(() => {
 					throw changedOnDisk(query.path);
 				})
@@ -256,7 +257,7 @@ export async function runQuery(
 		capture = await checkpoints?.capture(
 			file,
 			() => lastUserEntry(ctx),
-			data && checked ? { data, sha256: checked, mode: current?.mode ?? 0o644 } : null,
+			data && checked ? { data, sha256: checked, mode: inspection.current?.mode ?? 0o644 } : null,
 		);
 		const note = capture?.note ? ` (${capture.note})` : "";
 		if (query.type === "delete") {
@@ -276,12 +277,13 @@ export async function runQuery(
 				);
 			});
 			guard.record(file);
+			editing.declare();
 			const unsaved = await settleCheckpoint(ctx, checkpoints, capture, file, true, null);
 			return {
 				...base,
 				ok: true,
 				receipt,
-				message: `Deleted ${query.path}${note}${unsaved}`,
+				message: `Deleted ${query.path}${note}${unsaved}${editing.text}`,
 			};
 		}
 		operations = guardedOperations(query.path, checked, data ? { file, data } : undefined, reserved, signal, committed);
@@ -290,13 +292,14 @@ export async function runQuery(
 				? await applyEdit(file, query.path, effective.edits ?? [], operations, signal)
 				: await applyWrite(file, query.path, query.content ?? "", operations, signal);
 		const written = operations.written();
+		editing.declare();
 		// An edit over outside changes leaves them unseen: later edits go on, a write or delete needs a fresh read.
 		const lineDelta = recordChange(guard, file, mode, before, written, operations.writtenText());
 		if (changed) guard.stale(file);
 		// The digest a following anchored edit names, when the guard knows the file whole.
 		const known = written && guard.wholeReadDigest(file) === written.sha256 ? written.sha256 : undefined;
 		const unsaved = await settleCheckpoint(ctx, checkpoints, capture, file, true, written?.sha256);
-		const message = (applied.message.trim() || `${query.type} ${query.path}`) + note + unsaved;
+		const message = (applied.message.trim() || `${query.type} ${query.path}`) + note + unsaved + editing.text;
 		const diff = applied.diff ?? (query.type === "write" ? writeDiff(data, query.content) : undefined);
 		return {
 			...base,

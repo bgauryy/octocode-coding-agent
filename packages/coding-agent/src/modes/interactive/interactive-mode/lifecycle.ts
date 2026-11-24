@@ -98,6 +98,7 @@ export async function shutdown(host: LifecycleHost, options?: { fromSignal?: boo
 	// Stopping the terminal UI releases the last handles that keep the event loop alive, while the dispose still waits on
 	// unref'd ones (the database writer worker, the session API server, job and child handles). Without a ref'd timer Node
 	// ends the process mid-dispose: exit 13 for the top-level await in `cli.ts`, and no resume hint.
+	// oxlint-disable-next-line no-restricted-globals -- a process keep-alive must be ref'd; the shared clock's timer is unref'd
 	const keepAlive = setInterval(() => undefined, KEEP_ALIVE_MS);
 	try {
 		await teardownAndExit(host, options);
@@ -304,6 +305,7 @@ export function handleCtrlZ(host: Pick<LifecycleHost, "ui" | "showStatus">): voi
 	// Keep the event loop alive while suspended. Without this, stopping the TUI
 	// can leave Node with no ref'ed handles, causing the process to exit on fg
 	// before the SIGCONT handler gets a chance to restore the terminal.
+	// oxlint-disable-next-line no-restricted-globals -- a process keep-alive must be ref'd; the shared clock's timer is unref'd
 	const suspendKeepAlive = setInterval(() => {}, 2 ** 30);
 
 	// Ignore SIGINT while suspended so Ctrl+C in the terminal does not

@@ -42,15 +42,6 @@ export const SubagentSettingsSchema = Type.Object(
 				default: true,
 			}),
 		),
-		wakeHoldSeconds: Type.Optional(
-			Type.Number({
-				minimum: 0,
-				maximum: 10,
-				description:
-					"Legacy idle wake window in seconds. Use runtime.eventWindowSeconds for the live scheduler. A session with no explicit runtime window inherits this value. Zero delivers at once.",
-				default: SETTINGS_DEFAULTS.subagents.wakeHoldSeconds,
-			}),
-		),
 		peerOverlapWake: Type.Optional(
 			Type.Boolean({
 				description:

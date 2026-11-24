@@ -30,6 +30,16 @@ function session() {
 }
 
 describe("agent task `item` for an item this session does not hold", () => {
+	it("lets the delegated child note on and step its item", async () => {
+		const { ctx, backlog } = session();
+		backlog.store.add({ goal: "g", why: "w", title: "unheld", state: "todo", createdBy: "user" });
+		const link = itemLink(ctx, "B1")!;
+		await link.claim();
+		const child = { id: "kid", owners: new Set(["session-test"]), item: "B1", surface: "tool" as const };
+		backlog.store.update("B1", { note: "progress" }, child);
+		expect(backlog.store.notes(backlog.store.get("B1")!, -1).map((n) => n.text)).toContain("progress");
+	});
+
 	it("checks an unheld todo item first and claims it only when told to, saying so", async () => {
 		const { ctx, backlog } = session();
 		backlog.store.add({ goal: "g", why: "w", title: "unheld", state: "todo", createdBy: "user" });

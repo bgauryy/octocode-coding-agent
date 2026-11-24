@@ -181,7 +181,18 @@ describe("done on an important item", () => {
 		t.answer({ skipped: "no priced small model is connected" });
 		await t.call({ op: "done", id: "B1", completion: DONE });
 		expect(t.store().get("B1")?.state).toBe("done");
-		expect(notes(t.store())).toMatch(/QA skipped: no priced small model is connected/);
+		expect(notes(t.store())).toMatch(/QA skipped: UNVERIFIED.*no priced small model is connected/);
+	});
+
+	it("reviews a p2 item whose summary says the goal is unmet", async () => {
+		const t = setup();
+		await t.open({ priority: "p2" });
+		t.answer(verdict("Changes required", ["goal not met"]));
+		await expect(
+			t.call({ op: "done", id: "B1", completion: { ...DONE, summary: "goal not met: ps still spawns twice" } }),
+		).rejects.toThrow(/not completed/);
+		expect(t.requests).toHaveLength(1);
+		expect(t.store().get("B1")?.state).toBe("ongoing");
 	});
 
 	it("completes as before when the session has no reviewer at all (a child session)", async () => {

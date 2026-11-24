@@ -3,7 +3,7 @@ import type { Subcommands } from "../shared/commands.ts";
 import { webLauncher } from "../browser/launcher.ts";
 import { STATUS } from "../shared/status.ts";
 import { DatabaseFollower } from "../shared/database-follower.ts";
-import { backlog as backlogQueries, dbStamp } from "../../../../db/src/api.ts";
+import { backlog as backlogQueries, dbStamp, isBusy } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { backlogCommand } from "./command.ts";
 import { registerBacklogDigest } from "./digest.ts";
@@ -69,7 +69,7 @@ export function registerBacklog(api: FeatureSetup, options: RegisterBacklogOptio
 		} catch {
 			return "unreadable";
 		}
-	});
+	}, isBusy);
 	const refresh = (ctx: FeatureContext, changedOnly = false) => {
 		currentContext = ctx;
 		if (!ctx.hasUI || options.isSubagent) return;

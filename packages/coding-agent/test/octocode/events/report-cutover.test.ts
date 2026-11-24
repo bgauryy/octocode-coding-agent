@@ -1,6 +1,6 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RUNTIME_DEFAULTS } from "../../../src/core/settings-schema/runtime.ts";
+import { MAX_EVENT_WINDOW_SECONDS, RUNTIME_DEFAULTS } from "../../../src/core/settings-schema/runtime.ts";
 import { recordsEvent, isDeduped, isDurable } from "../../../src/octocode/events/loop/cutover.ts";
 import { sendAgentReport } from "../../../src/octocode/subagents/handoff/wake.ts";
 import { Mail } from "../../../src/octocode/team/mail.ts";
@@ -10,6 +10,12 @@ import {
 	branchLines,
 	count,
 	createRig,
+	expectHeld,
+	expectLogged,
+	pendingWakes,
+	quiet,
+	recordedTopics,
+	sessionOf,
 	sleep,
 	wakeGateOf,
 	type Rig,
@@ -23,6 +29,9 @@ afterEach(() => {
 });
 
 const WINDOW_S = 0.4;
+/** The longest window a session can have, and a test timeout below it: a prompt the window held does not finish in time. */
+const LONG_WINDOW_S = MAX_EVENT_WINDOW_SECONDS;
+const BEFORE_THE_WINDOW_ENDS_MS = (LONG_WINDOW_S - 2) * 1000;
 async function newRig(options: RigOptions = {}, windowSeconds: number | null = WINDOW_S) {
 	const rig = await createRig({
 		...options,
@@ -52,7 +61,6 @@ const mailText = (text: string, extra: Partial<Message> = {}): Message => ({
 	...extra,
 });
 const deliverMail = (rig: Rig, ...messages: Message[]) => new Mail(rig.api).deliver(messages, "parent-1", rig.ctx);
-const queuedCount = (rig: Rig) => Object.values(rig.live()?.queued() ?? {}).reduce((sum, each) => sum + each, 0);
 
 describe("the report, end and mail cut-over", () => {
 	it("delivers these topics through the loop, durably, and the others through the gate", () => {
@@ -68,22 +76,30 @@ describe("the report, end and mail cut-over", () => {
 		expect(recordsEvent({ kind: "wake.retry", attempt: 1, error: "x" })).toBe(false);
 	});
 
-	it("delivers a report once, through the loop's window, with its source header", async () => {
+	it("delivers a report once, in a turn of its own after the loop's window, with its source header", async () => {
 		const rig = await newRig();
-		rig.harness.setResponses([rig.reply("read it")]);
-		const started = Date.now();
-		const sent = reportOf(rig, "a");
-		await vi.waitFor(() => expect(rig.live()?.queued()).toMatchObject({ Q3: 1 }));
-		await sleep(WINDOW_S * 250);
-		expect(rig.requests).toHaveLength(0);
-		await sent;
+		rig.harness.setResponses([rig.reply("read it"), rig.reply("unexpected second turn")]);
+		await reportOf(rig, "a");
 		await vi.waitFor(() => expect(rig.requests).toHaveLength(1), { timeout: 10_000 });
-		await rig.harness.session.waitForIdle();
-		expect(Date.now() - started).toBeGreaterThanOrEqual(WINDOW_S * 1000 - 50);
+		await quiet(rig);
+		expect(rig.requests).toHaveLength(1);
 		expect(count(rig.requests[0], "REPORT-a")).toBe(1);
 		expect(count(branchLines(rig.harness), "REPORT-a")).toBe(1);
 		expect(rig.requests[0].some((line) => line.includes("[src "))).toBe(true);
-		expect(queuedCount(rig)).toBe(0);
+		// Nothing is left waiting, and nothing asked for a second turn.
+		expect(pendingWakes(rig)).toEqual([]);
+		expect(rig.harness.getPendingResponseCount()).toBe(1);
+	});
+
+	it("holds a report while the window is open: nothing reaches the model or the branch", async () => {
+		const rig = await newRig({}, LONG_WINDOW_S);
+		rig.harness.setResponses([rig.reply("unexpected")]);
+		await reportOf(rig, "a");
+		await expectHeld(rig, "REPORT-a");
+		// The session's end hands it over without a turn: it was held, not lost.
+		await rig.live()?.end();
+		expect(rig.requests).toHaveLength(0);
+		expect(count(branchLines(rig.harness), "REPORT-a")).toBe(1);
 	});
 
 	it("is delivered once when the producer sends the same report twice", async () => {
@@ -115,29 +131,38 @@ describe("the report, end and mail cut-over", () => {
 		const rig = await newRig();
 		rig.harness.setResponses([rig.reply("read it")]);
 		expect(deliverMail(rig, mailText("MAIL-A"))).toBe(true);
-		expect(rig.live()?.queued()).toMatchObject({ Q3: 1 });
+		// The loop has it: the session shows a wake about to resume it.
+		expect(pendingWakes(rig)).toHaveLength(1);
 		await vi.waitFor(() => expect(rig.requests).toHaveLength(1), { timeout: 10_000 });
-		await rig.harness.session.waitForIdle();
+		await quiet(rig);
 		expect(count(rig.requests[0], "MAIL-A")).toBe(1);
 		expect(count(branchLines(rig.harness), "MAIL-A")).toBe(1);
 		expect(rig.requests[0].some((line) => line.includes("[src "))).toBe(true);
+		// Recorded under its topic in the session's log, and no longer owed.
+		expect(await recordedTopics(rig)).toEqual(["agent.message"]);
+		await expectLogged(rig, 0);
 	});
 
-	it("never holds user input: a prompt during the window runs at once, and the report follows once", async () => {
-		const rig = await newRig();
-		rig.harness.setResponses([rig.reply("user answer"), rig.reply("report answer")]);
-		const sent = reportOf(rig, "a");
-		const began = Date.now();
-		await rig.harness.session.prompt("typed by the user");
-		expect(Date.now() - began).toBeLessThan(WINDOW_S * 1000);
-		expect(rig.requests[0].some((line) => line.includes("typed by the user"))).toBe(true);
-		await sent;
-		await vi.waitFor(() => expect(count(rig.requests.flat(), "REPORT-a")).toBeGreaterThanOrEqual(1), {
-			timeout: 10_000,
-		});
-		await rig.harness.session.waitForIdle();
-		expect(count(branchLines(rig.harness), "REPORT-a")).toBe(1);
-	});
+	it(
+		"never holds user input: a prompt during the window runs at once and takes the held report with it",
+		async () => {
+			const rig = await newRig({}, LONG_WINDOW_S);
+			rig.harness.setResponses([rig.reply("user answer"), rig.reply("unexpected second turn")]);
+			await reportOf(rig, "a");
+			await expectHeld(rig, "REPORT-a");
+			// A prompt the window held would wait the window out and hit this test's timeout, which is shorter.
+			await rig.harness.session.prompt("typed by the user");
+			await quiet(rig);
+			// One request, the prompt's own: it carries the typed text and the report, and the report costs no second turn.
+			expect(rig.requests).toHaveLength(1);
+			expect(count(rig.requests[0], "typed by the user")).toBe(1);
+			expect(count(rig.requests[0], "REPORT-a")).toBe(1);
+			expect(count(branchLines(rig.harness), "REPORT-a")).toBe(1);
+			expect(pendingWakes(rig)).toEqual([]);
+			expect(rig.harness.getPendingResponseCount()).toBe(1);
+		},
+		BEFORE_THE_WINDOW_ENDS_MS,
+	);
 
 	it("queues mail behind a compaction and delivers it once after the summary", async () => {
 		const rig = await newRig({
@@ -164,7 +189,8 @@ describe("the report, end and mail cut-over", () => {
 		expect(rig.harness.session.isCompacting).toBe(true);
 		expect(rig.requests).toHaveLength(0);
 		expect(count(branchLines(rig.harness), "MAIL-C")).toBe(0);
-		expect(queuedCount(rig)).toBeGreaterThan(0);
+		// Not lost: the session's log holds it for the moment the lock is released.
+		await expectLogged(rig, 1);
 		gate.release();
 		await running;
 		await vi.waitFor(() => expect(count(rig.requests.flat(), "MAIL-C")).toBe(1), { timeout: 10_000 });
@@ -176,38 +202,36 @@ describe("the report, end and mail cut-over", () => {
 
 	it("replays queued mail once after a restart, with its source header", async () => {
 		// The first session queues the mail in a long window and goes away before it is delivered.
-		const first = await newRig({}, 10);
+		const first = await newRig({}, LONG_WINDOW_S);
 		deliverMail(first, mailText("MAIL-RESTART"));
-		await vi.waitFor(() => expect(first.live()?.queued()).toMatchObject({ Q3: 1 }));
-		const earlier = {
-			cwd: first.ctx.cwd,
-			sessionManager: { getSessionId: () => first.ctx.sessionManager.getSessionId() },
-		};
+		await expectLogged(first, 1);
+		const earlier = sessionOf(first);
 
 		// The resumed session finds it in the event log and delivers it after its own window.
 		const second = await newRig({ liveStore: () => sessionStore(earlier) });
 		second.harness.setResponses([second.reply("read it"), second.reply("unexpected")]);
-		expect(second.live()?.queued()).toMatchObject({ Q3: 1 });
+		expect(pendingWakes(second)).toHaveLength(1);
 		await vi.waitFor(() => expect(second.requests).toHaveLength(1), { timeout: 10_000 });
-		await second.harness.session.waitForIdle();
+		await quiet(second);
+		expect(second.requests).toHaveLength(1);
 		expect(count(second.requests[0], "MAIL-RESTART")).toBe(1);
+		expect(count(branchLines(second.harness), "MAIL-RESTART")).toBe(1);
 		expect(second.requests[0].some((line) => line.includes("[src "))).toBe(true);
 
-		// Delivered: a third start of the same session finds nothing left.
+		// Delivered: a third start of the same session has read its log by the time it is ready, and found nothing left.
 		const third = await newRig({ liveStore: () => sessionStore(earlier) });
-		expect(queuedCount(third)).toBe(0);
-		await sleep(WINDOW_S * 1000 + 200);
+		third.harness.setResponses([third.reply("unexpected")]);
+		expect(pendingWakes(third)).toEqual([]);
+		await quiet(third);
 		expect(third.requests).toHaveLength(0);
+		expect(count(branchLines(third.harness), "MAIL-RESTART")).toBe(0);
 	});
 
 	it("replays a queued report after a restart, and a delivered one is not replayed again", async () => {
-		const first = await newRig({}, 10);
-		void reportOf(first, "gone");
-		await vi.waitFor(() => expect(first.live()?.queued()).toMatchObject({ Q3: 1 }));
-		const earlier = {
-			cwd: first.ctx.cwd,
-			sessionManager: { getSessionId: () => first.ctx.sessionManager.getSessionId() },
-		};
+		const first = await newRig({}, LONG_WINDOW_S);
+		await reportOf(first, "gone");
+		await expectLogged(first, 1);
+		const earlier = sessionOf(first);
 		const second = await newRig({ liveStore: () => sessionStore(earlier) });
 		second.harness.setResponses([second.reply("read it")]);
 		await vi.waitFor(() => expect(second.requests).toHaveLength(1), { timeout: 10_000 });
@@ -215,17 +239,25 @@ describe("the report, end and mail cut-over", () => {
 		await second.harness.session.waitForIdle();
 		expect(count(branchLines(second.harness), "REPORT-gone")).toBe(1);
 		const third = await newRig({ liveStore: () => sessionStore(earlier) });
-		await sleep(WINDOW_S * 1000 + 200);
-		expect(queuedCount(third)).toBe(0);
+		third.harness.setResponses([third.reply("unexpected")]);
+		expect(pendingWakes(third)).toEqual([]);
+		await quiet(third);
 		expect(third.requests).toHaveLength(0);
+		expect(count(branchLines(third.harness), "REPORT-gone")).toBe(0);
 	});
 
 	it("does not replay another session's events", async () => {
-		const first = await newRig({}, 10);
+		const first = await newRig({}, LONG_WINDOW_S);
 		deliverMail(first, mailText("MAIL-OTHER"));
-		await vi.waitFor(() => expect(first.live()?.queued()).toMatchObject({ Q3: 1 }));
+		await expectLogged(first, 1);
 		const second = await newRig({ settings: { subagents: {} } });
-		expect(queuedCount(second)).toBe(0);
+		second.harness.setResponses([second.reply("unexpected")]);
+		expect(pendingWakes(second)).toEqual([]);
+		await quiet(second);
+		expect(second.requests).toHaveLength(0);
+		expect(count(branchLines(second.harness), "MAIL-OTHER")).toBe(0);
+		// The other session still owes it to its own model.
+		await expectLogged(first, 1);
 	});
 
 	it("delivers a child's end through the loop", async () => {
@@ -236,10 +268,13 @@ describe("the report, end and mail cut-over", () => {
 			{ customType: "loop-test", content: "ENDED-child-1", display: true },
 			{ triggerTurn: true, deliverAs: "followUp", together: true },
 		);
-		expect(rig.live()?.queued()).toMatchObject({ Q3: 1 });
+		expect(pendingWakes(rig)).toHaveLength(1);
 		await sent;
 		await vi.waitFor(() => expect(rig.requests).toHaveLength(1), { timeout: 10_000 });
-		await rig.harness.session.waitForIdle();
+		await quiet(rig);
 		expect(count(rig.requests[0], "ENDED-child-1")).toBe(1);
+		expect(count(branchLines(rig.harness), "ENDED-child-1")).toBe(1);
+		expect(await recordedTopics(rig)).toEqual(["agent.ended"]);
+		await expectLogged(rig, 0);
 	});
 });

@@ -39,14 +39,14 @@ type ContextChange = "cleared-results" | "context-edit";
 const CLEARED_RESULTS_ENTRY = "octocode-cleared-results";
 
 /**
- * Whether a clearing entry broke a warm cache: its `trigger` is `warm` (it paid on its own). A clearing at a point that
+ * Whether a clearing entry broke a warm cache: its `trigger` is `limit` (the context neared its limit) or the older `warm` (it paid on its own). A clearing at a point that
  * rewrote the cache anyway (`idle`, `compaction`, a model or prompt change) breaks nothing. An entry from before
  * `trigger` was recorded counts unless it says `rewriteAnyway`.
  */
 function clearingBrokeCache(data: unknown): boolean {
 	if (typeof data !== "object" || data === null) return true;
 	const { trigger, rewriteAnyway } = data as { trigger?: unknown; rewriteAnyway?: unknown };
-	return trigger === undefined ? rewriteAnyway !== true : trigger === "warm";
+	return trigger === undefined ? rewriteAnyway !== true : trigger === "warm" || trigger === "limit";
 }
 
 const CONTEXT_CHANGE_CAUSE: Record<ContextChange, string> = {

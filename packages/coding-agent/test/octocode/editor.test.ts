@@ -21,6 +21,7 @@ import {
 	registerEditor,
 	withHint,
 } from "../../src/octocode/ui/editor.ts";
+import { clearPromptNote, showPromptNote } from "../../src/octocode/ui/prompt-note.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const identity = (text: string): string => text;
@@ -42,6 +43,25 @@ function terminal() {
 	const input = (data: string) => Reflect.get(tui, "handleTerminalInput").call(tui, data);
 	return { tui, input, keys: new KeybindingsManager() };
 }
+
+describe("prompt note subscription", () => {
+	it("repaints for a note while the session lives and lets go of the editor at session shutdown", async () => {
+		initTheme("dark", false);
+		const fake = fakeHost();
+		const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
+		registerEditor(fake.api, { cycle: vi.fn() });
+		await fake.fire("session_start", {}, ctx);
+		const { tui, keys } = terminal();
+		ctx.ui.getEditorComponent()!(tui, editorTheme, keys);
+		showPromptNote("note", 60_000);
+		expect(tui.requestRender).toHaveBeenCalled();
+		await fake.fire("session_shutdown", {}, ctx);
+		vi.mocked(tui.requestRender).mockClear();
+		showPromptNote("later", 60_000);
+		clearPromptNote();
+		expect(tui.requestRender).not.toHaveBeenCalled();
+	});
+});
 
 describe("permission shortcut in the Octocode editor", () => {
 	it("forwards the thinking toggle to the host's action once per press without changing the draft", async () => {

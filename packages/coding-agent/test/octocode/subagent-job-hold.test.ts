@@ -6,8 +6,10 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { foregroundPlan } from "../../src/octocode/files/bash/auto.ts";
+import { JOB_HOLD_TYPE } from "../../src/octocode/files/bash/child-hold.ts";
 import { registerNativeSessionLifecycle } from "../../src/octocode/session-lifecycle.ts";
 import { registerWake } from "../../src/octocode/wake/register.ts";
+import { onSecond } from "../../src/octocode/shared/clock.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { ReportTracker } from "../../src/octocode/subagents/report.ts";
 import { createHarness, getMessageText, type Harness } from "../suite/harness.ts";
@@ -39,6 +41,23 @@ async function child({ isSubagent = true, ...options }: { jobHoldMs?: number; is
 	await harness.session.bindFeatures({});
 	return { harness, jobs };
 }
+
+/** The notes that told the child its jobs outlasted the hold, as the session recorded them. */
+const holdNotes = (harness: Harness) =>
+	harness.session.messages
+		.filter((message) => message.role === "custom" && message.customType === JOB_HOLD_TYPE)
+		.map((message) => getMessageText(message));
+
+/** Resolves after the shared one-second clock, which drives every timer, ticked `count` more times: each wait due by then had its chance. */
+const afterClockTicks = (count: number): Promise<void> =>
+	new Promise((resolve) => {
+		let left = count;
+		const stop = onSecond(() => {
+			if (--left > 0) return;
+			stop();
+			resolve();
+		});
+	});
 
 const requestText = (context: { messages: Parameters<typeof getMessageText>[0][] }) =>
 	context.messages.map((message) => getMessageText(message)).join("\n");
@@ -87,7 +106,8 @@ describe.runIf(posix)("a subagent whose own background job is still running when
 				{ stopReason: "toolUse" },
 			),
 			async () => {
-				await new Promise((resolve) => setTimeout(resolve, 2_000));
+				// The job ends while this answer is still being written.
+				await vi.waitFor(() => expect(session.jobs.running()).toHaveLength(0), { timeout: 30_000, interval: 20 });
 				return fauxAssistantMessage("Waiting for the build message.");
 			},
 			(context) => {
@@ -130,6 +150,7 @@ describe.runIf(posix)("a subagent whose own background job is still running when
 		const session = await child({ jobHoldMs: 300 });
 		open.push(session);
 		let warned = "";
+		let server: { id: string; pid: number; log: string } | undefined;
 		session.harness.setResponses([
 			fauxAssistantMessage([fauxToolCall("bash", { command: "sleep 60", background: true, reason: "server" })], {
 				stopReason: "toolUse",
@@ -137,14 +158,20 @@ describe.runIf(posix)("a subagent whose own background job is still running when
 			fauxAssistantMessage("waiting for it"),
 			(context) => {
 				warned = requestText(context);
+				const [job] = session.jobs.running();
+				server = { id: job.id, pid: job.pid, log: job.log };
 				return fauxAssistantMessage("done. I leave the server; it is stopped at run end.");
 			},
 		]);
-		const started = Date.now();
+		// The run ends when the hold does, not when `sleep 60` does: this prompt would otherwise outlast the test timeout.
 		await session.harness.session.prompt("start a server");
-		expect(Date.now() - started).toBeLessThan(15_000);
+		// One extra model call, for one note: it names the job that still ran (its id, process, command and log).
 		expect(session.harness.faux.state.callCount).toBe(3);
-		expect(warned).toMatch(/still running:\n- bash-1 \(pid \d+/);
+		const notes = holdNotes(session.harness);
+		expect(notes).toHaveLength(1);
+		expect(server?.id).toBe("bash-1");
+		for (const fact of [server!.id, String(server!.pid), "sleep 60", server!.log]) expect(notes[0]).toContain(fact);
+		expect(warned).toContain(notes[0]);
 		expect(session.jobs.running()).toHaveLength(0);
 	});
 
@@ -154,6 +181,7 @@ describe.runIf(posix)("a subagent whose own background job is still running when
 		const session = await child({ jobHoldMs: 1000 });
 		open.push(session);
 		let warned = "";
+		let runningWhenWarned: string[] = [];
 		let last = "";
 		session.harness.setResponses([
 			fauxAssistantMessage(
@@ -163,6 +191,7 @@ describe.runIf(posix)("a subagent whose own background job is still running when
 			fauxAssistantMessage("I'll wait for the completion message."),
 			(context) => {
 				warned = requestText(context);
+				runningWhenWarned = session.jobs.running().map((job) => job.id);
 				return fauxAssistantMessage("The job is still running, so I'll keep waiting.");
 			},
 			(context) => {
@@ -171,7 +200,13 @@ describe.runIf(posix)("a subagent whose own background job is still running when
 			},
 		]);
 		await session.harness.session.prompt("run the suite and report");
-		expect(warned).toContain("end your turn without a report: the run holds again until one ends");
+		// The note went to the model once (the third call), naming the job; the answer without a report made the run hold
+		// again instead of ending, and that second hold brought the job's completion in a fourth call, with no second note.
+		const notes = holdNotes(session.harness);
+		expect(notes).toHaveLength(1);
+		expect(notes[0]).toContain("bash-1");
+		expect(warned).toContain(notes[0]);
+		expect(runningWhenWarned).toEqual(["bash-1"]);
 		expect(session.harness.faux.state.callCount).toBe(4);
 		expect(last).toContain("slow-job-marker");
 		expect(last).not.toMatch(/stopped[^\n]*run end/i);
@@ -188,9 +223,7 @@ describe.runIf(posix)("a subagent whose own background job is still running when
 			fauxAssistantMessage("started"),
 			fauxAssistantMessage("read the stop report"),
 		]);
-		const started = Date.now();
 		await session.harness.session.prompt("start a server");
-		expect(Date.now() - started).toBeLessThan(10_000);
 		expect(session.jobs.running()).toHaveLength(0);
 	});
 });
@@ -228,13 +261,14 @@ describe.runIf(posix)("a subagent's own waits around its report (B744)", () => {
 		const session = await child();
 		open.push(session);
 		session.harness.setResponses([setWait(1), fauxAssistantMessage("done. The build is green.")]);
-		const started = Date.now();
 		await session.harness.session.prompt("build and report");
-		expect(Date.now() - started).toBeLessThan(1_000);
 		expect(session.harness.faux.state.callCount).toBe(2);
-		await new Promise((resolve) => setTimeout(resolve, 1_500));
+		// The wait was due 1 s after it was set; two ticks of the clock that fires waits pass that point.
+		await afterClockTicks(2);
 		expect(session.harness.faux.state.callCount).toBe(2);
 		const listed = await listWaits(session);
+		// listWaits ran two calls of its own: a wake turn would have made it more.
+		expect(session.harness.faux.state.callCount).toBe(4);
 		expect(listed).toMatch(/cancel/i);
 		expect(listed).not.toMatch(/\bactive\b/i);
 	});

@@ -4,7 +4,8 @@ import type { Model, TranscriptContext, Usage } from "../../types.ts";
 import { calculateCost } from "../../models/model-helpers.ts";
 import { createUsage, sumUsageTokens } from "../../utils/assistant-message.ts";
 import { collapseSystemMessages, getInitialSystemMessage, getCurrentTools } from "../../utils/transcript.ts";
-import { keepsToolBreakpoint, splitSystemMessageIntoBlocks } from "../../utils/instruction-split.ts";
+import { splitSystemMessageIntoBlocks } from "../../utils/instruction-split.ts";
+import { countHistoryTurns, planCacheMarkers } from "../../utils/cache-profiles.ts";
 import { resolveLayeredCacheRetention } from "../../utils/cache-policy.ts";
 import { charsToTokens, ESTIMATED_IMAGE_TOKENS } from "../../utils/estimate.ts";
 import type { BedrockOptions } from "../bedrock-converse-stream/types.ts";
@@ -12,8 +13,7 @@ import { REDACTED_THINKING_PLACEHOLDER } from "../bedrock-converse-stream/types.
 import { buildAdditionalModelRequestFields } from "../bedrock-converse-stream/request-fields.ts";
 import {
 	supportsPromptCaching,
-	supportsToolCachePoint,
-	isNovaExplicitCacheModel,
+	bedrockCacheProfile,
 	isAnthropicClaudeModel,
 	isUnrecognizedCacheProfile,
 } from "../bedrock-converse-stream/model-match.ts";
@@ -113,46 +113,57 @@ export function bedrockSdkMapping(
 		!reportedUncachedProfiles.has(model.id) &&
 		isUnrecognizedCacheProfile(model, options.env);
 	const names = syntheticTools ? [] : Object.keys(tools);
-	const toolPoints = names.length > 0 && supportsToolCachePoint(model) && point(retention.instructions) !== undefined;
+	const profile = bedrockCacheProfile(model, options.env);
+	const toolPoints = names.length > 0 && profile.markers.tools && point(retention.instructions) !== undefined;
 	// The end of the tools every role declares alike: its point lets an agent of one role read the tool prefix another
 	// role wrote, and takes the base block's slot when the prompt is split, as on Anthropic (`anthropic-cache.ts`).
 	const sharedEnd = toolPoints && options.toolCacheBoundary ? Math.max(0, names.indexOf(options.toolCacheBoundary)) : 0;
 	const initial = getInitialSystemMessage(normalized.messages);
 	const split = initial
-		? splitSystemMessageIntoBlocks(initial, options.instructionCacheBoundary, options.instructionVolatileBoundary)
+		? splitSystemMessageIntoBlocks(
+				initial,
+				options.instructionCacheBoundary,
+				options.instructionVolatileBoundary,
+				options.instructionWorkspaceBoundary,
+			)
 		: undefined;
 	const systemIndex = messages.findIndex((m) => m.role === "system");
+	const plan = planCacheMarkers(profile, {
+		instructionBlocks: split ? split.cached.length : systemIndex >= 0 ? 1 : 0,
+		workspaceBlock: split?.workspace === true,
+		instructions: point(retention.instructions) !== undefined,
+		history: point(history) !== undefined,
+		historyTurns: countHistoryTurns(messages),
+		tools: names.length,
+		toolBoundary: sharedEnd > 0,
+	});
 	if (systemIndex >= 0 && split) {
 		const system: ModelMessage[] = split.cached.map((content, index) => ({
 			role: "system",
 			content,
-			providerOptions:
-				sharedEnd > 0 && split.cached.length > 1 && index === 0 ? undefined : point(retention.instructions),
+			providerOptions: plan.blocks[index] ? point(retention.instructions) : undefined,
 		}));
 		if (split.volatile !== undefined) system.push({ role: "system", content: split.volatile });
 		messages.splice(systemIndex, 1, ...system);
-	} else if (systemIndex >= 0) messages[systemIndex].providerOptions = point(retention.instructions);
-	const toolCachePoint =
-		toolPoints && (sharedEnd > 0 || keepsToolBreakpoint(split))
-			? point(retention.instructions)?.bedrock.cachePoint
-			: undefined;
+	} else if (systemIndex >= 0)
+		messages[systemIndex].providerOptions = plan.blocks[0] ? point(retention.instructions) : undefined;
+	const toolCachePoint = plan.tool && toolPoints ? point(retention.instructions)?.bedrock.cachePoint : undefined;
 	const sharedTool = sharedEnd > 0 ? names[sharedEnd - 1] : undefined;
 	const last = messages.at(-1);
 	if (last?.role === "user" || last?.role === "tool") {
-		last.providerOptions = point(history);
+		last.providerOptions = plan.history > 0 ? point(history) : undefined;
 		const assistant = messages.findLastIndex((m) => m.role === "assistant");
 		const previous = messages[assistant - 1];
-		const used = messages.filter((m) => m.providerOptions?.bedrock?.cachePoint).length + (toolCachePoint ? 1 : 0);
-		if (previous && (previous.role === "user" || previous.role === "tool") && used < 4)
+		if (previous && (previous.role === "user" || previous.role === "tool") && plan.history > 1)
 			previous.providerOptions = point(history);
 	}
-	if (isNovaExplicitCacheModel(model)) {
+	if (profile.maxCachedTokens !== undefined) {
 		let prefix = charsToTokens(JSON.stringify(syntheticTools ? {} : tools).length);
 		for (const message of messages) {
 			prefix += charsToTokens(JSON.stringify(message.content).length);
 			if (Array.isArray(message.content))
 				prefix += message.content.filter((p) => p.type === "image").length * ESTIMATED_IMAGE_TOKENS;
-			if (prefix >= 20_000) delete message.providerOptions;
+			if (profile.maxCachedTokens !== undefined && prefix >= profile.maxCachedTokens) delete message.providerOptions;
 		}
 	}
 	const rich = bedrockRichEvents();

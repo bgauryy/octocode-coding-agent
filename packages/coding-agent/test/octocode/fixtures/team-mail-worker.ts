@@ -38,9 +38,14 @@ process.stdin.setEncoding("utf8").on("data", (chunk: string) => {
 	for (let at = input.indexOf("\n"); at >= 0; at = input.indexOf("\n")) {
 		const command = input.slice(0, at);
 		input = input.slice(at + 1);
-		if (command === "busy") idle = false;
+		if (command === "busy") {
+			idle = false;
+			// A run in progress has a signal; mail says a step was stopped only when one was running.
+			ctx.signal = new AbortController().signal;
+		}
 		if (command === "settle") {
 			idle = true;
+			ctx.signal = undefined;
 			team.onAgentSettled();
 		}
 	}

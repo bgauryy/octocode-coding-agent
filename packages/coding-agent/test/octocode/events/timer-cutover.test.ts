@@ -1,5 +1,6 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MAX_EVENT_WINDOW_SECONDS } from "../../../src/core/settings-schema/runtime.ts";
 import { recordsEvent, isDeduped, isDurable } from "../../../src/octocode/events/loop/cutover.ts";
 import type { PayloadEvent } from "../../../src/octocode/events/topics.ts";
 import { sessionStore } from "../../../src/octocode/wake/live-durable.ts";
@@ -7,6 +8,12 @@ import {
 	branchLines,
 	count,
 	createRig,
+	expectHeld,
+	expectLogged,
+	pendingWakes,
+	quiet,
+	recordedTopics,
+	sessionOf,
 	sleep,
 	wakeGateOf,
 	type Rig,
@@ -29,14 +36,13 @@ async function newRig(options: RigOptions = {}, windowSeconds = WINDOW_S) {
 	return rig;
 }
 
+/** A window no test waits out (the longest there is). */
+const LONG_WINDOW_S = MAX_EVENT_WINDOW_SECONDS;
+
 /** One event per cut-over topic of R8, with whether a repeat of the same event is dropped. */
 const KINDS: { name: string; event: (tag: string) => PayloadEvent; once: boolean }[] = [
 	{ name: "time.due", once: true, event: (tag) => ({ kind: "time.due", timerId: 7, run: tag.length, note: tag }) },
 	{ name: "check.result", once: false, event: (tag) => ({ kind: "check.result", timerId: 8, exit: 0, output: tag }) },
-	{ name: "item.state", once: false, event: (tag) => ({ kind: "item.state", ref: `B${tag.length}`, state: "done" }) },
-	{ name: "item.changed", once: false, event: (tag) => ({ kind: "item.changed", ref: tag, change: "note", by: "p" }) },
-	{ name: "path.unlocked", once: false, event: (tag) => ({ kind: "path.unlocked", path: `src/${tag}.ts` }) },
-	{ name: "peer.landed", once: false, event: (tag) => ({ kind: "peer.landed", ref: tag, how: "done" }) },
 	{
 		name: "item.peer",
 		once: true,
@@ -50,11 +56,15 @@ const send = (rig: Rig, kind: (typeof KINDS)[number], tag: string) =>
 		{ customType: "loop-test", content: tag, display: true },
 		{ triggerTurn: true, deliverAs: "followUp", together: true },
 	);
-const queuedCount = (rig: Rig) => Object.values(rig.live()?.queued() ?? {}).reduce((sum, each) => sum + each, 0);
-const earlierOf = (rig: Rig) => ({
-	cwd: rig.ctx.cwd,
-	sessionManager: { getSessionId: () => rig.ctx.sessionManager.getSessionId() },
-});
+/**
+ * One topic per persistence class. What a session does with a recorded wake (merging in the window, waiting behind a
+ * compaction, replaying after a restart) depends on its class and never on its topic, and the table test above pins the
+ * class of every topic; so those three behaviours are run once per class, and plain delivery for every topic.
+ */
+const PER_CLASS = [
+	KINDS.find((kind) => kind.name === "time.due")!, // once: a repeat is dropped
+	KINDS.find((kind) => kind.name === "check.result")!, // durable: a repeat is a new event
+];
 
 describe("the timer, notify and backlog-feed cut-over", () => {
 	it("lists each topic as delivered by the loop and durable, and drops repeats only of time.due and item.peer", () => {
@@ -67,34 +77,43 @@ describe("the timer, notify and backlog-feed cut-over", () => {
 				kind.once,
 			]);
 		}
+		// The classes the per-class cases below stand for are exactly the classes this table has.
+		expect(new Set(KINDS.map((kind) => kind.once))).toEqual(new Set(PER_CLASS.map((kind) => kind.once)));
 	});
 
-	describe.each(KINDS)("$name", (kind) => {
-		it("is delivered once, through the loop's window", async () => {
-			const rig = await newRig();
-			rig.harness.setResponses([rig.reply("read it"), rig.reply("unexpected")]);
-			const sent = send(rig, kind, "TAG-once");
-			expect(rig.live()?.queued()).toMatchObject({ Q3: 1 });
-			await sent;
-			await vi.waitFor(() => expect(rig.requests).toHaveLength(1), { timeout: 10_000 });
-			await rig.harness.session.waitForIdle();
-			expect(count(rig.requests[0], "TAG-once")).toBe(1);
-			expect(count(branchLines(rig.harness), "TAG-once")).toBe(1);
-			expect(queuedCount(rig)).toBe(0);
-		});
+	it.each(KINDS)("$name is recorded, then delivered once in a turn of its own after the window", async (kind) => {
+		const rig = await newRig();
+		rig.harness.setResponses([rig.reply("read it"), rig.reply("unexpected")]);
+		const sent = send(rig, kind, "TAG-once");
+		// The loop has it: the session shows a wake about to resume it.
+		expect(pendingWakes(rig)).toHaveLength(1);
+		await sent;
+		await vi.waitFor(() => expect(rig.requests).toHaveLength(1), { timeout: 10_000 });
+		await quiet(rig);
+		expect(rig.requests).toHaveLength(1);
+		expect(count(rig.requests[0], "TAG-once")).toBe(1);
+		expect(count(branchLines(rig.harness), "TAG-once")).toBe(1);
+		expect(pendingWakes(rig)).toEqual([]);
+		expect(rig.harness.getPendingResponseCount()).toBe(1);
+		// Recorded under its topic in the session's log, and no longer owed.
+		expect(await recordedTopics(rig)).toEqual([kind.name]);
+		await expectLogged(rig, 0);
+	});
 
+	describe.each(PER_CLASS)("$name", (kind) => {
 		it("merges with another inside the window into one turn", async () => {
 			const rig = await newRig({}, 1);
 			rig.harness.setResponses([rig.reply("read both"), rig.reply("unexpected second turn")]);
-			const first = send(rig, kind, "TAG-a");
-			await sleep(300);
-			const second = send(rig, kind, "TAG-bb");
-			await Promise.all([first, second]);
+			await send(rig, kind, "TAG-a");
+			// Held: the session had every chance to start a turn for the first one and did not.
+			await expectHeld(rig, "TAG-a");
+			await send(rig, kind, "TAG-bb");
 			await vi.waitFor(() => expect(rig.requests).toHaveLength(1), { timeout: 10_000 });
-			await rig.harness.session.waitForIdle();
+			await quiet(rig);
 			expect(rig.requests).toHaveLength(1);
 			expect(count(rig.requests[0], "TAG-a")).toBe(1);
 			expect(count(rig.requests[0], "TAG-bb")).toBe(1);
+			expect(rig.harness.getPendingResponseCount()).toBe(1);
 		});
 
 		it("is queued during a compaction and delivered once after the summary", async () => {
@@ -121,7 +140,8 @@ describe("the timer, notify and backlog-feed cut-over", () => {
 			await sleep(WINDOW_S * 1000 + 200);
 			expect(rig.requests).toHaveLength(0);
 			expect(count(branchLines(rig.harness), "TAG-compact")).toBe(0);
-			expect(queuedCount(rig)).toBeGreaterThan(0);
+			// Not lost: the session's log holds it for the moment the lock is released.
+			await expectLogged(rig, 1);
 			gate.release();
 			await running;
 			await vi.waitFor(() => expect(count(rig.requests.flat(), "TAG-compact")).toBe(1), { timeout: 10_000 });
@@ -132,22 +152,27 @@ describe("the timer, notify and backlog-feed cut-over", () => {
 		});
 
 		it("replays once after a restart, and not again after it was delivered", async () => {
-			const first = await newRig({}, 10);
-			void send(first, kind, "TAG-restart");
-			await vi.waitFor(() => expect(first.live()?.queued()).toMatchObject({ Q3: 1 }));
-			const earlier = earlierOf(first);
+			const first = await newRig({}, LONG_WINDOW_S);
+			await send(first, kind, "TAG-restart");
+			await expectLogged(first, 1);
+			const earlier = sessionOf(first);
 
 			const second = await newRig({ liveStore: () => sessionStore(earlier) });
 			second.harness.setResponses([second.reply("read it"), second.reply("unexpected")]);
-			expect(second.live()?.queued()).toMatchObject({ Q3: 1 });
+			expect(pendingWakes(second)).toHaveLength(1);
 			await vi.waitFor(() => expect(second.requests).toHaveLength(1), { timeout: 10_000 });
-			await second.harness.session.waitForIdle();
+			await quiet(second);
+			expect(second.requests).toHaveLength(1);
 			expect(count(second.requests[0], "TAG-restart")).toBe(1);
+			expect(count(branchLines(second.harness), "TAG-restart")).toBe(1);
 
+			// Delivered: a third start has read its log by the time it is ready, and found nothing left.
 			const third = await newRig({ liveStore: () => sessionStore(earlier) });
-			expect(queuedCount(third)).toBe(0);
-			await sleep(WINDOW_S * 1000 + 200);
+			third.harness.setResponses([third.reply("unexpected")]);
+			expect(pendingWakes(third)).toEqual([]);
+			await quiet(third);
 			expect(third.requests).toHaveLength(0);
+			expect(count(branchLines(third.harness), "TAG-restart")).toBe(0);
 		});
 	});
 

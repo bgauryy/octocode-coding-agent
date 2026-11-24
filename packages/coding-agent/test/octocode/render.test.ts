@@ -114,12 +114,12 @@ describe("toolHeader", () => {
 			expect(mark(row({ executionStarted: true, toolCallId: "call-phase" }))?.[1]).toBe("warning");
 			void timed(async (_id: string) => ({ content: [] }))("call-phase");
 			const running = rendered(toolHeader(tagged, row({ executionStarted: true }), "Bash", "ls"));
-			// A running light is green (contract change: status dots, wave C); the accent spinner is the working line's.
-			expect(running).toMatch(new RegExp(`^<success>${STILL_RUN} `));
+			// Contract change (user request): a tool row is grey while it runs, green once its result returned, red on error.
+			expect(running).toMatch(new RegExp(`^<muted>${STILL_RUN} `));
 			const done = rendered(
 				toolHeader(tagged, row({ executionStarted: true, isPartial: false, durationMs: 1_500 }), "Bash", "ls"),
 			);
-			expect(done).toContain("<muted>◉");
+			expect(done).toContain("<success>◉");
 			expect(running).toContain("· 0ms");
 			expect(done).toContain("· 1.5s");
 			expect(mark(row({ isPartial: false, isError: true }))?.[1]).toBe("error");
@@ -719,7 +719,7 @@ describe("tool row motion", () => {
 		expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe(`${STILL_RUN} Bash(ls) · 0ms`);
 		// The clock runs for the elapsed counter alone.
 		expect(animationClock.isRunning()).toBe(true);
-		vi.advanceTimersByTime(MOTION.spinnerMs * 9);
+		vi.advanceTimersByTime(MOTION.tickMs - MOTION.spinnerMs);
 		expect(context.invalidate).not.toHaveBeenCalled();
 		expect(rendered(toolHeader(theme, context, "Bash", "ls"))[0]).toBe(STILL_RUN);
 		vi.advanceTimersByTime(MOTION.spinnerMs);
@@ -758,10 +758,10 @@ describe("tool row motion", () => {
 		toolHeader(theme, newer, "Bash", "seq 1 60");
 		const first = rendered(toolHeader(theme, older, "Bash", "sleep 10"))[0];
 		expect(first).toBe(STILL_RUN);
-		vi.advanceTimersByTime(MOTION.spinnerMs * 9);
+		vi.advanceTimersByTime(MOTION.tickMs - MOTION.spinnerMs);
 		expect(older.invalidate).not.toHaveBeenCalled();
 		expect(newer.invalidate).not.toHaveBeenCalled();
-		vi.advanceTimersByTime(MOTION.tickMs * 13 - MOTION.spinnerMs * 9);
+		vi.advanceTimersByTime(MOTION.tickMs * 12 + MOTION.spinnerMs);
 		expect(older.invalidate).toHaveBeenCalledTimes(13);
 		expect(newer.invalidate).toHaveBeenCalledTimes(13);
 		expect(rendered(toolHeader(theme, older, "Bash", "sleep 10"))[0]).toBe(first);
@@ -779,14 +779,14 @@ describe("tool row motion", () => {
 		expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("◐ Bash(ls) · waiting");
 	});
 
-	it("shows a row that waits for its checks or approval as a still yellow light, then the green light when its run begins", () => {
+	it("shows a row that waits for its checks or approval as a still yellow light, then the grey running light when its run begins", () => {
 		vi.useFakeTimers();
 		const context = row({ executionStarted: true, toolCallId: "call-breathe" });
 		expect(rendered(toolHeader(tagged, context, "Bash", "ls"))).toContain("<warning>◐");
 		void timed(async (_id: string) => ({ content: [] }))("call-breathe");
-		// A running light is green and still: the row draws no spinner frame.
+		// A running tool light is grey and still: the row draws no spinner frame.
 		expect(rendered(toolHeader(tagged, context, "Bash", "ls"))).toBe(
-			`<success>${STILL_RUN} <toolTitle>Bash<muted>(<muted>ls<muted>)<dim> · 0ms`,
+			`<muted>${STILL_RUN} <toolTitle>Bash<muted>(<muted>ls<muted>)<dim> · 0ms`,
 		);
 	});
 

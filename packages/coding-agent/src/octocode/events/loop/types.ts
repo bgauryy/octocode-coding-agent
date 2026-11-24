@@ -44,10 +44,17 @@ export interface EventEntry<C = undefined> {
 	carry: C;
 }
 
+/**
+ * How typed text reaches the run: `steer` joins at the next tool boundary, `follow-up` after the current run, `queue`
+ * is plain input (idle, or no behavior given) that keeps its place in order.
+ */
+export type InputMode = "steer" | "follow-up" | "queue";
+
 /** Text the user typed or sent (terminal, ACP prompt, web). */
 export interface InputEntry<C = undefined> {
 	type: "input";
 	text: string;
+	mode: InputMode;
 	carry: C;
 	/** Who typed or sent it (`userSource`); its trust says whether it carries the user's authority. */
 	source: Source;

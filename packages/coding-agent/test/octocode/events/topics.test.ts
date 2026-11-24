@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { fdSync } from "./walk.ts";
 import { EVENT_KINDS } from "../../../src/octocode/wake/catalog.ts";
-import { TOPICS, isTopic, topicGroup, type AgentEvent, type Topic } from "../../../src/octocode/events/topics.ts";
-import { trustOf, type Source } from "../../../src/octocode/events/source-types.ts";
+import { TOPICS, isTopic, topicGroup } from "../../../src/octocode/events/topics.ts";
+import { trustOf } from "../../../src/octocode/events/source-types.ts";
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "../../../src/octocode");
 
@@ -23,7 +23,7 @@ describe("the topic catalog", () => {
 
 	it("names the group before the first dot", () => {
 		expect(topicGroup("agent.report")).toBe("agent");
-		expect(topicGroup("peer.landed")).toBe("peer");
+		expect(topicGroup("item.peer")).toBe("item");
 	});
 
 	it("fails when code emits a kind the catalog lacks", () => {
@@ -36,22 +36,6 @@ describe("the topic catalog", () => {
 		}
 		expect(emitted.length).toBeGreaterThan(0);
 		expect(emitted.filter((e) => !known.has(e.kind))).toEqual([]);
-	});
-
-	it("types an event envelope with its source", () => {
-		const source: Source = { kind: "job", id: "bash-1", channel: "in-process", verified: "proven", trust: 2 };
-		const event: AgentEvent<"job.exit"> = {
-			seq: 1,
-			topic: "job.exit",
-			key: "job:bash-1:9",
-			at: 9,
-			source,
-			payload: { job: "bash-1", exit: 0, durationMs: 5, startedAt: 9 },
-			digest: "job bash-1 exit 0",
-		};
-		const topic: Topic = event.topic;
-		expect(JSON.parse(JSON.stringify(event))).toEqual(event);
-		expect(topic).toBe("job.exit");
 	});
 });
 

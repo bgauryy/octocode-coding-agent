@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import path from "node:path";
 import type { AttachRecord, DaemonSession, DaemonUnavailableSession } from "@octocodeai/octocode-contracts/daemon";
 import { sameProcessAsync } from "../shared/process.ts";
@@ -32,7 +33,7 @@ export class SessionRegistry {
 	private readonly links = new Map<string, Link>();
 	private readonly env: NodeJS.ProcessEnv;
 	private readonly changed: () => void;
-	private timer: ReturnType<typeof setInterval> | undefined;
+	private stopTimer: (() => void) | undefined;
 	private refreshing: Promise<void> | undefined;
 	private stopped = false;
 	/** While true no new session is attached: a draining daemon only serves what it already has. */
@@ -45,8 +46,7 @@ export class SessionRegistry {
 
 	start(): void {
 		void this.refresh();
-		this.timer = setInterval(() => void this.refresh(), POLL_MS);
-		this.timer.unref();
+		this.stopTimer = sharedClock.subscribe(() => void this.refresh(), { everyMs: POLL_MS });
 	}
 
 	private async endedInDatabase(sessionId: string): Promise<boolean> {
@@ -191,7 +191,8 @@ export class SessionRegistry {
 
 	close(): void {
 		this.stopped = true;
-		clearInterval(this.timer);
+		this.stopTimer?.();
+		this.stopTimer = undefined;
 		for (const link of this.links.values()) {
 			link.watch?.close();
 			link.client?.close();

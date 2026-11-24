@@ -74,6 +74,7 @@ export function buildBaseOptions(
 		keepInstructionCache: options?.keepInstructionCache,
 		instructionCacheBoundary: options?.instructionCacheBoundary,
 		instructionVolatileBoundary: options?.instructionVolatileBoundary,
+		instructionWorkspaceBoundary: options?.instructionWorkspaceBoundary,
 		toolCacheBoundary: options?.toolCacheBoundary,
 		sessionId: options?.sessionId,
 		promptCacheKey: options?.promptCacheKey,

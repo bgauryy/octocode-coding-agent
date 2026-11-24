@@ -1,6 +1,14 @@
-import { expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { afterEach, expect, it, vi } from "vitest";
 import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
+import { registerHooks } from "../../src/octocode/hooks/register.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
+
+afterEach(() => vi.unstubAllEnvs());
 
 const handlers = [
 	{ type: "command", command: "echo policy" },
@@ -23,6 +31,35 @@ it.each(handlers)("ignores settings-level once for Claude $type hooks without re
 	for (let invocation = 0; invocation < 2; invocation++) {
 		expect(commandsFor(config, "PreToolUse", ["Bash"])).toHaveLength(1);
 	}
+});
+
+it("runs a Claude settings hook marked once on every matching call of the session", async () => {
+	const home = tmp();
+	vi.stubEnv("OCTOCODE_HOME", tmp());
+	fs.mkdirSync(path.join(home, ".claude"));
+	const marker = path.join(home, "runs");
+	fs.writeFileSync(
+		path.join(home, ".claude", "settings.json"),
+		JSON.stringify({
+			hooks: {
+				PreToolUse: [
+					{
+						matcher: "Bash",
+						hooks: [{ type: "command", command: `echo ran >> ${JSON.stringify(marker)}`, once: true }],
+					},
+				],
+			},
+		}),
+	);
+	const fake = fakeHost(HOOK_SETTINGS);
+	const hooks = registerHooks(fake.api, { env: {}, home });
+	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
+	approveFixtureHooks(ctx.cwd, home);
+	await fake.fire("session_start", { reason: "startup" }, ctx);
+	for (const id of ["first", "second"])
+		await hooks.preToolUse({ toolName: "bash", toolCallId: id, input: { command: "ls" } } as never, ctx);
+	expect(fs.readFileSync(marker, "utf8")).toBe("ran\nran\n");
+	await fake.fire("session_shutdown", { reason: "quit" }, ctx);
 });
 
 it.each(["codex", "octocode"] as const)("does not accept Claude once in the %s profile", (protocol) => {

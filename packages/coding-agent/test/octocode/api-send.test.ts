@@ -53,6 +53,9 @@ function setup(store?: ReceiptStore, operations: object = {}) {
 	};
 }
 
+/** Lets every handler of an already settled promise run: a late one sits several microtasks behind the rejection. */
+const settled = () => new Promise<void>((resolve) => setImmediate(resolve));
+
 describe("API message.send asynchronous handoff", () => {
 	it("returns promptly without wait, then retains an uncertain keyed rejection instead of dispatching a retry", async () => {
 		const { host, receipts, send, rejectSend } = setup();
@@ -88,7 +91,7 @@ describe("API message.send asynchronous handoff", () => {
 		const seq = host.log.seq;
 		replaceSession();
 		rejectSend(new Error("old host rejected"));
-		await Promise.resolve();
+		await settled();
 		expect(host.log.seq).toBe(seq);
 		expect(receipts.get("old")).toBeUndefined();
 		expect(receipts.busy).toBe(false);
@@ -100,7 +103,7 @@ describe("API message.send asynchronous handoff", () => {
 		await sendMessage(host, params);
 		receipts.settle({ text: "finished" });
 		rejectSend(new Error("late host error"));
-		await Promise.resolve();
+		await settled();
 		expect(receipts.get("once")?.phase).toBe("settled");
 		await expect(sendMessage(host, { ...params, wait: true })).resolves.toEqual({
 			id: "x1",
@@ -118,7 +121,7 @@ describe("API message.send asynchronous handoff", () => {
 		receipts.settle({ text: "finished" });
 		if (wait) await expect(result).resolves.toMatchObject({ id: "x1", text: "finished" });
 		rejectSend(new Error("late host error"));
-		await Promise.resolve();
+		await settled();
 		expect(host.log.seq).toBe(before);
 	});
 

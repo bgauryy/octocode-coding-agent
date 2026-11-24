@@ -1361,10 +1361,6 @@
     "runtime": {
       "type": "object",
       "properties": {
-        "eventLoop": {
-          "type": "string",
-          "description": "Ignored. The event loop is the only session scheduler; the key is still accepted so a settings file written for an earlier version loads."
-        },
         "eventWindowSeconds": {
           "type": "number",
           "description": "Seconds the event loop waits after a background event wakes an idle session, so completions that arrive together share one turn. User input releases the window immediately.",
@@ -1649,13 +1645,6 @@
           "type": "boolean",
           "description": "Let a background `agent` task wait for prerequisites instead of being refused: its `after` list (backlog items `B<n>`, children `agent:<name>`) and the open `dependsOn` of its item. A queued child holds no slot, reservation or item claim; it starts when the last prerequisite ends well, and is held (the coordinator is told) when one fails. Off: such a task is refused as before.",
           "default": true
-        },
-        "wakeHoldSeconds": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 10,
-          "description": "Legacy idle wake window in seconds. Use runtime.eventWindowSeconds for the live scheduler. A session with no explicit runtime window inherits this value. Zero delivers at once.",
-          "default": 2
         },
         "peerOverlapWake": {
           "type": "boolean",

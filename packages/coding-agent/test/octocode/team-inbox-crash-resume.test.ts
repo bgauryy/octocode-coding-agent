@@ -120,7 +120,7 @@ describe("crash and resume", () => {
 		if ("error" in sent) throw new Error(sent.error);
 		expect(sent).toMatchObject({ sent: [bName] });
 		// The idle recipient accepts the FYI into its transcript; no model context ever acknowledges it.
-		await vi.waitFor(() => expect(mailOf(b)).toHaveLength(1), { timeout: 5_000 });
+		await vi.waitFor(() => expect(mailOf(b)).toHaveLength(1));
 		expect(mailOf(b)[0]).toMatchObject({ from: a.team.id, text: "the build is broken on arm64" });
 		// The session ends without the model seeing it (a reload or exit): the unread mail becomes a dead letter.
 		b.team.stop();
@@ -130,15 +130,13 @@ describe("crash and resume", () => {
 		await new Promise((resolve) => setTimeout(resolve, 1_200));
 		expect(mailOf(b2)).toHaveLength(0);
 		// The sender is told once that its message went unread.
-		await vi.waitFor(
-			() =>
-				expect(
-					mailOf(a).some(
-						(entry) =>
-							entry.id === undefined && String(entry.text).includes(`Message #${sent.id} to ${bName} was not read`),
-					),
-				).toBe(true),
-			{ timeout: 8_000 },
+		await vi.waitFor(() =>
+			expect(
+				mailOf(a).some(
+					(entry) =>
+						entry.id === undefined && String(entry.text).includes(`Message #${sent.id} to ${bName} was not read`),
+				),
+			).toBe(true),
 		);
 	});
 });

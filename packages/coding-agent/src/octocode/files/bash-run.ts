@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import { constants as osConstants } from "node:os";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { processLifetime } from "@octocodeai/octocode-common/process-lifetime";
 import type { BashOperations } from "../../core/tools/index.ts";
 import { clampTimeoutSeconds, resolveBashShell, spawnShell } from "../../utils/shell.ts";
@@ -295,20 +296,23 @@ export function foregroundOperations(
 							timedOut = true;
 							if (stopAtDeadline || !moveToBackground("deadline")) stop();
 						}, timeout * 1000);
-			const watcher =
+			const stopWatcher =
 				watch && handoff
-					? setInterval(() => {
-							if (timedOut || Date.now() - startedAt < (watch.afterMs ?? DEFAULT_WATCH_AFTER_MS)) return;
-							try {
-								if (!watch.pending()) return;
-							} catch {
-								return;
-							}
-							timedOut = true;
-							movedAfter = Math.round((Date.now() - startedAt) / 1000);
-							if (moveToBackground("message")) clearInterval(watcher);
-							else timedOut = false;
-						}, watch.pollMs ?? DEFAULT_WATCH_POLL_MS)
+					? sharedClock.subscribe(
+							() => {
+								if (timedOut || Date.now() - startedAt < (watch.afterMs ?? DEFAULT_WATCH_AFTER_MS)) return;
+								try {
+									if (!watch.pending()) return;
+								} catch {
+									return;
+								}
+								timedOut = true;
+								movedAfter = Math.round((Date.now() - startedAt) / 1000);
+								if (moveToBackground("message")) stopWatcher?.();
+								else timedOut = false;
+							},
+							{ everyMs: watch.pollMs ?? DEFAULT_WATCH_POLL_MS },
+						)
 					: undefined;
 			child.stdout?.on("data", read);
 			child.stderr?.on("data", read);
@@ -329,7 +333,7 @@ export function foregroundOperations(
 			} finally {
 				if (pid) untrack(pid, moved);
 				if (timer) clearTimeout(timer);
-				if (watcher) clearInterval(watcher);
+				stopWatcher?.();
 				signal?.removeEventListener("abort", stop);
 			}
 		},

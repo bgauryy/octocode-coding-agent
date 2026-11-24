@@ -1,3 +1,4 @@
+import { Clock, type ClockSubscriber, type ClockSubscription } from "@octocodeai/octocode-common/clock";
 import { MOTION } from "./design.ts";
 
 /**
@@ -12,28 +13,16 @@ import { MOTION } from "./design.ts";
 /** `decor` moves for looks and freezes in reduced motion; `info` shows changing information and always ticks. */
 export type AnimationKind = "decor" | "info";
 
-export interface AnimationSubscription {
-	/** Wanted interval between calls, in milliseconds. */
-	everyMs: number;
+export interface AnimationSubscription extends ClockSubscription {
 	kind: AnimationKind;
 }
-
-/** A call this close before its due time counts as due: timers and the millisecond clock disagree by a tick or two. */
-const SLACK_MS = 2;
 
 /** No hold lasts longer than this; a hold further ahead of now than this can only come from a wall clock stepped back. */
 const MAX_HOLD_AHEAD_MS = 10_000;
 
-interface Subscriber extends AnimationSubscription {
-	listener: (now: number) => void;
-	/** When the next call is due; advances by `everyMs` so slower subscribers keep their rate on a faster clock. */
-	due: number;
-}
+type Subscriber = ClockSubscriber<AnimationSubscription>;
 
-class AnimationClock {
-	private readonly subscribers = new Set<Subscriber>();
-	private timer: ReturnType<typeof setInterval> | undefined;
-	private cadence = 0;
+class AnimationClock extends Clock<AnimationSubscription> {
 	private reduced = false;
 	/** Whether the terminal has focus; terminals without focus reports never leave `true`. */
 	private focused = true;
@@ -43,17 +32,6 @@ class AnimationClock {
 	private heldSince = 0;
 	/** Time advanced by exactly one cadence per tick: a frame index taken from it never repeats or skips with timer jitter. */
 	private gridTime = 0;
-
-	/** Call `listener` about every `everyMs` while subscribed; returns the unsubscribe. */
-	subscribe(listener: (now: number) => void, options: AnimationSubscription): () => void {
-		const everyMs = Math.max(1, options.everyMs);
-		const subscriber: Subscriber = { ...options, everyMs, listener, due: Date.now() + everyMs };
-		this.subscribers.add(subscriber);
-		this.reschedule();
-		return () => {
-			if (this.subscribers.delete(subscriber)) this.reschedule();
-		};
-	}
 
 	/** Freeze (`true`) or resume decoration. Counters keep ticking either way. */
 	setReducedMotion(reduced: boolean): void {
@@ -65,7 +43,7 @@ class AnimationClock {
 		// Callbacks may replace subscriptions; new owners wait for the next notification.
 		const subscribers = [...this.subscribers];
 		for (const subscriber of subscribers) {
-			if (subscriber.kind !== "decor" || !this.subscribers.has(subscriber)) continue;
+			if (subscriber.options.kind !== "decor" || !this.subscribers.has(subscriber)) continue;
 			subscriber.due = now + subscriber.everyMs;
 			this.notify(subscriber, now);
 		}
@@ -84,7 +62,7 @@ class AnimationClock {
 		// Callbacks may replace subscriptions; iterate a snapshot.
 		const subscribers = [...this.subscribers];
 		for (const subscriber of subscribers) {
-			if (subscriber.kind !== "decor" || this.reduced || !this.subscribers.has(subscriber)) continue;
+			if (subscriber.options.kind !== "decor" || this.reduced || !this.subscribers.has(subscriber)) continue;
 			subscriber.due = now + subscriber.everyMs;
 			this.notify(subscriber, now);
 		}
@@ -123,72 +101,44 @@ class AnimationClock {
 		return this.gridTime;
 	}
 
-	/** Whether a timer is running: false whenever nothing animates (an idle screen writes nothing). */
-	isRunning(): boolean {
-		return this.timer !== undefined;
-	}
-
-	private ticking(): Subscriber[] {
-		return [...this.subscribers].filter((subscriber) => !(this.reduced && subscriber.kind === "decor"));
+	protected override isLive(subscriber: Subscriber): boolean {
+		return !(this.reduced && subscriber.options.kind === "decor");
 	}
 
 	/** The interval a subscriber is served at now: decoration is no faster than `unfocusedDecorMs` while unfocused. */
-	private wantedMs(subscriber: Subscriber): number {
-		if (subscriber.kind === "decor" && !this.focused) return Math.max(subscriber.everyMs, MOTION.unfocusedDecorMs);
+	protected override wantedMs(subscriber: Subscriber): number {
+		if (subscriber.options.kind === "decor" && !this.focused) {
+			return Math.max(subscriber.everyMs, MOTION.unfocusedDecorMs);
+		}
 		return subscriber.everyMs;
 	}
 
-	private reschedule(): void {
-		const live = this.ticking();
-		const cadence = live.length === 0 ? 0 : Math.min(...live.map((subscriber) => this.wantedMs(subscriber)));
-		if (cadence === this.cadence && (cadence === 0) === (this.timer === undefined)) return;
-		if (this.timer !== undefined) clearInterval(this.timer);
-		this.timer = undefined;
-		this.cadence = cadence;
-		if (cadence === 0) return;
-		this.gridTime = Date.now();
-		this.timer = setInterval(() => this.tick(), cadence);
-		this.timer.unref?.();
+	protected override timerStarted(now: number): void {
+		this.gridTime = now;
 	}
 
-	/** Mode changes and regular ticks isolate failed callbacks in the same way. */
-	private notify(subscriber: Subscriber, now: number): void {
-		try {
-			subscriber.listener(now);
-		} catch (error) {
-			// Drop the failing animation and report its error as a rejection, which the app shows without exiting.
-			this.subscribers.delete(subscriber);
-			this.reschedule();
-			void Promise.reject(error);
-		}
+	/** Decoration steps by whole ticks so its motion is evenly spaced; counters keep their exact interval. */
+	protected override stepMs(subscriber: Subscriber, wanted: number): number {
+		return subscriber.options.kind === "decor" ? Math.max(1, Math.round(wanted / this.cadence)) * this.cadence : wanted;
 	}
 
-	private tick(): void {
-		const now = Date.now();
+	protected override isDeferred(subscriber: Subscriber): boolean {
+		return subscriber.options.kind === "decor" && Date.now() < this.heldUntil;
+	}
+
+	/** Drop the failing animation and report its error as a rejection, which the app shows without exiting. */
+	protected override failed(subscriber: Subscriber, error: unknown): void {
+		this.subscribers.delete(subscriber);
+		this.reschedule();
+		void Promise.reject(error);
+	}
+
+	protected override beforeTick(now: number): void {
 		// Steady ticks advance the frame time by one cadence; a stall or a wall clock step puts it back on wall time.
 		this.gridTime =
 			now - this.gridTime > 2 * this.cadence || this.gridTime - now > this.cadence ? now : this.gridTime + this.cadence;
-		// The clock ticks at the fastest cadence: a call runs on the first tick at or after its due time (never early, so
-		// a counter never shows a second that has not passed), and the next is due `everyMs` after the last due time, not
-		// after the late tick, so a 1 s counter on an 80 ms spinner clock keeps a 1 s average without drifting.
-		// A wall clock stepped back leaves due times and the hold far ahead of now: pull them in so ticks resume within
-		// one interval.
+		// A wall clock stepped back leaves the hold far ahead of now: pull it in so decoration resumes within one interval.
 		if (this.heldUntil - now > MAX_HOLD_AHEAD_MS) this.heldUntil = now;
-		const held = now < this.heldUntil;
-		for (const subscriber of this.ticking()) {
-			if (!this.subscribers.has(subscriber)) continue;
-			const wanted = this.wantedMs(subscriber);
-			if (subscriber.due - now > wanted) subscriber.due = now;
-			if (now < subscriber.due - SLACK_MS) continue;
-			if (held && subscriber.kind === "decor") continue;
-			// Decoration steps by whole ticks so its motion is evenly spaced; counters keep their exact interval.
-			const every =
-				subscriber.kind === "decor" ? Math.max(1, Math.round(wanted / this.cadence)) * this.cadence : wanted;
-			subscriber.due += every;
-			// After a stall (a suspended process, frozen decor resuming), restart the rhythm instead of catching up.
-			if (subscriber.due <= now) subscriber.due = now + every;
-			this.notify(subscriber, now);
-		}
 	}
 }
 

@@ -1,5 +1,6 @@
-import { type FSWatcher, existsSync, readFileSync, type Stats, unwatchFile, watchFile } from "node:fs";
+import { type FSWatcher, existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { watchFileChanges } from "@octocodeai/octocode-common/watch-file";
 import { closeWatcher, FS_WATCH_RETRY_DELAY_MS, watchWithErrorHandler } from "../utils/fs-watch.ts";
 import {
 	findGitPaths,
@@ -10,6 +11,9 @@ import {
 	shouldPollGitHead,
 } from "./footer-data-provider/git.ts";
 import { sameStatus, type StatusEntry, type StatusTone, statusEntry } from "./footer-data-provider/status.ts";
+
+/** Stat interval of the WSL fallback for HEAD and the reftable list. */
+const GIT_POLL_MS = 5000;
 
 export { findGitPaths } from "./footer-data-provider/git.ts";
 export type { StatusEntry, StatusTone } from "./footer-data-provider/status.ts";
@@ -35,10 +39,8 @@ export class FooterDataProvider {
 	private cachedBranch: string | null | undefined = undefined;
 	private gitPaths: GitPaths | null | undefined = undefined;
 	private headWatcher: FSWatcher | null = null;
-	private headWatchFilePath: string | null = null;
-	private headWatchFileListener: ((current: Stats, previous: Stats) => void) | null = null;
-	private reftableWatchFilePath: string | null = null;
-	private reftableWatchFileListener: ((current: Stats, previous: Stats) => void) | null = null;
+	/** Stat pollers for file systems whose native watches miss changes (WSL); stopped with the watchers. */
+	private pollStops: Array<() => void> = [];
 	private reftableWatcher: FSWatcher | null = null;
 	private gitWatcherGeneration = 0;
 	private branchChangeCallbacks = new Set<() => void>();
@@ -245,18 +247,9 @@ export class FooterDataProvider {
 		this.gitWatcherGeneration++;
 		closeWatcher(this.headWatcher);
 		this.headWatcher = null;
-		if (this.headWatchFilePath && this.headWatchFileListener) {
-			unwatchFile(this.headWatchFilePath, this.headWatchFileListener);
-			this.headWatchFilePath = null;
-			this.headWatchFileListener = null;
-		}
+		for (const stop of this.pollStops.splice(0)) stop();
 		closeWatcher(this.reftableWatcher);
 		this.reftableWatcher = null;
-		if (this.reftableWatchFilePath && this.reftableWatchFileListener) {
-			unwatchFile(this.reftableWatchFilePath, this.reftableWatchFileListener);
-			this.reftableWatchFilePath = null;
-			this.reftableWatchFileListener = null;
-		}
 		if (this.gitWatcherRetryTimer) {
 			clearTimeout(this.gitWatcherRetryTimer);
 			this.gitWatcherRetryTimer = null;
@@ -308,23 +301,17 @@ export class FooterDataProvider {
 		if (pollGitHead) {
 			// WSL polling must still work if the native watcher failed synchronously and scheduled a retry.
 			const pollGeneration = this.gitWatcherGeneration;
-			this.headWatchFilePath = this.gitPaths.headPath;
-			this.headWatchFileListener = (next, previous) => {
-				if (
-					!this.disposed &&
-					this.gitWatcherGeneration === pollGeneration &&
-					(next.mtimeMs !== previous.mtimeMs || next.ctimeMs !== previous.ctimeMs || next.size !== previous.size)
-				) {
-					this.scheduleRefresh();
-				}
-			};
-			watchFile(this.headWatchFilePath, { interval: 1000 }, this.headWatchFileListener);
+			const poll = (file: string) =>
+				watchFileChanges(
+					file,
+					() => {
+						if (!this.disposed && this.gitWatcherGeneration === pollGeneration) this.scheduleRefresh();
+					},
+					{ poll: true, intervalMs: GIT_POLL_MS },
+				);
+			this.pollStops.push(poll(this.gitPaths.headPath));
 			// WSL may miss native directory events; reftable branch changes can leave HEAD unchanged.
-			if (existsSync(reftableDir)) {
-				this.reftableWatchFilePath = join(reftableDir, "tables.list");
-				this.reftableWatchFileListener = this.headWatchFileListener;
-				watchFile(this.reftableWatchFilePath, { interval: 1000 }, this.reftableWatchFileListener);
-			}
+			if (existsSync(reftableDir)) this.pollStops.push(poll(join(reftableDir, "tables.list")));
 		}
 		if (!current()) return;
 		if (!this.headWatcher && !pollGitHead) {

@@ -226,7 +226,7 @@ describe("the archive tool", () => {
 		// One session's files, by sessionId.
 		expect((await call({ ...why, sessionId: "current" })).text).toContain("## me (this session)");
 		const found = await call({ ...why, query: "LOGIN" });
-		expect(found.text).toMatch(/^2 matching lines in 2 files, this session first/m);
+		expect(found.text).toMatch(/^2 matching lines in 2 archive files, this session first/m);
 		expect(found.details).toMatchObject({ mode: "search", hits: 2, files: 2, page: 1, pages: 1 });
 		const line = Number(/^>\s*(\d+)│ the login fix/m.exec(found.text)![1]);
 		// A bare file name is a file of this session's archive, as the pointer names them.
@@ -269,14 +269,14 @@ describe("the archive tool", () => {
 			/Page 1 of \d+\.\n\nMore remains: call again with cursor a2\.\S+ and the same other arguments\.$/,
 		);
 		// One search stops at its match budget; the text names no second way to continue.
-		expect(first.text).toMatch(/^200 matching lines in 1 file, this session first/m);
+		expect(first.text).toMatch(/^200 matching lines in 1 archive file, this session first/m);
 		expect(first.text).toContain(
 			"Read 1 of 2 files (1 session) for /match/i. The search stopped at its match or time budget; the rest is not read yet.",
 		);
 		expect(first.text).not.toMatch(/h1\.|next: page|with page/);
 		expect((await run(why)).text).toMatch(/^1 session with history/m);
 		const none = await run({ ...why, query: "nothing-like-this" });
-		expect(none.text).toContain("Read 2 of 2 files (1 session) for /nothing-like-this/i. Every file was read.");
+		expect(none.text).toContain("Read 2 of 2 files (1 session) for /nothing-like-this/i. Every archive file was read.");
 		expect(none.details.nextCursor).toBeUndefined();
 		// The cursor walks every page of this scan, then the scan's next stretch, never repeating a line.
 		let cursor = first.details.nextCursor as string | undefined;

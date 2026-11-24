@@ -94,6 +94,7 @@ describe("Esc on a foreground agent call", () => {
 	it("keeps the child's record and its spend when the child takes the slow stop path", async () => {
 		const { tool, team, control } = setup();
 		const turn = new AbortController();
+		const updates: string[] = [];
 		try {
 			const pending = runToolCall(
 				{
@@ -107,9 +108,13 @@ describe("Esc on a foreground agent call", () => {
 					assistantMessage: fauxAssistantMessage("Continue"),
 					context: { messages: [], tools: [tool] },
 					signal: turn.signal,
+					onUpdate: (update) => {
+						updates.push(JSON.stringify(update));
+					},
 				},
 			);
-			await new Promise((resolve) => setTimeout(resolve, 1_500));
+			// The child's priced reply is in and its tool, which ignores the abort, has started.
+			await vi.waitFor(() => expect(updates.join("\n")).toContain("sleep 60"));
 			turn.abort();
 			const outcome = await pending;
 			expect(outcome.isError).toBe(true);

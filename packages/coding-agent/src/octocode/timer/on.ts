@@ -1,4 +1,4 @@
-import { CATALOG, EXPLICIT_EVENTS, parseEventKind } from "../wake/catalog.ts";
+import { CATALOG, parseEventKind } from "../wake/catalog.ts";
 import { type LiveJob, polledJob } from "./job-poll.ts";
 
 /** What an `on` call names beside its event: the fields of `filter`, each event taking its own. */
@@ -27,7 +27,11 @@ interface Listener {
 const defined = <T extends object>(value: T) =>
 	Object.fromEntries(Object.entries(value).filter(([, each]) => each !== undefined));
 
-/** The filter fields each listenable event takes, and the `until` condition each maps to. */
+/**
+ * The filter fields each listenable name takes, and the `until` condition each maps to. `item.state`, `item.changed`,
+ * `peer.landed` and `path.unlocked` are names of the `on` call only: the session is told by a `check.result` when the
+ * condition holds, and no event of those kinds exists.
+ */
 const LISTENERS = {
 	"agent.ended": { required: ["agent"], until: (f) => ({ agent: { name: f.agent } }) },
 	"item.state": { required: ["ref", "state"], until: (f) => ({ item: { ref: f.ref, state: f.state } }) },
@@ -67,10 +71,10 @@ export function untilOfEvent(
 	check: string | undefined,
 	session: { jobs: readonly LiveJob[]; cwd: string } = { jobs: [], cwd: process.cwd() },
 ): object {
-	if (event === undefined) throw new Error(`on needs an event: ${EXPLICIT_EVENTS.join(", ")}.`);
-	const kind = parseEventKind(event);
+	if (event === undefined) throw new Error(`on needs an event: ${LISTEN_EVENTS.join(", ")}.`);
+	const kind = typeof event === "string" && Object.hasOwn(LISTENERS, event) ? event : parseEventKind(event);
 	if (kind === "time.due") throw new Error("time.due is a time: use set with after or every.");
-	if (CATALOG[kind].listener === "implicit")
+	if (kind in CATALOG && CATALOG[kind as keyof typeof CATALOG].listener === "implicit")
 		throw new Error(`You are already notified when ${kind} happens; asking for it adds nothing.`);
 	const listener = (LISTENERS as Record<string, Listener>)[kind];
 	const takes = [...listener.required, ...(listener.optional ?? [])] as string[];

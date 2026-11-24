@@ -245,6 +245,12 @@ export interface StreamOptions extends ProviderRequestOptions {
 	 */
 	instructionVolatileBoundary?: string;
 	/**
+	 * Name of the first section of the leading system message that differs between workspaces (project instructions).
+	 * Adapters with explicit breakpoints end a cached block before it, so every earlier block is read across
+	 * workspaces. Absent or unknown section: no cut.
+	 */
+	instructionWorkspaceBoundary?: string;
+	/**
 	 * Name of the first tool that agents of different roles declare differently: every tool before it is a prefix they
 	 * share. Adapters with explicit breakpoints mark the tool before it with the instruction retention, so an agent of
 	 * one role reads the tool prefix another role wrote; on Anthropic that marker takes the base instruction block's (or

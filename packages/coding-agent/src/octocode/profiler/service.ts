@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import type {
 	ProfileAgent,
 	ProfileAgents,
@@ -143,7 +144,7 @@ export function createProfiler(
 	cache = new TranscriptCache(),
 ): ProfilerPort & { close(): void } {
 	const listeners = new Set<(update: ProfileUpdate) => void>();
-	let timer: ReturnType<typeof setInterval> | undefined;
+	let timer: (() => void) | undefined;
 	const seen = new Map<string, number>();
 	const knownEvents = new Set<string>();
 	const knownMessages = new Map<number, string>();
@@ -258,7 +259,7 @@ export function createProfiler(
 		}
 	};
 	const stop = () => {
-		clearInterval(timer);
+		timer?.();
 		timer = undefined;
 	};
 
@@ -337,8 +338,7 @@ export function createProfiler(
 				knownMessages.clear();
 				primed = false;
 				tick();
-				timer ??= setInterval(tick, POLL_MS);
-				timer.unref();
+				timer ??= sharedClock.subscribe(() => tick(), { everyMs: POLL_MS });
 			}
 			return () => {
 				listeners.delete(listener);

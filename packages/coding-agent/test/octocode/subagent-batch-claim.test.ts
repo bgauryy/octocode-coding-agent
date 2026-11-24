@@ -116,6 +116,16 @@ async function started(batch: Promise<unknown>[]): Promise<{ started: number[]; 
 }
 
 describe("one batch of calls on one item", () => {
+	it("takes the item's title as the goal when the call names none", async () => {
+		const s = agentTool();
+		try {
+			const result = (await s.run("call-1", { goal: undefined, task: "edit a file" })) as { details: { goal: string } };
+			expect(result.details.goal).toBe("part");
+		} finally {
+			await s.shutdown();
+		}
+	}, 60_000);
+
 	it("starts only the first of two isolated calls", async () => {
 		const s = agentTool();
 		try {

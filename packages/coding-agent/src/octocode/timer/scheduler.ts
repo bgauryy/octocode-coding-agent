@@ -32,6 +32,8 @@ export interface SchedulerDeps {
 	cronStop?(row: TimerRow): string | undefined;
 	/** A cron run was skipped as too late, or its timer stopped before running. */
 	cronEvent?(event: CronEvent): void;
+	/** An event-driven check of a row ended, whatever it found, and the scheduler reread its state: the signal for "nothing more will come of this poke". */
+	pokeChecked?(id: number): void;
 	/** A failed pass (an unreadable database): the timers stay in the database and the next tick tries again. */
 	failed?(error: unknown): void;
 }
@@ -252,6 +254,7 @@ export class TimerScheduler {
 						} catch (error) {
 							this.reportFailure(error);
 						}
+						this.deps.pokeChecked?.(id);
 					});
 			}, POKE_DEBOUNCE_MS),
 		);

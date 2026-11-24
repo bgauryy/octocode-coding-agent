@@ -18,7 +18,7 @@ import { eventWindowMs } from "../../src/octocode/wake/session-signals.ts";
 import { MemoryEventStore } from "../../src/octocode/events/loop/store.ts";
 import { collapsedWakeRow, wakeLines } from "../../src/octocode/ui/wake-row.ts";
 import { sendAgentReport } from "../../src/octocode/subagents/handoff/wake.ts";
-import { SETTINGS_DEFAULTS } from "../../src/core/settings-defaults.ts";
+import { RUNTIME_DEFAULTS } from "../../src/core/settings-schema/runtime.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 const READY = { goal: "Expected result", why: "Required work" };
@@ -52,7 +52,7 @@ const reportOn = (item: string | undefined, agent = "jolly-reef"): AgentEvent =>
 });
 
 /** Without settings the gate is unheld: most cases are about rows and nudges, and those that hold set their window. */
-function setup(settings: Record<string, unknown> = { subagents: { wakeHoldSeconds: 0 } }) {
+function setup(settings: Record<string, unknown> = { runtime: { eventWindowSeconds: 0 } }) {
 	const fake = fakeHost(settings);
 	const cwd = path.join(tmp, "repo");
 	fs.mkdirSync(cwd, { recursive: true });
@@ -229,7 +229,7 @@ describe("hold window", () => {
 	it("holds an idle session's wakes for the default window, then starts one turn for them", async () => {
 		vi.useFakeTimers();
 		const s = await active({});
-		const windowMs = SETTINGS_DEFAULTS.subagents.wakeHoldSeconds * 1000;
+		const windowMs = RUNTIME_DEFAULTS.eventWindowSeconds * 1000;
 		expect(windowMs).toBeGreaterThan(0);
 		const first = s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true, deliverAs: "followUp" });
 		s.gate.emit(reportOn(undefined, "b"), msg(2), { triggerTurn: true, deliverAs: "followUp" });
@@ -241,7 +241,7 @@ describe("hold window", () => {
 	});
 
 	it("is off at 0: each wake is sent at once", async () => {
-		const s = await active({ subagents: { wakeHoldSeconds: 0 } });
+		const s = await active({ runtime: { eventWindowSeconds: 0 } });
 		s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true });
 		s.gate.emit(reportOn(undefined, "b"), msg(2), { triggerTurn: true });
 		expect(s.fake.sent.map((entry) => entry.options.triggerTurn)).toEqual([true, true]);
@@ -249,7 +249,7 @@ describe("hold window", () => {
 
 	it("merges wakes of an idle session that arrive inside the window into one turn", async () => {
 		vi.useFakeTimers();
-		const s = await active({ subagents: { wakeHoldSeconds: 2 } });
+		const s = await active({ runtime: { eventWindowSeconds: 2 } });
 		const first = s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true, deliverAs: "followUp" });
 		vi.advanceTimersByTime(1000);
 		s.gate.emit(reportOn(undefined, "b"), msg(2), { triggerTurn: true, deliverAs: "followUp" });
@@ -270,7 +270,7 @@ describe("hold window", () => {
 
 	it("delivers the wake at the next tool boundary while a run is in progress", async () => {
 		vi.useFakeTimers();
-		const s = await active({ subagents: { wakeHoldSeconds: 2 } });
+		const s = await active({ runtime: { eventWindowSeconds: 2 } });
 		await s.fake.emit("agent_start", {}, s.ctx);
 		await s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true, deliverAs: "followUp" });
 		expect(s.fake.sent).toHaveLength(0);
@@ -278,20 +278,10 @@ describe("hold window", () => {
 		expect(s.fake.sent).toHaveLength(1);
 	});
 
-	it("sends what is held when the session ends", async () => {
-		vi.useFakeTimers();
-		const s = await active({ subagents: { wakeHoldSeconds: 5 } });
-		s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true });
-		expect(s.fake.sent).toHaveLength(0);
-		await s.fake.emit("session_shutdown", {}, s.ctx);
-		expect(s.fake.sent).toHaveLength(1);
-	});
-
-	it("uses the runtime window before the legacy setting, bounds it, and disables invalid values", () => {
-		const window = (value: unknown) =>
-			eventWindowMs(fakeHost({ runtime: { eventWindowSeconds: value }, subagents: { wakeHoldSeconds: 4 } }).api);
+	it("reads the runtime window, falls back to the default, bounds it, and disables invalid values", () => {
+		const window = (value: unknown) => eventWindowMs(fakeHost({ runtime: { eventWindowSeconds: value } }).api);
 		expect(window(3)).toBe(3000);
-		expect(window(undefined)).toBe(4000);
+		expect(window(undefined)).toBe(RUNTIME_DEFAULTS.eventWindowSeconds * 1000);
 		expect(window(99)).toBe(10_000);
 		expect([0, -1, "2", Number.NaN].map(window)).toEqual([0, 0, 0, 0]);
 	});
@@ -421,7 +411,7 @@ describe("session end with held wakes", () => {
 
 	it("sends held messages without starting a turn in the session being torn down", async () => {
 		vi.useFakeTimers();
-		const s = await active({ subagents: { wakeHoldSeconds: 5 } });
+		const s = await active({ runtime: { eventWindowSeconds: 5 } });
 		s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true, deliverAs: "followUp" });
 		s.gate.emit(reportOn(undefined, "b"), msg(2), { triggerTurn: true, deliverAs: "followUp" });
 		await s.fake.emit("session_shutdown", {}, s.ctx);
@@ -436,7 +426,7 @@ describe("session end with held wakes", () => {
 
 	it("preserves accepted events for replay when shutdown cannot deliver them, and reports it once", async () => {
 		vi.useFakeTimers();
-		const s = await active({ subagents: { wakeHoldSeconds: 5 } });
+		const s = await active({ runtime: { eventWindowSeconds: 5 } });
 		const written: string[] = [];
 		const stderr = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
 			written.push(String(chunk));
@@ -462,7 +452,7 @@ describe("session end with held wakes", () => {
 describe("a hold does not delay what a busy run takes", () => {
 	it("delivers an interrupt once the aborted run has settled", async () => {
 		vi.useFakeTimers();
-		const s = await active({ subagents: { wakeHoldSeconds: 5 } });
+		const s = await active({ runtime: { eventWindowSeconds: 5 } });
 		await s.fake.emit("agent_start", {}, s.ctx);
 		s.gate.emit(
 			{ kind: "agent.message", from: "boss", id: 1, replyRequired: true, interrupt: true },
@@ -477,14 +467,22 @@ describe("a hold does not delay what a busy run takes", () => {
 
 	it("holds again only once the run has settled", async () => {
 		vi.useFakeTimers();
-		const s = await active({ subagents: { wakeHoldSeconds: 5 } });
+		const s = await active({ runtime: { eventWindowSeconds: 5 } });
 		await s.run();
 		s.gate.emit(
 			{ kind: "agent.message", from: "boss", id: 2, replyRequired: false, interrupt: false },
 			{ customType: "t", content: "later", display: true },
 			{ triggerTurn: true, deliverAs: "steer" },
 		);
+		// Held for the whole window, not dropped: it goes out once when the window ends, asking for its turn.
+		vi.advanceTimersByTime(4999);
 		expect(s.fake.sent).toHaveLength(0);
+		vi.advanceTimersByTime(1);
+		expect(s.fake.sent.map((entry) => [unsourced(entry.message.content), entry.options.triggerTurn])).toEqual([
+			["later", true],
+		]);
+		vi.advanceTimersByTime(10_000);
+		expect(s.fake.sent).toHaveLength(1);
 	});
 });
 
@@ -557,7 +555,7 @@ describe("woke row lines", () => {
 
 	it("takes a line back when a held send fails at release", async () => {
 		vi.useFakeTimers();
-		const s = await active({ subagents: { wakeHoldSeconds: 2 } });
+		const s = await active({ runtime: { eventWindowSeconds: 2 } });
 		(s.fake.api.session as unknown as { sendMessage: () => never }).sendMessage = () => {
 			throw new Error("closed");
 		};

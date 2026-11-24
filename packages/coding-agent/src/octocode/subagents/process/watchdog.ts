@@ -1,3 +1,4 @@
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { formatDuration } from "../../shared/format.ts";
 import type { ChildState, WatchdogLimits } from "../events.ts";
 
@@ -14,7 +15,7 @@ export class ChildWatchdog {
 	private tickedAt = this.activeAt;
 	/** Waits in progress that the child's own deadlines must not count (`hold`). */
 	private holds = 0;
-	private timer: NodeJS.Timeout | undefined;
+	private stopTimer: (() => void) | undefined;
 	private readonly state: Pick<ChildState, "toolsRunning" | "settling" | "busyUntil" | "lastActivity">;
 	private readonly limits: WatchdogLimits;
 	private readonly paused: () => boolean;
@@ -41,19 +42,14 @@ export class ChildWatchdog {
 	}
 
 	start(): void {
-		// A throw out of a timer is an uncaught exception: report it as a rejection, which the session shows as a warning.
-		this.timer = setInterval(() => {
-			try {
-				this.tick(Date.now());
-			} catch (error) {
-				void Promise.reject(error);
-			}
-		}, this.intervalMs);
-		this.timer.unref();
+		// The shared clock reports a throw as a rejection, which the session shows as a warning.
+		this.stopTimer?.();
+		this.stopTimer = sharedClock.subscribe(() => this.tick(Date.now()), { everyMs: this.intervalMs });
 	}
 
 	stop(): void {
-		clearInterval(this.timer);
+		this.stopTimer?.();
+		this.stopTimer = undefined;
 	}
 
 	/** Time spent waiting for the user does not count against the child's deadlines. */

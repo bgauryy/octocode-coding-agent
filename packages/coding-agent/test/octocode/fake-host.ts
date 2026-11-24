@@ -134,6 +134,18 @@ export function fakeHost(settings: Record<string, unknown> = {}) {
 	const handlers = new Map<string, Handler[]>();
 	const renderers = new Map<string, any>();
 	const sent: Array<{ message: any; options: any }> = [];
+	/** Tests waiting for `sent` to reach a length: settled by the send that reaches it. */
+	const sendWaiters: Array<{ count: number; resolve: () => void }> = [];
+	const send = (message: unknown, options: unknown) => {
+		sent.push({ message, options });
+		for (const waiter of sendWaiters.filter((entry) => sent.length >= entry.count)) {
+			sendWaiters.splice(sendWaiters.indexOf(waiter), 1);
+			waiter.resolve();
+		}
+	};
+	/** Resolves once `count` messages were sent, at once when they already were. */
+	const sentCount = (count: number): Promise<void> =>
+		sent.length >= count ? Promise.resolve() : new Promise((resolve) => sendWaiters.push({ count, resolve }));
 	const entries: Array<{ customType: string; data: unknown }> = [];
 	let activeTools: string[] | undefined;
 	const registerToolBatches: string[][] = [];
@@ -156,8 +168,8 @@ export function fakeHost(settings: Record<string, unknown> = {}) {
 			list.push(handler);
 			handlers.set(event, list);
 		},
-		sendMessage: (message: unknown, options: unknown) => sent.push({ message, options }),
-		sendUserMessage: (message: unknown, options: unknown) => sent.push({ message, options }),
+		sendMessage: send,
+		sendUserMessage: send,
 		appendEntry: (customType: string, data: unknown) => entries.push({ customType, data }),
 		// As the real host: registration activates only direct and model-only tools, and not those with `defaultActive: false`.
 		getHiddenDeclarations: () => [],
@@ -200,6 +212,7 @@ export function fakeHost(settings: Record<string, unknown> = {}) {
 		handlers,
 		renderers,
 		sent,
+		sentCount,
 		entries,
 		emit,
 		fire,

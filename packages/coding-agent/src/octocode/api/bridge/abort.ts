@@ -3,7 +3,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { ERR, MESSAGE_KEY_MAX, RpcError, stringParam } from "../protocol.ts";
 import type { SendReceipts } from "../receipts.ts";
 import type { Connection } from "../server.ts";
-import { admission, callerFrom, type ExternalFacts, externalFacts } from "./caller.ts";
+import { admission, callerFrom, callerOwner, type ExternalFacts, externalFacts } from "./caller.ts";
 import type { TurnCeilings } from "./ceiling.ts";
 
 /** What `turn.abort` needs of the API it runs in; `OctocodeApi` passes its own state. */
@@ -35,7 +35,7 @@ export async function abortTurn(
 	const ctx = host.session();
 	host.guardSession(params, ctx);
 	const key = stringParam(params, "key", { optional: true, max: MESSAGE_KEY_MAX });
-	const owner = key !== undefined && host.receipts.abort(key);
+	const owner = key !== undefined && host.receipts.abort(key, callerOwner(callerFrom(params)));
 	if (owner === "cancelled") return { aborted: false, cancelledPreparation: true };
 	// A run its owner's key names may not have started yet (accepted, before `agent_start`): that one is stopped too.
 	if (!owner && ctx.isIdle() && !ctx.hasPendingMessages() && !host.receipts.busy) return { aborted: false };

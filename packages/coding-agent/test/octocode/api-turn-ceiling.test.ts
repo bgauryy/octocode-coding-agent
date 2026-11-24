@@ -142,7 +142,7 @@ describe("with sessionApiTurnPermission set to workspace, a full session holds e
 	it("asks the user about agents.tell, then sends once they allow it", async () => {
 		const { client, told, ctx } = await boot({ hasUI: true, selects: [ALLOW_ONCE] });
 		await client.call("agents.tell", { to: "main-1", text: "do it" });
-		expect(told).toEqual([["main-1", "do it"]]);
+		expect(told).toEqual([["main-1", expect.stringContaining("do it")]]);
 		expect((ctx as unknown as { ui: { selects: string[] } }).ui.selects).toEqual([]);
 	});
 });
@@ -165,6 +165,6 @@ describe.each([
 	it("takes agents.tell unasked", async () => {
 		const { client, told } = await boot({ hasUI: false });
 		await client.call("agents.tell", { to: "main-1", text: "do it" });
-		expect(told).toEqual([["main-1", "do it"]]);
+		expect(told).toEqual([["main-1", expect.stringContaining("do it")]]);
 	});
 });

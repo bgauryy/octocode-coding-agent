@@ -99,6 +99,21 @@ class PeerDatabase {
 		}
 	}
 
+	/** Whether a live package session is bound to the Octocode session `self`; undefined while the database is missing or unreadable (nothing to be bound to). */
+	bound(self: string, now: number): boolean | undefined {
+		const db = this.open(now);
+		if (!db) return undefined;
+		try {
+			return (
+				db.prepare("SELECT 1 FROM sessions WHERE vendorSession = ?1 AND expiresAt > ?2 LIMIT 1").get(self, now) !==
+				undefined
+			);
+		} catch (error) {
+			this.fail(now, `could not be read (${errorMessage(error)})`);
+			return undefined;
+		}
+	}
+
 	close(): void {
 		this.drop();
 		this.retryAt = 0;
@@ -173,6 +188,16 @@ export class PeerLeases {
 
 		this.main = new PeerDatabase(file, options.warn);
 		this.registry = options.registry ? new PeerRegistry(options.registry) : undefined;
+	}
+
+	/**
+	 * Whether the shared message store exists (the default database or a registered one) yet no live session of it is
+	 * bound to `self`, this Octocode session. A host with no such store has nothing to bind to, so it is not unbound.
+	 */
+	unbound(self: string): boolean {
+		const now = (this.options.now ?? Date.now)();
+		const states = this.databases(now).map((database) => database.bound(self, now));
+		return states.some((state) => state === false) && !states.includes(true);
 	}
 
 	/** The first live lease of another package session that overlaps `file`, or a tree there (one spelling of the path is as good as another), or undefined. */

@@ -25,7 +25,7 @@ function mainAgent(model: typeof OPUS | typeof PLAIN, level: string) {
 	/** The model of the agent's row once it reaches the shared database (activity is written on the next tick). */
 	const modelNow = async (expected: string) => {
 		await fake.emit("agent_start", {}, ctx);
-		await vi.waitFor(() => expect(self().model).toBe(expected), { timeout: 3_000 });
+		await vi.waitFor(() => expect(self().model).toBe(expected));
 	};
 	return { ...fake, team, ctx, state, self, modelNow };
 }

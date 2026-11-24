@@ -14,6 +14,7 @@ import { runBacklog } from "../../../backlog/tool-run.ts";
 import { AUDIT_SHOWN } from "../../../backlog/audit-text.ts";
 import { type CompletionGate, completionInfo } from "../../../backlog/completion-gate.ts";
 import { doneRefusal, type Holdings } from "../../../backlog/done-guard.ts";
+import { dropBaseline, recordBaseline } from "../../../backlog/qa-baseline.ts";
 import { reviewBeforeDone } from "../../../backlog/qa-run.ts";
 import type { QaReviewer } from "../../../backlog/qa-gate.ts";
 import { completeStep } from "../../../backlog/tool-step.ts";
@@ -247,6 +248,9 @@ export function registerBacklogTool(
 			const given = qa ? { ...args, note: [args.note, qa].filter(Boolean).join("\n\n") } : args;
 			return backlog.store.transactionWhenReady(() => work(backlog, given, op, merged), signal);
 		});
+		// The baseline QA later judges the item's own changes against: taken at the claim, dropped when the item ends.
+		if (op === "claim" && args.id) await recordBaseline(ctx.cwd, args.id);
+		else if ((op === "done" || op === "close") && args.id) await dropBaseline(ctx.cwd, args.id);
 		return qa
 			? { ...written, content: [{ type: "text" as const, text: `${written.content[0]?.text ?? ""}\n${qa}` }] }
 			: written;

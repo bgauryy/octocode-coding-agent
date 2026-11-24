@@ -83,7 +83,6 @@ export async function spawnAgent(
 	if (startedHeld) return startedHeld;
 	// A continued child is one this session recorded (`children.ts`); it keeps its goal unless the call names a new one.
 	const resumed = params.resume ? resumeChild(ctx, params.resume, runs) : undefined;
-	const goal = checkGoal(params.goal ?? resumed?.child.goal);
 	if (resumed && params.isolate) throw new Error("resume continues a child in this tree; isolate does not apply.");
 	const forked = forkedContext(params, ctx.sessionManager); // frozen at dispatch: a queued child too
 	const refuseOverSpend = () => refuseOverLimit(api, ctx, runs, resumed?.child.id);
@@ -91,6 +90,7 @@ export async function spawnAgent(
 	// Refusals first (an item this session cannot hold, unknown profile, unavailable model), then a slot, then the
 	// spawn ask: the user is never asked for a run that cannot start, and a refused or denied spawn claims nothing.
 	const { linked, after, handoff } = chainPlan(runs, api.settings.get(), params, ctx, resumed !== undefined);
+	const goal = checkGoal(params.goal ?? resumed?.child.goal ?? linked?.title); // an item's title names the work
 	const chained = after.length > 0;
 	// One child per item (`second-child.ts`); the call that resumes a child passes for it.
 	const refuseSecondChild = (self?: string) => refuseSecond(runs, lingering, linked, [resumed?.child.id, self]);

@@ -567,7 +567,7 @@ The main session, its subagents, side calls and Octocode sessions in other termi
 
 ## Compaction
 
-Automatic compaction runs at the context threshold. The new event loop stops at a step boundary at 95% of that threshold. Octocode can request an early summary before either point. It makes one background attempt while the cache is warm and the provider is available. `/compact` runs compaction by hand. `limits.compaction` sets when it starts and how much recent conversation it keeps, for every model or for one ([limits](#limits)); nothing turns it off, and legacy `compaction` settings are ignored.
+Automatic compaction runs at the context threshold. The new event loop stops at a step boundary at 95% of that threshold. Octocode can request an early summary before either point. It makes one background attempt while the cache is warm and the provider is available; for a model that declares no cache lifetime, warm means within five minutes of a reply that read the cache. `/compact` runs compaction by hand. `limits.compaction` sets when it starts and how much recent conversation it keeps, for every model or for one ([limits](#limits)); nothing turns it off, and legacy `compaction` settings are ignored.
 
 | Part               | Rule                                                                                                                                                                                                                                                                                                                                           |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -728,7 +728,7 @@ A tool that continues in the background returns a task ID. Its completion carrie
 
 Every woken batch also leaves one dim row in the transcript, `⚡ woke · report jolly-reef done (B526) · job bash-5 exit 0 · 4s`; expand it for one line per event. The row is not sent to the model. An idle-item nudge (an ongoing item you hold that nothing works on) is skipped when the run that just ended wrote that item (a note, completion, claim, close or step, or a delegation to it) or when a running background `bash` job names it with its `item`; the turn line counts the skipped nudges (`1 nudge dropped`). Being woken about an item does not skip it, and a skipped item is named after a later run that left it alone. Events with the same key in one batch show as one line.
 
-Each session uses one event loop to schedule user input, completions, and delivery after compaction. Older settings files can retain `runtime.eventLoop`. The deprecated `subagents.wakeHoldSeconds` supplies the idle window when `runtime.eventWindowSeconds` is unset.
+Each session uses one event loop to schedule user input, completions, and delivery after compaction. The window is `runtime.eventWindowSeconds`. The earlier keys `runtime.eventLoop` and `subagents.wakeHoldSeconds` are no longer read: an old settings file loads and reports them as ignored keys.
 
 Every message the loop delivers (a subagent's report, team mail, a finished job, a timer, hook feedback) has one of two priorities. The priority comes from what the message is, never from an instruction to the model.
 

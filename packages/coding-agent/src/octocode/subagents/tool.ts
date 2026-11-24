@@ -12,7 +12,7 @@ import { liveAgentsOf } from "../shared/team-spend.ts";
 import { AgentsView } from "../team/panel.ts";
 import type { Team } from "../team/session.ts";
 import { RunningBudgets } from "./budget.ts";
-import { type AgentRuns, type Run, Slots } from "./claim.ts";
+import { type AgentRuns, type Run, Slots, type SwarmLimits, swarmLimits } from "./claim.ts";
 import { agentsCommand, stopBackground } from "./command.ts";
 import { ReadReports, scratchRoot, sweepScratch } from "./handoff/scratch.ts";
 import { ReportQueue } from "./handoff.ts";
@@ -26,7 +26,7 @@ import { PrerequisiteGate } from "./prerequisites.ts";
 import { AGENT_CHAIN_CHANNEL, BACKLOG_ENDED_CHANNEL, type BacklogEnded } from "../shared/agent-chain.ts";
 import { GRAPH_NOTICE_TYPE } from "../shared/messages.ts";
 import { DatabaseFollower } from "../shared/database-follower.ts";
-import { dbStamp } from "../../../../db/src/api.ts";
+import { dbStamp, isBusy } from "../../../../db/src/api.ts";
 import { gateHost } from "./gate-host.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { type Backlog, openBacklog } from "../backlog/context.ts";
@@ -106,13 +106,14 @@ interface AgentToolOptions {
 	registerTool?: FeatureSetup["tools"]["register"];
 	/** Vendor CLIs that run `agent` tasks over ACP. */
 	runners?: Runners;
+	limits?: SwarmLimits; // Default: the environment's, read at session start.
 }
 
 export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions): AgentControl {
 	const { profiles: getProfiles, team, permission, refused: getRefused, runners } = options;
 	const registerTool = options.registerTool ?? ((tool) => api.tools.register(tool));
-	registerAgentMessageRenderer(api);
-	// Per registration, not per module: a replaced session starts clean.
+	const limits = options.limits ?? swarmLimits(process.env);
+	registerAgentMessageRenderer(api); // Per registration: a replaced session starts clean.
 	const panel = new AgentsView(team, runningWorkOf(api), liveAgentsOf(api));
 	const budgets = new RunningBudgets();
 	let current: FeatureContext | undefined; // The current session, for graph wakes and the graph watch.
@@ -131,7 +132,8 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 		running: new Map(),
 		items,
 		handed: new HandedItems(),
-		slots: new Slots(),
+		slots: new Slots(() => limits.maxSubagents),
+		limits,
 		session: 0,
 		changed: () => panel.setBackground([...runs.background.keys()]),
 		ended: (id, end) => team.approvals.noteEnd(id, end),
@@ -148,7 +150,7 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 			team.wakePace,
 		),
 	};
-	const follower = new DatabaseFollower(() => dbStamp(sharedAgentDb().file));
+	const follower = new DatabaseFollower(() => dbStamp(sharedAgentDb().file), isBusy);
 	// The prerequisites of queued children: items read from the backlog on each event, agents from the lifecycle channel and the parent's own record of each run's end.
 	runs.chain = new ChainQueue(
 		new PrerequisiteGate(

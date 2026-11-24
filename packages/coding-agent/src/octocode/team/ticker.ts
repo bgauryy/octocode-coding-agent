@@ -1,5 +1,6 @@
 import { dbStamp } from "../../../../db/src/api.ts";
 import { onSecond } from "../shared/clock.ts";
+import { DatabaseBusy, followerFor } from "./database-followers.ts";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 
 /** A tick this long after the previous one means the machine slept (or this process stalled): peers could not heartbeat either. */
@@ -32,8 +33,8 @@ interface TickerSource {
 	resumed(since: number, now: number): void;
 	/** Whether something follows the database for changes (the lifecycle bus): the ticker then runs even with no watcher. */
 	following?(): boolean;
-	/** The database file changed since the last tick that followed it; called at most once per change. */
-	changed?(): void;
+	/** The database file changed since the last tick that followed it; called at most once per change. False: the database was busy, so the next tick calls again. */
+	changed?(): boolean | void;
 }
 
 /**
@@ -46,8 +47,9 @@ export class TeamTicker {
 	private readonly watchers = new Set<() => void>();
 	private cached: TeamView = { members: [], traffic: [] };
 	private stamp = "";
-	/** The file stamp the follower last saw: `changed` runs when it moves. */
-	private followed: string | undefined;
+	/** The database file this ticker follows for `changed`, and what stops it (the process's follower of that file). */
+	private followedFile: string | undefined;
+	private stopFollowing: (() => void) | undefined;
 	private readAt = 0;
 	private polledAt = 0;
 	/** Wall time of the previous tick while the timer runs; 0 when it is stopped. */
@@ -99,9 +101,13 @@ export class TeamTicker {
 			this.stopClock = undefined;
 			this.tickedAt = 0;
 		}
+		this.follow();
 	}
 
 	reset(): void {
+		this.stopFollowing?.();
+		this.stopFollowing = undefined;
+		this.followedFile = undefined;
 		this.cached = { members: [], traffic: [] };
 		this.stamp = "";
 	}
@@ -118,17 +124,24 @@ export class TeamTicker {
 		for (const listener of this.watchers) listener();
 	}
 
-	/** One file stat per tick: the follower reads the database only when another write moved the stamp. */
+	/**
+	 * Subscribes to the process's follower of the database file while something follows it, and drops it when nothing does
+	 * or the file changed. The follower reads the stamp; `changed` runs only when another write moved it, and again at the
+	 * next tick when the database was busy. The file may appear later, so each tick looks again.
+	 */
 	private follow(): void {
-		if (this.source.following?.() !== true) {
-			this.followed = undefined;
-			return;
-		}
-		const file = this.source.dbFile();
-		const stamp = file ? dbStamp(file) : "";
-		if (stamp === this.followed) return;
-		this.followed = stamp;
-		this.source.changed?.();
+		const file = this.source.following?.() === true ? this.source.dbFile() : undefined;
+		if (file === this.followedFile) return;
+		this.stopFollowing?.();
+		this.stopFollowing = undefined;
+		this.followedFile = file;
+		if (!file) return;
+		this.stopFollowing = followerFor(file).subscribe(
+			() => {
+				if (this.source.changed?.() === false) throw new DatabaseBusy();
+			},
+			{ initial: true },
+		);
 	}
 
 	private refresh(force = false): void {

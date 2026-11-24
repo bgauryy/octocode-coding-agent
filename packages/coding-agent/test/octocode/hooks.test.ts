@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
 import { registerHarnessCommand } from "../../src/octocode/harness/command.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
+import { CHILD_MODE_NOTE } from "../../src/octocode/hooks/register/report.ts";
 import { registerStopHook } from "../../src/octocode/hooks/register/stop.ts";
 import { STOP_CONTINUE_RUN_CAP } from "../../src/octocode/hooks/register/types.ts";
 import type { HookVerdict } from "../../src/octocode/hooks/contracts.ts";
@@ -487,16 +488,20 @@ describe("registerHooks", () => {
 			hasUI: true,
 			ui: { notify: () => undefined, setStatus: (_key: string, text: string | undefined) => statuses.push(text) },
 		};
-		await fire("session_start", { reason: "startup" }, ctx);
-		const waiting = fire("before_agent_start", {}, ctx);
-		await vi.waitFor(() => expect(statuses).toEqual(["Waiting for SessionStart hooks…"]));
-		fs.writeFileSync(path.join(cwd, "go"), "");
-		expect(((await waiting) as { message: { content: string } }).message.content).toContain("ready");
-		expect(statuses).toEqual(["Waiting for SessionStart hooks…", undefined]);
-		// Later prompts do not wait or flash the status.
-		await fire("before_agent_start", {}, ctx);
-		expect(statuses).toHaveLength(2);
-		await fire("session_shutdown", {}, ctx);
+		try {
+			await fire("session_start", { reason: "startup" }, ctx);
+			const waiting = fire("before_agent_start", {}, ctx);
+			await vi.waitFor(() => expect(statuses).toEqual(["Waiting for SessionStart hooks…"]));
+			fs.writeFileSync(path.join(cwd, "go"), "");
+			expect(((await waiting) as { message: { content: string } }).message.content).toContain("ready");
+			expect(statuses).toEqual(["Waiting for SessionStart hooks…", undefined]);
+			// Later prompts do not wait or flash the status.
+			await fire("before_agent_start", {}, ctx);
+			expect(statuses).toHaveLength(2);
+		} finally {
+			// A failed assertion must not leave the `while [ ! -f go ]` shell running.
+			await fire("session_shutdown", {}, ctx);
+		}
 	}, 10_000);
 
 	it("is off in a subagent whose profile and task do not turn hooks on", () => {
@@ -582,14 +587,17 @@ describe("registerHooks", () => {
 		const { api, fire } = fakeHost();
 		registerHooks(api, { env: {}, home: tmp() });
 		const ctx = context(cwd);
-		await fire("session_start", { type: "session_start", reason: "startup" }, ctx);
-		// A second session starts before the first one's hook finished: only the new session's context reaches its prompt.
-		await fire("session_start", { type: "session_start", reason: "resume" }, ctx);
-		fs.writeFileSync(path.join(cwd, "go"), "");
-		const message = (await fire("before_agent_start", {}, ctx)) as { message: { content: string } };
-		expect(message.message.content).toContain("source=resume");
-		expect(message.message.content).not.toContain("source=startup");
-		await fire("session_shutdown", {}, ctx);
+		try {
+			await fire("session_start", { type: "session_start", reason: "startup" }, ctx);
+			// A second session starts before the first one's hook finished: only the new session's context reaches its prompt.
+			await fire("session_start", { type: "session_start", reason: "resume" }, ctx);
+			fs.writeFileSync(path.join(cwd, "go"), "");
+			const message = (await fire("before_agent_start", {}, ctx)) as { message: { content: string } };
+			expect(message.message.content).toContain("source=resume");
+			expect(message.message.content).not.toContain("source=startup");
+		} finally {
+			await fire("session_shutdown", {}, ctx);
+		}
 	}, 10_000);
 
 	it("runs SessionStart hooks again after a compaction (source compact), and their context comes with the next prompt", async () => {
@@ -617,8 +625,10 @@ describe("registerHooks", () => {
 		const cwd = project({ PreToolUse: command("echo pre", "Bash") });
 		const home = tmp();
 		const off = registerHooks(fakeHost().api, { env: { OCTOCODE_SUBAGENT: "1" }, home });
-		expect(off.summary()).toBe("off in this subagent (neither its profile nor its task turned hooks on)");
-		expect(off.report(cwd)).toMatch(/^Hooks: off in this subagent/);
+		// The wording itself is pinned once, in hooks-child-decisions.test.ts; here the fact: off, and the report says the same.
+		expect(off.summary()).toBe(CHILD_MODE_NOTE.off);
+		expect(off.summary()).toMatch(/off in this subagent/);
+		expect(off.report(cwd).split("\n")[0]).toBe(`Hooks: ${off.summary()}.`);
 		expect(off.report(cwd)).toContain(`· ~${path.sep}${path.join(".claude", "settings.json")}`);
 		expect(off.report(cwd)).toMatch(/✓ .*hooks\.json \(project\)/);
 
@@ -868,15 +878,63 @@ describe("Stop, Notification and hook timing", () => {
 	}, 10_000);
 
 	it("runs matching hooks in parallel, once per command, and reports their timing", async () => {
-		const slow = "sleep 0.4";
+		// A barrier instead of a clock: each hook signs in and leaves only once all three have, so hooks run one after
+		// another would wait for a later one that never starts, and exit 3.
+		const dir = tmp("octocode-hooks-barrier-");
+		const ids = path.join(dir, "ids");
+		const script = path.join(dir, "barrier.cjs");
+		fs.writeFileSync(
+			script,
+			`const fs = require("node:fs");
+fs.appendFileSync(${JSON.stringify(ids)}, process.argv[2] + "\\n");
+const deadline = Date.now() + 8000;
+setInterval(() => {
+	const seen = new Set(fs.readFileSync(${JSON.stringify(ids)}, "utf8").split("\\n").filter(Boolean));
+	if (seen.size >= 3) process.exit(0);
+	if (Date.now() > deadline) process.exit(3);
+}, 10);`,
+		);
+		const hook = (id: string) => ({ type: "command", command: `node ${JSON.stringify(script)} ${id}`, timeout: 20 });
+		const cwd = project({
+			PreToolUse: [{ matcher: "Bash", hooks: [hook("one"), hook("two"), hook("one"), hook("three")] }],
+		});
+		const { api, fire } = fakeHost();
+		const failures: string[] = [];
+		const hooks = registerHooks(api, {
+			env: {},
+			home: tmp(),
+			onFailure: (what) => failures.push(what.join(" · ")),
+		});
+		await fire("session_start", { reason: "startup" }, context(cwd));
+		expect(
+			await hooks.preToolUse(
+				{ toolName: "bash", toolCallId: "1", input: { command: "ls" } } as never,
+				context(cwd) as never,
+			),
+		).toBeUndefined();
+		expect(failures).toEqual([]);
+		// The command configured twice ran once.
+		expect(fs.readFileSync(ids, "utf8").trim().split("\n").sort()).toEqual(["one", "three", "two"]);
+		const report = hooks.report(cwd);
+		// The report counts what runs: the command configured twice is one row with its one run.
+		expect(report).toContain("Loaded (3):");
+		expect(report.match(/ · 1 run, avg \d/g)).toHaveLength(3);
+		expect(hooks.summary()).toBe("on, 3 hooks");
+		expect(report).not.toMatch(/\d failed/);
+	}, 30_000);
+
+	it("joins the reasons of blocking PreToolUse hooks in config order, whichever answers first", async () => {
+		// The first hook answers only after the second has left its mark, so completion order is the reverse of config order.
 		const cwd = project({
 			PreToolUse: [
 				{
 					matcher: "Bash",
 					hooks: [
-						{ type: "command", command: slow },
-						{ type: "command", command: "sleep 0.41" },
-						{ type: "command", command: slow },
+						{
+							type: "command",
+							command: "while [ ! -f second-answered ]; do sleep 0.02; done; sleep 0.1; echo A >&2; exit 2",
+						},
+						{ type: "command", command: "echo B >&2; touch second-answered; exit 2" },
 					],
 				},
 			],
@@ -884,25 +942,21 @@ describe("Stop, Notification and hook timing", () => {
 		const { api, fire } = fakeHost();
 		const hooks = registerHooks(api, { env: {}, home: tmp() });
 		await fire("session_start", { reason: "startup" }, context(cwd));
-		const started = Date.now();
 		expect(
 			await hooks.preToolUse(
 				{ toolName: "bash", toolCallId: "1", input: { command: "ls" } } as never,
 				context(cwd) as never,
 			),
-		).toBeUndefined();
-		expect(Date.now() - started).toBeLessThan(750);
-		const report = hooks.report(cwd);
-		expect(report).toMatch(/sleep 0\.4 \(.*\) · 1 run, avg \d/);
-		expect(report).toMatch(/sleep 0\.41 \(.*\) · 1 run/);
-	}, 10_000);
+		).toEqual({ block: true, reason: "Blocked by a PreToolUse hook: A\n\nB" });
+	}, 15_000);
 
 	it("warns once about a slow PreToolUse hook", async () => {
-		vi.useFakeTimers({ toFake: ["Date"] });
+		let time = 0;
+		const clock = { now: () => time, deadline: () => new AbortController().signal };
 		try {
 			const cwd = project({ PreToolUse: command("true", "Bash") });
 			const { api, fire } = fakeHost();
-			const hooks = registerHooks(api, { env: {}, home: tmp() });
+			const hooks = registerHooks(api, { env: {}, home: tmp(), clock });
 			const notes: string[] = [];
 			const ctx = {
 				...context(cwd),
@@ -912,7 +966,7 @@ describe("Stop, Notification and hook timing", () => {
 			await fire("session_start", { reason: "startup" }, ctx);
 			// The hook itself takes the six seconds: the clock moves while it runs, not while its run is logged.
 			const run = vi.spyOn(hookRunner, "runHook").mockImplementation(async () => {
-				vi.setSystemTime(Date.now() + 6_000);
+				time += 6_000;
 				return { code: 0, stdout: "", stderr: "", timedOut: false };
 			});
 			const call = () =>
@@ -924,7 +978,6 @@ describe("Stop, Notification and hook timing", () => {
 			expect(notes[0]).toMatch(/^Slow PreToolUse hook \(6s\): every tool call in a batch waits for it\. true$/);
 		} finally {
 			vi.restoreAllMocks();
-			vi.useRealTimers();
 		}
 	}, 10_000);
 });

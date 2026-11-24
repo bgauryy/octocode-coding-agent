@@ -35,4 +35,28 @@ describe("unknownToolMessage", () => {
 	it("keeps the default for names the session does not know", () => {
 		expect(unknownToolMessage(session([]), "made_up")).toBeUndefined();
 	});
+
+	it("names the full MCP tool a bare name stands for", () => {
+		const tools = [{ name: "mcp__octocode__localFetch", exposure: "direct" as const }];
+		expect(unknownToolMessage(session(tools), "localFetch")).toBe(
+			"Tool localFetch not found: call it as mcp__octocode__localFetch.",
+		);
+	});
+
+	it("lists the full names when several servers have the tool", () => {
+		const tools = [
+			{ name: "mcp__a__read", exposure: "direct" as const },
+			{ name: "mcp__b__read", exposure: "direct" as const },
+		];
+		expect(unknownToolMessage(session(tools), "read")).toBe(
+			"Tool read not found: call it by its full name, one of mcp__a__read, mcp__b__read.",
+		);
+	});
+
+	it("says a native tool with a server prefix is native", () => {
+		const tools = [{ name: "mcp", exposure: "direct" as const }];
+		expect(unknownToolMessage(session(tools), "mcp__browser__mcp")).toBe(
+			"Tool mcp__browser__mcp not found: `mcp` is a native tool, not an MCP tool: call it as mcp.",
+		);
+	});
 });

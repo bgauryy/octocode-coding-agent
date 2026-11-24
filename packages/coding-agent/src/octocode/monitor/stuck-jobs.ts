@@ -1,5 +1,5 @@
 import { statSync } from "node:fs";
-import { type CommandRunner, runCommand } from "./readers.ts";
+import { type PsSnapshot, readPsSnapshot } from "../shared/ps-snapshot.ts";
 
 /** A background bash job as the monitor sees it. */
 export interface WatchedJob {
@@ -26,7 +26,7 @@ export interface StuckJobDeps {
 	groupCpu: () => Promise<Map<number, number>>;
 }
 
-const liveDeps = (run: CommandRunner = runCommand): StuckJobDeps => ({
+const liveDeps = (table: () => Promise<PsSnapshot | undefined> = readPsSnapshot): StuckJobDeps => ({
 	logSize: (file) => {
 		try {
 			return statSync(file).size;
@@ -37,11 +37,7 @@ const liveDeps = (run: CommandRunner = runCommand): StuckJobDeps => ({
 	},
 	groupCpu: async () => {
 		const cpu = new Map<number, number>();
-		const text = process.platform === "win32" ? undefined : await run("ps", ["-A", "-o", "pgid=,%cpu="]);
-		for (const line of (text ?? "").split("\n")) {
-			const match = /^\s*(\d+)\s+([\d.]+)\s*$/.exec(line);
-			if (match) cpu.set(Number(match[1]), (cpu.get(Number(match[1])) ?? 0) + Number(match[2]));
-		}
+		for (const row of (await table())?.rows.values() ?? []) cpu.set(row.pgid, (cpu.get(row.pgid) ?? 0) + row.cpu);
 		return cpu;
 	},
 });

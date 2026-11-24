@@ -169,6 +169,7 @@ const seen = (who: ReturnType<typeof agent>, entry: { message: any }) =>
 
 describe("delivery acknowledgement", () => {
 	it("retries a waking handoff rejected through the installed delivery wrapper", async () => {
+		fakeClock();
 		const cwd = repo();
 		const db = path.join(tmp(), "team.sqlite");
 		const sender = agent(db, cwd);
@@ -188,17 +189,17 @@ describe("delivery acknowledgement", () => {
 		team.join();
 		const receiver = { ...fake, team, ctx };
 		const { id } = (await sender.team.send(team.id, "please answer", { replyRequired: true })) as { id: number };
-		await vi.waitFor(() => expect(hostSend).toHaveBeenCalledTimes(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(hostSend).toHaveBeenCalledTimes(1));
 		expect(teamMail(fake.sent)).toHaveLength(0);
 		rejectHandoff(new Error("turn refused"));
-		await vi.waitFor(() => expect(hostSend).toHaveBeenCalledTimes(2), { timeout: 4_000 });
+		await vi.waitFor(() => expect(hostSend).toHaveBeenCalledTimes(2));
 		const delivered = teamMail(fake.sent);
 		expect(delivered).toHaveLength(1);
 		const store = open(cwd, db);
 		expect(store.recent().find((entry) => entry.id === id)?.state).toBe("queued");
 		await seen(receiver, delivered[0]);
 		expect(store.recent().find((entry) => entry.id === id)?.state).toBe("awaiting reply");
-		await new Promise((resolve) => setTimeout(resolve, 1_200));
+		await vi.advanceTimersByTimeAsync(1_200);
 		expect(hostSend).toHaveBeenCalledTimes(2);
 	});
 
@@ -213,7 +214,7 @@ describe("delivery acknowledgement", () => {
 		const { id } = (await sender.team.send(receiver.team.id, "please answer", { replyRequired: true })) as {
 			id: number;
 		};
-		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2), { timeout: 4_000 });
+		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
 		const delivered = teamMail(receiver.sent);
 		expect(delivered).toHaveLength(1);
 		const store = open(cwd, db);
@@ -223,6 +224,7 @@ describe("delivery acknowledgement", () => {
 	});
 
 	it("does not resend a rejected handoff the model already saw", async () => {
+		fakeClock();
 		const cwd = repo();
 		const db = path.join(tmp(), "team.sqlite");
 		const sender = agent(db, cwd);
@@ -241,11 +243,10 @@ describe("delivery acknowledgement", () => {
 		const { id } = (await sender.team.send(receiver.team.id, "status?", { replyRequired: true })) as {
 			id: number;
 		};
-		await vi.waitFor(() => expect(teamMail(receiver.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(teamMail(receiver.sent)).toHaveLength(1));
 		await seen(receiver, teamMail(receiver.sent)[0]);
 		reject(new Error("late refusal"));
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await new Promise((resolve) => setTimeout(resolve, 1_200));
+		await vi.advanceTimersByTimeAsync(1_200);
 		expect(send).toHaveBeenCalledTimes(1);
 		expect(
 			open(cwd, db)
@@ -263,7 +264,7 @@ describe("delivery acknowledgement", () => {
 		a.team.join();
 		b.team.join();
 		const { id } = (await a.team.send(b.team.id, "check auth.ts", { replyRequired: false })) as { id: number };
-		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1));
 		const store = open(cwd, db);
 		// Handed to Octocode is not read: a queued steer can still be dropped by a kill.
 		expect(store.recent().find((entry) => entry.id === id)?.state).toBe("queued");
@@ -288,7 +289,7 @@ describe("delivery acknowledgement", () => {
 		const { id } = (await a.team.send(b.team.id, "fyi: tests are green", { replyRequired: false, wake: false })) as {
 			id: number;
 		};
-		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1));
 		expect(teamMail(b.sent)[0].options).toEqual({ triggerTurn: false, deliverAs: "steer" });
 		await seen(b, teamMail(b.sent)[0]);
 		expect(
@@ -306,7 +307,7 @@ describe("delivery acknowledgement", () => {
 		a.team.join();
 		b.team.join();
 		const { id } = (await a.team.send(b.team.id, "read me", { replyRequired: false })) as { id: number };
-		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1));
 		const ack = vi.spyOn(TeamStore.prototype, "ack").mockImplementationOnce(() => {
 			throw new Error("database is locked");
 		});
@@ -333,14 +334,12 @@ describe("delivery acknowledgement", () => {
 		const { id } = (await a.team.send(b.team.id, "stop, the plan changed", { replyRequired: false })) as {
 			id: number;
 		};
-		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1));
 		b.team.leave(); // killed before Octocode drained its steering queue
-		await vi.waitFor(
-			() =>
-				expect(
-					a.sent.some((entry) => withoutSourceHeader(String(entry.message.content)).startsWith(`Message #${id} to `)),
-				).toBe(true),
-			{ timeout: 8_000 },
+		await vi.waitFor(() =>
+			expect(
+				a.sent.some((entry) => withoutSourceHeader(String(entry.message.content)).startsWith(`Message #${id} to `)),
+			).toBe(true),
 		);
 	}, 10_000);
 
@@ -352,7 +351,7 @@ describe("delivery acknowledgement", () => {
 		a.team.join();
 		b.team.join();
 		const { id } = (await a.team.send(b.team.id, "once", { replyRequired: false })) as { id: number };
-		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1));
 		const ack = vi.spyOn(TeamStore.prototype, "ack").mockImplementationOnce(() => {
 			throw new Error("database is locked");
 		});
@@ -360,9 +359,7 @@ describe("delivery acknowledgement", () => {
 			await seen(b, teamMail(b.sent)[0]);
 			const store = open(cwd, db);
 			expect(store.recent().find((entry) => entry.id === id)?.state).toBe("queued");
-			await vi.waitFor(() => expect(store.recent().find((entry) => entry.id === id)?.state).toBe("delivered"), {
-				timeout: 3_000,
-			});
+			await vi.waitFor(() => expect(store.recent().find((entry) => entry.id === id)?.state).toBe("delivered"));
 			expect(teamMail(b.sent)).toHaveLength(1);
 		} finally {
 			ack.mockRestore();
@@ -404,7 +401,7 @@ describe("delivery acknowledgement", () => {
 		a.team.join();
 		b.team.join();
 		const { id } = (await a.team.send(b.team.id, "question", { replyRequired: true })) as { id: number };
-		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1));
 		const ack = vi.spyOn(TeamStore.prototype, "ack").mockImplementationOnce(() => {
 			throw new Error("database is locked");
 		});
@@ -413,7 +410,7 @@ describe("delivery acknowledgement", () => {
 			expect(await b.team.send(a.team.id, "answer", { replyTo: id, replyRequired: false })).toMatchObject({
 				sent: [a.team.id],
 			});
-			await vi.waitFor(() => expect(ack).toHaveBeenCalledTimes(2), { timeout: 3_000 });
+			await vi.waitFor(() => expect(ack).toHaveBeenCalledTimes(2));
 			expect(
 				open(cwd, db)
 					.recent()
@@ -436,7 +433,7 @@ describe("batched delivery", () => {
 		store.send("peer-000001", [me], "first fyi", { replyRequired: false });
 		store.send("peer-000001", [me], "the build failed: which test?", { replyRequired: true });
 		store.send("peer-000001", [me], "third fyi", { replyRequired: false });
-		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1));
 		const [batch] = teamMail(b.sent);
 		expect(batch.options).toEqual({ triggerTurn: true, deliverAs: "steer" });
 		expect(batch.message.details.messages.map((message: { text: string }) => message.text)).toEqual([
@@ -460,7 +457,7 @@ describe("batched delivery", () => {
 		store.save(row("peer-000001"));
 		store.send("peer-000001", [me], "one", { replyRequired: false });
 		store.send("peer-000001", [me], "two", { replyRequired: false });
-		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(teamMail(b.sent)).toHaveLength(1));
 		expect(teamMail(b.sent)[0].options).toEqual({ triggerTurn: false, deliverAs: "steer" });
 	});
 });
@@ -477,10 +474,10 @@ describe("dead letters", () => {
 		const { id } = (await sender.team.send(recipient.team.id, "unread")) as { id: number };
 		const send = vi.spyOn(sender.api.session, "sendMessage").mockRejectedValueOnce(new Error("session not ready"));
 		recipient.team.leave();
-		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1), { timeout: 8_000 });
+		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
 		expect(store.deadLetters(sender.team.id!).map((letter) => letter.id)).toEqual([id]);
-		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2), { timeout: 8_000 });
-		await vi.waitFor(() => expect(store.deadLetters(sender.team.id!)).toEqual([]), { timeout: 2_000 });
+		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+		await vi.waitFor(() => expect(store.deadLetters(sender.team.id!)).toEqual([]));
 		expect(sender.sent.filter((entry) => String(entry.message.content).includes(`Message #${id}`))).toHaveLength(1);
 	}, 16_000);
 
@@ -496,14 +493,12 @@ describe("dead letters", () => {
 		const id = (sent as { id: number }).id;
 		b.team.leave();
 		// Dead letters are checked with the 5-second heartbeat.
-		await vi.waitFor(
-			() =>
-				expect(
-					a.sent.some((entry) =>
-						withoutSourceHeader(String(entry.message.content)).startsWith(`Message #${id} to ${b.team.id ?? ""}`),
-					),
-				).toBe(true),
-			{ timeout: 8_000 },
+		await vi.waitFor(() =>
+			expect(
+				a.sent.some((entry) =>
+					withoutSourceHeader(String(entry.message.content)).startsWith(`Message #${id} to ${b.team.id ?? ""}`),
+				),
+			).toBe(true),
 		);
 		const notice = a.sent.find((entry) => String(entry.message.content).includes(`Message #${id}`))!;
 		expect(notice.message).toMatchObject({
@@ -644,14 +639,12 @@ describe("headless subagent exit", () => {
 		await vi.advanceTimersByTimeAsync(2_000);
 		expect(teamMail(child.sent)).toEqual([]);
 		await child.emit("agent_settled", {}, child.ctx);
-		await vi.waitFor(
-			() =>
-				expect(
-					parent.sent.some((entry) =>
-						withoutSourceHeader(String(entry.message.content)).startsWith(`Message #${id} to general-333333`),
-					),
-				).toBe(true),
-			{ timeout: 8_000 },
+		await vi.waitFor(() =>
+			expect(
+				parent.sent.some((entry) =>
+					withoutSourceHeader(String(entry.message.content)).startsWith(`Message #${id} to general-333333`),
+				),
+			).toBe(true),
 		);
 	}, 10_000);
 
@@ -663,7 +656,7 @@ describe("headless subagent exit", () => {
 		const child = agent(db, cwd, { OCTOCODE_AGENT_ID: "general-444444", OCTOCODE_PARENT_ID: parentId }, false, false);
 		child.team.join();
 		await parent.team.send("general-444444", "use the v2 API");
-		await vi.waitFor(() => expect(teamMail(child.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(teamMail(child.sent)).toHaveLength(1));
 	});
 
 	it("leaves the team when its run settles, so later messages are refused instead of acked unread", async () => {
@@ -822,11 +815,11 @@ describe("delivery edge cases", () => {
 		const idle = agent(db, cwd);
 		idle.team.join();
 		await sender.team.send(idle.team.id, "are you there?", { replyRequired: true });
-		await vi.waitFor(() => expect(mailOf(idle.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(mailOf(idle.sent)).toHaveLength(1));
 		expect(idle.ctx.ui.notes).toEqual([]);
 		// Ten seconds pass and the model was never called with it (no model, or no sign-in).
 		vi.setSystemTime(Date.now() + 11_000);
-		await vi.waitFor(() => expect(idle.ctx.ui.notes).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(idle.ctx.ui.notes).toHaveLength(1));
 		expect(idle.ctx.ui.notes[0]).toMatchObject({
 			type: "warning",
 			message: expect.stringContaining("did not run one"),
@@ -844,7 +837,7 @@ describe("delivery edge cases", () => {
 		const idle = agent(db, cwd);
 		idle.team.join();
 		await sender.team.send(idle.team.id, "are you there?", { replyRequired: true });
-		await vi.waitFor(() => expect(mailOf(idle.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(mailOf(idle.sent)).toHaveLength(1));
 		await idle.emit(
 			"context",
 			{
@@ -869,7 +862,7 @@ describe("delivery edge cases", () => {
 		for (const text of ["one", "two"]) {
 			await sender.team.send(receiver.team.id, text, { replyRequired: false, wake: false });
 		}
-		await vi.waitFor(() => expect(mailOf(receiver.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(mailOf(receiver.sent)).toHaveLength(1));
 		await receiver.emit(
 			"context",
 			{
@@ -894,7 +887,7 @@ describe("delivery edge cases", () => {
 			}
 		).id;
 		expect(id).toBe(1);
-		await vi.waitFor(() => expect(mailOf(receiver.sent)).toHaveLength(2), { timeout: 3_000 });
+		await vi.waitFor(() => expect(mailOf(receiver.sent)).toHaveLength(2));
 		expect(mailOf(receiver.sent)[1].message.content).toContain("after the reset");
 	}, 15_000);
 });

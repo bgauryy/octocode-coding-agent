@@ -14,7 +14,7 @@ const renderers = withBuiltInRenderers("bash", undefined)!;
 function row(
 	text: string,
 	options: { isError?: boolean; durationMs?: number; details?: Record<string, unknown>; isPartial?: boolean },
-): { header: string; result: string; raw: string } {
+): { header: string; result: string; raw: string; rawHeader: string } {
 	const context = {
 		args: { command: "make" },
 		state: {},
@@ -35,30 +35,33 @@ function row(
 		.render(80)
 		.join("\n");
 	// Drawn after the result, as a redraw is: a stop the result found shows in the header's mark.
-	const header = stripAnsi(renderers.renderCall!({ command: "make" }, theme, context).render(80).join("\n"));
-	return { header, result: stripAnsi(raw), raw };
+	const rawHeader = renderers.renderCall!({ command: "make" }, theme, context).render(80).join("\n");
+	const header = stripAnsi(rawHeader);
+	return { header, result: stripAnsi(raw), raw, rawHeader };
 }
 
 describe("core bash tool row outcome", () => {
 	beforeAll(() => initTheme("dark"));
 
 	test("marks a success with the done light and says its exit code; the time is in the header only", () => {
-		const { header, result } = row("[exit 0 · 1.2s · 1 line · 3 B]\nok", {
+		const { header, result, rawHeader } = row("[exit 0 · 1.2s · 1 line · 3 B]\nok", {
 			details: { exitCode: 0 },
 			durationMs: 1_200,
 		});
 		expect(header).toBe("◉ Bash(make) · 1.2s");
+		expect(rawHeader).toContain(theme.fg("success", "◉"));
 		expect(result).toContain("⎿  exit 0 · 1 line");
 		expect(result).not.toContain("1.2s");
 	});
 
 	test("marks a failure with the failed light and shows its output in the error colour", () => {
-		const { header, result, raw } = row("[exit 1 · 0.4s · 1 line · 5 B]\nboom!", {
+		const { header, result, raw, rawHeader } = row("[exit 1 · 0.4s · 1 line · 5 B]\nboom!", {
 			isError: true,
 			details: { exitCode: 1 },
 		});
 		// A settled row draws its state's light: ⏺ means running only.
 		expect(header.startsWith("⊗ Bash(make)")).toBe(true);
+		expect(rawHeader).toContain(theme.fg("error", "⊗"));
 		expect(result).toContain("⎿  Error: exit 1 · 1 line");
 		expect(raw).toContain(theme.fg("error", "boom!"));
 	});
@@ -80,7 +83,8 @@ describe("core bash tool row outcome", () => {
 	});
 
 	test("shows no outcome mark while the command still runs", () => {
-		const { result } = row("partial", { isPartial: true });
+		const { result, rawHeader } = row("partial", { isPartial: true });
+		expect(rawHeader).toContain(theme.fg("muted", "⏺"));
 		for (const glyph of [GLYPH.done, GLYPH.failed, GLYPH.stopped]) expect(result).not.toContain(glyph);
 		expect(result).toContain("running · 1 line");
 	});

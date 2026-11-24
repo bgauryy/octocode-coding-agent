@@ -8,7 +8,7 @@ import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
 import { JOB_TYPE } from "../../src/octocode/shared/messages.ts";
 import { jobNotice } from "../../src/octocode/subagents/report.ts";
 import { tmp } from "./helpers.ts";
-import { blockingTool, count, createRig, type Rig } from "./loop-characterization/rig.ts";
+import { blockingTool, count, createRig, pendingWakes, type Rig } from "./loop-characterization/rig.ts";
 
 const sessions: { rig: Rig; jobs: BashJobs }[] = [];
 
@@ -64,7 +64,8 @@ it.each([true, false])(
 			expect(job.id).toBe("bash-1");
 			await releaseJobs();
 			await job.done;
-			if (!child) await vi.waitFor(() => expect(rig.live()?.queued().Q2).toBe(1), { timeout: 10_000 });
+			// The session has the completion and shows it as the wake about to continue the run.
+			if (!child) await vi.waitFor(() => expect(pendingWakes(rig)).toHaveLength(1));
 		} finally {
 			hold.release();
 		}
@@ -100,7 +101,7 @@ it.each(["tui", "print"] as const)("wakes an idle %s session once with both bash
 	expect(jobs.jobs.size).toBe(2);
 	expect(rig.requests).toHaveLength(1);
 	await releaseJobs();
-	await vi.waitFor(() => expect(rig.requests).toHaveLength(2), { timeout: 10_000 });
+	await vi.waitFor(() => expect(rig.requests).toHaveLength(2));
 	await rig.harness.session.waitForIdle();
 	for (const id of ["bash-1", "bash-2"]) expect(count(rig.requests[1], `Background bash ${id}`)).toBe(1);
 	expect(reports(rig)).toHaveLength(2);

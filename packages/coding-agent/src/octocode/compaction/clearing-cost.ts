@@ -3,26 +3,13 @@ import { price } from "../../core/cache-warmer/economics.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
- * When clearing old tool results pays for itself while the prompt cache is still warm (`clearing.ts`).
+ * The inputs recorded beside a clearing decision (`clearing.ts`), for the profiler to compare with what followed.
  *
- * Clearing replaces old results with short placeholders. The request after it cannot read the cached history from the
- * first cleared result on, so it writes that part again once; every request after that re-sends the cleared results'
- * tokens no more. So, with
- *
- * | Input     | Meaning                                                                                                   |
- * | --------- | --------------------------------------------------------------------------------------------------------- |
- * | `T_old`   | tokens of the results that would be cleared                                                               |
- * | `S_after` | tokens from the first cleared result to the end of the context, after clearing (placeholders included)   |
- * | `R`       | price of one cached token read                                                                            |
- * | `W`       | price of one token written to the cache at the session's lifetime (the input price where writes cost no premium) |
- * | `N`       | requests expected to re-send the old results (`expectedRemainingRequests`)                                |
- *
- * clearing pays when the re-send cost it saves exceeds the one-time write it causes:
- *
- *     T_old × R × N  >  S_after × W
- *
- * A request that rewrites the cache anyway (the cache went cold, the model changed, a system update folds into the leading
- * prompt) pays that write regardless, so there the extra cost is zero and clearing always pays.
+ * Clearing replaces old results with short placeholders. The next request cannot read the cached history from the first
+ * cleared result on, so it writes that part again once (`S_after` tokens at the write price `W`), and saves the cleared
+ * results' tokens (`T_old`) at the read price `R` on each of the `N` requests that follow. On a warm cache that was the
+ * clearing rule (`T_old × R × N > S_after × W`); it no longer is, because it lost money in practice (see `clearing.ts`).
+ * Where the cache is rewritten anyway there is no extra write.
  *
  * Without catalog prices (a local or unpriced model) the ratios are Anthropic's: a read costs `DEFAULT_READ_RATIO` and a
  * write `DEFAULT_SHORT_WRITE_RATIO` (5-minute lifetime) or `DEFAULT_LONG_WRITE_RATIO` (longer) of the input price.
@@ -120,25 +107,10 @@ export function realizedRequestsRatio(branch: readonly unknown[], customType: st
 	return Math.min(1, Math.max(CALIBRATION_FLOOR, realized / predicted));
 }
 
-/** The inputs of `clearingPays`, in tokens and the prices of `cachePrices`. */
+/** What a clearing decision rested on, in tokens and the prices of `cachePrices`; recorded for the profiler. */
 export interface ClearingCost {
 	oldTokens: number;
 	suffixTokensAfter: number;
 	remainingRequests: number;
 	prices: CachePrices;
-	/** The request rewrites the cache anyway: clearing adds no write. */
-	rewriteAnyway: boolean;
-}
-
-/** What clearing saves in the unit of `prices`: `T_old × R × N − S_after × W`, with no write when the cache is rewritten anyway. */
-export function clearingSaving(cost: ClearingCost): number {
-	const saved = cost.oldTokens * cost.prices.read * cost.remainingRequests;
-	return cost.rewriteAnyway ? saved : saved - cost.suffixTokensAfter * cost.prices.write;
-}
-
-/** Whether clearing pays: `T_old × R × N > S_after × W`, or any saving when the cache is rewritten anyway. */
-export function clearingPays(cost: ClearingCost): boolean {
-	if (cost.oldTokens <= 0) return false;
-	if (cost.rewriteAnyway) return true;
-	return clearingSaving(cost) > 0;
 }

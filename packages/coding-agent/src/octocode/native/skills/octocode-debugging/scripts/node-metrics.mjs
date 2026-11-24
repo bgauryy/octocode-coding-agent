@@ -71,6 +71,7 @@ function start() {
 			gc,
 		});
 	}
+	// oxlint-disable-next-line no-restricted-globals -- a standalone script injected into the profiled process; it cannot import the workspace clock
 	const timer = setInterval(() => sample("sample"), interval);
 	timer.unref();
 	process.once("exit", (code) => {

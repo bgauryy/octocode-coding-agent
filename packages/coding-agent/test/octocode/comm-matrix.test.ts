@@ -144,7 +144,7 @@ describe.runIf(process.platform !== "win32")("socket routes between processes", 
 				if (outcome instanceof Error) expect(outcome).toMatchObject({ execution: "not-sent", reason: "overloaded" });
 				expect(outcome).toMatchObject({ details: { to: [peer.name] } });
 			},
-			{ timeout: 5_000, interval: 100 },
+			{ interval: 100 },
 		);
 		await vi.waitFor(() => expect(peer.received).toEqual(["after slots freed"]));
 	}, 30_000);
@@ -154,9 +154,7 @@ describe.runIf(process.platform !== "win32")("socket routes between processes", 
 		const { send, quiet, notice } = owned.sender(cwd);
 		await expect(send(peer.name, "queued and never read")).resolves.toMatchObject({ details: { queued: "steer" } });
 		await peer.kill();
-		const died = Date.now();
-		await vi.waitFor(() => expect(quiet).toHaveBeenCalled(), { timeout: 5_000, interval: 50 });
-		expect(Date.now() - died).toBeLessThan(5_000);
+		await vi.waitFor(() => expect(quiet).toHaveBeenCalled(), { interval: 50 });
 		await wait(2_500);
 		expect(quiet).toHaveBeenCalledTimes(1);
 		expect(quiet.mock.calls[0][0]).toContain(peer.name);

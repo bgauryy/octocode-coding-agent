@@ -154,7 +154,7 @@ export function startEarlySummary(
 		recordUsage,
 		false,
 		false,
-		// Background requests only read a reusable prefix; history rewrites can make it cold after the TTL check.
+		// Speculative: sent as background work over a reusable prefix only; history rewrites can make it cold after the TTL check.
 		true,
 	)
 		.then((result) => {

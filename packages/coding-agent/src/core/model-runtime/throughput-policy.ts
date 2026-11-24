@@ -93,17 +93,33 @@ export function requestPriority(
 	requested: RequestPriority | undefined,
 	env: NodeJS.ProcessEnv = process.env,
 ): RequestPriority {
-	return requested ?? (envFlag(env, SUBAGENT_ENV) ? "subagent" : "foreground");
+	return requested ?? agentPriority(env);
+}
+
+/** The priority of this process's own turns: a subagent's, or the main session's. */
+function agentPriority(env: NodeJS.ProcessEnv): "foreground" | "subagent" {
+	return envFlag(env, SUBAGENT_ENV) ? "subagent" : "foreground";
+}
+
+export type AdmissionClass = Exclude<RequestPriority, "compaction">;
+
+/**
+ * The class a request is admitted as. A compaction summary is admitted as the agent it summarizes for: that agent waits
+ * for it, and when it is refused Octocode's default summary goes out at once at the agent's own priority, uncached, so
+ * holding it back frees no capacity. Speculative summaries (the early summary) are sent as `background`.
+ */
+export function admissionClass(priority: RequestPriority, env: NodeJS.ProcessEnv = process.env): AdmissionClass {
+	return priority === "compaction" ? agentPriority(env) : priority;
 }
 
 /** Foreground can use the whole adaptive window; lower priorities leave headroom even before a throttle. */
-export function priorityUtilization(priority: RequestPriority): number {
-	return { foreground: 1, subagent: 0.85, compaction: 0.7, background: 0.5 }[priority];
+export function priorityUtilization(admission: AdmissionClass): number {
+	return { foreground: 1, subagent: 0.85, background: 0.5 }[admission];
 }
 
 /** Lower-priority work is shed until enough sustained foreground success restores its recovery threshold. */
-export function shedsAtScale(priority: RequestPriority, scale: number): boolean {
-	if (priority === "foreground") return false;
-	const minimum = { subagent: 0.25, compaction: 0.8, background: 1 }[priority];
+export function shedsAtScale(admission: AdmissionClass, scale: number): boolean {
+	if (admission === "foreground") return false;
+	const minimum = { subagent: 0.25, background: 1 }[admission];
 	return scale + Number.EPSILON < minimum;
 }

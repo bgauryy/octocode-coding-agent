@@ -210,9 +210,8 @@ describe("team tools on a fake Octocode", () => {
 		const sent = await run(send, { to: b.team.id, message: "please review src/a.ts", replyRequired: false }, a.ctx);
 		expect(text(sent)).toMatch(new RegExp(`^Sent #\\d+ to ${b.team.id}\\.$`));
 		expect(sent.details).toMatchObject({ to: [b.team.id] });
-		await vi.waitFor(
-			() => expect(b.sent.some((entry) => entry.message.customType === INTERNAL_MESSAGE_TYPE)).toBe(true),
-			{ timeout: 5_000 },
+		await vi.waitFor(() =>
+			expect(b.sent.some((entry) => entry.message.customType === INTERNAL_MESSAGE_TYPE)).toBe(true),
 		);
 		const delivered = b.sent.find((entry) => entry.message.customType === INTERNAL_MESSAGE_TYPE)!;
 		expect(delivered.message.details.messages).toEqual([
@@ -232,29 +231,30 @@ describe("team tools on a fake Octocode", () => {
 		await run(b.tools.get("coordinate"), { action: "join" }, b.ctx);
 		const send = a.tools.get("sendMessage");
 		const sent = await run(send, { to: b.team.id, message: "which file?", wake: false }, a.ctx);
-		// A message with wake: false goes out as an FYI, and the sender is told it will not act on it alone.
-		expect(text(sent)).toMatch(
-			new RegExp(
-				`^Sent #\\d+ to ${b.team.id}\\. ${b.team.id} is idle and will not act on it alone; replyRequired: true asks and wakes\\.`,
-			),
-		);
+		// A message with wake: false goes out as an FYI its idle recipient reads without acting on it alone; the reply's
+		// wording is checked once, in team-send-result.test.ts.
+		expect(sent.details).toMatchObject({
+			to: [b.team.id],
+			id: expect.any(Number),
+			delivery: { [b.team.id!]: "queued-quiet" },
+		});
 		const mail = (agent: typeof a) =>
 			agent.sent
 				.filter((entry) => entry.message.customType === INTERNAL_MESSAGE_TYPE)
 				.flatMap((entry) => entry.message.details.messages);
-		await vi.waitFor(() => expect(mail(b)).toHaveLength(1), { timeout: 5_000 });
+		await vi.waitFor(() => expect(mail(b)).toHaveLength(1));
 		expect(mail(b)[0]).toMatchObject({ from: a.team.id, text: "which file?", replyRequired: false });
 
 		// No `to`: the answer goes to the sender of message #id.
 		const reply = await run(b.tools.get("sendMessage"), { replyTo: sent.details.id, message: "src/a.ts" }, b.ctx);
 		expect(reply.details).toMatchObject({ to: [a.team.id] });
-		await vi.waitFor(() => expect(mail(a)).toHaveLength(1), { timeout: 5_000 });
+		await vi.waitFor(() => expect(mail(a)).toHaveLength(1));
 		expect(mail(a)[0]).toMatchObject({ from: b.team.id, text: "src/a.ts", replyRequired: false });
 
 		// A request is marked as one; the recipient's mail carries the replyTo hint.
 		const asked = await run(send, { to: b.team.id, message: "which file now?", replyRequired: true }, a.ctx);
 		expect(text(asked)).toBe(`Sent #${asked.details.id} to ${b.team.id} (reply requested).`);
-		await vi.waitFor(() => expect(mail(b)).toHaveLength(2), { timeout: 5_000 });
+		await vi.waitFor(() => expect(mail(b)).toHaveLength(2));
 		expect(mail(b)[1]).toMatchObject({ text: "which file now?", replyRequired: true });
 
 		await expect(run(send, { message: "to nobody" }, a.ctx)).rejects.toThrow(
@@ -330,22 +330,17 @@ describe("team tools on a fake Octocode", () => {
 		);
 		await a.emit("message_end", { message: { role: "user" } }, a.ctx);
 		// Activity reaches the shared database on the member's next tick.
-		await vi.waitFor(
-			() => {
-				const busy = b.team.members().find((entry) => entry.id === a.team.id)!;
-				expect(busy).toMatchObject({ status: "working", input: 1200, output: 300 });
-				expect(busy.activity).toContain("bash");
-			},
-			{ timeout: 3_000 },
-		);
+		await vi.waitFor(() => {
+			const busy = b.team.members().find((entry) => entry.id === a.team.id)!;
+			expect(busy).toMatchObject({ status: "working", input: 1200, output: 300 });
+			expect(busy.activity).toContain("bash");
+		});
 		await a.emit("agent_end", {}, a.ctx);
 		// Queued messages, retries and compaction can continue after agent_end.
 		await new Promise((resolve) => setTimeout(resolve, 1_100));
 		expect(b.team.members().find((entry) => entry.id === a.team.id)!.status).toBe("working");
 		await a.emit("agent_settled", {}, a.ctx);
-		await vi.waitFor(() => expect(b.team.members().find((entry) => entry.id === a.team.id)!.status).toBe("idle"), {
-			timeout: 3_000,
-		});
+		await vi.waitFor(() => expect(b.team.members().find((entry) => entry.id === a.team.id)!.status).toBe("idle"));
 
 		const renderer = a.renderers.get(INTERNAL_MESSAGE_TYPE);
 		const message = {
@@ -461,7 +456,7 @@ describe("team tools on a fake Octocode", () => {
 		});
 		await tell.handler(`${b.team.id} line one\n  line two`, a.ctx);
 		expect(a.ctx.ui.notes.at(-1)).toEqual({ message: `Queued for ${b.team.id}`, type: "info" });
-		await vi.waitFor(() => expect(b.sent.length).toBeGreaterThan(0), { timeout: 5_000 });
+		await vi.waitFor(() => expect(b.sent.length).toBeGreaterThan(0));
 		// The user's text reaches the agent as typed, line breaks included.
 		expect(b.sent.at(-1)!.message.details.messages).toEqual([
 			expect.objectContaining({ from: "user", text: "line one\n  line two" }),
@@ -471,12 +466,10 @@ describe("team tools on a fake Octocode", () => {
 		// `#n` answers a message: it reaches the agent as a reply, and the number is not part of its text.
 		const numbered = b.sent.at(-1)!.message.details.messages[0].id;
 		await tell.handler(`${b.team.id} #${numbered} the second`, a.ctx);
-		await vi.waitFor(
-			() =>
-				expect(b.sent.at(-1)!.message.details.messages).toEqual([
-					expect.objectContaining({ from: "user", text: "the second", replyTo: Number(numbered) }),
-				]),
-			{ timeout: 5_000 },
+		await vi.waitFor(() =>
+			expect(b.sent.at(-1)!.message.details.messages).toEqual([
+				expect.objectContaining({ from: "user", text: "the second", replyTo: Number(numbered) }),
+			]),
 		);
 		await tell.handler(`${b.team.id} #999999 nothing to answer`, a.ctx);
 		expect(a.ctx.ui.notes.at(-1)).toMatchObject({

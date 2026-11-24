@@ -1,5 +1,7 @@
-/** Anthropic accepts at most four explicit cache breakpoints per request. */
-export const MAX_CACHE_BREAKPOINTS = 4;
+import { CACHE_PROFILES } from "../../utils/cache-profiles.ts";
+
+/** Anthropic accepts at most four explicit cache breakpoints per request (the profile table owns the number). */
+export const MAX_CACHE_BREAKPOINTS = CACHE_PROFILES.anthropic.maxMarkers;
 
 // Caller-defined payloads (tool schemas, tool call arguments, tool definitions inside `tool_addition`) may use
 // `cache_control` as an ordinary key; markers never live inside them.

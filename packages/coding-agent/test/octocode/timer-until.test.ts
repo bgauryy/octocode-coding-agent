@@ -167,16 +167,20 @@ describe("event sources only poke a check", () => {
 			...timerFields({ note: "n", until, every: 60 }, Date.now(), { ...owner, workspaceId, cwd: root }),
 		});
 		const woken: unknown[] = [];
+		const waiting: Array<() => void> = [];
 		const instance = new TimerScheduler({
 			db: () => agent,
 			sessionId: "s1",
 			check: check(scheduleDeps),
 			watch,
 			wake: (each) => woken.push(each),
+			pokeChecked: () => waiting.splice(0).forEach((resolve) => resolve()),
 		});
 		started.push(instance);
 		instance.refresh();
-		return { row, woken, instance };
+		/** Resolves when the next event-driven check has ended; ask before the event. */
+		const nextPokeCheck = () => new Promise<void>((resolve) => waiting.push(resolve));
+		return { row, woken, instance, nextPokeCheck };
 	};
 
 	it("wakes on a database event long before the safety poll", async () => {
@@ -207,10 +211,13 @@ describe("event sources only poke a check", () => {
 			poke = onPoke;
 			return () => undefined;
 		};
-		const { row, woken } = watched({ item: { ref: "B1", state: "done" } }, watch, { item: () => state });
+		const { row, woken, nextPokeCheck } = watched({ item: { ref: "B1", state: "done" } }, watch, {
+			item: () => state,
+		});
 		const before = timers.get(agent.db, row.id)!;
+		const quietCheck = nextPokeCheck();
 		poke();
-		await new Promise((resolve) => setTimeout(resolve, 400));
+		await quietCheck;
 		expect(timers.get(agent.db, row.id)).toEqual(before);
 		state = "done";
 		poke();

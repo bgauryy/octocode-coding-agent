@@ -28,7 +28,8 @@ import type { SessionHeader } from "./session-manager/types.ts";
  *   across multiple keys using a stable, deterministic mapping": where the key routes, members are spread over shards.
  *
  * A group is what fixes the cached prefix: provider, model, a hash of the base instruction block and the declared
- * tools, and the workspace. Sessions of one group, and their forks, share its key.
+ * tools. The workspace is no part of it: workspaces on one machine with the same prefix share the key. Sessions of
+ * one group, and their forks, share its key.
  */
 
 /**
@@ -178,19 +179,18 @@ interface SessionKeySource {
  */
 export function promptCacheKeyFor(
 	session: SessionKeySource,
-	cwd: string,
 	model: Model<Api>,
 	messages: readonly { role: string }[],
 	forkKey: string | undefined = forkPromptCacheKey(session.getHeader()),
 ): string | undefined {
 	if (process.env[PROMPT_CACHE_KEY_ENV] || !groupsByPrefix(model)) return forkKey;
-	const group = prefixGroupKey([model.provider, model.id, instructionPrefixHash(messages), cwd]);
+	const group = prefixGroupKey([model.provider, model.id, instructionPrefixHash(messages)]);
 	if (!shardsKey(model)) return group;
 	return shardedKey(group, promptCacheKeyShards.assign(group, forkKey ?? session.getSessionId()));
 }
 
 /** `promptCacheKeyFor` for the session's own requests, with the fork chain walked once per session id. */
-export function sessionPromptCacheKey(session: SessionKeySource, cwd: string) {
+export function sessionPromptCacheKey(session: SessionKeySource) {
 	let fork: { sessionId: string; key: string | undefined } | undefined;
 	return (model: Model<Api>, requestSessionId: string | undefined, context: Context | undefined) => {
 		const sessionId = session.getSessionId();
@@ -198,6 +198,6 @@ export function sessionPromptCacheKey(session: SessionKeySource, cwd: string) {
 		// Walking the fork chain reads parent headers from disk.
 		if (fork?.sessionId !== sessionId) fork = { sessionId, key: forkPromptCacheKey(session.getHeader()) };
 		if (!context) return fork.key;
-		return promptCacheKeyFor(session, cwd, model, normalizeContext(context).messages, fork.key);
+		return promptCacheKeyFor(session, model, normalizeContext(context).messages, fork.key);
 	};
 }

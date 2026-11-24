@@ -121,7 +121,8 @@ describe("the QA reviewer child", () => {
 		expect(await review()).toEqual({ skipped: "the reviewer could not start: slot limit" });
 		spawn.fail = undefined;
 		spawn.reply = { details: { structured: { version: 1, schemaHash: "h", status: "invalid" } } };
-		expect(await review()).toEqual({ skipped: "the reviewer gave no valid verdict (invalid)" });
+		// Contract change: an answer off the schema is retried once before the review is skipped.
+		expect(await review()).toEqual({ skipped: "the reviewer gave no valid verdict twice (invalid)" });
 		spawn.reply = valid({ verdict: "Maybe", summary: "x", findings: [] });
 		expect(await review()).toMatchObject({ skipped: expect.stringContaining("no valid verdict") });
 	});

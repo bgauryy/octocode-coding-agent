@@ -24,8 +24,11 @@ function startupRetryBudgetMs(prefix: readonly string[], env: NodeJS.ProcessEnv 
 	return runsSource(prefix) ? SOURCE_STARTUP_RETRY_MS : 0;
 }
 
+/** Waits `ms` between two starts; a stop (`signal`) must end the wait at once. A test passes its own. */
+export type StartupPause = (ms: number, signal: AbortSignal | undefined) => Promise<void>;
+
 /** Resolves after `ms`, or early when `signal` aborts (a user stop must not wait out the delay). */
-function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
+export const pause: StartupPause = (ms, signal) => {
 	return new Promise((resolve) => {
 		if (signal?.aborted) return resolve();
 		const done = () => {
@@ -36,15 +39,15 @@ function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
 		const timer = setTimeout(done, ms);
 		signal?.addEventListener("abort", done, { once: true });
 	});
-}
+};
 
 /**
  * Runs one child (see `runChild`). A child that crashed while loading its code before any model turn ran no tool, so
  * starting it again repeats nothing: it is started once more after `STARTUP_RETRY_DELAY_MS`, then again, the wait
  * doubling each time, while the waits fit `startupRetryBudgetMs`. When the budget is spent the last error stands.
- * A stop (`signal`) is never retried and ends a wait at once.
+ * A stop (`signal`) is never retried and ends a wait at once. `wait` replaces the real wait in tests.
  */
-export async function runSubagent(run: ChildRun): Promise<SubagentOutcome> {
+export async function runSubagent(run: ChildRun, wait: StartupPause = pause): Promise<SubagentOutcome> {
 	const { signal } = run;
 	const budget = startupRetryBudgetMs(getCliInvocation().prefix);
 	let waited = 0;
@@ -56,10 +59,10 @@ export async function runSubagent(run: ChildRun): Promise<SubagentOutcome> {
 			if (!(error instanceof StartupError) || !error.retryable || signal?.aborted) throw error;
 			const left = budget - waited;
 			if (waited > 0 && left <= 0) throw error;
-			const wait = waited === 0 ? delay : Math.min(delay, left);
-			await pause(wait, signal);
+			const ms = waited === 0 ? delay : Math.min(delay, left);
+			await wait(ms, signal);
 			if (signal?.aborted) throw new Error("Subagent cancelled", { cause: error });
-			waited += wait;
+			waited += ms;
 			delay *= 2;
 		}
 	}

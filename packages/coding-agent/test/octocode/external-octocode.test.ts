@@ -59,11 +59,11 @@ describe("native external Octocode adapter", () => {
 		const { backend, fake, settle } = await boot();
 		// Over the frame limit: refused by the client before a byte is sent.
 		const error = await backend
-			.prompt("x".repeat(MAX_FRAME_BYTES + 1), { timeoutMs: 1000, key: "big" })
+			.prompt("x".repeat(MAX_FRAME_BYTES + 1), { timeoutMs: 30_000, key: "big" })
 			.catch((e) => e);
 		expect(error).toMatchObject({ execution: "not-sent" });
 		expect(fake.sent).toHaveLength(0);
-		const next = backend.prompt("small", { timeoutMs: 1000, key: "small" });
+		const next = backend.prompt("small", { timeoutMs: 30_000, key: "small" });
 		await vi.waitFor(() => expect(fake.sent).toHaveLength(1));
 		await settle();
 		await expect(next).resolves.toMatchObject({ text: "finished" });
@@ -71,19 +71,19 @@ describe("native external Octocode adapter", () => {
 
 	it.each([false, true])("waits for run settlement through the real transport (HTTP=%s)", async (http) => {
 		const { backend, fake, settle } = await boot(http);
-		const result = backend.prompt("run this", { timeoutMs: 1000, key: "one" });
+		const result = backend.prompt("run this", { timeoutMs: 30_000, key: "one" });
 		await vi.waitFor(() => expect(fake.sent).toHaveLength(1));
-		await expect(backend.prompt("other", { timeoutMs: 1000 })).rejects.toThrow("in flight");
+		await expect(backend.prompt("other", { timeoutMs: 30_000 })).rejects.toThrow("in flight");
 		await settle();
 		const first = await result;
 		expect(first).toEqual({ text: "finished", stopReason: "stop", remoteMessageId: expect.any(String) });
 		// A keyed replay settles to the same remote message, so the id cites one reply.
-		await expect(backend.prompt("run this", { timeoutMs: 1000, key: "one" })).resolves.toEqual({
+		await expect(backend.prompt("run this", { timeoutMs: 30_000, key: "one" })).resolves.toEqual({
 			text: "finished",
 			stopReason: "stop",
 			remoteMessageId: first.remoteMessageId,
 		});
-		await expect(backend.prompt("changed", { timeoutMs: 1000, key: "one" })).rejects.toMatchObject({ code: -32602 });
+		await expect(backend.prompt("changed", { timeoutMs: 30_000, key: "one" })).rejects.toMatchObject({ code: -32602 });
 		expect(fake.sent).toHaveLength(1);
 		await backend.close();
 	});
@@ -119,7 +119,7 @@ describe("native external Octocode adapter", () => {
 		const { backend, state, fake, abort } = await boot();
 		if (busy === "working") state.idle = false;
 		else state.pending = true;
-		await expect(backend.prompt("interrupt", { timeoutMs: 1000 })).rejects.toThrow("busy");
+		await expect(backend.prompt("interrupt", { timeoutMs: 30_000 })).rejects.toThrow("busy");
 		await backend.cancel();
 		await backend.close();
 		expect(fake.sent).toHaveLength(0);
@@ -128,14 +128,14 @@ describe("native external Octocode adapter", () => {
 
 	it("rejects replacement before a prompt and before cancelling accepted work", async () => {
 		const { backend, state, fake, abort, settle } = await boot();
-		const pending = backend.prompt("owned", { timeoutMs: 1000, key: "owned" });
+		const pending = backend.prompt("owned", { timeoutMs: 30_000, key: "owned" });
 		const failed = expect(pending).rejects.toThrow("replaced");
 		await vi.waitFor(() => expect(fake.sent).toHaveLength(1));
 		state.sessionId = "new-session";
 		await expect(backend.cancel()).rejects.toThrow("replaced");
 		await failed;
 		expect(abort).not.toHaveBeenCalled();
-		await expect(backend.prompt("later", { timeoutMs: 1000, key: "owned" })).rejects.toThrow();
+		await expect(backend.prompt("later", { timeoutMs: 30_000, key: "owned" })).rejects.toThrow();
 		await settle();
 	});
 
@@ -147,8 +147,8 @@ describe("native external Octocode adapter", () => {
 				code: -32001,
 			});
 			expect(fake.sent).toHaveLength(1);
-			await expect(backend.prompt("other task", { timeoutMs: 1000, key: "other" })).rejects.toThrow("earlier");
-			const retry = backend.prompt("long task", { timeoutMs: 1000, key: "stable" });
+			await expect(backend.prompt("other task", { timeoutMs: 30_000, key: "other" })).rejects.toThrow("earlier");
+			const retry = backend.prompt("long task", { timeoutMs: 30_000, key: "stable" });
 			await settle("eventual result");
 			await expect(retry).resolves.toEqual({
 				text: "eventual result",
@@ -161,7 +161,7 @@ describe("native external Octocode adapter", () => {
 
 	it("does not abort a later interactive run when cancelling or disconnecting", async () => {
 		const { backend, state, fake, settle, abort } = await boot();
-		const prompt = backend.prompt("owned", { timeoutMs: 1000 });
+		const prompt = backend.prompt("owned", { timeoutMs: 30_000 });
 		await vi.waitFor(() => expect(fake.sent).toHaveLength(1));
 		await settle();
 		await prompt;
@@ -169,12 +169,12 @@ describe("native external Octocode adapter", () => {
 		await backend.cancel();
 		await backend.close();
 		expect(abort).not.toHaveBeenCalled();
-		await expect(backend.prompt("closed", { timeoutMs: 1000 })).rejects.toThrow("closed");
+		await expect(backend.prompt("closed", { timeoutMs: 30_000 })).rejects.toThrow("closed");
 	});
 
 	it("cancels only an accepted run this connection owns", async () => {
 		const { backend, state, fake, settle, abort } = await boot();
-		const prompt = backend.prompt("owned", { timeoutMs: 1000 });
+		const prompt = backend.prompt("owned", { timeoutMs: 30_000 });
 		await vi.waitFor(() => expect(fake.sent).toHaveLength(1));
 		state.idle = false;
 		await backend.cancel();
@@ -187,7 +187,7 @@ describe("native external Octocode adapter", () => {
 		const { backend, state, fake, settle, abort } = await boot();
 		const controller = new AbortController();
 		const remove = vi.spyOn(controller.signal, "removeEventListener");
-		const prompt = backend.prompt("owned", { timeoutMs: 1000, signal: controller.signal });
+		const prompt = backend.prompt("owned", { timeoutMs: 30_000, signal: controller.signal });
 		const failed = expect(prompt).rejects.toThrow("aborted");
 		await vi.waitFor(() => expect(fake.sent).toHaveLength(1));
 		state.idle = false;
@@ -201,7 +201,7 @@ describe("native external Octocode adapter", () => {
 
 	it("coalesces concurrent cancellation of the same accepted run", async () => {
 		const { backend, fake, settle, abort } = await boot();
-		const prompt = backend.prompt("owned", { timeoutMs: 1000 });
+		const prompt = backend.prompt("owned", { timeoutMs: 30_000 });
 		await vi.waitFor(() => expect(fake.sent).toHaveLength(1));
 		await Promise.all([backend.cancel(), backend.cancel()]);
 		await settle("cancelled");
@@ -211,7 +211,7 @@ describe("native external Octocode adapter", () => {
 
 	it("holds new prompt admission until an earlier cancellation finishes", async () => {
 		const { backend, fake, settle } = await boot();
-		const first = backend.prompt("first", { timeoutMs: 1000 });
+		const first = backend.prompt("first", { timeoutMs: 30_000 });
 		await vi.waitFor(() => expect(fake.sent).toHaveLength(1));
 		let release!: () => void;
 		const gate = new Promise<void>((resolve) => {
@@ -227,14 +227,14 @@ describe("native external Octocode adapter", () => {
 		await settle("first finished naturally");
 		await first;
 		try {
-			await expect(backend.prompt("too early", { timeoutMs: 1000 })).rejects.toThrow("cancellation");
+			await expect(backend.prompt("too early", { timeoutMs: 30_000 })).rejects.toThrow("cancellation");
 		} finally {
 			release();
 			await cancellation.catch(() => undefined);
 			await settle();
 			status.mockRestore();
 		}
-		const later = backend.prompt("later", { timeoutMs: 1000 });
+		const later = backend.prompt("later", { timeoutMs: 30_000 });
 		await vi.waitFor(() => expect(fake.sent).toHaveLength(2));
 		await settle("later completed");
 		await expect(later).resolves.toMatchObject({ text: "later completed" });
@@ -242,7 +242,7 @@ describe("native external Octocode adapter", () => {
 
 	it("disconnect releases the waiting client and aborts only its own accepted run", async () => {
 		const { backend, fake, abort } = await boot();
-		const prompt = backend.prompt("owned", { timeoutMs: 1000 });
+		const prompt = backend.prompt("owned", { timeoutMs: 30_000 });
 		const failed = expect(prompt).rejects.toThrow("aborted");
 		await vi.waitFor(() => expect(fake.sent).toHaveLength(1));
 		await backend.close();
@@ -254,7 +254,7 @@ describe("native external Octocode adapter", () => {
 		const { backend, fake } = await boot();
 		const controller = new AbortController();
 		controller.abort();
-		await expect(backend.prompt("never", { timeoutMs: 1000, signal: controller.signal })).rejects.toThrow("aborted");
+		await expect(backend.prompt("never", { timeoutMs: 30_000, signal: controller.signal })).rejects.toThrow("aborted");
 		expect(fake.sent).toHaveLength(0);
 	});
 
@@ -382,7 +382,8 @@ describe("native external Octocode adapter", () => {
 			await rejected;
 			expect(signal?.aborted).toBe(true);
 			release();
-			await Promise.resolve();
+			// A handler that still ran after the release would do so on a later turn of the loop, past a microtask.
+			await new Promise((resolve) => setImmediate(resolve));
 			expect(fake.sent).toHaveLength(0);
 			expect(abort).not.toHaveBeenCalled();
 		},

@@ -1,5 +1,6 @@
 type CacheTTL = "1h";
 import type { CacheRetention, Model, SimpleStreamOptions } from "../../types.ts";
+import { CACHE_PROFILES } from "../../utils/cache-profiles.ts";
 import { bedrockSupportsLongCacheRetention, getModelMatchCandidates, isAnthropicClaudeModel } from "./model-match.ts";
 
 function supportsNativeXhighEffort(model: Model<"bedrock-converse-stream">): boolean {
@@ -59,7 +60,9 @@ export function longCacheTtl(
 	model: Model<"bedrock-converse-stream">,
 	cacheRetention: CacheRetention,
 ): { ttl?: CacheTTL } {
-	return cacheRetention === "long" && bedrockSupportsLongCacheRetention(model) ? { ttl: "1h" } : {};
+	return cacheRetention === "long" && bedrockSupportsLongCacheRetention(model)
+		? { ttl: CACHE_PROFILES.bedrockClaude.ttl.long }
+		: {};
 }
 
 /**

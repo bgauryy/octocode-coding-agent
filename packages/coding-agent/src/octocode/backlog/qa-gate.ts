@@ -12,7 +12,10 @@ export type QaVerdictWord = (typeof QA_VERDICTS)[number];
 interface QaVerdict {
 	verdict: QaVerdictWord;
 	summary: string;
+	/** Defects in the item's own changes: what makes the verdict. */
 	findings: string[];
+	/** What the reviewer saw that is not the item's doing (other agents' edits, failures they caused): named, never a blocker. */
+	context?: string[];
 }
 
 /** What the reviewer is given of the completion a holder reports. */
@@ -27,6 +30,8 @@ export interface QaRequest {
 	files: string[];
 	/** The pull request the item links, when it links one: the review then follows the pull-request skill. */
 	pullRequest?: string;
+	/** The working tree (a git tree id) when the item was claimed: the review judges what changed since, not what was there before. */
+	baseline?: string;
 }
 
 const PULL_REQUEST_URL = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/;
@@ -47,11 +52,28 @@ export type QaReviewer = (request: QaRequest, ctx: FeatureContext, signal?: Abor
 /** Items checked by `important`: a p0 or p1 feature or bug. Research and epics never are; `all` adds the rest except epics. */
 const IMPORTANT_TYPES: readonly string[] = ["feature", "bug"];
 
-export function qaRequired(item: Pick<Item, "type" | "priority">, mode: QaMode): boolean {
+/** The verification statuses that state a pass, or that no check applies: any other leaves the completion without a stated pass. */
+const CLEAN_STATUSES: readonly string[] = ["passed", "not_applicable"];
+
+/**
+ * The one rule for when QA runs on a `done` that carries a completion: never in mode `off` and never for an epic; in
+ * mode `all` always; in mode `important` for a p0 or p1 feature or bug, and for any item whose verification does not
+ * state a pass (failed, not run or not stated), so a completion that admits a gap is never waved through unreviewed.
+ */
+export function qaRequired(
+	item: Pick<Item, "type" | "priority">,
+	mode: QaMode,
+	verificationStatus: string = "passed",
+): boolean {
 	if (mode === "off" || item.type === "epic") return false;
 	if (mode === "all") return true;
+	if (!CLEAN_STATUSES.includes(verificationStatus)) return true;
 	return IMPORTANT_TYPES.includes(item.type) && item.priority <= 1;
 }
+
+/** What the reviewer named as not this item's doing, one list after the findings. */
+const contextLines = (verdict: QaVerdict): string =>
+	verdict.context?.length ? `\nContext, not blocking:\n${bullets(verdict.context)}` : "";
 
 const bullets = (findings: readonly string[]): string => findings.map((finding) => `- ${finding}`).join("\n");
 
@@ -59,13 +81,14 @@ const bullets = (findings: readonly string[]): string => findings.map((finding) 
 function qaNote(review: Extract<QaReview, { verdict: QaVerdict }>): string {
 	const { verdict, model, cost } = review;
 	const head = `QA ${verdict.verdict} (${model}, $${cost.toFixed(4)}): ${verdict.summary}`;
-	return verdict.findings.length ? `${head}\n${bullets(verdict.findings)}` : head;
+	const found = verdict.findings.length ? `\n${bullets(verdict.findings)}` : "";
+	return `${head}${found}${contextLines(verdict)}`;
 }
 
 /** The refusal a holder reads when QA sends the item back: what was found and where the item went. */
 function refusal(ref: string, review: Extract<QaReview, { verdict: QaVerdict }>): string {
 	const { verdict } = review.verdict;
-	const found = review.verdict.findings.length ? `\n${bullets(review.verdict.findings)}` : "";
+	const found = `${review.verdict.findings.length ? `\n${bullets(review.verdict.findings)}` : ""}${contextLines(review.verdict)}`;
 	const cost = `(${review.model}, $${review.cost.toFixed(4)})`;
 	if (verdict === "Changes required")
 		return `${ref} was not completed: QA found changes required ${cost}: ${review.verdict.summary}${found}\nThe item stays ongoing: fix these, then mark it done again.`;
@@ -81,7 +104,8 @@ export type QaSendBack = (ref: string, state: "ongoing" | "backlog", note: strin
  * throw the refusal the holder reads (so the holder is told in the same call that asked).
  */
 export async function applyReview(item: Item, review: QaReview, sendBack: QaSendBack): Promise<string> {
-	if ("skipped" in review) return `${QA_SKIPPED_PREFIX} ${review.skipped}`;
+	if ("skipped" in review)
+		return `${QA_SKIPPED_PREFIX} UNVERIFIED, no independent review ran (${review.skipped}). The item is done on the holder's word.`;
 	const note = qaNote(review);
 	if (review.verdict.verdict === "Ready") return note;
 	await sendBack(item.ref, review.verdict.verdict === "Verification incomplete" ? "backlog" : "ongoing", note);

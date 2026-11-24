@@ -124,6 +124,24 @@ describe("hook runs as events", () => {
 		await closeHookSubscribers(api);
 	});
 
+	it("runs the hook once and answers its caller when the run cannot be written to the event log", async () => {
+		const { api, ctx } = rig();
+		const subscribers = await hookSubscribersOf(api, ctx as never);
+		const publish = vi.spyOn(subscribers, "publish").mockRejectedValueOnce(new Error("event log unavailable"));
+		const direct = vi.fn<MatchedHookRun>(async () => deny);
+		const dispatch = subscribedDispatch(api, session({ PreToolUse: true }), direct);
+		const before = logged(ctx.cwd);
+		expect(await dispatch(ctx as never, "PreToolUse", ["bash"], () => ({}))).toBe(deny);
+		expect(publish).toHaveBeenCalledOnce();
+		expect(direct).toHaveBeenCalledOnce();
+		expect(logged(ctx.cwd)).toBe(before);
+		// The log works again: the next run is written and still runs once, with nothing left over from the failed one.
+		expect(await dispatch(ctx as never, "PreToolUse", ["bash"], () => ({}))).toBe(deny);
+		expect(direct).toHaveBeenCalledTimes(2);
+		expect(logged(ctx.cwd)).toBeGreaterThan(before);
+		await closeHookSubscribers(api);
+	});
+
 	it("shares registration across overlapping gates while returning each caller's own verdict", async () => {
 		const { api, ctx } = rig();
 		const subscribers = await hookSubscribersOf(api, ctx as never);

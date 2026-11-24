@@ -46,7 +46,11 @@ export default async function setup(): Promise<() => Promise<void>> {
 		sweepStaleTmuxSockets();
 		if (others.length > 0)
 			process.stderr.write(
-				["Stopped processes the tests left running (pid, command):", ...others.map(describe), ""].join("\n"),
+				[
+					"Stopped processes the tests left running (pid, command, working folder):",
+					...others.map((each) => `${describe(each)}\t${each.folder ?? "?"}`),
+					"",
+				].join("\n"),
 			);
 		if (daemons.length === 0 && opened.length === 0) return;
 		// Vitest reports a teardown error but exits 0, so the exit code is set here.

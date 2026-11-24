@@ -81,12 +81,14 @@ function setup() {
 	return { cwd, team, control, ctx, reports, start, finish };
 }
 
+const NO_LINGER = { maxSubagents: 1, lingerSeconds: 0 };
+
 describe("reachableSeconds with an unanswered ask", () => {
 	it("gives the blocked window whatever outcome was reported, and never shortens a longer setting", () => {
 		for (const outcome of [undefined, "done", "partial", "failed"] as const)
-			expect(reachableSeconds(outcome, {}, undefined, true)).toBe(BLOCKED_LINGER_SECONDS);
-		expect(reachableSeconds("done", {}, undefined, false)).toBe(0);
-		expect(reachableSeconds("done", {}, 900, true)).toBe(900);
+			expect(reachableSeconds(outcome, NO_LINGER, undefined, true)).toBe(BLOCKED_LINGER_SECONDS);
+		expect(reachableSeconds("done", NO_LINGER, undefined, false)).toBe(0);
+		expect(reachableSeconds("done", NO_LINGER, 900, true)).toBe(900);
 	});
 });
 

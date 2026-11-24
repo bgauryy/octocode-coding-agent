@@ -86,7 +86,7 @@ import { registerHarnessSync } from "./subagents/harness-sync.ts";
 import { type AgentControl, registerAgentTool } from "./subagents/tool.ts";
 import { budgetsThrough, mergeThrough } from "./subagents/control-through.ts";
 import { Team } from "./team/session.ts";
-import { changeNote } from "./team/edits.ts";
+import { connectGuard } from "./compose-guard.ts";
 import { registerCollab } from "./native/tools/coordinate/tool.ts";
 import { registerToolGates } from "./tool-gates.ts";
 import { registerTurnSetup } from "./turn.ts";
@@ -157,8 +157,7 @@ export default function octocode(host: FeatureSetup): void {
 	// Every result, nested tool calls included, before any later call can repeat its text.
 	api.bus.on("tool_result", async (event, ctx) => provenance.record(agentOperation(event), ctx));
 	recordChildReports(api, provenance, permission, isSubagent, attachmentTexts);
-	guard.reservedBy = (file) => team.reservation(file, file);
-	guard.modifiedBy = (file) => changeNote(team.editLog(), file, team.id);
+	connectGuard(guard, team);
 	const checkpoints = new Checkpoints();
 	const fileHooks: FileReplacementOwner = {
 		enabled: (input, cwd) => later.get("hooks").hasFilePermissionRequest(input, cwd),
@@ -207,7 +206,7 @@ export default function octocode(host: FeatureSetup): void {
 		statusCommand(api, permission, () =>
 			[
 				`Octocode ${packageVersion() ?? ""}`.trim(),
-				`Subagents: ${[...profiles.keys()].join(", ") || "none"} (at most ${maxSubagents()} at once)`,
+				`Subagents: ${[...profiles.keys()].join(", ") || "none"} (at most ${maxSubagents(process.env)} at once)`,
 				`Hooks: ${later.get("hooks").summary()}`,
 				// The registered commands, so a child session lists only its own; `/mcp` belongs to its own feature.
 				`Commands: ${[...commands.list().map(([name]) => name), "mcp"].map((name) => `/${name}`).join(", ")}`,

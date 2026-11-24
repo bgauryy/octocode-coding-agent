@@ -2,12 +2,12 @@ import type { FeatureSetup, FeatureContext } from "../../../core/features/index.
 import { notify, say } from "../../shared/commands.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { repoKey } from "../../../utils/git-repository.ts";
-import { asRecord, errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { hookIdentity } from "../config/calls.ts";
 import type { HookEvent } from "../catalog.ts";
 import type { HookHandler, HookVerdict } from "../contracts.ts";
-import { redactSecrets, visibleControls } from "@octocodeai/octocode-common/sanitize";
-import { clipText, firstLine, optionalString, stringOrEmpty } from "../../shared/util.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
+import { clipText, stringOrEmpty } from "../../shared/util.ts";
 import type { registerBackgroundHooks } from "../background.ts";
 import { limitCodexContext } from "../context-limit.ts";
 import { hookLabel } from "../config.ts";
@@ -15,7 +15,10 @@ import { httpDecisionNote, labelHttpVerdict } from "../http-origin.ts";
 import { createPromptEvaluator, interpretPromptHook } from "../prompt.ts";
 import { boundMcpHookCaller } from "../mcp-gate.ts";
 import { hookPayload } from "../profiles.ts";
-import { conflictingRewrites, decisionOnly, firstRewrite, reducePermission } from "../verdicts.ts";
+import { combineVerdicts, decisionOnly } from "../verdicts.ts";
+import { type HookClock, REAL_HOOK_CLOCK } from "./clock.ts";
+import type { PolicyEnv } from "./event-policy.ts";
+import { policyFor } from "./policies.ts";
 import { type MatchedHookRun, subscribedDispatch } from "./subscribed.ts";
 import { capContext, CLAUDE_HOOK_CONTEXT_MAX, claudeJsonRun, failureOf, interpret, runHook } from "../runner.ts";
 import {
@@ -28,24 +31,38 @@ import {
 	SLOW_HOOK_MS,
 } from "./types.ts";
 
-/** The shared hook runner: `dispatch` runs the hooks of one event, `reportFailure` says once per event that a dispatch itself failed. */
-export function createDispatcher(
-	api: FeatureSetup,
-	session: HookSession,
-	timings: Map<string, HookTiming>,
-	onFailure: HookFailureSink | undefined,
-	background: ReturnType<typeof registerBackgroundHooks>,
-	child: boolean,
-	metadata: (() => HookHostMetadata) | undefined,
-	paused?: () => boolean,
+export interface DispatcherOptions {
+	api: FeatureSetup;
+	session: HookSession;
+	timings: Map<string, HookTiming>;
+	onFailure?: HookFailureSink;
+	background: ReturnType<typeof registerBackgroundHooks>;
+	child: boolean;
+	metadata?: () => HookHostMetadata;
+	paused?: () => boolean;
 	/** A subagent's parent session id: Codex hooks in a child receive it as `session_id`. */
-	parentSession?: string,
+	parentSession?: string;
 	/** A subagent in the `decisions` hook mode: only a hook's refusal or ask takes effect (`decisionOnly`), and a background hook, which can decide nothing, does not start. */
-	decisionsOnly = false,
-): { dispatch: Dispatch; reportFailure: ReportFailure; stop(): Promise<void> } {
+	decisionsOnly?: boolean;
+	/** Times each hook run for the slow-hook notice and the report (the wall clock by default). */
+	clock?: HookClock;
+}
+
+/**
+ * The shared hook runner: `dispatch` runs the hooks of one event, `reportFailure` says once per event that a dispatch
+ * itself failed. It runs handlers and times them; what an event adds is its `EventPolicy` (`policies.ts`).
+ */
+export function createDispatcher(options: DispatcherOptions): {
+	dispatch: Dispatch;
+	reportFailure: ReportFailure;
+	stop(): Promise<void>;
+} {
+	const { api, session, timings, onFailure, background, child, metadata, paused, parentSession } = options;
+	const decisionsOnly = options.decisionsOnly ?? false;
+	const clock = options.clock ?? REAL_HOOK_CLOCK;
 	let controller = new AbortController();
 	const active = new Set<Promise<HookVerdict>>();
-	/** Commands already reported as slow, so each is reported once per Octocode process. */
+	/** Commands already reported as slow, so each is reported once per hook registration (a session host). */
 	const slowWarned = new Set<string>();
 	const timeHook = async (
 		ctx: FeatureContext,
@@ -53,9 +70,9 @@ export function createDispatcher(
 		hook: HookHandler,
 		run: () => ReturnType<typeof runHook>,
 	): ReturnType<typeof runHook> => {
-		const started = Date.now();
+		const started = clock.now();
 		const result = await run();
-		const ms = Date.now() - started;
+		const ms = clock.now() - started;
 		const key = `${event}\0${hookIdentity(hook)}`;
 		const timing = timings.get(key) ?? { runs: 0, totalMs: 0, maxMs: 0, failed: 0 };
 		const failed = failureOf(hook, claudeJsonRun(hook, result), ctx.signal?.aborted === true) !== undefined;
@@ -65,74 +82,36 @@ export function createDispatcher(
 			maxMs: Math.max(timing.maxMs, ms),
 			failed: timing.failed + (failed ? 1 : 0),
 		});
+		const policy = policyFor(event);
 		if (
 			ms >= SLOW_HOOK_MS &&
 			!slowWarned.has(key) &&
 			ctx.hasUI &&
 			!((hook.type === undefined || hook.type === "command") && (hook.async || hook.asyncRewake)) &&
-			event !== "SessionStart" &&
-			event !== "Notification"
+			!policy.quietSlow
 		) {
 			slowWarned.add(key);
-			const why = event === "PreToolUse" ? ": every tool call in a batch waits for it" : "";
-			notify(ctx.ui, `Slow ${event} hook (${formatDuration(ms)})${why}. ${clipText(hookLabel(hook), 80)}`, "warning");
+			notify(
+				ctx.ui,
+				`Slow ${event} hook (${formatDuration(ms)})${policy.slowNote ?? ""}. ${clipText(hookLabel(hook), 80)}`,
+				"warning",
+			);
 		}
 		return result;
 	};
 
-	/** Hooks already warned about for a failure, so each is shown once per Octocode process (every failure is audited). */
+	/** Hooks already warned about for a failure, so each is shown once per hook registration (every failure is audited). */
 	const failureWarned = new Set<string>();
-	/**
-	 * A PermissionRequest prompt answer never decides the approval (docs/hooks.md): a malformed one is a hook failure, so
-	 * `failClosed` denies, and the reason of an `ok: false` is shown, once per hook and reason, instead of being dropped.
-	 */
-	const observePermissionPrompt = (ctx: FeatureContext, hook: HookHandler, observed: HookVerdict): HookVerdict => {
-		if (observed.error) return { error: observed.error };
-		if (observed.block) {
-			const reason = clipText(redactSecrets(observed.block), 200);
-			const key = `observed\0${hookIdentity(hook)}\0${reason}`;
-			if (!failureWarned.has(key)) {
-				failureWarned.add(key);
-				say(ctx, `PermissionRequest prompt hook (observational): ${reason}`, "warning");
-			}
-		}
-		return {};
-	};
-	/**
-	 * A `PreToolUse` hook gave no answer. Hooks fail open, so the call goes ahead unless the hook is `failClosed`; either
-	 * way the user sees a warning (once per hook, with a UI) and the audit records it. Returns the block reason when failing closed.
-	 */
-	const hookFailed = (
-		ctx: FeatureContext,
-		hook: HookHandler,
-		failure: string,
-		target: string,
-		event: "PreToolUse" | "PreMessageSend",
-	): string | undefined => {
-		const failurePolicy = hook.onFailure === "block" ? 'onFailure: "block"' : "failClosed";
-		const closed = hook.failClosed === true || hook.onFailure === "block";
-		const command = clipText(firstLine(redactSecrets(visibleControls(hookLabel(hook)))), 80);
-		onFailure?.(
-			[`${event} hook ${failure}: ${command}`, `${event === "PreToolUse" ? "tool" : "message"}: ${target}`],
-			closed ? `hook failed; ${failurePolicy} denied the call` : "hook failed; hooks fail open, the call was allowed",
-			!closed,
-		);
-		const key = `${event}\0${hookIdentity(hook)}`;
-		if (ctx.hasUI && !failureWarned.has(key)) {
-			failureWarned.add(key);
-			notify(
-				ctx.ui,
-				`${event} hook ${failure}: ${command}. ${closed ? `The call was denied (${failurePolicy}).` : 'The call was allowed (hooks fail open); set "failClosed": true on the hook to deny instead.'}`,
-				"warning",
-			);
-		}
-		return closed ? `${event} hook ${failure} and is set to ${failurePolicy}: ${command}` : undefined;
+	const firstTime = (key: string): boolean => {
+		if (failureWarned.has(key)) return false;
+		failureWarned.add(key);
+		return true;
 	};
 
 	/**
-	 * Runs the hooks matching `names` in parallel, as the hook protocol specifies; any block blocks, and verdicts combine in
-	 * config order. Most tool calls match no hook, so the input (which may join a large tool result) is built only when
-	 * one does.
+	 * Runs the hooks matching `names` in parallel, as the hook protocol specifies; the event's policy decides how their
+	 * verdicts combine (any block blocks, in config order). Most tool calls match no hook, so the input (which may join a
+	 * large tool result) is built only when one does.
 	 */
 	const dispatchImpl: MatchedHookRun = async (ctx, event, input, signal, protocol, hooks) => {
 		if (signal?.aborted) return {};
@@ -164,24 +143,18 @@ export function createDispatcher(
 			const projected = hookPayload(protocolName, payload, dispatchMetadata);
 			return protocolName === "codex" && parentSession ? { ...projected, session_id: parentSession } : projected;
 		};
-		// Claude PermissionRequest hooks all finish (a deny beats an allow, as for Codex); a hook's crash is its own verdict.
-		const guarded = event === "PermissionRequest" && protocol === "claude";
+		const policy = policyFor(event);
+		const guarded = policy.guarded?.(protocol) === true;
+		const policyEnv = (hook: HookHandler): PolicyEnv => ({ event, ctx, hook, payload, onFailure, firstTime });
 		const runOne = async (hook: HookHandler, signal: AbortSignal | undefined): Promise<HookVerdict> => {
-			if (hook.configurationError && event === "PermissionRequest") {
-				say(ctx, hook.configurationError, "warning");
-				onFailure?.(["PermissionRequest"], hook.configurationError, false);
-				return { permissionDecision: "deny", block: hook.configurationError };
-			}
-			if (hook.configurationError && event === "UserPromptSubmit") return { block: hook.configurationError };
-			if (hook.configurationError && (event === "PreToolUse" || event === "PreMessageSend")) {
-				return {
-					block: hookFailed(ctx, hook, hook.configurationError, optionalString(payload.tool_name) ?? "message", event),
-				};
+			if (hook.configurationError) {
+				const refused = policy.configurationError?.(policyEnv(hook), hook.configurationError);
+				if (refused) return refused;
 			}
 			if (
 				(hook.type === undefined || hook.type === "command") &&
 				hook.protocol !== "octocode" &&
-				event !== "SessionEnd" &&
+				!policy.inline &&
 				(hook.async || hook.asyncRewake)
 			) {
 				if (!signal?.aborted && !decisionsOnly)
@@ -212,9 +185,7 @@ export function createDispatcher(
 			const answered = labelHttpVerdict(
 				hook,
 				hook.type === "prompt"
-					? event === "PermissionRequest"
-						? observePermissionPrompt(ctx, hook, interpretPromptHook(event, run))
-						: interpretPromptHook(event, run, hook.continueOnBlock)
+					? (policy.prompt?.(policyEnv(hook), run) ?? interpretPromptHook(event, run, hook.continueOnBlock))
 					: interpret(event, run, hook.protocol),
 			);
 			const verdict = decisionsOnly ? decisionOnly(answered) : answered;
@@ -227,114 +198,32 @@ export function createDispatcher(
 				verdict.context = capContext(verdict.context, CLAUDE_HOOK_CONTEXT_MAX);
 			if (hook.protocol === "claude" && verdict.systemMessage)
 				verdict.systemMessage = capContext(verdict.systemMessage, CLAUDE_HOOK_CONTEXT_MAX);
-			const gate = event === "PreToolUse" || event === "PreMessageSend" ? event : undefined;
 			// Failure text can hold what a server or a script printed, so it is redacted before it is shown or audited.
 			const reported = !signal?.aborted ? (verdict.error ?? failureOf(hook, run, false)) : undefined;
 			const failure = reported === undefined ? undefined : redactSecrets(reported);
-			const message = asRecord(payload.message);
-			const target =
-				gate === "PreMessageSend"
-					? `${stringOrEmpty(message.from)} -> ${stringOrEmpty(message.to)}`
-					: stringOrEmpty(payload.tool_name);
-			const block =
-				failure && gate
-					? hookFailed(ctx, hook, failure, target, gate)
-					: failure &&
-						  hook.onFailure === "block" &&
-						  (event === "PreCompact" ||
-								event === "PostToolUse" ||
-								event === "PostToolBatch" ||
-								event === "UserPromptSubmit")
-						? `${event} hook ${failure}; onFailure: "block"`
-						: undefined;
-			if (failure && !gate && (ctx.hasUI || event === "Interrupt" || event === "PermissionRequest")) {
-				const key = `${event}\0${hookIdentity(hook)}`;
-				if (!failureWarned.has(key)) {
-					failureWarned.add(key);
-					say(
-						ctx,
-						`${event} hook ${failure}: ${clipText(redactSecrets(visibleControls(hookLabel(hook))), 80)}`,
-						"warning",
-					);
-				}
-			}
-			if (failure && event === "PermissionRequest") onFailure?.([`PermissionRequest ${target}`], failure, false);
-			const outcome =
-				failure && event === "PermissionRequest" && (hook.failClosed || hook.onFailure === "block")
-					? { permissionDecision: "deny" as const, block: failure }
-					: block
-						? { ...verdict, block }
-						: verdict;
-			return event === "PreCompact" && hook.protocol && hook.protocol !== "octocode" && outcome.block
-				? { ...outcome, cancelCompaction: true }
-				: outcome;
+			return policy.settle?.(policyEnv(hook), verdict, failure) ?? verdict;
 		};
 		const running = hooks.map(async (hook): Promise<HookVerdict> => {
 			try {
 				return await runOne(hook, signal);
 			} catch (error) {
-				if (!guarded) throw error;
+				if (!guarded || !policy.crash) throw error;
 				if (signal?.aborted) return {};
-				const message = errorMessage(error);
-				say(ctx, message, "warning");
-				return hook.failClosed || hook.onFailure === "block"
-					? { permissionDecision: "deny", block: message }
-					: { error: message };
+				return policy.crash(policyEnv(hook), errorMessage(error));
 			}
 		});
 		const verdicts = await Promise.all(running);
-		if (event === "PermissionRequest") {
-			if (signal?.aborted) return {};
-			const reduced = reducePermission(verdicts);
-			// An allow keeps what its hook attached (rewritten input, permission updates).
-			return reduced.permissionDecision === "allow"
-				? (verdicts.find((verdict) => verdict.permissionDecision === "allow") ?? reduced)
-				: reduced;
-		}
-		if ((event === "Stop" || event === "SubagentStop") && verdicts.some((verdict) => verdict.stop))
-			return { stop: true };
+		const decided = policy.decide?.(verdicts, signal);
+		if (decided) return decided;
 		const halted = verdicts.find((verdict) => verdict.haltTurn);
 		if (halted) {
 			say(ctx, halted.block ?? halted.context ?? "Stopped by a hook", "warning");
 			ctx.abort("internal");
 		}
-		if (conflictingRewrites(verdicts)) return { block: "Conflicting hook input rewrites; call not executed" };
-		const rewrite = firstRewrite(verdicts);
-		const block = verdicts
-			.map((verdict) => verdict.block)
-			.filter(Boolean)
-			.join("\n\n");
-		const context = verdicts
-			.map((verdict) => verdict.context)
-			.filter(Boolean)
-			.join("\n\n");
-		const ask = verdicts
-			.map((verdict) => verdict.ask)
-			.filter(Boolean)
-			.join("\n\n");
-		return {
-			...(rewrite ? { updatedInput: rewrite.updatedInput, updatedInputProtocol: rewrite.updatedInputProtocol } : {}),
-			...(verdicts.some((verdict) => verdict.continueReason)
-				? {
-						continueReason: capContext(
-							verdicts
-								.map((verdict) => verdict.continueReason)
-								.filter(Boolean)
-								.join("\n\n"),
-						),
-					}
-				: {}),
-			...(verdicts.some((verdict) => verdict.replaceResult) ? { replaceResult: true as const } : {}),
-			...(verdicts.some((verdict) => verdict.rejectNested) ? { rejectNested: true as const } : {}),
-			...(event === "PostCompact" && verdicts.some((verdict) => verdict.stop) ? { stop: true as const } : {}),
-			...(verdicts.some((verdict) => verdict.cancelCompaction) ? { cancelCompaction: true as const } : {}),
-			...(block ? { block: capContext(block) } : {}),
-			...(context ? { context: event === "SubagentStart" ? context : capContext(context) } : {}),
-			...(ask ? { ask: capContext(ask) } : {}),
-		};
+		return combineVerdicts(verdicts, policy.combine);
 	};
 
-	/** A dispatch that itself failed (not a hook's verdict): reported once per event per Octocode process, with a UI. */
+	/** A dispatch that itself failed (not a hook's verdict): reported once per event per hook registration, with a UI. */
 	const dispatchWarned = new Set<HookEvent>();
 	const reportFailure: ReportFailure = (ctx, event, error) => {
 		if (dispatchWarned.has(event)) return;

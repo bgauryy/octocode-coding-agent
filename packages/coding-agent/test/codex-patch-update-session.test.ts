@@ -696,7 +696,9 @@ it("rejects both input modes before invoking a source hook", async () => {
 
 it("prechecks copied output markers in later Add content before earlier patch effects", async () => {
 	const f = await fixture(
-		envelope("*** Add File: earlier.txt\n+earlier\n*** Add File: marker.txt\n+[Output trimmed: fixture]"),
+		envelope(
+			"*** Add File: earlier.txt\n+earlier\n*** Add File: marker.txt\n+[Output trimmed: \x73howing 10 of 20 lines]",
+		),
 	);
 	try {
 		const result = await run(f);

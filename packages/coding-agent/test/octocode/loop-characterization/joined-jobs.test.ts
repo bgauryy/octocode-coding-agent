@@ -8,7 +8,7 @@ import { JOB_TYPE } from "../../../src/octocode/shared/messages.ts";
 import { fakeCtx, fakeHost } from "../fake-host.ts";
 import { tmp } from "../helpers.ts";
 import { restoreBacklogEnv } from "./backlog-rig.ts";
-import { count, createRig, sleep, type Rig } from "./rig.ts";
+import { count, createRig, quiet, type Rig } from "./rig.ts";
 
 /**
  * A joined background job (native/tools/bash/background-joins.ts): the session that starts an identical command another live
@@ -60,16 +60,25 @@ describe.runIf(process.platform !== "win32")("a joined background job's end", ()
 		await rig.harness.session.waitForIdle();
 		expect(joinerJobs.jobs.size).toBe(0);
 		expect(rig.requests).toHaveLength(0);
+		// The joiner watches the owner's job (its log, its process), and waits for that job's end.
+		const owned = ownerJobs.jobs.get("bash-1")!;
+		const [watched] = [...joinerJobs.joined.values()];
+		expect(watched).toMatchObject({ id: "bash-1", pid: owned.pid, log: owned.log });
 		expect(ownerJobs.stop("bash-1", "user")).toBe(true);
 		await vi.waitFor(() => expect(rig.requests).toHaveLength(1), { timeout: 15_000 });
 		await rig.harness.session.waitForIdle();
-		expect(count(rig.requests[0], "You joined this job instead of starting it")).toBe(1);
+		// The turn carries one report, of the job the joiner did not start: the owner's command and the owner's log.
 		expect(count(rig.requests[0], "Background bash bash-1")).toBe(1);
 		expect(jobMessages(rig)).toHaveLength(1);
-		expect(jobMessages(rig)[0]).toMatchObject({ details: { id: "bash-1", interrupted: true } });
-		// One end, one wake: the watch is gone.
-		await sleep(2500);
+		expect(jobMessages(rig)[0]).toMatchObject({
+			details: { id: "bash-1", command: "sleep 30", log: owned.log, interrupted: true, ok: false },
+		});
+		// One end, one wake: the joined job reported its end and the joiner watches nothing more.
+		await watched.done;
+		expect(joinerJobs.joined.size).toBe(0);
+		await quiet(rig);
 		expect(rig.requests).toHaveLength(1);
+		expect(jobMessages(rig)).toHaveLength(1);
 	}, 40_000);
 
 	it("a job that ends by itself wakes the joiner as finished (exit 0)", async () => {

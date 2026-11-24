@@ -3,6 +3,7 @@ import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
 import type { ApplicationConnection, ApplicationCursor } from "@octocodeai/octocode-contracts";
 import type { WorkspaceServerEvent } from "@octocodeai/octocode-contracts/protocol";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { redactData } from "@octocodeai/octocode-common/sanitize";
 import { dbStamp } from "../../../../db/src/api.ts";
 import { agentDbPath } from "../shared/home.ts";
@@ -62,7 +63,7 @@ export class TabHub {
 	private readonly activity: () => void;
 	private readonly accepting: () => boolean;
 	private stamp: string;
-	private timer: ReturnType<typeof setInterval> | undefined;
+	private stopTimer: (() => void) | undefined;
 	private lastWorkspace = new Map<string, { revision: string | null; text: string }>();
 	private readonly workspaceRefreshes = new Map<string, WorkspaceRefresh>();
 	private readonly backlogs = new Map<string, BacklogProjection>();
@@ -100,8 +101,7 @@ export class TabHub {
 	}
 
 	start(): void {
-		this.timer = setInterval(() => this.check(), TICK_MS);
-		this.timer.unref();
+		this.stopTimer = sharedClock.subscribe(() => this.check(), { everyMs: TICK_MS });
 	}
 
 	/** Called by the router after the Host header passed; the Origin must be exactly the daemon's. */
@@ -328,7 +328,8 @@ export class TabHub {
 	}
 
 	closeAll(): void {
-		clearInterval(this.timer);
+		this.stopTimer?.();
+		this.stopTimer = undefined;
 		for (const socket of this.sockets.clients) socket.terminate();
 		this.pending.clear();
 		this.backlogs.clear();

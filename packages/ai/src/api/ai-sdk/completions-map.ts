@@ -23,7 +23,7 @@ import {
 	resolveInstructionCacheRetention,
 	resolvePromptCacheKey,
 } from "../../utils/cache-policy.ts";
-import { promptCacheKeyRule } from "../../models/capabilities.ts";
+import { completionsCacheProfile } from "../../utils/cache-profile-resolve.ts";
 import { matchesHost } from "../../utils/provider-host.ts";
 import { getCompat } from "../openai-completions/compat.ts";
 import type { OpenAICompletionsOptions } from "../openai-completions/types.ts";
@@ -173,16 +173,18 @@ function augmentCompletionsRequest(
 				: undefined,
 			options.toolCacheBoundary,
 		);
-	const rule = promptCacheKeyRule(model);
+	const profile = completionsCacheProfile(model);
+	const rule = profile.key;
 	if (retention !== "none" && (rule === "cached" || (rule === "long" && retention === "long")))
 		body.prompt_cache_key = clampOpenAIPromptCacheKey(resolvePromptCacheKey(options));
 	if (
 		retention === "long" &&
 		compat.supportsLongCacheRetention &&
+		profile.extendedRetention !== undefined &&
 		!model.compat?.supportsExplicitPromptCacheMode &&
 		(matchesHost(model.baseUrl, "api.openai.com") || model.compat?.supportsLongCacheRetention)
 	)
-		body.prompt_cache_retention = "24h";
+		body.prompt_cache_retention = profile.extendedRetention;
 	if (compat.supportsStore) body.store = false;
 	if (!compat.supportsUsageInStreaming) delete body.stream_options;
 	if (compat.maxTokensField === "max_tokens" && body.max_completion_tokens !== undefined) {

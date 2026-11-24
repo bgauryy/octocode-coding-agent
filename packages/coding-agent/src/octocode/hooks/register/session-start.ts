@@ -10,6 +10,11 @@ import { capContext } from "../runner.ts";
 import { resumeFields } from "./resume-fields.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookSession, type ReportFailure, START_HOOKS_WAIT_MS } from "./types.ts";
 
+import type { EventPolicy } from "./event-policy.ts";
+
+/** SessionStart hooks run while the session starts, so a slow one is not reported. */
+export const sessionStartPolicy: EventPolicy = { quietSlow: true };
+
 /** Octocode's session start reasons in Claude Code's SessionStart matcher vocabulary. */
 const START_SOURCE: Record<string, string> = {
 	startup: "startup",

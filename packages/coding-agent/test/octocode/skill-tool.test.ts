@@ -267,8 +267,8 @@ describe("skill tool", () => {
 			const { tool, call } = setup(fixtures().snapshot);
 			void call;
 			tool.renderCall({ name: "alpha" }, recording, context());
-			// The mark (a settled light is muted), the title and the key argument in its parentheses, as on every tool row.
-			expect(new Set(colors)).toEqual(new Set(["toolTitle", "muted"]));
+			// The mark (a returned tool's light is green), the title and the key argument in its parentheses, as on every tool row.
+			expect(new Set(colors)).toEqual(new Set(["success", "toolTitle", "muted"]));
 		});
 	});
 });

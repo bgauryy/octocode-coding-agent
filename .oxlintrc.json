@@ -119,6 +119,13 @@
 							}
 						]
 					}
+				],
+				"no-restricted-globals": [
+					"error",
+					{
+						"name": "setInterval",
+						"message": "Subscribe to the shared clock (packages/common/src/clock.ts: sharedClock.subscribe) instead of a raw interval; a keep-alive or worker-thread timer that must stay raw carries an oxlint-disable-next-line comment with its reason."
+					}
 				]
 			}
 		},

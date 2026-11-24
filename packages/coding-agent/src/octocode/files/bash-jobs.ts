@@ -18,7 +18,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { formatDuration } from "../shared/format.ts";
 import { shortPath } from "../../utils/display-path.ts";
 import { privateDir, sessionOutputDir } from "../shared/home.ts";
-import { groupAlive, killTree, processStartTime, stopTree } from "../shared/process.ts";
+import { groupAlive, killTree, processStartTime, reapWithParent, stopTree } from "../shared/process.ts";
 import { RotatingLog } from "../shared/rotating-log.ts";
 import { shellGroupRegistration } from "../shared/shell-groups.ts";
 import { firstLine, wholeSeconds } from "../shared/util.ts";
@@ -220,6 +220,8 @@ export class BashJobs {
 		} catch {
 			// Without its record only this Octocode can stop the job.
 		}
+		// A hard-killed Octocode runs no session_shutdown: the watcher ends the job's group once this process is gone.
+		reapWithParent(pid);
 		// The job, and its output pipes, must not keep a print run's process alive; session_shutdown stops it.
 		child.unref();
 		const pipes = [child.stdout, child.stderr].filter((pipe) => pipe !== null) as Socket[];

@@ -44,6 +44,20 @@ describe("user input through the live loop", () => {
 		expect(sent).toHaveLength(1);
 	});
 
+	it.each(["steer", "follow-up", "queue"] as const)("keeps the %s mode on the delivered input entry", (mode) => {
+		const { live, sent } = rig();
+		live.input("go", "typed", userSource("terminal"), mode);
+		const [entry] = sent[0].entries;
+		expect(entry?.type === "input" && entry.mode).toBe(mode);
+	});
+
+	it("defaults an input without a mode to queue", () => {
+		const { live, sent } = rig();
+		live.input("go", "typed", userSource("terminal"));
+		const [entry] = sent[0].entries;
+		expect(entry?.type === "input" && entry.mode).toBe("queue");
+	});
+
 	it.each(["acp", "web"] as const)("never holds %s input in the coalescing window", (channel) => {
 		const { live, sent, background } = rig();
 		background("job-1");
@@ -51,18 +65,6 @@ describe("user input through the live loop", () => {
 		live.input("go", "typed", userSource(channel));
 		expect(sent).toHaveLength(1);
 		expect(sent[0].entries.map((entry) => entry.carry)).toEqual(["typed", "job-1", "job-2"]);
-	});
-
-	it("runs a Stop at once, while the window is open and while compaction holds the lock, dropping nothing", () => {
-		const { live, sent, background } = rig();
-		background("job-1");
-		let stopped = 0;
-		expect(live.preempt(() => ++stopped)).toBe(1);
-		expect(live.queued().Q3).toBe(1);
-		live.compactionStarted();
-		expect(live.preempt(() => ++stopped)).toBe(2);
-		expect(sent).toHaveLength(0);
-		expect(live.queued().Q3).toBe(1);
 	});
 
 	it("gives user trust only to the terminal; acp and web carry less, others none", () => {

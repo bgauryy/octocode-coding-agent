@@ -56,7 +56,12 @@ describe("team mail", () => {
 		await sleep(100);
 		expect(r.requests).toHaveLength(0);
 		await r.harness.session.prompt("hello");
+		await r.harness.session.waitForIdle();
+		// One request in all: the user's prompt started it and it carried the quiet mail, which never took a turn of its own.
+		expect(r.requests).toHaveLength(1);
+		expect(count(r.requests[0], "hello")).toBe(1);
 		expect(count(r.requests[0], "MAIL-QUIET")).toBe(1);
+		expect(r.harness.getPendingResponseCount()).toBe(0);
 	});
 
 	it("a batch is one message for the model, and one waking message wakes the whole batch", async () => {

@@ -6,7 +6,7 @@
 			"ignoreDependencies": ["mermaid"],
 			// Build inputs and developer commands invoked by path rather than static imports.
 			"entry": [
-				"scripts/agent-eval/{run,compare}.mjs",
+				"scripts/agent-eval/{run,compare,r13-measure}.mjs",
 				"scripts/agent-eval/fixtures/checks/*.mjs",
 				"scripts/check/agent-treeshake-smoke-entry.ts",
 				"scripts/check/browser-smoke-entry.ts",

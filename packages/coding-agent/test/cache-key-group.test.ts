@@ -77,23 +77,18 @@ describe("prompt cache key by prefix group", () => {
 		vi.stubEnv("OCTOCODE_PROMPT_CACHE_KEY", undefined);
 		const one = session("session-one");
 		const two = session("session-two");
-		const keyOne = sessionPromptCacheKey(one.source, "/work")(explicit, "session-one", context("You are Octocode."));
-		const keyTwo = sessionPromptCacheKey(two.source, "/work")(explicit, "session-two", context("You are Octocode."));
+		const keyOne = sessionPromptCacheKey(one.source)(explicit, "session-one", context("You are Octocode."));
+		const keyTwo = sessionPromptCacheKey(two.source)(explicit, "session-two", context("You are Octocode."));
 		expect(keyOne).toMatch(/^octocode-/);
 		expect(keyTwo).toBe(keyOne);
-		// Another workspace, model or base prefix is another group.
-		expect(
-			sessionPromptCacheKey(two.source, "/elsewhere")(explicit, "session-two", context("You are Octocode.")),
-		).not.toBe(keyOne);
-		expect(sessionPromptCacheKey(two.source, "/work")(explicit, "session-two", context("You are other."))).not.toBe(
-			keyOne,
-		);
+		// The workspace is no part of the key; another base prefix is another group.
+		expect(sessionPromptCacheKey(two.source)(explicit, "session-two", context("You are other."))).not.toBe(keyOne);
 	});
 
 	it("keeps a session's key while its leading prompt stays, whatever tools later patches add", () => {
 		vi.stubEnv("OCTOCODE_PROMPT_CACHE_KEY", undefined);
 		const one = session("stable");
-		const key = sessionPromptCacheKey(one.source, "/work");
+		const key = sessionPromptCacheKey(one.source);
 		const first = key(explicit, "stable", context("You are Octocode."));
 		const patched = context("You are Octocode.");
 		patched.messages.push({
@@ -104,18 +99,18 @@ describe("prompt cache key by prefix group", () => {
 		} as never);
 		expect(key(explicit, "stable", patched)).toBe(first);
 		// A request that shares the session's cache (its summary) gets the same key from its own messages.
-		expect(promptCacheKeyFor(one.source, "/work", explicit, normalizeContext(patched).messages)).toBe(first);
+		expect(promptCacheKeyFor(one.source, explicit, normalizeContext(patched).messages)).toBe(first);
 		one.state.id = "next";
 		expect(key(explicit, "stable", context("You are Octocode."))).toBeUndefined();
 	});
 
 	it("leaves other providers, an explicit key and other sessions' requests alone", () => {
 		const one = session("own", { parentSession: undefined });
-		const key = sessionPromptCacheKey(one.source, "/work");
+		const key = sessionPromptCacheKey(one.source);
 		expect(key(anthropic, "own", context("You are Octocode."))).toBeUndefined();
 		expect(key(explicit, "someone-else", context("You are Octocode."))).toBeUndefined();
 		vi.stubEnv("OCTOCODE_PROMPT_CACHE_KEY", "subagent-group");
-		expect(sessionPromptCacheKey(one.source, "/work")(explicit, "own", context("You are Octocode."))).toBeUndefined();
+		expect(sessionPromptCacheKey(one.source)(explicit, "own", context("You are Octocode."))).toBeUndefined();
 	});
 
 	it("shards a routing key by its working members, two per key (about 15 requests a minute)", () => {
@@ -171,7 +166,7 @@ describe("prompt cache key by prefix group", () => {
 		vi.stubEnv("OCTOCODE_PROMPT_CACHE_KEY", undefined);
 		const keys = (model: Model<Api>) =>
 			["r1", "r2", "r3"].map((id) =>
-				sessionPromptCacheKey(session(id).source, `/shard-test-${model.id}`)(model, id, context("You are Octocode.")),
+				sessionPromptCacheKey(session(id).source)(model, id, context("You are Octocode.")),
 			);
 		const [a, b, c] = keys(routed);
 		expect(b).toBe(a);

@@ -21,7 +21,7 @@ export function agentToolSpec(runners: readonly string[] = [], desktop = false) 
 		label: "Agent",
 		description:
 			"Delegate a self-contained task to a fresh session without this conversation. " +
-			`Foreground returns its report; background its id, the report later. At most ${maxSubagents()} at once; more queue.`,
+			`Foreground returns its report; background its id, the report later. At most ${maxSubagents(process.env)} at once; more queue.`,
 		parameters: Type.Object({
 			skills: Type.Optional(
 				Type.Array(Type.String(), {
@@ -35,7 +35,7 @@ export function agentToolSpec(runners: readonly string[] = [], desktop = false) 
 			),
 			goal: Type.Optional(
 				Type.String({
-					description: `${GOAL_DESCRIPTION}; required when new`,
+					description: `${GOAL_DESCRIPTION}; required when new, unless item names one (its title)`,
 				}),
 			),
 			task: Type.String({

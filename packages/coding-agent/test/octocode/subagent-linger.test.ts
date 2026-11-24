@@ -537,7 +537,7 @@ describe("a lingering background subagent", () => {
 					t.ctx,
 				);
 			// The child ran its first tool: it is up, and the foreground run is registered to be stopped.
-			await vi.waitFor(() => expect(updates.length).toBeGreaterThan(0), { timeout: 10_000 });
+			await vi.waitFor(() => expect(updates.length).toBeGreaterThan(0));
 			t.permission.setMode("manual", t.ctx);
 			await expect(running).rejects.toThrow(
 				/was stopped by a permission change\. Ask the user before starting it again\./,
@@ -577,7 +577,7 @@ describe("a lingering background subagent", () => {
 		const t = setup();
 		try {
 			const id = await t.start("linger first");
-			await vi.waitFor(() => expect(t.reports()).toHaveLength(1), { timeout: 10_000 });
+			await vi.waitFor(() => expect(t.reports()).toHaveLength(1));
 			const busy = (
 				await t.f.tools
 					.get("agent")
@@ -589,7 +589,7 @@ describe("a lingering background subagent", () => {
 			expect(await t.team.send(id, "linger follow-up", { replyRequired: false })).toMatchObject({
 				resumed: expect.stringContaining(`Resumed ${id}`),
 			});
-			await vi.waitFor(() => expect(t.reports()).toHaveLength(2), { timeout: 10_000 });
+			await vi.waitFor(() => expect(t.reports()).toHaveLength(2));
 		} finally {
 			await t.control.stopAll();
 			t.team.stop();
@@ -598,24 +598,40 @@ describe("a lingering background subagent", () => {
 		}
 	}, 30_000);
 
-	it("saves every child's conversation under its own name, lingering or not: only a lingering one is resumable", () => {
+	it("saves every child's conversation under its own name, lingering or not: only a lingering one is resumable", async () => {
 		const args = buildAgentArgs(undefined, undefined, { dir: "/s/session", id: "inky-kraken" });
 		expect(args).not.toContain("--no-session");
 		expect(args.join(" ")).toContain("--session-dir /s/session --session-id inky-kraken");
-	});
+		// Lingering is off: the child still saved its conversation under its own name, and a message after it finished is
+		// refused, so no second run reports.
+		expect(process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS).toBeUndefined();
+		const { team, control, reports, start, sessionIds } = setup();
+		try {
+			const id = await start("linger default");
+			await vi.waitFor(() => expect(reports()).toHaveLength(1));
+			expect(reports()[0]).toContain(`--session-id ${sessionIds.get(id)}`);
+			const sent = await team.send(id, "linger again", { replyRequired: false });
+			expect(sent).toEqual({ error: expect.any(String) });
+			await control.settle();
+			expect(control.background()).toBe(0);
+			expect(reports()).toHaveLength(1);
+		} finally {
+			team.stop();
+		}
+	}, 30_000);
 
 	it("continues its own conversation when messaged after it finished, and reports again", async () => {
 		process.env.OCTOCODE_SUBAGENT_LINGER_SECONDS = "60";
 		try {
 			const { team, reports, start, sessionIds } = setup();
 			const id = await start("linger first");
-			await vi.waitFor(() => expect(reports()).toHaveLength(1), { timeout: 10_000 });
+			await vi.waitFor(() => expect(reports()).toHaveLength(1));
 			expect(reports()[0]).toContain(`--session-id ${sessionIds.get(id)}`);
 			// The first report says how long it stays reachable.
 			expect(reports()[0]).toMatch(/reachable for 60 s/);
 			const sent = await team.send(id, "linger second: add the tests", { replyRequired: false });
 			expect(sent).toMatchObject({ resumed: expect.stringContaining(`Resumed ${id}`) });
-			await vi.waitFor(() => expect(reports()).toHaveLength(2), { timeout: 10_000 });
+			await vi.waitFor(() => expect(reports()).toHaveLength(2));
 			expect(reports()[1]).toContain(`--session-id ${sessionIds.get(id)}`);
 			expect(reports()[1]).toContain("linger second: add the tests");
 			team.stop();
@@ -637,7 +653,7 @@ describe("a lingering background subagent", () => {
 			});
 			await t.f.emit("session_start", { type: "session_start", reason: "startup" }, t.ctx);
 			const id = await t.start("linger first");
-			await vi.waitFor(() => expect(t.reports()).toHaveLength(1), { timeout: 10_000 });
+			await vi.waitFor(() => expect(t.reports()).toHaveLength(1));
 			expect(rewrites).toEqual([]);
 			await t.team.send(id, "linger second", { replyRequired: false });
 			expect(rewrites).toHaveLength(1);
@@ -645,7 +661,7 @@ describe("a lingering background subagent", () => {
 				t.f.sent.find((entry) => String(entry.message.content).includes("LINGER"))?.message.details,
 			);
 			expect(rewrites[0].content).toContain(renderPrompt("notices/subagents/superseded.md", { id }));
-			await vi.waitFor(() => expect(t.reports()).toHaveLength(2), { timeout: 10_000 });
+			await vi.waitFor(() => expect(t.reports()).toHaveLength(2));
 			// The new run's own report is not marked, and neither is it rewritten by the resume before it.
 			expect(t.reports()[1]).not.toContain(renderPrompt("notices/subagents/superseded.md", { id }));
 			expect(rewrites).toHaveLength(1);
@@ -661,7 +677,7 @@ describe("a lingering background subagent", () => {
 		try {
 			const { team, control, reports, start } = setup();
 			const id = await start("linger once");
-			await vi.waitFor(() => expect(reports()).toHaveLength(1), { timeout: 10_000 });
+			await vi.waitFor(() => expect(reports()).toHaveLength(1));
 			expect(control.stop(id, "parent")).toBeUndefined();
 			expect(await team.send(id, "linger again", { replyRequired: false })).toEqual({
 				error: expect.stringMatching(/has finished/),
@@ -672,7 +688,7 @@ describe("a lingering background subagent", () => {
 		}
 		const off = setup();
 		const id = await off.start("linger default");
-		await vi.waitFor(() => expect(off.reports()).toHaveLength(1), { timeout: 10_000 });
+		await vi.waitFor(() => expect(off.reports()).toHaveLength(1));
 		expect(off.reports()[0]).toContain("--session-dir");
 		expect(off.reports()[0]).not.toContain("--no-session");
 		expect(await off.team.send(id, "linger again", { replyRequired: false })).toEqual({

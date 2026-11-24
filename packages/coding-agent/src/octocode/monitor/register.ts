@@ -135,7 +135,12 @@ export function registerMonitor(api: FeatureSetup, options: MonitorOptions): voi
 			// One notice per session: a broken reader would otherwise repeat it every sample.
 			if (warned) return;
 			warned = true;
-			ctx.ui.notify(`The machine monitor stopped reporting: ${errorMessage(error)}`, "warning");
+			try {
+				ctx.ui.notify(`The machine monitor stopped reporting: ${errorMessage(error)}`, "warning");
+			} catch (notifyError) {
+				// The session was replaced before its shutdown reached this monitor: there is no screen left to tell.
+				if (!isStaleSessionError(notifyError)) throw notifyError;
+			}
 		};
 		const ledger = monitorLedgerOf(api);
 		/** Sends one alert (a wake when this session owns the cause, else a note) and records it in the ledger once settled. */

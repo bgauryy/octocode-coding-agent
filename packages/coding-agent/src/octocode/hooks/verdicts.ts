@@ -1,4 +1,5 @@
 import type { HookVerdict } from "./contracts.ts";
+import { capContext } from "./runner.ts";
 
 /**
  * How hook verdicts combine. Hooks of one event run side by side and the dispatcher, the PreToolUse gate and the
@@ -30,6 +31,44 @@ export const firstRewrite = (verdicts: readonly HookVerdict[]): HookVerdict | un
 export function conflictingRewrites(verdicts: readonly HookVerdict[]): boolean {
 	const rewrites = verdicts.flatMap((verdict) => (verdict.updatedInput ? [JSON.stringify(verdict.updatedInput)] : []));
 	return rewrites.some((rewrite) => rewrite !== rewrites[0]);
+}
+
+export interface CombineOptions {
+	/** The verdicts come from separate calls, each with its own input rewrite: the caller applies them, so different rewrites do not conflict. */
+	separateCalls?: boolean;
+	/** A stop in any verdict stops the combined one too. */
+	keepStop?: boolean;
+	/** Contexts are joined without the size cap. */
+	uncappedContext?: boolean;
+}
+
+const joined = (verdicts: readonly HookVerdict[], pick: (verdict: HookVerdict) => string | undefined): string =>
+	verdicts.map(pick).filter(Boolean).join("\n\n");
+
+/**
+ * The one place the verdicts of hooks that ran side by side become one: blocks, contexts, asks and continue reasons
+ * are joined in config order and capped, the first rewrite wins (two different ones block), and the flags any hook set
+ * are kept.
+ */
+export function combineVerdicts(verdicts: readonly HookVerdict[], options: CombineOptions = {}): HookVerdict {
+	if (!options.separateCalls && conflictingRewrites(verdicts))
+		return { block: "Conflicting hook input rewrites; call not executed" };
+	const rewrite = firstRewrite(verdicts);
+	const block = joined(verdicts, (verdict) => verdict.block);
+	const context = joined(verdicts, (verdict) => verdict.context);
+	const ask = joined(verdicts, (verdict) => verdict.ask);
+	const continueReason = joined(verdicts, (verdict) => verdict.continueReason);
+	return {
+		...(rewrite ? { updatedInput: rewrite.updatedInput, updatedInputProtocol: rewrite.updatedInputProtocol } : {}),
+		...(verdicts.some((verdict) => verdict.continueReason) ? { continueReason: capContext(continueReason) } : {}),
+		...(verdicts.some((verdict) => verdict.replaceResult) ? { replaceResult: true as const } : {}),
+		...(verdicts.some((verdict) => verdict.rejectNested) ? { rejectNested: true as const } : {}),
+		...(options.keepStop && verdicts.some((verdict) => verdict.stop) ? { stop: true as const } : {}),
+		...(verdicts.some((verdict) => verdict.cancelCompaction) ? { cancelCompaction: true as const } : {}),
+		...(block ? { block: capContext(block) } : {}),
+		...(context ? { context: options.uncappedContext ? context : capContext(context) } : {}),
+		...(ask ? { ask: capContext(ask) } : {}),
+	};
 }
 
 /**

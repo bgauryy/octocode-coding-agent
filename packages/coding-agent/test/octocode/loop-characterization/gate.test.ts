@@ -1,10 +1,19 @@
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BACKLOG_PEER_TYPE } from "../../../src/octocode/backlog/peer-notify.ts";
-import { SETTINGS_DEFAULTS } from "../../../src/core/settings-defaults.ts";
-import { RUNTIME_DEFAULTS } from "../../../src/core/settings-schema/runtime.ts";
+import { MAX_EVENT_WINDOW_SECONDS, RUNTIME_DEFAULTS } from "../../../src/core/settings-schema/runtime.ts";
 import type { AgentEvent } from "../../../src/octocode/wake/catalog.ts";
-import { blockingTool, count, createRig, sleep, wakeGateOf, wakeRows, type Rig } from "./rig.ts";
+import {
+	blockingTool,
+	count,
+	createRig,
+	expectHeld,
+	pendingWakes,
+	quiet,
+	wakeGateOf,
+	wakeRows,
+	type Rig,
+} from "./rig.ts";
 
 /**
  * Characterization of the wake gate in a real session (RFC agent-event-loop R0, §4). Every case pins what the code does
@@ -26,16 +35,14 @@ const ended = (agent: string): AgentEvent => ({ kind: "agent.ended", agent, reas
 const message = (text: string) => ({ customType: "loop-test", content: text, display: true });
 const wake = { triggerTurn: true, deliverAs: "followUp" as const, together: true };
 
-/** The compatibility setting and its runtime replacement use the same default window. */
+/** The default window. */
 const defaultWindows = {
-	subagents: { wakeHoldSeconds: SETTINGS_DEFAULTS.subagents.wakeHoldSeconds },
 	runtime: { eventWindowSeconds: RUNTIME_DEFAULTS.eventWindowSeconds },
 };
 
 describe("the wake gate with the default hold window", () => {
-	it("defaults the hold window to the event loop's 2 s window (R4)", () => {
-		expect(SETTINGS_DEFAULTS.subagents.wakeHoldSeconds).toBe(2);
-		expect(SETTINGS_DEFAULTS.subagents.wakeHoldSeconds).toBe(RUNTIME_DEFAULTS.eventWindowSeconds);
+	it("defaults the window to 2 s", () => {
+		expect(RUNTIME_DEFAULTS.eventWindowSeconds).toBe(2);
 	});
 
 	it("merges two wakes sent back to back while idle into one turn, sent once the window ends", async () => {
@@ -49,7 +56,7 @@ describe("the wake gate with the default hold window", () => {
 		]);
 		await vi.waitFor(() => expect(r.requests).toHaveLength(1), { timeout: 10_000 });
 		await r.harness.session.waitForIdle();
-		expect(Date.now() - began).toBeGreaterThanOrEqual(SETTINGS_DEFAULTS.subagents.wakeHoldSeconds * 1000 - 50);
+		expect(Date.now() - began).toBeGreaterThanOrEqual(RUNTIME_DEFAULTS.eventWindowSeconds * 1000 - 50);
 		expect(r.requests).toHaveLength(1);
 		expect(count(r.requests[0], "WAKE-A")).toBe(1);
 		expect(count(r.requests[0], "WAKE-B")).toBe(1);
@@ -68,7 +75,7 @@ describe("the wake gate with the default hold window", () => {
 	});
 
 	it("starts a prompt sent inside the window at once and still delivers the held wake, once", async () => {
-		const r = await rig({ settings: { subagents: { wakeHoldSeconds: 0.3 }, runtime: { eventWindowSeconds: 0.3 } } });
+		const r = await rig({ settings: { runtime: { eventWindowSeconds: 0.3 } } });
 		r.harness.setResponses([r.reply("answered the prompt"), r.reply("answered the wake")]);
 		const held = wakeGateOf(r.api).emit(ended("child-1"), message("WAKE-HELD"), wake);
 		await r.harness.session.prompt("PROMPT-NOW");
@@ -115,17 +122,16 @@ describe("the wake gate without a hold window (the suite's pinned 0)", () => {
 	});
 
 	it("merges wakes arriving inside a configured window into one turn, only while idle", async () => {
-		const r = await rig({ settings: { subagents: { wakeHoldSeconds: 0.15 }, runtime: { eventWindowSeconds: 0.15 } } });
+		const r = await rig({ settings: { runtime: { eventWindowSeconds: 0.5 } } });
 		r.harness.setResponses([r.reply("merged"), r.reply("never used")]);
 		const gate = wakeGateOf(r.api);
-		const first = gate.emit(ended("child-1"), message("WAKE-A"), wake);
-		await sleep(30);
-		const second = gate.emit(ended("child-2"), message("WAKE-B"), wake);
-		// Held: nothing has reached the session yet.
-		expect(r.requests).toHaveLength(0);
-		await Promise.all([first, second]);
+		await gate.emit(ended("child-1"), message("WAKE-A"), wake);
+		// Held: the session had every chance to start a turn for the first wake and did not.
+		await expectHeld(r, "WAKE-A");
+		await gate.emit(ended("child-2"), message("WAKE-B"), wake);
 		await vi.waitFor(() => expect(r.requests).toHaveLength(1), { timeout: 10_000 });
-		await r.harness.session.waitForIdle();
+		await quiet(r);
+		// One turn, and its first request already carries both: the first wake did not go ahead alone.
 		expect(r.requests).toHaveLength(1);
 		expect(count(r.requests[0], "WAKE-A")).toBe(1);
 		expect(count(r.requests[0], "WAKE-B")).toBe(1);
@@ -134,26 +140,36 @@ describe("the wake gate without a hold window (the suite's pinned 0)", () => {
 
 	it("never holds a wake that arrives while a run is in progress, even with a window set", async () => {
 		const slow = blockingTool();
-		const r = await rig({ tools: [slow.tool], settings: { subagents: { wakeHoldSeconds: 5 } } });
+		// The longest window there is: a wake it held would miss the run's next request and cost a turn of its own later.
+		const r = await rig({
+			tools: [slow.tool],
+			settings: {
+				runtime: { eventWindowSeconds: MAX_EVENT_WINDOW_SECONDS },
+			},
+		});
 		r.harness.setResponses([
 			fauxAssistantMessage(fauxToolCall("slow", {}), { stopReason: "toolUse" }),
 			r.reply("after the steer"),
+			r.reply("unexpected second turn"),
 		]);
 		const running = r.harness.session.prompt("go");
 		await slow.started;
-		const began = Date.now();
 		await wakeGateOf(r.api).emit(exit("bash-1"), message("WAKE-STEER"), {
 			triggerTurn: true,
 			deliverAs: "steer",
 		});
-		expect(Date.now() - began).toBeLessThan(1000);
 		slow.release();
 		await running;
-		await r.harness.session.waitForIdle();
-		// The steer joined the run: the next request after the tool result carries it.
+		await quiet(r);
+		// The steer joined the run: the next request after the tool result carries it, and it cost no turn of its own.
 		expect(r.requests).toHaveLength(1);
 		expect(count(r.requests[0], "WAKE-STEER")).toBe(1);
 		expect(count(r.requests[0], "slow-result")).toBe(1);
+		expect(r.requests[0].findIndex((line) => line.includes("WAKE-STEER"))).toBeGreaterThan(
+			r.requests[0].findIndex((line) => line.includes("slow-result")),
+		);
+		expect(pendingWakes(r)).toEqual([]);
+		expect(r.harness.getPendingResponseCount()).toBe(1);
 	});
 
 	it("delivers a background completion with the tool result at the next model request", async () => {

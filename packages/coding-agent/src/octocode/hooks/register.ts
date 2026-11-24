@@ -6,6 +6,7 @@ import { commandsFor, hookCalls } from "./config/calls.ts";
 import { ifFilter } from "./config/if-filter.ts";
 import { emptyHooks } from "./config/parse.ts";
 import { CODEX_PATCH_NAMES, type EditProjector, projectCodexPatch } from "./patch.ts";
+import type { HookClock } from "./register/clock.ts";
 import { createDispatcher } from "./register/dispatcher.ts";
 import {
 	registerInterruptHook,
@@ -74,18 +75,18 @@ function registerDecisionHooks(
 	},
 ): void {
 	const { paused } = options;
-	const runner = createDispatcher(
+	const runner = createDispatcher({
 		api,
 		session,
-		options.timings,
-		options.onFailure,
-		NO_BACKGROUND,
-		true,
-		options.metadata,
+		timings: options.timings,
+		onFailure: options.onFailure,
+		background: NO_BACKGROUND,
+		child: true,
+		metadata: options.metadata,
 		paused,
-		options.env[PARENT_SESSION_ENV],
-		true,
-	);
+		parentSession: options.env[PARENT_SESSION_ENV],
+		decisionsOnly: true,
+	});
 	view.suspend = () => runner.stop();
 	const reset = async () => {
 		patches.clear();
@@ -135,10 +136,12 @@ interface HooksOptions {
 	paused?: () => boolean;
 	/** The file tool's projection of edit queries for Codex apply_patch hooks; without it those edits are refused. */
 	projectEdit?: EditProjector;
+	/** The time hook runs are measured and the Interrupt hook's deadline is set by (the wall clock by default). */
+	clock?: HookClock;
 }
 
 export function registerHooks(api: FeatureSetup, options: HooksOptions = {}): HooksView {
-	const { env = process.env, home, onFailure, metadata, paused, projectEdit } = options;
+	const { env = process.env, home, onFailure, metadata, paused, projectEdit, clock } = options;
 	const session: HookSession = { config: emptyHooks(), errors: [], root: undefined };
 	const mode = sessionHookMode(env);
 	const enabled = mode === "all";
@@ -182,7 +185,18 @@ export function registerHooks(api: FeatureSetup, options: HooksOptions = {}): Ho
 	const background = registerBackgroundHooks(api);
 	const child = envFlag(env, SUBAGENT_ENV);
 	const parentSession = child ? env[PARENT_SESSION_ENV] : undefined;
-	const runner = createDispatcher(api, session, timings, onFailure, background, child, metadata, paused, parentSession);
+	const runner = createDispatcher({
+		api,
+		session,
+		timings,
+		onFailure,
+		background,
+		child,
+		metadata,
+		paused,
+		parentSession,
+		clock,
+	});
 	view.testRun = (ctx, words) => testRunHooks(runner.dispatch, session, ctx, words);
 	view.suspend = async () => {
 		await Promise.all([runner.stop(), background.reset(false)]);
@@ -220,7 +234,7 @@ export function registerHooks(api: FeatureSetup, options: HooksOptions = {}): Ho
 	view.notification = notificationHook(api, runner);
 	registerPostToolUseHook(api, runner.dispatch, session, patches);
 	registerPreCompactHook(api, runner.dispatch);
-	if (!child) registerInterruptHook(api, session, runner.dispatch, metadata);
+	if (!child) registerInterruptHook(api, session, runner.dispatch, metadata, clock);
 	registerPromptHook(api, runner.dispatch);
 	registerPostCompactHook(api, runner.dispatch);
 	registerPostToolBatchHook(api, runner.dispatch);

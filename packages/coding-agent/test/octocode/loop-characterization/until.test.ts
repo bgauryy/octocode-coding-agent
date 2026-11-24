@@ -2,10 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { timers } from "../../../../db/src/api.ts";
 import { registerTimers } from "../../../src/octocode/timer/register.ts";
+import { sharedAgentDb } from "../../../src/storage/database.ts";
 import { tmp } from "../helpers.ts";
 import { backlogRig, completion, restoreBacklogEnv } from "./backlog-rig.ts";
-import { count, createRig, type Rig } from "./rig.ts";
+import { count, createRig, quiet, sleep, type Rig } from "./rig.ts";
 
 /**
  * `notify` with an `until` condition through a real session (RFC agent-event-loop R0, §4): `on` stores one condition of
@@ -46,6 +48,10 @@ const toolTexts = (rig: Rig) =>
 		.filter((message) => message.role === "toolResult")
 		.map((message) => JSON.stringify(message.content));
 
+/** The session's timer rows, ended ones too: what the scheduler has left to check, and what its last check found. */
+const timerRows = (rig: Rig) =>
+	timers.forSession(sharedAgentDb(process.env).db, rig.ctx.sessionManager.getSessionId(), true);
+
 const armed = async (rig: Rig, call: Record<string, unknown>, answer = "armed") => {
 	rig.harness.setResponses([on(call), fauxAssistantMessage(answer), rig.reply("woken by the condition")]);
 	await rig.harness.session.prompt("wait for it");
@@ -61,8 +67,9 @@ describe("an until condition that holds", () => {
 		await r.harness.session.waitForIdle();
 		expect(count(r.requests[0], "Note: UNTIL-NOTE")).toBe(1);
 		expect(count(r.requests[0], "UNTIL-OUT")).toBeGreaterThan(0);
-		// Once: the timer ended with its wake, so nothing else comes.
-		await new Promise((resolve) => setTimeout(resolve, 300));
+		// Once: the timer ended with its wake, so the scheduler has nothing left to check and nothing else comes.
+		expect(timerRows(r)).toMatchObject([{ status: "done", last_exit: 0 }]);
+		await quiet(r);
 		expect(r.requests).toHaveLength(1);
 	});
 
@@ -70,13 +77,19 @@ describe("an until condition that holds", () => {
 		const r = await timed();
 		const flag = path.join(tmp(), "flag");
 		await armed(r, { event: "check.result", filter: { command: `test -e ${flag}` }, note: "FLAG-NOTE" });
-		await new Promise((resolve) => setTimeout(resolve, 1500));
+		// The scheduler ran the command and recorded its failure: the wait goes on and nobody was woken.
+		await vi.waitFor(() => expect(timerRows(r)).toMatchObject([{ status: "active", last_exit: 1 }]), {
+			timeout: 30_000,
+			interval: 50,
+		});
+		await quiet(r);
 		expect(r.requests).toHaveLength(0);
 		fs.writeFileSync(flag, "x");
 		await vi.waitFor(() => expect(r.requests).toHaveLength(1), { timeout: 30_000 });
 		await r.harness.session.waitForIdle();
 		expect(count(r.requests[0], "Note: FLAG-NOTE")).toBe(1);
-	}, 45_000);
+		expect(timerRows(r)).toMatchObject([{ status: "done", last_exit: 0 }]);
+	}, 75_000);
 });
 
 describe("an until condition the tool refuses", () => {
@@ -95,30 +108,47 @@ describe("an until condition the tool refuses", () => {
 		const r = await timed();
 		await armed(r, call);
 		expect(toolTexts(r).join("\n")).toMatch(message);
-		await new Promise((resolve) => setTimeout(resolve, 300));
+		// Nothing was stored, so no check can ever run for it.
+		expect(timerRows(r)).toEqual([]);
+		await quiet(r);
 		expect(r.requests).toHaveLength(0);
 	});
 });
 
+/** Longer than the scheduler's debounce between a change and the check it asks for (150 ms). */
+const CHECK_AFTER_CHANGE_MS = 500;
+
 describe("a backlog until condition", () => {
 	it("item.state wakes once when another actor moves the item to that state, and not before", async () => {
 		// The backlog feed announces each audited change, so the wait wakes at once, not at its next poll.
-		const { rig: r, store } = await backlogRig({
+		const {
+			rig: r,
+			store,
+			fed,
+		} = await backlogRig({
 			also: (api) => registerTimers(api, { reservation: () => undefined, agent: () => undefined, env: process.env }),
 		});
 		rigs.push(r);
 		store.add({ title: "Awaited", goal: "checkable", why: "needed", createdBy: "user", state: "todo" });
 		await armed(r, { event: "item.state", filter: { ref: "B1", state: "done" }, note: "ITEM-NOTE" });
 		expect(toolTexts(r).join("\n")).not.toMatch(/No backlog item/);
+		// The feed announces each change to the wait; its check follows a fixed debounce and, finding nothing, writes
+		// nothing, so the pause after the announcement is the only way to see that check through from outside.
 		store.update("B1", { note: "progress" }, { id: "peer" });
-		await new Promise((resolve) => setTimeout(resolve, 500));
+		await fed({ ref: "B1", kind: "note", by: "peer" });
+		await sleep(CHECK_AFTER_CHANGE_MS);
+		await quiet(r);
 		expect(r.requests).toHaveLength(0);
 		store.update("B1", { state: "ongoing" }, { id: "peer" });
-		await new Promise((resolve) => setTimeout(resolve, 500));
+		await fed({ ref: "B1", kind: "claimed", by: "peer" });
+		await sleep(CHECK_AFTER_CHANGE_MS);
+		await quiet(r);
 		expect(r.requests).toHaveLength(0);
+		expect(timerRows(r)).toMatchObject([{ status: "active" }]);
 		store.update("B1", { state: "done", completion: completion("until-1") }, { id: "peer" });
 		await vi.waitFor(() => expect(r.requests).toHaveLength(1), { timeout: 20_000 });
 		await r.harness.session.waitForIdle();
 		expect(count(r.requests[0], "Note: ITEM-NOTE")).toBe(1);
+		expect(timerRows(r)).toMatchObject([{ status: "done" }]);
 	}, 40_000);
 });

@@ -5,7 +5,7 @@ import type * as NativeConfig from "../../src/config.ts";
 import { shortPath } from "../../src/utils/display-path.ts";
 import type { ChildProgress } from "../../src/octocode/subagents/events.ts";
 import type { ChildNotices } from "../../src/octocode/subagents/notices.ts";
-import { runSubagent, STARTUP_RETRY_ENV } from "../../src/octocode/subagents/process.ts";
+import { pause, runSubagent, STARTUP_RETRY_ENV, type StartupPause } from "../../src/octocode/subagents/process.ts";
 import { noticeLines } from "../../src/octocode/subagents/render.ts";
 import { tmp } from "./helpers.ts";
 import { STARTUP_RETRY_DELAY_MS, StartupError, USER_STOP } from "../../src/octocode/subagents/process/outcome.ts";
@@ -39,20 +39,23 @@ afterAll(() => {
 });
 
 /** Runs a scenario and returns what the parent was told: the last notices update, and the outcome or the error. */
-async function run(task: string, scratch: string) {
+async function run(task: string, scratch: string, wait?: StartupPause) {
 	const notices: ChildNotices[] = [];
 	const onProgress = (update: ChildProgress) => {
 		if (update.notices) notices.push(update.notices);
 		return undefined;
 	};
 	const id = `a-${task.replace(/\W+/g, "-")}`;
-	const result = await runSubagent({
-		task,
-		args: ["--session-dir", tmp(), "--session-id", id],
-		cwd: tmp(),
-		identity: { id, scratch },
-		onProgress,
-	}).then(
+	const result = await runSubagent(
+		{
+			task,
+			args: ["--session-dir", tmp(), "--session-id", id],
+			cwd: tmp(),
+			identity: { id, scratch },
+			onProgress,
+		},
+		wait,
+	).then(
 		(outcome) => ({ outcome, error: undefined as Error | undefined }),
 		(error: Error) => ({ outcome: undefined, error }),
 	);
@@ -122,21 +125,65 @@ describe("a crashed child's stderr", () => {
 
 const attempts = (scratch: string) => fs.readFileSync(path.join(scratch, "attempts"), "utf8").length;
 
+/** A wait that returns at once and records how long the run asked to wait. */
+function recordedWaits() {
+	const asked: number[] = [];
+	return {
+		asked,
+		wait: (async (ms) => {
+			asked.push(ms);
+		}) as StartupPause,
+	};
+}
+
+describe("the wait between two starts", () => {
+	it("ends at once when the stop signal fires, and at once when it already fired", async () => {
+		vi.useFakeTimers();
+		try {
+			const controller = new AbortController();
+			const waiting = pause(STARTUP_RETRY_DELAY_MS, controller.signal);
+			expect(vi.getTimerCount()).toBe(1);
+			controller.abort(USER_STOP);
+			await waiting;
+			expect(vi.getTimerCount()).toBe(0);
+			await pause(STARTUP_RETRY_DELAY_MS, controller.signal);
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("lasts the asked time when nothing stops it", async () => {
+		vi.useFakeTimers();
+		try {
+			let over = false;
+			const waiting = pause(STARTUP_RETRY_DELAY_MS, undefined).then(() => (over = true));
+			await vi.advanceTimersByTimeAsync(STARTUP_RETRY_DELAY_MS - 1);
+			expect(over).toBe(false);
+			await vi.advanceTimersByTimeAsync(1);
+			await waiting;
+			expect(over).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
 // A bundled child (this stand-in is no `.ts` entry) gets the one retry: its code does not change under it.
 describe("a child that exits before its first model turn", () => {
 	it("is started once more after a module-load error, and the second start's report stands", async () => {
 		const scratch = tmp();
-		const started = Date.now();
-		const { outcome, error } = await run("startup flaky", scratch);
+		const { asked, wait } = recordedWaits();
+		const { outcome, error } = await run("startup flaky", scratch, wait);
 		expect(error).toBeUndefined();
 		expect(outcome?.text).toBe("RECOVERED");
 		expect(attempts(scratch)).toBe(2);
-		expect(Date.now() - started).toBeGreaterThanOrEqual(STARTUP_RETRY_DELAY_MS - 100);
+		expect(asked).toEqual([STARTUP_RETRY_DELAY_MS]);
 	});
 
 	it("reports failed (startup) after a second failure: one error line and the saved stderr, not the tail", async () => {
 		const scratch = tmp();
-		const { error } = await run("startup crash", scratch);
+		const { error } = await run("startup crash", scratch, recordedWaits().wait);
 		const file = path.join(scratch, "stderr.txt");
 		expect(attempts(scratch)).toBe(2);
 		expect(error).toBeInstanceOf(StartupError);
@@ -149,7 +196,7 @@ describe("a child that exits before its first model turn", () => {
 
 	it("is not retried when the error is not a module-load error", async () => {
 		const scratch = tmp();
-		const { error } = await run("startup plain", scratch);
+		const { error } = await run("startup plain", scratch, recordedWaits().wait);
 		expect(attempts(scratch)).toBe(1);
 		expect(error?.message).toMatch(
 			/^Subagent failed \(startup\): exited with code 2 before its first model turn: No API key for provider\nFull stderr: /,
@@ -158,7 +205,7 @@ describe("a child that exits before its first model turn", () => {
 
 	it("is no startup failure once a tool ran: reported as an ordinary crash, never retried", async () => {
 		const scratch = tmp();
-		const { error } = await run("startup after tool", scratch);
+		const { error } = await run("startup after tool", scratch, recordedWaits().wait);
 		expect(attempts(scratch)).toBe(1);
 		expect(error).not.toBeInstanceOf(StartupError);
 		expect(error?.message).toMatch(/^Subagent exited with code 1: /);
@@ -168,37 +215,45 @@ describe("a child that exits before its first model turn", () => {
 		const scratch = tmp();
 		const controller = new AbortController();
 		const id = "a-startup-stop";
-		const started = Date.now();
-		const pending = runSubagent({
-			task: "startup crash",
-			args: ["--session-dir", tmp(), "--session-id", id],
-			cwd: tmp(),
-			identity: { id, scratch },
-			signal: controller.signal,
-			onProgress: () => undefined,
-		});
+		let inWait!: () => void;
+		const reachedWait = new Promise<void>((resolve) => (inWait = resolve));
+		// A wait that ends only when the stop arrives, so the test needs no clock.
+		const untilStopped: StartupPause = (_ms, signal) =>
+			new Promise((resolve) => {
+				signal?.addEventListener("abort", () => resolve(), { once: true });
+				inWait();
+			});
+		const pending = runSubagent(
+			{
+				task: "startup crash",
+				args: ["--session-dir", tmp(), "--session-id", id],
+				cwd: tmp(),
+				identity: { id, scratch },
+				signal: controller.signal,
+				onProgress: () => undefined,
+			},
+			untilStopped,
+		);
 		const failed = pending.then(
 			() => new Error("finished"),
 			(error: Error) => error,
 		);
-		await vi.waitFor(() => expect(fs.existsSync(path.join(scratch, "attempts"))).toBe(true));
-		await new Promise((resolve) => setTimeout(resolve, 400));
+		await reachedWait;
 		controller.abort(USER_STOP);
 		expect((await failed).message).toBe("Subagent cancelled");
 		expect(attempts(scratch)).toBe(1);
-		expect(Date.now() - started).toBeLessThan(STARTUP_RETRY_DELAY_MS + 500);
 	});
 });
 
 describe("a child that runs the source tree and crashes while loading", () => {
 	/** Runs `task` with the stand-in started as a `.ts` entry, as a source parent starts `src/cli.ts`. */
-	async function fromSource(task: string, scratch: string) {
+	async function fromSource(task: string, scratch: string, wait: StartupPause = recordedWaits().wait) {
 		const entry = path.join(tmp(), "cli.ts");
 		fs.copyFileSync(FIXTURE, entry);
 		const bundle = process.argv[1];
 		process.argv[1] = entry;
 		try {
-			return await run(task, scratch);
+			return await run(task, scratch, wait);
 		} finally {
 			process.argv[1] = bundle!;
 		}
@@ -206,13 +261,12 @@ describe("a child that runs the source tree and crashes while loading", () => {
 
 	it("is started again with a doubling wait until the edit it met is saved whole", async () => {
 		const scratch = tmp();
-		const started = Date.now();
-		const { outcome, error } = await fromSource("startup until 3", scratch);
+		const { asked, wait } = recordedWaits();
+		const { outcome, error } = await fromSource("startup until 3", scratch, wait);
 		expect(error).toBeUndefined();
 		expect(outcome?.text).toBe("RECOVERED on start 3: startup until 3");
 		expect(attempts(scratch)).toBe(3);
-		// 1.5 s, then 3 s.
-		expect(Date.now() - started).toBeGreaterThanOrEqual(3 * STARTUP_RETRY_DELAY_MS - 100);
+		expect(asked).toEqual([STARTUP_RETRY_DELAY_MS, 2 * STARTUP_RETRY_DELAY_MS]);
 	}, 30_000);
 
 	it(`gets only the one retry when ${STARTUP_RETRY_ENV}=0`, async () => {
@@ -230,13 +284,13 @@ describe("a child that runs the source tree and crashes while loading", () => {
 	it(`stops when the waits would pass ${STARTUP_RETRY_ENV}, with the last start's error`, async () => {
 		const scratch = tmp();
 		process.env[STARTUP_RETRY_ENV] = "4";
-		const started = Date.now();
+		const { asked, wait } = recordedWaits();
 		try {
-			const { error } = await fromSource("startup crash", scratch);
+			const { error } = await fromSource("startup crash", scratch, wait);
 			expect(error).toBeInstanceOf(StartupError);
-			// 1.5 s, then the 2.5 s left of the budget: three starts in all.
+			// The first wait, then what is left of the 4 s budget: three starts in all.
 			expect(attempts(scratch)).toBe(3);
-			expect(Date.now() - started).toBeLessThan(4_000 + 3_000);
+			expect(asked).toEqual([STARTUP_RETRY_DELAY_MS, 4_000 - STARTUP_RETRY_DELAY_MS]);
 		} finally {
 			delete process.env[STARTUP_RETRY_ENV];
 		}

@@ -114,7 +114,7 @@ describe("full-run lock", () => {
 		const lines: string[] = [];
 		const waiting = acquireRunLock({ ...options({}, lines), signal: AbortSignal.timeout(100) });
 		await assert.rejects(waiting, { name: "AbortError" });
-		assert.match(lines[0] ?? "", /\(pid \d+, agent swift-orca, item B915, job bash-3\)/);
+		assert.match(lines[0] ?? "", /\(pid \d+, agent swift-orca, lease swift-orca, item B915, job bash-3\)/);
 		release();
 	});
 

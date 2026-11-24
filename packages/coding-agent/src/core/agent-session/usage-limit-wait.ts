@@ -10,6 +10,7 @@
  */
 
 import type { Agent } from "@octocodeai/octocode-agent-core";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { registerSessionResourceCleanup } from "@octocodeai/octocode-ai";
 import type { SessionRunState } from "./host.ts";
 
@@ -24,13 +25,15 @@ export function runAbortSignal(run: Pick<SessionRunState, "agentRunAbortRequeste
 	stop(): void;
 } {
 	const controller = new AbortController();
-	const poll = setInterval(() => {
-		if (!run.agentRunAbortRequested) return;
-		clearInterval(poll);
-		controller.abort();
-	}, ABORT_POLL_MS);
-	poll.unref();
-	return { signal: controller.signal, stop: () => clearInterval(poll) };
+	const stop = sharedClock.subscribe(
+		() => {
+			if (!run.agentRunAbortRequested) return;
+			stop();
+			controller.abort();
+		},
+		{ everyMs: ABORT_POLL_MS },
+	);
+	return { signal: controller.signal, stop };
 }
 
 /** Resolves true at `at` (ms since the epoch), false as soon as `signal` aborts. */

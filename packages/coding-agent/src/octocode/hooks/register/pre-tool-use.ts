@@ -13,8 +13,13 @@ import { ifFilter } from "../config/if-filter.ts";
 import { CODEX_PATCH_NAMES, type EditProjector, projectCodexPatch, rewriteCodexPatch } from "../patch.ts";
 import type { HookProtocol } from "../catalog.ts";
 import { capContext } from "../runner.ts";
-import { firstRewrite } from "../verdicts.ts";
+import { combineVerdicts, firstRewrite } from "../verdicts.ts";
+import { gatePolicy } from "./event-policy.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookSession, type HooksView } from "./types.ts";
+import { stringOrEmpty } from "../../shared/util.ts";
+
+/** A PreToolUse hook that gave no answer: the tool call goes ahead unless the hook is `failClosed`. */
+export const preToolUsePolicy = gatePolicy("PreToolUse", "tool", (payload) => stringOrEmpty(payload.tool_name));
 
 /**
  * Native and Claude file hooks run once per query. Codex receives one whole-batch apply_patch call.
@@ -177,10 +182,7 @@ export const preToolUseGate =
 				return { block: true, reason: `Invalid hook input rewrite: ${errorMessage(error)}` };
 			}
 		}
-		const context = verdicts
-			.map((verdict) => verdict.context)
-			.filter(Boolean)
-			.join("\n\n");
+		const { context, ask } = combineVerdicts(verdicts, { separateCalls: true, uncappedContext: true });
 		if (context && !ctx.signal?.aborted) {
 			await api.session.sendMessage(
 				{
@@ -191,11 +193,5 @@ export const preToolUseGate =
 				{ triggerTurn: false },
 			);
 		}
-		const ask = verdicts
-			.map((verdict) => verdict.ask)
-			.filter(Boolean)
-			.join("\n\n");
-		return ask || rewritten
-			? { ...(ask ? { ask: capContext(ask) } : {}), ...(rewritten ? { rewritten: true } : {}) }
-			: undefined;
+		return ask || rewritten ? { ...(ask ? { ask } : {}), ...(rewritten ? { rewritten: true } : {}) } : undefined;
 	};

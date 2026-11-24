@@ -18,7 +18,8 @@ describe("research route", () => {
 	it("names the research server by namespace and its reader by role, defers to its route, with bash after a refusal", () => {
 		const research = policy().research;
 		expect(research).toContain(`\`${FAKE_RESEARCH.prefix}*\``);
-		expect(research).toContain(`read with \`${RESEARCH.reader.slice(FAKE_RESEARCH.prefix.length)}\``);
+		// Contract change: the reader is named by its full tool name, the one a call must use (a bare name is not found).
+		expect(research).toContain(`read with \`${RESEARCH.reader}\``);
 		// Contract change: the server's own route sends quick exact lookups (a known spelling, a line range, a count) to the
 		// shell, so the section follows that route instead of forbidding the shell readers it names.
 		expect(research).not.toMatch(/\bnot (?:rg|grep|cat|sed)\b/);

@@ -3,7 +3,8 @@ import path from "node:path";
 import readline from "node:readline";
 import { type EvidenceRead, formatAnchor, type SourceAnchor } from "@octocodeai/octocode-contracts/evidence";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { compactions } from "../../../../db/src/api.ts";
+import { transcriptText } from "../history/transcript-text.ts";
+import { compactions, sessions as sessionRows, transcripts } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { segmentFiles, segmentsIn } from "../history/archive.ts";
 import { entryText, findEntry } from "../history/archive/entries.ts";
@@ -70,16 +71,25 @@ function page(anchor: SourceAnchor, found: Found, cursor: string | undefined, li
 	};
 }
 
-const text = (content: unknown): string =>
-	typeof content === "string"
-		? content
-		: Array.isArray(content)
-			? content
-					.flatMap((part) =>
-						isRecord(part) && part.type === "text" && typeof part.text === "string" ? [part.text] : [],
-					)
-					.join("\n\n")
-			: "";
+/** The text of a parsed transcript entry, as a search shows it; undefined for an entry that carries none. */
+function foundOf(entry: unknown): Found | undefined {
+	const read = transcriptText(entry);
+	return read ? { author: read.role, ...(read.time ? { time: read.time } : {}), text: read.text } : undefined;
+}
+
+/** The entry of a session's mirrored transcript (the database copy every session has, the current one included). */
+function mirroredEntry(
+	sessionId: string,
+	workspaceId: string,
+	entryId: string,
+	env: NodeJS.ProcessEnv,
+): Found | undefined {
+	const agent = sharedAgentDb(env);
+	if (!transcripts.stamp(agent.mirror.db, sessionId)) return undefined;
+	if (sessionRows.byId(agent.db, sessionId)?.workspace_id !== workspaceId) return undefined;
+	const line = transcripts.entry(agent.mirror.db, sessionId, entryId);
+	return line ? foundOf(JSON.parse(line)) : undefined;
+}
 
 /** The entry `entryId` of a session file, streamed; undefined when the file is not that session's or lacks the entry. */
 async function transcriptEntry(
@@ -105,19 +115,7 @@ async function transcriptEntry(
 			if (!line.includes(needle)) continue;
 			const entry: unknown = JSON.parse(line);
 			if (!isRecord(entry) || entry.id !== entryId) continue;
-			const time = typeof entry.timestamp === "string" ? entry.timestamp : undefined;
-			const message = isRecord(entry.message) ? entry.message : undefined;
-			if (entry.type === "message" && message)
-				return {
-					author: typeof message.role === "string" ? message.role : "unknown",
-					...(time ? { time } : {}),
-					text: text(message.content),
-				};
-			if (entry.type === "custom_message")
-				return { author: "custom", ...(time ? { time } : {}), text: text(entry.content) };
-			if (entry.type === "compaction" && typeof entry.summary === "string")
-				return { author: "compaction", ...(time ? { time } : {}), text: entry.summary };
-			return undefined;
+			return foundOf(entry);
 		}
 		return undefined;
 	} finally {
@@ -143,14 +141,14 @@ export async function readEvidence(
 	const session = historySessions(cwd, env).find((candidate) => candidate.id === anchor.sessionId);
 	if (!session) return missing;
 	if (anchor.kind === "transcript") {
+		let found = mirroredEntry(anchor.sessionId, session.workspaceId, anchor.entryId, env);
 		const file = session.record?.transcript;
-		if (!file) return missing;
-		let found: Found | undefined;
-		try {
-			found = await transcriptEntry(file, anchor.sessionId, anchor.entryId, options.signal);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") return missing;
-			throw error;
+		if (!found && file) {
+			try {
+				found = await transcriptEntry(file, anchor.sessionId, anchor.entryId, options.signal);
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			}
 		}
 		return found ? page(anchor, found, options.cursor, limit) : missing;
 	}

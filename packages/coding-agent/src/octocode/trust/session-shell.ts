@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { psFieldsSync } from "@octocodeai/octocode-common/process-start";
 import { isProcessTitle } from "../shared/process-title.ts";
 
 /**
@@ -22,18 +22,9 @@ const MAX_ANCESTORS = 32;
 
 /** One process's parent and command, from `ps`; undefined when it cannot say (no `ps`, as on Windows, or no such process). */
 function processRow(pid: number): { ppid: number; command: string } | undefined {
-	try {
-		const row = /^\s*(\d+)\s+(.*)$/s.exec(
-			execFileSync("ps", ["-o", "ppid=,command=", "-p", String(pid)], {
-				encoding: "utf8",
-				timeout: 2000,
-				stdio: ["ignore", "pipe", "ignore"],
-			}),
-		);
-		return row ? { ppid: Number(row[1]), command: row[2] ?? "" } : undefined;
-	} catch {
-		return undefined;
-	}
+	const out = psFieldsSync(pid, "ppid=,command=");
+	const row = out === undefined ? null : /^\s*(\d+)\s+(.*)$/s.exec(out);
+	return row ? { ppid: Number(row[1]), command: row[2] ?? "" } : undefined;
 }
 
 /**

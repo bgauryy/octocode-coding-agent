@@ -74,8 +74,6 @@ function policyFlags(input: PromptInputs) {
 	const web = input.canWeb !== false;
 	const days = input.scratchDays ?? resolveRetention().days;
 	const research = input.research;
-	const bare = (tool: string) =>
-		`\`${research && tool.startsWith(research.prefix) ? tool.slice(research.prefix.length) : tool}\``;
 	return {
 		// Audience: the session that answers the user, or a subagent working to its task (which its parent wrote for the user).
 		main,
@@ -87,7 +85,7 @@ function policyFlags(input: PromptInputs) {
 		// there) and the reader by name behind `localReader`; its search tools stay unnamed, since no flag says which are declared.
 		research: research !== undefined,
 		"research.prefix": research?.prefix ?? "",
-		"research.reader": research ? bare(research.reader) : "",
+		"research.reader": research ? `\`${research.reader}\`` : "",
 		shell,
 		web,
 		mcp: input.canMcp !== false,

@@ -20,6 +20,12 @@ import {
 import { commandsFor } from "../config/calls.ts";
 import type { HookEvent } from "../catalog.ts";
 import type { HookHandler } from "../contracts.ts";
+import type { EventPolicy } from "./event-policy.ts";
+
+/** A stop from any Stop or SubagentStop hook is the whole answer: nothing else it returned counts. */
+export const stopPolicy: EventPolicy = {
+	decide: (verdicts) => (verdicts.some((verdict) => verdict.stop) ? { stop: true } : undefined),
+};
 
 /**
  * Shows `label` in the footer status while `work` runs, with its elapsed time in the TUI. For hooks that run after Octocode

@@ -8,6 +8,11 @@ import { CODEX_PATCH_NAMES } from "../patch.ts";
 import { capContext } from "../runner.ts";
 import type { Dispatch, HookSession } from "./types.ts";
 
+import { blockOnFailure, type EventPolicy } from "./event-policy.ts";
+
+/** A PostToolUse hook that fails blocks only with `onFailure: "block"`. */
+export const postToolUsePolicy: EventPolicy = { settle: blockOnFailure };
+
 /** PostToolUse: feedback from the hooks is appended to the tool result the model reads. */
 export function registerPostToolUseHook(
 	api: FeatureSetup,

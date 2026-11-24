@@ -1,6 +1,7 @@
 import type { CacheControlEphemeral } from "./shapes.ts";
 import type { CacheRetention, Model, ProviderEnv } from "../../types.ts";
 import { ANTHROPIC_LONG_CACHE_HOSTS, OPENROUTER_LONG_CACHE_MODEL_PREFIX } from "../../utils/cache-capability-data.ts";
+import { CACHE_PROFILES } from "../../utils/cache-profiles.ts";
 import { resolveCacheRetention } from "../../utils/cache-policy.ts";
 import { isOpenRouterModel, matchesHost } from "../../utils/provider-host.ts";
 
@@ -13,7 +14,10 @@ function getCacheControl(
 	if (retention === "none") {
 		return { retention };
 	}
-	const ttl = retention === "long" && getAnthropicCompat(model).supportsLongCacheRetention ? "1h" : undefined;
+	const ttl =
+		retention === "long" && getAnthropicCompat(model).supportsLongCacheRetention
+			? CACHE_PROFILES.anthropic.ttl.long
+			: undefined;
 	return {
 		retention,
 		cacheControl: { type: "ephemeral", ...(ttl && { ttl }) },

@@ -237,7 +237,7 @@ export async function createSessionFromServices(
 		async (event) => featureHostRef.current?.emitCacheWarmingDecision(event) ?? event.action,
 		{ pool: idleGaps, recordGaps: !subagent },
 	);
-	const promptCacheKey = sessionPromptCacheKey(sessionManager, cwd);
+	const promptCacheKey = sessionPromptCacheKey(sessionManager);
 	const buildRequestOptions = (
 		requestModel: Model<any>,
 		options: ModelsSimpleStreamOptions = {},

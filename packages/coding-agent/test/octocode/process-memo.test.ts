@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as importedModule2 from "../../src/octocode/shared/process.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import * as importedModule3 from "../../src/octocode/team/store.ts";
+import { resetPsSnapshot } from "../../src/octocode/shared/ps-snapshot.ts";
 import { refreshProcessTable, resetProcessTable } from "../../src/octocode/shared/process-table.ts";
 import { tmp } from "./helpers.ts";
 
@@ -149,6 +150,7 @@ describe("sameProcess is one memoized judgement", () => {
 	it("answers liveness on a timer without running ps on the calling thread: one asynchronous ps -A serves every caller", async () => {
 		const who = await peer();
 		resetProcessTable();
+		resetPsSnapshot();
 		ps.calls = 0;
 		ps.async = 0;
 		// Nothing known yet: alive counts, and one table read is asked for, however many callers ask.
@@ -165,6 +167,7 @@ describe("sameProcess is one memoized judgement", () => {
 		expect(sameProcess(who.pid, who.started)).toBe(true);
 		expect(ps.calls).toBe(0);
 		expect(ps.async).toBe(1);
+		resetPsSnapshot(); // the second the read is kept for has passed
 		// A table older than the TTL asks for a new one before it vouches for a process again (alive counts meanwhile);
 		// a reused pid it saw stays gone without asking.
 		expect(liveProcess(who.pid, String(Number(who.started) - 5), Date.now() + VERDICT_TTL_MS)).toBe(false);

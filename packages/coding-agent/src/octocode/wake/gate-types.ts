@@ -1,10 +1,12 @@
-import type { FeatureSetup } from "../../core/features/index.ts";
+import type { FeatureContext, FeatureSetup } from "../../core/features/index.ts";
 import type { WakeLine } from "../../core/wake-entry.ts";
 import type { Source } from "../events/source-types.ts";
 import type { Priority } from "../events/loop/types.ts";
 import type { PayloadEvent as AgentEvent } from "../events/topics.ts";
 
 export type Message = Parameters<FeatureSetup["session"]["sendMessage"]>[0];
+/** What an urgent send needs of the session to stop its run (`FeatureContext`). */
+export type SessionStop = Pick<FeatureContext, "isIdle" | "abort" | "signal">;
 export type SendOptions = NonNullable<Parameters<FeatureSetup["session"]["sendMessage"]>[1]>;
 
 /** Wake events remembered for the next row; older ones are dropped, as are events a run never started for. */

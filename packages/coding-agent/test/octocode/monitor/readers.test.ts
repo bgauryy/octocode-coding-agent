@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { busiest, parseCpuTable } from "../../../src/octocode/monitor/busiest.ts";
+import { busiest, type CpuRow } from "../../../src/octocode/monitor/busiest.ts";
 import {
 	type MachineReaderDeps,
 	parseIoregGpu,
@@ -90,8 +90,26 @@ describe("machine readers", () => {
 	});
 });
 
+/** Rows from `pid ppid cpu rss command` lines; lines that do not fit are dropped. */
+function cpuRows(text: string): CpuRow[] {
+	return text.split("\n").flatMap((line) => {
+		const match = /^\s*(\d+)\s+(\d+)\s+([\d.]+)\s+(\d+)\s+(.*)$/.exec(line);
+		return match
+			? [
+					{
+						pid: Number(match[1]),
+						ppid: Number(match[2]),
+						cpu: Number(match[3]),
+						rssKb: Number(match[4]),
+						command: match[5],
+					},
+				]
+			: [];
+	});
+}
+
 describe("busiest processes", () => {
-	const table = parseCpuTable(
+	const table = cpuRows(
 		[
 			"    1     0   0.0   1000 /sbin/launchd",
 			"76174     1  12.0 900000 octocode-agent-main-3cb050d2",
@@ -103,7 +121,7 @@ describe("busiest processes", () => {
 		].join("\n"),
 	);
 
-	it("parses ps rows and drops lines that do not parse", () => {
+	it("reads pid, parent, CPU, memory and command of each row", () => {
 		expect(table).toHaveLength(6);
 		expect(table[3]).toEqual({
 			pid: 14108,
@@ -127,7 +145,7 @@ describe("busiest processes", () => {
 	});
 
 	it("owns only what a session or its descendants started, never the editor above it", () => {
-		const rows = parseCpuTable(
+		const rows = cpuRows(
 			[
 				"  900     1   2.0 100000 /Applications/Visual Studio Code.app/Contents/MacOS/Electron",
 				"  975   900   9.0 1500000 /Applications/Visual Studio Code.app/Code Helper (Plugin)",

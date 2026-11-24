@@ -1,3 +1,4 @@
+import { identityBlock } from "../../src/octocode/native/prompts/task.ts";
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -167,9 +168,18 @@ describe("reserving at the start", () => {
 	it("names the paths in the child's assignment", async () => {
 		const s = setup();
 		const result = await s.run({ task: "echo whole task", paths: ["a.ts", "src/"] });
-		expect(textOf(result)).toContain(
-			"Reserved for you until you report, so other agents cannot edit them: `a.ts`, `src/`; they need no `coordinate` lock or unlock.",
-		);
+		const reserved = "`a.ts`, `src/`";
+		// What the identity says about reserved paths: the text they add to the rendered `subagent/identity.md`.
+		const named = identityBlock({ id: "x", reservedPaths: ["a.ts", "src/"] });
+		const bare = identityBlock({ id: "x" });
+		let start = 0;
+		while (named[start] === bare[start]) start++;
+		let end = 0;
+		while (named.at(-1 - end) === bare.at(-1 - end)) end++;
+		const clause = named.slice(start, named.length - end).trim();
+		expect(clause).toContain(reserved);
+		expect(clause.length).toBeGreaterThan(reserved.length);
+		expect(textOf(result)).toContain(clause);
 	});
 
 	it("folds a repeated path and one a named tree covers", async () => {

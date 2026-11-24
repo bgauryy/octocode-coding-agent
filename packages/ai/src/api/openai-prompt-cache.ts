@@ -1,4 +1,6 @@
 import type { CacheRetention, OpenAIResponsesCompat, StreamOptions } from "../types.ts";
+import { CACHE_PROFILES } from "../utils/cache-profiles.ts";
+import { responsesCacheProfile } from "../utils/cache-profile-resolve.ts";
 import {
 	resolveCacheRetention,
 	resolveInstructionCacheRetention,
@@ -37,7 +39,8 @@ type CacheCompat = Pick<
 >;
 
 function toTtl(retention: CacheRetention, compat: CacheCompat): OpenAIPromptCacheTtl {
-	return retention === "long" && compat.supportsLongCacheRetention ? "12h" : "30m";
+	const { ttl } = CACHE_PROFILES.openaiExplicit;
+	return retention === "long" && compat.supportsLongCacheRetention ? ttl.long : ttl.default;
 }
 
 /**
@@ -64,14 +67,22 @@ export function resolveOpenAIResponsesCacheFields(
 	breakpointsCarryTtl = true,
 ): OpenAIResponsesCacheFields {
 	const history = resolveCacheRetention(options?.cacheRetention, options?.env);
+	const profile = responsesCacheProfile(compat);
+	// Unlike Chat Completions (`completionsCacheProfile` limits the key to api.openai.com and hosts that opt in), every
+	// Responses host here documents `prompt_cache_key` (OpenAI, Azure, xAI, OpenCode, Codex, Bedrock's OpenAI models),
+	// and a custom Responses host is by definition one that implements OpenAI's request shape.
 	const fields: OpenAIResponsesCacheFields = {
-		prompt_cache_key: history === "none" ? undefined : clampOpenAIPromptCacheKey(resolvePromptCacheKey(options)),
+		prompt_cache_key:
+			history === "none" || profile.key === "never"
+				? undefined
+				: clampOpenAIPromptCacheKey(resolvePromptCacheKey(options)),
 	};
 	if (omitUnsupportedFields) return fields;
 	const instructions = resolveInstructionCacheRetention(options);
-	if (!compat.supportsExplicitPromptCacheMode) {
+	if (profile.mechanism !== "explicit-breakpoint") {
 		const long = history === "long" || (history !== "none" && instructions === "long");
-		if (long && compat.supportsLongCacheRetention) fields.prompt_cache_retention = "24h";
+		if (long && compat.supportsLongCacheRetention && profile.extendedRetention)
+			fields.prompt_cache_retention = profile.extendedRetention;
 		return fields;
 	}
 	if (history === "none") {

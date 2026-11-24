@@ -1,12 +1,12 @@
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
 import { INSTRUCTION_CACHE_RETENTION_ENV } from "@octocodeai/octocode-ai/utils/cache-policy";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { CACHE_RETENTION_ENV } from "@octocodeai/octocode-common/env";
 import { resolveConfiguredCache } from "../../src/core/cache-configuration.ts";
 import { sessionChildren } from "../../src/octocode/child-sessions/session-children.ts";
 import { childHookMode, type HookMode, sessionHookMode } from "../../src/octocode/shared/hook-mode.ts";
 import { agentToolSpec } from "../../src/octocode/native/tools/agent/spec.ts";
-import { type AgentRuns, claimRun, type RunPlan, Slots } from "../../src/octocode/subagents/claim.ts";
+import { type AgentRuns, claimRun, type RunPlan, Slots, swarmLimits } from "../../src/octocode/subagents/claim.ts";
 import { type CacheChoice, defaultTaskCache, subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
 import { type AgentProfile, parseProfile } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
@@ -34,6 +34,7 @@ function start(
 		running: new Map(),
 		items: new Map(),
 		slots: new Slots(),
+		limits: swarmLimits(options.env ?? {}),
 	} as unknown as AgentRuns;
 	const ctx = {
 		cwd: tmp("task-options-"),
@@ -203,12 +204,9 @@ describe("a subagent's cache tier", () => {
 		expect(start({ background: true, isolate: true }, { profile: { linger: 300 } })).toMatchObject({
 			history: "short",
 		});
-		vi.stubEnv("OCTOCODE_SUBAGENT_LINGER_SECONDS", "600");
-		try {
-			expect(start({ background: true })).toMatchObject({ history: "long" });
-		} finally {
-			vi.unstubAllEnvs();
-		}
+		expect(start({ background: true }, { env: { OCTOCODE_SUBAGENT_LINGER_SECONDS: "600" } })).toMatchObject({
+			history: "long",
+		});
 		// A long request budget: the profile's, else the environment's.
 		expect(start({}, { profile: { maxRequests: 400 } })).toMatchObject({ history: "long" });
 		expect(start({}, { profile: { maxRequests: 0 } })).toMatchObject({ history: "long" });

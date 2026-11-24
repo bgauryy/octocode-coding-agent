@@ -7,7 +7,7 @@ import { USER_SENDER } from "../shared/messages.ts";
 import type { ResumeRequest } from "../team/session/send.ts";
 import type { ReportStatus } from "../native/prompts/report.ts";
 import { followUpText } from "./follow-up.ts";
-import { type AgentRuns, claimRun, maxSubagents, reachableSeconds, type Run, subagentLimitError } from "./claim.ts";
+import { type AgentRuns, claimRun, reachableSeconds, type Run, subagentLimitError } from "./claim.ts";
 import { joinTeamPatiently } from "./team-join.ts";
 import { askSpawn, profileSelectsBrowser } from "./profiles.ts";
 import { allParked, readParked, writeParked, type ParkedWorker } from "./parked.ts";
@@ -221,7 +221,7 @@ export class Lingering {
 		const session = this.runs.session;
 		const secondsFor = (outcome?: ReportStatus, awaited?: AwaitedReply): number =>
 			session === this.runs.session
-				? reachableSeconds(outcome, process.env, run.profile?.linger, awaited !== undefined)
+				? reachableSeconds(outcome, this.runs.limits, run.profile?.linger, awaited !== undefined)
 				: 0;
 		const open = (outcome?: ReportStatus, awaited?: AwaitedReply, spent?: RunSpend): string => {
 			const seconds = secondsFor(outcome, awaited);
@@ -282,7 +282,7 @@ export class Lingering {
 		// A resume like a `resume` task: past `subagents.maxCost` it is refused, and the user told, the same way.
 		refuseOverLimit(runs.api, ctx, runs, id);
 		// A message is answered now: over the limit it is refused, not left waiting for a slot.
-		if (!runs.slots.tryTake()) throw new Error(subagentLimitError(runs.running.keys(), maxSubagents()));
+		if (!runs.slots.tryTake()) throw new Error(subagentLimitError(runs.running.keys(), runs.limits.maxSubagents));
 		this.resuming.add(id);
 		let run: Run | undefined;
 		let retaken = "";

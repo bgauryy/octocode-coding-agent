@@ -665,7 +665,7 @@ describe("subagent dialogs relayed to the parent", () => {
 			{ permission: parent("manual").permission, ui: dialogs },
 			{ hold: true, signal: controller.signal },
 		);
-		await vi.waitFor(() => expect(dialogs.select).toHaveBeenCalled(), { timeout: 10_000 });
+		await vi.waitFor(() => expect(dialogs.select).toHaveBeenCalled());
 		controller.abort();
 		// The child, told nobody answered, ends with what it had; the dialog is closed in the parent's UI.
 		await expect(run).resolves.toMatchObject({ answers: [{ id: "d1", cancelled: true }] });

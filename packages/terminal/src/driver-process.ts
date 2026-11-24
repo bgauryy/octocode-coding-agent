@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { readDriverLines } from "./driver-lines.ts";
 import type { DriverMatch } from "./types.ts";
 
@@ -47,7 +48,8 @@ export class DriverProcess {
 	private stopReading: (() => void) | undefined;
 	private retainedMatches = 0;
 	private retainedCharacters = 0;
-	private stallTimer: ReturnType<typeof setInterval> | undefined;
+	/** Stops the stall watch's clock subscription while requests wait. */
+	private stopStallWatch: (() => void) | undefined;
 	private closed = false;
 	private readonly timings: DriverTimings;
 	private readonly onExit: () => void;
@@ -200,18 +202,17 @@ export class DriverProcess {
 	}
 
 	private watchStalls(): void {
-		if (this.stallTimer) return;
-		this.stallTimer = setInterval(
+		if (this.stopStallWatch) return;
+		this.stopStallWatch = sharedClock.subscribe(
 			() => {
 				const oldest = this.pending.values().next().value?.startedAt;
 				if (this.pending.size === 0) {
-					clearInterval(this.stallTimer);
-					this.stallTimer = undefined;
+					this.stopStallWatch?.();
+					this.stopStallWatch = undefined;
 				} else if (oldest !== undefined && Date.now() - oldest > this.timings.stallMs) this.close();
 			},
-			Math.max(50, Math.floor(this.timings.stallMs / 4)),
+			{ everyMs: Math.max(50, Math.floor(this.timings.stallMs / 4)) },
 		);
-		this.stallTimer.unref?.();
 	}
 
 	/** Stops the shell and answers every waiting request with undefined. */
@@ -223,8 +224,8 @@ export class DriverProcess {
 		this.resolveReady(false);
 		this.stopReading?.();
 		this.stopReading = undefined;
-		if (this.stallTimer) clearInterval(this.stallTimer);
-		this.stallTimer = undefined;
+		this.stopStallWatch?.();
+		this.stopStallWatch = undefined;
 		for (const entry of this.pending.values()) entry.resolve(undefined);
 		this.pending.clear();
 		this.retainedMatches = 0;

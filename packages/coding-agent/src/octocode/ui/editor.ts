@@ -170,9 +170,16 @@ export function registerEditor(api: FeatureSetup, permission: EditorPermission):
 	let installed: EditorFactory | undefined;
 	let context: FeatureContext;
 	let started = false;
-	// A passing note in the bottom rule (`prompt-note.ts`) repaints the prompt when it comes and goes.
+	// A passing note in the bottom rule (`prompt-note.ts`) repaints the prompt when it comes and goes. Its listener set is
+	// module-level, so the subscription ends with the session: kept, it would hold this host and its session after a
+	// /new, /resume or /reload.
 	let repaint: (() => void) | undefined;
-	onPromptNote(() => repaint?.());
+	let stopNotes: (() => void) | undefined;
+	api.bus.on("session_shutdown", async () => {
+		stopNotes?.();
+		stopNotes = undefined;
+		repaint = undefined;
+	});
 	const sample = (ctx: FeatureContext) => {
 		started = ctx.sessionManager.getBranch().some((entry) => entry.type === "message");
 	};
@@ -182,6 +189,7 @@ export function registerEditor(api: FeatureSetup, permission: EditorPermission):
 	api.bus.on("session_tree", async (_event, ctx) => sample(ctx));
 	api.bus.on("session_start", async (_event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
+		stopNotes ??= onPromptNote(() => repaint?.());
 		context = ctx;
 		sample(ctx);
 		const previous = ctx.ui.getEditorComponent();

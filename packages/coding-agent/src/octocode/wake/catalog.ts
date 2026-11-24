@@ -76,12 +76,6 @@ export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 		label: (p) => `job ${p.job} exit ${p.exit ?? "?"} · ${Math.round(p.durationMs / 1000)}s`,
 		key: (p) => `job:${p.job}:${p.startedAt}${p.log ? `:${p.log}` : ""}`,
 	},
-	"item.state": {
-		listener: "explicit",
-		wakes: "yes",
-		label: (p) => `${p.ref} is ${p.state}`,
-		key: (p) => `item:${p.ref}:${p.state}`,
-	},
 	"item.ready": {
 		listener: "implicit",
 		wakes: "yes",
@@ -89,29 +83,11 @@ export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 			p.prerequisites.length > 0 ? `${p.ref} ready: ${p.prerequisites.join(", ")} done` : `${p.ref} ready`,
 		key: (p) => `ready:${p.ref}`,
 	},
-	"item.changed": {
-		listener: "explicit",
-		wakes: "yes",
-		label: (p) => `${p.ref} ${p.change} by ${clipText(p.by, 24)}`,
-		key: (p) => `changed:${p.ref}:${p.change}:${p.by}`,
-	},
-	"peer.landed": {
-		listener: "explicit",
-		wakes: "yes",
-		label: (p) => `${p.ref} landed: ${p.how}`,
-		key: (p) => `landed:${p.ref}:${p.how}`,
-	},
 	"item.peer": {
 		listener: "implicit",
 		wakes: "yes",
 		label: (p) => `${p.ref} ${p.change} by ${clipText(p.by, 24)} (${p.relation})`,
 		key: (p) => `peer:${p.ref}:${p.id}`,
-	},
-	"path.unlocked": {
-		listener: "explicit",
-		wakes: "yes",
-		label: (p) => `${p.path} unlocked`,
-		key: (p) => `unlocked:${p.path}`,
 	},
 	"machine.load": {
 		listener: "explicit",
@@ -181,9 +157,6 @@ export const EVENT_KINDS = Object.keys(CATALOG) as AgentEventKind[];
 
 /** The kinds a user or an agent can name: a hook run is the loop's own record. */
 const NAMED_KINDS = EVENT_KINDS.filter((kind) => !isLifecycleTopic(kind));
-
-/** The kinds a `wait` can listen for: the ones that need the agent to ask. */
-export const EXPLICIT_EVENTS: AgentEventKind[] = EVENT_KINDS.filter((kind) => CATALOG[kind].listener === "explicit");
 
 /** The kind `value` names, or an error naming the choices. */
 export function parseEventKind(value: unknown): AgentEventKind {

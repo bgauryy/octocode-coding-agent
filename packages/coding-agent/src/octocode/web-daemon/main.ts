@@ -5,6 +5,7 @@ import { processStartTime } from "../shared/process.ts";
 import { processTitle, setProcessTitle, WEB_DAEMON_ROLE } from "../shared/process-title.ts";
 import { TEST_GUARD_FILE_ENV, TEST_PROTECTED_HOMES_ENV } from "../../storage/state-paths.ts";
 import { RotatingLog } from "../shared/rotating-log.ts";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
 import { acquireRegistryLock } from "../backlog/shared-web-lock.ts";
 import type { DaemonPage } from "./build.ts";
@@ -49,26 +50,25 @@ export async function startWebDaemon(
 	const idleLimit = idleMinutes * 60_000;
 	let lastActivity = Date.now();
 	let stopping: Promise<void> | undefined;
-	let drainTimer: ReturnType<typeof setInterval> | undefined;
+	let stopDrainTimer: (() => void) | undefined;
 	let onStopped: () => void = () => {};
 	const stopped = new Promise<void>((resolve) => (onStopped = resolve));
 	let server: DaemonServer | undefined;
 	let nonce = "";
 	const { routes: configRoutes, signIns } = createConfigRoutes({ env, actor: () => `web:${nonce.slice(0, 8)}` });
-	const idleTimer = setInterval(
+	const stopIdleTimer = sharedClock.subscribe(
 		() => {
 			if (!server || server.draining) return;
 			if (server.tabs.count > 0 || server.registry.attached > 0 || server.remote.peers > 0) lastActivity = Date.now();
 			else if (Date.now() - lastActivity >= idleLimit) void shutdown();
 		},
-		Math.min(1000, Math.max(50, idleLimit / 4)),
+		{ everyMs: Math.min(1000, Math.max(50, idleLimit / 4)) },
 	);
-	idleTimer.unref();
 	const dropRecord = () => removeRecord(paths.record, (text) => text.includes(nonce));
 	const shutdown = (): Promise<void> =>
 		(stopping ??= (async () => {
-			clearInterval(idleTimer);
-			clearInterval(drainTimer);
+			stopIdleTimer();
+			stopDrainTimer?.();
 			signIns.closeAll();
 			dropRecord();
 			await server?.close().catch(() => undefined);
@@ -92,10 +92,12 @@ export async function startWebDaemon(
 				void release?.().catch(() => undefined);
 				release = undefined;
 				const deadline = Date.now() + DRAIN_LIMIT_MS;
-				drainTimer = setInterval(() => {
-					if ((server?.tabs.count ?? 0) === 0 || Date.now() >= deadline) void shutdown();
-				}, 500);
-				drainTimer.unref();
+				stopDrainTimer = sharedClock.subscribe(
+					() => {
+						if ((server?.tabs.count ?? 0) === 0 || Date.now() >= deadline) void shutdown();
+					},
+					{ everyMs: 500 },
+				);
 			},
 		});
 	} catch (error) {

@@ -98,8 +98,8 @@ export const SEPARATOR = " · ";
 
 /** Motion timings, in milliseconds. */
 export const MOTION = {
-	/** Spinner frame interval. */
-	spinnerMs: 100,
+	/** Spinner frame interval: each frame repaints the terminal (in VS Code also its renderer and the window server), so 5 a second. */
+	spinnerMs: 200,
 	/** How long a foreground spinner stays hidden after it starts: work that ends sooner never flashes one. */
 	spinnerDelayMs: 200,
 	/** A light band crossing a live label (thinking, the working verb); every band shares one epoch, so labels sweep in step. */
@@ -108,8 +108,8 @@ export const MOTION = {
 	breathePeriodMs: 1_600,
 	/** How long a just-finished mark glows before it settles. */
 	flashMs: 450,
-	/** Frame interval of breathe and flash: smooth enough, a tenth of the spinner's wakeups. */
-	glowFrameMs: 100,
+	/** Frame interval of breathe and flash: smooth enough, on the spinner's beat so the two share wakeups. */
+	glowFrameMs: 200,
 	/** Step of decoration while the terminal is unfocused: it keeps moving, slowly, so a background session still looks alive. */
 	unfocusedDecorMs: 500,
 	/** Elapsed-time counters. */

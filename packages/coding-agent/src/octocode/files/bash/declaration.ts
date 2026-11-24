@@ -57,6 +57,11 @@ export const bashParameters = Type.Object({
 			description: "Background: start anew though an identical job runs",
 		}),
 	),
+	wake: Type.Optional(
+		Type.Boolean({
+			description: "Background: false: a success is only noted, a failure still wakes you",
+		}),
+	),
 	verify: Type.Optional(
 		Type.Boolean({
 			description: "Record verification for current edits (later edits make it stale)",

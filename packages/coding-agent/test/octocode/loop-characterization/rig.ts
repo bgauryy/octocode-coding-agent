@@ -1,10 +1,12 @@
 import { fauxAssistantMessage, type TranscriptContext } from "@octocodeai/octocode-ai";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { Type } from "typebox";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import type { FeatureContext, FeatureSetup } from "../../../src/core/features/index.ts";
 import type { LiveLoop } from "../../../src/octocode/events/loop/live.ts";
 import type { LiveHandle, LiveHostOptions } from "../../../src/octocode/wake/live-host.ts";
+import { sessionPhaseOf } from "../../../src/octocode/shared/session-phase.ts";
+import { sessionStore } from "../../../src/octocode/wake/live-durable.ts";
 import { registerWake } from "../../../src/octocode/wake/register.ts";
 import { wakeGateOf, WAKE_TYPE, type Held } from "../../../src/octocode/wake/gate.ts";
 import {
@@ -60,7 +62,6 @@ export async function createRig(options: RigOptions = {}): Promise<Rig> {
 	harnessOptions.settings = {
 		...harnessOptions.settings,
 		runtime: { eventWindowSeconds: 0, ...harnessOptions.settings?.runtime },
-		subagents: { wakeHoldSeconds: 0, ...harnessOptions.settings?.subagents },
 	};
 	let captured: FeatureSetup | undefined;
 	let context: FeatureContext | undefined;
@@ -99,6 +100,39 @@ export async function createRig(options: RigOptions = {}): Promise<Rig> {
 		live: () => liveHandle?.loop(),
 		cleanup: harness.cleanup,
 	};
+}
+
+/**
+ * The session holds a wake it has not delivered: it is idle, its status names one wake about to resume it, and nothing
+ * containing `text` has reached the model or the branch. A wake that was sent instead of held has started its run by now.
+ */
+export async function expectHeld(rig: Rig, text: string): Promise<void> {
+	for (let turn = 0; turn < 3; turn++) {
+		await new Promise((resolve) => setImmediate(resolve));
+		await rig.live()?.pendingHandoff();
+		await rig.harness.session.waitForIdle();
+	}
+	expect(pendingWakes(rig)).toHaveLength(1);
+	expect(rig.requests).toHaveLength(0);
+	expect(count(branchLines(rig.harness), text)).toBe(0);
+}
+
+/** What names a session to its event log, for the session that resumes it. */
+export const sessionOf = (rig: Rig) => ({
+	cwd: rig.ctx.cwd,
+	sessionManager: { getSessionId: () => rig.ctx.sessionManager.getSessionId() },
+});
+
+/** The session's own event log holds `owed` events it has not delivered: what a restart of it would find and replay. */
+export async function expectLogged(rig: Rig, owed: number): Promise<void> {
+	const log = await sessionStore(sessionOf(rig));
+	await vi.waitFor(() => expect(log.unread()).toHaveLength(owed));
+}
+
+/** Every topic the session's event log recorded for it, delivered or not, oldest first. */
+export async function recordedTopics(rig: Rig): Promise<string[]> {
+	const log = await sessionStore(sessionOf(rig));
+	return log.unread(undefined, 0).map((event) => event.topic);
 }
 
 /** A tool that returns once the test calls `release` or the run is aborted; `started` resolves when the model's call began. */
@@ -143,6 +177,25 @@ export function branchLines(harness: Harness): string[] {
 }
 
 export { wakeGateOf };
+
+/** The wakes the session holds or has sent whose turn has not begun: what its status shows as about to resume it. */
+export const pendingWakes = (rig: Rig): readonly string[] => sessionPhaseOf(rig.api).factsNow().wakes;
+
+/**
+ * Resolves once nothing sent to the session is still on its way: no wake is pending, no hand-over is being written and no
+ * run is in progress. Call it after the producer under test has finished its own work: a wake that producer sent has then
+ * reached the model (`rig.requests`) and the branch, so "it woke nobody" is a statement about a finished producer and not
+ * about how long the test slept.
+ */
+export async function quiet(rig: Rig): Promise<void> {
+	for (;;) {
+		await vi.waitFor(() => expect(pendingWakes(rig)).toEqual([]), { timeout: 15_000, interval: 5 });
+		await rig.live()?.pendingHandoff();
+		await rig.harness.session.waitForIdle();
+		await new Promise((resolve) => setImmediate(resolve));
+		if (pendingWakes(rig).length === 0 && !rig.harness.session.isStreaming) return;
+	}
+}
 
 /** A completion queued behind the session's compaction lock. */
 export function expectExitQueued(rig: Rig) {

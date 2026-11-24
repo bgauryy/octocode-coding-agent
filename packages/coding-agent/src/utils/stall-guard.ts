@@ -57,6 +57,7 @@ const beat = new Int32Array(workerData.shared);
 let seen = Atomics.load(beat, 0);
 let since = Date.now();
 let ticked = since;
+// A raw timer: this source runs in a worker thread, which cannot reach the main thread's shared clock.
 setInterval(() => {
 	const now = Date.now();
 	if (now - ticked > workerData.beatMs * 5) since = now;
@@ -114,6 +115,7 @@ export function watchMainThread(options: { limitMs?: number; notePath?: string }
 	}
 	watch.unref();
 	const beat = new Int32Array(shared);
+	// oxlint-disable-next-line no-restricted-globals -- the beat proves the main thread's loop turns, for a watcher in a worker thread: it needs its own timer
 	const timer = setInterval(() => Atomics.add(beat, 0, 1), BEAT_MS);
 	timer.unref();
 	return () => {

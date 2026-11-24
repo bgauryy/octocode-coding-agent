@@ -66,8 +66,6 @@ export const SETTINGS_DEFAULTS = {
 	sandbox: { mode: "off" as SandboxMode, allowUnsandboxed: true },
 	backlog: { qa: "important" as "important" | "all" | "off" },
 	subagents: {
-		/** The event loop's window (`runtime.eventWindowSeconds`): wakes merge alike whichever scheduler delivers them. */
-		wakeHoldSeconds: RUNTIME_DEFAULTS.eventWindowSeconds,
 		peerOverlapWake: true,
 	},
 	monitor: MONITOR_DEFAULTS,

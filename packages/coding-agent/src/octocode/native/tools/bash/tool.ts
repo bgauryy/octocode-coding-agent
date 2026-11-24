@@ -6,7 +6,7 @@ import { createBashToolDefinition } from "../../../../core/tools/index.ts";
 import { carrySavedOutput } from "../../../../core/tools/bash/stored-result.ts";
 import { type Subcommands, say } from "../../../shared/commands.ts";
 import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
-import { runningWorkOf, type WorkRow } from "../../../shared/running-work.ts";
+import { runningWorkOf } from "../../../shared/running-work.ts";
 import { contentText, wholeSeconds } from "../../../shared/util.ts";
 import { BashJobs } from "../../../files/bash-jobs.ts";
 import { reapForegroundGroups } from "../../../files/bash-groups.ts";
@@ -39,6 +39,7 @@ import { type JobLinks, registerJobsCommand, reloadNotice } from "../../../files
 import { type ShellSettings, shellSettings, shellScript } from "../../../files/bash-jobs/shell.ts";
 import { backgroundJoined, backgroundStarted } from "../../../files/bash/background.ts";
 import { backgroundJoins } from "./background-joins.ts";
+import { jobWorkRows } from "./work-rows.ts";
 import { bashDescription, bashOutputSchema, bashParameters } from "../../../files/bash/declaration.ts";
 import { capturePipeStatus } from "./pipe-status.ts";
 import { ownerSpawnHook, runOwner, withRunOwner } from "./owner-env.ts";
@@ -81,24 +82,11 @@ export function registerBashTool(
 		() => closing,
 		(text) => current && say(current, text, "warning"),
 	);
-	/** Publishes the running jobs to the footer's typed counts and the work rows above it (`team/panel.ts`). */
-	const showJobs = () =>
-		work.set(
-			"bash",
-			[...jobs.jobs.values()].map((job): WorkRow => {
-				const command = job.command.trim().split("\n", 1)[0] ?? "";
-				const reason = job.reason?.trim();
-				return {
-					kind: "bash",
-					id: job.id,
-					title: reason || command,
-					...(reason && command ? { detail: command } : {}),
-					startedAt: job.startedAt,
-					...(job.item ? { item: job.item } : {}),
-				};
-			}),
-		);
+	const showJobs = () => work.set("bash", jobWorkRows(jobs));
+	/** Jobs the model started with `wake: false`: a success of theirs is recorded as a digest and starts no turn. */
+	const unawaited = new Set<string>();
 	const report = (job: BashJob, exit: JobExit, wake: boolean) => {
+		const digest = !wake && unawaited.delete(job.id) && !job.stopped && exit.code === 0;
 		const context = current;
 		const generation = sessionGeneration;
 		const deliveryFailed = () => {
@@ -123,7 +111,7 @@ export function registerBashTool(
 				},
 				{
 					customType: JOB_TYPE,
-					content: jobReport(job, exit),
+					content: jobReport(job, exit, digest),
 					display: true,
 					details: jobDetails(job, exit, wake),
 				},
@@ -144,10 +132,15 @@ export function registerBashTool(
 		// after its final answer (a queued follow-up would run one more model turn per job), and a headless run's last job must
 		// not replace the answer with a reply to its being stopped. A job that ends mid-run is read at the next step; one that
 		// ends after the answer is recorded, and the parent's report gets its line.
+		const succeeded = !job.stopped && exit.code === 0;
 		report(
 			job,
 			exit,
-			!closing && job.stopped !== "user" && job.stopped !== "run end" && !envFlag(process.env, SUBAGENT_ENV),
+			!closing &&
+				job.stopped !== "user" &&
+				job.stopped !== "run end" &&
+				!envFlag(process.env, SUBAGENT_ENV) &&
+				!(succeeded && unawaited.has(job.id)),
 		);
 	};
 
@@ -252,6 +245,7 @@ export function registerBashTool(
 						unsandboxed: params.sandbox === false,
 					});
 					if (verification) verification.startedAt = job.startedAt;
+					if (params.wake === false) unawaited.add(job.id);
 					try {
 						rows.record(job, owner.agent);
 					} catch (error) {

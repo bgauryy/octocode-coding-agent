@@ -112,7 +112,7 @@ const passed = (key: string, summary = "Implemented") => ({
 	verification: { status: "passed" as const, summary: "Focused check passed" },
 	operationKey: key,
 });
-const until = (check: () => boolean) => vi.waitFor(() => expect(check()).toBe(true), { timeout: 15_000, interval: 25 });
+const until = (check: () => boolean) => vi.waitFor(() => expect(check()).toBe(true), { interval: 25 });
 const messages = (s: ReturnType<typeof setup>) => s.sent.map(({ message }) => String(message.content)).join("\n");
 const gateFile = () => path.join(fs.mkdtempSync(path.join(fs.realpathSync("/tmp"), "gate-")), "open");
 
@@ -296,7 +296,7 @@ describe("external runner tasks under cache staggering", () => {
 			s.run({ task: "read a", goal: "read a", runner: "claude-code", background: true }),
 			s.run({ task: "read b", goal: "read b", runner: "claude-code", background: true }),
 		]);
-		await vi.waitFor(() => expect(release).toHaveLength(2), { timeout: 5000, interval: 25 });
+		await vi.waitFor(() => expect(release).toHaveLength(2), { interval: 25 });
 		expect(peak).toBe(2);
 		for (const done of release) done();
 		await until(() => (messages(s).match(/Background subagent/g) ?? []).length >= 2);

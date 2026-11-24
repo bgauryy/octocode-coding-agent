@@ -10,8 +10,8 @@ export interface Moving {
 const COARSE_SLOP_MS = 1000;
 
 /**
- * Repaints the panel on the animation clock once a second while one of its rows runs: the rows' clocks count seconds
- * and a child's new row is found. The state lights never move, so nothing ticks faster. Once no row runs the
+ * Repaints the panel on the animation clock once a second while one of its rows runs: the rows' clocks count seconds,
+ * a working agent's light alternates (`agentLightColor`) and a child's new row is found. Nothing ticks faster. Once no row runs the
  * subscription ends, so an idle panel writes nothing.
  */
 export class PanelMotion {

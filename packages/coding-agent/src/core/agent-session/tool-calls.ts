@@ -16,6 +16,7 @@ import {
 import type { Model } from "@octocodeai/octocode-ai/compat";
 import { normalizeToolResultImages } from "../../utils/tool-result-images.ts";
 import type { ExecuteToolOptions } from "../features/index.ts";
+import type { ToolInfo } from "../features/types.ts";
 import { NestedToolCallRunner } from "../nested-tool-calls.ts";
 import { combineUsage } from "../usage-totals.ts";
 import type { SessionInternals, SessionPublic } from "./host.ts";
@@ -45,6 +46,21 @@ const REMOVED_TOOLS: ReadonlyMap<string, string> = new Map([
 	],
 ]);
 
+const MCP_NAME = /^mcp__(.+?)__(.+)$/;
+
+/** A bare MCP tool name, or a native tool name with a server prefix glued on: the registered name to call instead. */
+function prefixMistake(tools: readonly Pick<ToolInfo, "name">[], name: string): string | undefined {
+	const names = tools.map((tool) => tool.name);
+	const suffixOf = (full: string) => MCP_NAME.exec(full)?.[2];
+	const full = names.filter((candidate) => suffixOf(candidate) === name);
+	if (full.length === 1) return `Tool ${name} not found: call it as ${full[0]}.`;
+	if (full.length > 1) return `Tool ${name} not found: call it by its full name, one of ${full.join(", ")}.`;
+	const glued = suffixOf(name);
+	if (glued !== undefined && names.includes(glued) && suffixOf(glued) === undefined)
+		return `Tool ${name} not found: \`${glued}\` is a native tool, not an MCP tool: call it as ${glued}.`;
+	return undefined;
+}
+
 /**
  * The error a call to an undeclared tool gets when the session knows the tool: it is switched off for this session.
  * A removed tool names its replacement, unless a feature or MCP server registered a tool of that name. Other unknown
@@ -57,9 +73,10 @@ export function unknownToolMessage(
 	pending: ReadonlySet<string> = new Set(),
 ): string | undefined {
 	if (pending.has(name)) return `Tool ${name} not found: its MCP server is still connecting. Retry in a moment.`;
-	if (!session.getAllTools().some((candidate) => candidate.name === name)) {
+	const tools = session.getAllTools();
+	if (!tools.some((candidate) => candidate.name === name)) {
 		const removed = REMOVED_TOOLS.get(name);
-		return removed ? `Tool ${name} not found: ${removed}` : undefined;
+		return removed ? `Tool ${name} not found: ${removed}` : (prefixMistake(tools, name) ?? undefined);
 	}
 	return `Tool ${name} not found: it is not active in this session. Use another tool, or ask the user to enable it.`;
 }

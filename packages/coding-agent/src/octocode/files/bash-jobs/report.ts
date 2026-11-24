@@ -81,8 +81,11 @@ export function jobDetails(job: BashJob, exit: JobExit, wake: boolean) {
 	};
 }
 
-/** The message a finished job sends: a status header, how it ended, and the tail of its output. */
-export function jobReport(job: BashJob, exit: JobExit): string {
+/**
+ * The message a finished job sends: a status header, how it ended, and the tail of its output. A `digest` (a success
+ * nobody waits for) keeps the header, which names the log, and leaves the tail there to be read on demand.
+ */
+export function jobReport(job: BashJob, exit: JobExit, digest = false): string {
 	const { how } = jobOutcome(job, exit);
 	const available = fs.existsSync(job.log);
 	const { text, earlier } = logTail(job.log);
@@ -106,8 +109,8 @@ export function jobReport(job: BashJob, exit: JobExit): string {
 		!available ? "Log unavailable; output could not be inspected" : "",
 		rotated,
 		stopped,
-		before,
-		tail || (before ? "" : "(no output)"),
+		digest ? "" : before,
+		digest ? "" : tail || (before ? "" : "(no output)"),
 	]
 		.filter(Boolean)
 		.join("\n");

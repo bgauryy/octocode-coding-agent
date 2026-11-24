@@ -6,6 +6,7 @@ import { paginate } from "./transcripts.ts";
 import { classifyError } from "./errors-signature.ts";
 import { matchTexts } from "./search.ts";
 import { clip, oneLine, plural } from "../shared/text.ts";
+import { attachEmitted, type Sample, sampleAnchors } from "./errors-samples.ts";
 
 export { errorSignature } from "./errors-signature.ts";
 
@@ -32,14 +33,16 @@ const FILTER_BATCH_CHARS = 8 * 1024 * 1024;
 /** One tool result of a transcript, in order; `error` is set when it failed. */
 interface ToolResult {
 	tool: string;
-	error?: { text: string; at: string; model: string; callId?: string; command?: string };
-}
-
-interface Sample {
-	session: string;
-	at: string;
-	call: string;
-	text: string;
+	error?: {
+		text: string;
+		at: string;
+		model: string;
+		callId?: string;
+		command?: string;
+		/** The result entry's id and the assistant entry that emitted the call. */
+		entry?: string;
+		callEntry?: string;
+	};
 }
 
 /** What the next call to the same tool, later in the same transcript, was. */
@@ -121,6 +124,8 @@ const errorText = (content: unknown): string =>
 /** A bash call in an assistant line: its id and the start of its command (the arguments' other keys come first or not at all). */
 const BASH_CALL =
 	/"type":"toolCall","id":"([^"]+)","name":"bash","arguments":\{(?:"\w+":"(?:[^"\\]|\\.)*",)*?"command":"((?:[^"\\]|\\.){0,300})/g;
+/** A tool call in an assistant line: its id. */
+const TOOL_CALL = /"type":"toolCall","id":"([^"]+)"/g;
 const ESCAPES: Record<string, string> = { n: "\n", t: "\t", r: "\n" };
 const unescape = (json: string): string => json.replace(/\\(.)/g, (_, char: string) => ESCAPES[char] ?? char);
 
@@ -196,6 +201,8 @@ export async function findErrors(
 		let model = "unknown model";
 		// Shell commands by call id, to name the program of a command that failed.
 		const commands = new Map<string, string>();
+		// The assistant entry that emitted each call, so an error sample can open the call (name and arguments).
+		const callEntries = new Map<string, string>();
 		const results: ToolResult[] = [];
 		try {
 			let scanned = 0;
@@ -213,6 +220,10 @@ export async function findErrors(
 					continue;
 				}
 				if (head.includes('"role":"assistant"')) {
+					if (line.includes('"type":"toolCall"')) {
+						const entry = /"id":"([^"]+)"/.exec(head)?.[1];
+						if (entry) for (const call of line.matchAll(TOOL_CALL)) callEntries.set(call[1], entry);
+					}
 					if (line.includes('"name":"bash"'))
 						for (const call of line.matchAll(BASH_CALL)) commands.set(call[1], unescape(call[2]));
 					continue;
@@ -237,9 +248,19 @@ export async function findErrors(
 				const text = errorText(message.content);
 				const callId = typeof message.toolCallId === "string" ? message.toolCallId : undefined;
 				const command = callId ? commands.get(callId) : undefined;
+				const entry = /"id":"([^"]+)"/.exec(head)?.[1];
+				const callEntry = callId ? callEntries.get(callId) : undefined;
 				results.push({
 					tool,
-					error: { text, at, model, ...(callId ? { callId } : {}), ...(command ? { command } : {}) },
+					error: {
+						text,
+						at,
+						model,
+						...(callId ? { callId } : {}),
+						...(command ? { command } : {}),
+						...(entry ? { entry } : {}),
+						...(callEntry ? { callEntry } : {}),
+					},
 				});
 				batched += text.length;
 			}
@@ -251,6 +272,10 @@ export async function findErrors(
 		if (!filter || batched >= FILTER_BATCH_CHARS) await flush();
 	}
 	await flush();
+	attachEmitted(
+		db,
+		[...groups.values()].flatMap((group) => group.samples),
+	);
 	// Refusals and tool mistakes first: a command's own failure is the work, so it ranks after them.
 	found.groups = [...groups.values()].sort(
 		(a, b) => Number(a.command) - Number(b.command) || b.count - a.count || b.sessions.size - a.sessions.size,
@@ -264,7 +289,7 @@ function addError(
 	found: HistoryErrors,
 	session: string,
 	tool: string,
-	{ text, at, model, callId, command: commandText }: NonNullable<ToolResult["error"]>,
+	{ text, at, model, callId, command: commandText, entry, callEntry }: NonNullable<ToolResult["error"]>,
 ): ErrorGroup {
 	const { signature, command } = classifyError(text, commandText);
 	const key = `${tool}\u0000${signature}`;
@@ -290,7 +315,14 @@ function addError(
 	if (at && (!group.first || at < group.first)) group.first = at;
 	if (at > group.last) group.last = at;
 	if (group.samples.length < SAMPLES)
-		group.samples.push({ session, at, call: callId ?? "?", text: clip(oneLine(text), SAMPLE_CHARS) });
+		group.samples.push({
+			session,
+			at,
+			call: callId ?? "?",
+			text: clip(oneLine(text), SAMPLE_CHARS),
+			...(entry ? { entry } : {}),
+			...(callEntry ? { callEntry } : {}),
+		});
 	found.errors++;
 	const day = found.byDay.get(at.slice(0, 10));
 	if (at && day) day.errors++;
@@ -348,7 +380,11 @@ export function renderErrors(found: HistoryErrors, page = 1): { text: string; pa
 			`models: ${ranked(group.models)
 				.map(([model, count]) => `${model} ${count}`)
 				.join(" · ")}`,
-			...group.samples.map((sample) => `- ${sample.session} · ${sample.at || "?"} · ${sample.call}: ${sample.text}`),
+			...group.samples.flatMap((sample) => [
+				`- ${sample.session} · ${sample.at || "?"} · ${sample.call}: ${sample.text}`,
+				...(sample.emitted ? [`  emitted: ${sample.emitted}`] : []),
+				...sampleAnchors(sample),
+			]),
 			"",
 		],
 	}));

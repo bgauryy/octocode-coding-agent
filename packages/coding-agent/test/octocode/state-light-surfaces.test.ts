@@ -121,7 +121,8 @@ describe("the running light on every surface", () => {
 			expect(panel).not.toContain(LIGHT_GLYPH.running);
 			const doneEntry = { member: member("gone-x"), depth: 1, doneAt: NOW, end: { outcome: "done" as const } };
 			const more = moreLine([doneEntry], NOW, tagged as never, 80);
-			expect(more).toContain("<muted>◉");
+			// Contract change: a done light is green (success) on every surface.
+			expect(more).toContain("<success>◉");
 			expect(more).not.toContain(LIGHT_GLYPH.running);
 		}
 		// Lists and the footer: a done or idle session reads ○ with its word, never ⏺.

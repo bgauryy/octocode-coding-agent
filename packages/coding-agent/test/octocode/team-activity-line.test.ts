@@ -236,7 +236,7 @@ describe("a child's activity stays on the screen", () => {
 });
 
 describe("TeamTicker.poll", () => {
-	it("refreshes and calls watchers only when the database file changed, at most every 250 ms", () => {
+	it("refreshes and calls watchers only when the database file changed, at most every 250 ms", async () => {
 		const dir = tmp();
 		const file = path.join(dir, "team.db");
 		fs.writeFileSync(file, "a");
@@ -259,6 +259,7 @@ describe("TeamTicker.poll", () => {
 		ticker.poll(1_000_000);
 		expect(reads).toBe(base); // unchanged file
 		fs.writeFileSync(file, "bb-changed");
+		await Promise.resolve(); // the stamp is shared within one event-loop turn
 		ticker.poll(1_000_100); // inside the poll interval
 		expect(reads).toBe(base);
 		ticker.poll(1_000_300);

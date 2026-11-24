@@ -91,18 +91,11 @@ describe("callback tickets", () => {
 		expect(logged("ticket.resolved").map((e) => e.dedupeKey)).toEqual([`ticket.resolved:${ticket.id}`]);
 	});
 
-	it("resolves item.state and job.exit tickets by their filter, and agent.ended by target", () => {
+	it("resolves job.exit tickets by their filter, and agent.ended by target", () => {
 		const t = open();
-		const item = opened(t.request(ask({ target: "a", on: "item.state", filter: { ref: "B41", state: "done" } })));
 		const job = opened(t.request(ask({ target: "a", on: "job.exit", filter: { job: "task-3" } })));
 		const ended = opened(t.request(ask({ target: "b", on: "agent.ended" })));
 		const system = makeSource("system", "backlog", "db", "proven");
-		expect(
-			t.resolveEvent({ topic: "item.state", payload: { ref: "B41", state: "ongoing" }, source: system, digest: "x" }),
-		).toEqual([]);
-		expect(
-			t.resolveEvent({ topic: "item.state", payload: { ref: "B41", state: "done" }, source: system, digest: "x" }),
-		).toEqual([item.id]);
 		expect(t.resolveEvent({ topic: "job.exit", payload: { job: "task-3" }, source: system, digest: "x" })).toEqual([
 			job.id,
 		]);

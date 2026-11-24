@@ -1,3 +1,4 @@
+import { renderPrompt } from "../../src/core/prompt-template.ts";
 import { describe, expect, it } from "vitest";
 import { delegatedCostNote, sessionSpend } from "../../src/octocode/subagents/delegated-cost.ts";
 
@@ -84,9 +85,12 @@ describe("the notice when delegated cost passes a multiple of the session's own"
 		// 0.6 of 1.00: below the session's own cost.
 		expect(delegatedCostNote(scope, session(own), 0.6)).toBe("");
 		// 0.6 + 0.6 passes it.
-		expect(delegatedCostNote(scope, session([...own, background(0.6)]), 0.6)).toBe(
-			"\n\nSubagents have now cost ≈$1.20 in this session: more than its own ≈$1.00. Nothing is stopped. Start or continue a subagent only for work that needs one, on the smallest model that settles it.",
+		const once = delegatedCostNote(scope, session([...own, background(0.6)]), 0.6);
+		expect(once).toBe(
+			`\n\n${renderPrompt("notices/subagents/cost.md", { once: true, multiple: 1, delegated: "≈$1.20", own: "≈$1.00" })}`,
 		);
+		expect(once).toContain("≈$1.20");
+		expect(once).toContain("≈$1.00");
 		// Still between one and two times: nothing more to say.
 		expect(delegatedCostNote(scope, session([...own, background(1.2)]), 0.5)).toBe("");
 		// One run can pass several multiples: the notice names the highest.
@@ -130,11 +134,16 @@ describe("the notice when delegated cost passes a multiple of the session's own"
 		const onPlan = (list: unknown[]) => session(list, ["faux"]);
 		// $1.00 of its own work, paid by the plan: a metered child's $0.60 is below it.
 		expect(delegatedCostNote(scope, onPlan([reply(1)]), 0.6, { model: "alt/x" })).toBe("");
-		expect(
-			delegatedCostNote(scope, onPlan([reply(1), background(0.6, { model: "alt/x" })]), 2.5, { model: "alt/x" }),
-		).toBe(
-			"\n\nSubagents have now cost ≈$3.10 in this session: over 3 times its own ~$1.00 plan estimate. Nothing is stopped. Start or continue a subagent only for work that needs one, on the smallest model that settles it.",
+		const note = delegatedCostNote(scope, onPlan([reply(1), background(0.6, { model: "alt/x" })]), 2.5, {
+			model: "alt/x",
+		});
+		expect(note).toBe(
+			`\n\n${renderPrompt("notices/subagents/cost.md", { once: false, multiple: 3, delegated: "≈$3.10", own: "~$1.00 plan estimate" })}`,
 		);
+		expect(note).toContain("≈$3.10");
+		// The multiple, apart from the amounts.
+		expect(note).toMatch(/(?<![$.\d])3(?![.\d])/);
+		expect(note).toContain("~$1.00 plan estimate");
 		// Its children on the plan spend no money: nothing to weigh.
 		expect(delegatedCostNote({}, onPlan([reply(1)]), 3, { model: "faux/x" })).toBe("");
 		// Money of its own is the basis again once it has some.

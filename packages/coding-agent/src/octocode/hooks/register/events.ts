@@ -6,7 +6,42 @@ import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { commandsFor, hookCalls } from "../config/calls.ts";
 import { claudeSessionEndOverride } from "../profiles.ts";
 import { capContext } from "../runner.ts";
+import { type HookClock, REAL_HOOK_CLOCK } from "./clock.ts";
+import { blockOnFailure, type EventPolicy, warnFailure } from "./event-policy.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookHostMetadata, type HookSession } from "./types.ts";
+
+/** A refused prompt, and a failing hook with `onFailure: "block"`, block the prompt. */
+export const userPromptSubmitPolicy: EventPolicy = {
+	configurationError: (_env, message) => ({ block: message }),
+	settle: blockOnFailure,
+};
+
+/** A source-profile hook that blocks a compaction cancels it; the native hook only observes. */
+export const preCompactPolicy: EventPolicy = {
+	settle(env, verdict, failure) {
+		const outcome = blockOnFailure(env, verdict, failure);
+		return env.hook.protocol && env.hook.protocol !== "octocode" && outcome.block
+			? { ...outcome, cancelCompaction: true }
+			: outcome;
+	},
+};
+
+/** A stop from a PostCompact hook stops the turn. */
+export const postCompactPolicy: EventPolicy = { combine: { keepStop: true } };
+
+/** A failing hook with `onFailure: "block"` blocks the batch. */
+export const postToolBatchPolicy: EventPolicy = { settle: blockOnFailure };
+
+/** Nothing outlives the session end: `async` hooks run in line. */
+export const sessionEndPolicy: EventPolicy = { inline: true };
+
+/** The interrupt happened with or without a UI: a failing hook is always said. */
+export const interruptPolicy: EventPolicy = {
+	settle(env, verdict, failure) {
+		if (failure) warnFailure(env, failure);
+		return verdict;
+	},
+};
 
 /**
  * Native PreCompact remains observational; source-profile vetoes cancel through the core owner. `trigger` keeps the
@@ -188,11 +223,15 @@ export function registerPromptHook(api: FeatureSetup, dispatch: Dispatch): void 
 	});
 }
 
+/** How long an Interrupt hook may run: Codex's 3 s and a margin. */
+export const INTERRUPT_HOOK_MS = 3100;
+
 export function registerInterruptHook(
 	api: FeatureSetup,
 	session: HookSession,
 	dispatch: Dispatch,
 	metadata: (() => HookHostMetadata) | undefined,
+	clock: HookClock = REAL_HOOK_CLOCK,
 ): void {
 	api.bus.on("agent_interrupted", async (event, ctx) => {
 		if (!commandsFor(session.config, "Interrupt", []).length) return;
@@ -219,7 +258,7 @@ export function registerInterruptHook(
 				session_id: event.sessionId,
 				transcript_path: event.transcriptPath ?? null,
 			}),
-			AbortSignal.timeout(3100),
+			clock.deadline(INTERRUPT_HOOK_MS),
 			"codex",
 		);
 	});

@@ -1,8 +1,9 @@
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import type { FeatureSetup } from "../../core/features/index.ts";
 import { recordProblem } from "../../core/diagnostics-log.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { registeredWorkspaceWhenReady } from "../../storage/workspace-database.ts";
-import type { AgentDb } from "../../../../db/src/api.ts";
+import { type AgentDb, isBusy, withoutWaiting } from "../../../../db/src/api.ts";
 import { EventSubscribers } from "../events/subscribers.ts";
 import { Tickets } from "../events/tickets.ts";
 import type { AgentEvent, PayloadEvent } from "../events/topics.ts";
@@ -24,9 +25,10 @@ type Settled = PayloadEvent<"ticket.resolved" | "ticket.rejected">;
 
 class TicketResults {
 	private readonly tickets: Tickets;
+	private readonly agent: AgentDb;
 	private readonly subscribers: EventSubscribers;
 	private readonly stops: Array<() => void> = [];
-	private timer: ReturnType<typeof setInterval> | undefined;
+	private stopTimer: (() => void) | undefined;
 	private ticking: Promise<void> | undefined;
 	private readonly failed: (error: unknown) => void;
 
@@ -36,6 +38,7 @@ class TicketResults {
 	) {
 		const now = options.now ?? Date.now;
 		const failed = options.failed ?? ((error: unknown) => void recordProblem("ticket-results", String(error)));
+		this.agent = agent;
 		this.tickets = new Tickets(agent, { ...options, now });
 		this.subscribers = new EventSubscribers(agent, {
 			...options,
@@ -55,12 +58,21 @@ class TicketResults {
 	tick(): Promise<void> {
 		return (this.ticking ??= Promise.resolve()
 			.then(async () => {
-				if (this.tickets.anyPending()) this.tickets.expire();
+				if (this.tickets.anyPending()) this.expireIfUnlocked();
 				await this.subscribers.pump();
 			})
 			.finally(() => {
 				this.ticking = undefined;
 			}));
+	}
+
+	/** The expiry write never waits for another process's lock on the thread that draws the screen: a locked database retries it at the next tick. */
+	private expireIfUnlocked(): void {
+		try {
+			withoutWaiting(this.agent.db, () => this.tickets.expire());
+		} catch (error) {
+			if (!isBusy(error)) throw error;
+		}
 	}
 
 	/** Ticks every two seconds until `close`. The timer never keeps the process alive. */
@@ -88,15 +100,17 @@ class TicketResults {
 				});
 			}),
 		);
-		this.timer ??= setInterval(() => {
-			if (!this.ticking) void this.tick().catch(this.failed);
-		}, intervalMs);
-		this.timer.unref();
+		this.stopTimer ??= sharedClock.subscribe(
+			() => {
+				if (!this.ticking) void this.tick().catch(this.failed);
+			},
+			{ everyMs: intervalMs },
+		);
 	}
 
 	async close(): Promise<void> {
-		if (this.timer) clearInterval(this.timer);
-		this.timer = undefined;
+		this.stopTimer?.();
+		this.stopTimer = undefined;
 		for (const stop of this.stops.splice(0)) stop();
 		await this.subscribers.close();
 		await this.ticking;

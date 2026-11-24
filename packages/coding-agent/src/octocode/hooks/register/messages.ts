@@ -1,8 +1,19 @@
 import { type FeatureContext, type FeatureSetup, readsMessagesOnly } from "../../../core/features/index.ts";
 import { EXTERNAL_MESSAGE_TYPE, INTERNAL_MESSAGE_TYPE, type MessageEnvelope } from "../../shared/messages.ts";
 import { USER_NOTICE_CHANNEL, type UserNotice } from "../../shared/user-notice.ts";
-import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { stringOrEmpty } from "../../shared/util.ts";
+import { type EventPolicy, gatePolicy } from "./event-policy.ts";
 import type { Dispatch, HooksView, ReportFailure } from "./types.ts";
+
+/** A PreMessageSend hook that gave no answer: the send goes ahead unless the hook is `failClosed`. */
+export const preMessageSendPolicy = gatePolicy("PreMessageSend", "message", (payload) => {
+	const message = asRecord(payload.message);
+	return `${stringOrEmpty(message.from)} -> ${stringOrEmpty(message.to)}`;
+});
+
+/** Notification hooks run in the background, so a slow one holds nothing up. */
+export const notificationPolicy: EventPolicy = { quietSlow: true };
 
 /** The delivery flags a received message carries, when they are booleans: whether it asked for an answer, may start a turn, or interrupted. */
 function flagsOf(source: Record<string, unknown>): Pick<MessageEnvelope, "replyRequired" | "wake" | "interrupt"> {

@@ -121,6 +121,7 @@ describe("the lifecycle bus", () => {
 	});
 
 	it("the ticker reads events only when the database file changed", () => {
+		vi.useFakeTimers();
 		const { bus, since } = busOver(mine);
 		const heard: string[] = [];
 		bus.on((event) => heard.push(`${event.kind}:${event.agent}`));
@@ -134,7 +135,9 @@ describe("the lifecycle bus", () => {
 			changed: () => bus.poll(),
 			maxAgeMs: 1000,
 		});
-		const tick = () => (ticker as unknown as { tick(): void }).tick();
+		// The ticker follows the file through the process's shared follower, one clock tick per look.
+		const tick = () => vi.advanceTimersByTime(1000);
+		ticker.sync();
 		tick();
 		const quiet = since.mock.calls.length;
 		tick();
@@ -146,6 +149,8 @@ describe("the lifecycle bus", () => {
 		const after = since.mock.calls.length;
 		tick();
 		expect(since.mock.calls.length).toBe(after);
+		ticker.reset();
+		bus.on(() => undefined)();
 	});
 });
 

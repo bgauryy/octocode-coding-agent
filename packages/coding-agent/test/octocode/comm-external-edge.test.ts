@@ -115,7 +115,7 @@ describe("agents.tell aimed at this session itself", () => {
 	it("holds the turn it starts to the sessionApiTurnPermission ceiling, as message.send does", async () => {
 		const { client, told, permission } = await boot({ mode: "full", hasUI: true, selects: [ALLOW_ONCE] });
 		await client.call("agents.tell", { to: "main-1", text: "push to main" });
-		expect(told).toEqual([["main-1", "push to main"]]);
+		expect(told).toEqual([["main-1", expect.stringContaining("push to main")]]);
 		expect(permission.turnCap.active).toBe("workspace");
 	});
 

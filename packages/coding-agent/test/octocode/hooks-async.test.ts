@@ -55,21 +55,17 @@ async function fixture() {
 it("runs Claude async gates without blocking and delivers only context once on the next prompt", async () => {
 	const f = await fixture();
 	try {
-		const result = await Promise.race([
-			f.hooks.preToolUse(
-				{
-					toolName: "bash",
-					toolCallId: "async",
-					input: { command: "true" },
-				} as never,
-				f.ctx,
-			),
-			new Promise((_, reject) => setTimeout(() => reject(new Error("async hook blocked the tool")), 500)),
-		]);
+		// The hook's 10 ms timeout with onFailure "block" would refuse the call if the gate waited for it; the script
+		// itself does not exit before `release`, so an undefined answer here means the gate did not wait.
+		const result = await f.hooks.preToolUse(
+			{ toolName: "bash", toolCallId: "async", input: { command: "true" } } as never,
+			f.ctx,
+		);
 		expect(result).toBeUndefined();
+		expect(fs.existsSync(f.release)).toBe(false);
 		await vi.waitFor(() => expect(fs.existsSync(f.started)).toBe(true));
-		await new Promise((resolve) => setTimeout(resolve, 40));
-		expect(f.sent).toEqual([]);
+		// Still running: nothing of its output is delivered with a prompt yet.
+		expect(JSON.stringify(await f.emit("before_agent_start", {}, f.ctx))).not.toContain("background");
 		fs.writeFileSync(f.release, "ready");
 		await vi.waitFor(async () => {
 			const result = JSON.stringify(await f.emit("before_agent_start", {}, f.ctx));
@@ -146,6 +142,8 @@ it("does not start a background process for an already-cancelled invocation", as
 	} finally {
 		await f.fire("session_shutdown", {}, f.ctx);
 	}
+	// Shutdown waited for whatever was started: the script, which writes this first, never ran.
+	expect(fs.existsSync(f.started)).toBe(false);
 });
 
 it("delivers ready background context at a naturally continuing tool boundary without requesting continuation", async () => {

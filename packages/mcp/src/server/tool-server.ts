@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { CallToolResult } from "../client/protocol/content.ts";
 import { isObject, JSON_RPC_ERROR_CODES, type JsonRpcId } from "../client/protocol/jsonrpc.ts";
@@ -76,8 +77,7 @@ export async function serveTools(options: ToolServerOptions): Promise<ToolServer
 		};
 		response.once("close", closed);
 		const stream = openEventStream(response);
-		const keepalive = setInterval(() => stream.ping(), KEEPALIVE_MS);
-		keepalive.unref?.();
+		const stopKeepalive = sharedClock.subscribe(() => stream.ping(), { everyMs: KEEPALIVE_MS });
 		try {
 			const known = options.tools().some((tool) => tool.name === name);
 			const result = !known
@@ -87,7 +87,7 @@ export async function serveTools(options: ToolServerOptions): Promise<ToolServer
 						.catch((error: unknown) => errorResult(error instanceof Error ? error.message : String(error)));
 			stream.send({ jsonrpc: "2.0", id: request.id, result });
 		} finally {
-			clearInterval(keepalive);
+			stopKeepalive();
 			calls.delete(id);
 			response.off("close", closed);
 			response.end();
@@ -162,10 +162,9 @@ export async function serveTools(options: ToolServerOptions): Promise<ToolServer
 		if (!(request.headers.accept ?? "").includes("text/event-stream")) return sendStatus(response, 405);
 		const stream = openEventStream(response);
 		listeners.add(stream);
-		const keepalive = setInterval(() => stream.ping(), KEEPALIVE_MS);
-		keepalive.unref?.();
+		const stopKeepalive = sharedClock.subscribe(() => stream.ping(), { everyMs: KEEPALIVE_MS });
 		response.once("close", () => {
-			clearInterval(keepalive);
+			stopKeepalive();
 			listeners.delete(stream);
 		});
 		lifetime.signal.addEventListener("abort", () => response.end(), { once: true });

@@ -8,13 +8,13 @@ import type { MachineSample } from "../../../../db/src/api.ts";
 export type MachineFigures = Omit<MachineSample, "at" | "processes">;
 
 /** Runs a command and returns its standard output, or undefined when the command does not exist on this machine. */
-export type CommandRunner = (file: string, args: readonly string[]) => Promise<string | undefined>;
+type CommandRunner = (file: string, args: readonly string[]) => Promise<string | undefined>;
 
 const COMMAND_TIMEOUT_MS = 5_000;
 const exec = promisify(execFile);
 
 /** `execFile` with a timeout; a missing program (`ENOENT`) is the one failure that means "not on this machine". */
-export const runCommand: CommandRunner = async (file, args) => {
+const runCommand: CommandRunner = async (file, args) => {
 	try {
 		const { stdout } = await exec(file, [...args], {
 			encoding: "utf8",

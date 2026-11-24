@@ -4,7 +4,7 @@ import path from "node:path";
 import type * as Config from "../../src/config.ts";
 import type * as Registry from "../../src/octocode/jobs/registry.ts";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { MAX_SUBAGENTS_ENV } from "../../src/octocode/subagents/claim.ts";
+import { MAX_SUBAGENTS_ENV, type SwarmLimits } from "../../src/octocode/subagents/claim.ts";
 import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { fakeCachePolicy, fakeCtx, fakeHost, fakePermission, meteredBilling } from "./fake-host.ts";
@@ -51,7 +51,7 @@ afterAll(() => {
 	process.env = savedEnv;
 });
 
-function setup() {
+function setup(limits?: SwarmLimits) {
 	const f = fakeHost();
 	const team = new Team(f.api);
 	const control = registerAgentTool(f.api, {
@@ -59,6 +59,7 @@ function setup() {
 		team,
 		permission: fakePermission(),
 		refused: () => new Map(),
+		limits,
 	});
 	const ctx = fakeCtx({ cwd: tmp("octocode-agent-cwd-"), hasUI: true });
 	const models = [{ provider: "faux", id: "model", reasoning: true }];
@@ -106,7 +107,7 @@ describe("a foreground agent task that outlasts the foreground budget", () => {
 		expect(s.control.running()).toEqual([id]);
 		expect(reports()).toHaveLength(0);
 		fs.writeFileSync(gate, "");
-		await vi.waitFor(() => expect(reports()).toHaveLength(1), { timeout: 10_000 });
+		await vi.waitFor(() => expect(reports()).toHaveLength(1));
 		const { message } = reports()[0];
 		expect(String(message.content)).toContain(`Background subagent ${id}`);
 		expect(String(message.content)).toContain("finished after asking");
@@ -126,15 +127,21 @@ describe("a foreground agent task that outlasts the foreground budget", () => {
 
 	it("lets the turn's Esc go without stopping a child that was handed over", async () => {
 		s = setup();
-		process.env.OCTOCODE_FAKE_GATE = path.join(tmp(), "gate");
+		const gate = path.join(tmp(), "gate");
+		process.env.OCTOCODE_FAKE_GATE = gate;
 		const turn = new AbortController();
 		const updates: unknown[] = [];
 		const reply = await s.run({ task: "gated foreground" }, turn.signal, (update) => updates.push(update));
 		const seen = updates.length;
 		turn.abort();
-		await new Promise((resolve) => setTimeout(resolve, 300));
+		await new Promise((resolve) => setImmediate(resolve));
 		expect(s.control.background()).toBe(1);
 		expect(s.control.running()).toEqual([reply.details.id]);
+		// The child outlives the Esc: it still answers when its gate opens, where a stopped one reports the stop.
+		fs.writeFileSync(gate, "");
+		await vi.waitFor(() => expect(reports()).toHaveLength(1));
+		expect(reports()[0].message.details).toMatchObject({ id: reply.details.id, status: "done" });
+		expect(String(reports()[0].message.content)).toContain("finished after asking");
 		// Nothing is drawn on the finished call's row after the hand-over.
 		expect(updates.length).toBe(seen);
 	}, 30_000);
@@ -165,8 +172,7 @@ describe("a foreground child handed over to the background", () => {
 	};
 
 	it("keeps its slot until it really ends: with a limit of one, the next start queues", async () => {
-		s = setup();
-		process.env[MAX_SUBAGENTS_ENV] = "1";
+		s = setup({ maxSubagents: 1, lingerSeconds: 0 });
 		try {
 			const gate = path.join(tmp(), "gate");
 			process.env.OCTOCODE_FAKE_GATE = gate;
@@ -176,11 +182,11 @@ describe("a foreground child handed over to the background", () => {
 			expect(second.details.queued).toBe(true);
 			// The handed-over child's report is its real outcome, and its end frees the slot for the queued one.
 			fs.writeFileSync(gate, "");
-			await vi.waitFor(() => expect(reports()).toHaveLength(2), { timeout: 15_000 });
+			await vi.waitFor(() => expect(reports()).toHaveLength(2));
 			const firstReport = reports().find((entry) => entry.message.details.id === first.details.id);
 			expect(String(firstReport?.message.content)).toContain("finished after asking");
 		} finally {
-			delete process.env[MAX_SUBAGENTS_ENV];
+			delete process.env.OCTOCODE_FAKE_GATE;
 		}
 	}, 30_000);
 
@@ -196,7 +202,7 @@ describe("a foreground child handed over to the background", () => {
 		// The main checkout and the child's worktree.
 		expect(git(dir, "worktree", "list").split("\n")).toHaveLength(2);
 		fs.writeFileSync(gate, "");
-		await vi.waitFor(() => expect(reports()).toHaveLength(1), { timeout: 15_000 });
+		await vi.waitFor(() => expect(reports()).toHaveLength(1));
 		expect(reports()[0].message.details).toMatchObject({ id: reply.details.id, status: "done" });
 	}, 30_000);
 });

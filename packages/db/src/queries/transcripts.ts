@@ -223,6 +223,12 @@ export function records(db: DatabaseSync, sessionId: string): string[] {
 		.map((row) => String(row.data));
 }
 
+/** The stored line of the entry `entryId` of a transcript (indexed by session and entry id), or undefined. */
+export function entry(db: DatabaseSync, sessionId: string, entryId: string): string | undefined {
+	const row = db.prepare("SELECT data FROM session_entries WHERE session_id=? AND entry_id=?").get(sessionId, entryId);
+	return row ? String(row.data) : undefined;
+}
+
 /** Stream a transcript in branch-file order without loading all of its entries at once. */
 export function* entries(db: DatabaseSync, sessionId: string): Generator<string> {
 	const rows = db.prepare("SELECT data FROM session_entries WHERE session_id=? ORDER BY position").iterate(sessionId);

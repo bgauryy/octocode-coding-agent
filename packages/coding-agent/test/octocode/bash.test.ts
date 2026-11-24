@@ -70,6 +70,7 @@ describe("bash tool", () => {
 			"maxOutputTokens",
 			"background",
 			"fresh",
+			"wake",
 			"verify",
 			"sandbox",
 			"item",

@@ -167,22 +167,32 @@ describe("a relay under a path prefix", () => {
 	});
 });
 
+/** The idle limit the daemon runs with below, and how long the test watches it hold: time is the contract of an idle exit. */
+const IDLE_MINUTES = 0.02;
+const IDLE_LIMIT_MS = IDLE_MINUTES * 60_000;
+const WATCH_MS = 2 * IDLE_LIMIT_MS;
+
 describe("idle exit", () => {
 	it("does not exit while a device is connected through a relay, and exits after it leaves", async () => {
-		const { env } = isolatedEnv({ OCTOCODE_WEB_DAEMON_IDLE_MINUTES: "0.02" });
+		const { env } = isolatedEnv({ OCTOCODE_WEB_DAEMON_IDLE_MINUTES: String(IDLE_MINUTES) });
 		const running = await startWebDaemon(env);
 		expect(running).toBeDefined();
 		cleanup.push(() => running!.shutdown());
 		const { relay, key, room } = await publishOn(running!.server, "view");
 		const page = pageOver(await relay.peer(room), key);
 		await page.ready;
-		let exited = false;
-		void running!.stopped.then(() => (exited = true));
-		// 0.02 minutes is 1.2 s: well past it, the daemon still runs because a device is connected.
-		await new Promise((resolve) => setTimeout(resolve, 2500));
-		expect(exited).toBe(false);
+		const exitedWithin = (ms: number) =>
+			new Promise<boolean>((resolve) => {
+				const timer = setTimeout(() => resolve(false), ms);
+				void running!.stopped.then(() => {
+					clearTimeout(timer);
+					resolve(true);
+				});
+			});
+		// Well past the idle limit, the daemon still runs because a device is connected.
+		expect(await exitedWithin(WATCH_MS)).toBe(false);
 		page.sendRaw("leave");
 		await page.closed;
-		await vi.waitFor(() => expect(exited).toBe(true), { timeout: 6000, interval: 100 });
+		await running!.stopped;
 	});
 });

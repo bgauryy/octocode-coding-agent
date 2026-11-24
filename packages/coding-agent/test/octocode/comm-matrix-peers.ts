@@ -59,7 +59,11 @@ export class Owned {
 		return { name, received, socket, kill, stderr: () => err };
 	}
 
-	/** Holds `count` connections open to `socket`, each answered by the server before the next one opens. */
+	/**
+	 * Holds `count` connections open to `socket`. Each one asks for `status` and reads the server's answer before the
+	 * next one opens: a connection the client sees open may not have been accepted yet, and only an accepted one takes a
+	 * slot.
+	 */
 	async hold(socket: string, count: number): Promise<net.Socket[]> {
 		const held: net.Socket[] = [];
 		for (let i = 0; i < count; i++) {
@@ -68,6 +72,11 @@ export class Owned {
 			held.push(connection);
 			connection.on("error", () => undefined);
 			await once(connection, "connect");
+			const answer = once(connection, "data");
+			connection.write(`${JSON.stringify({ jsonrpc: "2.0", id: i, method: "status" })}\n`);
+			const frame = JSON.parse(String((await answer)[0]).split("\n")[0]) as { id?: unknown; result?: unknown };
+			if (frame.id !== i || frame.result === undefined)
+				throw new Error(`Held connection ${i} was not answered: ${JSON.stringify(frame)}`);
 		}
 		return held;
 	}

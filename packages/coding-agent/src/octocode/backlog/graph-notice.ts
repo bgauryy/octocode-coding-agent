@@ -100,7 +100,9 @@ export function graphNotice(
 	if (owner === undefined) return undefined;
 	const waiting = dependents(backlog, item.ref, ["backlog", "todo", "ongoing"]).map((each) => each.ref);
 	if (!waiting.length) return undefined;
-	return renderPrompt(`notices/subagents/item-owner-${lingers ? "lingers" : "ended"}.md`, {
+	// A delegated item stays this session's claim: its child ending leaves the work to verify here, not an owner to replace.
+	const held = !lingers && item.assignee === backlog.session;
+	return renderPrompt(`notices/subagents/item-owner-${lingers ? "lingers" : held ? "ended-held" : "ended"}.md`, {
 		ref: item.ref,
 		child: owner,
 		waiting: waiting.join(", "),

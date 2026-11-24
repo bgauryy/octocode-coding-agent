@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { sameSecret } from "@octocodeai/octocode-common/env";
 import { isLoopbackHostname } from "../shared/net.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -22,6 +23,8 @@ import { removeSocket } from "./registry.ts";
 const MAX_CONNECTIONS = 16;
 /** What a client refused for capacity is told to wait before trying again: calls hold a slot only while they run. */
 const OVERLOAD_RETRY_MS = 1_000;
+/** How long a refused connection stays readable for its client to read the refusal; a local client needs milliseconds. */
+const REFUSED_LINGER_MS = 1000;
 /** A client that lets this much output queue up is not reading; drop it instead of buffering without limit. */
 const MAX_QUEUED_BYTES = 4 * 1_048_576;
 
@@ -170,8 +173,18 @@ export class ApiServer {
 						retryAfterMs: OVERLOAD_RETRY_MS,
 					}),
 				)}\n`,
-				() => socket.destroy(),
 			);
+			// The request this client is writing must not meet a closed socket: that would read as a transport failure,
+			// where the answer is that nothing was sent. So the refused side stays readable, discarding what arrives,
+			// until the client has read the refusal and closed, or the linger ends. A flood gets no linger.
+			if (this.rejectedSockets.size > MAX_CONNECTIONS) {
+				socket.destroy();
+				return;
+			}
+			socket.resume();
+			const linger = setTimeout(() => socket.destroy(), REFUSED_LINGER_MS);
+			linger.unref?.();
+			socket.once("close", () => clearTimeout(linger));
 			return;
 		}
 		const write = (value: unknown): void => {
@@ -285,10 +298,9 @@ export class ApiServer {
 			...(types ? { types } : {}),
 		});
 		if (sub.gap) res.write(": gap\n\n");
-		const beat = setInterval(() => res.write(": keep-alive\n\n"), 15_000);
-		beat.unref();
+		const stopBeat = sharedClock.subscribe(() => res.write(": keep-alive\n\n"), { everyMs: 15_000 });
 		res.on("close", () => {
-			clearInterval(beat);
+			stopBeat();
 			sub.close();
 			this.streams.delete(res);
 		});

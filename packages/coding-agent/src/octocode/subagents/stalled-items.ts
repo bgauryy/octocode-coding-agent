@@ -1,3 +1,4 @@
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { FeatureSetup } from "../../core/features/index.ts";
 import { openBacklog } from "../backlog/context.ts";
@@ -103,7 +104,7 @@ export function registerStalledItems(
 	runs: Pick<AgentRuns, "running" | "items" | "handed">,
 ): () => void {
 	const tracker = new StallTracker();
-	let timer: ReturnType<typeof setInterval> | undefined;
+	let stopTimer: (() => void) | undefined;
 	let checking = false;
 	const check = async (ctx: Context) => {
 		// A busy coordinator reads a wake only after its turn: checked then, the alert cannot name an item closed meanwhile.
@@ -126,19 +127,21 @@ export function registerStalledItems(
 		}
 	};
 	api.bus.on("session_start", async (_event, ctx) => {
-		clearInterval(timer);
-		timer = setInterval(() => {
-			check(ctx).catch((error: unknown) => {
-				clearInterval(timer);
-				timer = undefined;
-				if (!isStaleSessionError(error)) ctx.ui.notify(`The stall check stopped: ${errorMessage(error)}`, "warning");
-			});
-		}, TICK_MS);
-		timer.unref();
+		stopTimer?.();
+		stopTimer = sharedClock.subscribe(
+			() => {
+				check(ctx).catch((error: unknown) => {
+					stopTimer?.();
+					stopTimer = undefined;
+					if (!isStaleSessionError(error)) ctx.ui.notify(`The stall check stopped: ${errorMessage(error)}`, "warning");
+				});
+			},
+			{ everyMs: TICK_MS },
+		);
 		return undefined;
 	});
 	return () => {
-		clearInterval(timer);
-		timer = undefined;
+		stopTimer?.();
+		stopTimer = undefined;
 	};
 }

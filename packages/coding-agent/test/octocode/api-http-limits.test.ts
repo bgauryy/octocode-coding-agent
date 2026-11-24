@@ -1,6 +1,6 @@
 import http from "node:http";
 import net from "node:net";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventLog } from "../../src/octocode/api/events.ts";
 import { API_HTTP_LIMITS, ApiServer } from "../../src/octocode/api/server.ts";
 
@@ -29,8 +29,11 @@ async function serve(
 	return Number(new URL(server.httpUrl!).port);
 }
 
-/** Opens a raw connection and sends the start of a request that never ends. Resolves when the server closes it. */
-function halfSent(port: number): { closed: Promise<string> } {
+/**
+ * Opens a raw connection and sends the start of a request that never ends. `connected` resolves once the connection is
+ * established (the server accepts connections in that order); `closed` when the server closes it, with what it sent.
+ */
+function halfSent(port: number): { connected: Promise<void>; closed: Promise<string> } {
 	const socket = net.connect({ host: "127.0.0.1", port });
 	sockets.push(socket);
 	let received = "";
@@ -38,8 +41,13 @@ function halfSent(port: number): { closed: Promise<string> } {
 	socket.on("data", (chunk) => {
 		received += chunk.toString();
 	});
-	socket.on("connect", () => socket.write("POST /rpc HTTP/1.1\r\nHost: 127.0.0.1\r\n"));
-	return { closed: new Promise((resolve) => socket.on("close", () => resolve(received))) };
+	const connected = new Promise<void>((resolve) =>
+		socket.on("connect", () => {
+			socket.write("POST /rpc HTTP/1.1\r\nHost: 127.0.0.1\r\n");
+			resolve();
+		}),
+	);
+	return { connected, closed: new Promise((resolve) => socket.on("close", () => resolve(received))) };
 }
 
 const within = <T>(promise: Promise<T>, ms: number): Promise<T | "still open"> =>
@@ -85,10 +93,12 @@ describe("API HTTP listener limits", () => {
 	});
 
 	it("does not cut a slow answer once the request has arrived", async () => {
+		// Time is the contract here: the answer takes longer than the request timeout, which must not cut it.
+		const requestTimeout = 20;
 		const port = await serve(
-			{ ...API_HTTP_LIMITS, headersTimeout: 200, requestTimeout: 200, connectionsCheckingInterval: 50 },
+			{ ...API_HTTP_LIMITS, headersTimeout: requestTimeout, requestTimeout, connectionsCheckingInterval: 10 },
 			async () => {
-				await new Promise((resolve) => setTimeout(resolve, 600));
+				await new Promise((resolve) => setTimeout(resolve, 6 * requestTimeout));
 				return "late";
 			},
 		);
@@ -99,14 +109,18 @@ describe("API HTTP listener limits", () => {
 	it("refuses connections over the cap and still serves once they go", async () => {
 		const port = await serve();
 		const held = Array.from({ length: API_HTTP_LIMITS.maxConnections }, () => halfSent(port));
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		// Every held connection is established before the extra one starts, so the server takes them first.
+		await Promise.all(held.map((peer) => peer.connected));
 		const extra = halfSent(port);
-		expect(await within(extra.closed, 2000)).toBe("");
+		// Refused with no answer; one the server took would be answered 408 when its headers time out.
+		expect(await extra.closed).toBe("");
 		for (const socket of sockets.splice(0)) socket.destroy();
 		await Promise.all(held.map((peer) => peer.closed));
-		await new Promise((resolve) => setTimeout(resolve, 50));
-		const response = await post(port, { jsonrpc: "2.0", id: 2, method: "echo", params: { ok: true } });
-		expect(response).toEqual({ status: 200, body: { jsonrpc: "2.0", id: 2, result: { ok: true } } });
+		// The server frees a slot when it sees a close; a request sent before that is refused and sent again.
+		await vi.waitFor(async () => {
+			const response = await post(port, { jsonrpc: "2.0", id: 2, method: "echo", params: { ok: true } });
+			expect(response).toEqual({ status: 200, body: { jsonrpc: "2.0", id: 2, result: { ok: true } } });
+		});
 	});
 
 	it("survives a client that resets in the middle of a request body", async () => {
@@ -124,9 +138,9 @@ describe("API HTTP listener limits", () => {
 				});
 			});
 		}
-		await new Promise((resolve) => setTimeout(resolve, 100));
-		expect(uncaught).toEqual([]);
+		// The server answers a request after it handled every reset before it: any error they raised is in by now.
 		const response = await post(port, { jsonrpc: "2.0", id: 3, method: "echo", params: {} });
 		expect(response.status).toBe(200);
+		expect(uncaught).toEqual([]);
 	});
 });

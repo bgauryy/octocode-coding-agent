@@ -35,7 +35,7 @@ describe("wake: true from a peer", () => {
 		expect(sent).toMatchObject({ delivery: { [live.id]: "wake" } });
 		const id = "id" in sent ? sent.id : -1;
 
-		await vi.waitFor(() => expect(live.requests).toHaveLength(1), { timeout: 5_000 });
+		await vi.waitFor(() => expect(live.requests).toHaveLength(1));
 		await live.session.waitForIdle();
 		expect(live.requests[0].mail).toHaveLength(1);
 		const delivered = JSON.stringify(mailEntries(live));
@@ -56,7 +56,7 @@ describe("wake: true from a peer", () => {
 	it("holds a second peer wake inside the interval and hands it, once, with the next allowed turn", async () => {
 		const live = await idleSession();
 		await live.peer.send(live.id, "MAIL: first", { wake: true });
-		await vi.waitFor(() => expect(live.requests).toHaveLength(1), { timeout: 5_000 });
+		await vi.waitFor(() => expect(live.requests).toHaveLength(1));
 		await live.session.waitForIdle();
 
 		await live.peer.send(live.id, "MAIL: second", { wake: true });
@@ -67,7 +67,7 @@ describe("wake: true from a peer", () => {
 
 		const real = Date.now.bind(Date);
 		vi.spyOn(Date, "now").mockImplementation(() => real() + WAKE_INTERVAL_MS + 1_000);
-		await vi.waitFor(() => expect(live.requests).toHaveLength(2), { timeout: 5_000 });
+		await vi.waitFor(() => expect(live.requests).toHaveLength(2));
 		await live.session.waitForIdle();
 		expect(mailEntries(live)).toHaveLength(2);
 		expect(live.requests[1].mail).toHaveLength(2);

@@ -2,18 +2,28 @@ import type { DatabaseSync } from "node:sqlite";
 import { num, type Row } from "../rows.ts";
 import { keptStatement } from "../statements.ts";
 
+/**
+ * An editing notice (`team/store/editing.ts`) is a lease row whose key starts with this mark: it never equals, sits above
+ * or below a real path key, so `conflicting` never sees it, and the listings below leave it out (SQL `char(30)`).
+ */
+export const EDITING_MARK = "\u001e";
+const REAL_KEY = "substr(path_key, 1, 1) <> char(30)";
+
 /** The unexpired leases of `workspace`, oldest first. */
 export function live(db: DatabaseSync, workspace: string, now: number): Row[] {
 	return keptStatement(
 		db,
-		"SELECT * FROM leases WHERE workspace_id IN (SELECT id FROM workspaces WHERE root = ?) AND expires_at > ? ORDER BY id",
+		`SELECT * FROM leases WHERE workspace_id IN (SELECT id FROM workspaces WHERE root = ?) AND expires_at > ? AND ${REAL_KEY} ORDER BY id`,
 	).all(workspace, now);
 }
 
 /** Whether an owner other than `self` holds any unexpired lease, in any checkout: without one, nothing can conflict. */
 export function anyLiveOfOthers(db: DatabaseSync, self: string, now: number): boolean {
 	return (
-		keptStatement(db, "SELECT 1 FROM leases WHERE owner <> ? AND expires_at > ? LIMIT 1").get(self, now) !== undefined
+		keptStatement(db, `SELECT 1 FROM leases WHERE owner <> ? AND expires_at > ? AND ${REAL_KEY} LIMIT 1`).get(
+			self,
+			now,
+		) !== undefined
 	);
 }
 
@@ -32,7 +42,7 @@ export function liveOnKey(db: DatabaseSync, key: string, now: number): Row | und
 export function liveInTeam(db: DatabaseSync, team: string, now: number): Row[] {
 	return db
 		.prepare(
-			"SELECT l.* FROM leases l JOIN agents a ON a.id = l.owner WHERE a.team = ? AND l.expires_at > ? ORDER BY l.id",
+			`SELECT l.* FROM leases l JOIN agents a ON a.id = l.owner WHERE a.team = ? AND l.expires_at > ? AND substr(l.path_key, 1, 1) <> char(30) ORDER BY l.id`,
 		)
 		.all(team, now);
 }
@@ -41,7 +51,7 @@ export function liveInTeam(db: DatabaseSync, team: string, now: number): Row[] {
 export function checkoutsInTeam(db: DatabaseSync, team: string, workspace: string, now: number): string[] {
 	return keptStatement(
 		db,
-		"SELECT DISTINCT w.root FROM leases l JOIN workspaces w ON w.id = l.workspace_id JOIN agents a ON a.id = l.owner WHERE a.team = ? AND w.root <> ? AND l.expires_at > ?",
+		"SELECT DISTINCT w.root FROM leases l JOIN workspaces w ON w.id = l.workspace_id JOIN agents a ON a.id = l.owner WHERE a.team = ? AND w.root <> ? AND l.expires_at > ? AND substr(l.path_key, 1, 1) <> char(30)",
 	)
 		.all(team, workspace, now)
 		.map((row) => String(row.root));
@@ -154,4 +164,36 @@ export function extendTeamLiveSince(db: DatabaseSync, team: string, since: numbe
 /** Deletes every lease that expired before `now`. */
 export function pruneExpired(db: DatabaseSync, now: number): void {
 	db.prepare("DELETE FROM leases WHERE expires_at < ?").run(now);
+}
+
+/** A live editing notice of another owner on `key` (already marked), with the session id of its holder: one lookup on the `leases_path` index. */
+export function editingByOthers(
+	db: DatabaseSync,
+	workspace: string,
+	self: string,
+	now: number,
+	key: string,
+): Row | undefined {
+	return keptStatement(
+		db,
+		`SELECT l.*, a.session_id FROM leases l LEFT JOIN agents a ON a.id = l.owner
+         WHERE l.workspace_id IN (SELECT id FROM workspaces WHERE root = ?) AND l.path_key = ? AND l.owner <> ? AND l.expires_at > ? ORDER BY l.id LIMIT 1`,
+	).get(workspace, key, self, now);
+}
+
+/** The paths of `owner`'s live editing notices in `workspace`, oldest first, at most `limit`. */
+export function editingPathsOf(
+	db: DatabaseSync,
+	workspace: string,
+	owner: string,
+	now: number,
+	limit: number,
+): string[] {
+	return keptStatement(
+		db,
+		`SELECT path FROM leases WHERE workspace_id IN (SELECT id FROM workspaces WHERE root = ?) AND owner = ? AND expires_at > ?
+         AND substr(path_key, 1, 1) = char(30) ORDER BY id LIMIT ?`,
+	)
+		.all(workspace, owner, now, limit)
+		.map((row) => String(row.path));
 }

@@ -7,32 +7,16 @@ import { buildBatch } from "./batch.ts";
 import { publication } from "./rows.ts";
 import { isBusy, isLocked, type LoopInput, type LoopState, nextState } from "./state.ts";
 import type { Appended } from "../../../../../db/src/api.ts";
-import type { EventStore } from "./store.ts";
-import type { Batch, DeliveryPoint, EventCatalog, EventEntry, InputEntry, Logged, QueueId } from "./types.ts";
+import type { LoopOptions } from "./options.ts";
+import type { DeliveryPoint, EventEntry, InputEntry, InputMode, Logged, QueueId } from "./types.ts";
+
+export type { LoopOptions } from "./options.ts";
 
 /**
  * Schedules a single session's deliveries. Regular events join the next step of a run or the idle coalescing window.
  * Urgent entries interrupt a running step. User input bypasses the window, and compaction holds all deliveries until
  * unlock. Durable events enter their queue after append; the cursor advances only past events no queue still holds.
  */
-
-export interface LoopOptions<C> {
-	store: EventStore;
-	/** Digests, coalescing keys and which topics wake. */
-	catalog: EventCatalog;
-	/** Hands over one batch. A rejection (or throw) puts its entries back in their queues and reaches `onError`. */
-	deliver(batch: Batch<C>, point: DeliveryPoint): void | Promise<void>;
-	/** A delivery failed in a timer or after an awaited send: nobody else can see it. */
-	onError(error: unknown): void;
-	/** The window after a wake that finds the session idle, in ms; read at each wake. 0 delivers at once. */
-	windowMs?: () => number;
-	/**
-	 * Stops the step in progress for an urgent entry; the run then settles and the loop delivers. Absent, or a throw (the
-	 * run cannot be stopped): the entry waits for the next step boundary like a regular one, still ahead of the others.
-	 */
-	interrupt?: () => void;
-	now?: () => number;
-}
 
 const isPromise = (value: unknown): value is Promise<void> =>
 	typeof (value as { then?: unknown } | undefined)?.then === "function";
@@ -111,8 +95,8 @@ export class EventLoop<C = undefined> {
 	}
 
 	/** Q1: text the user typed or sent. It is not logged (privacy, size); locked, it waits for the drain. */
-	input(text: string, carry: C, source: Source = userSource("terminal")): void {
-		this.queues.enqueue({ type: "input", text, carry, source } satisfies InputEntry<C>, 0, "Q1");
+	input(text: string, carry: C, source: Source = userSource("terminal"), mode: InputMode = "queue"): void {
+		this.queues.enqueue({ type: "input", text, mode, carry, source } satisfies InputEntry<C>, 0, "Q1");
 		this.pump();
 	}
 
@@ -248,7 +232,7 @@ export class EventLoop<C = undefined> {
 	handOver(): void {
 		if (this.disposed || this.replaying || this.inflight || isLocked(this.current)) return;
 		const held = this.queues.takeBatch();
-		if (held.length > 0) this.dispatch(held, "settle");
+		if (held.length > 0) this.dispatch(held, "settle", true);
 		this.signal("run_end");
 	}
 
@@ -257,24 +241,24 @@ export class EventLoop<C = undefined> {
 		this.signal("lock");
 	}
 
-	/** Compaction ended or failed: everything held goes out once, user input first, then the loop is idle again. */
-	unlock(): void {
+	/** Compaction ended or failed: everything held goes out once, user input first, then idle. `stopped` (cancelled): no turn. */
+	unlock(stopped = false): void {
 		if (!isLocked(this.current)) return;
 		this.signal("unlock");
-		if (!this.inflight && !this.replaying) this.drain();
+		if (!this.inflight && !this.replaying) this.drain(stopped);
 	}
 
-	private drain(): void {
+	private drain(stopped = false): void {
 		const held = this.queues.takeBatch();
-		if (held.length > 0) this.dispatch(held, "drain");
+		if (held.length > 0) this.dispatch(held, "drain", stopped);
 		else this.signal("drained");
 	}
 
-	/** Ends the window now, as if its time had passed: an idle session with something that asks for a turn is handed the batch. */
-	flushNow(): void {
+	/** Ends the window now: an idle session with something that asks for a turn is handed the batch (`stopped`: no turn). */
+	flushNow(stopped = false): void {
 		if (this.disposed || this.replaying || this.inflight || isLocked(this.current) || isBusy(this.current)) return;
 		this.closeWindow();
-		if (this.queues.hasWake) this.dispatch(this.queues.takeBatch(), "idle");
+		if (this.queues.hasWake) this.dispatch(this.queues.takeBatch(), "idle", stopped);
 	}
 
 	/** Session end: no timer outlives it and nothing more is delivered; what is queued stays in the log for the next start. */
@@ -333,11 +317,12 @@ export class EventLoop<C = undefined> {
 		this.timer = undefined;
 	}
 
-	/** Hands one batch over; the offset moves when it was taken, the entries return to their queues when it was not. */
-	private dispatch(entries: Array<Logged<C>>, point: DeliveryPoint): void {
+	/** Hands one batch over; the offset moves when it was taken, the entries return to their queues when not. `stopped` asks for no turn. */
+	private dispatch(entries: Array<Logged<C>>, point: DeliveryPoint, stopped = false): void {
 		this.inflight = entries;
 		try {
-			const sending = this.options.deliver(buildBatch(this.options.catalog, entries), point);
+			const batch = buildBatch(this.options.catalog, entries);
+			const sending = this.options.deliver(stopped ? { ...batch, trigger: false } : batch, point);
 			if (isPromise(sending)) {
 				void sending.then(
 					() => this.delivered(),

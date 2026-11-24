@@ -14,10 +14,6 @@ const PERSISTENCE: Readonly<Partial<Record<Topic, "live" | "durable" | "once">>>
 	// (these repeat legitimately, so not `once`), and the backlog feed (the audit row's id names the event).
 	"time.due": "once",
 	"check.result": "durable",
-	"item.state": "durable",
-	"item.changed": "durable",
-	"path.unlocked": "durable",
-	"peer.landed": "durable",
 	"item.peer": "once",
 	// R10: a background hook's feedback that restarts a session (live: the hook's own process is the only record).
 	"hook.feedback": "live",

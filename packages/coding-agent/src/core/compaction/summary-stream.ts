@@ -15,6 +15,7 @@ import {
 	type RetryPolicy,
 	type SimpleStreamOptions,
 } from "@octocodeai/octocode-ai";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { formatDuration } from "../../utils/duration.ts";
 
 /** What a compaction's summary requests have done so far. */
@@ -119,21 +120,23 @@ export function summaryStreamWatcher(options: SummaryWatchOptions): SummaryReque
 			const finish = (message?: AssistantMessage) => {
 				if (ended) return;
 				ended = true;
-				clearInterval(timer);
+				stopTimer();
 				outer?.removeEventListener("abort", relay);
 				watched.end(message);
 			};
-			const timer = setInterval(() => {
-				const now = Date.now();
-				if (options.idleMs > 0 && now - lastEventAt >= options.idleMs) {
-					const error = stalledMessage(partial, model, options.idleMs);
-					watched.push({ type: "error", reason: "error", error });
-					finish(error);
-					attempt.abort(new Error(error.errorMessage));
-					return;
-				}
-				options.onProgress?.({ elapsedMs: now - startedAt, receivedChars: total });
-			}, tickMs);
+			const stopTimer = sharedClock.subscribe(
+				(now) => {
+					if (options.idleMs > 0 && now - lastEventAt >= options.idleMs) {
+						const error = stalledMessage(partial, model, options.idleMs);
+						watched.push({ type: "error", reason: "error", error });
+						finish(error);
+						attempt.abort(new Error(error.errorMessage));
+						return;
+					}
+					options.onProgress?.({ elapsedMs: now - startedAt, receivedChars: total });
+				},
+				{ everyMs: tickMs },
+			);
 			void (async () => {
 				try {
 					for await (const event of source) {

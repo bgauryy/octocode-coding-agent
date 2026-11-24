@@ -4,7 +4,8 @@ import type { Model, TranscriptContext } from "../../types.ts";
 import type { AnthropicOptions } from "../anthropic-messages/types.ts";
 import { getAnthropicCompat, getLayeredCacheControl } from "../anthropic-messages/compat.ts";
 import { resolveLayeredCacheRetention } from "../../utils/cache-policy.ts";
-import { keepsToolBreakpoint, splitSystemMessageIntoBlocks } from "../../utils/instruction-split.ts";
+import { CACHE_PROFILES, countHistoryTurns, planCacheMarkers } from "../../utils/cache-profiles.ts";
+import { splitSystemMessageIntoBlocks } from "../../utils/instruction-split.ts";
 import { getInitialSystemMessage } from "../../utils/transcript.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
 
@@ -39,17 +40,30 @@ export function anthropicSdkCache(
 	const initial = getInitialSystemMessage(context.messages);
 	const split =
 		instructions && initial
-			? splitSystemMessageIntoBlocks(initial, options.instructionCacheBoundary, options.instructionVolatileBoundary)
+			? splitSystemMessageIntoBlocks(
+					initial,
+					options.instructionCacheBoundary,
+					options.instructionVolatileBoundary,
+					options.instructionWorkspaceBoundary,
+				)
 			: undefined;
 	const names = Object.keys(tools).filter((name) => name !== "__octocode_deferred_placeholder__");
 	const sharedEnd =
 		instructions && compat.supportsCacheControlOnTools && options.toolCacheBoundary
 			? Math.max(0, names.indexOf(options.toolCacheBoundary))
 			: 0;
-	let count = 0;
+	const plan = planCacheMarkers(CACHE_PROFILES.anthropic, {
+		instructionBlocks: split ? split.cached.length : instructions && initial ? 1 : 0,
+		workspaceBlock: split?.workspace === true,
+		instructions: instructions !== undefined,
+		history: history !== undefined,
+		historyTurns: countHistoryTurns(messages),
+		tools: compat.supportsCacheControlOnTools ? names.length : 0,
+		toolBoundary: sharedEnd > 0,
+	});
 	const ttls = new Set<string>();
-	const countMark = (control: Control) => {
-		count++;
+	const markWith = (target: { providerOptions?: ProviderOptions }, control: Control) => {
+		mark(target, control);
 		ttls.add(control.ttl ?? "5m");
 	};
 	if (instructions && messages[0]?.role === "system" && initial) {
@@ -59,39 +73,30 @@ export function anthropicSdkCache(
 				1,
 				...split.cached.map((text, index): ModelMessage => {
 					const message: ModelMessage = { role: "system", content: sanitizeSurrogates(text) };
-					if (!(sharedEnd > 0 && split.cached.length > 1 && index === 0)) {
-						mark(message, instructions);
-						countMark(instructions);
-					}
+					if (plan.blocks[index]) markWith(message, instructions);
 					return message;
 				}),
 				...(split.volatile === undefined
 					? []
 					: [{ role: "system" as const, content: sanitizeSurrogates(split.volatile) }]),
 			);
-		} else {
-			mark(messages[0], instructions);
-			countMark(instructions);
-		}
+		} else if (plan.blocks[0]) markWith(messages[0], instructions);
 	}
-	if (instructions && compat.supportsCacheControlOnTools) {
+	if (instructions && plan.tool) {
 		const tool = tools[names[sharedEnd > 0 ? sharedEnd - 1 : names.length - 1]];
-		if (tool && (sharedEnd > 0 || keepsToolBreakpoint(split))) {
-			mark(tool, instructions);
-			countMark(instructions);
-		}
+		if (tool) markWith(tool, instructions);
 	}
 	let tailIndex = messages.length - 1;
 	while (tailIndex >= 0 && messages[tailIndex].role === "system" && messages[tailIndex].content === "") tailIndex--;
 	const tail = messages[tailIndex];
-	if (history && markTail(tail, history)) {
-		countMark(history);
-		if (count < 4) {
+	if (history && plan.history > 0 && markTail(tail, history)) {
+		ttls.add(history.ttl ?? "5m");
+		if (plan.history > 1) {
 			let assistant = tailIndex - 1;
 			while (assistant >= 0 && messages[assistant].role !== "assistant") assistant--;
 			let previous = assistant - 1;
 			while (previous >= 0 && messages[previous].role === "system" && messages[previous].content === "") previous--;
-			if (previous >= 0 && markTail(messages[previous], history)) countMark(history);
+			if (previous >= 0 && markTail(messages[previous], history)) ttls.add(history.ttl ?? "5m");
 		}
 	}
 	return ttls.size === 1 && ttls.has("1h");

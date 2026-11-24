@@ -1,9 +1,6 @@
-import { execFile } from "node:child_process";
 import path from "node:path";
-import { promisify } from "node:util";
 import { DESKTOP_ALLOW_APPS_ENV, DESKTOP_APPS_ENV } from "@octocodeai/octocode-common/env";
-
-const run = promisify(execFile);
+import { psFields } from "@octocodeai/octocode-common/process-start";
 
 /**
  * Apps a desktop call never targets, in any mode: terminals, code editors, password managers and Keychain. Driving one
@@ -104,15 +101,8 @@ export function outsideAppsRefusal(identifier: string, env: NodeJS.ProcessEnv = 
 
 /** The app a process belongs to: the first `.app` bundle name in its executable path, else the executable's name; undefined when no such process. */
 export async function psApp(pid: number): Promise<string | undefined> {
-	let stdout: string;
-	try {
-		({ stdout } = await run("ps", ["-p", String(pid), "-o", "comm="], { timeout: 2000 }));
-	} catch (error) {
-		const code: unknown = (error as { code?: unknown }).code;
-		// No such process (exit 1) or no `ps` at all (Windows): the pid cannot be resolved, so it is not refused.
-		if (code === 1 || code === "ENOENT") return undefined;
-		throw error;
-	}
+	const stdout = await psFields(pid, "comm=");
+	if (stdout === undefined) return undefined;
 	const command = stdout.trim();
 	if (command === "") return undefined;
 	const bundle = command.split("/").find((part) => /\.app$/i.test(part));

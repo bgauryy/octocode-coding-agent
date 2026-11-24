@@ -39,7 +39,9 @@ export function installLiveInput(api: FeatureSetup, loop: () => LiveLoop<Held> |
 		const source = assignment
 			? makeSource("peer", process.env[PARENT_ID_ENV] ?? "parent", "in-process", "self-reported")
 			: userSource(channel);
-		live.input(event.text, NOTHING_TO_SEND, source);
+		const mode =
+			event.streamingBehavior === "steer" ? "steer" : event.streamingBehavior === "followUp" ? "follow-up" : "queue";
+		live.input(event.text, NOTHING_TO_SEND, source, mode);
 		const handoff = live.pendingHandoff();
 		if (handoff) await handoff;
 		if (assignment || event.text.startsWith("/")) return { action: "continue" as const };

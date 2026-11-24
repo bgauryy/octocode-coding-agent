@@ -4,8 +4,14 @@ import type { FeatureSetup } from "../../../src/core/features/index.ts";
 import { BACKLOG_PEER_TYPE, type PeerWake } from "../../../src/octocode/backlog/peer-notify.ts";
 import { registerBacklog } from "../../../src/octocode/backlog/index.ts";
 import { openBacklog } from "../../../src/octocode/backlog/context.ts";
+import {
+	BACKLOG_CHANGE_CHANNEL,
+	type BacklogChange,
+	type BacklogChangeNotice,
+} from "../../../src/octocode/shared/backlog-change.ts";
 import { Subcommands } from "../../../src/octocode/shared/commands.ts";
 import { wakeGateOf } from "../../../src/octocode/wake/gate.ts";
+import { expect, vi } from "vitest";
 import { tmp } from "../helpers.ts";
 import { createRig, type Rig, type RigOptions } from "./rig.ts";
 
@@ -33,6 +39,7 @@ export async function backlogRig(options: RigOptions & { also?: (api: FeatureSet
 	const db = path.join(tmp(), "octocode.db");
 	process.env.OCTOCODE_AGENT_DB = db;
 	const { also, register, ...rest } = options;
+	const changes: BacklogChange[] = [];
 	const rig: Rig = await createRig({
 		...rest,
 		register: (api) => {
@@ -58,8 +65,18 @@ export async function backlogRig(options: RigOptions & { also?: (api: FeatureSet
 			});
 			also?.(api);
 			register?.(api);
+			// The feed announces a change here and tells its peer notifier in the same synchronous step, so a test that sees
+			// the change listed (after an await) knows the feed has finished with it.
+			api.channels.on(BACKLOG_CHANGE_CHANNEL, (value) => void changes.push((value as BacklogChangeNotice).change));
 		},
 	});
 	const { store } = openBacklog(rig.ctx, { isSubagent: false });
-	return { rig, store, session: rig.ctx.sessionManager.getSessionId(), db };
+	/** Resolves once the session's feed has announced `times` changes matching `like` (the feed read those audit rows). */
+	const fed = (like: Partial<BacklogChange>, times = 1) =>
+		vi.waitFor(
+			() =>
+				expect(changes.filter((change) => expect.objectContaining(like).asymmetricMatch(change))).toHaveLength(times),
+			{ timeout: 15_000, interval: 10 },
+		);
+	return { rig, store, session: rig.ctx.sessionManager.getSessionId(), db, changes, fed };
 }

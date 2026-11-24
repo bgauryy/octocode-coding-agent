@@ -142,41 +142,24 @@ function session(fillerChars: number, usage?: Record<string, number>, compacted 
 	};
 }
 
-describe("clearing counts the requests since the last compaction", () => {
-	// 42 old results of about 1,000 tokens each; the filler decides how much a cleared history writes again.
-	it("does not clear a warm wave that the replies kept from before a compaction would have paid for", async () => {
-		// Counting all 47 replies the rule passes; counting the 33 after the compaction it does not. The results of the last
-		// turns stay in use, so the filler sits inside the band (about 120k-160k characters) where the two counts differ.
-		const wrong = session(150_000, undefined, false);
-		await wrong.warmRequest();
-		expect(wrong.entries).toHaveLength(1);
-		expect((wrong.entries[0].data as { remainingRequests: number }).remainingRequests).toBe(47);
-
-		const s = session(150_000);
-		await s.warmRequest();
-		expect(s.entries).toEqual([]);
+describe("clearing at a warm cache", () => {
+	// 42 old results of about 1,000 tokens each, a large filler decides nothing: only the cache clock and the limit do.
+	it("never clears on a warm cache with room left, whatever the saving would have been", async () => {
+		for (const filler of [30_000, 150_000, 190_000]) {
+			const s = session(filler);
+			await s.warmRequest();
+			expect(s.entries).toEqual([]);
+		}
 	});
 
-	it("on a warm cache, clears the old results after a large message that makes clearing from the oldest not pay", async () => {
-		const s = session(190_000, undefined, true, 1);
-		await s.warmRequest();
-		expect(s.entries).toHaveLength(1);
-		const data = s.entries[0].data as { results: Array<{ id: string }>; oldTokens: number; rewriteAnyway: boolean };
-		expect(data.rewriteAnyway).toBe(false);
-		expect(data.oldTokens).toBeGreaterThanOrEqual(20_000);
-		// Nothing before the large message is cleared: its rewrite would cost more than the results there save.
-		const ids = new Set(data.results.map((result) => result.id));
-		for (let call = 1; call <= 15; call++) expect(ids.has(`call${call}`)).toBe(false);
-	});
-
-	it("records at most the replies since the compaction as the remaining requests when the wave pays", async () => {
-		const s = session(30_000);
+	it("clears near the compaction threshold and records the inputs it rested on", async () => {
+		const s = session(30_000, { tokens: 100_000, contextWindow: 200_000, percent: 50, compactionThreshold: 104_000 });
 		await s.warmRequest();
 		expect(s.entries).toHaveLength(1);
 		const data = s.entries[0].data as Record<string, any>;
 		expect(s.entries[0].customType).toBe(CLEARED_RESULTS_TYPE);
+		expect(data).toMatchObject({ trigger: "limit", rewriteAnyway: false });
 		expect(data.remainingRequests).toBeLessThanOrEqual(33);
-		expect(data.rewriteAnyway).toBe(false);
 		expect(data.prices).toMatchObject({ unit: "usd-per-million" });
 		expect(data.prices.write / data.prices.read).toBeCloseTo(25);
 		expect(data.oldTokens).toBeGreaterThan(20_000);
@@ -185,22 +168,16 @@ describe("clearing counts the requests since the last compaction", () => {
 		expect(Array.isArray(data.results)).toBe(true);
 	});
 
-	it("records a cold wave as one the cache was rewritten for anyway, and clears it whatever the rule says", async () => {
+	it("does not clear when the context sits well below the threshold", async () => {
+		const s = session(30_000, { tokens: 60_000, contextWindow: 200_000, percent: 30, compactionThreshold: 104_000 });
+		await s.warmRequest();
+		expect(s.entries).toEqual([]);
+	});
+
+	it("records a cold wave as one the cache was rewritten for anyway", async () => {
 		const s = session(190_000);
 		await s.coldRequest();
 		expect(s.entries).toHaveLength(1);
 		expect((s.entries[0].data as { rewriteAnyway: boolean }).rewriteAnyway).toBe(true);
-	});
-
-	it("caps the expected requests at the compaction threshold, not the window", async () => {
-		const usage = { tokens: 100_000, contextWindow: 200_000, percent: 50 };
-		// Room to the window: 100,000 tokens at about 3,000 per request, so the 33 replies so far are the estimate: it pays.
-		const roomy = session(30_000, usage);
-		await roomy.warmRequest();
-		expect(roomy.entries).toHaveLength(1);
-		// Room to the threshold: 4,000 tokens, about one more request before a compaction summarizes the results.
-		const tight = session(30_000, { ...usage, compactionThreshold: 104_000 });
-		await tight.warmRequest();
-		expect(tight.entries).toEqual([]);
 	});
 });

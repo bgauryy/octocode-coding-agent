@@ -8,6 +8,7 @@ import type {
 	ChatCompletionContentPartText,
 } from "../ai-sdk/openai-wire-types.ts";
 import type { CacheRetention, Model } from "../../types.ts";
+import { CACHE_PROFILES } from "../../utils/cache-profiles.ts";
 import type { AssistantMessageDiagnostic } from "../../utils/diagnostics.ts";
 import { instructionBlockTexts, keepsToolBreakpoint, type InstructionBlocks } from "../../utils/instruction-split.ts";
 import {
@@ -66,7 +67,10 @@ export function getCompatCacheControl(
 		return undefined;
 	}
 
-	const ttl = cacheRetention === "long" && compat.supportsLongCacheRetention ? "1h" : undefined;
+	const ttl =
+		cacheRetention === "long" && compat.supportsLongCacheRetention
+			? CACHE_PROFILES.completionsMarkers.ttl.long
+			: undefined;
 	return { type: "ephemeral", ...(ttl ? { ttl } : {}) };
 }
 

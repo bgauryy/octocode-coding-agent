@@ -47,6 +47,15 @@ describe("elision markers", () => {
 			),
 		).toHaveLength(1);
 		expect(elisionMarkers("[Output trimmed] and [… 3 lines]")).toEqual([]);
+		// Source that names the note, such as a test asserting it, is content.
+		const source = ["expect(message).toMatch(/\\n\\[Output trimmed", " [^\\]]+\\]\\nFull partial report: /s);"].join(
+			":",
+		);
+		expect(elisionMarkers(source)).toEqual([]);
+		expect(copiedElision({ type: "write", content: source }, "")).toBeUndefined();
+		expect(elisionMarkers(capOutput("x".repeat(5_000), 1_024))).toEqual([
+			expect.stringMatching(/^\[Output trimmed: the first line/),
+		]);
 	});
 
 	it("names the exact lines a spilled preview leaves out and the read that shows them", () => {

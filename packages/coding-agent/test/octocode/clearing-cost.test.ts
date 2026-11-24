@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
 	cachePrices,
-	clearingPays,
 	DEFAULT_LONG_WRITE_RATIO,
 	DEFAULT_READ_RATIO,
 	DEFAULT_SHORT_WRITE_RATIO,
@@ -39,17 +38,6 @@ describe("the cost of clearing old tool results", () => {
 		// No growth measured: the room is not the limit, the requests seen so far are.
 		expect(expectedRemainingRequests(40, 97_000, 271_000, 97_000)).toBe(40);
 		expect(expectedRemainingRequests(40, 90_000, 271_000, 97_000)).toBe(40);
-	});
-
-	it("pays when the re-send cost saved exceeds the one-time write: T_old × R × N > S_after × W", () => {
-		const prices = { read: 0.1, write: 2 };
-		const base = { oldTokens: 30_000, suffixTokensAfter: 15_000, prices, rewriteAnyway: false };
-		// 30,000 × 0.1 × N against 15,000 × 2 = 30,000: N must pass 10.
-		expect(clearingPays({ ...base, remainingRequests: 10 })).toBe(false);
-		expect(clearingPays({ ...base, remainingRequests: 11 })).toBe(true);
-		// A rewrite that happens anyway adds no write.
-		expect(clearingPays({ ...base, remainingRequests: 0, rewriteAnyway: true })).toBe(true);
-		expect(clearingPays({ ...base, oldTokens: 0, remainingRequests: 100, rewriteAnyway: true })).toBe(false);
 	});
 
 	it("reads the model's catalog prices at the cache lifetime, and Anthropic's ratios without them", () => {

@@ -1,3 +1,4 @@
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { cutText } from "@octocodeai/octocode-common/text";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -60,7 +61,7 @@ interface Receiver {
  */
 export class ReadWatch {
 	private readonly receivers = new Map<string, Receiver>();
-	private timer: NodeJS.Timeout | undefined;
+	private stopTimer: (() => void) | undefined;
 	private lifetime = new AbortController();
 	private seq = 0;
 	private readonly tell: (text: string) => void;
@@ -86,9 +87,8 @@ export class ReadWatch {
 		receiver.delayMs = TIMING.firstStatusMs;
 		receiver.dueAt = now + receiver.delayMs;
 		this.receivers.set(key, receiver);
-		if (this.timer) return;
-		this.timer = setInterval(() => this.tick(), TIMING.tickMs);
-		this.timer.unref();
+		if (this.stopTimer) return;
+		this.stopTimer = sharedClock.subscribe(() => this.tick(), { everyMs: TIMING.tickMs });
 	}
 
 	/** The session ended: nobody is left to tell, and a `status` call in flight is abandoned. */
@@ -149,8 +149,8 @@ export class ReadWatch {
 	}
 
 	private idle(): void {
-		clearInterval(this.timer);
-		this.timer = undefined;
+		this.stopTimer?.();
+		this.stopTimer = undefined;
 	}
 }
 

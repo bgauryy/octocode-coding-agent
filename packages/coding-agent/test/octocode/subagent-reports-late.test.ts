@@ -39,7 +39,7 @@ describe("late background reports", () => {
 		recordMessages(f, ctx);
 		const late = () => f.sent.filter((entry) => String(entry.message.content).includes("LATE REPORT"));
 		await f.emit("session_start", {}, ctx);
-		await vi.waitFor(() => expect(late()).toHaveLength(1), { timeout: 5_000 });
+		await vi.waitFor(() => expect(late()).toHaveLength(1));
 		expect(withoutSourceHeader(String(late()[0].message.content))).toMatch(
 			/^\(Arrived after the session restarted\) Background subagent general-late finished/,
 		);
@@ -67,12 +67,10 @@ describe("late background reports", () => {
 			details: { id: "general-slow", status: "stopped", summary: "Stopped" },
 			wake: false,
 		});
-		await vi.waitFor(
-			() =>
-				expect(
-					f.sent.some((entry) => String(entry.message.content).includes("general-slow stopped by the /reload")),
-				).toBe(true),
-			{ timeout: 5_000 },
+		await vi.waitFor(() =>
+			expect(
+				f.sent.some((entry) => String(entry.message.content).includes("general-slow stopped by the /reload")),
+			).toBe(true),
 		);
 		// A settled turn looks too, after the window.
 		savePendingReport(dir, "general-later", {
@@ -81,9 +79,8 @@ describe("late background reports", () => {
 			wake: true,
 		});
 		await f.emit("agent_settled", {}, ctx);
-		await vi.waitFor(
-			() => expect(f.sent.some((entry) => String(entry.message.content).includes("general-later finished"))).toBe(true),
-			{ timeout: 5_000 },
+		await vi.waitFor(() =>
+			expect(f.sent.some((entry) => String(entry.message.content).includes("general-later finished"))).toBe(true),
 		);
 		await f.emit("session_shutdown", { type: "session_shutdown", reason: "quit" }, ctx);
 	}, 15_000);

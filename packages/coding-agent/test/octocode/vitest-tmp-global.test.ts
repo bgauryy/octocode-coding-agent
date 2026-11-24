@@ -210,7 +210,8 @@ describe("the run's teardown", () => {
 			expect(String(failure)).toContain(path.join(fakeHome, ".octocode", "agent", "workspaces.db"));
 			expect(String(failure)).toContain(`Web daemons outlived the run (stopped now; pid, command):\n${daemon}\t`);
 			expect(String(failure)).not.toContain(`${helper}\t`);
-			expect(warn.mock.calls.flat().join("\n")).toContain(`${helper}\t`);
+			// The report names where the leftover ran (a test's temporary folder names the test), never its arguments.
+			expect(warn.mock.calls.flat().join("\n")).toContain(`${helper}\tnode\t${path.basename(process.cwd())}\n`);
 			expect(process.exitCode).toBe(1);
 		} finally {
 			warn.mockRestore();

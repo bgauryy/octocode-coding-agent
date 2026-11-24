@@ -7,6 +7,7 @@ import type { BashJobs } from "../../../files/bash-jobs.ts";
 import { JobLedger } from "../../../files/bash-jobs/ledger.ts";
 import { JoinWatch, joinedDetails, joinedReport } from "../../../files/bash-jobs/joins.ts";
 import type { BashJob, JobExit } from "../../../files/bash-jobs/types.ts";
+import { followerFor } from "../../../team/database-followers.ts";
 import { JOB_TYPE } from "../../../shared/messages.ts";
 import { wakeGateOf } from "../../../wake/gate.ts";
 
@@ -81,6 +82,7 @@ export function backgroundJoins(
 				.finally(() => finish?.());
 		},
 		(error) => warn(`Watching joined jobs stopped: ${errorMessage(error)}`),
+		(poke) => followerFor(sharedAgentDb().file).subscribe(poke),
 	);
 	return {
 		join(request) {

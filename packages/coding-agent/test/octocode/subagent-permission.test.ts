@@ -98,7 +98,7 @@ describe("a child's refused actions", () => {
 		await f.tools
 			.get("agent")
 			.execute("call-1", { task: "denied", goal: "try denied things", background: true }, undefined, undefined, ctx);
-		await vi.waitFor(() => expect(f.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
+		await vi.waitFor(() => expect(f.sent.length).toBeGreaterThan(0));
 		expect(withoutSourceHeader(String(f.sent[0].message.content))).toMatch(
 			/^Background subagent [a-z]+-[a-z]+ \(general: try denied things\) reported blocked \(/,
 		);

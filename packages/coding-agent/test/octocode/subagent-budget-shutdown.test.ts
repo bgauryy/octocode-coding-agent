@@ -55,10 +55,7 @@ it("stops model work at the budget before waiting for descendant inspection", as
 	try {
 		await capture.entered.promise;
 		// Inspection is held: a responsive child must already have received abort, with no extra requests.
-		await vi.waitFor(() => expect(fs.readFileSync(log, "utf8").split("\n")).toContain("abort"), {
-			timeout: 300,
-			interval: 10,
-		});
+		await vi.waitFor(() => expect(fs.readFileSync(log, "utf8").split("\n")).toContain("abort"), { interval: 10 });
 		expect(progress).toEqual([1, 2, 3, 4, 5, 6]);
 		capture.release.resolve();
 		const result = await run;

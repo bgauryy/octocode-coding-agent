@@ -104,3 +104,52 @@ it("does not accept a null-id connection refusal over HTTP", async () => {
 		"Invalid API response identity",
 	);
 });
+
+it.runIf(process.platform !== "win32")(
+	"keeps a refused connection readable until its client has the refusal, so a request written late is not a transport failure",
+	async () => {
+		const server = new ApiServer(async () => "pong", new EventLog(), "fixture");
+		const file = socketPath(tmp("api-linger-"), "s");
+		await server.listenUnix(file);
+		const peers: net.Socket[] = [];
+		cleanup.push(async () => {
+			for (const peer of peers) peer.destroy();
+			await server.close();
+		});
+		for (let i = 0; i < 16; i++) {
+			const peer = net.connect(file);
+			peers.push(peer);
+			peer.on("error", () => undefined);
+			await once(peer, "connect");
+			const response = once(peer, "data");
+			peer.write(`${JSON.stringify({ jsonrpc: "2.0", id: i, method: "ping" })}\n`);
+			await response;
+		}
+		// The seventeenth client is slow: its request leaves only after the server has already answered and ended its side.
+		// Half-open, so this side can still write after it read the server's end, as a request already in flight would.
+		const late = net.connect({ path: file, allowHalfOpen: true });
+		peers.push(late);
+		const errors: Error[] = [];
+		late.on("error", (error) => errors.push(error));
+		late.setEncoding("utf8");
+		let received = "";
+		late.on("data", (chunk: string) => {
+			received += chunk;
+		});
+		await once(late, "end");
+		expect(JSON.parse(received)).toMatchObject({
+			error: { code: ERR.unavailable, data: { execution: "not-sent", reason: "overloaded" } },
+		});
+		const written = new Promise<Error | null | undefined>((resolve) =>
+			late.write(
+				`${JSON.stringify({ jsonrpc: "2.0", id: 99, method: "message.send", params: { text: "x".repeat(256 * 1024) } })}\n`,
+				resolve,
+			),
+		);
+		expect(await written).toBeFalsy();
+		const closed = once(late, "close");
+		late.end();
+		expect((await closed)[0]).toBe(false);
+		expect(errors).toEqual([]);
+	},
+);

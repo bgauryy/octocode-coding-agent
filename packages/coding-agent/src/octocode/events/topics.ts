@@ -31,15 +31,9 @@ interface EventPayloads {
 		log?: string;
 		stopped?: boolean;
 	};
-	"item.state": { ref: string; state: string };
 	"item.ready": { ref: string; prerequisites: string[] };
-	/** A change to a watched item, epic or path (`wait on item.changed`): `change` is a `ChangeKind`, `by` its actor. */
-	"item.changed": { ref: string; change: string; by: string };
-	/** A peer's work on `ref` landed: `how` names which of its signals held (done, closed, released, reservation, gone). */
-	"peer.landed": { ref: string; how: string };
 	/** A peer's change to an item related to one this session holds or waits on (`backlog/peer-notify.ts`); `id` is its audit row. */
 	"item.peer": { ref: string; change: string; by: string; relation: string; id: number };
-	"path.unlocked": { path: string };
 	/** The host's load per core met a `machine` wait (`wait on machine.load`); published once per wait, from the sampler's samples. */
 	"machine.load": { timerId: number; perCore: number; samples: number };
 	/**
@@ -85,12 +79,8 @@ const TOPIC_SET: Record<Topic, true> = {
 	"agent.ended": true,
 	"agent.message": true,
 	"job.exit": true,
-	"item.state": true,
 	"item.ready": true,
-	"item.changed": true,
-	"peer.landed": true,
 	"item.peer": true,
-	"path.unlocked": true,
 	"machine.load": true,
 	"monitor.alert": true,
 	"check.result": true,

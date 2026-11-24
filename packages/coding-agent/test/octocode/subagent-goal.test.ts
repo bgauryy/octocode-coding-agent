@@ -78,7 +78,7 @@ describe("the agent tool's goal", () => {
 	it("refuses a missing or empty goal before anything starts, accepts an over-long one", async () => {
 		const s = setup();
 		await expect(s.run({ task: "report" })).rejects.toThrow(/goal/i);
-		await expect(s.run({ task: "report", goal: "  " })).rejects.toThrow(/A goal is required/);
+		await expect(s.run({ task: "report", goal: "  " })).rejects.toThrow(/A goal is required: pass `goal`.*`item`/);
 		// O6b (design B36): the main session is a member from its start; no child may be.
 		expect(s.team.members().filter((member) => member.parentId !== undefined || member.role !== "main")).toEqual([]);
 		const long = "audit the auth token refresh flow end to end across every service we run in production";
@@ -124,7 +124,7 @@ describe("the agent tool's goal", () => {
 		});
 		const id = started.details.id as string;
 		expect(started.content[0].text).toContain(`Started ${id} (reviewer) in the background`);
-		await vi.waitFor(() => expect(s.sent.length).toBeGreaterThan(0), { timeout: 10_000 });
+		await s.sentCount(1);
 		expect(withoutSourceHeader(String(s.sent[0].message.content))).toMatch(
 			new RegExp(`^Background subagent ${id} \\(reviewer: ${GOAL}\\) finished \\(`),
 		);
@@ -161,7 +161,8 @@ describe("the agent tool's goal", () => {
 		);
 		const unrelated = await s.run({ task: "report", goal: "fix flaky tui test", background: true });
 		expect(unrelated.content[0].text).not.toContain("Similar goal");
-		await vi.waitFor(() => expect(s.sent.length).toBe(2), { timeout: 10_000 });
+		await s.sentCount(2);
+		expect(s.sent.length).toBe(2);
 	});
 
 	it("draws the call as the goal, without the role, and the running result with the name", async () => {

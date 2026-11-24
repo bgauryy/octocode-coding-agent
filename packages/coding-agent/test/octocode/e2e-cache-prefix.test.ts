@@ -298,8 +298,8 @@ describe("a /reload between prompts", () => {
 		await s.run("second", [say("two")]);
 		expect(extendsPrefix(s.contexts[0], s.contexts[1])).toBe(true);
 		const change = appended(s.contexts[0], s.contexts[1]);
-		// Only the edited file's part of the section is sent.
-		expect(change.sections).toEqual([[expect.stringMatching(/^project_context:.*\/project\/AGENTS\.md$/)]]);
+		// Only the edited file's part of the section is sent, keyed by its path relative to the workspace.
+		expect(change.sections).toEqual([["project_context:AGENTS.md"]]);
 		expect(change.text).toContain("CHANGED-RULE");
 		expect(serialized(s.contexts[0])).toContain("ORIGINAL-RULE");
 		expect(serialized(s.contexts[0])).not.toContain("CHANGED-RULE");

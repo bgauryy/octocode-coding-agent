@@ -6,6 +6,7 @@ import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import type * as NativeConfig from "../../src/config.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { checkDelegable } from "../../src/octocode/backlog/delegation.ts";
+import { graphNotice } from "../../src/octocode/backlog/graph-notice.ts";
 import { registerBacklogTool } from "../../src/octocode/native/tools/backlog/tool.ts";
 import { USER_SENDER } from "../../src/octocode/shared/messages.ts";
 import { MAX_SUBAGENTS_ENV } from "../../src/octocode/subagents/claim.ts";
@@ -184,8 +185,20 @@ describe("(c) a prerequisite whose owner child ended without finishing it", () =
 		const link = itemLink(ctx, "B1")!;
 		await link.claim();
 		const footer = await link.attach(undefined, "worker-1");
-		expect(footer).toMatch(/B1's owner worker-1 ended; (B2, B3|B3, B2) wait on it: resume, reassign or close B1\./);
-		expect(link.notice).toContain("B1's owner worker-1 ended");
+		expect(footer).toMatch(
+			/worker-1 ended its run on B1, which this session holds; (B2, B3|B3, B2) wait on it\. Mark B1 done once/,
+		);
+		expect(link.notice).toContain("worker-1 ended its run on B1");
+	});
+
+	it("keeps the owner-replacement wording when another session holds the item", async () => {
+		const { backlog } = mainBacklog();
+		backlog.store.add({ ...READY, title: "api", state: "todo", createdBy: "user" });
+		backlog.store.add({ ...READY, title: "ui", state: "todo", createdBy: "user", dependsOn: ["B1"] });
+		backlog.store.update("B1", { state: "ongoing" }, { id: "another-session" });
+		expect(backlog.store.get("B1")?.assignee).toBe("another-session");
+		const text = graphNotice(backlog, "B1", "worker-1");
+		expect(text).toBe("B1's owner worker-1 ended; B2 waits on it: resume, reassign or close B1.");
 	});
 
 	it("says nothing when no open item depends on it", async () => {

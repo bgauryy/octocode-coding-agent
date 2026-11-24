@@ -68,11 +68,16 @@ const reply = {
 };
 
 /** A session holding `before` (entries), `messages`, then `after`; `appendEntry` writes land in its branch. */
-function setup(messages: unknown[], after: unknown[] = [], before: unknown[] = []) {
+function setup(
+	messages: unknown[],
+	after: unknown[] = [],
+	before: unknown[] = [],
+	contextWindow = model.contextWindow,
+) {
 	const fake = fakeHost();
 	const guard = { restore: vi.fn(), forget: vi.fn() };
 	registerCompaction(fake.api, guard as unknown as FileGuard);
-	const ctx = fakeCtx({ cwd: "/repo", model });
+	const ctx = fakeCtx({ cwd: "/repo", model: { ...model, contextWindow } });
 	const branch = () => [
 		...before,
 		...messages.map((message, index) => ({ type: "message", id: `m${index}`, message })),
@@ -113,7 +118,7 @@ const warm = T0 + 900 + 60_000;
 const cold = T0 + 900 + HOUR + 60_000;
 
 describe("clearing batched at points that rewrite the cache anyway", () => {
-	// Seven reads older than the last `KEEP_RECENT_TURNS` turns, about 8,400 tokens: above the free-point floor, below the warm one.
+	// Seven reads older than the last `KEEP_RECENT_TURNS` turns, about 8,400 tokens: above the free-point floor, below the near-limit one.
 	const OLD_READS = 7;
 	const reads = () =>
 		Array.from({ length: OLD_READS + KEEP_RECENT_TURNS }, (_, i) =>
@@ -134,7 +139,7 @@ describe("clearing batched at points that rewrite the cache anyway", () => {
 		expect(data.results).toHaveLength(OLD_READS);
 	});
 
-	it("records an idle gap and a warm wave as their triggers", async () => {
+	it("records an idle gap as its trigger", async () => {
 		const idle = setup([{ role: "user", content: "go", timestamp: T0 }, ...reads(), reply]);
 		await idle.request(cold);
 		expect(idle.entries[0].data).toMatchObject({ trigger: "idle", rewriteAnyway: true });
@@ -162,18 +167,21 @@ describe("calibrating the expected requests against what earlier clearings reali
 		expect(realizedRequestsRatio([clearing(0), assistant, compaction, ...four], CLEARED_RESULTS_TYPE)).toBeCloseTo(0.4);
 	});
 
-	it("holds a warm wave to the share an earlier clearing realized, and records the factor", async () => {
-		// 40 old reads and five large recent ones: a warm wave pays at the full prediction, by less than four times.
+	it("records the factor beside a wave near the context limit, and a warm wave below it clears nothing whatever was realized", async () => {
+		// 40 old reads and five large recent ones fill about 95% of a 70,000-token window.
 		const messages = [
 			{ role: "user", content: "go", timestamp: T0 },
 			...Array.from({ length: 40 }, (_, i) => exchange("read", { path: `g${i}.ts` }, "g".repeat(3_000))).flat(),
 			...Array.from({ length: 5 }, (_, i) => exchange("read", { path: `h${i}.ts` }, "h".repeat(30_000))).flat(),
 			reply,
 		];
-		const full = setup(messages);
+		const roomy = setup(messages);
+		await roomy.request(warm);
+		expect(roomy.entries).toEqual([]);
+		const full = setup(messages, [], [], 70_000);
 		await full.request(warm);
 		expect(full.entries).toHaveLength(1);
-		expect(full.entries[0].data).toMatchObject({ trigger: "warm", rewriteAnyway: false });
+		expect(full.entries[0].data).toMatchObject({ trigger: "limit", rewriteAnyway: false });
 		expect(full.entries[0].data).not.toHaveProperty("calibration");
 		// An earlier clearing predicted 100 requests and saw one before the compaction that ended its results.
 		const earlier = [
@@ -181,13 +189,13 @@ describe("calibrating the expected requests against what earlier clearings reali
 			{ type: "message", id: "late", message: { ...reply, timestamp: T0 - 10 } },
 			{ type: "compaction", id: "cmp2", firstKeptEntryId: "m0" },
 		];
-		const held = setup(messages, [], earlier);
+		const held = setup(messages, [], earlier, 70_000);
 		await held.request(warm);
-		expect(held.entries).toEqual([]);
-		// A rewrite that happens anyway still clears, and records the factor beside its prediction.
-		await held.request(cold);
-		expect(held.entries).toHaveLength(1);
-		expect(held.entries[0].data).toMatchObject({ trigger: "idle", calibration: 0.25 });
+		expect(held.entries[0].data).toMatchObject({ trigger: "limit", calibration: 0.25 });
+		// A rewrite that happens anyway records the factor too.
+		const idle = setup(messages, [], earlier);
+		await idle.request(cold);
+		expect(idle.entries[0].data).toMatchObject({ trigger: "idle", calibration: 0.25 });
 	});
 });
 

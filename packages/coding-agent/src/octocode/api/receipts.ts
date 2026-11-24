@@ -33,6 +33,8 @@ export interface SendReceipt {
 	controller: AbortController;
 	ready: Promise<void>;
 	fingerprint: string;
+	/** Who sent it (`callerOwner`): only that caller may cancel it or abort its run by key. */
+	owner?: string;
 	accepted: { id: string; queued: string };
 	settlement: Promise<RunResult>;
 	/** Resolves `ready` once the message is dispatched. */
@@ -152,6 +154,7 @@ export class SendReceipts {
 		accepted: SendReceipt["accepted"],
 		key: string | undefined,
 		busy: boolean,
+		owner?: string,
 	): { receipt: SendReceipt; waiter: Waiter } {
 		let waiter!: Waiter;
 		const settlement = new Promise<RunResult>((resolve, reject) => {
@@ -175,6 +178,7 @@ export class SendReceipts {
 			ready,
 			reject,
 			fingerprint,
+			...(owner === undefined ? {} : { owner }),
 			accepted,
 			settlement,
 			resolveReady,
@@ -269,12 +273,15 @@ export class SendReceipts {
 	}
 
 	/**
-	 * `turn.abort` with a `key`: only the receipt that owns the run may abort it. A send still being prepared is cancelled
+	 * `turn.abort` with a `key`: only the receipt that owns the run may abort it, and only the caller that sent it (`owner`);
+	 * another caller's key stops nothing and cancels nothing. A send still being prepared is cancelled
 	 * instead (`'cancelled'`: no run was started); an accepted one owns the run (`'owner'`).
 	 */
-	abort(key: string): "cancelled" | "owner" {
+	abort(key: string, owner?: string): "cancelled" | "owner" {
 		const receipt = this.byKey.get(key);
 		if (this.activeKey !== key || !receipt)
+			throw new RpcError(ERR.unavailable, "This request does not own the active run");
+		if (receipt.owner !== undefined && receipt.owner !== owner)
 			throw new RpcError(ERR.unavailable, "This request does not own the active run");
 		if (receipt.phase === "preparing") {
 			this.cancelPreparation(receipt, "Message preparation was cancelled; nothing was sent");

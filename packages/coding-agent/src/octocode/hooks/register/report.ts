@@ -5,8 +5,15 @@ import { clipText } from "../../shared/util.ts";
 import { hookLabel, hookFiles } from "../config.ts";
 import type { HookTiming } from "./types.ts";
 import type { HookMode } from "../../shared/hook-mode.ts";
-import { HOOK_EVENTS, profileEvents, profileSupport, UPSTREAM_ONLY_EVENTS, type HookProtocol } from "../catalog.ts";
-import type { HookConfig } from "../contracts.ts";
+import {
+	HOOK_EVENTS,
+	type HookEvent,
+	profileEvents,
+	profileSupport,
+	UPSTREAM_ONLY_EVENTS,
+	type HookProtocol,
+} from "../catalog.ts";
+import type { HookConfig, HookHandler } from "../contracts.ts";
 import { hookIdentity } from "../config/calls.ts";
 import { columnRows } from "../../../theme/columns.ts";
 
@@ -18,8 +25,29 @@ export const CHILD_MODE_NOTE: Record<HookMode, string> = {
 	all: "on",
 };
 
+/**
+ * The hooks of one event as they run: a handler configured more than once under one matcher runs once (`commandsFor`
+ * merges by identity), so it is one entry here, denying on failure when any copy says so.
+ */
+function distinctHooks(config: HookConfig, event: HookEvent): Array<{ matcher: string; hook: HookHandler }> {
+	const unique = new Map<string, { matcher: string; hook: HookHandler }>();
+	for (const group of config[event])
+		for (const hook of group.hooks) {
+			const key = `${group.matcher}\0${hook.protocol ?? "octocode"}\0${hookIdentity(hook)}`;
+			const first = unique.get(key);
+			unique.set(
+				key,
+				first
+					? { matcher: group.matcher, hook: { ...first.hook, ...(hook.failClosed ? { failClosed: true } : {}) } }
+					: { matcher: group.matcher, hook },
+			);
+		}
+	return [...unique.values()];
+}
+
+/** How many hooks run, counting a handler configured twice under one matcher once. */
 export const hookCount = (config: HookConfig): number =>
-	HOOK_EVENTS.reduce((sum, event) => sum + config[event].reduce((n, group) => n + group.hooks.length, 0), 0);
+	HOOK_EVENTS.reduce((sum, event) => sum + distinctHooks(config, event).length, 0);
 
 function timingText(timing: HookTiming | undefined): string {
 	if (!timing) return "";
@@ -39,12 +67,10 @@ export function hooksReport(
 ): string {
 	const enabled = mode === "all";
 	const loaded = HOOK_EVENTS.flatMap((event) =>
-		config[event].flatMap((group) =>
-			group.hooks.map((hook) => {
-				const command = clipText(hookLabel(hook), 80);
-				return `  ${event} [${group.matcher || "*"}] ${command}${hook.failClosed ? " [failClosed]" : ""} (${homeTilde(hook.source, home)})${timingText(timings.get(`${event}\0${hookIdentity(hook)}`))}${hook.origins?.length ? ` [source ${hook.origins[0].dialect}; runtime ${hook.protocol ?? "octocode"}]` : ""}`;
-			}),
-		),
+		distinctHooks(config, event).map(({ matcher, hook }) => {
+			const command = clipText(hookLabel(hook), 80);
+			return `  ${event} [${matcher || "*"}] ${command}${hook.failClosed ? " [failClosed]" : ""} (${homeTilde(hook.source, home)})${timingText(timings.get(`${event}\0${hookIdentity(hook)}`))}${hook.origins?.length ? ` [source ${hook.origins[0].dialect}; runtime ${hook.protocol ?? "octocode"}]` : ""}`;
+		}),
 	);
 	// Children run no hook unless their profile or task turns hooks on (register.ts), so say it where the hooks are configured.
 	const subagentEvents = (["SubagentStart", "SubagentStop"] as const).filter((name) =>

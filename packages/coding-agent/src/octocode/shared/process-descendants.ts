@@ -1,10 +1,17 @@
 import { validPid } from "../../utils/process-id.ts";
 import { type ProcessRow, readProcessTable } from "./process-table.ts";
 
-/** A fresh ancestry snapshot, before an exit can reparent detached descendants. */
-export async function descendantRows(pid: number | undefined, includeRoot = false): Promise<ProcessRow[]> {
+/**
+ * An ancestry snapshot, before an exit can reparent detached descendants. Fresh by default (a decision to signal);
+ * `fresh: false` accepts the shared table of the last second, for a background poll.
+ */
+export async function descendantRows(
+	pid: number | undefined,
+	includeRoot = false,
+	options: { fresh?: boolean } = {},
+): Promise<ProcessRow[]> {
 	if (!validPid(pid) || process.platform === "win32") return [];
-	const table = await readProcessTable();
+	const table = await readProcessTable({ fresh: options.fresh ?? true });
 	if (!table) return [];
 	const children = new Map<number, ProcessRow[]>();
 	for (const row of table.rows.values()) {

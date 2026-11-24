@@ -8,7 +8,7 @@ import { registerAsyncJobs } from "../../../src/octocode/jobs/register.ts";
 import { runBudgeted } from "../../../src/octocode/jobs/tool.ts";
 import { JOB_TYPE, TASK_TYPE } from "../../../src/octocode/shared/messages.ts";
 import { registerBashTool } from "../../../src/octocode/native/tools/bash/tool.ts";
-import { blockingTool, count, createRig, type Rig } from "./rig.ts";
+import { blockingTool, branchLines, count, createRig, quiet, type Rig } from "./rig.ts";
 import { tmp } from "../helpers.ts";
 
 /**
@@ -64,8 +64,13 @@ describe("an own background bash job's exit", () => {
 		await rig.harness.session.prompt("run a failing job");
 		await vi.waitFor(() => expect(rig.requests).toHaveLength(1), { timeout: 10_000 });
 		await rig.harness.session.waitForIdle();
-		expect(count(rig.requests[0], "bash-1")).toBeGreaterThan(0);
-		expect(JSON.stringify(jobMessages(rig)[0])).toContain("3");
+		// One report, whose status header states the exit code and whose details say the job failed.
+		const reports = rig.requests[0].filter((line) => line.includes("Background bash bash-1"));
+		expect(reports).toHaveLength(1);
+		expect(reports[0].match(/\[exit (\d+)\b/g)).toEqual(["[exit 3"]);
+		expect(jobMessages(rig)).toHaveLength(1);
+		expect(jobMessages(rig)[0]).toMatchObject({ details: { id: "bash-1", ok: false } });
+		expect(jobMessages(rig)[0]).not.toMatchObject({ details: { interrupted: true } });
 	});
 
 	it("delivers a completed bash job at the next tool boundary with no additional model request", async () => {
@@ -201,9 +206,18 @@ describe("an async task-N job's exit", () => {
 		]);
 		await rig.harness.session.prompt("fetch it");
 		await rig.harness.session.waitForIdle();
+		const jobs = asyncJobsFor(rig.ctx.sessionManager);
+		expect(jobs.running().map((job) => job.id)).toEqual(["task-1"]);
 		await rig.harness.session.featureHost.emit({ type: "session_shutdown", reason: "quit" });
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		// The job has stopped and its report was handed over: nothing of it is left to arrive.
+		await jobs.settle();
+		expect(jobs.running()).toEqual([]);
+		await quiet(rig);
 		expect(rig.requests).toHaveLength(1);
 		expect(rig.harness.getPendingResponseCount()).toBe(1);
+		// Recorded once, as a stopped task, after the last answer.
+		const reports = rig.harness.session.messages.filter((m) => m.role === "custom" && m.customType === TASK_TYPE);
+		expect(reports).toMatchObject([{ details: { id: "task-1", ok: false, interrupted: true } }]);
+		expect(branchLines(rig.harness).at(-1)).toContain("task-1");
 	});
 });

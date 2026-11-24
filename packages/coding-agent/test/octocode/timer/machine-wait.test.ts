@@ -100,7 +100,11 @@ describe("wait on machine.load", () => {
 			timerFields({ note: "n", until, every: 60 }, Date.now(), { workspaceId: "ws", sessionId: "s1", cwd: root }),
 		);
 		const woken: unknown[] = [];
+		const waiting: Array<() => void> = [];
+		/** Resolves when the next poke's check has ended; ask before the poke. */
+		const nextPokeCheck = () => new Promise<void>((resolve) => waiting.push(resolve));
 		scheduler = new TimerScheduler({
+			pokeChecked: () => waiting.splice(0).forEach((resolve) => resolve()),
 			db: () => agent,
 			sessionId: "s1",
 			check: conditionChecker(deps),
@@ -109,16 +113,18 @@ describe("wait on machine.load", () => {
 		});
 		scheduler.refresh();
 		await vi.waitFor(() => expect(timers.activeUntil(agent.db, "s1")).toHaveLength(1), { timeout: 4000 });
+		const quiet = nextPokeCheck();
 		poke();
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		await quiet;
 		expect(woken).toHaveLength(0);
 		loads = [1.2, 4];
 		poke();
 		await vi.waitFor(() => expect(woken).toHaveLength(1), { timeout: 4000 });
 		loads = [0.5, 1.2, 4];
+		const later = nextPokeCheck();
 		poke();
 		poke();
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		await later;
 		expect(woken).toHaveLength(1);
 		expect(woken[0]).toMatchObject({ status: "done", last_output: expect.stringContaining("load 1.20 per core") });
 	});

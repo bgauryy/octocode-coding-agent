@@ -155,6 +155,7 @@ describe("cache-sharing compaction summary", () => {
 			thinkingBudgets: { high: 4_000 },
 			transport: "sse",
 			maxTokens: 8_000,
+			requestPriority: "compaction",
 		});
 		expect(options.signal).toBeDefined();
 		// No cache write opt-out (that would drop the read too), no tool choice, no tools replaced.
@@ -571,6 +572,11 @@ describe("cache-sharing compaction summary", () => {
 			"a tool call",
 			() => reply([{ type: "toolCall", id: "x", name: "read", arguments: {} }], "toolUse"),
 			"the reply stopped with toolUse",
+		],
+		[
+			"an error reply, naming the error",
+			() => ({ ...reply([], "error"), errorMessage: "compaction request shed for kimi: shared capacity is 10%." }),
+			"the reply stopped with error (compaction request shed for kimi: shared capacity is 10%.)",
 		],
 		[
 			"a tool call after a normal stop",

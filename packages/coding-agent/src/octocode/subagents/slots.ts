@@ -22,7 +22,7 @@ export class Slots {
 	private timer: ReturnType<typeof setTimeout> | undefined;
 
 	private readonly limit: () => number;
-	constructor(limit: () => number = maxSubagents) {
+	constructor(limit: () => number = () => maxSubagents(process.env)) {
 		this.limit = limit;
 	}
 

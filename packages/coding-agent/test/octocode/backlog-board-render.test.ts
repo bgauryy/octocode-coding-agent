@@ -302,7 +302,8 @@ describe("the board's colours", () => {
 
 describe("the board while it is open", () => {
 	it("repaints after a second writer adds an item, and stops watching when it closes", async () => {
-		vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+		// The shared clock times each subscriber by Date.now(), so the fake interval needs the fake Date beside it.
+		vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
 		const s = seed(store());
 		const loads = { count: 0, changed: 0 };
 		const { board, requestRender, choice } = open(s, plainTheme, loads);

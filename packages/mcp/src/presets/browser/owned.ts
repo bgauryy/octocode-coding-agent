@@ -1,8 +1,8 @@
-import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { PARENT_PID_ENV } from "@octocodeai/octocode-common/env";
+import { psFieldsSync } from "@octocodeai/octocode-common/process-start";
 
 /**
  * A headless Chrome outlives the browser subagent that opened it, so that a follow-up can reuse it, and a subagent that
@@ -58,12 +58,7 @@ const running = (pid: number): boolean => {
 
 /** Whether `pid` is still the Chrome on this CDP port, not a process that took over its number; unknown counts as no. */
 function isChromeOn(pid: number, port: string): boolean {
-	try {
-		const command = execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" });
-		return command.includes(`--remote-debugging-port=${port}`);
-	} catch {
-		return false;
-	}
+	return psFieldsSync(pid, "command=")?.includes(`--remote-debugging-port=${port}`) ?? false;
 }
 
 const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -75,11 +70,7 @@ async function exited(pid: number, ms: number): Promise<boolean> {
 
 /** Whether `pid` leads its own process group, as a Chrome started detached does, so its renderers and GPU helper share it. */
 function leadsGroup(pid: number): boolean {
-	try {
-		return execFileSync("ps", ["-o", "pgid=", "-p", String(pid)], { encoding: "utf8" }).trim() === String(pid);
-	} catch {
-		return false;
-	}
+	return psFieldsSync(pid, "pgid=")?.trim() === String(pid);
 }
 
 /** Ends the Chrome and, when it leads a group, its helpers; waits (bounded) after SIGTERM and again after SIGKILL. */

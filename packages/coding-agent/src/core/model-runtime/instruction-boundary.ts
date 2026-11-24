@@ -36,13 +36,22 @@ export function findInstructionVolatileBoundary(messages: readonly { role: strin
 	return boundary;
 }
 
+/** The section holding the workspace's own instructions (AGENTS.md): the first one that differs between workspaces. */
+const WORKSPACE_SECTION = "project_context";
+
+/** `project_context` when the leading system message carries it: a cached block ends before it so other workspaces read the blocks before. */
+export function findInstructionWorkspaceBoundary(messages: readonly { role: string }[]): string | undefined {
+	const text = getInitialSystemMessage(messages)?.sections?.[WORKSPACE_SECTION];
+	return typeof text === "string" && text.length > 0 ? WORKSPACE_SECTION : undefined;
+}
+
 type BoundaryOptions = Pick<
 	StreamOptions,
-	"instructionCacheBoundary" | "instructionVolatileBoundary" | "toolCacheBoundary"
+	"instructionCacheBoundary" | "instructionVolatileBoundary" | "instructionWorkspaceBoundary" | "toolCacheBoundary"
 >;
 
 /**
- * The `instructionCacheBoundary`, `instructionVolatileBoundary` and `toolCacheBoundary` request options for a
+ * The `instructionCacheBoundary`, `instructionVolatileBoundary`, `instructionWorkspaceBoundary` and `toolCacheBoundary` request options for a
  * transcript. A caller-supplied value wins, each on its own, and `OCTOCODE_INSTRUCTION_CACHE_SPLIT=off` sends none: the
  * tool boundary is one more instruction breakpoint.
  * `roleVariantTools` names the declared tools whose definition is `roleVariant`; without it no tool boundary is set.
@@ -55,6 +64,8 @@ export function instructionCacheBoundaryOption(
 	const boundary = options?.instructionCacheBoundary === undefined ? findInstructionCacheBoundary(messages) : undefined;
 	const volatile =
 		options?.instructionVolatileBoundary === undefined ? findInstructionVolatileBoundary(messages) : undefined;
+	const workspace =
+		options?.instructionWorkspaceBoundary === undefined ? findInstructionWorkspaceBoundary(messages) : undefined;
 	const tools =
 		options?.toolCacheBoundary === undefined
 			? findToolCacheBoundary(
@@ -65,6 +76,7 @@ export function instructionCacheBoundaryOption(
 	return {
 		...(boundary ? { instructionCacheBoundary: boundary } : {}),
 		...(volatile ? { instructionVolatileBoundary: volatile } : {}),
+		...(workspace ? { instructionWorkspaceBoundary: workspace } : {}),
 		...(tools ? { toolCacheBoundary: tools } : {}),
 	};
 }

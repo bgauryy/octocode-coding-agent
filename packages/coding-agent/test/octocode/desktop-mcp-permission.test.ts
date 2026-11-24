@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { TEST_WORKER_TITLE } from "../helpers/worker-title.ts";
 import type { ToolCallEvent } from "../../src/core/features/index.ts";
 import { Permission } from "../../src/octocode/permission/ask.ts";
 import { desktopMcpRequest, desktopRefusal } from "../../src/octocode/permission/desktop-mcp.ts";
@@ -240,7 +241,8 @@ describe("apps no mode lets a desktop call target", () => {
 	it("resolves a real pid to its app with ps, and leaves an unknown pid alone", async () => {
 		const { psApp } = await import("../../src/octocode/permission/desktop-apps.ts");
 		expect(await psApp(2_000_000_000)).toBeUndefined();
-		expect(await psApp(process.pid)).toMatch(/node/i);
+		// ps reports this worker by the fixed title the test setup gives it (`test/helpers/worker-title.ts`).
+		expect(await psApp(process.pid)).toBe(TEST_WORKER_TITLE);
 	});
 });
 

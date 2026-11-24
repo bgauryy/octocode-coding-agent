@@ -7,7 +7,7 @@ import { isMcpToolName, MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common
 
 import { getSystemMessageText } from "@octocodeai/octocode-ai";
 import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { getReadmePath } from "../config.ts";
 import { renderPrompt } from "./prompt-template.ts";
 import { checkoutLabel, octocodeWorktreeAt } from "./worktree-path.ts";
@@ -185,9 +185,17 @@ export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOption
 	};
 }
 
-function renderProjectContext(contextFiles: Array<{ path: string; content: string }>): string {
+/** A file inside the workspace prints relative to it, so the prompt prefix is the same in every checkout; others stay absolute. */
+function promptPath(file: string, cwd: string): string {
+	const rel = relative(cwd, file);
+	if (!rel || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return file;
+	return rel.replace(/\\/g, "/");
+}
+
+function renderProjectContext(contextFiles: Array<{ path: string; content: string }>, cwd: string): string {
 	const files = contextFiles.map(
-		({ path, content }) => `<project_instructions path="${path}">\n${content}\n</project_instructions>`,
+		({ path, content }) =>
+			`<project_instructions path="${promptPath(path, cwd)}">\n${content}\n</project_instructions>`,
 	);
 	return renderPrompt("system/project-context.md", { files: files.join("\n\n") });
 }
@@ -306,7 +314,7 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 
 	Object.assign(contents, baseSections);
 	contents.addendum = appendSystemPrompt;
-	if (contextFiles.length > 0) contents.project_context = renderProjectContext(contextFiles);
+	if (contextFiles.length > 0) contents.project_context = renderProjectContext(contextFiles, cwd);
 	const harnesses = formatHarnessesForPrompt(input.harnesses ?? []);
 	if (harnesses) contents.harnesses = harnesses;
 	contents.cwd = cwd.replace(/\\/g, "/");

@@ -12,12 +12,6 @@ export const RuntimeSettingsProperties = {
 	runtime: Type.Optional(
 		Type.Object(
 			{
-				eventLoop: Type.Optional(
-					Type.String({
-						description:
-							"Ignored. The event loop is the only session scheduler; the key is still accepted so a settings file written for an earlier version loads.",
-					}),
-				),
 				eventWindowSeconds: Type.Optional(
 					Type.Number({
 						description:

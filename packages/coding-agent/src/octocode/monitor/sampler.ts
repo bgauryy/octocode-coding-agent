@@ -1,3 +1,4 @@
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { DAY_MS, HOUR_MS, MINUTE_MS } from "@octocodeai/octocode-common/time";
 import {
 	type Db,
@@ -111,14 +112,13 @@ export function startMachineSampler(options: MachineSamplerOptions): MachineSamp
 	};
 
 	void tick();
-	const timer = setInterval(() => void tick(), intervalMs);
-	timer.unref();
+	const stopTimer = sharedClock.subscribe(() => void tick(), { everyMs: intervalMs });
 	return {
 		tick,
 		stop() {
 			if (stopped) return;
 			stopped = true;
-			clearInterval(timer);
+			stopTimer();
 			try {
 				machineSamples.release(options.db, options.holder);
 			} catch (error) {

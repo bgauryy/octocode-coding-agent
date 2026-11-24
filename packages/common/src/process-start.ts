@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 
 /**
  * When a process started, as `ps -o lstart=` prints it. A pid alone proves nothing once the system reuses it: the pid
@@ -27,26 +27,64 @@ export function utcSeconds(lstart: string): string | undefined {
 	return fields ? String(Date.UTC(...fields) / 1000) : undefined;
 }
 
+const PS_TIMEOUT_MS = 2000;
+
+/**
+ * The only single-pid `ps` of the packages that cannot import the coding agent: `ps -o <fields> -p <pid>` on the
+ * calling thread, its raw output. Undefined when it cannot say (no such process, no `ps`, a timeout). `env` defaults
+ * to this process's; pass `PS_UTC_ENV()` for `lstart`.
+ */
+export function psFieldsSync(pid: number, fields: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
+	try {
+		return execFileSync("ps", ["-o", fields, "-p", String(pid)], {
+			encoding: "utf8",
+			timeout: PS_TIMEOUT_MS,
+			stdio: ["ignore", "pipe", "ignore"],
+			windowsHide: true,
+			env,
+		});
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Asynchronous `psFieldsSync`: undefined when no such process (exit 1) or no `ps` at all (ENOENT, as on Windows);
+ * any other failure (a timeout, a signal) rejects.
+ */
+export function psFields(
+	pid: number,
+	fields: string,
+	env: NodeJS.ProcessEnv = process.env,
+): Promise<string | undefined> {
+	return new Promise((resolve, reject) => {
+		execFile(
+			"ps",
+			["-o", fields, "-p", String(pid)],
+			{ encoding: "utf8", timeout: PS_TIMEOUT_MS, windowsHide: true, env },
+			(error, stdout) => {
+				if (!error) return resolve(stdout);
+				const code: unknown = (error as { code?: unknown }).code;
+				if (code === 1 || code === "ENOENT") return resolve(undefined);
+				reject(new Error(`ps failed: ${error.message}`, { cause: error }));
+			},
+		);
+	});
+}
+
 /**
  * The start of `pid` (`utcSeconds`) and whether it is a zombie (it exited; only its parent has not reaped it yet), from
  * one asynchronous `ps`. Undefined when there is no such process or `ps` cannot tell (Windows, no `ps`, a timeout).
  */
-export function processStartAsync(pid: number): Promise<{ started: string; zombie: boolean } | undefined> {
-	if (process.platform === "win32" || !Number.isInteger(pid) || pid <= 0) return Promise.resolve(undefined);
-	return new Promise((resolve) => {
-		try {
-			execFile(
-				"ps",
-				["-o", "stat=,lstart=", "-p", String(pid)],
-				{ encoding: "utf8", timeout: 2000, windowsHide: true, env: PS_UTC_ENV() },
-				(error, stdout) => {
-					const match = error ? null : /^\s*(\S+)\s+(.*)$/.exec(stdout.trim());
-					const started = match ? utcSeconds(match[2]) : undefined;
-					resolve(match && started ? { started, zombie: match[1].startsWith("Z") } : undefined);
-				},
-			);
-		} catch {
-			resolve(undefined);
-		}
-	});
+export async function processStartAsync(pid: number): Promise<{ started: string; zombie: boolean } | undefined> {
+	if (process.platform === "win32" || !Number.isInteger(pid) || pid <= 0) return undefined;
+	let stdout: string | undefined;
+	try {
+		stdout = await psFields(pid, "stat=,lstart=", PS_UTC_ENV());
+	} catch {
+		return undefined;
+	}
+	const match = stdout === undefined ? null : /^\s*(\S+)\s+(.*)$/.exec(stdout.trim());
+	const started = match ? utcSeconds(match[2]) : undefined;
+	return match && started ? { started, zombie: match[1].startsWith("Z") } : undefined;
 }

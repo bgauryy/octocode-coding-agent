@@ -1,3 +1,4 @@
+import { reportDigest } from "./report-digest.ts";
 import type { AgentEnd } from "../team/panel/state.ts";
 import { AgentToolExecutionError } from "@octocodeai/octocode-agent-core";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -155,7 +156,15 @@ export function startBackground(
 			};
 			const reachable = outcome.error ? "" : (linger?.(reported, awaited, spent) ?? "");
 			// The child's own notices sit with its words, inside the fence: only the parent's counts ride in the footer.
-			const text = [outcome.text || "(no text)", notices].filter(Boolean).join("\n\n");
+			const text = [
+				reportDigest(
+					outcome.text || "(no text)",
+					outcome.structured || outcome.error ? undefined : outcome.reportArtifact?.path,
+				),
+				notices,
+			]
+				.filter(Boolean)
+				.join("\n\n");
 			const body = outcome.error ? `Error: ${outcome.error}\n${text}` : text;
 			const shot = details.shot ? `(Last screenshot: ${shortPath(details.shot)})` : "";
 			if (!outcome.error) await closeAnswered(runs, identity.id);

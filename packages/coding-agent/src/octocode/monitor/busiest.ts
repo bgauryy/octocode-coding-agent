@@ -1,8 +1,8 @@
 import type { MachineProcess } from "../../../../db/src/api.ts";
 import { isProcessTitle } from "../shared/process-title.ts";
-import { type CommandRunner, runCommand } from "./readers.ts";
+import { isTableNoise, type PsSnapshot, readPsSnapshot } from "../shared/ps-snapshot.ts";
 
-/** One row of `ps -A -o pid=,ppid=,%cpu=,rss=,command=`. */
+/** One process of the shared process table with the figures the busiest list ranks by. */
 export interface CpuRow {
 	pid: number;
 	ppid: number;
@@ -10,26 +10,6 @@ export interface CpuRow {
 	cpu: number;
 	rssKb: number;
 	command: string;
-}
-
-const ROW = /^\s*(\d+)\s+(\d+)\s+([\d.]+)\s+(\d+)\s+(.*)$/;
-const PS_FIELDS = "pid=,ppid=,%cpu=,rss=,command=";
-
-/** Parses `ps -A -o pid=,ppid=,%cpu=,rss=,command=`; lines that do not parse are dropped. */
-export function parseCpuTable(text: string): CpuRow[] {
-	const rows: CpuRow[] = [];
-	for (const line of text.split("\n")) {
-		const match = ROW.exec(line);
-		if (!match) continue;
-		rows.push({
-			pid: Number(match[1]),
-			ppid: Number(match[2]),
-			cpu: Number(match[3]),
-			rssKb: Number(match[4]),
-			command: match[5].trim(),
-		});
-	}
-	return rows;
 }
 
 /** The program's name: an Octocode title whole, else the last path segment of the first word, at most 60 characters. */
@@ -70,14 +50,17 @@ export function busiest(rows: readonly CpuRow[], limit: number): MachineProcess[
 		}));
 }
 
-/** The busiest processes from `ps`, or none where there is no `ps` (Windows). */
-export async function readBusiest(limit: number, run: CommandRunner = runCommand): Promise<MachineProcess[]> {
-	if (process.platform === "win32") return [];
-	const text = await run("ps", ["-A", "-o", PS_FIELDS]);
-	if (text === undefined) return [];
-	// Not of interest: the `ps` that read the table, and exited children not yet reaped.
-	const rows = parseCpuTable(text).filter(
-		(row) => !row.command.startsWith(`ps -A -o ${PS_FIELDS}`) && !row.command.includes("<defunct>"),
-	);
+/** The busiest processes of the shared process table, or none where there is no `ps` (Windows). */
+export async function readBusiest(
+	limit: number,
+	table: () => Promise<PsSnapshot | undefined> = readPsSnapshot,
+): Promise<MachineProcess[]> {
+	const snapshot = await table();
+	if (!snapshot) return [];
+	const rows: CpuRow[] = [];
+	for (const row of snapshot.rows.values()) {
+		if (isTableNoise(row)) continue;
+		rows.push({ pid: row.pid, ppid: row.ppid, cpu: row.cpu, rssKb: row.rssKb, command: row.command });
+	}
 	return busiest(rows, limit);
 }

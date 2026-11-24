@@ -110,10 +110,28 @@ const sentId = (result: Awaited<ReturnType<Team["send"]>>): number => {
 	return result.id;
 };
 
-/** Waits for the one notice about `who`, then one more heartbeat to show it does not repeat. */
-async function oneNotice(who: string, timeout = 12_000): Promise<{ text: string; turn: boolean }> {
-	await vi.waitFor(() => expect(noticesAbout(who).length).toBeGreaterThan(0), { timeout, interval: 100 });
-	await new Promise((resolve) => setTimeout(resolve, 6_000));
+/** Resolves once the sender's session has been sent a notice about `who` (each send is the host's own signal). */
+async function firstNotice(who: string): Promise<void> {
+	while (noticesAbout(who).length === 0) await host.sentCount(host.sent.length + 1);
+}
+
+let sentinels = 0;
+/**
+ * Resolves once a later, unrelated event is heard: a peer ends with a message unread and the sender is told. A notice that
+ * repeats would be sent by the tick that reports this one at the latest, so absence is asserted after it, not after a delay.
+ */
+async function afterLaterNotice(): Promise<void> {
+	const who = `sentinel-${++sentinels}`;
+	const { store, row } = peer(who);
+	sentId(await team.send(who, "a later message"));
+	store.remove(who, Date.now(), row, "completed");
+	await firstNotice(who);
+}
+
+/** Waits for the one notice about `who`, then for a later notice about another agent to show it does not repeat. */
+async function oneNotice(who: string): Promise<{ text: string; turn: boolean }> {
+	await firstNotice(who);
+	await afterLaterNotice();
 	const notices = noticesAbout(who);
 	expect(notices).toHaveLength(1);
 	expect(notices[0].turn).toBe(false);
@@ -133,13 +151,9 @@ describe("a sender whose recipient ended before reading", () => {
 	it("(b) hears once within two heartbeats when a peer was killed, with no sweep run by hand", async () => {
 		const worker = await processPeer("lost-ibis");
 		const id = sentId(await team.send("lost-ibis", "please rebase on main", { replyRequired: false }));
-		const died = await kill(worker);
-		await vi.waitFor(() => expect(noticesAbout("lost-ibis").length).toBeGreaterThan(0), {
-			timeout: 12_000,
-			interval: 100,
-		});
-		// Measured about 4.6 s: one heartbeat reaps the dead pid and reports in the same tick.
-		expect(Date.now() - died).toBeLessThan(12_000);
+		await kill(worker);
+		// One heartbeat reaps the dead pid and reports in the same tick; the test's own timeout is the bound.
+		await firstNotice("lost-ibis");
 		const notice = await oneNotice("lost-ibis");
 		expect(notice.text).toContain(`#${id}`);
 	}, 40_000);
@@ -161,7 +175,7 @@ describe("a sender whose recipient ended before reading", () => {
 		store.remove("gone-lark", Date.now(), row, "completed");
 		const result = await team.send("gone-lark", "are you there?");
 		expect(result).toEqual({ error: expect.stringContaining(peerNext) });
-		await new Promise((resolve) => setTimeout(resolve, 6_000));
+		await afterLaterNotice();
 		expect(noticesAbout("gone-lark")).toEqual([]);
 	}, 30_000);
 

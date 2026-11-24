@@ -1,80 +1,34 @@
-import { execFile } from "node:child_process";
 import { PS_UTC_ENV, utcSeconds } from "@octocodeai/octocode-common/process-start";
+import { type PsReadOptions, type PsRow, type PsSnapshot, PS_TIMEOUT_MS, readPsSnapshot } from "./ps-snapshot.ts";
 
-export { PS_UTC_ENV, utcSeconds };
+export { PS_TIMEOUT_MS, PS_UTC_ENV, utcSeconds };
 
 /**
- * The process table read with one asynchronous `ps -A` (POSIX): pid, parent, group, state and start of every process.
- * Nothing here runs `ps` on the calling thread, so a timer or an exit path that needs it never stalls the screen.
+ * The process table of `ps-snapshot.ts` (one asynchronous `ps -A`, shared for a second). Nothing here runs `ps` on
+ * the calling thread, so a timer or an exit path that needs it never stalls the screen.
  */
 
 /** One process as `ps` listed it; `started` is whole seconds since the epoch (`utcSeconds`), undefined when unparsable. */
-export interface ProcessRow {
-	pid: number;
-	ppid: number;
-	pgid: number;
-	/** `ps` state: a zombie (`Z…`) has exited already. */
-	stat: string;
-	started: string | undefined;
-}
+export type ProcessRow = Pick<PsRow, "pid" | "ppid" | "pgid" | "stat" | "started">;
 
-export interface ProcessTable {
-	/** `Date.now()` when `ps` was started: every process it lists started at or before this. */
-	at: number;
-	rows: ReadonlyMap<number, ProcessRow>;
-}
-
-/** `ps` bound: a hung `ps` must not leave a sweep waiting forever. */
-export const PS_TIMEOUT_MS = 2000;
+export type ProcessTable = PsSnapshot;
 
 /** A recorded start time as seconds since the epoch: the decimal form `processStartTime` writes; undefined otherwise. */
 export function startSeconds(started: string): number | undefined {
 	return /^\d+$/.test(started) ? Number(started) : undefined;
 }
 
-/** Runs `ps` without blocking; undefined when it fails (no `ps`, a timeout, Windows). */
-export function psAsync(args: string[], env?: NodeJS.ProcessEnv): Promise<string | undefined> {
-	if (process.platform === "win32") return Promise.resolve(undefined);
-	return new Promise((resolve) => {
-		try {
-			execFile(
-				"ps",
-				args,
-				{
-					encoding: "utf8",
-					timeout: PS_TIMEOUT_MS,
-					maxBuffer: 64 * 1024 * 1024,
-					windowsHide: true,
-					...(env ? { env } : {}),
-				},
-				(error, stdout) => resolve(error ? undefined : stdout),
-			);
-		} catch {
-			resolve(undefined);
-		}
-	});
-}
-
-/** A fresh table of every process (one `ps -A`), or undefined when `ps` cannot be read. Never rejects. */
-export async function readProcessTable(): Promise<ProcessTable | undefined> {
-	const at = Date.now();
-	const text = await psAsync(["-A", "-o", "pid=,ppid=,pgid=,stat=,lstart="], PS_UTC_ENV());
-	if (text === undefined) return undefined;
-	const rows = new Map<number, ProcessRow>();
-	for (const line of text.split("\n")) {
-		// A row ps printed without a start time stays listed (started undefined): dropping it would read as "gone".
-		const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)(?:\s+(.*))?$/.exec(line);
-		if (!match) continue;
-		const pid = Number(match[1]);
-		rows.set(pid, {
-			pid,
-			ppid: Number(match[2]),
-			pgid: Number(match[3]),
-			stat: match[4],
-			started: match[5] === undefined ? undefined : utcSeconds(match[5]),
-		});
+/**
+ * A table of every process (`readPsSnapshot`), or undefined when `ps` cannot be read. Never rejects. `fresh`: read
+ * after this call, for a decision to signal or a process just started.
+ */
+export async function readProcessTable(options: PsReadOptions = {}): Promise<ProcessTable | undefined> {
+	try {
+		return await readPsSnapshot(options);
+	} catch {
+		// No `ps`, or it timed out: callers treat the table as unknown.
+		return undefined;
 	}
-	return { at, rows };
 }
 
 /** How long the shared table answers start-time questions before a read asks for a new one. */

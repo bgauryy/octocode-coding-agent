@@ -228,6 +228,7 @@
 			"registerSessionAttach@octocode/web-daemon/attach-register.ts",
 			"registerMemoryReflection@octocode/memory/file/reflect.ts",
 			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerEditor@octocode/ui/editor.ts",
 			"registerOctocodeCli@octocode/cli/command.ts",
 			"registerWorktreeFooter@octocode/worktrees/footer.ts",
 			"registerTerminal@octocode/terminal/register.ts",

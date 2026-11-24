@@ -32,7 +32,7 @@ const mail = (sent: Array<{ message: any }>) =>
 
 /** Waits until the receiver has been handed `count` mail messages (delivery polls the store). */
 const delivered = (sent: Array<{ message: any }>, count: number) =>
-	vi.waitFor(() => expect(mail(sent)).toHaveLength(count), { timeout: 5_000, interval: 50 });
+	vi.waitFor(() => expect(mail(sent)).toHaveLength(count), { interval: 50 });
 
 const entryFor = (id: string, delivered: { message: any }) => ({
 	type: "custom_message",

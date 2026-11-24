@@ -1,4 +1,6 @@
 import type { FeatureContext } from "../../core/features/index.ts";
+import { interactive } from "../shared/interactive.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
 import { storedText } from "@octocodeai/octocode-common/sanitize";
 import type { Ask } from "./asks.ts";
 import type { EditLog } from "./edits.ts";
@@ -16,7 +18,8 @@ import { type SendResult, sendMessage } from "./session/send.ts";
 import type { TeamView } from "./ticker.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { TeamState } from "./session/state.ts";
-import { PARENT_HOLDS_LEASES_ENV } from "./store/env.ts";
+import { AGENT_ID_ENV, PARENT_HOLDS_LEASES_ENV } from "./store/env.ts";
+import { declareEditing, editingNotice } from "./session/editing-notice.ts";
 import { patiently } from "./store/patient.ts";
 import { openRunnerBridge } from "./runner-bridge.ts";
 import type { RunnerMemberInput } from "./runner-member.ts";
@@ -62,7 +65,22 @@ export class Team extends TeamState {
 		this.activity.resetEarly();
 		this.watchParent();
 		this.name.start(resumeAs);
-		return joinAtStart(this.env, () => this.patiently(() => this.join()));
+		return joinAtStart(this.env, () => this.patiently(() => this.join())).finally(() => this.tellUnbound());
+	}
+
+	private unboundTold = false;
+	/** A main session with no live session of the shared message store bound to it is told so once per process. */
+	private tellUnbound(): void {
+		const session = this.ctx?.sessionManager.getSessionId();
+		if (
+			this.unboundTold ||
+			!this.ctx ||
+			!interactive(this.ctx, Boolean(this.env[AGENT_ID_ENV])) ||
+			!session ||
+			!this.peers.get().unbound(session)
+		)
+			return;
+		this.unboundTold = this.mail.notice(renderPrompt("notices/mail/unbound-session.md"));
 	}
 
 	/**
@@ -256,6 +274,16 @@ export class Team extends TeamState {
 	/** Whether any agent in the team or agents-communication, this one included, holds a live reservation covering the file (with `tree`, or inside it). */
 	reserved(absolute: string, kind?: LeaseKind): boolean {
 		return isReserved(this.reservationHost(), absolute, kind);
+	}
+
+	/** The line naming another live session that declared the file, if any (`session/editing-notice.ts`). */
+	editingNotice(absolute: string, display: string): string | undefined {
+		return editingNotice(this.reservationHost(), absolute, display);
+	}
+
+	/** Records that this session changed the file, once the change landed. */
+	declareEditing(absolute: string): string | undefined {
+		return declareEditing(this.reservationHost(), absolute);
 	}
 
 	/** Why a formatter run over the whole repository is refused: it rewrites files outside any reservation, so it waits while this agent or another holds one. */

@@ -23,6 +23,7 @@ const repo = () => {
 const teams: Team[] = [];
 const stores: TeamStore[] = [];
 afterEach(() => {
+	vi.unstubAllEnvs();
 	for (const team of teams.splice(0)) team.stop();
 	for (const store of stores.splice(0)) store.close();
 });
@@ -31,12 +32,15 @@ function agent(
 	db: string,
 	cwd: string,
 	env: Record<string, string> = {},
-	options: { hasUI?: boolean; idle?: boolean } = {},
+	/** `running: false` with `idle: false` is a session busy without a run of its own, as during a manual compaction. */
+	options: { hasUI?: boolean; idle?: boolean; running?: boolean } = {},
 ) {
 	const fake = fakeHost();
 	const team = new Team(fake.api, { OCTOCODE_AGENT_DB: db, ...env });
 	registerCollab(fake.api, team);
 	const ctx = fakeCtx({ cwd, hasUI: options.hasUI ?? true, idle: options.idle ?? true });
+	// A run in progress has a signal (the host's `ctx.signal`); an idle or compacting session has none.
+	if (options.idle === false && options.running !== false) ctx.signal = new AbortController().signal;
 	const abort = vi.spyOn(ctx, "abort");
 	team.start(ctx);
 	teams.push(team);
@@ -80,11 +84,11 @@ describe("interrupt", () => {
 			replyRequired: false,
 			interrupt: true,
 		})) as { id: number };
-		await vi.waitFor(() => expect(child.abort).toHaveBeenCalledTimes(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(child.abort).toHaveBeenCalledTimes(1));
 		const send = vi.spyOn(child.api.session, "sendMessage").mockRejectedValueOnce(new Error("turn refused"));
 		await child.emit("agent_settled", {}, child.ctx);
 		vi.spyOn(child.ctx, "isIdle").mockReturnValue(true);
-		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2), { timeout: 4_000 });
+		await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
 		const retried = mail(child.sent);
 		expect(retried).toHaveLength(1);
 		await child.emit(
@@ -108,14 +112,14 @@ describe("interrupt", () => {
 			replyRequired: false,
 			interrupt: true,
 		})) as { id: number };
-		await vi.waitFor(() => expect(child.abort).toHaveBeenCalledTimes(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(child.abort).toHaveBeenCalledTimes(1));
 		vi.spyOn(child.api.session, "sendMessage").mockImplementationOnce(() => {
 			throw new Error("session not ready");
 		});
 		await child.emit("agent_settled", {}, child.ctx);
 		expect(mail(child.sent)).toHaveLength(0);
 		vi.spyOn(child.ctx, "isIdle").mockReturnValue(true);
-		await vi.waitFor(() => expect(mail(child.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(mail(child.sent)).toHaveLength(1));
 		await child.emit(
 			"context",
 			{
@@ -136,19 +140,37 @@ describe("interrupt", () => {
 	});
 
 	it("reaches only subagents the sender started, or any subagent when the user sends it", async () => {
-		const { cwd, db, parent, child } = family();
+		const { cwd, db, parent, parentId, child, store } = family();
 		const peer = agent(db, cwd);
-		peer.team.join();
+		const peerId = peer.team.join().id;
+		// The peer's own tree: a subagent it started, and one that subagent started.
+		const theirs = agent(db, cwd, { OCTOCODE_AGENT_ID: "general-666666", OCTOCODE_PARENT_ID: peerId });
+		theirs.team.join();
+		const nested = agent(db, cwd, { OCTOCODE_AGENT_ID: "general-444444", OCTOCODE_PARENT_ID: "general-666666" });
+		nested.team.join();
 		expect(await peer.team.send(child.team.id, "stop", { interrupt: true })).toEqual({
 			error: expect.stringContaining("only a subagent you started"),
 		});
 		expect(await parent.team.send(peer.team.id, "stop", { interrupt: true })).toEqual({
 			error: expect.stringContaining("only a subagent you started"),
 		});
-		// A broadcast interrupt reaches only the sender's tree, here its one subagent; a peer with no subagents stops nobody.
+		// A subagent cannot stop the agent that started it, by name or by broadcast.
+		expect(await child.team.send("parent", "stop", { interrupt: true })).toEqual({
+			error: expect.stringContaining(`only a subagent you started; ${parentId} is not one`),
+		});
+		expect(await child.team.send("all", "stop", { interrupt: true })).toEqual({
+			error: expect.stringContaining(`only subagents you started; ${parentId} is not one`),
+		});
+		// One target the sender did not start refuses the whole broadcast, its own subagent included.
+		expect(await peer.team.send("all", "stop", { interrupt: true })).toEqual({
+			error: expect.stringContaining("only subagents you started; general-444444 is not one"),
+		});
+		// Every refusal stored nothing: no recipient has mail waiting, and no message was recorded.
+		for (const id of [parentId, peerId, child.team.id!, "general-666666", "general-444444"])
+			expect(store.pending(id)).toEqual([]);
+		expect(store.recent()).toEqual([]);
+		// A broadcast interrupt reaches only the sender's tree, here its one subagent.
 		expect(await parent.team.send("all", "stop", { interrupt: true })).toMatchObject({ sent: [child.team.id] });
-		expect(await peer.team.send("all", "stop", { interrupt: true })).toHaveProperty("error");
-		expect(await child.team.send("parent", "stop", { interrupt: true })).toHaveProperty("error");
 		expect(await parent.team.send(child.team.id, "stop", { interrupt: true })).toMatchObject({
 			sent: [child.team.id],
 		});
@@ -163,7 +185,7 @@ describe("interrupt", () => {
 			replyRequired: false,
 			interrupt: true,
 		})) as { id: number };
-		await vi.waitFor(() => expect(child.abort).toHaveBeenCalledTimes(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(child.abort).toHaveBeenCalledTimes(1));
 		// Not steered: a queued steer would only be read after the running tool finished.
 		expect(mail(child.sent)).toEqual([]);
 		await child.emit("agent_settled", {}, child.ctx);
@@ -187,7 +209,7 @@ describe("interrupt", () => {
 		const { parent, child } = family(false);
 		expect(child.team.interrupted.aborted).toBe(false);
 		await parent.team.send(child.team.id, "stop waiting", { replyRequired: false, interrupt: true });
-		await vi.waitFor(() => expect(child.team.interrupted.aborted).toBe(true), { timeout: 3_000 });
+		await vi.waitFor(() => expect(child.team.interrupted.aborted).toBe(true));
 		await child.emit("agent_settled", {}, child.ctx);
 		// A fresh signal for the next interrupt.
 		expect(child.team.interrupted.aborted).toBe(false);
@@ -196,13 +218,10 @@ describe("interrupt", () => {
 	it("ends a subagent's wait for background work at the end of its run", async () => {
 		const cwd = repo();
 		const db = path.join(tmp(), "team.sqlite");
-		const saved = { ...process.env };
-		Object.assign(process.env, {
-			OCTOCODE_HOME: tmp(),
-			OCTOCODE_AGENT_DB: db,
-			OCTOCODE_AGENT_ID: "general-121212",
-			OCTOCODE_PARENT_ID: "main-aaaaaa",
-		});
+		vi.stubEnv("OCTOCODE_HOME", tmp());
+		vi.stubEnv("OCTOCODE_AGENT_DB", db);
+		vi.stubEnv("OCTOCODE_AGENT_ID", "general-121212");
+		vi.stubEnv("OCTOCODE_PARENT_ID", "main-aaaaaa");
 		const fake = fakeHost();
 		const ctx = fakeCtx({ cwd, hasUI: false, idle: false });
 		try {
@@ -246,14 +265,13 @@ describe("interrupt", () => {
 			expect(Date.now() - started).toBeLessThan(8_000);
 		} finally {
 			await fake.emit("session_shutdown", { type: "session_shutdown" }, ctx);
-			process.env = saved;
 		}
 	}, 20_000);
 
 	it("says the step was stopped only when it was", async () => {
 		const { cwd, db, parent, parentId, child } = family(false);
 		await parent.team.send(child.team.id, "switch tasks", { replyRequired: false, interrupt: true });
-		await vi.waitFor(() => expect(child.abort).toHaveBeenCalled(), { timeout: 3_000 });
+		await vi.waitFor(() => expect(child.abort).toHaveBeenCalled());
 		await child.emit("agent_settled", {}, child.ctx);
 		expect(mail(child.sent)[0].message.content).toContain(interruptNotice);
 		// One with a UI that is idle is woken, not stopped.
@@ -265,7 +283,7 @@ describe("interrupt", () => {
 		);
 		ui.team.join();
 		await parent.team.send(ui.team.id, "new direction", { replyRequired: false, interrupt: true });
-		await vi.waitFor(() => expect(mail(ui.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(mail(ui.sent)).toHaveLength(1));
 		expect(mail(ui.sent)[0].message.content).not.toContain("was stopped");
 		expect(ui.abort).not.toHaveBeenCalled();
 	});
@@ -276,7 +294,7 @@ describe("interrupt", () => {
 			throw new Error("session ended");
 		});
 		await parent.team.send(child.team.id, "stop", { replyRequired: false, interrupt: true });
-		await vi.waitFor(() => expect(mail(child.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(mail(child.sent)).toHaveLength(1));
 		expect(mail(child.sent)[0].options).toEqual({ triggerTurn: true, deliverAs: "steer" });
 		expect(child.team.interrupted.aborted).toBe(false);
 	});
@@ -313,31 +331,38 @@ describe("interrupt", () => {
 		);
 		child.team.join();
 		await parent.team.send(child.team.id, "new direction", { replyRequired: false, interrupt: true });
-		await vi.waitFor(() => expect(mail(child.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(mail(child.sent)).toHaveLength(1));
 		expect(mail(child.sent)[0].options).toEqual({ triggerTurn: true, deliverAs: "steer" });
 		expect(child.abort).not.toHaveBeenCalled();
 	});
 
-	it("stops a manual /compact and delivers the held interrupt once the session is idle, with no agent_settled", async () => {
+	it("delivers a held interrupt once the session is idle when no run settles, as after a manual /compact", async () => {
 		const cwd = repo();
 		const db = path.join(tmp(), "team.sqlite");
 		const parent = agent(db, cwd);
 		const parentId = parent.team.join().id;
-		// Busy only with a compaction: Octocode's isIdle is false, and no agent run ends when abort() cancels it.
+		// Busy only with a compaction: Octocode's isIdle is false and no agent run is there to settle. A peer's stop request
+		// does not cancel the compaction (only the user's Stop does), so the mail waits until the session reports idle.
 		const child = agent(
 			db,
 			cwd,
 			{ OCTOCODE_AGENT_ID: "general-compact", OCTOCODE_PARENT_ID: parentId },
-			{ idle: false },
+			{ idle: false, running: false },
 		);
 		child.team.join();
 		await parent.team.send(child.team.id, "drop the compaction, do this", { replyRequired: false, interrupt: true });
-		await vi.waitFor(() => expect(child.abort).toHaveBeenCalledTimes(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(child.abort).toHaveBeenCalledTimes(1));
+		// Asked to stop as a peer, the reason that leaves a running compaction alone.
+		expect(child.abort).toHaveBeenCalledWith("peer");
 		expect(mail(child.sent)).toHaveLength(0);
 		vi.spyOn(child.ctx, "isIdle").mockReturnValue(true);
-		await vi.waitFor(() => expect(mail(child.sent)).toHaveLength(1), { timeout: 3_000 });
-		expect(mail(child.sent)[0].message.content).toContain(interruptNotice);
+		await vi.waitFor(() => expect(mail(child.sent)).toHaveLength(1));
+		// No step was running, so none was stopped: the one delivery carries the message without the marker.
+		expect(mail(child.sent)[0].message.content).not.toContain(interruptNotice);
+		expect(mail(child.sent)[0].message.content).not.toContain("was stopped");
+		expect(mail(child.sent)[0].message.content).toContain("drop the compaction, do this");
 		expect(mail(child.sent)[0].options).toEqual({ triggerTurn: true, deliverAs: "steer" });
+		expect(child.abort).toHaveBeenCalledTimes(1);
 	});
 
 	it("is offered by the sendMessage tool and /agents interrupt", async () => {

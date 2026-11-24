@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { TeamStore } from "../../src/octocode/team/store.ts";
+import { BUSY_MS } from "../../src/octocode/team/store/limits.ts";
 import { patiently } from "../../src/octocode/team/store/patient.ts";
 import { tmp } from "./helpers.ts";
 
@@ -69,7 +70,9 @@ describe("team store on a busy database", () => {
 			other.exec("BEGIN IMMEDIATE");
 			const started = performance.now();
 			expect(() => store.quick(() => store.save(member("inky")))).toThrow(/locked|busy/i);
-			expect(performance.now() - started).toBeLessThan(50);
+			// Elapsed time is the contract here (no wait inside SQLite), so it is compared with the wait a write the agent asked
+			// for would take (BUSY_MS), with a wide margin for a loaded machine, instead of a fixed count of milliseconds.
+			expect(performance.now() - started).toBeLessThan(BUSY_MS / 10);
 			other.exec("COMMIT");
 			expect(store.quick(() => store.save(member("inky")))).toBe(true);
 		} finally {

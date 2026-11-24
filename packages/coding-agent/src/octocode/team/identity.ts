@@ -57,7 +57,9 @@ export const GOAL_DESCRIPTION = `Panel verb phrase; ~${GOAL_SHOWN_CHARS} charact
 export function checkGoal(input: unknown): string {
 	const goal = typeof input === "string" ? sanitizeTerminalText(input).split(/\s+/).filter(Boolean).join(" ") : "";
 	if (goal === "")
-		throw new Error(`A goal is required: a few words on what this agent works on, for example "${GOAL_EXAMPLE}".`);
+		throw new Error(
+			`A goal is required: pass \`goal\` (a few words on what this agent works on, for example "${GOAL_EXAMPLE}"), or an \`item\` whose title becomes the goal.`,
+		);
 	return goal;
 }
 

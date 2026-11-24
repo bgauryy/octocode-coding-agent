@@ -4,7 +4,7 @@ import { recordsEvent } from "./cutover.ts";
 import { EventLoop } from "./loop.ts";
 import { RunSignals, type SessionSignals } from "./signals.ts";
 import { type EventStore, MemoryEventStore } from "./store.ts";
-import type { Batch, DeliveryPoint, EventCatalog, Priority } from "./types.ts";
+import type { Batch, DeliveryPoint, EventCatalog, InputMode, Priority } from "./types.ts";
 
 /** The scheduler chooses when to deliver. The host sends each message in the batch and lets its last message start a
  * turn when needed. Replay rebuilds pending messages from the stored envelope and skips events without one. */
@@ -46,18 +46,14 @@ export class LiveLoop<C> implements SessionSignals {
 	private ending = false;
 	private handoff?: Promise<void>;
 	private wakeGeneration = 0;
-	/** The caller already owns the decision to start or stop: nothing in this batch starts another turn. */
-	private quiet = false;
 
 	constructor(options: LiveOptions<C>) {
 		this.loop = new EventLoop<C>({
 			store: options.store ?? new MemoryEventStore(),
 			catalog: options.catalog,
 			windowMs: options.windowMs,
-			// A batch handed over after a stop asks for no turn, whatever its entries wanted.
 			deliver: (batch, point) => {
 				const owner = this.wakeGeneration;
-				if (this.quiet) batch.trigger = false;
 				const sending = options.send(
 					batch,
 					point,
@@ -88,22 +84,17 @@ export class LiveLoop<C> implements SessionSignals {
 		return { accepted: true };
 	}
 
-	/** Q1: text the user typed or a client sent, with its source: delivered ahead of every background event and never held by the window. */
-	input(text: string, carry: C, source: Source): void {
+	/** Q1: text the user typed or a client sent, with its source: never held by the window. It releases the events the window held, which are written to the conversation ahead of the prompt the session then starts. */
+	input(text: string, carry: C, source: Source, mode?: InputMode): void {
 		this.wakeGeneration++;
-		this.loop.input(text, carry, source);
+		this.loop.input(text, carry, source, mode);
 	}
 
 	/** An admitted custom message is starting its own run. Include idle completions before its first request. */
 	async joinStartingRun(): Promise<void> {
 		this.wakeGeneration++;
 		if (this.handoff) await this.joinHandoffs();
-		this.quiet = true;
-		try {
-			this.loop.flushNow();
-		} finally {
-			this.quiet = false;
-		}
+		this.loop.flushNow(true);
 		if (this.handoff) await this.joinHandoffs();
 	}
 
@@ -147,12 +138,7 @@ export class LiveLoop<C> implements SessionSignals {
 			const owner = ++this.wakeGeneration;
 			const stop = () => {
 				if (this.ending || owner !== this.wakeGeneration) return;
-				this.quiet = true;
-				try {
-					this.loop.handOver();
-				} finally {
-					this.quiet = false;
-				}
+				this.loop.handOver();
 			};
 			// EventLoop takes the handoff before this callback, so a stop also drains arrivals during that handoff.
 			if (this.handoff) void this.handoff.then(stop, () => undefined);
@@ -167,15 +153,26 @@ export class LiveLoop<C> implements SessionSignals {
 	}
 
 	compactionEnded(stopped = false): void | Promise<void> {
-		// A compaction the user stopped is not answered with a turn: what waited behind the lock is handed over quietly.
-		this.quiet = stopped;
-		try {
+		if (!stopped) {
 			this.loop.unlock();
-		} finally {
-			this.quiet = false;
+			// The host resumes from the summary once every released message has reached its input queue.
+			if (this.handoff) return this.joinHandoffs();
+			return;
 		}
-		// The host resumes from the summary once every released message has reached its input queue.
-		if (this.handoff) return this.joinHandoffs();
+		// A compaction the user stopped is not answered with a turn: what waited behind the lock is handed over quietly,
+		// and so is what arrives while that hand-over is still being written.
+		const owner = ++this.wakeGeneration;
+		this.loop.unlock(true);
+		if (this.handoff) return this.handOverQuietly(owner);
+	}
+
+	/** Waits out each hand-over in progress and gives what arrived meanwhile to the same stop, until nothing is in flight. */
+	private async handOverQuietly(owner: number): Promise<void> {
+		while (this.handoff) {
+			await Promise.allSettled([this.handoff]);
+			if (this.ending || owner !== this.wakeGeneration) return;
+			this.loop.flushNow(true);
+		}
 	}
 
 	/** Completion of the current transcript delivery. The model run has its own lifetime. */

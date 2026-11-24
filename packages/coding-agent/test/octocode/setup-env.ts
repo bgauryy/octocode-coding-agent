@@ -3,6 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { vi } from "vitest";
 import { testCompileCacheDir } from "../helpers/compile-cache.ts";
+import { keepWorkerTitle } from "../helpers/worker-title.ts";
+
+keepWorkerTitle();
 
 // A suite started from inside Octocode (or one of its subagents) inherits that session's OCTOCODE_* identity and settings: start from none, so results never depend on who ran the tests.
 // The run's own test markers (`OCTOCODE_TEST_*`, `vitest.tmp.global.ts`) stay: they guard the real agent database in every process a test starts.

@@ -80,10 +80,11 @@ export async function settleWithin(
  * The placeholders Octocode leaves where it cut text the model later sees: `capChars` cuts, the gap and trim note of a
  * result spilled to a file (`capOutput`, `capOutputToFile`), the range note of a file read back after compaction, and
  * the cuts of a kept user message or a tool result in a compaction summary. A model that copies one into a file writes
- * a hole, not content.
+ * a hole, not content. A trim note matches only in the shapes Octocode writes (`showing N of M lines`, `N of M lines`,
+ * `the first line alone is`), so source that names the marker, such as a test's regex, is not one.
  */
 const ELISION_MARKER =
-	/\[… (?:\d+ (?:more characters cut|characters of this message are left out here|characters in the middle left out for the summary|lines? omitted …)|[\d.]+[KM]?B omitted …|shown lines \d+–\d+ of \d+)[^\]\n]*\]|\[Output trimmed: [^\]\n]*\]/g;
+	/\[… (?:\d+ (?:more characters cut|characters of this message are left out here|characters in the middle left out for the summary|lines? omitted …)|[\d.]+[KM]?B omitted …|shown lines \d+–\d+ of \d+)[^\]\n]*\]|\[Output trimmed:\x20(?:showing \d+ of \d+ lines|\d+ of \d+ lines|the first line alone is )[^\]\n]*\]/g;
 
 export function elisionMarkers(text: string): string[] {
 	return text.match(ELISION_MARKER) ?? [];

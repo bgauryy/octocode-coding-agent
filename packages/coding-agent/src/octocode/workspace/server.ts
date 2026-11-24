@@ -4,6 +4,7 @@ import {
 	type ApplicationConnection,
 	type ApplicationCursor,
 } from "@octocodeai/octocode-contracts";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { sameSecret } from "@octocodeai/octocode-common/env";
 import { redactData, redactSecrets, registerSecretValue } from "@octocodeai/octocode-common/sanitize";
 import { livePageHeaderPolicy, renderBacklogHtml, WEB_PAGE_ASSETS } from "@octocodeai/octocode-webview";
@@ -312,28 +313,30 @@ export async function startWorkspaceWeb(
 		});
 	});
 	// Other agent processes share SQLite; watch its revision without polling from each browser.
-	const updates = setInterval(() => {
-		if (!authenticated.size) return;
-		try {
-			workspaceUpdates();
-			const next = backlog.store.revision;
-			if (next !== revision) {
-				revision = next;
-				broadcast();
-			} else {
-				const volatile = projection.refresh();
-				if (volatile) broadcast(volatile);
+	const stopUpdates = sharedClock.subscribe(
+		() => {
+			if (!authenticated.size) return;
+			try {
+				workspaceUpdates();
+				const next = backlog.store.revision;
+				if (next !== revision) {
+					revision = next;
+					broadcast();
+				} else {
+					const volatile = projection.refresh();
+					if (volatile) broadcast(volatile);
+				}
+			} catch {
+				for (const socket of authenticated) socket.terminate();
 			}
-		} catch {
-			for (const socket of authenticated) socket.terminate();
-		}
-	}, 500);
-	updates.unref();
+		},
+		{ everyMs: 500 },
+	);
 	server.requestTimeout = 10000;
 	server.headersTimeout = 10000;
 	await new Promise<void>((resolve, reject) => {
 		const onError = (error: Error) => {
-			clearInterval(updates);
+			stopUpdates();
 			stopProfiler?.();
 			unsubscribe?.();
 			workspace?.close();
@@ -356,7 +359,7 @@ export async function startWorkspaceWeb(
 		close: () =>
 			new Promise<void>((resolve) => {
 				closed = true;
-				clearInterval(updates);
+				stopUpdates();
 				stopProfiler?.();
 				unsubscribe?.();
 				workspace?.close();

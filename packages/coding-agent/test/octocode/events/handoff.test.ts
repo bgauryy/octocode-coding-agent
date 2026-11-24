@@ -95,7 +95,8 @@ it("resumes only the unsent tail when a session is rebound during handoff", asyn
 	expect(prefix).toBeLessThan(ids.length);
 	await nextTick();
 	expect(sent).toHaveLength(prefix);
-	expect(live.loop()!.queued().Q3).toBe(ids.length - prefix);
+	// The rebound session owes the tail: its status shows a wake about to resume it.
+	expect(sessionPhaseOf(host.api).factsNow().wakes).toHaveLength(1);
 	await host.fire("session_shutdown", {}, ctx);
 	expect(sent.map(({ id }) => id)).toEqual(ids);
 	expect(sent.some(({ wake }) => wake)).toBe(false);

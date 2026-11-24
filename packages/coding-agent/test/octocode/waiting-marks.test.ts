@@ -42,7 +42,7 @@ describe("waiting on you: the ask tool", () => {
 			{
 				details: { cancelled: false, answers: [{ question: "Keep it?", answer: "Yes", custom: false }] },
 				mark: "<success>✓",
-				light: "<muted>◉",
+				light: "<success>◉",
 			},
 			{ details: { cancelled: true, answers: [] }, mark: "<error>✗", light: "<error>⊗" },
 			{ details: { cancelled: true, answers: [], reason: "unavailable" }, mark: "<error>✗", light: "<error>⊗" },
@@ -150,8 +150,8 @@ describe("agent rows", () => {
 			tagged,
 			working,
 		);
-		// A working light is green (contract change: status dots, wave C); the accent spinner is the main working line's.
-		expect(call(working)).toContain("<success>⏺");
+		// Contract change (user request): a tool row is grey while it runs, green once its result returned.
+		expect(call(working)).toContain("<muted>⏺");
 		const asking = row({ isPartial: true, executionStarted: true });
 		renderAgentResult(
 			{ content, details: details({ status: "running", waiting: true }) },
@@ -164,7 +164,7 @@ describe("agent rows", () => {
 
 	it.each([
 		// A finished run draws its still state light: ⏺ means running only.
-		["done", {}, "<muted>◉"],
+		["done", {}, "<success>◉"],
 		["blocked", { outcome: "blocked" as const }, "<warning>◐"],
 		["failed", { outcome: "failed" as const }, "<error>⊗"],
 	])("draws a finished %s foreground run's header mark", (_name, extra, mark) => {
@@ -177,7 +177,7 @@ describe("agent rows", () => {
 	});
 
 	it.each([
-		["done", "<muted>◉"],
+		["done", "<success>◉"],
 		["failed", "<error>⊗"],
 		["stopped", "<error>⊘"],
 	])("draws a background report that %s with its mark", (status, mark) => {

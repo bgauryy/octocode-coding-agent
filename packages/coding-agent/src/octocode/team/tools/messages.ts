@@ -245,7 +245,7 @@ export function registerSendMessageTool(
 				callback: Type.Optional(
 					Type.Object(
 						{
-							on: StringEnum(["reply", "done", "item.state", "job.exit", "agent.ended"] as const, {
+							on: StringEnum(["reply", "done", "job.exit", "agent.ended"] as const, {
 								description: "What settles it; reply is replyRequired",
 							}),
 							filter: Type.Optional(

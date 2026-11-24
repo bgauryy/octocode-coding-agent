@@ -169,9 +169,8 @@ export function registerCompaction(
 	// Near the threshold the summary is requested beside the run, inside the session's cached request (`early-summary.ts`).
 	api.bus.on("session_compact_prewarm", async (event, ctx) => {
 		if (downshiftFrom || thrash.tripped()) return;
-		const ttl = promptCacheTtlMs(lifetimes.of(ctx.model), cacheEnv(ctx));
 		// Without a usable cache the early request would bill the whole input beside the run, for a summary the compaction can request itself.
-		startEarlySummary(api, event, ctx, cacheUnusable(ctx.sessionManager, ttl));
+		startEarlySummary(api, event, ctx, cacheUnusable(ctx.sessionManager, lifetimes.of(ctx.model), cacheEnv(ctx)));
 	});
 	api.bus.on("session_before_compact", async (event, ctx) => {
 		// The agent's own request (`compact` tool) arrives as a manual compaction but counts as automatic.

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { processSamples, type AgentDb } from "../../../../db/src/api.ts";
@@ -8,6 +9,7 @@ import { Subcommands } from "../../../src/octocode/shared/commands.ts";
 import { processStartTime } from "../../../src/octocode/shared/process.ts";
 import { fakeCtx, fakeHost } from "../fake-host.ts";
 import { tmp } from "../helpers.ts";
+import { TEST_WORKER_TITLE } from "../../helpers/worker-title.ts";
 
 const startingTitle = process.title;
 let agent: AgentDb;
@@ -58,6 +60,18 @@ describe("process title across the session lifecycle", () => {
 		expect(process.title).toBe("octocode-agent-main-04d4d5f8");
 		await host.emit("session_shutdown", {}, ctx("0000-04d4d5f8"));
 	});
+
+	it.skipIf(process.platform === "win32")(
+		"leaves a test worker's own title in ps, so a worker never shows as a live session",
+		async () => {
+			const host = live();
+			await host.emit("session_start", { reason: "startup" }, ctx("eb93-75f9-01a1a2c5"));
+			expect(process.title).toBe("octocode-agent-main-01a1a2c5");
+			const shown = execFileSync("ps", ["-o", "command=", "-p", String(process.pid)], { encoding: "utf8" });
+			expect(shown.trim()).toBe(TEST_WORKER_TITLE);
+			await host.emit("session_shutdown", {}, ctx("eb93-75f9-01a1a2c5"));
+		},
+	);
 
 	it("names an RPC host octocode-agent-rpc-<id>", async () => {
 		const host = live();

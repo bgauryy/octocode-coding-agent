@@ -13,6 +13,8 @@ import {
 	azureSupportsInstructionBreakpoints,
 	azureSupportsLongCacheRetention,
 } from "../api/azure-openai-config.ts";
+import { completionsCacheProfile } from "../utils/cache-profile-resolve.ts";
+import type { PromptCacheKeyRule } from "../utils/cache-profiles.ts";
 import { getCompat as getCompletionsCompat } from "../api/openai-completions/compat.ts";
 import { getCompat as getResponsesCompat } from "../api/openai-responses/compat.ts";
 import type { Api, Model, ModelThinkingLevel, ProviderEnv } from "../types.ts";
@@ -29,15 +31,6 @@ export type { ThinkingControl } from "./thinking.ts";
  * to send, `none` caches nothing.
  */
 export type CacheMechanism = "markers" | "key" | "explicit-breakpoint" | "implicit" | "none";
-
-/** `cached`: sent whenever caching is on; `long`: only with long retention; `never`: not sent. */
-export type PromptCacheKeyRule = "cached" | "long" | "never";
-
-/** The host that accepts `prompt_cache_key` with any retention, or a model whose compat allows long retention. */
-export function promptCacheKeyRule(model: Model<"openai-completions">): PromptCacheKeyRule {
-	if (matchesHost(model.baseUrl, "api.openai.com")) return "cached";
-	return getCompletionsCompat(model).supportsLongCacheRetention ? "long" : "never";
-}
 
 export interface ModelCapabilities {
 	/** The model's capacity in tokens; a session's working budget is applied separately. */
@@ -127,7 +120,7 @@ function cacheCapability(model: Model<Api>, env?: ProviderEnv): ModelCapabilitie
 		return {
 			mechanism,
 			lifetimes: tiers(declared.short, declared.long),
-			key: promptCacheKeyRule(model as Model<"openai-completions">),
+			key: completionsCacheProfile(model as Model<"openai-completions">).key,
 		};
 	return { mechanism, lifetimes: tiers(declared.short, declared.long) };
 }

@@ -2,8 +2,9 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { OctocodeApi } from "../../src/octocode/api/bridge.ts";
+import { externalHeader } from "../../src/octocode/api/bridge/caller.ts";
 import { ApiClient } from "../../src/octocode/api/client.ts";
 import { EventLog } from "../../src/octocode/api/events.ts";
 import { apiDir, ensurePrivateDir, socketPath, writeRecord } from "../../src/octocode/api/registry.ts";
@@ -50,14 +51,27 @@ async function boot(http?: number) {
 
 describe("what a receiving session says about how a message reached it", () => {
 	it("names the owner-only socket for a socket caller and the API token for an HTTP caller", async () => {
-		const { api, sent } = await boot(0);
-		await new ApiClient({ socket: api.instance!.socket! }).call("message.send", { text: "by socket", from: "ci" });
-		await new ApiClient({ http: api.instance!.http! }).call("message.send", { text: "by http", from: "ci" });
-		const header = (index: number) => String(sent[index].message.content).split("\n<<<untrusted-")[0];
-		// The header tells the two transports apart, so the model knows how much the caller's claims weigh.
-		expect(header(0)).not.toBe(header(1));
-		expect(header(0)).toContain("ci");
-		expect(header(1)).toContain("ci");
+		// The header ends with the time: one instant for both sends, so only the transport can tell them apart.
+		vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-01-01T12:00:00Z") });
+		try {
+			const { api, sent } = await boot(0);
+			await new ApiClient({ socket: api.instance!.socket! }).call("message.send", { text: "by socket", from: "ci" });
+			await new ApiClient({ http: api.instance!.http! }).call("message.send", { text: "by http", from: "ci" });
+			const header = (index: number) => String(sent[index].message.content).split("\n<<<untrusted-")[0];
+			// Each header names the transport its message came by, so the model knows how much the caller's claims weigh.
+			const bySocket = externalHeader({ transport: "socket", from: "ci", waiting: false }, Date.now());
+			const byHttp = externalHeader({ transport: "http", from: "ci", waiting: false }, Date.now());
+			expect(bySocket).not.toBe(byHttp);
+			expect(header(0)).toContain(bySocket);
+			expect(header(0)).not.toContain(byHttp);
+			expect(header(1)).toContain(byHttp);
+			expect(header(1)).not.toContain(bySocket);
+			expect(header(0)).not.toBe(header(1));
+			expect(header(0)).toContain("ci");
+			expect(header(1)).toContain("ci");
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("keeps a caller's claim on one quoted line, gives a claim that names no running instance no reply hint, and a forged sender stays a claim", async () => {

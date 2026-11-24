@@ -4,7 +4,7 @@ import { formatCost } from "../shared/format.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { registeredWorkspace } from "../../storage/workspace-database.ts";
-import { backlog, dbStamp, machineSamples, timers, type TimerRow } from "../../../../db/src/api.ts";
+import { backlog, dbStamp, isBusy, machineSamples, timers, type TimerRow } from "../../../../db/src/api.ts";
 import { BACKLOG_CHANGE_CHANNEL, type BacklogChange, type BacklogChangeNotice } from "../shared/backlog-change.ts";
 import { backlogDeps } from "./backlog-deps.ts";
 import { peerEnd } from "./peer-end.ts";
@@ -100,7 +100,7 @@ export function registerTimers(
 	const queuedRuns = new Set<number>();
 	/** Read from the global settings only, as `bash.inheritProviderKeys` is: a project file must not start paid calls. */
 	const checkAllowed = () => approved || checkEnabledSetting(options.agentDir);
-	const follower = new DatabaseFollower(() => dbStamp(db().file));
+	const follower = new DatabaseFollower(() => dbStamp(db().file), isBusy);
 	const workspace = () => registeredWorkspace(current?.cwd ?? process.cwd(), db()).id;
 	const small = options.small ?? NO_SMALL_MODEL;
 	const judge = new Judge({

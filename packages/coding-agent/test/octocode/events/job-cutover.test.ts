@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionManager } from "../../../src/core/session-manager.ts";
+import { MAX_EVENT_WINDOW_SECONDS } from "../../../src/core/settings-schema/runtime.ts";
 import { lockSessionFile } from "../../../src/core/session-manager/shared-file.ts";
 import { MemoryEventStore } from "../../../src/octocode/events/loop/store.ts";
 import { JOB_TYPE, TASK_TYPE } from "../../../src/octocode/shared/messages.ts";
@@ -13,6 +14,9 @@ import {
 	branchLines,
 	count,
 	createRig,
+	expectHeld,
+	pendingWakes,
+	quiet,
 	sleep,
 	wakeGateOf,
 	type Rig,
@@ -33,15 +37,18 @@ afterEach(() => {
 });
 
 const WINDOW_S = 0.4;
+/** The longest window a session can have, and a test timeout below it: a prompt the window held does not finish in time. */
+const LONG_WINDOW_S = MAX_EVENT_WINDOW_SECONDS;
+const BEFORE_THE_WINDOW_ENDS_MS = (LONG_WINDOW_S - 2) * 1000;
 const exit = (job: string): AgentEvent => ({ kind: "job.exit", job, exit: 0, durationMs: 1, startedAt: 0 });
 const message = (job: string) => ({ customType: "loop-test", content: `EXIT-${job}`, display: true });
 const send = (rig: Rig, job: string) =>
 	wakeGateOf(rig.api).emit(exit(job), message(job), { triggerTurn: true, deliverAs: "followUp", together: true });
 
-async function newRig(options: RigOptions = {}) {
+async function newRig(options: RigOptions = {}, windowSeconds = WINDOW_S) {
 	const rig = await createRig({
 		...options,
-		settings: { ...options.settings, runtime: { eventWindowSeconds: WINDOW_S } },
+		settings: { ...options.settings, runtime: { eventWindowSeconds: windowSeconds } },
 	});
 	rigs.push(rig);
 	return rig;
@@ -65,7 +72,8 @@ describe("the job.exit cut-over", () => {
 		const options = { triggerTurn: true, deliverAs: "steer" as const };
 		await gate.emit(exit(id), message, options);
 		await gate.emit(exit(id), message, options);
-		expect(first.live()?.queued().Q3).toBe(1);
+		// The repeat was dropped: the log holds one completion for the session that resumes.
+		expect(store.unread()).toHaveLength(1);
 		const recovered = await newRig({ liveStore: () => store });
 		recovered.harness.setResponses([recovered.reply("received")]);
 		await recovered.harness.session.prompt("resume");
@@ -98,10 +106,13 @@ describe("the job.exit cut-over", () => {
 				liveStore: () => store,
 				sessionManager: SessionManager.open(sessionManager.getSessionFile()!),
 			});
-			expect(next.live()?.queued().Q3).toBe(1);
-			next.harness.setResponses([next.reply("recovered")]);
+			// The resumed session is about to be woken, by what it found in the log.
+			expect(pendingWakes(next)).toHaveLength(1);
+			next.harness.setResponses([next.reply("recovered"), next.reply("unexpected second turn")]);
 			await vi.waitFor(() => expect(next.requests).toHaveLength(1), { timeout: 5_000 });
-			await next.harness.session.waitForIdle();
+			await quiet(next);
+			expect(next.requests).toHaveLength(1);
+			expect(count(next.requests[0], `EXIT-${rejected}`)).toBe(1);
 			const history = branchLines(next.harness);
 			for (const id of ["first", "second"]) expect(count(history, `EXIT-${id}`)).toBe(1);
 			expect(store.unread()).toEqual([]);
@@ -120,35 +131,43 @@ describe("the job.exit cut-over", () => {
 			expect(count(branchLines(rig.harness), "EXIT-locked")).toBe(1);
 			expect(store.unread()).toHaveLength(1);
 			const rebound = await newRig({ liveStore: () => store, sessionManager });
-			expect(rebound.live()?.queued().Q3).toBe(0);
+			rebound.harness.setResponses([rebound.reply("unexpected")]);
+			// The rebound session does not take it a second time: nothing is about to wake it, and its branch has it once.
+			expect(pendingWakes(rebound)).toEqual([]);
+			await quiet(rebound);
+			expect(rebound.requests).toHaveLength(0);
+			expect(count(branchLines(rebound.harness), "EXIT-locked")).toBe(1);
 			expect(store.unread()).toHaveLength(1);
 		} finally {
 			release();
 		}
 		await vi.waitFor(() => expect(store.unread()).toHaveLength(0));
-		expect(SessionManager.open(file).getBranch()).toContainEqual(
-			expect.objectContaining({ content: expect.stringContaining("EXIT-locked") }),
-		);
+		const written = SessionManager.open(file)
+			.getBranch()
+			.filter((entry) => JSON.stringify(entry).includes("EXIT-locked"));
+		expect(written).toHaveLength(1);
 		expect(rig.requests).toHaveLength(0);
 	});
 
-	it("delivers an exit once, through the loop's window", async () => {
+	it("delivers an exit once, in a turn of its own after the loop's window", async () => {
 		const rig = await newRig();
-		rig.harness.setResponses([rig.reply("saw the exit")]);
-		const started = Date.now();
-		const sent = send(rig, "bash-1");
-		expect(rig.live()).toBeDefined();
-		expect(rig.live()?.queued()).toMatchObject({ Q3: 1 });
-		await sleep(WINDOW_S * 250);
-		expect(rig.requests).toHaveLength(0);
-		await sent;
+		rig.harness.setResponses([rig.reply("saw the exit"), rig.reply("unexpected second turn")]);
+		await send(rig, "bash-1");
 		await vi.waitFor(() => expect(rig.requests).toHaveLength(1), { timeout: 10_000 });
-		await rig.harness.session.waitForIdle();
-		expect(Date.now() - started).toBeGreaterThanOrEqual(WINDOW_S * 1000 - 50);
+		await quiet(rig);
+		expect(rig.requests).toHaveLength(1);
 		expect(count(rig.requests[0], "EXIT-bash-1")).toBe(1);
 		expect(count(branchLines(rig.harness), "EXIT-bash-1")).toBe(1);
-		// The gate did not hold it too: it sent nothing of its own and shows no wake left.
-		expect(rig.live()?.queued()).toMatchObject({ Q1: 0, Q2: 0, Q3: 0 });
+		// The gate did not hold it too: it sent nothing of its own, shows no wake left and asked for no second turn.
+		expect(pendingWakes(rig)).toEqual([]);
+		expect(rig.harness.getPendingResponseCount()).toBe(1);
+	});
+
+	it("holds an exit while the window is open: nothing reaches the model or the branch", async () => {
+		const rig = await newRig({}, LONG_WINDOW_S);
+		rig.harness.setResponses([rig.reply("unexpected")]);
+		await send(rig, "bash-1");
+		await expectHeld(rig, "EXIT-bash-1");
 	});
 
 	it("wakes once for two exits within the window, and the turn carries both", async () => {
@@ -178,29 +197,34 @@ describe("the job.exit cut-over", () => {
 			},
 			{ triggerTurn: true, deliverAs: "steer" },
 		);
-		expect(rig.live()?.queued().Q3).toBe(2);
 		await vi.waitFor(() => expect(rig.requests).toHaveLength(1), { timeout: 10000 });
-		await rig.harness.session.waitForIdle();
+		await quiet(rig);
+		expect(rig.requests).toHaveLength(1);
 		expect(count(rig.requests[0], "EXIT-bash-1")).toBe(1);
 		expect(count(rig.requests[0], "peer arrived")).toBe(1);
 		expect(rig.harness.getPendingResponseCount()).toBe(1);
 	});
 
-	it("never holds user input: a prompt during the window runs at once, and the exit is delivered once after it", async () => {
-		const rig = await newRig();
-		rig.harness.setResponses([rig.reply("user answer"), rig.reply("exit answer")]);
-		const sent = send(rig, "bash-1");
-		const began = Date.now();
-		await rig.harness.session.prompt("typed by the user");
-		expect(Date.now() - began).toBeLessThan(WINDOW_S * 1000);
-		expect(rig.requests[0].some((line) => line.includes("typed by the user"))).toBe(true);
-		await sent;
-		await vi.waitFor(() => expect(count(rig.requests.flat(), "EXIT-bash-1")).toBeGreaterThanOrEqual(1), {
-			timeout: 10_000,
-		});
-		await rig.harness.session.waitForIdle();
-		expect(count(branchLines(rig.harness), "EXIT-bash-1")).toBe(1);
-	});
+	it(
+		"never holds user input: a prompt during the window runs at once and takes the held exit with it",
+		async () => {
+			const rig = await newRig({}, LONG_WINDOW_S);
+			rig.harness.setResponses([rig.reply("user answer"), rig.reply("unexpected second turn")]);
+			await send(rig, "bash-1");
+			await expectHeld(rig, "EXIT-bash-1");
+			// A prompt the window held would wait the window out and hit this test's timeout, which is shorter.
+			await rig.harness.session.prompt("typed by the user");
+			await quiet(rig);
+			// One request, the prompt's own: it carries the typed text and the exit, and the exit costs no second turn.
+			expect(rig.requests).toHaveLength(1);
+			expect(count(rig.requests[0], "typed by the user")).toBe(1);
+			expect(count(rig.requests[0], "EXIT-bash-1")).toBe(1);
+			expect(count(branchLines(rig.harness), "EXIT-bash-1")).toBe(1);
+			expect(pendingWakes(rig)).toEqual([]);
+			expect(rig.harness.getPendingResponseCount()).toBe(1);
+		},
+		BEFORE_THE_WINDOW_ENDS_MS,
+	);
 
 	it("queues an exit behind a compaction lock and delivers it once after the summary", async () => {
 		const rig = await newRig({

@@ -125,3 +125,38 @@ it("projects Codex Bash command input and preserves native execution options on 
 	expect(JSON.parse(fs.readFileSync(capture, "utf8")).tool_input).toEqual({ command: "original" });
 	expect(event.input).toEqual({ command: "rewritten", timeout: 10, background: true });
 });
+
+it("refuses a call two hooks rewrite differently, and applies a rewrite they agree on", async () => {
+	const home = tmp();
+	vi.stubEnv("OCTOCODE_HOME", tmp());
+	fs.mkdirSync(path.join(home, ".claude"));
+	const fake = fakeHost(HOOK_SETTINGS);
+	fake.tools.set("bash", { name: "bash", description: "Run", parameters: Type.Object({ command: Type.String() }) });
+	const hooks = registerHooks(fake.api, { env: {}, home });
+	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
+	// Two scripts, so the two hooks are distinct commands even when they print the same rewrite.
+	const rewriteTo = (name: string, command: string) => {
+		const script = path.join(home, `${name}.cjs`);
+		const output = { hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: { command } } };
+		fs.writeFileSync(script, `console.log(${JSON.stringify(JSON.stringify(output))});`);
+		return { type: "command", command: `${process.execPath} ${script}` };
+	};
+	const call = async (first: string, second: string) => {
+		fs.writeFileSync(
+			path.join(home, ".claude/settings.json"),
+			JSON.stringify({
+				hooks: { PreToolUse: [{ matcher: "Bash", hooks: [rewriteTo("first", first), rewriteTo("second", second)] }] },
+			}),
+		);
+		approveFixtureHooks(ctx.cwd, home);
+		await fake.fire("session_start", { reason: "reload" }, ctx);
+		const event = { toolName: "bash", toolCallId: "rewrite", input: { command: "original" } };
+		return { result: await hooks.preToolUse(event as never, ctx), command: event.input.command };
+	};
+	expect(await call("one", "two")).toEqual({
+		result: { block: true, reason: "Blocked by a PreToolUse hook: Conflicting hook input rewrites; call not executed" },
+		command: "original",
+	});
+	expect(await call("same", "same")).toEqual({ result: { rewritten: true }, command: "same" });
+	await fake.fire("session_shutdown", { reason: "quit" }, ctx);
+});

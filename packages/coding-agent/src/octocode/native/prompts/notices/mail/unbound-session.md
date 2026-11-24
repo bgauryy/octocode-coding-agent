@@ -1,0 +1,1 @@
+This session is not bound to the shared message store (agents-communication) that the octocode-messages-proxy skill uses, so agents of other vendors cannot message it and their path leases are not checked before your edits. Bind it from its host first if you need them.

@@ -3,6 +3,7 @@ import { splitSystemMessageIntoBlocks } from "@octocodeai/octocode-ai/utils/inst
 import {
 	findInstructionCacheBoundary,
 	findInstructionVolatileBoundary,
+	findInstructionWorkspaceBoundary,
 	instructionCacheBoundaryOption,
 } from "../src/core/model-runtime/instruction-boundary.ts";
 import { buildSystemPromptSections } from "../src/core/system-prompt.ts";
@@ -77,15 +78,22 @@ describe("instruction cache boundary", () => {
 				messages[0] as never,
 				options.instructionCacheBoundary,
 				options.instructionVolatileBoundary,
+				options.instructionWorkspaceBoundary,
 			)!;
 			return { options, blocks, text: Object.values(sections).join("\n\n") };
 		};
 		const one = build("/work/one", "2026-10-28");
-		expect(one.options).toEqual({ instructionCacheBoundary: "work", instructionVolatileBoundary: "cwd" });
-		expect(one.blocks.cached).toHaveLength(2);
+		expect(one.options).toEqual({
+			instructionCacheBoundary: "work",
+			instructionVolatileBoundary: "cwd",
+			instructionWorkspaceBoundary: "project_context",
+		});
+		// Base, generic session sections (shared across workspaces), then the project's own instructions.
+		expect(one.blocks.cached).toHaveLength(3);
 		expect(one.blocks.cached[0]).toContain("docs file");
 		expect(one.blocks.cached[1]).toContain("Policy.");
-		expect(one.blocks.cached[1]).toContain("Project rules.");
+		expect(one.blocks.cached[1]).not.toContain("Project rules.");
+		expect(one.blocks.cached[2]).toContain("Project rules.");
 		expect(one.blocks.cached.join("")).not.toMatch(/\/work\/one|2026-10-28/);
 		expect(one.blocks.volatile).toMatch(/^<cwd>\n\/work\/one\n<\/cwd>/);
 		// Providers without explicit breakpoints send the sections joined in order: the same bytes as the blocks.
@@ -184,5 +192,17 @@ describe("instruction cache boundary", () => {
 				roleVariantTools,
 			}),
 		).toEqual({});
+	});
+});
+
+describe("instruction workspace boundary", () => {
+	it("is project_context when the prompt carries project instructions, and is passed to the request", () => {
+		const messages = system({ preamble: "p", work: "w", project_context: "AGENTS", cwd: "c" });
+		expect(findInstructionWorkspaceBoundary(messages)).toBe("project_context");
+		expect(instructionCacheBoundaryOption(messages)).toMatchObject({ instructionWorkspaceBoundary: "project_context" });
+	});
+	it("is absent without project instructions or sections", () => {
+		expect(findInstructionWorkspaceBoundary(system({ preamble: "p", cwd: "c" }))).toBeUndefined();
+		expect(findInstructionWorkspaceBoundary(system())).toBeUndefined();
 	});
 });

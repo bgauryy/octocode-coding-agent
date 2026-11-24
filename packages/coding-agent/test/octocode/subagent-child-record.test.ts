@@ -156,7 +156,7 @@ describe("what the parent keeps of a child's run", () => {
 
 	it("puts the child's archive in a background run's details and footer", async () => {
 		await s.run({ task: "archives", background: true });
-		await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
+		await vi.waitFor(() => expect(s.sent.length).toBe(1));
 		const details = s.sent[0].message.details;
 		expect(details.session.archive).toBe(archiveFolder(details.session.id));
 		expect(String(s.sent[0].message.content)).toContain(
@@ -288,7 +288,7 @@ describe("what the parent keeps of a child's run", () => {
 
 	it("puts a background run's compaction counts in the parent's footer and its failure text inside the fence", async () => {
 		await s.run({ task: "compacts", background: true });
-		await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
+		await vi.waitFor(() => expect(s.sent.length).toBe(1));
 		expect(s.ctx.ui.notes).toHaveLength(6);
 		expect(s.ctx.ui.notes[1].message).toContain("150k → 32k");
 		const content = String(s.sent[0].message.content);
@@ -325,7 +325,7 @@ describe("what the parent keeps of a child's run", () => {
 
 	it("reports the same reason for a background child, with its notices inside the fence and a compaction lifecycle notification in the parent", async () => {
 		await s.run({ task: "thrash", background: true });
-		await vi.waitFor(() => expect(s.sent.length).toBe(1), { timeout: 10_000 });
+		await vi.waitFor(() => expect(s.sent.length).toBe(1));
 		const content = String(s.sent[0].message.content);
 		expect(content).toMatch(
 			/failed · cite as report:\S+:\n<<<untrusted-[0-9a-f]{16} [\s\S]*\nError: Subagent stopped: Automatic compaction stopped:[\s\S]*- warning: Compaction summary fell back[\s\S]*>>>\n/,

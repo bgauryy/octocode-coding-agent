@@ -194,50 +194,62 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 		expect(s.guard.forget).not.toHaveBeenCalled();
 	});
 
-	describe("while the cache is warm, a long session", () => {
+	describe("while the cache is warm", () => {
 		const warmAt = T0 + 100 + 60_000;
-		const perResult = BIG / CHARS_PER_TOKEN;
-		/**
-		 * The first session length (one result per request, plus the closing reply) at which the documented rule
-		 * `T_old × R × N > S_after × W` holds, with `T_old` the results older than the `RECENT` kept, `N` the requests so far
-		 * and `S_after` about the kept results (placeholders and short replies are a rounding error here).
-		 */
-		const predicted = (read: number, write: number) => {
-			for (let results = RECENT + 1; results < 200; results++) {
-				const old = (results - RECENT) * perResult;
-				if (old >= CLEAR_AT_LEAST_TOKENS && old * read * (results + 1) > RECENT * perResult * write) return results;
-			}
-			throw new Error("never pays");
-		};
-		const firstClearing = async (options: Parameters<typeof setup>[1] = {}) => {
-			for (let results = RECENT + 1; results < 60; results++) {
-				const s = setup(idleMessages(reads(results)), options);
-				await s.start(warmAt);
-				if (s.entries.length > 0) {
-					const out = resultTexts(await s.context());
-					expect(out.slice(0, results - RECENT).every(cleared)).toBe(true);
-					expect(out.slice(-RECENT).every((text) => text.length === BIG)).toBe(true);
-					return results;
-				}
-			}
-			return undefined;
-		};
+		const total = (count: number) => (count * BIG) / CHARS_PER_TOKEN;
+		// Thirty results fill the window to `share`.
+		const windowFor = (count: number, share: number) => Math.round(total(count) / share);
 
-		it("clears once re-sending its old results costs more than rewriting the cache once (no catalog prices: 0.1 read, 2 write for 1 hour)", async () => {
-			expect(predicted(0.1, 2)).toBe(19);
-			expect(await firstClearing()).toBe(predicted(0.1, 2));
+		it("keeps the message prefix byte-identical on every request, however many old results it holds", async () => {
+			// 40 results, 13,000 tokens of old ones past the bar, at 40% of the window: the old pricing rule would have cleared.
+			const messages = idleMessages(reads(40));
+			const s = setup(messages, { model: { ...model, contextWindow: windowFor(40, 0.4) } });
+			vi.spyOn(Date, "now").mockReturnValue(warmAt);
+			const before = JSON.stringify(await s.context());
+			await s.start(warmAt);
+			await s.start(warmAt + 30_000);
+			expect(s.entries).toEqual([]);
+			expect(JSON.stringify(await s.context())).toBe(before);
+			expect(resultTexts(await s.context()).every((text) => text.length === BIG)).toBe(true);
+			expect(s.guard.forget).not.toHaveBeenCalled();
 		});
 
-		it("prices by the model's catalog: a cheap read and no write premium clear sooner", async () => {
-			// Writes cost the input price (no premium) and reads a quarter of it.
-			const priced = {
-				...model,
-				contextWindow: 1_000_000,
-				cost: { input: 2, output: 8, cacheRead: 0.5, cacheWrite: 0 },
-			};
-			const at = predicted(0.5, 2);
-			expect(at).toBeLessThan(predicted(0.1, 2));
-			expect(await firstClearing({ model: priced })).toBe(at);
+		it("clears at the cold point: the same session after the cache lifetime", async () => {
+			const messages = idleMessages(reads(40));
+			const s = setup(messages, { model: { ...model, contextWindow: windowFor(40, 0.4) } });
+			await s.start(T0 + 100 + HOUR + 1_000);
+			expect(s.entries).toHaveLength(1);
+			expect(s.entries[0].data).toMatchObject({ trigger: "idle", rewriteAnyway: true });
+			expect(resultTexts(await s.context()).filter(cleared).length).toBeGreaterThan(0);
+		});
+
+		it("reads the lifetime from the model: a 5-minute short tier is cold after 6 minutes, warm after 4", async () => {
+			const short = { ...model, promptCache: { short: 300 } };
+			const old = idleMessages(reads(40));
+			process.env[CACHE_RETENTION_ENV] = "short";
+			const warm = setup(old, { model: short });
+			await warm.start(T0 + 100 + 4 * 60_000);
+			expect(warm.entries).toEqual([]);
+			const cold = setup(old, { model: short });
+			await cold.start(T0 + 100 + 6 * 60_000);
+			expect(cold.entries).toHaveLength(1);
+		});
+
+		it("still clears near the context limit, as a safety against overflow", async () => {
+			const messages = idleMessages(reads(40));
+			const s = setup(messages, { model: { ...model, contextWindow: windowFor(40, 0.9) } });
+			await s.start(warmAt);
+			expect(s.entries).toHaveLength(1);
+			expect(s.entries[0].data).toMatchObject({ trigger: "limit", rewriteAnyway: false });
+			const out = resultTexts(await s.context());
+			expect(out.slice(0, 40 - RECENT).every(cleared)).toBe(true);
+			expect(out.slice(-RECENT).every((text) => text.length === BIG)).toBe(true);
+		});
+
+		it("does not clear just under the limit share", async () => {
+			const s = setup(idleMessages(reads(40)), { model: { ...model, contextWindow: windowFor(40, 0.8) } });
+			await s.start(warmAt);
+			expect(s.entries).toEqual([]);
 		});
 	});
 
@@ -345,7 +357,7 @@ describe("clearing old tool results when the cache is rewritten anyway or cleari
 	});
 
 	it("where the cache is rewritten anyway, clears only when the older results total at least the free-point floor", async () => {
-		// The warm floor (`CLEAR_AT_LEAST_TOKENS`) is the higher one: there each clearing also pays a cache write.
+		// The near-limit floor (`CLEAR_AT_LEAST_TOKENS`) is the higher one: there each clearing also pays a cache write.
 		expect(CLEAR_AT_FREE_POINT_TOKENS).toBeLessThan(CLEAR_AT_LEAST_TOKENS);
 		const perResult = Math.ceil((CLEAR_AT_FREE_POINT_TOKENS * CHARS_PER_TOKEN) / 4) - 100;
 		const below = setup(idleMessages(reads(RECENT + 4, perResult)));
@@ -648,17 +660,17 @@ describe("keeping results still in use", () => {
 		{ role: "assistant", content: [{ type: "text", text: closing }], timestamp: T0 + 100 },
 	];
 
-	it("at half the window on a warm cache, keeps a result read a few turns ago and one whose file was named since, and clears old unreferenced ones", async () => {
+	it("near the limit on a warm cache, keeps a result read a few turns ago and one whose file was named since, and clears old unreferenced ones", async () => {
 		const count = 30;
 		const items = reads(count);
-		// Thirty results of about 4,000 tokens fill 51% of the window.
-		const window = Math.round((count * BIG) / CHARS_PER_TOKEN / 0.51);
+		// Thirty results of about 4,000 tokens fill 90% of the window, past the limit share.
+		const window = Math.round((count * BIG) / CHARS_PER_TOKEN / 0.9);
 		const s = setup(session(items, "Next: compare f2.ts with the plan."), {
 			model: { ...model, contextWindow: window },
 		});
 		await s.start(T0 + 100 + 60_000);
 		expect(s.entries).toHaveLength(1);
-		expect(s.entries[0].data).toMatchObject({ trigger: "warm", rewriteAnyway: false });
+		expect(s.entries[0].data).toMatchObject({ trigger: "limit", rewriteAnyway: false });
 		const out = resultTexts(await s.context());
 		// Read six turns before the request, past the newest five: it stays.
 		const justRead = count - KEEP_RECENT_RESULTS - 1;

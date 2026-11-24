@@ -61,7 +61,7 @@ describe("buildSystemPrompt", () => {
 			});
 
 			expect(prompt).toContain("<addendum>\nAdditional instructions.\n</addendum>");
-			expect(prompt).toContain('<project_instructions path="/tmp/AGENTS.md">\nProject instructions.');
+			expect(prompt).toContain('<project_instructions path="AGENTS.md">\nProject instructions.');
 			expect(prompt).toContain("<cwd>\n/tmp\n</cwd>");
 		});
 	});
@@ -292,7 +292,7 @@ describe("base sections", () => {
 			"other_base",
 			"addendum",
 			"project_context",
-			"project_context:/tmp/AGENTS.md",
+			"project_context:AGENTS.md",
 			"project_context:/",
 			"octocode",
 			"cwd",

@@ -53,7 +53,7 @@ export interface RequestThroughput {
 	estimatedInputTokens: number;
 	/** Provider admission charge: estimated uncached input plus maxTokens. */
 	estimatedAdmissionTokens: number;
-	/** Conservative final-TPM reservation: estimated input plus maxTokens times output burndown. */
+	/** Tokens the local final-TPM gate holds until the response reconciles it: estimated input plus maxTokens times output burndown. */
 	reservedTokens?: number;
 	actualInputTokens?: number;
 	actualOutputTokens?: number;

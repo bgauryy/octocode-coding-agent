@@ -212,6 +212,7 @@ function connect(target: string, privateParent: boolean, kind: FileKind, waitMs:
 					/* An observer cannot undo a completed transaction. */
 				}
 			}
+		stampMemo.clear();
 		for (const listener of committed) {
 			try {
 				listener();
@@ -260,14 +261,27 @@ function connect(target: string, privateParent: boolean, kind: FileKind, waitMs:
 	}
 }
 
-/** A cheap change marker for the database file and its WAL: a write by any process moves it. Constant for a file that does not exist. */
+/** Stamps read in the current event-loop turn; emptied by a microtask and by every transaction commit of this process. */
+const stampMemo = new Map<string, string>();
+
+/**
+ * A cheap change marker for the database file and its WAL: a write by any process moves it. Constant for a file that
+ * does not exist. Callers of one turn (the shared clock runs the team ticker and every follower in one dispatch) share one
+ * stat pair. The memo ends with the turn, and at once when this process commits a transaction, so it can lag only a
+ * write made outside `transaction` in the same synchronous run; no other process's write is seen late by more than that turn.
+ */
 export function dbStamp(file: string): string {
-	return [file, `${file}-wal`]
+	const known = stampMemo.get(file);
+	if (known !== undefined) return known;
+	const stamp = [file, `${file}-wal`]
 		.map((entry) => {
 			const stat = fs.statSync(entry, { throwIfNoEntry: false });
 			return stat ? `${stat.mtimeMs}:${stat.size}` : "-";
 		})
 		.join("|");
+	if (stampMemo.size === 0) queueMicrotask(() => stampMemo.clear());
+	stampMemo.set(file, stamp);
+	return stamp;
 }
 
 /** SQLITE_NOTADB (26): the file has no SQLite header. */

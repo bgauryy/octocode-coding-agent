@@ -101,6 +101,14 @@ describe("peer leases (agents-communication database, read-only)", () => {
 		db.close();
 	});
 
+	it("reports a session unbound only when the store exists and none of its live sessions is bound to it", () => {
+		const file = path.join(home(), "communication.sqlite");
+		expect(peers(file).unbound("pi-2")).toBe(false);
+		peerDb(file, []);
+		expect(peers(file).unbound("pi-2")).toBe(false);
+		expect(peers(file).unbound("other-session")).toBe(true);
+	});
+
 	it("reads leases from the current schema", () => {
 		const file = path.join(home(), "communication.sqlite");
 		peerDb(file, [{ path: "/w/a.ts", reason: "auth" }]);
@@ -446,7 +454,7 @@ describe("registry of the package's non-default databases", () => {
 });
 
 describe("peer leases in the team reservation gate", () => {
-	function collaborate(git = false) {
+	function collaborate(git = false, hasUI = true) {
 		const cwd = home();
 		// The package needs real git metadata; the team only a `.git` entry.
 		if (git) spawnSync("git", ["init", "-q", cwd]);
@@ -454,11 +462,27 @@ describe("peer leases in the team reservation gate", () => {
 		const fake = fakeHost();
 		const team = new Team(fake.api, { OCTOCODE_AGENT_DB: path.join(tmp(), "team.sqlite") });
 		const { reservationGate } = registerCollab(fake.api, team);
-		const ctx = fakeCtx({ cwd });
-		team.start(ctx);
-		return { cwd, team, gate: reservationGate, ctx, fake };
+		const ctx = fakeCtx({ cwd, hasUI });
+		const started = team.start(ctx);
+		return { cwd, team, gate: reservationGate, ctx, fake, started };
 	}
 	afterEach(() => fs.rmSync(path.dirname(peerDbPath()), { recursive: true, force: true }));
+
+	it("tells an interactive session once that the existing shared store has none bound to it, and never a headless one", async () => {
+		const note = (fake: ReturnType<typeof fakeHost>) =>
+			fake.sent.filter((entry) => String(entry.message.content).includes("not bound to the shared message store"));
+		const none = collaborate();
+		await none.started;
+		expect(note(none.fake)).toHaveLength(0);
+		peerDb(peerDbPath(), []);
+		const unbound = collaborate();
+		await unbound.started;
+		await unbound.team.start(unbound.ctx);
+		expect(note(unbound.fake)).toHaveLength(1);
+		const headless = collaborate(false, false);
+		await headless.started;
+		expect(note(headless.fake)).toHaveLength(0);
+	});
 
 	it("does nothing without the package database", async () => {
 		const { cwd, team, gate, ctx } = collaborate();

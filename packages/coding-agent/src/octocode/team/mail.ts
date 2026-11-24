@@ -1,4 +1,4 @@
-import type { SetupPick, FeatureContext } from "../../core/features/index.ts";
+import type { SetupPick } from "../../core/features/index.ts";
 import { PeerNotices, type PeerNoticeHost } from "./peer-left.ts";
 import { INTERNAL_MESSAGE_TYPE, USER_SENDER } from "../shared/messages.ts";
 import type { DeadLetter, MailDetails, Message, RecipientKind } from "./model.ts";
@@ -11,6 +11,8 @@ import type { Source } from "../events/source-types.ts";
 import { busy } from "./store/patient.ts";
 import type { PayloadEvent as AgentEvent } from "../events/topics.ts";
 import { wakeGateOf } from "../wake/gate.ts";
+import type { SessionStop } from "../wake/gate-types.ts";
+import { Asked } from "./asked.ts";
 
 const mailEvent = (message: Message): AgentEvent => ({
 	kind: "agent.message",
@@ -22,12 +24,8 @@ const mailEvent = (message: Message): AgentEvent => ({
 
 /** Puts team mail and team notices in front of this agent's model, one Octocode custom message each (`MailDetails`). */
 export class Mail {
-	/** Mail held by an interrupt until the stopped run settles. */
-	private held: { batch: Message[]; parentId: string | undefined; onRejected?: () => void } | undefined;
-	/** Aborted while mail is held: a wait at the end of the run (background work) stops for it. */
-	private holding = new AbortController();
-	/** Aborted when a question from the coordinator reached a running session; renewed once the model is called with it. */
-	private asking = new AbortController();
+	/** Raised when a question from the coordinator reached a running session (`deliver`). */
+	private readonly questions = new Asked();
 	/** Notices already handed to Octocode whose database acknowledgement still needs retrying. */
 	private notified: DeadLetter[] = [];
 	/** A dead-letter notice awaiting the host's asynchronous acceptance; do not hand it over twice. */
@@ -112,84 +110,58 @@ export class Mail {
 	 * One Octocode message for the whole batch, so a busy agent reads all of it at its next step (steer); only a batch with a
 	 * message that wants action wakes an idle one. False when the session cannot take it: the messages stay pending.
 	 */
-	deliver(
-		batch: Message[],
-		parentId: string | undefined,
-		ctx?: Pick<FeatureContext, "isIdle" | "abort">,
-		onRejected?: () => void,
-	): boolean {
-		// Regular mail is the recipient's next task, read after the running tool returns. An interrupt stops the run instead
-		// (Octocode cancels the tool), and the batch starts the next turn once the run has settled (`settled`). The stop is
-		// made here, not left to the event loop: it must also work before a loop is attached, retry a refused hand-off and
-		// cover a manual compaction, which has no settle. A message that could not stop the run goes on as urgent.
+	deliver(batch: Message[], parentId: string | undefined, ctx?: SessionStop, onRejected?: () => void): boolean {
+		// An interrupt is the wake gate's to carry out (`wake/gate.ts`): it stops the busy session's run and holds the send until
+		// the run has settled. Mail only says which session that is and sends.
 		// The interrupt is not tied to `verified`, on purpose: the agent that started this one is legitimately not "the user"
 		// and may stop it. What limits who can interrupt is the sender (`interruptRefusal`, checked where a message is sent):
 		// only the agent that started the recipient, or the user of its session (`/agents tell --interrupt`; an API client
 		// and a peer cannot). A row written around that check (same-user write access to the shared database) can still stop a
 		// run; it cannot make it read the text as the user's, because that needs the signature (`verified`).
-		if (ctx && !ctx.isIdle() && batch.some((message) => message.interrupt)) {
-			try {
-				ctx.abort("peer");
-				const previous = this.held?.onRejected;
-				this.held = {
-					batch: [...(this.held?.batch ?? []), ...batch],
-					parentId,
-					onRejected: () => {
-						previous?.();
-						onRejected?.();
-					},
-				};
-				this.holding.abort();
-				return true;
-			} catch {
-				// The run cannot be stopped: deliver it as a waking message instead.
-			}
-		}
-		const sent = this.send(batch, parentId, false, onRejected);
+		if (ctx) wakeGateOf(this.api).bindSession(ctx);
+		const sent = this.send(batch, parentId, onRejected);
 		// The coordinator wants an answer, not a stopped job: a wait at the end of the run ends, and the queued question
 		// continues it. The job keeps running, and the next answer holds for it again.
 		if (sent && ctx && !ctx.isIdle() && batch.some((message) => message.replyRequired && message.from === parentId))
-			this.asking.abort();
+			this.questions.raise();
 		return sent;
 	}
 
-	/** Aborted while an interrupt holds mail for the stopped run. */
+	/** Signalled while an interrupt holds mail for the stopped run. */
 	get interrupted(): AbortSignal {
-		return this.holding.signal;
+		return wakeGateOf(this.api).interrupted;
 	}
 
-	/** Aborted while a question from the coordinator waits for this agent's model (`deliver`). */
+	/** Signalled while a question from the coordinator waits for this agent's model (`deliver`). */
 	get asked(): AbortSignal {
-		return this.asking.signal;
+		return this.questions.signal;
 	}
 
 	/** The model is being called, so a question delivered before is in front of it: the next wait holds again. */
 	modelCalled(): void {
-		if (this.asking.signal.aborted) this.asking = new AbortController();
+		this.questions.renew();
 	}
 
-	private send(batch: Message[], parentId: string | undefined, stopped: boolean, onRejected?: () => void): boolean {
-		const content = batch
-			.map((message) =>
-				messageText(message, {
-					parentId,
-					stopped,
-					fromUser: this.verified(message),
-					parentUnverified: !this.parentSigned(message),
-				}),
-			)
-			.join("\n\n");
+	/** One Octocode message for the batch. The text says a step was stopped only when the gate did stop one (`stopped`). */
+	private send(batch: Message[], parentId: string | undefined, onRejected?: () => void): boolean {
+		const content = (stopped: boolean) =>
+			batch
+				.map((message) =>
+					messageText(message, {
+						parentId,
+						stopped,
+						fromUser: this.verified(message),
+						parentUnverified: !this.parentSigned(message),
+					}),
+				)
+				.join("\n\n");
 		return this.inject(
 			content,
 			{ messages: batch },
 			{ triggerTurn: batch.some((message) => message.wake), deliverAs: "steer" },
 			onRejected,
 			undefined,
-			// Mail that already stopped the run is the next task now: only an interrupt that has not stopped anything is
-			// urgent for the event loop (`wake/loop-catalog.ts`), so the two never stop the same run.
-			batch
-				.filter((message) => message.wake)
-				.map((message) => ({ ...mailEvent(message), interrupt: !stopped && message.interrupt === true })),
+			batch.filter((message) => message.wake).map(mailEvent),
 			batch.map((message) =>
 				mailSource(message, parentId, { fromUser: this.verified(message), parentSigned: this.parentSigned(message) }),
 			),
@@ -197,14 +169,11 @@ export class Mail {
 	}
 
 	/**
-	 * The run settled: mail an interrupt held starts the next turn (Octocode runs a turn triggered while it settles before it
+	 * The run settled: the interrupt's held mail starts the next turn (Octocode runs a turn triggered while it settles before it
 	 * reports idle, so a headless subagent continues instead of exiting). True when it did.
 	 */
 	settled(): boolean {
-		const held = this.held;
-		if (!held || !this.send(held.batch, held.parentId, true, held.onRejected)) return false;
-		this.releaseInterrupt();
-		return true;
+		return wakeGateOf(this.api).releaseHeld();
 	}
 
 	/** Forgets held mail (the agent left): never started, it stays undelivered. */
@@ -214,14 +183,9 @@ export class Mail {
 		this.noticePending = false;
 		this.forUser.clear();
 		this.lastProvenancePrune = 0;
-		this.releaseInterrupt();
-		this.asking = new AbortController();
+		wakeGateOf(this.api).forgetHeld();
+		this.questions.renew();
 		this.peers?.stop();
-	}
-
-	private releaseInterrupt(): void {
-		this.held = undefined;
-		if (this.holding.signal.aborted) this.holding = new AbortController();
 	}
 
 	/**
@@ -278,7 +242,7 @@ export class Mail {
 	}
 
 	private inject(
-		content: string,
+		content: string | ((stopped: boolean) => string),
 		details: MailDetails,
 		options: { triggerTurn?: boolean; deliverAs: "steer" },
 		onRejected?: () => void,
@@ -288,7 +252,12 @@ export class Mail {
 	): boolean {
 		let sending: void | Promise<void>;
 		try {
-			const message = { customType: INTERNAL_MESSAGE_TYPE, content, display: true, details };
+			const message = (stopped: boolean) => ({
+				customType: INTERNAL_MESSAGE_TYPE,
+				content: typeof content === "function" ? content(stopped) : content,
+				display: true,
+				details,
+			});
 			sending = wakeGateOf(this.api).emit(wakes, message, options, undefined, sources);
 		} catch {
 			return false; // The session ended or is not ready.

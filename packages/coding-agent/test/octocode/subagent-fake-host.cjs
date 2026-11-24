@@ -55,6 +55,10 @@ process.stdin.setEncoding("utf8").on("data", (chunk) => {
 	}
 });
 
+// A test that must act while the child is up but holds no task yet names a file in OCTOCODE_FAKE_BOOT: it exists from the
+// moment this process reads its input, so whatever the parent wrote before then is handled before anything later.
+if (process.env.OCTOCODE_FAKE_BOOT) fs.writeFileSync(process.env.OCTOCODE_FAKE_BOOT, "");
+
 /** How the parent's one question about a report without an outcome word starts (`notices/subagents/outcome-ask.md`). */
 const OUTCOME_ASK = "Your report does not start with an outcome word.";
 /**

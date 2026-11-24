@@ -3,6 +3,7 @@
  * hide the name in their ARN). Free of the AWS SDK so model capabilities can be resolved without loading it.
  */
 import type { Model, ProviderEnv } from "../../types.ts";
+import { CACHE_PROFILES, type CacheProfile } from "../../utils/cache-profiles.ts";
 import { getProviderEnvValue } from "../../utils/provider-env.ts";
 
 /** Separators in free-text profile names and vendor ids ("Claude Sonnet 4.5", "anthropic/claude-sonnet-4@20250514"). */
@@ -59,14 +60,9 @@ export function isAnthropicClaudeModel(model: Model<"bedrock-converse-stream">):
  */
 const NOVA_EXPLICIT_CACHE_TOKENS = ["nova-2-lite-v1", "nova-pro-v1", "nova-lite-v1", "nova-micro-v1"] as const;
 
-export function isNovaExplicitCacheModel(model: Pick<Model<"bedrock-converse-stream">, "id" | "name">): boolean {
+function isNovaExplicitCacheModel(model: Pick<Model<"bedrock-converse-stream">, "id" | "name">): boolean {
 	const candidates = getModelMatchCandidates(model.id, model.name);
 	return candidates.some((candidate) => NOVA_EXPLICIT_CACHE_TOKENS.some((token) => candidate.includes(token)));
-}
-
-/** Whether the model takes cache checkpoints in its `tools` list; Nova accepts them only on system and messages. */
-export function supportsToolCachePoint(model: Model<"bedrock-converse-stream">): boolean {
-	return !isNovaExplicitCacheModel(model);
 }
 
 /**
@@ -143,4 +139,10 @@ export function bedrockSupportsLongCacheRetention(model: Model<"bedrock-converse
 		model.compat?.supportsLongCacheRetention ??
 		(isAnthropicClaudeModel(model) && !isNovaExplicitCacheModel(model) && supportsOneHourCacheTtl(model.id, model.name))
 	);
+}
+
+/** The cache profile of a Bedrock model: Claude and listed Nova models take markers, every other model none. */
+export function bedrockCacheProfile(model: Model<"bedrock-converse-stream">, env?: ProviderEnv): CacheProfile {
+	if (isNovaExplicitCacheModel(model)) return CACHE_PROFILES.bedrockNova;
+	return supportsPromptCaching(model, env) ? CACHE_PROFILES.bedrockClaude : CACHE_PROFILES.bedrockOther;
 }

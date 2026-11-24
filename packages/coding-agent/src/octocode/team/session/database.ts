@@ -175,11 +175,16 @@ export class TeamDatabase {
 		}
 	}
 
-	/** Presence events after `after`; none when the database cannot be read (the next change retries). */
+	/**
+	 * Presence events after `after`; none when the database cannot be read (the next change retries). Another process's
+	 * lock raises the busy error at once, never a wait on the thread that draws the screen: the lifecycle bus polls again.
+	 */
 	eventsSince(after: number): agentEvents.EventRow[] {
 		try {
-			return this.existing()?.presence.since(after) ?? [];
-		} catch {
+			const db = this.existing();
+			return db ? db.quick(() => db.presence.since(after)) : [];
+		} catch (error) {
+			if (isBusy(error)) throw error;
 			return [];
 		}
 	}

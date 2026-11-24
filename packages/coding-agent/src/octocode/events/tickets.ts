@@ -14,13 +14,12 @@ import type { Topic, TopicFilter } from "./topics.ts";
  * here sends a message or wakes an agent: the live delivery path stays as it is until the cutover.
  */
 
-type CallbackOn = "reply" | "done" | "item.state" | "job.exit" | "agent.ended";
+type CallbackOn = "reply" | "done" | "job.exit" | "agent.ended";
 
 /** Defaults in minutes when the caller names no deadline. */
 const DEADLINE_MINUTES: Record<CallbackOn, number> = {
 	reply: 10,
 	done: 60,
-	"item.state": 60,
 	"job.exit": 60,
 	"agent.ended": 60,
 };
@@ -37,7 +36,7 @@ export interface CallbackRequest {
 	target: string;
 	text: string;
 	on: CallbackOn;
-	/** Fields of the resolving event's payload that must equal these (`{ ref: "B1", state: "done" }`, `{ job: "task-3" }`). */
+	/** Fields of the resolving event's payload that must equal these (`{ job: "task-3" }`). */
 	filter?: TopicFilter;
 	/** The requester's own reminder, echoed back with the result. */
 	note?: string;
@@ -92,7 +91,6 @@ function filterHolds(row: TicketRow, payload: Record<string, unknown>): boolean 
 const RESOLVES: Partial<Record<Topic, { on: CallbackOn[]; agent?: string }>> = {
 	"agent.report": { on: ["done"], agent: "agent" },
 	"agent.ended": { on: ["done", "agent.ended"], agent: "agent" },
-	"item.state": { on: ["item.state"] },
 	"job.exit": { on: ["job.exit"] },
 };
 

@@ -3,14 +3,13 @@ import { configuredSubagentModels } from "./configured-models.ts";
 import type { AgentEnd } from "../team/panel/state.ts";
 import { randomUUID } from "node:crypto";
 import type { Api, Model } from "@octocodeai/octocode-ai";
-import { MAX_SUBAGENTS_ENV } from "./concurrency.ts";
-export { machineSubagents, maxSubagents, MAX_SUBAGENTS_ENV } from "./concurrency.ts";
+import { MAX_SUBAGENTS_ENV, type SwarmLimits } from "./concurrency.ts";
+export { machineSubagents, maxSubagents, MAX_SUBAGENTS_ENV, swarmLimits, type SwarmLimits } from "./concurrency.ts";
 import type { Slots } from "./slots.ts";
 export { Slots } from "./slots.ts";
 import { modelAvailableToChild, modelEnabled, sessionOnlyProvider } from "./task-model-visibility.ts";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
 import type { ReportStatus } from "../native/prompts/report.ts";
-import { envInt } from "@octocodeai/octocode-common/env";
 import { shortPath } from "../../utils/display-path.ts";
 import { sessionFolderNames } from "../shared/home.ts";
 import { deriveAgentRoute, type AgentRoute } from "@octocodeai/octocode-contracts/config";
@@ -48,13 +47,6 @@ import type { HandedItems } from "./handed-items.ts";
 
 /** Starting a subagent: who it is (name, role, goal), its slot under the limit, and the task text it receives. */
 
-const SUBAGENT_LINGER_ENV = "OCTOCODE_SUBAGENT_LINGER_SECONDS";
-
-/** Seconds a finished background subagent stays reachable (a message resumes its saved conversation); 0 = off. */
-function lingerSeconds(env: NodeJS.ProcessEnv = process.env): number {
-	return Math.max(0, envInt(env, SUBAGENT_LINGER_ENV, 0));
-}
-
 /**
  * Seconds a background run stays resumable even with the linger setting at 0 when it waits for an answer: it reported
  * `blocked`, or it ended with a `replyRequired` message to its parent or a peer still unanswered
@@ -69,11 +61,11 @@ export const BLOCKED_LINGER_SECONDS = 600;
  */
 export function reachableSeconds(
 	outcome: ReportStatus | undefined,
-	env: NodeJS.ProcessEnv = process.env,
+	limits: SwarmLimits,
 	profileLinger?: number,
 	awaitsReply = false,
 ): number {
-	const seconds = profileLinger ?? lingerSeconds(env);
+	const seconds = profileLinger ?? limits.lingerSeconds;
 	return outcome === "blocked" || awaitsReply ? Math.max(seconds, BLOCKED_LINGER_SECONDS) : seconds;
 }
 
@@ -106,6 +98,8 @@ export interface AgentRuns {
 	handed?: HandedItems;
 	/** Their slots under the limit, taken before the spawn ask and given back by `Run.release`. */
 	slots: Slots;
+	/** The swarm's limits, built when the session started. */
+	limits: SwarmLimits;
 	/** Called when a background run starts or ends: the footer counts them while the agents panel cannot show them. */
 	changed: () => void;
 	/** Called when a background run ended, with how it ended: the agents panel shows the outcome on the finished row. */
@@ -332,7 +326,7 @@ export function claimRun(
 				lingers:
 					params.background === true &&
 					params.isolate !== true &&
-					reachableSeconds(undefined, process.env, profile?.linger) > 0,
+					reachableSeconds(undefined, runs.limits, profile?.linger) > 0,
 				resumed: resumed !== undefined || params.name !== undefined,
 				thinking: routeThinking(route.model) ?? route.thinking,
 				requests: plan.requests ?? maxRequests(profile),

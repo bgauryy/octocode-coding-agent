@@ -1,4 +1,5 @@
 import type { FeatureContext } from "../../../core/features/index.ts";
+import type { Source } from "../../events/source-types.ts";
 import type { MessageEnvelope } from "../../shared/messages.ts";
 
 /** What the API needs from the team (kept as an interface so the API domain stays independent of it). */
@@ -28,6 +29,8 @@ export interface ExternalAdmission {
 	 */
 	process?: { id: string; name: string };
 	details: string[];
+	/** Who the message is from and how far to trust it (`Source.trust`): an unconfirmed caller is `unknown`, t0. */
+	source: Source;
 	text: string;
 	/** This process's own name, for what the sender reads back. */
 	self: string;

@@ -79,6 +79,7 @@ export function registerNativeSessionLifecycle(
 		const stop = ctx.signal ? AbortSignal.any([ctx.signal, team.interrupted]) : team.interrupted;
 		if (event.outcome === "error") {
 			// Handles are unref'd here as below, so the same ref'd timer keeps the process alive through the hold.
+			// oxlint-disable-next-line no-restricted-globals -- a process keep-alive must be ref'd; the shared clock's timer is unref'd
 			const holding = setInterval(() => undefined, MINUTE_MS);
 			try {
 				return await holdFailedRun(event, ctx, agents, stop, held);
@@ -90,6 +91,7 @@ export function registerNativeSessionLifecycle(
 		// A subagent that answers while its own job runs is waiting for it: the job's completion goes to it in one more turn
 		// instead of the job being stopped below with the run.
 		if (isSubagent) {
+			// oxlint-disable-next-line no-restricted-globals -- a process keep-alive must be ref'd; the shared clock's timer is unref'd
 			const holding = setInterval(() => undefined, MINUTE_MS);
 			try {
 				// The hold note starts no turn; it is awaited before the run continues, so a failed send reaches the bus's error report.
@@ -120,6 +122,7 @@ export function registerNativeSessionLifecycle(
 		// No time cap of its own: jobs without a timeout are stopped, timed jobs end at their timeout, and a subagent's
 		// watchdog bounds it by its calls' deadlines; an interrupt ends the wait. Job and child handles are unref'd, so a
 		// ref'd timer keeps the process alive until their reports arrive.
+		// oxlint-disable-next-line no-restricted-globals -- a process keep-alive must be ref'd; the shared clock's timer is unref'd
 		const keepAlive = setInterval(() => undefined, MINUTE_MS);
 		try {
 			await settleWithin(Promise.all([jobs.settle(), agents?.settle(), timers.settle()]), undefined, stop);

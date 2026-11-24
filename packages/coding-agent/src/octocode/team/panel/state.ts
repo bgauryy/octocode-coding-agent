@@ -1,6 +1,7 @@
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { Theme } from "../../../theme/theme.ts";
-import { stillLight, type UiState } from "../../../theme/status.ts";
+import type { UiState } from "../../../theme/status.ts";
+import { paintAgentLight } from "./light.ts";
 
 /** A subagent joins the team just before its first turn; its stored `idle` then is not news, so the panel shows it working. */
 const STARTING_MS = 3_000;
@@ -78,5 +79,6 @@ export function panelState({ member, doneAt, end, need }: PanelEntry, now: numbe
 	return shownWorking(member, now) ? { state: "running", label: "working" } : { state: "pending", label: "idle" };
 }
 
-/** The mark in front of an agent's row: its still state light. */
-export const panelMark = (theme: Theme, state: PanelState): string => stillLight(theme, state.state);
+/** The mark in front of an agent's row: its light (`paintAgentLight`), pulsing while it works. */
+export const panelMark = (theme: Theme, state: PanelState, now: number = Date.now()): string =>
+	paintAgentLight(theme, state.state, now);

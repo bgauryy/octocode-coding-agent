@@ -5,8 +5,7 @@ import type { SessionSignals } from "../events/loop/signals.ts";
 /** The window after a background wake finds the session idle, in ms (`runtime.eventWindowSeconds`), read at each wake. */
 export function eventWindowMs(api: Pick<FeatureSetup, "settings">): number {
 	const settings = api.settings.get();
-	const seconds =
-		settings.runtime?.eventWindowSeconds ?? settings.subagents?.wakeHoldSeconds ?? RUNTIME_DEFAULTS.eventWindowSeconds;
+	const seconds = settings.runtime?.eventWindowSeconds ?? RUNTIME_DEFAULTS.eventWindowSeconds;
 	return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, MAX_EVENT_WINDOW_SECONDS) * 1000 : 0;
 }
 
@@ -19,7 +18,14 @@ export function bindSessionSignals(
 	run: (call: (signals: SessionSignals) => void | Promise<void>) => void | Promise<void>,
 ): void {
 	api.bus.on("agent_start", async () => run((loop) => loop.runStarted()));
-	api.bus.on("turn_end", async (event) => run((loop) => loop.stepEnded(event.toolResults.length === 0)));
+	api.bus.on("turn_end", async (event, ctx) =>
+		run((loop) => {
+			// A step that ends because the run is being stopped is no boundary to join: a message steered into an aborting
+			// run is read by nobody. What the loop holds goes out when the stop settles, without starting a turn.
+			if (ctx.signal?.aborted) return;
+			return loop.stepEnded(event.toolResults.length === 0);
+		}),
+	);
 	api.bus.on("turn_start", async () => run((loop) => loop.turnStarted()));
 	api.bus.on("agent_settled", async (event, ctx) =>
 		run((loop) => loop.settled(ctx.hasPendingMessages() && !event.aborted, event.aborted)),

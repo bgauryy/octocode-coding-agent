@@ -88,18 +88,18 @@ describe("per-server, per-file and per-field section deltas", () => {
 		const before = sections();
 		const edited = { ...PACKAGE_FILE, content: "# Package\nKeep files under 400 lines." };
 		const patch = diffSystemPromptSections(before, sections({ files: [ROOT_FILE, edited] }))!;
-		const name = `project_context:${PACKAGE_FILE.path}`;
+		const name = "project_context:pkg/AGENTS.md";
 		expect(Object.keys(patch)).toEqual([name]);
 		expect(patch[name]).toContain("Keep files under 400 lines.");
 		expect(patch[name]).not.toContain("Run the tests.");
-		expect(patch[name]).toMatch(/^<project_instructions path="\/repo\/pkg\/AGENTS.md">/);
+		expect(patch[name]).toMatch(/^<project_instructions path="pkg\/AGENTS.md">/);
 		expect(systemPromptSectionSpec(name)?.tier).toBe("session");
 		expect(NON_BASE_SECTIONS.has(name)).toBe(true);
 		expect(VOLATILE_SECTIONS.has(name)).toBe(false);
 		// A deeper file read adds one section, the others stay.
 		const deeper = { path: "/repo/pkg/sub/AGENTS.md", content: "Sub rules." };
 		const added = diffSystemPromptSections(before, sections({ files: [ROOT_FILE, PACKAGE_FILE, deeper] }))!;
-		expect(Object.keys(added)).toEqual([`project_context:${deeper.path}`]);
+		expect(Object.keys(added)).toEqual(["project_context:pkg/sub/AGENTS.md"]);
 	});
 
 	it("a date change sends only the date field, in the volatile tier", () => {

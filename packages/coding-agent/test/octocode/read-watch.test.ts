@@ -9,6 +9,8 @@ import { ReadWatch, type ReadWatchPorts } from "../../src/octocode/external/read
 
 const target = { pid: 4242, socket: "/tmp/peer.sock" };
 const MINUTE = 60_000;
+/** Every watch a test made: stopped after it, so the shared clock keeps no timer from that test's fake clock. */
+const made: ReadWatch[] = [];
 
 function watch(state: "queued" | "read" = "queued") {
 	let alive = true;
@@ -16,6 +18,7 @@ function watch(state: "queued" | "read" = "queued") {
 	const queueState = vi.fn<ReadWatchPorts["queueState"]>(async () => answer);
 	const tell = vi.fn<(text: string) => void>();
 	const readWatch = new ReadWatch(tell, { alive: () => alive, queueState });
+	made.push(readWatch);
 	return {
 		readWatch,
 		tell,
@@ -27,7 +30,10 @@ function watch(state: "queued" | "read" = "queued") {
 }
 
 beforeEach(() => vi.useFakeTimers());
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+	for (const each of made.splice(0)) each.stop();
+	vi.useRealTimers();
+});
 
 describe("a sender watching a message another session queued", () => {
 	it("asks a live, busy receiver a few dozen times over 15 minutes, then stops watching", async () => {

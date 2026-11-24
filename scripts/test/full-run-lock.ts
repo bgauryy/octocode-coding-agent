@@ -189,7 +189,8 @@ function describeRunLockOwner(owner: RunLockOwner | undefined): string {
 	if (!owner) return "a run that is starting";
 	const named = [
 		owner.session && `session ${owner.session}`,
-		owner.agent && `agent ${owner.agent}`,
+		// The agent name is the session's lease owner id in the team's path-lease table.
+		owner.agent && `agent ${owner.agent}, lease ${owner.agent}`,
 		owner.item && `item ${owner.item}`,
 		owner.job && `job ${owner.job}`,
 	].filter((part): part is string => Boolean(part));

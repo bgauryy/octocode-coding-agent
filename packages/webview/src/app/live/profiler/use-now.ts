@@ -9,6 +9,7 @@ const TICK_MS = 1000;
 
 let skew = 0;
 let current = Date.now();
+// oxlint-disable-next-line no-restricted-globals -- the browser page's own one clock; the shared clock is the Node process's
 let timer: ReturnType<typeof setInterval> | undefined;
 const listeners = new Set<() => void>();
 
@@ -23,6 +24,7 @@ function subscribe(listener: () => void): () => void {
 	listeners.add(listener);
 	if (listeners.size === 1) {
 		current = read();
+		// oxlint-disable-next-line no-restricted-globals -- the browser page's own one clock (this module); it stops when unsubscribed
 		timer = setInterval(tick, TICK_MS);
 	}
 	return () => {

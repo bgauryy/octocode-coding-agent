@@ -147,7 +147,8 @@ const ALLOWED: Record<string, string[]> = {
 	"native/tools/render": ["shared", "render", "ask", "native/tools/ask-user"],
 	"native/tools/backlog": ["shared", "render", "backlog"],
 	"native/tools/backlog-plan": ["shared", "render", "backlog"],
-	"native/tools/bash": ["shared", "render", "files", "wake"],
+	// `team`: a joined job's watch hears other processes' writes through the team database's follower.
+	"native/tools/bash": ["shared", "render", "files", "wake", "team"],
 	"native/tools/compact": ["shared", "render", "compaction"],
 	"native/tools/configuration": ["shared", "render", "permission"],
 	"native/tools/coordinate": ["shared", "render", "team", "permission"],

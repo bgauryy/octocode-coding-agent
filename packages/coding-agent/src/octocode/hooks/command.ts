@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { leadsProcessGroup } from "../../utils/shell.ts";
-import { KILL_GRACE_MS, stopTree } from "../shared/process.ts";
+import { KILL_GRACE_MS, reapWithParent, stopTree } from "../shared/process.ts";
 import { HOOK_COMMAND_OUTPUT_MAX_BYTES, type HookCommand, type HookRun } from "./contracts.ts";
 
 /** Drain inherited pipes after natural exit without hiding a hook's decision. */
@@ -73,6 +73,8 @@ export function runCommandHook(
 			resolve({ code: null, stdout: "", stderr: errorMessage(error), timedOut: false });
 			return;
 		}
+		// A hard-killed Octocode runs no cleanup: the watcher ends the hook's group once this process is gone.
+		if (leadsProcessGroup()) reapWithParent(child.pid);
 		const out: Buffer[] = [];
 		const err: Buffer[] = [];
 		let outBytes = 0;

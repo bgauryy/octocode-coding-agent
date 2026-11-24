@@ -2,36 +2,47 @@ import type { JobRow } from "../../../../../db/src/api.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { shortPath } from "../../../utils/display-path.ts";
 import { firstLine } from "../../shared/util.ts";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { cutText } from "@octocodeai/octocode-common/text";
 import type { JobEnd } from "./message.ts";
 import { ownerAlive } from "../../shared/job-standing.ts";
 import type { JobLedger } from "./ledger.ts";
 
-/** How often a joined job of another session is looked at. */
+/** How often a joined job is looked at with no change hint to wait for. */
 const POLL_MS = 2_000;
+/**
+ * The slow look beside a change hint: a job's end writes its row (the hint), but an owner killed from outside writes
+ * nothing, and only this look finds it.
+ */
+const SAFETY_MS = 30_000;
 
 const key = (row: Pick<JobRow, "session_id" | "job">) => `${row.session_id}\u0000${row.job}`;
 
 /**
  * Watches the running jobs of other sessions that this session joined, and calls `ended` once for each when it ends: its row
  * says so, or its owner is gone without recording it. The timer runs only while a job is watched and never keeps the
- * process alive; `stop` ends it.
+ * process alive; `stop` ends it. With a `hint` (the database's change follower) a poll runs when the file moves and every
+ `SAFETY_MS` for owners that vanish without writing; without one it polls every 2 s.
  */
 export class JoinWatch {
 	private readonly watching = new Map<string, JobRow>();
-	private timer: NodeJS.Timeout | undefined;
+	private stopTimer: (() => void) | undefined;
+	private stopHint: (() => void) | undefined;
 
 	private readonly ledger: JobLedger;
 	private readonly ended: (row: JobRow, how: "ended" | "owner gone") => void;
 	private readonly failed: (error: unknown) => void;
 	private readonly pollMs: number;
+	private readonly hint: ((poke: () => void) => () => void) | undefined;
 
 	constructor(
 		ledger: JobLedger,
 		ended: (row: JobRow, how: "ended" | "owner gone") => void,
 		failed: (error: unknown) => void,
-		pollMs = POLL_MS,
+		hint?: (poke: () => void) => () => void,
+		pollMs = hint ? SAFETY_MS : POLL_MS,
 	) {
+		this.hint = hint;
 		this.ledger = ledger;
 		this.ended = ended;
 		this.failed = failed;
@@ -40,12 +51,15 @@ export class JoinWatch {
 
 	watch(row: JobRow): void {
 		this.watching.set(key(row), row);
-		this.timer ??= setInterval(() => this.poll(), this.pollMs).unref();
+		this.stopTimer ??= sharedClock.subscribe(() => this.poll(), { everyMs: this.pollMs });
+		this.stopHint ??= this.hint?.(() => this.poll());
 	}
 
 	stop(): void {
-		clearInterval(this.timer);
-		this.timer = undefined;
+		this.stopTimer?.();
+		this.stopTimer = undefined;
+		this.stopHint?.();
+		this.stopHint = undefined;
 		this.watching.clear();
 	}
 

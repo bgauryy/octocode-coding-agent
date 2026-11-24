@@ -21,8 +21,6 @@ import { type Candidate, clearableResults, fileInputs, olderCandidates, savedCop
 import {
 	cachePrices,
 	catalogPrices,
-	clearingPays,
-	clearingSaving,
 	expectedRemainingRequests,
 	realizedRequestsRatio,
 	type ClearingCost,
@@ -35,22 +33,29 @@ import { untrustedResult } from "./untrusted-results.ts";
 export { KEEP_RECENT_RESULTS } from "./clearing-candidates.ts";
 
 /**
- * Clearing old tool results when that costs less than re-sending them.
+ * Clearing old tool results only where it costs no cache write, or where the context would otherwise overflow.
  *
  * Before every request, whether it starts a run or follows a tool inside one, the old results of tools whose output can
  * be fetched again, and the payloads of old `file` changes (on disk once they applied), are replaced by placeholders,
  * keeping the newest `KEEP_RECENT_RESULTS` of each (`clearing-candidates.ts`) and those still in use (`clearing-recent.ts`:
- * every result of the last turns, and, within a size bound, older ones whose path those turns name), when the rest totals at least the floor and either:
+ * every result of the last turns, and, within a size bound, older ones whose path those turns name). The rule:
  *
- * - the request rewrites the cache anyway: it was last used (the last reply, or a refresh by Octocode's warmer) longer
- *   ago than its lifetime, a compaction replaced the history, the model changed, or a system update folds into the
- *   leading prompt. These points batch the clearing: it adds no cache write, so everything old goes, from the lower
- *   `CLEAR_AT_FREE_POINT_TOKENS`; or
- * - clearing pays while the cache is warm: the cost of re-sending the old results over the requests still expected
- *   exceeds the one-time cache write clearing causes (`clearing-cost.ts` holds the formula and its inputs; the expected
- *   requests are held to what this session's earlier clearings realized, `realizedRequestsRatio`). Then the run of old
- *   results that saves most is cleared, which may start after a large message that stays (`bestRun`), from
- *   `CLEAR_AT_LEAST_TOKENS`.
+ * - The request rewrites the cache anyway: the entry was last used (the last reply, or a refresh by Octocode's warmer)
+ *   longer ago than its lifetime (`promptCacheTtlMs`, read from the model's `promptCache` tiers, 5 minutes for a model
+ *   that declares none but shows caching), a compaction replaced the history, the model changed, or a system update
+ *   folds into the leading prompt. Clearing adds no cache write there, so everything old goes, from the floor
+ *   `CLEAR_AT_FREE_POINT_TOKENS`.
+ * - Otherwise, never while the cache is warm, except as a safety: the context is within `NEAR_LIMIT_SHARE` of the
+ *   compaction threshold, where one cache rewrite is cheaper than a compaction or an overflow. That clears from
+ *   `CLEAR_AT_LEAST_TOKENS`, trigger `limit`.
+ *
+ * A warm-cache clearing priced by "re-sent tokens saved against one rewrite" (`T_old × R × N > S_after × W`, `clearing-cost.ts`)
+ * was the earlier rule and is gone. The audit (`.octocode/agent/cache-audit/REPORT.md`) found a clearing before 391 of
+ * 415 mid-session cache busts: 24.5M tokens rewritten, about $60 of $528 over three days, gross. Why the model lost:
+ * old results sit early in the history, so the write covers almost the whole context (`S_after`, at the write price
+ * of 1.25 to 2 times the input price) while the saving is only the cleared tokens at the read price (0.1 times), which
+ * takes `N` above 12 requests; `N` is a forecast that the calibration (`realizedRequestsRatio`) corrects only after a
+ * compaction; and every later wave pays the write again. Whether the forecasts fell short was not measured.
  *
  * A repeated-read note (`files/dedupe`) that points at a cleared result gets the same placeholder, so it never points
  * "above" at text that is gone.
@@ -64,18 +69,19 @@ export { KEEP_RECENT_RESULTS } from "./clearing-candidates.ts";
  * what followed.
  */
 
-/** While the cache is warm, the text the older results must total (in tokens, by `CHARS_PER_TOKEN`) for any clearing to happen: below it the saving is too small to be worth a changed prefix and the saved copies. */
+/** Near the context limit on a warm cache, the text the older results must total (in tokens, by `CHARS_PER_TOKEN`) for any clearing to happen: below it the saving is too small to be worth a changed prefix and the saved copies. */
 export const CLEAR_AT_LEAST_TOKENS = 20_000;
 /** Where the request rewrites the cache anyway, the floor: the changed prefix costs nothing there, only the saved copies do. */
 export const CLEAR_AT_FREE_POINT_TOKENS = 4_000;
-// Both stay absolute, not scaled by the window: clearing is priced (`clearingPays`), and freeing a number of tokens saves
-// the same per request whatever the window holds.
+/** The share of the compaction threshold the context must reach before a warm cache is broken to clear (the hard limit safety). */
+const NEAR_LIMIT_SHARE = 0.85;
+// The floors stay absolute, not scaled by the window: freeing a number of tokens saves the same per request whatever the window holds.
 
 /** About what one placeholder costs in tokens (its saved path and digest are not known before the decision). */
 const PLACEHOLDER_TOKENS = charsToTokens(clearedPlaceholder("x".repeat(120), "x".repeat(160)).length);
 
-/** Why a clearing ran, recorded beside it: `warm` when it paid on a warm cache, anything else a rewrite that happened anyway. */
-type ClearingTrigger = "idle" | "compaction" | "model" | "prompt" | "rewrite" | "warm";
+/** Why a clearing ran, recorded beside it: `limit` when the context neared the compaction threshold on a warm cache, anything else a rewrite that happened anyway. */
+type ClearingTrigger = "idle" | "compaction" | "model" | "prompt" | "rewrite" | "limit";
 
 /**
  * What makes the request about to be made rewrite the history's cache entry anyway, if anything: the way the model's
@@ -140,30 +146,6 @@ function promptTokens(reply: MessageRef | undefined): number | undefined {
 	return total > 0 ? total : undefined;
 }
 
-/**
- * The older candidates to clear (`older`, oldest first): all of them when the request rewrites the cache anyway; else
- * the run from the oldest one on whose clearing saves most (`clearingSaving`), of those that free
- * `CLEAR_AT_LEAST_TOKENS` and pay. A later start clears fewer but rewrites less of the cache. Empty when none pays.
- */
-function bestRun(
-	older: readonly Candidate[],
-	tokensOf: (list: readonly Candidate[]) => number,
-	costOf: (list: readonly Candidate[]) => ClearingCost,
-	pays: (list: readonly Candidate[]) => boolean,
-): readonly Candidate[] {
-	if (older.length === 0 || costOf(older).rewriteAnyway) return pays(older) ? older : [];
-	let best: readonly Candidate[] = [];
-	let bestSaving = 0;
-	for (let start = 0; start < older.length; start++) {
-		const run = older.slice(start);
-		// Later runs only hold fewer of the old tokens.
-		if (tokensOf(run) < CLEAR_AT_LEAST_TOKENS) break;
-		const saving = clearingSaving(costOf(run));
-		if (saving > bestSaving && pays(run)) [best, bestSaving] = [run, saving];
-	}
-	return best;
-}
-
 /** The previous request's cache read in tokens, as its reply reported it. */
 function lastCacheRead(messages: readonly MessageRef[]): number | undefined {
 	for (let index = messages.length - 1; index >= 0; index--) {
@@ -172,6 +154,17 @@ function lastCacheRead(messages: readonly MessageRef[]): number | undefined {
 		return typeof message.usage.cacheRead === "number" ? message.usage.cacheRead : undefined;
 	}
 	return undefined;
+}
+
+/** Whether `tokens` of context are within `NEAR_LIMIT_SHARE` of `window` (the compaction threshold); false without a window. */
+function nearLimit(tokens: number, window: number | undefined): boolean {
+	return window !== undefined && window > 0 && tokens >= NEAR_LIMIT_SHARE * window;
+}
+
+/** Whether the context may be near its limit by what `occasion` already reports: false only when it says it is not. */
+function mayBeNearLimit(occasion: ClearingOccasion): boolean {
+	if (occasion.contextWindow === undefined || occasion.contextWindow <= 0) return false;
+	return occasion.contextTokens === undefined || nearLimit(occasion.contextTokens, occasion.contextWindow);
 }
 
 /** What the request about to be made tells the clearing decision besides the cache clock: see `clearStaleResults`. */
@@ -200,8 +193,8 @@ function freePoint(
 }
 
 /**
- * Clears the old results and `file` payloads when the request rewrites the cache anyway (`freePoint`), or when clearing
- * pays while it is warm (`clearingPays`): saves each result, records the decision with `api.session.appendEntry`, and
+ * Clears the old results and `file` payloads when the request rewrites the cache anyway (`freePoint`), or when
+ * a warm context nears its limit (`NEAR_LIMIT_SHARE`): saves each result, records the decision with `api.session.appendEntry`, and
  * makes the file guard forget the files whose read was cleared and that no read left in the context still shows (the
  * rule `contextReads` rebuilds the guard by on a resume). Does nothing when neither applies, the session has no reply
  * yet, the model's cache lifetime is unknown and nothing rewrites the cache, or less than the floor would be freed.
@@ -217,8 +210,8 @@ export function clearStaleResults(
 	if (cacheClock(ctx.sessionManager).useAt === undefined) return;
 	const free = freePoint(ctx, ttlMs, occasion, now);
 	const rewriteAnyway = free !== undefined;
-	// Without a known lifetime there is no cache to price: only a rewrite that happens anyway clears.
-	if (ttlMs === undefined && !rewriteAnyway) return;
+	// A warm cache is only broken near the limit. With a context size already known the common request stops here.
+	if (!rewriteAnyway && !mayBeNearLimit(occasion)) return;
 	const floor = rewriteAnyway ? CLEAR_AT_FREE_POINT_TOKENS : CLEAR_AT_LEAST_TOKENS;
 	const messages = contextMessages(ctx);
 	const view = sessionClearedView(ctx.sessionManager);
@@ -236,7 +229,7 @@ export function clearStaleResults(
 	const older = inUse.size === 0 ? counted : counted.filter(({ id }) => !inUse.has(id));
 	if (tokensOf(older) < floor) return;
 	const tokens = messages.map(({ message }) => estimateTokens(message as never));
-	// Tokens from each message to the end, so pricing a run from any start is one lookup.
+	// Tokens from each message to the end, so the recorded cost of a run from any start is one lookup.
 	const suffixFrom = tokens.reduceRight<number[]>((sums, each, index) => {
 		sums[index] = each + (sums[index + 1] ?? 0);
 		return sums;
@@ -244,6 +237,7 @@ export function clearStaleResults(
 	const branch: readonly unknown[] = ctx.sessionManager.getBranch?.() ?? [];
 	const replies = repliesSinceCompaction(branch, messages);
 	const contextTokens = occasion.contextTokens ?? suffixFrom[0] ?? 0;
+	if (!rewriteAnyway && !nearLimit(contextTokens, occasion.contextWindow)) return;
 	const prices = cachePrices(ctx.model, ttlMs ?? 0);
 	const calibration = realizedRequestsRatio(branch, CLEARED_RESULTS_TYPE);
 	const remainingRequests =
@@ -253,23 +247,19 @@ export function clearStaleResults(
 		const oldTokens = tokensOf(list);
 		const suffix = list.length === 0 ? 0 : (suffixFrom[list[0].index] ?? 0);
 		const suffixTokensAfter = Math.max(0, suffix - oldTokens) + list.length * PLACEHOLDER_TOKENS;
-		return { oldTokens, suffixTokensAfter, remainingRequests, prices, rewriteAnyway };
+		return { oldTokens, suffixTokensAfter, remainingRequests, prices };
 	};
-	const pays = (list: readonly Candidate[]): boolean =>
-		list.length > 0 && tokensOf(list) >= floor && clearingPays(costOf(list));
-	const chosen = bestRun(older, tokensOf, costOf, pays);
-	if (chosen.length === 0) return;
 	// One output folder for the batch: resolving it per result repeated the workspace's realpath and folder checks.
 	const outputDir = outputDirOnce();
-	const saved = chosen.flatMap((candidate): Array<{ candidate: Candidate; file: string | undefined }> => {
+	const saved = older.flatMap((candidate): Array<{ candidate: Candidate; file: string | undefined }> => {
 		// A `file` payload is on disk already; a result's whole text is saved first.
 		if (candidate.kind === "input") return [{ candidate, file: undefined }];
 		const file = savedCopy(candidate, outputDir);
 		return file ? [{ candidate, file }] : [];
 	});
-	// Results that could not be saved stay; if what is left no longer pays, the saved copies stay unused.
+	// Results that could not be saved stay; if what is left falls under the floor, the saved copies stay unused.
 	const clearedCandidates = saved.map(({ candidate }) => candidate);
-	if (!pays(clearedCandidates)) return;
+	if (tokensOf(clearedCandidates) < floor) return;
 	const results = saved.flatMap(({ candidate, file }) => {
 		if (file === undefined) return [];
 		const message = messages[candidate.index].message;
@@ -307,7 +297,7 @@ export function clearStaleResults(
 		...(calibration === undefined ? {} : { calibration: Math.round(calibration * 100) / 100 }),
 		prices: { ...prices, unit: catalogPrices(ctx.model, ttlMs ?? 0) ? "usd-per-million" : "ratio" },
 		rewriteAnyway,
-		trigger: free ?? "warm",
+		trigger: free ?? "limit",
 		...(cacheRead === undefined ? {} : { cacheRead }),
 	});
 	// The entry is in the branch now (`appendEntry` is synchronous), so `contextReads` sees the context as cleared.

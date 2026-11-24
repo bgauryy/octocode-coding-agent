@@ -27,6 +27,7 @@ import { sharedAgentDb } from "../../storage/database.ts";
 import type { CooldownRequestOptions } from "./cooldown-request.ts";
 import { coolsDown } from "./provider-cooldown.ts";
 import {
+	admissionClass,
 	bedrockRegion,
 	estimatedUncachedInputTokens,
 	payloadMaxTokens,
@@ -157,6 +158,8 @@ export function throughputStep(
 	throughput: ProviderThroughput = providerThroughput,
 ): { hooks(upstream: Hooks, requestModel: Model<Api>, env: NodeJS.ProcessEnv): Hooks; observer: LazyStreamObserver } {
 	const priority = requestPriority(options?.requestPriority);
+	// The label stays the caller's; admission and shedding follow the agent a compaction summarizes for.
+	const admission = admissionClass(priority);
 	const metrics: RequestThroughput = {
 		model: model.id,
 		priority,
@@ -213,6 +216,9 @@ export function throughputStep(
 				const policy = throughputPolicy(sentModel, env);
 				if (!policy || metrics.maxTokens === undefined) return;
 				metrics.region = policy.region;
+				// The local cap counts final tokens per minute, so an in-flight request holds its worst-case final charge
+				// (output at the burndown rate); `estimatedAdmissionTokens` stays AWS's 1x admission charge, and
+				// reconciliation lowers the hold to the actual final charge.
 				metrics.reservedTokens = metrics.estimatedInputTokens + metrics.maxTokens * policy.outputBurndown;
 				const waitStarted = throughput.now();
 				let waiting = false;
@@ -223,7 +229,7 @@ export function throughputStep(
 						const windowStart = Math.floor(now / THROUGHPUT_WINDOW_MS) * THROUGHPUT_WINDOW_MS;
 						const state = throughput.state(policy.key);
 						metrics.adaptiveScale = state.scale;
-						if (shedsAtScale(priority, state.scale)) {
+						if (shedsAtScale(admission, state.scale)) {
 							metrics.shed = true;
 							throw new ThroughputShedError(
 								`${priority} request shed for ${sentModel.id}: shared capacity is ${Math.round(state.scale * 100)}%.`,
@@ -240,13 +246,13 @@ export function throughputStep(
 							estimatedTokens: metrics.reservedTokens,
 							tokenLimit: policy.tokensPerMinute,
 							requestLimit: policy.requestsPerMinute,
-							utilization: priorityUtilization(priority),
+							utilization: priorityUtilization(admission),
 						});
 						if (admitted.admitted) {
 							reservation = candidate;
 							return;
 						}
-						if (priority === "compaction" || priority === "background") {
+						if (admission === "background") {
 							metrics.shed = true;
 							throw new ThroughputShedError(
 								`${priority} request shed for ${sentModel.id}: its capacity headroom is full.`,

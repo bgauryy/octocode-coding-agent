@@ -10,6 +10,7 @@ import {
 import { streamSimple } from "@octocodeai/octocode-ai/compat";
 import { createPendingAssistantMessage } from "@octocodeai/octocode-ai/utils/assistant-message";
 import { getBuiltinModel } from "@octocodeai/octocode-ai/providers/all";
+import { SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThroughputReserveInput, ThroughputReserveResult, ThroughputState } from "../../db/src/api.ts";
 import {
@@ -139,10 +140,13 @@ function reply(model: Model<Api>, stopReason: AssistantMessage["stopReason"] = "
 	return message;
 }
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+	vi.useRealTimers();
+	vi.unstubAllEnvs();
+});
 
 describe("request throughput telemetry and reconciliation", () => {
-	it("reserves final TPM with burndown and completes actual usage and response metadata", async () => {
+	it("holds the worst-case final charge, reconciles to burndown TPM and completes actual usage and response metadata", async () => {
 		const { store, step, hooks, model } = setup();
 		await hooks.onPayload?.({ max_tokens: 100 }, model);
 		await hooks.onResponse?.({ status: 200, headers: { "x-amzn-requestid": "request-1" } }, model);
@@ -155,7 +159,7 @@ describe("request throughput telemetry and reconciliation", () => {
 			priority: "foreground",
 			maxTokens: 100,
 			estimatedAdmissionTokens: (trace?.estimatedInputTokens ?? 0) + 100,
-			reservedTokens: (trace?.estimatedInputTokens ?? 0) + 1000,
+			reservedTokens: (trace?.estimatedInputTokens ?? 0) + 100 * 10,
 			actualInputTokens: 100,
 			actualOutputTokens: 20,
 			actualCacheReadTokens: 50,
@@ -166,6 +170,20 @@ describe("request throughput telemetry and reconciliation", () => {
 		});
 		expect(trace?.gateWaitMs).toBeGreaterThanOrEqual(0);
 		expect([...store.rows.values()][0]).toMatchObject({ actual: 305 });
+	});
+
+	it("reports Kimi's 1x admission charge, holds output at 10x, then reconciles to the actual charge", async () => {
+		const { store, step, hooks, model } = setup();
+		await hooks.onPayload?.({ max_tokens: 8192 }, model);
+		const row = [...store.rows.values()][0];
+		const message = reply(model);
+		step.observer.onEvent?.({ type: "done", reason: "stop", message });
+		const trace = message.requestTrace?.throughput;
+		expect(trace?.estimatedAdmissionTokens).toBe((trace?.estimatedInputTokens ?? 0) + 8192);
+		expect(row?.estimated).toBe((trace?.estimatedInputTokens ?? 0) + 8192 * 10);
+		expect(trace?.reservedTokens).toBe(row?.estimated);
+		expect(trace?.actualTokens).toBe(100 + 5 + 20 * 10);
+		expect(row?.actual).toBe(305);
 	});
 
 	it("instruments non-gated models without opening a reservation", async () => {
@@ -319,6 +337,35 @@ describe("admission waiting and priority shedding", () => {
 		expect(message.requestTrace?.throughput?.gateWaitMs).toBe(60_000);
 	});
 
+	it("holds parallel long-output Kimi requests at 10x so their final charge stays under the window cap", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(0);
+		const capped = { ...env, OCTOCODE_BEDROCK_KIMI_TPM: "200000" };
+		const model = { ...kimi, baseUrl: "https://bedrock-runtime.eu-central-1.amazonaws.com/openai/v1" };
+		const store = new MemoryStore();
+		let sequence = 0;
+		const gate = new ProviderThroughput(
+			() => store,
+			() => Date.now(),
+			() => `reservation-${++sequence}`,
+		);
+		const context = normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: 0 }] });
+		const start = () => throughputStep(model, context, { maxTokens: 10_000 }, gate).hooks({}, model, capped);
+		await start().onPayload?.({ max_tokens: 10_000 }, model);
+		let secondAdmitted = false;
+		const second = Promise.resolve(start().onPayload?.({ max_tokens: 10_000 }, model)).then(() => {
+			secondAdmitted = true;
+		});
+		await vi.advanceTimersByTimeAsync(59_000);
+		const held = [...store.rows.values()].filter((row) => row.windowStart === 0);
+		expect(secondAdmitted).toBe(false);
+		expect(held).toHaveLength(1);
+		expect(held.reduce((sum, row) => sum + row.estimated, 0)).toBeLessThanOrEqual(200_000);
+		await vi.advanceTimersByTimeAsync(1_000);
+		await second;
+		expect(secondAdmitted).toBe(true);
+	});
+
 	it("bounds total admission time when new contention extends a wait", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(0);
@@ -361,16 +408,55 @@ describe("admission waiting and priority shedding", () => {
 		expect(store.rows.size).toBe(0);
 	});
 
-	it("sheds background and compaction work after throttling without sending it", async () => {
-		for (const priority of ["background", "compaction"] as const) {
-			const { store, step, hooks, model } = setup(kimi, priority);
-			const key = `amazon-bedrock/${kimi.id}@eu-central-1`;
-			store.recordThrottle(key, Date.now());
-			await expect(hooks.onPayload?.({ max_tokens: 100 }, model)).rejects.toBeInstanceOf(ThroughputShedError);
-			expect(store.rows.size).toBe(0);
-			const error = reply(model, "error");
-			step.observer.onEvent?.({ type: "error", reason: "error", error });
-			expect(error.requestTrace?.throughput).toMatchObject({ priority, shed: true, adaptiveScale: 0.5 });
-		}
+	it("sheds background work after throttling without sending it", async () => {
+		const { store, step, hooks, model } = setup(kimi, "background");
+		const key = `amazon-bedrock/${kimi.id}@eu-central-1`;
+		store.recordThrottle(key, Date.now());
+		await expect(hooks.onPayload?.({ max_tokens: 100 }, model)).rejects.toBeInstanceOf(ThroughputShedError);
+		expect(store.rows.size).toBe(0);
+		const error = reply(model, "error");
+		step.observer.onEvent?.({ type: "error", reason: "error", error });
+		expect(error.requestTrace?.throughput).toMatchObject({ priority: "background", shed: true, adaptiveScale: 0.5 });
+	});
+
+	// Shedding a compaction frees nothing: Octocode's default summary is sent next at the session's own priority.
+	it("admits a foreground session's compaction at reduced capacity and in a nearly full window", async () => {
+		const key = `amazon-bedrock/${kimi.id}@eu-central-1`;
+		const throttled = setup(kimi, "compaction");
+		throttled.store.scales.set(key, { scale: 0.44, successes: 0 });
+		await throttled.hooks.onPayload?.({ max_tokens: 100 }, throttled.model);
+		expect(throttled.store.rows.size).toBe(1);
+		const message = reply(throttled.model);
+		throttled.step.observer.onEvent?.({ type: "done", reason: "stop", message });
+		expect(message.requestTrace?.throughput).toMatchObject({ priority: "compaction", adaptiveScale: 0.44 });
+		expect(message.requestTrace?.throughput?.shed).toBeUndefined();
+
+		const busy = setup(kimi, "compaction");
+		busy.store.reserve({
+			key,
+			windowStart: Math.floor(Date.now() / 60_000) * 60_000,
+			reservationId: "other-session",
+			now: Date.now(),
+			estimatedTokens: 400_000,
+			tokenLimit: 500_000,
+			requestLimit: 60,
+		});
+		await busy.hooks.onPayload?.({ max_tokens: 100 }, busy.model);
+		expect(busy.store.rows.size).toBe(2);
+	});
+
+	it("sheds a subagent's compaction only where the subagent's own requests are shed", async () => {
+		vi.stubEnv(SUBAGENT_ENV, "1");
+		const key = `amazon-bedrock/${kimi.id}@eu-central-1`;
+		const recovering = setup(kimi, "compaction");
+		recovering.store.scales.set(key, { scale: 0.44, successes: 0 });
+		await recovering.hooks.onPayload?.({ max_tokens: 100 }, recovering.model);
+		expect(recovering.store.rows.size).toBe(1);
+		const collapsed = setup(kimi, "compaction");
+		collapsed.store.scales.set(key, { scale: 0.125, successes: 0 });
+		await expect(collapsed.hooks.onPayload?.({ max_tokens: 100 }, collapsed.model)).rejects.toBeInstanceOf(
+			ThroughputShedError,
+		);
+		expect(collapsed.store.rows.size).toBe(0);
 	});
 });

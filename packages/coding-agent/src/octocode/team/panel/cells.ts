@@ -108,7 +108,7 @@ export function row(entry: PanelEntry, kind: RowKind, now: number, theme: Theme,
 	return {
 		entry,
 		kind,
-		mark: panelMark(theme, state),
+		mark: panelMark(theme, state, now),
 		// An agent that waits for the user reads as live as one that works.
 		lively: working || state.state === "waiting",
 		name: fitName(safe(member.id, 64), NAME_MAX),

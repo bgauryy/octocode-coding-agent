@@ -143,7 +143,9 @@ function overCap(response: AssistantMessage, text: string, cap: number): boolean
  * `long` over shorter history; then a cold request still marks them, reading the live entry and keeping it for the
  * next request, and only history goes unmarked. A request that rewrites the prefix anyway
  * (`prefixRewritten`: a switch of a physical session model since the last reply, or a trailing update the transcript folds into the leading
- * prompt) is cold the same way.
+ * prompt) is cold the same way. `speculative`: the early summary, sent beside the run before any compaction needs it; it
+ * is sent only over a warm prefix, and as `background` work, which the throughput gate sheds first, where the summary a
+ * compaction waits for is admitted as the agent it summarizes for.
  */
 export async function sharedSummary(
 	api: SetupPick<"models", "getThinkingLevel"> &
@@ -157,7 +159,7 @@ export async function sharedSummary(
 	recordUsage?: (message: AssistantMessage) => void,
 	cacheCold = false,
 	instructionsCold = cacheCold,
-	requireWarmPrefix = false,
+	speculative = false,
 ): Promise<CompactionResult | undefined> {
 	const fail = (reason: string, userChoice?: boolean): undefined => {
 		unusable(reason, userChoice);
@@ -179,7 +181,7 @@ export async function sharedSummary(
 		const messages = projectForcedSystemPrompt(projected, event.summaryRequest?.forceSystemPrompt);
 		const rewritten = prefixRewritten(messages, model);
 		const cold = cacheCold || rewritten || historyPrefixRewritten(ctx.sessionManager);
-		if (requireWarmPrefix && cold) return fail("the request prefix is cold");
+		if (speculative && cold) return fail("the request prefix is cold");
 		const ceiling = summaryCapTokens(model, preparation.settings.reserveTokens);
 		const target = summaryTargetTokens(ceiling);
 		// The earlier checkpoint's standing constraints and decisions, which code writes back (`ledger.ts`).
@@ -226,10 +228,10 @@ export async function sharedSummary(
 		};
 		// The key the session's own requests carry (`create-session.ts`): its prefix group's on OpenAI, else the fork
 		// chain's, so the summary reads the session's cache, and a fork's the parent's shard.
-		const promptCacheKey = promptCacheKeyFor(ctx.sessionManager, ctx.cwd, model, normalizeContext(request).messages);
-		const options: SimpleStreamOptions & { requestPriority: "compaction" } = {
+		const promptCacheKey = promptCacheKeyFor(ctx.sessionManager, model, normalizeContext(request).messages);
+		const options: SimpleStreamOptions & { requestPriority: "compaction" | "background" } = {
 			...preferences,
-			requestPriority: "compaction",
+			requestPriority: speculative ? "background" : "compaction",
 			// A cold history is not marked (nothing reads what it writes). History `none` makes octocode-ai send no markers
 			// and drop the cache routing id (OpenCode keeps its required `x-opencode-session` header), unless
 			// `keepInstructionCache` keeps the instruction markers: that entry is live, this request reads it and the next
@@ -262,7 +264,9 @@ export async function sharedSummary(
 			return fail(
 				response.stopReason === "length"
 					? `the reply stopped with length (output ${response.usage?.output ?? "?"} tokens, cap ${cap})`
-					: `the reply stopped with ${response.stopReason}`,
+					: response.stopReason === "error" && response.errorMessage
+						? `the reply stopped with error (${response.errorMessage})`
+						: `the reply stopped with ${response.stopReason}`,
 			);
 		if (response.content.some((block) => block.type === "toolCall")) return fail("the reply called a tool");
 		const text = contentText(response.content).trim();

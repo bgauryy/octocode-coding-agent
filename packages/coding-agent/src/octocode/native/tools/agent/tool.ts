@@ -129,7 +129,7 @@ export function agentModes() {
 						.map(([type, tool]) =>
 							type === "task" && runnerOnly
 								? `${type}: ${tool.description}`
-								: `${type}: ${leaf && type === "message" ? LEAF_MESSAGE_LINE : LINES[type]}${type === "task" ? `${runnerTasks ? RUNNER_LINE : ""} At most ${maxSubagents()} at once; more queue.` : ""}`,
+								: `${type}: ${leaf && type === "message" ? LEAF_MESSAGE_LINE : LINES[type]}${type === "task" ? `${runnerTasks ? RUNNER_LINE : ""} At most ${maxSubagents(process.env)} at once; more queue.` : ""}`,
 						)
 						.join("\n"),
 				promptGuidelines: entries.flatMap(([, tool]) => tool.promptGuidelines ?? []),

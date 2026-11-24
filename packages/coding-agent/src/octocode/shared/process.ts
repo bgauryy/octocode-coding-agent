@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { psFieldsSync } from "@octocodeai/octocode-common/process-start";
 import { keepOwnStart, keptOwnStart, ownStartAsync } from "@octocodeai/octocode-common/own-start";
 import { validPid } from "../../utils/process-id.ts";
 import { killWindowsTree, signalTree, taskkillTree } from "../../utils/process-tree.ts";
@@ -7,7 +7,6 @@ import {
 	type ProcessTable,
 	type ProcessRow,
 	PS_UTC_ENV,
-	psAsync,
 	readProcessTable,
 	refreshProcessTable,
 	startSeconds,
@@ -53,20 +52,7 @@ export { PS_UTC_ENV, utcSeconds } from "./process-table.ts";
 
 /** `ps -o lstart=` of one process on the calling thread (undefined: no `ps`, a timeout, or no such process). */
 function psStart(pid: number, env: NodeJS.ProcessEnv): string | undefined {
-	try {
-		return (
-			execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
-				encoding: "utf8",
-				timeout: 2000,
-				stdio: ["ignore", "pipe", "ignore"],
-				env,
-			})
-				.trim()
-				.replace(/\s+/g, " ") || undefined
-		);
-	} catch {
-		return undefined;
-	}
+	return psFieldsSync(pid, "lstart=", env)?.trim().replace(/\s+/g, " ") || undefined;
 }
 
 /** A pid `ps` can be asked about: POSIX, a positive integer. */
@@ -103,8 +89,8 @@ export async function processStartTimeAsync(pid: number): Promise<string | undef
 	if (pid === process.pid) return ownStartAsync();
 	let pending = starting.get(pid);
 	if (!pending) {
-		pending = psAsync(["-o", "lstart=", "-p", String(pid)], PS_UTC_ENV())
-			.then((lstart) => (lstart?.trim() ? utcSeconds(lstart) : undefined))
+		pending = readProcessTable({ fresh: true })
+			.then((table) => table?.rows.get(pid)?.started)
 			.finally(() => starting.delete(pid));
 		starting.set(pid, pending);
 	}
@@ -135,7 +121,7 @@ export async function processMatch(
 ): Promise<"same" | "other" | "unknown"> {
 	if (!processAlive(pid)) return "other";
 	if (!started) return "unknown";
-	const table = await readProcessTable();
+	const table = await readProcessTable({ fresh: true });
 	if (!table) return "unknown";
 	// Still alive after the read: the table's row is this process's, not one that died meanwhile.
 	return processAlive(pid) ? judge(table, pid as number, started) : "other";
@@ -223,38 +209,19 @@ export function liveProcess(
 }
 
 /**
- * The live members of process group `pgid` (POSIX, one asynchronous `ps`) with `column` (`lstart` or `command`) as
- * trimmed text; a zombie has exited already and is left out. Undefined on Windows (no groups), for an unsignalable pid
- * or when `ps` fails.
- */
-async function groupRows(
-	pgid: number | undefined,
-	column: "lstart" | "command",
-): Promise<Array<{ pid: number; rest: string }> | undefined> {
-	if (!validPid(pgid) || process.platform === "win32") return undefined;
-	const table = await psAsync(["-A", "-o", `pid=,pgid=,stat=,${column}=`], PS_UTC_ENV());
-	if (table === undefined) return undefined;
-	const rows: Array<{ pid: number; rest: string }> = [];
-	for (const line of table.split("\n")) {
-		const match = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(line);
-		if (match && Number(match[2]) === pgid && !match[3].startsWith("Z"))
-			rows.push({ pid: Number(match[1]), rest: match[4].trim() });
-	}
-	return rows;
-}
-
-/**
- * Start times (`processStartTime` values) of the live members of the process group `pgid` (POSIX, one asynchronous
- * `ps`), or undefined when `ps` fails or a member's start cannot be read: unknown is not the same as no member.
+ * Start times (`processStartTime` values) of the live members of the process group `pgid` (POSIX, from the shared
+ * process table), or undefined when `ps` fails or a member's start cannot be read: unknown is not the same as no
+ * member. A zombie has exited already and is left out.
  */
 export async function groupStartTimes(pgid: number): Promise<Array<{ pid: number; started: string }> | undefined> {
-	const rows = await groupRows(pgid, "lstart");
-	if (rows === undefined) return undefined;
+	if (!validPid(pgid) || process.platform === "win32") return undefined;
+	const table = await readProcessTable({ fresh: true });
+	if (table === undefined) return undefined;
 	const members: Array<{ pid: number; started: string }> = [];
-	for (const row of rows) {
-		const started = utcSeconds(row.rest);
-		if (started === undefined) return undefined;
-		members.push({ pid: row.pid, started });
+	for (const row of table.rows.values()) {
+		if (row.pgid !== pgid || row.stat.startsWith("Z")) continue;
+		if (row.started === undefined) return undefined;
+		members.push({ pid: row.pid, started: row.started });
 	}
 	return members;
 }
@@ -275,11 +242,15 @@ export function groupAlive(pid: number | undefined): boolean {
 }
 
 /**
- * The live members of the process group `pgid` (POSIX, one asynchronous `ps`), each with its command line. Empty on
+ * The live members of the process group `pgid` (POSIX, from the shared process table), each with its command line. Empty on
  * Windows (no groups) or when `ps` fails.
  */
 export async function groupMembers(pgid: number | undefined): Promise<Array<{ pid: number; command: string }>> {
-	return ((await groupRows(pgid, "command")) ?? []).map((row) => ({ pid: row.pid, command: row.rest }));
+	if (!validPid(pgid) || process.platform === "win32") return [];
+	const table = await readProcessTable({ fresh: true });
+	return [...(table?.rows.values() ?? [])]
+		.filter((row) => row.pgid === pgid && !row.stat.startsWith("Z"))
+		.map((row) => ({ pid: row.pid, command: row.command }));
 }
 
 /** How often `stopTree` checks whether the tree is gone. */
@@ -340,7 +311,7 @@ export async function stopTree(
 	await settle(graceMs);
 	if (!treeAlive(pid, descendants)) return;
 	// Every captured PID can exit and be reused during the grace, including the original group leader.
-	const table = identities.size ? await readProcessTable() : undefined;
+	const table = identities.size ? await readProcessTable({ fresh: true }) : undefined;
 	const same = (row: ProcessRow) => row.started !== undefined && table?.rows.get(row.pid)?.started === row.started;
 	const safe = [...identities.values()].filter(same);
 	// A surviving original member proves the group still belongs to this tree. Do not fall back to the root PID.

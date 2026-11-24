@@ -1,9 +1,10 @@
 import { renderPrompt } from "../../../core/prompt-template.ts";
+import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
-import { makeSource } from "../../events/source.ts";
+import { makeSource, withSource } from "../../events/source.ts";
 import type { Source } from "../../events/source-types.ts";
 import { formatClock } from "../../shared/format.ts";
-import { headerText } from "../../shared/fence.ts";
+import { fenceUntrusted, headerText } from "../../shared/fence.ts";
 import { apiDir, readInstance } from "../registry.ts";
 import type { ExternalAdmission, TurnCeiling } from "./contracts.ts";
 
@@ -57,6 +58,11 @@ export function callerFrom(params: Record<string, unknown>): CallerClaim {
 	return Object.fromEntries(Object.entries(claim).filter(([, value]) => value !== undefined));
 }
 
+/** What ties a keyed message to its sender: the caller's claim, in a stable form. Another caller's claim differs, so its `turn.abort` by that key is refused. */
+export function callerOwner(caller: CallerClaim): string {
+	return sha256(JSON.stringify([caller.team, caller.name, caller.instanceId, caller.pid, caller.cwd]));
+}
+
 export function externalFacts(
 	from: string,
 	caller: CallerClaim,
@@ -98,6 +104,7 @@ export function admission(facts: ExternalFacts, text: string, ceiling?: TurnCeil
 	return {
 		...(ceiling ? { ceiling } : {}),
 		from: facts.from,
+		source: externalSource(facts),
 		...(confirmed ? { process: confirmed } : {}),
 		details: [
 			...(facts.replyTo && !facts.verified ? [`says it is ${facts.replyTo}, which did not confirm it`] : []),
@@ -121,19 +128,20 @@ export function externalHeader(facts: ExternalFacts, at: number): string {
 		instanceId: quote(facts.instanceId),
 		pid: facts.pid,
 		cwd: quote(facts.cwd),
+		unverified: facts.verified !== true,
 		at: formatClock(at),
 	});
 }
 
-/** The source of an API message: the sender's name and process are its own claim, unless that instance confirmed the call on its own socket. */
+/**
+ * The source of an API message. An instance that confirmed the call on its own socket is `external`; any other caller's
+ * name and process are its own claim, so it is delivered as an `unknown` sender: data (t0), never a request.
+ */
 export function externalSource(facts: ExternalFacts): Source {
-	return makeSource(
-		"external",
-		facts.replyTo ?? facts.from,
-		"socket",
-		facts.verified ? "proven" : "self-reported",
-		facts.pid === undefined ? undefined : { pid: facts.pid },
-	);
+	const identity = facts.pid === undefined ? undefined : { pid: facts.pid };
+	return facts.verified
+		? makeSource("external", facts.replyTo ?? facts.from, "socket", "proven", identity)
+		: makeSource("unknown", facts.from, "socket", "self-reported", identity);
 }
 
 /** What the reader can do about it, below the fence. */
@@ -143,4 +151,11 @@ export function externalFooter(facts: ExternalFacts): string {
 		replyRequired: facts.replyRequired === true && facts.replyTo !== undefined,
 		replyTo: facts.teamReply ?? facts.replyTo,
 	}).trim();
+}
+
+/** The text of an API message as the model reads it: the source header, the fenced header and body, and the footer. Shared by `message.send` and `agents.tell`. */
+export function externalContent(facts: ExternalFacts, text: string, at: number): string {
+	return withSource({ content: fenceUntrusted(externalHeader(facts, at), text, { footer: externalFooter(facts) }) }, [
+		externalSource(facts),
+	]).content;
 }

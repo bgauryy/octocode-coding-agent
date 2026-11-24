@@ -1,4 +1,5 @@
 import type { FeatureContext } from "../../core/features/index.ts";
+import { recordBaseline } from "../backlog/qa-baseline.ts";
 import { type Backlog, openBacklog, openBacklogWhenReady } from "../backlog/context.ts";
 import { attachReport, checkDelegable, claimDelegated } from "../backlog/delegation.ts";
 import { BacklogError, type Item } from "../backlog/item.ts";
@@ -11,6 +12,8 @@ import { reportChecks } from "./report-outcome.ts";
 /** A child's backlog item: its ref for the child's identity, and the note its report leaves on the item. */
 export interface ItemLink {
 	ref: string;
+	/** The item's title: the child's goal when the call names none. */
+	title: string;
 	/** The open prerequisites the item waits on, when it was checked for a queued start; else empty (a blocked item was refused). */
 	waitsOn: readonly string[];
 	/**
@@ -124,6 +127,7 @@ export function itemLink(
 	let notice: string | undefined;
 	return {
 		ref: itemRef,
+		title: checked.item.title,
 		waitsOn: checked.waitsOn,
 		get notice() {
 			return notice;
@@ -136,6 +140,7 @@ export function itemLink(
 				if (now.claimable) claimDelegated(backlog, now.item);
 			}, signal);
 			claimed = true;
+			await recordBaseline(ctx.cwd, itemRef);
 		},
 		async attach(outcome, agent, ref, patch, lingers = false, stopped = false) {
 			const lines: string[] = [];

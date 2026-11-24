@@ -13,6 +13,8 @@ export interface ExternalCallHost {
 	readonly ceilings: TurnCeilings;
 	/** The bound session; throws when there is none. */
 	session(): FeatureContext;
+	/** Refuses a call whose `expectedSessionId` no longer names the session. */
+	guardSession(params: Record<string, unknown>, ctx: FeatureContext): void;
 	/** The caller's facts, verified with the instance it names when it names one (`bridge/verify.ts`). */
 	verify(facts: ExternalFacts, params: Record<string, unknown>, connection: Connection): Promise<ExternalFacts>;
 	/** Records what an API client did in the session. */
@@ -34,6 +36,7 @@ export async function callExternal(
 	const { ceilings } = host;
 	const { operations } = ceilings;
 	if (!operations.externalCall) throw new RpcError(ERR.unavailable, "External agents are not registered");
+	host.guardSession(params, host.session());
 	if (params.action === "list") recordRead((data) => host.audit(data), "external.call", params, connection);
 	else {
 		const claim = externalFacts("external client", callerFrom(params), connection.transport, false);

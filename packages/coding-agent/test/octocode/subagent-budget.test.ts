@@ -1,3 +1,4 @@
+import { renderPrompt } from "../../src/core/prompt-template.ts";
 import { describe, expect, it, vi } from "vitest";
 import {
 	budgetHeading,
@@ -333,11 +334,20 @@ describe("budgetOutcome", () => {
 		);
 		expect(outcome).toMatchObject({ outcome: "partial", outcomeSource: "first", budget: { requests: 5, limit: 3 } });
 		expect(outcome.error).toBeUndefined();
-		expect(outcome.text.split("\n")[0]).toBe(budgetHeading(5, 3));
-		expect(outcome.text.split("\n")[0]).toMatch(/^partial: stopped at the model request budget \(5 requests; limit 3/);
-		expect(outcome.text.split("\n")[1]).toBe(
-			"To continue it: `agent` type `task` with `resume: x-1`, a `goal` and a `task` for what is left. That resume gives it 5 more requests.",
+		const [heading, next] = outcome.text.split("\n");
+		expect(heading).toBe(
+			renderPrompt("notices/subagents/budget-stop.md", { outcome: "partial", requests: 5, soft: 3, hard: 5 }),
 		);
+		// The heading helper names the same hard limit by default.
+		expect(budgetHeading(5, 3)).toBe(heading);
+		// The outcome word leads, then the requests made, the limit and the hard limit.
+		expect(heading).toMatch(/^partial: .*\b5\b.*\b3\b.*\b5\b/);
+		expect(next).toBe(
+			renderPrompt("notices/subagents/budget-continue.md", { id: "x-1", isolated: false, allowance: 5 }),
+		);
+		expect(next).toContain("`resume: x-1`");
+		expect(next).toMatch(/\b5\b/);
+		expect(next).not.toContain("report:x-1");
 		expect(outcome.text).toContain("Last progress:\nreading src/a.ts");
 		const details = { id: "x-1", startedAt: Date.now(), activity: ["→ bash ls"] } as unknown as RunDetails;
 		const withFacts = withStopFacts(outcome, details, { editLog: () => undefined });
@@ -355,10 +365,16 @@ describe("budgetOutcome", () => {
 			"",
 			emptyUsage(),
 		);
+		const [heading, next] = outcome.text.split("\n");
 		expect(outcome.text.split("\n")).toEqual([
-			"partial: stopped at the model request budget (15 requests; limit 12, hard limit 15).",
-			"To continue it: `agent` type `task` with `resume: x-1`, a `goal` and a `task` for what is left. That resume gives it 9 more requests. It ran isolated. The resume recreates its worktree from its saved ref. If that ref is gone, the resume is refused: then start a new task that cites `report:x-1`.",
+			renderPrompt("notices/subagents/budget-stop.md", { outcome: "partial", requests: 15, soft: 12, hard: 15 }),
+			renderPrompt("notices/subagents/budget-continue.md", { id: "x-1", isolated: true, allowance: 9 }),
 		]);
+		expect(heading).toMatch(/^partial: .*\b15\b.*\b12\b.*\b15\b/);
+		expect(next).toContain("`resume: x-1`");
+		expect(next).toMatch(/\b9\b/);
+		// Only an isolated child's line names the report a new task cites when its saved ref is gone.
+		expect(next).toContain("`report:x-1`");
 		expect(outcome.budget).toEqual({ requests: 15, limit: 12 });
 	});
 });

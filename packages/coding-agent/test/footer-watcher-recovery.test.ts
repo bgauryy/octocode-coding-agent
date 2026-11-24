@@ -1,24 +1,19 @@
 import { EventEmitter } from "node:events";
 import type * as Fs from "node:fs";
-import { mkdirSync, mkdtempSync, rmSync, type Stats, type WatchListener, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, type WatchListener, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-type PollListener = (current: Stats, previous: Stats) => void;
-const { watch, watchFile, unwatchFile, polls } = vi.hoisted(() => ({
+type PollListener = () => void;
+const { watch, watchFileChanges, polls } = vi.hoisted(() => ({
 	watch: vi.fn(),
-	watchFile: vi.fn(),
-	unwatchFile: vi.fn(),
+	watchFileChanges: vi.fn(),
 	polls: new Map<string, Set<PollListener>>(),
 }));
-vi.mock("node:fs", async (original) => ({
-	...(await original<typeof Fs>()),
-	watch,
-	watchFile,
-	unwatchFile,
-}));
-vi.mock("fs", async (original) => ({ ...(await original<typeof Fs>()), watch, watchFile, unwatchFile }));
+vi.mock("node:fs", async (original) => ({ ...(await original<typeof Fs>()), watch }));
+vi.mock("fs", async (original) => ({ ...(await original<typeof Fs>()), watch }));
+vi.mock("@octocodeai/octocode-common/watch-file", () => ({ watchFileChanges }));
 
 import { FooterDataProvider } from "../src/core/footer-data-provider.ts";
 import * as gitPaths from "../src/core/footer-data-provider/git.ts";
@@ -39,14 +34,11 @@ beforeEach(() => {
 		watchers.push({ path, watcher, close });
 		return watcher;
 	});
-	watchFile.mockImplementation((path: string, _options: unknown, listener: PollListener) => {
+	watchFileChanges.mockImplementation((path: string, listener: PollListener) => {
 		const listeners = polls.get(path) ?? new Set<PollListener>();
 		listeners.add(listener);
 		polls.set(path, listeners);
-	});
-	unwatchFile.mockImplementation((path: string, listener?: PollListener) => {
-		if (listener) polls.get(path)?.delete(listener);
-		else polls.delete(path);
+		return () => polls.get(path)?.delete(listener);
 	});
 });
 afterEach(() => {
@@ -79,7 +71,7 @@ it("disposing one footer preserves another footer's reftable directory watcher, 
 	const reftable = join(path, ".git", "reftable");
 	// Git replaces tables.list by a rename, which the directory watcher sees: no watcher or stat poll on the file.
 	expect(watchers.map((entry) => entry.path)).toEqual([join(path, ".git"), reftable, join(path, ".git"), reftable]);
-	expect(watchFile).not.toHaveBeenCalled();
+	expect(watchFileChanges).not.toHaveBeenCalled();
 	first.dispose();
 	expect(watchers.slice(0, 2).every(({ close }) => close.mock.calls.length === 1)).toBe(true);
 	writeFileSync(join(path, ".git", "HEAD"), "ref: refs/heads/next\n");
@@ -166,10 +158,13 @@ it("keeps the WSL HEAD polling fallback active while native watcher recovery is 
 	const head = join(path, ".git", "HEAD");
 	expect(polls.get(head)?.size).toBe(1);
 	writeFileSync(head, "ref: refs/heads/next\n");
-	for (const listener of polls.get(head) ?? []) listener({ mtimeMs: 2 } as Stats, { mtimeMs: 1 } as Stats);
+	expect(watchFileChanges).toHaveBeenCalledWith(head, expect.any(Function), { poll: true, intervalMs: 5000 });
+	for (const listener of polls.get(head) ?? []) listener();
 	await vi.advanceTimersByTimeAsync(501);
 	expect(current.getGitBranch()).toBe("next");
 	expect(watch).toHaveBeenCalledOnce();
+	current.dispose();
+	expect(polls.get(head)?.size).toBe(0);
 });
 
 it("polls WSL reftable changes when HEAD stays unchanged and native watchers stay silent", async () => {
@@ -183,7 +178,7 @@ it("polls WSL reftable changes when HEAD stays unchanged and native watchers sta
 	const tables = join(path, ".git", "reftable", "tables.list");
 	expect(polls.get(tables)?.size).toBe(1);
 	writeFileSync(tables, "next-table\n");
-	for (const listener of polls.get(tables) ?? []) listener({ mtimeMs: 2 } as Stats, { mtimeMs: 1 } as Stats);
+	for (const listener of polls.get(tables) ?? []) listener();
 	await vi.advanceTimersByTimeAsync(501);
 	expect(current.getGitBranch()).toBe("next");
 	current.dispose();

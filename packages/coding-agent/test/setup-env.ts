@@ -2,6 +2,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { testCompileCacheDir } from "./helpers/compile-cache.ts";
+import { keepWorkerTitle } from "./helpers/worker-title.ts";
+
+keepWorkerTitle();
 
 // A suite started from inside Octocode (or one of its subagents) inherits that session's OCTOCODE_* identity and
 // settings (OCTOCODE_SUBAGENT, OCTOCODE_CACHE_RETENTION, ...): drop them so results never depend on who ran the tests.

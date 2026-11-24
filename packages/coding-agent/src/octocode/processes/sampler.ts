@@ -1,4 +1,5 @@
 import { type Db, isBusy, type OwnedChild, processSamples, withoutWaiting } from "../../../../db/src/api.ts";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { DAY_MS, HOUR_MS, MINUTE_MS } from "@octocodeai/octocode-common/time";
 import { isProcessTitle } from "../shared/process-title.ts";
 import type { ProcessRow, ProcessTableSource } from "./table.ts";
@@ -185,14 +186,16 @@ export function startProcessSampler(options: SamplerOptions): ProcessSampler {
 		});
 	};
 	sample();
-	const timer = options.intervalMs > 0 ? setInterval(() => sample(), boundedIntervalMs(options.intervalMs)) : undefined;
-	timer?.unref();
+	const stopTimer =
+		options.intervalMs > 0
+			? sharedClock.subscribe(() => sample(), { everyMs: boundedIntervalMs(options.intervalMs) })
+			: undefined;
 	return {
 		sampleNow: () => sample(true),
 		stop() {
 			if (stopped) return;
 			stopped = true;
-			if (timer) clearInterval(timer);
+			stopTimer?.();
 			record(true);
 		},
 		idle: () => queue,

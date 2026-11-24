@@ -19,6 +19,11 @@ import {
 	STOP_TYPE,
 } from "./types.ts";
 
+import type { EventPolicy } from "./event-policy.ts";
+
+/** What a SubagentStart hook adds reaches the subagent whole, uncapped. */
+export const subagentStartPolicy: EventPolicy = { combine: { uncappedContext: true } };
+
 /**
  * Stop: when the agent would settle after a completed run, a blocking hook sends it on with the reason (Claude
  * Code's loop guards: `stop_hook_active` while continuing, at most 8 continuations in a row unless a tool runs).

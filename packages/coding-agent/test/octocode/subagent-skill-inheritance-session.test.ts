@@ -20,7 +20,7 @@ import { tmp, trustFolder } from "./helpers.ts";
 import { testFeatures } from "../helpers/features.ts";
 import { nativeFeatureSet } from "../helpers/native-features.ts";
 afterEach(() => vi.unstubAllEnvs());
-async function fixture() {
+async function fixture(lingerSeconds = "0") {
 	const root = tmp("child-skill-inheritance-"),
 		cwd = path.join(root, "project"),
 		home = path.join(root, "home"),
@@ -102,7 +102,7 @@ async function fixture() {
 		OCTOCODE_PERMISSION: "full",
 		OCTOCODE_SUBAGENT: "0",
 		OCTOCODE_EXTRA_SKILLS: "0",
-		OCTOCODE_SUBAGENT_LINGER_SECONDS: "0",
+		OCTOCODE_SUBAGENT_LINGER_SECONDS: lingerSeconds,
 	}))
 		vi.stubEnv(key, value);
 	trustFolder(cwd);
@@ -481,8 +481,7 @@ it.each(["model-only", "missing-workflow"])(
 );
 
 it("resumes the actual named child with its captured inventory after the parent reloads a changed alias", async () => {
-	const f = await fixture();
-	vi.stubEnv("OCTOCODE_SUBAGENT_LINGER_SECONDS", "60");
+	const f = await fixture("60");
 	try {
 		const result = await f.run("Inspect the accepted catalog without expanding workflows.", undefined, false, true);
 		await vi.waitFor(() => expect(f.requests).toHaveLength(1));

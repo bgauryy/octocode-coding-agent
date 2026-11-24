@@ -1,8 +1,7 @@
 import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { withSource } from "../../events/source.ts";
-import { fenceUntrusted, headerText } from "../../shared/fence.ts";
+import { headerText } from "../../shared/fence.ts";
 import { EXTERNAL_MESSAGE_TYPE, EXTERNAL_SENDER, type MessageEnvelope, USER_SENDER } from "../../shared/messages.ts";
 import { redactSecrets, visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { capChars } from "../../shared/util.ts";
@@ -20,15 +19,7 @@ import {
 } from "../protocol.ts";
 import { preparationExpired, type SendReceipt, type SendReceipts } from "../receipts.ts";
 import { sessionApiTurnCeiling } from "../enabled.ts";
-import {
-	admission,
-	callerFrom,
-	type ExternalFacts,
-	externalFacts,
-	externalFooter,
-	externalHeader,
-	externalSource,
-} from "./caller.ts";
+import { admission, callerFrom, callerOwner, type ExternalFacts, externalContent, externalFacts } from "./caller.ts";
 import type { AgentDirectory, ApiOperations, TurnCeiling } from "./contracts.ts";
 
 /** Senders a client may not claim: the user, the team's own API sender, and (checked per call) any live agent. */
@@ -140,7 +131,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 	const deliverAs = mode === "followUp" ? "followUp" : "steer";
 	const at = Date.now();
 	const accepted = { id, queued: busy ? deliverAs : "turn" };
-	const { receipt, waiter } = host.receipts.open(fingerprint, accepted, key, busy);
+	const { receipt, waiter } = host.receipts.open(fingerprint, accepted, key, busy, callerOwner(caller));
 	const message: MessageEnvelope = {
 		channel: "external",
 		direction: "inbound",
@@ -158,8 +149,8 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 	let external = externalFacts(from, caller, host.transport, wait, replyRequired, host.agents.list());
 	// Every message is held to the ceiling, also one that steers or queues behind running work: the run it joins, the
 	// user's own included, runs under it until the session settles, so timing a message never yields the session's full mode.
-	const admitCeiling = sessionApiTurnCeiling();
 	let capped: TurnCeiling | undefined;
+	const callerCeiling = sessionApiTurnCeiling();
 	let announceAsking!: () => void;
 	const asking = new Promise<void>((resolve) => {
 		announceAsking = resolve;
@@ -182,7 +173,7 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 					announceAsking();
 				};
 				await Promise.race([
-					host.operations.admit(admission(external, whole, admitCeiling), ctx, receipt.controller.signal, onAsk),
+					host.operations.admit(admission(external, whole, callerCeiling), ctx, receipt.controller.signal, onAsk),
 					receipt.settlement,
 				]);
 				outcome = "not-sent";
@@ -203,15 +194,12 @@ export async function sendMessage(host: SendHost, params: Record<string, unknown
 			if (ceiling) host.operations.capTurn?.(ceiling);
 			if (ctx.isIdle() && !ctx.hasPendingMessages()) capped = ceiling;
 			const sending = host.api.session.sendMessage(
-				withSource(
-					{
-						customType: EXTERNAL_MESSAGE_TYPE,
-						content: fenceUntrusted(externalHeader(external, at), text, { footer: externalFooter(external) }),
-						display: true,
-						details: { id, from, at, message, external },
-					},
-					[externalSource(external)],
-				),
+				{
+					customType: EXTERNAL_MESSAGE_TYPE,
+					content: externalContent(external, text, at),
+					display: true,
+					details: { id, from, at, message, external },
+				},
 				{ triggerTurn: true, deliverAs },
 			);
 			// sendMessage may encompass the whole turn, so non-waiting callers cannot await it. An asynchronous rejection

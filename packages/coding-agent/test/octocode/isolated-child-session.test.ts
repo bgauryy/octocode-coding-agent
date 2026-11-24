@@ -134,7 +134,7 @@ describe("isolated subagent session", () => {
 
 		const prompt = requests[0] ?? "";
 		// The system prompt names the main checkout, so sibling children share one cached prefix.
-		expect(prompt).toContain(`<project_instructions path="${path.join(main, "AGENTS.md")}">`);
+		expect(prompt).toContain('<project_instructions path="AGENTS.md">');
 		expect(prompt).toContain(main);
 		expect(prompt).not.toContain(worktree.path);
 		expect(prompt).not.toContain(cwd);

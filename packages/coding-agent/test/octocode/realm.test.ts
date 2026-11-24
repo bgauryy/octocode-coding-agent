@@ -12,7 +12,6 @@ import type { SessionExtra } from "../../src/octocode/sessions/store.ts";
 import { worktreesDir } from "../../src/octocode/worktree-paths/own-worktree.ts";
 import { GIT_TEST_ENV, makeRepo, sh, type TestRepo } from "./worktree-fixture.ts";
 
-const saved = { ...process.env };
 let repo: TestRepo;
 let home: string;
 let notices: Array<{ text: string; level: string }>;
@@ -82,9 +81,9 @@ const addWorktree = (name: string) =>
 	sh(repo.root, "worktree", "add", "-q", "-b", `worktree-${name}`, worktreeFolder(name));
 
 beforeEach(() => {
-	Object.assign(process.env, GIT_TEST_ENV);
+	for (const [name, value] of Object.entries(GIT_TEST_ENV)) vi.stubEnv(name, value);
 	home = mkdtempSync(path.join(tmpdir(), "octocode-realm-home-"));
-	process.env.OCTOCODE_HOME = home;
+	vi.stubEnv("OCTOCODE_HOME", home);
 	notices = [];
 	stderr = "";
 	vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
@@ -95,7 +94,7 @@ beforeEach(() => {
 });
 afterEach(() => {
 	vi.restoreAllMocks();
-	process.env = { ...saved };
+	vi.unstubAllEnvs();
 	repo.cleanup();
 	rmSync(home, { recursive: true, force: true });
 });

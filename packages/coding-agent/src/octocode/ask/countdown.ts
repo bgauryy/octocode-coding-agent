@@ -1,3 +1,4 @@
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import type { Question, Reply } from "@octocodeai/octocode-contracts";
 
 /**
@@ -39,12 +40,12 @@ export const autoReplies = (questions: readonly Question[]): Reply[] =>
  */
 export class Countdown {
 	private readonly deadline: number;
-	private tick: ReturnType<typeof setInterval> | undefined;
+	private stopTick: (() => void) | undefined;
 	private expiry: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(seconds: number, onTick: (() => void) | undefined, onExpire: () => void) {
 		this.deadline = Date.now() + seconds * 1000;
-		this.tick = onTick ? setInterval(onTick, 1000) : undefined;
+		this.stopTick = onTick ? sharedClock.subscribe(() => onTick(), { everyMs: 1000 }) : undefined;
 		this.expiry = setTimeout(() => {
 			this.stop();
 			onExpire();
@@ -63,9 +64,9 @@ export class Countdown {
 	/** Whether it was still running. */
 	stop(): boolean {
 		const was = this.running;
-		clearInterval(this.tick);
+		this.stopTick?.();
 		clearTimeout(this.expiry);
-		this.tick = undefined;
+		this.stopTick = undefined;
 		this.expiry = undefined;
 		return was;
 	}

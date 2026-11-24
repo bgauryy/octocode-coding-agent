@@ -17,8 +17,8 @@ vi.mock("../../src/octocode/shared/process-table.ts", async (original) => {
 	const real = await original<typeof ProcessTable>();
 	return {
 		...real,
-		readProcessTable: async () => {
-			const table = await real.readProcessTable();
+		readProcessTable: async (...args: Parameters<typeof real.readProcessTable>) => {
+			const table = await real.readProcessTable(...args);
 			if (observed.helper && table) observed.samples.push([...table.rows.values()]);
 			return table;
 		},
@@ -88,7 +88,7 @@ process.stdin.on("end", () => { fs.appendFileSync(${JSON.stringify(events)}, "st
 			},
 		});
 		try {
-			await vi.waitFor(() => expect(observed.helper).toBeGreaterThan(0), { timeout: 10_000 });
+			await vi.waitFor(() => expect(observed.helper).toBeGreaterThan(0));
 			if (mode !== "natural") {
 				controller.abort();
 				await expect(run).rejects.toThrow("Subagent cancelled");
@@ -124,9 +124,7 @@ process.stdin.on("end", () => { fs.appendFileSync(${JSON.stringify(events)}, "st
 					/* Already exited. */
 				}
 			}
-			await vi.waitFor(() => expect([observed.helper, observed.root].filter(processAlive)).toEqual([]), {
-				timeout: 2_000,
-			});
+			await vi.waitFor(() => expect([observed.helper, observed.root].filter(processAlive)).toEqual([]));
 		}
 	},
 	20_000,

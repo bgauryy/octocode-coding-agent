@@ -3,13 +3,63 @@ import type { SourcePermissionUpdate } from "../../shared/permission-updates.ts"
 import { parsePatch } from "../../tool-input/codex-patch/patch.ts";
 import { say } from "../../shared/commands.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { commandsFor, hookCalls } from "../config/calls.ts";
+import { commandsFor, hookCalls, hookIdentity } from "../config/calls.ts";
 import { ifFilter } from "../config/if-filter.ts";
 import type { HookVerdict } from "../contracts.ts";
 import { CODEX_PATCH_NAMES, type EditProjector, projectCodexPatch } from "../patch.ts";
 import type { HookProtocol } from "../catalog.ts";
-import { decidingDenial } from "../verdicts.ts";
+import { decidingDenial, reducePermission } from "../verdicts.ts";
+import { interpretPromptHook } from "../prompt.ts";
+import { clipText, stringOrEmpty } from "../../shared/util.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
+import { type EventPolicy, warnFailure } from "./event-policy.ts";
 import type { Dispatch, HookFailureSink, HookSession, HooksView } from "./types.ts";
+
+const failsClosed = (hook: { failClosed?: boolean; onFailure?: string }): boolean =>
+	hook.failClosed === true || hook.onFailure === "block";
+
+/**
+ * How a PermissionRequest hook's run is read. All Claude hooks finish (a deny beats an allow, as for Codex) and a
+ * crash is a hook's own verdict. A hook that fails, or whose configuration is invalid, denies when it is `failClosed`.
+ * A prompt answer never decides the approval (docs/hooks.md): a malformed one is a hook failure, and the reason of an
+ * `ok: false` is shown, once per hook and reason, instead of being dropped.
+ */
+export const permissionRequestPolicy: EventPolicy = {
+	guarded: (protocol) => protocol === "claude",
+	crash(env, message) {
+		say(env.ctx, message, "warning");
+		return failsClosed(env.hook) ? { permissionDecision: "deny", block: message } : { error: message };
+	},
+	configurationError(env, message) {
+		say(env.ctx, message, "warning");
+		env.onFailure?.(["PermissionRequest"], message, false);
+		return { permissionDecision: "deny", block: message };
+	},
+	prompt(env, run) {
+		const observed = interpretPromptHook(env.event, run);
+		if (observed.error) return { error: observed.error };
+		if (observed.block) {
+			const reason = clipText(redactSecrets(observed.block), 200);
+			if (env.firstTime(`observed\0${hookIdentity(env.hook)}\0${reason}`))
+				say(env.ctx, `PermissionRequest prompt hook (observational): ${reason}`, "warning");
+		}
+		return {};
+	},
+	settle(env, verdict, failure) {
+		if (!failure) return verdict;
+		warnFailure(env, failure);
+		env.onFailure?.([`PermissionRequest ${stringOrEmpty(env.payload.tool_name)}`], failure, false);
+		return failsClosed(env.hook) ? { permissionDecision: "deny", block: failure } : verdict;
+	},
+	decide(verdicts, signal) {
+		if (signal?.aborted) return {};
+		const reduced = reducePermission(verdicts);
+		// An allow keeps what its hook attached (rewritten input, permission updates).
+		return reduced.permissionDecision === "allow"
+			? (verdicts.find((verdict) => verdict.permissionDecision === "allow") ?? reduced)
+			: reduced;
+	},
+};
 
 /**
  * The PermissionRequest hooks' answer to an approval about to be asked: a denial from any hook denies, else an allow

@@ -49,7 +49,7 @@ describe("an FYI to a named agent", () => {
 		expect(sent).toMatchObject({ delivery: { [live.id]: "wake" } });
 		const id = "id" in sent ? sent.id : -1;
 
-		await vi.waitFor(() => expect(live.requests).toHaveLength(1), { timeout: 5_000 });
+		await vi.waitFor(() => expect(live.requests).toHaveLength(1));
 		await live.session.waitForIdle();
 		expect(live.requests[0].mail).toHaveLength(1);
 
@@ -63,7 +63,7 @@ describe("an FYI to a named agent", () => {
 		});
 		const sent = await live.peer.send("parent", "MAIL: blocked on a lock");
 		expect(sent).toMatchObject({ delivery: { [live.id]: "wake" } });
-		await vi.waitFor(() => expect(live.requests).toHaveLength(1), { timeout: 5_000 });
+		await vi.waitFor(() => expect(live.requests).toHaveLength(1));
 	}, 20_000);
 
 	it("waits for the next turn with wake: false", async () => {
@@ -96,7 +96,7 @@ describe("an FYI to a named agent", () => {
 	it("holds a second peer FYI inside the pacing interval and hands both with the next allowed turn", async () => {
 		const live = await idleSession();
 		await live.peer.send(live.id, "MAIL: first");
-		await vi.waitFor(() => expect(live.requests).toHaveLength(1), { timeout: 5_000 });
+		await vi.waitFor(() => expect(live.requests).toHaveLength(1));
 		await live.session.waitForIdle();
 
 		await live.peer.send(live.id, "MAIL: second");
@@ -106,7 +106,7 @@ describe("an FYI to a named agent", () => {
 
 		const real = Date.now.bind(Date);
 		vi.spyOn(Date, "now").mockImplementation(() => real() + WAKE_INTERVAL_MS + 1_000);
-		await vi.waitFor(() => expect(live.requests).toHaveLength(2), { timeout: 5_000 });
+		await vi.waitFor(() => expect(live.requests).toHaveLength(2));
 		await live.session.waitForIdle();
 		// The held FYIs arrive together, as one batch in one turn.
 		expect(mailEntries(live)).toHaveLength(2);

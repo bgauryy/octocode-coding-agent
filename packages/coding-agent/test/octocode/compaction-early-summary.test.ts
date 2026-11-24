@@ -120,6 +120,8 @@ describe("early compaction summary", () => {
 		const { calls, recordedUsage, notes, api, ctx, prewarm, compaction, preparation } = setup();
 		startEarlySummary(api, prewarm, ctx, false);
 		expect(calls).toHaveLength(1);
+		// Speculative work beside the run: shed under throttling, where the compaction's own request is admitted.
+		expect(calls[0].options).toMatchObject({ requestPriority: "background" });
 		expect(notes).toEqual([expect.stringMatching(/^early-summary: requested .* 150,000 tokens/)]);
 		// The run went on while the summary was written: it edited a file and the context grew.
 		preparation.fileOps.edited.add("src/late.ts");

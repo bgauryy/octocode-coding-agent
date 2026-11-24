@@ -22,8 +22,8 @@ import { type ColorToken, type Phase, type RenderContext, STOPPED_COLOR } from "
  * else a 5-line preview and `… +K lines (ctrl+o to expand)`; a renderer may pass its own preview size.
  *
  * The mark is the row's still state light (`rowMark`): `○` before execution, `◐` once Octocode started the call but its
- * checks or approval still run, green `⏺` while running (the row also has a live 1s clock), `◉` when done, `⊗` on error
- * and `⊘` when stopped. Nothing on a row moves but its clock.
+ * checks or approval still run, grey `⏺` while running (the row also has a live 1s clock), green `◉` when done, red
+ * `⊗` on error and `⊘` when stopped. Nothing on a row moves but its clock.
  * Expanded shows every line. Every string drawn here is sanitized: tool arguments and output are untrusted.
  */
 

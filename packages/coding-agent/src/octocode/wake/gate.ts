@@ -1,4 +1,3 @@
-import { setImmediate as yieldToIO } from "node:timers/promises";
 import type { Batch } from "../events/loop/types.ts";
 import { WAKE_TYPE } from "../../core/wake-entry.ts";
 export { WAKE_TYPE } from "../../core/wake-entry.ts";
@@ -10,7 +9,10 @@ import type { Source } from "../events/source-types.ts";
 import type { PayloadEvent as AgentEvent } from "../events/topics.ts";
 import { recordProblem } from "../../core/diagnostics-log.ts";
 import { priorityOfEvents } from "./loop-catalog.ts";
+import { asRegular, type HeldSend, Interrupts } from "./interrupts.ts";
 import { PendingRows } from "./pending-rows.ts";
+import { RunWrites } from "./run-writes.ts";
+import { type RoutedHost, sendRouted } from "./send-routed.ts";
 import { firstWakeLabel, Routed } from "./routed.ts";
 import {
 	itemKey,
@@ -19,6 +21,7 @@ import {
 	type Message,
 	type Pending,
 	type SendOptions,
+	type SessionStop,
 	type Sent,
 } from "./gate-types.ts";
 export type { GateRoute, Held } from "./gate-types.ts";
@@ -30,10 +33,6 @@ type GateApi = {
 };
 
 export { itemKey };
-
-const SENDS_PER_TICK = 32;
-const SYNCHRONOUS_SENDS = 4;
-const SEND_BUDGET_MS = 8;
 
 const isPromise = (value: unknown): value is Promise<void> =>
 	typeof (value as { then?: unknown } | undefined)?.then === "function";
@@ -51,12 +50,9 @@ export class WakeGate {
 	private inRun = false;
 	/** Between `agent_settled` and `agent_settle_end`: sends made now are deferred until the settle ends. */
 	private settling = false;
-	/** Items the current (or just ended) run wrote with its tool calls. */
-	private wrote = new Set<string>();
+	private readonly writes = new RunWrites();
 	/** Wake events since the last run segment started, one line per event key. */
 	private readonly rows: PendingRows;
-	/** Calls of tools that write items, by call id, until the tool ends. */
-	private readonly calls = new Map<string, string[]>();
 	private dropped = 0;
 	/** The wakes sent whose turn has not begun, for the session's phase (`shared/session-phase.ts`). */
 	private readonly sent = new Set<Sent>();
@@ -65,6 +61,8 @@ export class WakeGate {
 	private readonly routed = new Routed();
 	/** Sees every emit before it is sent or routed (`onEmit`); a listener never changes what is sent. */
 	private readonly emitListeners = new Set<(events: readonly AgentEvent[], sources: readonly Source[]) => void>();
+	/** The stop an urgent send asks for, and the sends held until the stopped run settles. */
+	private readonly interrupts = new Interrupts();
 
 	constructor(api: GateApi, options: { now?: () => number } = {}) {
 		this.api = api;
@@ -84,6 +82,43 @@ export class WakeGate {
 		return () => void this.emitListeners.delete(listener);
 	}
 
+	/** The session an urgent send stops; `Mail` binds the one it delivers for. */
+	bindSession(session: SessionStop): void {
+		this.interrupts.bind(session);
+	}
+
+	/** Signalled while an urgent send waits for the run to stop and settle (a wait at the end of the run ends early). */
+	get interrupted(): AbortSignal {
+		return this.interrupts.signal;
+	}
+
+	/**
+	 * The run settled: the urgent sends it held go out now, the last one starting the next turn. False when nothing was held
+	 * or a send was refused (it and those behind it stay held for the next try).
+	 */
+	releaseHeld(): boolean {
+		return this.interrupts.release((send, stopped, last) => {
+			const sending = this.deliver(
+				asRegular(send.events),
+				send.sources,
+				send.message,
+				{
+					...send.options,
+					triggerTurn: last && send.options.triggerTurn,
+				},
+				true,
+				stopped,
+			);
+			if (isPromise(sending)) sending.then(send.done.resolve, send.done.reject);
+			else send.done.resolve();
+		});
+	}
+
+	/** The session's urgent sends are forgotten (it left): they were never sent. */
+	forgetHeld(): void {
+		this.interrupts.clear();
+	}
+
 	/**
 	 * Sends `message` like `api.session.sendMessage`. A message that wakes the session (`wakes`: its own turn trigger by default, or
 	 * the batch's when only the batch's last send triggers) is also listed in the next woken batch's row; an event whose key
@@ -93,7 +128,7 @@ export class WakeGate {
 	 */
 	emit(
 		events: AgentEvent | readonly AgentEvent[],
-		message: Message,
+		message: Message | ((stopped: boolean) => Message),
 		options: SendOptions = {},
 		wakes = options.triggerTurn === true,
 		sources?: readonly Source[],
@@ -101,7 +136,38 @@ export class WakeGate {
 		const eventList = Array.isArray(events) ? events : [events];
 		const sourceList = sources ?? eventList.map(sourceOfEvent);
 		for (const listener of this.emitListeners) listener(eventList, sourceList);
-		const sourced = withSource(message, sourceList);
+		// An urgent wake stops the run of a busy session. With a loop attached the loop makes the stop; without one the
+		// gate stops it and holds the send until the run settles (`releaseHeld`). `message` says whether a step was stopped.
+		if (wakes && eventList.length > 0 && priorityOfEvents(eventList) === "urgent" && this.interrupts.busy()) {
+			const running = this.interrupts.running();
+			if (this.routed.active) this.interrupts.markWaiting();
+			else if (this.interrupts.stop()) {
+				return new Promise<void>((resolve, reject) => {
+					const send: HeldSend = {
+						events: eventList,
+						sources: sourceList,
+						message,
+						options,
+						done: { resolve, reject },
+					};
+					this.interrupts.hold(send, running);
+				});
+			}
+			return this.deliver(eventList, sourceList, message, options, wakes, running);
+		}
+		return this.deliver(eventList, sourceList, message, options, wakes, false);
+	}
+
+	/** The send itself: to the loop when one is attached and the message wakes, else straight to the session. */
+	private deliver(
+		eventList: readonly AgentEvent[],
+		sourceList: readonly Source[],
+		message: Message | ((stopped: boolean) => Message),
+		options: SendOptions,
+		wakes: boolean,
+		stopped: boolean,
+	): void | Promise<void> {
+		const sourced = withSource(typeof message === "function" ? message(stopped) : message, sourceList);
 		if (this.routed.active && wakes && eventList.length > 0)
 			return this.routeToLoop(eventList, sourceList, sourced, options);
 		// No loop is attached (before the session starts, after it ends, or after the loop failed), or the message asks for
@@ -176,65 +242,14 @@ export class WakeGate {
 		return held;
 	}
 
-	/** Hands one batch to the transcript, yielding between slices. A model turn can outlive the handoff. */
-	sendRouted(
-		batch: Batch<Held>,
-		host: {
-			sending(seq: number, held: Held): void;
-			assertOwner(): void;
-			mayWake(): boolean;
-			ending(): boolean;
-		},
-	): void | Promise<void> {
-		const entries = batch.entries;
-		// The session starts typed input itself. buildBatch puts it first.
-		const wake = batch.trigger && entries[0]?.type !== "input";
-		let label: string | undefined;
-		let index = 0;
-		let reported = false;
-		const failed = (each: Held, error: unknown) => {
-			if (host.ending() && !reported) {
-				reported = true;
-				process.stderr.write(`octocode: a held wake message was not sent at session end: ${errorMessage(error)}\n`);
-			}
-			each.done.reject(error);
-		};
-		const slice = (): boolean => {
-			const limit = Math.min(index + SENDS_PER_TICK, entries.length);
-			const deadline = entries.length <= SYNCHRONOUS_SENDS ? undefined : performance.now() + SEND_BUDGET_MS;
-			while (index < limit) {
-				const entry = entries[index++];
-				if (entry.type !== "event") continue;
-				const each = entry.carry;
-				host.assertOwner();
-				this.routed.release(each);
-				host.sending(entry.seq, each);
-				label ??= each.labels[0];
-				const triggerTurn = wake && index === entries.length && host.mayWake();
-				try {
-					const result = this.api.session.sendMessage(each.message, {
-						...each.options,
-						deliverAs: "steer",
-						triggerTurn,
-					});
-					if (triggerTurn && label !== undefined) this.track([label], result);
-					if (isPromise(result)) result.then(each.done.resolve, (error: unknown) => failed(each, error));
-					else each.done.resolve();
-				} catch (error) {
-					failed(each, error);
-				}
-				if (deadline !== undefined && performance.now() >= deadline) break;
-			}
-			this.publish();
-			return index === entries.length;
-		};
-		if (slice()) return;
-		const remaining = async () => {
-			do {
-				await yieldToIO();
-			} while (!slice());
-		};
-		return remaining();
+	/** Hands one batch to the transcript (`send-routed.ts`). */
+	sendRouted(batch: Batch<Held>, host: RoutedHost): void | Promise<void> {
+		return sendRouted(batch, host, {
+			send: (message, options) => this.api.session.sendMessage(message, options),
+			release: (held) => this.routed.release(held),
+			track: (labels, sending) => this.track(labels, sending),
+			publish: () => this.publish(),
+		});
 	}
 
 	/** Publishes the wakes the loop holds and those sent whose turn has not begun. */
@@ -278,7 +293,7 @@ export class WakeGate {
 		this.landed();
 		if (!this.inRun) {
 			this.inRun = true;
-			this.wrote = new Set();
+			this.writes.reset();
 		}
 		const lines = this.rows.take();
 		if (showRow && lines.length > 0) this.api.session.appendEntry?.(WAKE_TYPE, { events: lines });
@@ -305,18 +320,12 @@ export class WakeGate {
 
 	/** A tool that writes items starts: its call id and the item refs it names. */
 	toolStarted(callId: string, refs: readonly string[]): void {
-		if (refs.length > 0) this.calls.set(callId, [...refs]);
+		this.writes.started(callId, refs);
 	}
 
 	/** The tool ended; a call that did not fail counts as the run writing those items. */
 	toolEnded(callId: string, failed: boolean): void {
-		const refs = this.calls.get(callId);
-		this.calls.delete(callId);
-		if (failed || !refs) return;
-		for (const ref of refs) {
-			const key = itemKey(ref);
-			if (key) this.wrote.add(key);
-		}
+		this.writes.ended(callId, failed);
 	}
 
 	/**
@@ -324,8 +333,7 @@ export class WakeGate {
 	 * item, so a nudge about it would only make the model repeat itself. Being woken about an item is not acting on it.
 	 */
 	actedOn(ref: string): boolean {
-		const key = itemKey(ref);
-		return key !== undefined && this.wrote.has(key);
+		return this.writes.has(ref);
 	}
 
 	/** Counts a nudge that was not sent. */
@@ -346,12 +354,12 @@ export class WakeGate {
 	/** Releases the outgoing session’s indicators. The loop still owns its durable handoff. */
 	dispose(): void {
 		this.rows.clear();
-		this.calls.clear();
-		this.wrote.clear();
+		this.writes.clear();
 		this.dropped = 0;
 		this.busy = false;
 		this.inRun = false;
 		this.settling = false;
+		this.interrupts.clear();
 		this.landed();
 	}
 }

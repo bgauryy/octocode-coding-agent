@@ -83,9 +83,7 @@ describe("sendMessage delivery status", () => {
 		await run(a.tools.get("coordinate"), { action: "join" }, a.ctx);
 		await run(b.tools.get("coordinate"), { action: "join" }, b.ctx);
 		await b.emit("agent_start", {}, b.ctx);
-		await vi.waitFor(() => expect(b.team.members().find((entry) => entry.id === b.team.id)!.status).toBe("working"), {
-			timeout: 3_000,
-		});
+		await vi.waitFor(() => expect(b.team.members().find((entry) => entry.id === b.team.id)!.status).toBe("working"));
 		const sent = await run(a.tools.get("sendMessage"), { to: b.team.id, message: "heads-up", wake: false }, a.ctx);
 		expect(sent.details).toMatchObject({ delivery: { [b.team.id!]: "next-step" } });
 		expect(text(sent)).toMatch(new RegExp(`^Sent #\\d+ to ${b.team.id}\\.$`));

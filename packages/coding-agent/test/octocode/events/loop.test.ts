@@ -162,7 +162,10 @@ describe("the event loop", () => {
 		expect(sent).toHaveLength(1);
 		expect(sent[0].batch.entries).toHaveLength(count);
 		expect(sent[0].batch.lines[0].count).toBe(count);
-		expect(loop.queued()).toEqual({ Q1: 0, Q2: 0, Q3: 0 });
+		// All of it went out: the run's later steps and its end have nothing more to deliver.
+		loop.stepBoundary();
+		expect(loop.settle()).toBe(false);
+		expect(sent).toHaveLength(1);
 	});
 
 	it("defers a reentrant wake until the next tick and gives queued input priority", async () => {
@@ -196,7 +199,7 @@ describe("the event loop", () => {
 	});
 
 	it("holds the window: events that arrive together are one batch, delivered once at its end", () => {
-		const { wake, sent, loop } = rig({ windowMs: () => 2000 });
+		const { wake, sent } = rig({ windowMs: () => 2000 });
 		wake(jobExit("j1"), "one");
 		vi.advanceTimersByTime(1500);
 		wake(jobExit("j2"), "two");
@@ -204,7 +207,9 @@ describe("the event loop", () => {
 		vi.advanceTimersByTime(600);
 		expect(sent).toHaveLength(1);
 		expect(carries(sent[0])).toEqual(["one", "two"]);
-		expect(loop.queued()).toEqual({ Q1: 0, Q2: 0, Q3: 0 });
+		expect(sent[0].point).toBe("idle");
+		vi.advanceTimersByTime(10_000);
+		expect(sent).toHaveLength(1);
 	});
 
 	it("does not hold typed input, and the input takes everything queued with it", () => {
@@ -218,11 +223,16 @@ describe("the event loop", () => {
 	});
 
 	it("never opens a window for an event that only rides along", () => {
-		const { ride, sent, loop } = rig({ windowMs: () => 2000 });
+		const { ride, wake, sent } = rig({ windowMs: () => 2000 });
 		ride(jobExit("j1"), "quiet");
 		vi.advanceTimersByTime(10_000);
 		expect(sent).toHaveLength(0);
-		expect(loop.queued().Q3).toBe(1);
+		// It was kept, not dropped: the first wake's window delivers it too, ahead of the wake.
+		wake(jobExit("j2"), "loud");
+		vi.advanceTimersByTime(1999);
+		expect(sent).toHaveLength(0);
+		vi.advanceTimersByTime(1);
+		expect(sent.map(carries)).toEqual([["quiet", "loud"]]);
 	});
 
 	it("lets a riding event go out with the next wake", () => {
@@ -264,7 +274,10 @@ describe("the event loop", () => {
 		expect(sent).toHaveLength(1);
 		expect(sent[0]?.point).toBe("boundary");
 		expect(carries(sent[0])).toEqual(["typed", "later", "report"]);
-		expect(loop.queued()).toEqual({ Q1: 0, Q2: 0, Q3: 0 });
+		// Delivered once: the next step and the run's end have nothing left of it.
+		loop.stepBoundary();
+		expect(loop.settle()).toBe(false);
+		expect(sent).toHaveLength(1);
 	});
 
 	it("holds urgent mail past the aborted tool boundary until the stopped run can start its successor", () => {
@@ -325,24 +338,15 @@ describe("the event loop", () => {
 		expect(sent).toHaveLength(1);
 	});
 
-	it("runs Q0 at once in every state, leaving the queues untouched", () => {
-		const { wake, loop } = rig();
-		loop.signal("run_start");
-		loop.lock();
-		wake(jobExit("j1"));
-		const acted = vi.fn(() => 7);
-		expect(loop.preempt(acted)).toBe(7);
-		expect(acted).toHaveBeenCalledTimes(1);
-		expect(loop.queued().Q3).toBe(1);
-	});
-
 	it("drops an event whose dedupe key was already logged", async () => {
-		const { wake, sent, loop } = rig({ windowMs: () => 2000 });
+		const { wake, sent } = rig({ windowMs: () => 2000 });
 		expect((await wake(jobExit("j1"), "first", { dedupeKey: "job:j1" })).accepted).toBe(true);
 		expect((await wake(jobExit("j1"), "again", { dedupeKey: "job:j1" })).accepted).toBe(false);
 		vi.advanceTimersByTime(2100);
-		expect(carries(sent[0])).toEqual(["first"]);
-		expect(loop.queued().Q3).toBe(0);
+		expect(sent.map(carries)).toEqual([["first"]]);
+		// The repeat is not waiting for a later window either.
+		await vi.runAllTimersAsync();
+		expect(sent).toHaveLength(1);
 	});
 
 	it("gives each event its place in one order", async () => {
@@ -391,14 +395,13 @@ describe("the event loop", () => {
 		});
 		loop.publish({ event: jobExit("j1"), source: child("a"), wake: true, priority: "regular", carry: "one" });
 		expect(errors).toHaveLength(1);
-		expect(loop.queued().Q3).toBe(1);
+		expect(sent).toHaveLength(0);
 		fail = false;
 		loop.flushNow();
-		expect(carries(sent[0])).toEqual(["one"]);
+		expect(sent.map(carries)).toEqual([["one"]]);
 	});
 
 	it("holds everything back while an asynchronous delivery is in flight, then settles it", async () => {
-		vi.useRealTimers();
 		let release: () => void = () => undefined;
 		const sent: Sent[] = [];
 		const store = new MemoryEventStore();
@@ -413,20 +416,27 @@ describe("the event loop", () => {
 		});
 		loop.publish({ event: jobExit("j1"), source: child("a"), wake: true, priority: "regular", carry: "one" });
 		loop.publish({ event: jobExit("j2"), source: child("a"), wake: true, priority: "regular", carry: "two" });
-		expect(sent).toHaveLength(1);
+		expect(sent.map(carries)).toEqual([["one"]]);
 		expect(store.offset()).toBe(0);
+		// However long the first delivery takes, the second event waits for it.
+		await vi.runAllTimersAsync();
+		expect(sent).toHaveLength(1);
 		release();
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		await vi.runAllTimersAsync();
+		expect(sent.map(carries)).toEqual([["one"], ["two"]]);
+		expect(store.offset()).toBe(1);
+		release();
+		await vi.runAllTimersAsync();
 		expect(sent).toHaveLength(2);
-		expect(carries(sent[1])).toEqual(["two"]);
+		expect(store.offset()).toBe(2);
 	});
 
-	it("leaves no timer behind after dispose", () => {
+	it("delivers nothing after dispose, however much time passes", async () => {
 		const { wake, sent, loop } = rig({ windowMs: () => 2000 });
 		wake(jobExit("j1"));
 		loop.dispose();
-		expect(vi.getTimerCount()).toBe(0);
 		vi.advanceTimersByTime(5000);
+		await vi.runAllTimersAsync();
 		expect(sent).toHaveLength(0);
 	});
 });

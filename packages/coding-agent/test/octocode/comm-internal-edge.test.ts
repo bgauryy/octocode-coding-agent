@@ -223,7 +223,7 @@ describe("a coordinator's question to a running child", () => {
 		const { parent, child } = family();
 		expect(child.team.interrupted.aborted).toBe(false);
 		await parent.team.send(child.team.id, "status?", { replyRequired: true });
-		await vi.waitFor(() => expect(child.team.interrupted.aborted).toBe(true), { timeout: 3_000 });
+		await vi.waitFor(() => expect(child.team.interrupted.aborted).toBe(true));
 		const [question] = delivered(child.sent);
 		await child.emit(
 			"context",
@@ -236,7 +236,7 @@ describe("a coordinator's question to a running child", () => {
 	it("does not end the wait for an FYI from the coordinator", async () => {
 		const { parent, child } = family();
 		await parent.team.send(child.team.id, "fyi: rebased", { replyRequired: false });
-		await vi.waitFor(() => expect(delivered(child.sent)).toHaveLength(1), { timeout: 3_000 });
+		await vi.waitFor(() => expect(delivered(child.sent)).toHaveLength(1));
 		expect(child.team.interrupted.aborted).toBe(false);
 	});
 });
@@ -300,7 +300,7 @@ describe("a headless child holding for its own background job", () => {
 			await octocode(fake.api);
 			await fake.emit("session_start", { type: "session_start" }, ctx);
 			// The run whose answer settles below is in progress: mail steers into it at once, where an idle session's wake
-			// waits out `subagents.wakeHoldSeconds` (2 s by default).
+			// waits out `runtime.eventWindowSeconds` (2 s by default).
 			await fake.emit("agent_start", { type: "agent_start" }, ctx);
 			await fake.tools
 				.get("bash")

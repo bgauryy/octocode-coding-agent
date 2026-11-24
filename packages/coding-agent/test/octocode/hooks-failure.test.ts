@@ -49,7 +49,7 @@ async function run(hook: Hook, options: { hasUI?: boolean; event?: string } = {}
 	await fire("session_start", { reason: "startup" }, ctx);
 	const call = () =>
 		hooks.preToolUse({ toolName: "bash", toolCallId: "b", input: { command: "ls" } } as never, ctx as never);
-	return { call, failures, notify, fire, ctx };
+	return { call, failures, notify, fire, ctx, hooks, cwd };
 }
 
 const TIMEOUT: Hook = { type: "command", command: "sleep 5", timeout: 0.2 };
@@ -129,12 +129,14 @@ describe("durable hook dispatch", () => {
 describe("native hook failures outside a gate", () => {
 	it("warns once when a native SessionStart hook times out, and starts the session anyway", async () => {
 		// SessionStart hooks run in the background: the warning follows the timeout, not the start.
-		const { notify, fire, ctx } = await run(TIMEOUT, { event: "SessionStart" });
+		const { notify, fire, ctx, hooks, cwd } = await run(TIMEOUT, { event: "SessionStart" });
 		const warnings = () => notify.mock.calls.filter(([, level]) => level === "warning");
 		await vi.waitFor(() => expect(warnings()).toHaveLength(1), { timeout: 5_000 });
 		expect(warnings()[0][0]).toMatch(/^SessionStart hook timed out after 0\.2s: sleep 5/);
+		expect(hooks.report(cwd)).toMatch(/sleep 5 .* · 1 run, 1 failed/);
 		await fire("session_start", { reason: "resume" }, ctx);
-		await new Promise((resolve) => setTimeout(resolve, 1_000));
+		// The second run timed out too (the report counts it) before the warnings are counted again.
+		await vi.waitFor(() => expect(hooks.report(cwd)).toMatch(/sleep 5 .* · 2 runs, 2 failed/), { timeout: 5_000 });
 		expect(warnings().map(([message]) => message)).toEqual([warnings()[0][0]]);
 	}, 15_000);
 });
@@ -274,16 +276,17 @@ describe("observer hook dispatch failures", () => {
 		};
 		await fire("session_start", { reason: "startup" }, ctx);
 		calls = 0;
-		return { hooks, notify, ctx };
+		return { hooks, notify, ctx, fire };
 	}
 
 	it("warns once when a Notification hook cannot be dispatched", async () => {
-		const { hooks, notify, ctx } = await failing("Notification", 0);
+		const { hooks, notify, ctx, fire } = await failing("Notification", 0);
 		hooks.notification({ type: "idle_prompt", message: "idle" }, ctx as never);
 		await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(1));
 		expect(notify).toHaveBeenCalledWith("Notification hooks could not run: session store unavailable", "warning");
 		hooks.notification({ type: "idle_prompt", message: "idle" }, ctx as never);
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		// Shutdown waits for every Notification dispatch still going, so the second one has failed by now.
+		await fire("session_shutdown", { reason: "quit" }, ctx);
 		expect(notify).toHaveBeenCalledTimes(1);
 	});
 
