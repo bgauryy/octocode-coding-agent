@@ -74,7 +74,7 @@ export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 		listener: "implicit",
 		wakes: "sometimes",
 		label: (p) => `job ${p.job} exit ${p.exit ?? "?"} · ${Math.round(p.durationMs / 1000)}s`,
-		key: (p) => `job:${p.job}:${p.startedAt}`,
+		key: (p) => `job:${p.job}:${p.startedAt}${p.log ? `:${p.log}` : ""}`,
 	},
 	"item.state": {
 		listener: "explicit",

@@ -1,3 +1,5 @@
+import { setImmediate as yieldToIO } from "node:timers/promises";
+import type { Batch } from "../events/loop/types.ts";
 import { WAKE_TYPE } from "../../core/wake-entry.ts";
 export { WAKE_TYPE } from "../../core/wake-entry.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -6,11 +8,10 @@ import { sessionPhaseOf, type SessionPhaseStore } from "../shared/session-phase.
 import { sourceOfEvent, withSource } from "../events/source.ts";
 import type { Source } from "../events/source-types.ts";
 import type { PayloadEvent as AgentEvent } from "../events/topics.ts";
-import { isCutOver } from "../events/loop/cutover.ts";
-import type { GateObserver } from "../events/loop/shadow.ts";
 import { recordProblem } from "../../core/diagnostics-log.ts";
+import { priorityOfEvents } from "./loop-catalog.ts";
 import { PendingRows } from "./pending-rows.ts";
-import { Routed } from "./routed.ts";
+import { firstWakeLabel, Routed } from "./routed.ts";
 import {
 	itemKey,
 	type GateRoute,
@@ -30,19 +31,22 @@ type GateApi = {
 
 export { itemKey };
 
+const SENDS_PER_TICK = 32;
+const SYNCHRONOUS_SENDS = 4;
+const SEND_BUDGET_MS = 8;
+
 const isPromise = (value: unknown): value is Promise<void> =>
 	typeof (value as { then?: unknown } | undefined)?.then === "function";
 
 /**
- * The one path a wake source sends through. It keeps the source's message, delivery options and receipts as they are and adds
- * three things: what each run wrote (so a nudge about that item can be dropped), one visible row per woken batch, and an
- * optional hold that merges wakes arriving seconds apart into one turn. The hold applies only while no run is in progress:
- * a steer or interrupt a busy run takes (including the mail that continues a headless subagent as its run settles) is
- * never delayed.
+ * The one path a wake source sends through. A wake goes to the session's event loop, which decides when it is delivered
+ * from its coded priority (`loop-catalog.ts`): no source chooses between steering and following up. The gate keeps the
+ * source's message and receipt, and adds what each run wrote (so a nudge about that item can be dropped) and one visible
+ * row per woken batch. Without a loop (before the session starts, after it ends, or after the loop failed) a send goes
+ * straight to the session.
  */
 export class WakeGate {
 	private readonly api: GateApi;
-	private holdMs: () => number;
 	private busy = false;
 	private inRun = false;
 	/** Between `agent_settled` and `agent_settle_end`: sends made now are deferred until the settle ends. */
@@ -53,39 +57,25 @@ export class WakeGate {
 	private readonly rows: PendingRows;
 	/** Calls of tools that write items, by call id, until the tool ends. */
 	private readonly calls = new Map<string, string[]>();
-	private held: Held[] = [];
-	private timer: NodeJS.Timeout | undefined;
 	private dropped = 0;
 	/** The wakes sent whose turn has not begun, for the session's phase (`shared/session-phase.ts`). */
 	private readonly sent = new Set<Sent>();
 	private readonly phase: SessionPhaseStore;
-	/** Shadow mode's view of every send (`events/loop/shadow.ts`); it never changes what is sent. */
-	private observer: GateObserver | undefined;
-	/** Sends the live loop holds, until it delivers them: they count as wakes for the session's phase like a held send. */
+	/** Sends the event loop holds, until it delivers them: they count as wakes for the session's phase. */
 	private readonly routed = new Routed();
 	/** Sees every emit before it is sent or routed (`onEmit`); a listener never changes what is sent. */
 	private readonly emitListeners = new Set<(events: readonly AgentEvent[], sources: readonly Source[]) => void>();
 
-	constructor(api: GateApi, options: { holdMs?: () => number; now?: () => number } = {}) {
+	constructor(api: GateApi, options: { now?: () => number } = {}) {
 		this.api = api;
 		this.phase = sessionPhaseOf(api);
-		this.holdMs = options.holdMs ?? (() => 0);
 		this.rows = new PendingRows(options.now ?? Date.now);
 	}
 
-	/** Attaches the observer that sees each emit and its send; `undefined` detaches it. */
-	setObserver(observer: GateObserver | undefined): void {
-		this.observer = observer;
-	}
-
-	/** Attaches the live loop that delivers cut-over topics instead of this gate; `undefined` returns them to the gate. */
+	/** Attaches the event loop that delivers wakes; `undefined` sends them straight to the session. */
 	setRoute(route: GateRoute | undefined): void {
 		this.routed.set(route);
-	}
-
-	/** Sets where the hold window comes from (the setting, read at each wake). */
-	setHold(holdMs: () => number): void {
-		this.holdMs = holdMs;
+		if (!route) this.publish();
 	}
 
 	/** Calls `listener` with the events and sources of every emit, before it is sent; returns the way to stop. */
@@ -112,39 +102,30 @@ export class WakeGate {
 		const sourceList = sources ?? eventList.map(sourceOfEvent);
 		for (const listener of this.emitListeners) listener(eventList, sourceList);
 		const sourced = withSource(message, sourceList);
-		if (this.routed.active && wakes && eventList.length > 0 && eventList.every(isCutOver))
+		if (this.routed.active && wakes && eventList.length > 0)
 			return this.routeToLoop(eventList, sourceList, sourced, options);
-		const ticket = this.observer?.emitted(eventList, sourceList, wakes, options.deliverAs === "steer");
-		// A steer that joins the run in progress starts no new run, so it has no row.
-		const listed =
-			wakes && !(this.busy && options.deliverAs === "steer")
-				? (Array.isArray(events) ? events : [events]).map((event) => this.rows.record(event))
-				: [];
-		const hold = wakes && !this.busy && this.held.length === 0 ? this.holdMs() : 0;
+		// No loop is attached (before the session starts, after it ends, or after the loop failed), or the message asks for
+		// no turn: it goes straight to the session. A message that joins the run in progress starts no new run, so no row.
+		const listed = wakes && !this.busy ? eventList.map((event) => this.rows.record(event)) : [];
 		const labels = listed.map((line) => line.label);
 		let sending: void | Promise<void>;
-		let direct = false;
 		try {
-			direct = hold <= 0 && this.held.length === 0;
-			sending = direct
-				? this.api.session.sendMessage(sourced, options)
-				: this.hold(sourced, options, hold, labels, ticket);
-			if (direct && ticket !== undefined) this.observer?.sent(ticket, options.triggerTurn === true);
+			sending = this.api.session.sendMessage(sourced, options);
 		} catch (error) {
 			this.rows.unlist(listed);
 			throw error;
 		}
 		if (isPromise(sending)) sending.then(undefined, () => this.rows.unlist(listed));
-		if (direct) this.track(labels, sending);
+		this.track(labels, sending);
 		return sending;
 	}
 
 	/**
-	 * A wake of a cut-over topic: the loop decides when and with what it is sent (`sendRouted`). The row line and the phase's
+	 * A wake: the loop decides when and with what it is sent (`sendRouted`), from the priority of its events. The row line and the phase's
 	 * wake are the gate's, as for a held send. The receipt settles once the loop has the event (as a send settles once the
 	 * session queues it, mid-run or behind a compaction); a later failed send is recorded as a problem, since no one awaits it.
 	 */
-	private routeToLoop(
+	private async routeToLoop(
 		events: readonly AgentEvent[],
 		sources: readonly Source[],
 		message: Message,
@@ -152,14 +133,16 @@ export class WakeGate {
 	): Promise<void> {
 		const { held, listed } = this.heldFor(events, message, options);
 		try {
-			const taken = this.routed.take(held, events, sources, options.deliverAs === "steer");
+			const taken = this.routed.take(held, events, sources, priorityOfEvents(events));
 			this.publish();
-			if (!taken) this.rows.unlist(listed);
-			return Promise.resolve();
+			if (!(await taken)) {
+				this.rows.unlist(listed);
+				this.publish();
+			}
 		} catch (error) {
 			this.publish();
 			this.rows.unlist(listed);
-			return Promise.reject(error instanceof Error ? error : new Error(errorMessage(error)));
+			throw error instanceof Error ? error : new Error(errorMessage(error));
 		}
 	}
 
@@ -193,88 +176,71 @@ export class WakeGate {
 		return held;
 	}
 
-	/**
-	 * The live loop delivers a batch: each send in order, only the last starting a turn, and only when `wake`. `ending`: the
-	 * session is going away, so none starts a turn.
-	 */
-	sendRouted(batch: readonly Held[], wake: boolean, ending: boolean): void {
-		this.routed.release(batch);
-		this.sendAll(batch, wake && !ending, ending);
-	}
-
-	/** Queues a send for the end of the hold window (which the first held wake opens); later sends keep their order behind it. */
-	private hold(
-		message: Message,
-		options: SendOptions,
-		ms: number,
-		labels: string[],
-		ticket: number | undefined,
-	): Promise<void> {
-		const sent = new Promise<void>((resolve, reject) =>
-			this.held.push({
-				labels,
-				message,
-				options,
-				...(ticket === undefined ? {} : { ticket }),
-				done: { resolve, reject },
-			}),
-		);
-		this.publish();
-		// A caller that ignores the result must not leave an unhandled rejection; one that awaits it still sees it.
-		sent.catch(() => undefined);
-		if (!this.timer) {
-			this.timer = setTimeout(() => this.release(), ms);
-			this.timer.unref?.();
-		}
-		return sent;
-	}
-
-	/** Sends everything held, in order; only the last send starts the turn, and only when some held send wanted one. */
-	release(): void {
-		this.flush(false);
-	}
-
-	/** `ending`: the session is going away, so no send may start a turn in it, and a send that fails is reported on stderr once. */
-	private flush(ending: boolean): void {
-		clearTimeout(this.timer);
-		this.timer = undefined;
-		const batch = this.held;
-		this.held = [];
-		this.sendAll(batch, !ending && batch.some((each) => each.options.triggerTurn === true), ending);
-	}
-
-	private sendAll(batch: readonly Held[], wake: boolean, ending: boolean): void {
-		const labels = wake ? batch.flatMap((each) => each.labels) : [];
+	/** Hands one batch to the transcript, yielding between slices. A model turn can outlive the handoff. */
+	sendRouted(
+		batch: Batch<Held>,
+		host: {
+			sending(seq: number, held: Held): void;
+			assertOwner(): void;
+			mayWake(): boolean;
+			ending(): boolean;
+		},
+	): void | Promise<void> {
+		const entries = batch.entries;
+		// The session starts typed input itself. buildBatch puts it first.
+		const wake = batch.trigger && entries[0]?.type !== "input";
+		let label: string | undefined;
+		let index = 0;
 		let reported = false;
 		const failed = (each: Held, error: unknown) => {
-			if (ending && !reported) {
+			if (host.ending() && !reported) {
 				reported = true;
 				process.stderr.write(`octocode: a held wake message was not sent at session end: ${errorMessage(error)}\n`);
 			}
 			each.done.reject(error);
 		};
-		batch.forEach((each, index) => {
-			const options = { ...each.options, triggerTurn: wake && index === batch.length - 1 };
-			try {
-				const sending = this.api.session.sendMessage(each.message, options);
-				if (each.ticket !== undefined) this.observer?.sent(each.ticket, wake);
-				if (index === batch.length - 1) this.track(labels, sending);
-				if (isPromise(sending)) sending.then(each.done.resolve, (error: unknown) => failed(each, error));
-				else each.done.resolve();
-			} catch (error) {
-				failed(each, error);
+		const slice = (): boolean => {
+			const limit = Math.min(index + SENDS_PER_TICK, entries.length);
+			const deadline = entries.length <= SYNCHRONOUS_SENDS ? undefined : performance.now() + SEND_BUDGET_MS;
+			while (index < limit) {
+				const entry = entries[index++];
+				if (entry.type !== "event") continue;
+				const each = entry.carry;
+				host.assertOwner();
+				this.routed.release(each);
+				host.sending(entry.seq, each);
+				label ??= each.labels[0];
+				const triggerTurn = wake && index === entries.length && host.mayWake();
+				try {
+					const result = this.api.session.sendMessage(each.message, {
+						...each.options,
+						deliverAs: "steer",
+						triggerTurn,
+					});
+					if (triggerTurn && label !== undefined) this.track([label], result);
+					if (isPromise(result)) result.then(each.done.resolve, (error: unknown) => failed(each, error));
+					else each.done.resolve();
+				} catch (error) {
+					failed(each, error);
+				}
+				if (deadline !== undefined && performance.now() >= deadline) break;
 			}
-		});
-		this.publish();
+			this.publish();
+			return index === entries.length;
+		};
+		if (slice()) return;
+		const remaining = async () => {
+			do {
+				await yieldToIO();
+			} while (!slice());
+		};
+		return remaining();
 	}
 
-	/** Publishes the wakes held for the window and those sent whose turn has not begun. */
+	/** Publishes the wakes the loop holds and those sent whose turn has not begun. */
 	private publish(): void {
-		this.phase.setWakes("gate", [
-			...this.held.flatMap((each) => each.labels),
-			...this.routed.labels(),
-			...[...this.sent].flatMap((each) => each.labels),
-		]);
+		const label = this.routed.firstLabel() ?? firstWakeLabel(this.sent);
+		this.phase.setWakes("gate", label === undefined ? [] : [label]);
 	}
 
 	/**
@@ -377,12 +343,15 @@ export class WakeGate {
 		this.dropped = Math.max(0, this.dropped - count);
 	}
 
-	/**
-	 * Session end: what is held is sent at once without starting a turn (the session is being torn down, and a timer would not
-	 * fire); a send that fails rejects for its owner's recovery to deliver again, and is reported on stderr once.
-	 */
+	/** Releases the outgoing session’s indicators. The loop still owns its durable handoff. */
 	dispose(): void {
-		if (this.held.length > 0) this.flush(true);
+		this.rows.clear();
+		this.calls.clear();
+		this.wrote.clear();
+		this.dropped = 0;
+		this.busy = false;
+		this.inRun = false;
+		this.settling = false;
 		this.landed();
 	}
 }

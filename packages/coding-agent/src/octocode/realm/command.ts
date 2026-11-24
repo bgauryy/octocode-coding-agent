@@ -42,17 +42,18 @@ async function resumeFrom(realm: Realm, ctx: CommandContext): Promise<void> {
 	});
 	if (!picked) return;
 	const session = realm.sessions.find((candidate) => candidate.id === picked.id);
-	if (session?.current) return say(ctx, "That is the current session.");
+	if (!session) return say(ctx, `The selected session does not belong to ${realm.name}.`, "warning");
+	if (session.current) return say(ctx, "That is the current session.");
 	// Another process may have it open; two writers on one transcript need the user's say.
 	if (
-		session?.live &&
+		session.live &&
 		!(await ctx.ui.confirm(
 			"Session is running",
 			"Another Octocode process has this session open. Resume it here as well?",
 		))
 	)
 		return say(ctx, cancelledText("resumed"));
-	await ctx.switchSession(picked.path);
+	await ctx.switchSession(session.file);
 }
 
 /** The realm's page: its detail and the actions that apply, until the user goes back. Resolves true once an action ended the page. */

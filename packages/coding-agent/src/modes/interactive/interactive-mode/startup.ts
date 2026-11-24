@@ -136,7 +136,6 @@ export async function init(host: StartupHost): Promise<void> {
 		});
 		host.transcriptScrollView = viewport.transcript;
 		host.fullscreenLayoutRoot = viewport.root;
-		host.renderer = await (await import("../../ink/dev-renderer.ts")).inkRenderer(host.renderer, host.uiStore);
 		host.mountInteractiveTui(host.renderer, [
 			host.documentContainer,
 			host.pendingMessagesContainer,
@@ -188,7 +187,7 @@ export async function init(host: StartupHost): Promise<void> {
 					rawKeyHint(`${keyText("app.model.cycleForward")}/${keyText("app.model.cycleBackward")}`, "cycle models"),
 					hint("app.model.select", "select model"),
 					hint("app.tools.expand", "expand tools"),
-					hint("app.thinking.toggle", "expand thinking"),
+					hint("app.thinking.toggle", "fold thinking"),
 					hint("app.editor.external", "external editor"),
 					rawKeyHint("/", "commands"),
 					rawKeyHint("@", "files"),

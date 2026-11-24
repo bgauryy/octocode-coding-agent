@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { ModelCostSchema } from "../model-schema.ts";
-import { optionalCompatBoolean } from "./common.ts";
+import { optionalCompatBoolean, VercelGatewayRoutingSchema } from "./common.ts";
 
 export const AnthropicAllowedFallbackModelSchema = Type.Object(
 	{
@@ -86,6 +86,7 @@ export const AnthropicMessagesCompatSchema = Type.Object(
 				default: false,
 			}),
 		),
+		vercelGatewayRouting: Type.Optional(VercelGatewayRoutingSchema),
 		allowedFallbackModels: Type.Optional(
 			Type.Array(AnthropicAllowedFallbackModelSchema, {
 				maxItems: 3,

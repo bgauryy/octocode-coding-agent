@@ -1,3 +1,4 @@
+import { carryCustomReceipt } from "./custom-receipt.ts";
 /** Sending user and custom messages to a session: start a run, queue into the current one, or append. */
 
 import type { ImageContent } from "@octocodeai/octocode-ai/compat";
@@ -222,6 +223,7 @@ export async function sendCustomMessage<T = unknown>(
 		details: message.details,
 		timestamp: Date.now(),
 	} satisfies CustomMessage<T>;
+	carryCustomReceipt(message, appMessage);
 	const holding = session.isStreaming || host.compaction.isManualRunning;
 	if (options?.deliverAs === "nextTurn") {
 		host.inputs.addNextTurnMessage(appMessage);

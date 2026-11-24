@@ -17,6 +17,7 @@ export * from "./api/lazy.ts";
 export type { MistralOptions } from "./api/mistral-conversations.ts";
 export type { OpenAICompletionsOptions } from "./api/openai-completions.ts";
 export type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
+export type { OpenResponsesOptions } from "./api/openresponses.ts";
 export * from "./auth/context.ts";
 export * from "./auth/credential-store.ts";
 export * from "./auth/endpoint.ts";
@@ -32,6 +33,7 @@ export type {
 } from "./compat/extension-oauth-types.ts";
 export * from "./models.ts";
 export * from "./models-store.ts";
+export * from "./operations/index.ts";
 export * from "./providers/faux.ts";
 export * from "./session-resources.ts";
 export * from "./types.ts";

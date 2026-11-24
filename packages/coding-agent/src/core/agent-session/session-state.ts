@@ -5,7 +5,7 @@
  * `AgentSessionApi` (`./api.ts`).
  */
 
-import { inputRoomTokens } from "../compaction/settings.ts";
+import { compactionThresholdTokens } from "../compaction/settings.ts";
 import {
 	type AgentMessage,
 	type AgentState,
@@ -215,7 +215,7 @@ export abstract class AgentSessionState {
 		);
 		return {
 			...usage,
-			compactionThreshold: inputRoomTokens(usage.contextWindow, settings.reserveTokens, settings.maxInputTokens),
+			compactionThreshold: compactionThresholdTokens(usage.contextWindow, settings),
 		};
 	}
 }

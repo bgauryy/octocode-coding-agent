@@ -76,7 +76,8 @@ export class SettingsSelectorComponent extends Container {
 			{
 				id: "hide-thinking",
 				label: "Hide thinking",
-				description: "Collapse finished thinking to one line (Thought for Ns); the thinking toggle key expands it",
+				description:
+					"Collapse thinking to one line (Thought for Ns) instead of showing its text; the thinking toggle key switches",
 				currentValue: config.hideThinkingBlock ? "true" : "false",
 				values: ["true", "false"],
 			},

@@ -150,6 +150,10 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
 	 * May be async. Return or resolve to undefined to keep the payload unchanged.
 	 */
 	onPayload?: (payload: unknown, model: TModel) => unknown;
+	/** Chat transport is about to resend the prepared payload after backoff. Throw to stop before sending. */
+	onTransportRetry?: () => void | Promise<void>;
+	/** A physical request received a transient HTTP 429, before backoff or returning the error. */
+	onRateLimit?: (retryAfterMs?: number) => void | Promise<void>;
 	/**
 	 * Optional callback invoked after an HTTP response is received.
 	 */

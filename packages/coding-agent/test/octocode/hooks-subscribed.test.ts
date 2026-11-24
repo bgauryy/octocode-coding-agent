@@ -1,12 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { eventSubscriptions, events } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { HOOK_EVENTS } from "../../src/octocode/hooks/catalog.ts";
+import { makeSource } from "../../src/octocode/events/source.ts";
 import { HOOK_LIFECYCLE_EVENTS } from "../../src/octocode/events/hook-lifecycle.ts";
-import { subscribedDispatch } from "../../src/octocode/hooks/register/subscribed.ts";
-import { closeHookSubscribers } from "../../src/octocode/hooks/register/subscribers.ts";
+import { type MatchedHookRun, subscribedDispatch } from "../../src/octocode/hooks/register/subscribed.ts";
+import { closeHookSubscribers, hookSubscribersOf } from "../../src/octocode/hooks/register/subscribers.ts";
 import type { HookConfig, HookVerdict } from "../../src/octocode/hooks/contracts.ts";
-import type { Dispatch, HookSession } from "../../src/octocode/hooks/register/types.ts";
+import type { HookSession } from "../../src/octocode/hooks/register/types.ts";
 import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { tmp } from "./helpers.ts";
 
@@ -20,8 +21,8 @@ function session(events: Record<string, boolean>): HookSession {
 	return { config, errors: [], root: undefined };
 }
 
-const rig = (mode: "old" | "new", cwd = tmp()) => ({
-	api: { settings: { get: () => ({ runtime: { eventLoop: mode } }) } },
+const rig = (cwd = tmp()) => ({
+	api: {},
 	ctx: { cwd, sessionManager: { getSessionId: () => "hooks-session" } },
 });
 
@@ -35,9 +36,9 @@ describe("hook runs as events", () => {
 
 	it("runs each dispatch once through its subscription and keeps the verdict, a deny too", async () => {
 		const cwd = tmp();
-		const { api, ctx } = rig("new", cwd);
+		const { api, ctx } = rig(cwd);
 		let calls = 0;
-		const direct: Dispatch = async (_ctx, event) => {
+		const direct: MatchedHookRun = async (_ctx, event) => {
 			calls++;
 			return event === "PreToolUse" ? deny : allow;
 		};
@@ -60,32 +61,80 @@ describe("hook runs as events", () => {
 		await closeHookSubscribers(api);
 	});
 
+	it("replays an orphaned dispatch before starting the resumed caller with the same numeric token", async () => {
+		const { api, ctx } = rig();
+		const old = await hookSubscribersOf(api, ctx as never);
+		const topic = "hook.PreToolUse";
+		const unsubscribe = await old.subscribe({ hook: "run:PreToolUse", topic, handle: () => {} });
+		unsubscribe();
+		const stored = await old.publish({
+			topic,
+			key: "hook:PreToolUse:1",
+			at: Date.now(),
+			source: makeSource("system", "hooks", "in-process", "proven"),
+			payload: { token: 1, names: ["old"], kinds: ["command"] },
+			digest: "hook PreToolUse",
+		});
+		await closeHookSubscribers(api);
+		const direct = vi.fn<MatchedHookRun>(async () => {
+			const [row] = eventSubscriptions.forSubscriber(
+				sharedAgentDb().db,
+				workspaceOf(ctx.cwd),
+				"hook:run:PreToolUse:hooks:hooks-session",
+				Date.now(),
+			);
+			expect(row.offset_seq).toBe(stored.seq);
+			return deny;
+		});
+		const resumed = subscribedDispatch(api, session({ PreToolUse: true }), direct);
+		expect(await resumed(ctx as never, "PreToolUse", ["new"], () => ({}))).toBe(deny);
+		expect(direct).toHaveBeenCalledOnce();
+		await closeHookSubscribers(api);
+	});
+
 	it("passes a thrown run to its caller and writes nothing without a configured hook", async () => {
 		const cwd = tmp();
-		const { api, ctx } = rig("new", cwd);
-		const direct: Dispatch = async (_ctx, event) => {
+		const { api, ctx } = rig(cwd);
+		const direct: MatchedHookRun = async (_ctx, event) => {
 			if (event === "Stop") throw new Error("boom");
 			return allow;
 		};
 		const dispatch = subscribedDispatch(api, session({ Stop: true }), direct);
 		await expect(dispatch(ctx as never, "Stop", [], () => ({}))).rejects.toThrow("boom");
 		const before = logged(cwd);
-		expect(await dispatch(ctx as never, "PreToolUse", ["bash"], () => ({}))).toBe(allow);
+		expect(await dispatch(ctx as never, "PreToolUse", ["bash"], () => ({}))).toEqual({});
 		expect(logged(cwd)).toBe(before);
 		await closeHookSubscribers(api);
 	});
 
-	it("calls the runner directly and writes no event in old mode", async () => {
-		const cwd = tmp();
-		const { api, ctx } = rig("old", cwd);
-		let calls = 0;
-		const direct: Dispatch = async () => {
-			calls++;
-			return deny;
-		};
+	it("enforces a gate exactly once when registration fails and retries subscribing on the next call", async () => {
+		const { api, ctx } = rig();
+		const subscribers = await hookSubscribersOf(api, ctx as never);
+		const register = vi.spyOn(subscribers, "subscribe").mockImplementationOnce(() => {
+			throw new Error("hook subscription unavailable");
+		});
+		const direct = vi.fn<MatchedHookRun>(async () => deny);
 		const dispatch = subscribedDispatch(api, session({ PreToolUse: true }), direct);
-		expect(await dispatch(ctx as never, "PreToolUse", ["bash"], () => ({}))).toBe(deny);
-		expect(calls).toBe(1);
-		expect(logged(cwd)).toBe(0);
+		for (let i = 0; i < 2; i++) {
+			expect(await dispatch(ctx as never, "PreToolUse", ["bash"], () => ({}))).toBe(deny);
+		}
+		expect(register).toHaveBeenCalledTimes(2);
+		expect(direct).toHaveBeenCalledTimes(2);
+		expect(logged(ctx.cwd)).toBeGreaterThan(0);
+		await closeHookSubscribers(api);
+	});
+
+	it("shares registration across overlapping gates while returning each caller's own verdict", async () => {
+		const { api, ctx } = rig();
+		const subscribers = await hookSubscribersOf(api, ctx as never);
+		const register = vi.spyOn(subscribers, "subscribe");
+		const dispatch = subscribedDispatch(api, session({ PreToolUse: true }), async (_ctx, _event, input) => ({
+			context: String(input().id),
+		}));
+		const ids = ["first", "second", "third"];
+		const verdicts = await Promise.all(ids.map((id) => dispatch(ctx as never, "PreToolUse", ["bash"], () => ({ id }))));
+		expect(verdicts.map(({ context }) => context)).toEqual(ids);
+		expect(register).toHaveBeenCalledOnce();
+		await closeHookSubscribers(api);
 	});
 });

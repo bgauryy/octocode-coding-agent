@@ -71,7 +71,7 @@ describe("callSmallModel", () => {
 		expect(streamSimple).toHaveBeenCalledTimes(1);
 		const [target, , options] = streamSimple.mock.calls[0] as unknown as [{ id: string }, unknown, object];
 		expect(target.id).toBe("cheap");
-		expect(options).toEqual({ signal, maxTokens: 64, cacheRetention: "none" });
+		expect(options).toEqual({ signal, maxTokens: 64, cacheRetention: "none", requestPriority: "background" });
 	});
 
 	it("retries a rate limit within the caller's budget, and not at all without one", async () => {

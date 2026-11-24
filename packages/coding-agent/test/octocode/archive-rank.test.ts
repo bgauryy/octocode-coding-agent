@@ -343,21 +343,26 @@ describe("ranked search memory and cancellation", () => {
 		expect(found.text).toContain("the file changed after it was ranked");
 	});
 
+	/** Long enough for the ranking to be inside the file, far short of the whole ranking. */
+	const CANCEL_AFTER_MS = 30;
+
 	it("stops a ranking inside one long file when cancelled, and the next search still answers", async () => {
 		const dir = tmp();
 		const long = Array.from({ length: 60_000 }, (_, i) => `### assistant\nthe okapi step ${i} okapi okapi`).join("\n");
 		const files = [write(dir, "long", long)];
+		// The index worker is started first: its start-up is not part of what a cancellation has to stop.
+		await rankHistory([write(dir, "warm", "### assistant\nthe okapi warms up")], "okapi", 1);
 		const controller = new AbortController();
 		const started = Date.now();
 		const ranking = rankHistory(files, "okapi step", 1, undefined, controller.signal);
-		setTimeout(() => controller.abort(new Error("cancelled")), 300);
+		setTimeout(() => controller.abort(new Error("cancelled")), CANCEL_AFTER_MS);
 		await expect(ranking).rejects.toThrow("cancelled");
 		const cancelledAfter = Date.now() - started;
 		const full = Date.now();
 		const found = await rankHistory(files, "okapi step", 1);
 		expect(found.hits).toBe(60_000);
 		// The cancelled ranking stopped well before a whole ranking takes.
-		expect(cancelledAfter).toBeLessThan(300 + (Date.now() - full));
+		expect(cancelledAfter).toBeLessThan(CANCEL_AFTER_MS + (Date.now() - full));
 	});
 });
 

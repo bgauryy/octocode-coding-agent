@@ -1,11 +1,10 @@
-import { animationClock, GLYPH, MOTION, visibleWidth } from "@octocodeai/octocode-tui";
+import { animationClock, LIGHT_GLYPH, MOTION, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { collapsedRows } from "../../src/octocode/team/panel/rows.ts";
 import { type Moving, PanelMotion } from "../../src/octocode/team/panel/motion.ts";
 import { panelMark, panelState } from "../../src/octocode/team/panel/state.ts";
 import { AgentsView } from "../../src/octocode/team/panel.ts";
-import { LIGHT_FRAMES, markFrameMs } from "../../src/theme/status.ts";
 import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
 import { fakeCtx, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -42,40 +41,46 @@ describe("panel state", () => {
 		expect(panelState(gone, NOW)).toEqual({ state: "pending", label: "left" });
 	});
 
-	// A working agent spins the working spinner's frames (braille), never a half-filled circle.
-	const spin = LIGHT_FRAMES[Math.floor(NOW / markFrameMs("running", { light: true })) % LIGHT_FRAMES.length];
+	// A working agent draws the full circle, still: never a spinner frame.
+	const lit = LIGHT_GLYPH.running;
 
-	it("draws the state marks: a spinner for a working agent, the steady light for every other state", () => {
+	it("draws the state marks: the full light for a working agent, the empty one for an idle agent, none of them moving", () => {
 		const team = [
 			member("main-aaaaaa"),
 			member("busy-aaaa", { parentId: "main-aaaaaa", status: "working" }),
 			member("rest-bbbb", { parentId: "main-aaaaaa" }),
 		];
 		const rows = widgetLines(team, "main-aaaaaa", NOW, theme, 120);
-		// The mark alone says the state: no state word, and no stats line for an agent without stats.
-		// The elapsed time ends each row at the terminal's edge.
+		// The mark alone says the state: no state word on the head row, which ends at the name without a goal.
+		// The role and the elapsed time are on the open detail line, the time at the terminal's edge.
 		const edge = (left: string, right: string) =>
 			`${left}${" ".repeat(120 - visibleWidth(left) - visibleWidth(right))}${right}`;
 		// Idle rows draw ○: ⏺ means running only.
-		expect(rows).toEqual([
-			edge(" 🦑 main-aaaaaa ○ · general", "1m"),
-			edge(` ├ ${spin} busy-aaaa    · general`, "1m"),
-			edge(" └ ○ rest-bbbb    · general", "1m"),
-		]);
+		expect(lit).toBe("⏺");
+		const drawn = [
+			" 🦑 main-aaaaaa ○",
+			` ├ ${lit} busy-aaaa`,
+			edge(" │   general", "1m"),
+			" └ ○ rest-bbbb",
+			edge("     general", "1m"),
+		];
+		expect(rows).toEqual(drawn);
+		// The same rows at any later moment of the same second, with motion on: no frame to step.
+		expect(widgetLines(team, "main-aaaaaa", NOW + 250, theme, 120)).toEqual(drawn);
 		const tree = [
 			{ member: team[1], depth: 0 },
 			{ member: team[2], depth: 0 },
 			{ member: team[2], depth: 0, doneAt: NOW - 20_000 },
 		];
 		const compact = collapsedRows(tree, NOW, theme, 120).map((row) => row.slice(0, 5));
-		expect(compact).toEqual([` ├ ${spin} `, " ├ ○ ", " └ ○ "]);
+		expect(compact).toEqual([` ├ ${lit} `, " ├ ○ ", " └ ○ "]);
 	});
 
-	it("holds a full ⏺ in reduced motion, never a spinner frame held still", () => {
-		animationClock.setReducedMotion(true);
+	it("holds a full ⏺ with motion on and in reduced motion, never a spinner frame", () => {
 		const state = panelState({ member: member("a", { status: "working" }), depth: 0 }, NOW);
-		expect(panelMark(theme, state, NOW + 80)).toBe(GLYPH.light);
-		expect(panelMark(theme, state, NOW + 800)).toBe(GLYPH.light);
+		expect(panelMark(theme, state)).toBe(LIGHT_GLYPH.running);
+		animationClock.setReducedMotion(true);
+		expect(panelMark(theme, state)).toBe(LIGHT_GLYPH.running);
 	});
 
 	it("keeps the root row free of a tally: each agent's mark says it works, and `left` is on the ↳ line", () => {
@@ -87,10 +92,13 @@ describe("panel state", () => {
 		const done = [{ member: member("c-3333", { parentId: "main-aaaaaa" }), at: NOW - 1_000 }];
 		const lines = widgetLines(team, "main-aaaaaa", NOW, theme, 120, [], undefined, done);
 		expect(lines).toEqual([
-			" 🦑 main-aaaaaa ○ · general                                                                                           1m",
-			` ├ ${spin} a-1111       · general                                                                                           1m`,
-			` ├ ${spin} b-2222       · general                                                                                           1m`,
-			" └ ○ c-3333       · general                                                                                          59s",
+			" 🦑 main-aaaaaa ○",
+			` ├ ${lit} a-1111`,
+			" │   general                                                                                                          1m",
+			` ├ ${lit} b-2222`,
+			" │   general                                                                                                          1m",
+			" └ ○ c-3333",
+			"     general                                                                                                         59s",
 			"     ↳ left",
 		]);
 	});
@@ -107,20 +115,27 @@ describe("panel motion", () => {
 		motion.sync(NOW);
 		expect(motion.active).toBe(true);
 		expect(animationClock.isRunning()).toBe(true);
-		marks = [idle, { state: "done", since: NOW - 10_000 }];
+		marks = [idle, { state: "done" }];
 		motion.sync(NOW);
 		expect(motion.active).toBe(false);
 		expect(animationClock.isRunning()).toBe(false);
 	});
 
-	it("never subscribes for a still panel or in reduced motion", () => {
+	it("never subscribes for a still panel; in reduced motion a working agent keeps its second clock, which is information", () => {
+		vi.useFakeTimers();
 		const motion = new PanelMotion(() => [idle], vi.fn());
-		motion.sync(NOW);
+		motion.sync();
 		expect(motion.active).toBe(false);
+		expect(animationClock.isRunning()).toBe(false);
 		animationClock.setReducedMotion(true);
-		const busy = new PanelMotion(() => [working], vi.fn());
-		busy.sync(NOW);
-		expect(busy.active).toBe(false);
+		const repaint = vi.fn();
+		const busy = new PanelMotion(() => [working], repaint);
+		busy.sync();
+		expect(busy.active).toBe(true);
+		expect(busy.precise).toBe(true);
+		vi.advanceTimersByTime(MOTION.tickMs * 3);
+		expect(repaint).toHaveBeenCalledTimes(3);
+		busy.dispose();
 		expect(animationClock.isRunning()).toBe(false);
 	});
 
@@ -130,10 +145,10 @@ describe("panel motion", () => {
 		const repaint = vi.fn();
 		const motion = new PanelMotion(() => marks, repaint);
 		motion.sync();
-		vi.advanceTimersByTime(MOTION.backgroundSpinnerMs * 3);
+		vi.advanceTimersByTime(MOTION.tickMs * 3);
 		expect(repaint.mock.calls.length).toBeGreaterThanOrEqual(2);
 		marks = [idle];
-		vi.advanceTimersByTime(MOTION.backgroundSpinnerMs);
+		vi.advanceTimersByTime(MOTION.tickMs);
 		const painted = repaint.mock.calls.length;
 		expect(motion.active).toBe(false);
 		vi.advanceTimersByTime(1_000);
@@ -141,29 +156,34 @@ describe("panel motion", () => {
 		expect(animationClock.isRunning()).toBe(false);
 	});
 
-	it("repaints a running light at the calm light cadence, and stops once nothing moves", () => {
+	it("repaints a running row once a second, never at a spinner cadence, and stops once nothing runs", () => {
 		vi.useFakeTimers();
 		let marks: Moving[] = [working];
 		const repaint = vi.fn();
 		const motion = new PanelMotion(() => marks, repaint);
 		motion.sync();
 		vi.advanceTimersByTime(2_000);
-		const frames = repaint.mock.calls.length;
-		expect(frames).toBeGreaterThanOrEqual(Math.floor(2_000 / markFrameMs("running", { light: true })) - 1);
-		expect(frames).toBeLessThanOrEqual(Math.ceil(2_000 / MOTION.backgroundSpinnerMs));
-		marks = [{ state: "failed" }, { state: "waiting", since: NOW - 60_000 }];
-		vi.advanceTimersByTime(MOTION.backgroundSpinnerMs);
+		expect(motion.precise).toBe(true);
+		expect(repaint).toHaveBeenCalledTimes(2_000 / MOTION.tickMs);
+		marks = [{ state: "failed" }, { state: "waiting" }];
+		vi.advanceTimersByTime(MOTION.tickMs);
+		expect(motion.precise).toBe(false);
 		expect(motion.active).toBe(false);
 		expect(animationClock.isRunning()).toBe(false);
 	});
 
-	it("does not subscribe for a fresh done mark: it is steady green from the first frame", () => {
+	it("does not subscribe for a fresh done mark or a waiting one: a light is still from the first frame", () => {
 		vi.useFakeTimers();
-		const since = Date.now();
-		const motion = new PanelMotion(() => [{ state: "done", since }], vi.fn());
-		motion.sync();
-		expect(motion.active).toBe(false);
-		expect(animationClock.isRunning()).toBe(false);
+		for (const state of ["done", "waiting"] as const) {
+			const repaint = vi.fn();
+			const motion = new PanelMotion(() => [{ state }], repaint);
+			motion.sync();
+			expect(motion.active).toBe(false);
+			expect(motion.precise).toBe(false);
+			expect(animationClock.isRunning()).toBe(false);
+			vi.advanceTimersByTime(5_000);
+			expect(repaint).not.toHaveBeenCalled();
+		}
 	});
 
 	it("dispose ends the subscription", () => {
@@ -202,7 +222,7 @@ describe("AgentsView motion", () => {
 		factory({ requestRender }, theme);
 		expect(animationClock.isRunning()).toBe(true);
 		requestRender.mockClear();
-		vi.advanceTimersByTime(MOTION.backgroundSpinnerMs * 5);
+		vi.advanceTimersByTime(MOTION.tickMs * 5);
 		expect(requestRender.mock.calls.length).toBeGreaterThanOrEqual(4);
 		// The worker goes idle: the next data refresh drops the animation subscription.
 		members = [members[0], peer("idle")];

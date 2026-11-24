@@ -26,7 +26,8 @@ Write targets are `~/.octocode/mcp.json` and `<workspace>/.octocode/mcp.json`. W
 | Names       | Letters, digits, `_`, `-`; no `__` (a `-` before is read as `_`) and no trailing `_` or `-`, because tools are `mcp__<server>__<tool>`. Such a name is rejected.                                                                                                                                                                                                                                                                                                                                                                                |
 | Stdio       | One executable in `command` (not a shell expression), optional `args`, `env`, `cwd` (relative to the session folder; `~/` expands). Starts with a minimal environment plus `env`; `inheritEnv: true` passes everything. Not sandboxed unless `sandbox: true`: the server then runs in the [shell sandbox](configuration.md#shell-sandbox) whatever `sandbox.mode` says (writes in its workspace and the temporary folders, no reads of credential folders, network through the sandbox proxy), and it does not start where that sandbox cannot. |
 | Values      | `env` and HTTP `headers` support `${NAME}` or a whole-value `!command`; `literalHeaders: true` sends headers verbatim.                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| Timeouts    | `enabled` defaults to true; per-request `timeout` to 60 s. A server whose startup times out is retried once at twice the timeout (`/mcp` shows `(retried after timeout)`).                                                                                                                                                                                                                                                                                                                                                                      |
+| Timeouts    | `enabled` defaults to true; per-request `timeout` to 60 s. A server whose startup times out is retried once at twice the timeout (`/mcp` shows `(retried after timeout)`). `reconnectWaitMs` (default 5000) is how long a call waits for a server that is reconnecting; `0` fails such a call at once ([connections](#connections-and-caching)).                                                                                                                                                                                                |
+| Input       | `elicitation: false` refuses the server's requests for input from you: it is not told that Octocode takes them ([requests for input](#requests-for-input)). Default: true.                                                                                                                                                                                                                                                                                                                                                                      |
 | Errors      | Invalid entries are reported and skipped independently. JSON comments and trailing commas load; saving writes plain JSON and backs up the old file as `<file>.bak`.                                                                                                                                                                                                                                                                                                                                                                             |
 | Safety      | Text a server sends is shown with `<mcp`, `</mcp`, `<mcps`, `</mcps` escaped so it cannot forge a prompt block. Keep credentials in user-level config.                                                                                                                                                                                                                                                                                                                                                                                          |
 
@@ -87,7 +88,7 @@ stateDiagram-v2
 - The bundled Octocode server hands its calls to a warm `octocode serve` process, one per Octocode build, workspace and environment, shared by every session and client that matches; it pools language servers. It is the one MCP process a session leaves running at exit, by design: it exits on its own after 10 minutes without a request, and its language servers stop earlier on the pool's idle timeout.
 - Transient HTTP failures get two retries; three consecutive failures trigger a 5 to 60 s backoff until restart. An expired HTTP session gets one fresh-session retry; ordinary tool calls are not retried because they may have changed state.
 - A stdio connection drops when its process exits, even if a descendant holds the pipes (and for launchers such as `npx` or `uvx`): stdout gets 250 ms to deliver, the call in flight fails, and the process group gets SIGTERM then SIGKILL.
-- Catalogs and instructions are cached in memory. A dropped connection or failed reconnect keeps them, so declared tools stay byte-identical (the provider's cached prefix is not rewritten) and calls fail at once naming the state and how to restart. Stop, disable, removal, sign-out, shutdown and a failed catalog refresh of a connected server withdraw the tools; a reconnect withdraws only tools the server no longer offers. Shutdown (except a server a new session keeps, above), authentication or configuration replacement and workspace changes clear the cache. [Prompt caching](prompt-caching.md) is separate; in `compact` mode the generated files below are the only catalog data kept on disk.
+- Catalogs and instructions are cached in memory. A dropped connection or failed reconnect keeps them, so declared tools stay byte-identical (the provider's cached prefix is not rewritten). A call made while the server reconnects waits for the connection, up to the server's `reconnectWaitMs` (default 5000 ms; stopping the turn ends the wait), then runs; when the time is up, or with `reconnectWaitMs: 0`, it fails naming the state and how to restart. A server that is stopped, disabled, waiting for a sign-in, or whose reconnect failed has no connection to wait for: its calls fail at once. Stop, disable, removal, sign-out, shutdown and a failed catalog refresh of a connected server withdraw the tools; a reconnect withdraws only tools the server no longer offers. Shutdown (except a server a new session keeps, above), authentication or configuration replacement and workspace changes clear the cache. [Prompt caching](prompt-caching.md) is separate; in `compact` mode the generated files below are the only catalog data kept on disk.
 
 ## Presentation modes
 
@@ -189,7 +190,40 @@ Prompt arguments: `key=value` sets that argument; other words fill the prompt's 
 
 Reading and listing count as reads: they never ask and are allowed in plan mode. A server without the capability gets no request. Resource subscriptions are not supported.
 
+## Requests for input
+
+A server may ask you for a value while one of its tools runs (MCP elicitation), for example a project id. Octocode shows the request the way the agent's own questions appear and sends your answer back to the server; the agent sees only the tool's result.
+
+```mermaid
+flowchart TD
+    R[Server asks during a tool call] --> F{A flat form, no secret-like field?}
+    F -- no --> D[Answer: decline]
+    F -- yes --> U{Someone to ask?}
+    U -- no --> D
+    U -- yes --> Q[Question names the server; its text is marked as the server's]
+    Q --> A{Your answer}
+    A -- values --> V{Fits what was asked?}
+    V -- yes --> S[Answer: accept, with the values]
+    V -- no --> Q
+    A -- "Decline (a request without fields)" --> D
+    A -- dismissed --> C[Answer: cancel]
+```
+
+| Case                                                                                        | What happens                                                                                                      |
+| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Text, number, whole number, yes/no and single-choice fields, up to 8                        | One question per field; an optional field can be left out. A request without fields asks only whether to continue |
+| A field whose name or title looks like a credential (password, token, API key, secret, ...) | Declined without asking. Give a server its credentials in its `env`, `headers` or sign-in, never through a form   |
+| A request to open a URL, a multi-choice or nested field, more than 8 fields                 | Declined without asking                                                                                           |
+| No terminal or web user (print mode, RPC without a UI), plan mode, a subagent               | Declined without asking                                                                                           |
+| An answer the request does not allow (not a number, not a listed option, a required blank)  | Asked again with the reason; after three tries the server gets `cancel`                                           |
+| You dismiss the question, or stop the turn                                                  | The server gets `cancel`                                                                                          |
+| `"elicitation": false` on the server                                                        | The server is not told that requests are taken, and one it sends anyway is refused as an unknown method           |
+
+The question names the server from your configuration. Everything the server wrote (its message, field names and descriptions) is shown as its own text with control and invisible characters made visible, so it cannot pass for a prompt from Octocode. Only the fields the server asked for are sent, typed as it declared them. Refused requests are noted in `mcp.log`.
+
 ## Model management and permissions
+
+To inspect a native tool's full schema, call `mcp` with `intent: "tools"` and `tool: "file"` (or another native tool name). Include `server` to inspect an external tool. This also works when a configured server is named `native`.
 
 The model's `mcp` tool takes `list` (state, tool count, last error of every server or one), `tools` (descriptions and schemas without running anything), `resources` and `read` ([resources and prompts](#resources-and-prompts)), `restart` (also starts a stopped or failed server at once; a second restart of a connected server within 10 s is refused; a stopped or failed one starts at once) and `stop` (withdraws tools until restart; a dropped connection does not). The older `status`, `connect`, `add` and `remove` intents return an error naming their replacement (`list`, `restart`, or your `/mcp` and `octocode mcp add|remove`). None edit configuration; children use their own connections and get a session registration only when their profile or task names it.
 

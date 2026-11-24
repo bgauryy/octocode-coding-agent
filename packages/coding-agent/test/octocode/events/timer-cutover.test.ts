@@ -1,6 +1,6 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isCutOver, isDeduped, isDurable } from "../../../src/octocode/events/loop/cutover.ts";
+import { recordsEvent, isDeduped, isDurable } from "../../../src/octocode/events/loop/cutover.ts";
 import type { PayloadEvent } from "../../../src/octocode/events/topics.ts";
 import { sessionStore } from "../../../src/octocode/wake/live-durable.ts";
 import {
@@ -14,21 +14,16 @@ import {
 } from "../loop-characterization/rig.ts";
 import { gateSummary } from "../loop-characterization/summary-gate.ts";
 
-/**
- * The third live cut-over (RFC agent-event-loop §14 R8): with `runtime.eventLoop: new` a timer's fire, the `notify`
- * conditions and the backlog feed are delivered by the loop, durably. `old` and `shadow` keep the gate's delivery.
- */
-
 const rigs: Rig[] = [];
 afterEach(() => {
 	for (const rig of rigs.splice(0)) rig.cleanup();
 });
 
 const WINDOW_S = 0.4;
-async function newRig(mode: "old" | "shadow" | "new", options: RigOptions = {}, windowSeconds = WINDOW_S) {
+async function newRig(options: RigOptions = {}, windowSeconds = WINDOW_S) {
 	const rig = await createRig({
 		...options,
-		settings: { ...options.settings, runtime: { eventLoop: mode, eventWindowSeconds: windowSeconds } },
+		settings: { ...options.settings, runtime: { eventWindowSeconds: windowSeconds } },
 	});
 	rigs.push(rig);
 	return rig;
@@ -65,7 +60,7 @@ describe("the timer, notify and backlog-feed cut-over", () => {
 	it("lists each topic as delivered by the loop and durable, and drops repeats only of time.due and item.peer", () => {
 		for (const kind of KINDS) {
 			const event = kind.event("x");
-			expect([kind.name, isCutOver(event), isDurable(event), isDeduped(event)]).toEqual([
+			expect([kind.name, recordsEvent(event), isDurable(event), isDeduped(event)]).toEqual([
 				kind.name,
 				true,
 				true,
@@ -76,7 +71,7 @@ describe("the timer, notify and backlog-feed cut-over", () => {
 
 	describe.each(KINDS)("$name", (kind) => {
 		it("is delivered once, through the loop's window", async () => {
-			const rig = await newRig("new");
+			const rig = await newRig();
 			rig.harness.setResponses([rig.reply("read it"), rig.reply("unexpected")]);
 			const sent = send(rig, kind, "TAG-once");
 			expect(rig.live()?.queued()).toMatchObject({ Q3: 1 });
@@ -89,7 +84,7 @@ describe("the timer, notify and backlog-feed cut-over", () => {
 		});
 
 		it("merges with another inside the window into one turn", async () => {
-			const rig = await newRig("new", {}, 1);
+			const rig = await newRig({}, 1);
 			rig.harness.setResponses([rig.reply("read both"), rig.reply("unexpected second turn")]);
 			const first = send(rig, kind, "TAG-a");
 			await sleep(300);
@@ -103,7 +98,7 @@ describe("the timer, notify and backlog-feed cut-over", () => {
 		});
 
 		it("is queued during a compaction and delivered once after the summary", async () => {
-			const rig = await newRig("new", {
+			const rig = await newRig({
 				models: [{ id: "faux-1", contextWindow: 8000, maxTokens: 100 }],
 				compactionPolicy: { enabled: true, reserveTokens: 400, keepRecentTokens: 1 },
 			});
@@ -137,37 +132,27 @@ describe("the timer, notify and backlog-feed cut-over", () => {
 		});
 
 		it("replays once after a restart, and not again after it was delivered", async () => {
-			const first = await newRig("new", {}, 600);
+			const first = await newRig({}, 10);
 			void send(first, kind, "TAG-restart");
 			await vi.waitFor(() => expect(first.live()?.queued()).toMatchObject({ Q3: 1 }));
 			const earlier = earlierOf(first);
 
-			const second = await newRig("new", { liveStore: () => sessionStore(earlier) });
+			const second = await newRig({ liveStore: () => sessionStore(earlier) });
 			second.harness.setResponses([second.reply("read it"), second.reply("unexpected")]);
 			expect(second.live()?.queued()).toMatchObject({ Q3: 1 });
 			await vi.waitFor(() => expect(second.requests).toHaveLength(1), { timeout: 10_000 });
 			await second.harness.session.waitForIdle();
 			expect(count(second.requests[0], "TAG-restart")).toBe(1);
 
-			const third = await newRig("new", { liveStore: () => sessionStore(earlier) });
+			const third = await newRig({ liveStore: () => sessionStore(earlier) });
 			expect(queuedCount(third)).toBe(0);
 			await sleep(WINDOW_S * 1000 + 200);
 			expect(third.requests).toHaveLength(0);
 		});
-
-		it.each(["old", "shadow"] as const)("stays with the gate in %s mode", async (mode) => {
-			const rig = await newRig(mode);
-			rig.harness.setResponses([rig.reply("read it")]);
-			await send(rig, kind, "TAG-gate");
-			expect(rig.live()).toBeUndefined();
-			await vi.waitFor(() => expect(rig.requests).toHaveLength(1), { timeout: 10_000 });
-			await rig.harness.session.waitForIdle();
-			expect(count(rig.requests[0], "TAG-gate")).toBe(1);
-		});
 	});
 
 	it.each(KINDS.filter((kind) => kind.once))("$name sent twice is delivered once", async (kind) => {
-		const rig = await newRig("new");
+		const rig = await newRig();
 		rig.harness.setResponses([rig.reply("read it"), rig.reply("unexpected")]);
 		await Promise.all([send(rig, kind, "TAG-dup"), send(rig, kind, "TAG-dup")]);
 		await vi.waitFor(() => expect(rig.requests).toHaveLength(1), { timeout: 10_000 });

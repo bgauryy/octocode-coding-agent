@@ -61,15 +61,19 @@ export class IndexService {
 			if (!rank && this.ranksWaiting > 0) throw new Preempted();
 			if (this.yields || !rank) await yieldTurn();
 		};
-		if (Atomics.load(flag, 0) !== 0) throw new IndexCancelled();
+		// Inside one long file nothing yields: a cancellation is read straight from the flag.
+		const poll = () => {
+			if (Atomics.load(flag, 0) !== 0) throw new IndexCancelled();
+		};
+		poll();
 		this.index ??= openIndex(this.file);
 		if (rank) {
 			const filtered = request.filtered ? new Map(request.filtered) : undefined;
-			return rankIndexed(this.index, request.files, request.keywords, filtered, check);
+			return rankIndexed(this.index, request.files, request.keywords, filtered, check, undefined, poll);
 		}
 		if (!this.index.fts) return undefined;
 		try {
-			await syncFiles(this.index, request.paths, check);
+			await syncFiles(this.index, request.paths, check, undefined, poll);
 			if (request.prune) pruneMissing(this.index);
 		} catch (error) {
 			if (!(error instanceof Preempted)) throw error;

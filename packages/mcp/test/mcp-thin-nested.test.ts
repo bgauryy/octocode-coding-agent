@@ -11,6 +11,34 @@ const catalog = JSON.parse(
 const schemaOf = (name: string) => catalog.tools.find((tool) => tool.name === name)?.inputSchema;
 
 describe("thin MCP declarations of nested fields", () => {
+	it("keeps a server's field dependency visible in a compact declaration", () => {
+		const unique = "Distinct values per file; count: with counts. Only with view: matchOnly.";
+		const context = "Lines around each match. Only with view: content.";
+		const item = {
+			type: "object",
+			properties: {
+				view: { enum: ["content", "matchOnly"] },
+				unique: { enum: ["off", "list"], description: unique },
+				contextLines: { type: "object", description: context },
+				path: { type: "string", description: "A file." },
+			},
+		};
+		const thin = thinParameters({ type: "object", properties: { queries: { type: "array", items: item } } });
+		expect(thin).toMatchObject({
+			properties: {
+				queries: {
+					items: {
+						properties: {
+							unique: { description: "Only with view: matchOnly." },
+							contextLines: { description: "Only with view: content." },
+						},
+					},
+				},
+			},
+		});
+		expect(JSON.stringify(thin)).not.toContain("A file.");
+	});
+
 	it("names the fields of a top-level array of objects, and of arrays of objects inside it, with types only", () => {
 		const thin = thinParameters({
 			type: "object",

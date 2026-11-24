@@ -386,7 +386,7 @@ describe("agent tool with a scripted child", () => {
 					isError: false,
 				}),
 			),
-		).toMatch(/^✓ Agent · background/);
+		).toMatch(/^◉ Agent · background/);
 		expect(rendered(s.agent.renderCall({}, theme, {}))).toBe("○ Agent");
 	});
 
@@ -774,7 +774,7 @@ describe("agent tool with a scripted child", () => {
 		expect(notes).toHaveLength(1);
 		expect(notes[0]).toMatchObject({
 			message: { display: false, content: expect.stringContaining("gone-1 (general") },
-			options: { triggerTurn: false, deliverAs: "followUp" },
+			options: { triggerTurn: false },
 		});
 		// A new session has no record of it: only a resume or a restart is told.
 		s.sent.length = 0;
@@ -1077,8 +1077,8 @@ describe("agent tool with a scripted child", () => {
 		const shown = rendered(renderer(answer.message, { expanded: false }, theme));
 		// A finished row names its time only from 1s on; this scripted run's time depends on machine load.
 		expect(shown).toMatch(
-			// A settled agent row draws its state's glyph (✓ done, ✗ failed, ◼ cancelled): ⏺ means running only.
-			/^ ✓ Agent\([a-z]+-[a-z]+ · check things\) · background(?: · \S+)?\n {3}⎿ {2}Done · 1 tool call/,
+			// A settled agent row draws its still state light (◉ done, ⊗ failed, ⊘ cancelled): ⏺ means running only.
+			/^ ◉ Agent\([a-z]+-[a-z]+ · check things\) · background(?: · \S+)?\n {3}⎿ {2}Done · 1 tool call/,
 		);
 		expect(shown).toContain("report");
 
@@ -1093,7 +1093,7 @@ describe("agent tool with a scripted child", () => {
 			summary: "Failed: provider down",
 		});
 		expect(rendered(renderer(s.sent[1].message, { expanded: false }, theme))).toMatch(
-			/^ ✗ Agent\([a-z]+-[a-z]+[^\n]*\n {3}⎿ {2}Failed: provider down/,
+			/^ ⊗ Agent\([a-z]+-[a-z]+[^\n]*\n {3}⎿ {2}Failed: provider down/,
 		);
 
 		const kill = {
@@ -1134,7 +1134,7 @@ describe("agent tool with a scripted child", () => {
 		);
 		// A stop the user asked for is an interruption, not a failure; the prompt is one expand away.
 		expect(rendered(renderer(s.sent[2].message, { expanded: false }, theme))).toMatch(
-			/^ ◼ Agent.*\n {3}⎿ {2}Cancelled by the user\n {6}… prompt \(ctrl\+o to expand\)$/,
+			/^ ⊘ Agent.*\n {3}⎿ {2}Cancelled by the user\n {6}… prompt \(ctrl\+o to expand\)$/,
 		);
 		expect(s.sent[2].options).toEqual({ triggerTurn: false, deliverAs: "followUp", together: true });
 	});

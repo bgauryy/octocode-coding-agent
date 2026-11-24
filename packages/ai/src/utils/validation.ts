@@ -332,21 +332,33 @@ const INVALID_ARGUMENTS_NEXT_STEP =
  * Validates tool call arguments against the tool's TypeBox schema
  * @param tool The tool definition with TypeBox schema
  * @param toolCall The tool call from the LLM
+ * @param prepareArguments Optional tool normalizer applied once to a private copy of the decoded arguments
  * @returns The validated (and potentially coerced) arguments
  * @throws Error with formatted message if validation fails
  */
-export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
+export function validateToolArguments(
+	tool: Tool,
+	toolCall: ToolCall,
+	prepareArguments?: (args: ToolCall["arguments"]) => unknown,
+): any {
 	if (toolCall.argumentsError) {
 		throw new Error(
 			`Invalid arguments for tool "${toolCall.name}": ${toolCall.argumentsError}\n\n${INVALID_ARGUMENTS_NEXT_STEP}`,
 		);
 	}
 	const schema = tool.validationParameters ?? tool.parameters;
-	let args = structuredClone(toolCall.arguments);
+	let input = toolCall.arguments;
+	if (prepareArguments) {
+		const modelArgs = structuredClone(input);
+		// Strict providers encode omitted fields as null. Resolve those before a tool interprets its operands.
+		if (tool.coerceArguments !== false) normalizeOptionalNulls(modelArgs, schema);
+		input = prepareArguments(modelArgs) as ToolCall["arguments"];
+	}
+	let args = structuredClone(input);
 	const validator = getToolValidator(schema, tool.name);
 	if (tool.coerceArguments === false) {
 		if (validator.Check(args)) return args;
-		throw validationFailure(tool, toolCall, validator, args, schema);
+		throw validationFailure(tool, { ...toolCall, arguments: input }, validator, args, schema);
 	}
 	normalizeOptionalNulls(args, schema);
 	Value.Convert(schema, args);
@@ -369,12 +381,12 @@ export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
 		return args;
 	}
 	// A successful union branch keeps its unconstrained fields; container recovery is only a fallback.
-	const recovered = structuredClone(toolCall.arguments);
+	const recovered = structuredClone(input);
 	if (parseStringifiedContainers(recovered, schema)) {
 		normalizeOptionalNulls(recovered, schema);
 		Value.Convert(schema, recovered);
 		if (validator.Check(recovered)) return recovered;
 		args = recovered;
 	}
-	throw validationFailure(tool, toolCall, validator, args, schema);
+	throw validationFailure(tool, { ...toolCall, arguments: input }, validator, args, schema);
 }

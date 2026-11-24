@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
 	createFauxCore,
 	fauxAssistantMessage,
@@ -22,14 +21,8 @@ import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
  * Permission modes through the real Octocode runtime with a scripted model, bound without a UI as a headless run is (print
- * and JSON mode, every subagent). Runs the source by default; `OCTOCODE_E2E_ENTRY=dist` loads the built extension.
+ * and JSON mode, every subagent).
  */
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ENTRY =
-	process.env.OCTOCODE_E2E_ENTRY === "dist"
-		? path.join(HERE, "..", "..", "dist", "index.js")
-		: path.join(HERE, "..", "..", "src", "index.ts");
-const octocode = (await import(ENTRY)).default as FeatureRegister;
 
 const savedEnv = { ...process.env };
 const sessions: Array<{ dispose(): void }> = [];
@@ -113,10 +106,7 @@ async function headless(env: Record<string, string>) {
 		agentDir: path.join(root, "agent"),
 		settingsManager,
 		nativeFeatures: nativeFeatureSet(),
-		features: testFeatures([
-			{ name: "faux-provider", factory: provider },
-			{ name: "octocode", factory: octocode },
-		]),
+		features: testFeatures([{ name: "faux-provider", factory: provider }]),
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,

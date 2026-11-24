@@ -79,6 +79,19 @@ describe("buildSystemPrompt", () => {
 	});
 
 	describe("custom tool snippets", () => {
+		test("only points to native schema lookup when the management tool is declared", () => {
+			const options = {
+				cwd: "/tmp",
+				selectedTools: ["mcp"],
+				onDemandTools: ["archive"],
+				toolSnippets: { archive: "Search sessions" },
+			};
+			expect(buildSystemPromptSections(options).tools).toContain("`mcp`");
+			const hidden = buildSystemPromptSections({ ...options, hiddenTools: ["mcp"] }).tools;
+			expect(hidden).toContain("archive");
+			expect(hidden).not.toContain("`mcp`");
+		});
+
 		test("includes custom tools in available tools section when promptSnippet is provided", () => {
 			const prompt = buildSystemPrompt({
 				selectedTools: ["read", "dynamic_tool"],

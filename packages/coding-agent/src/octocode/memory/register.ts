@@ -162,7 +162,7 @@ export function registerMemory(
 		if (!event.willRetry) return;
 		const injection = injectionFor(ctx, "");
 		if (!injection) return;
-		await api.session.sendMessage(injection.message, { triggerTurn: false, deliverAs: "followUp" });
+		await api.session.sendMessage(injection.message, { triggerTurn: false });
 	});
 
 	api.bus.on("message_end", async (event, ctx) => {

@@ -1,3 +1,5 @@
+import { sessionFolder } from "../shared/home.ts";
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { FeatureContext, FeatureSetup } from "../../core/features/index.ts";
 import { runningWorkOf } from "../shared/running-work.ts";
 import { TASK_TYPE } from "../shared/messages.ts";
@@ -7,6 +9,19 @@ import { asyncJobsFor } from "./registry.ts";
 import { taskDetails, taskReport } from "./report.ts";
 import { renderTaskMessage } from "./render.ts";
 import { contentText } from "../shared/util.ts";
+
+/** IDs remain unique when a user resumes or forks a transcript containing earlier hand-offs. */
+function lastTaskNumber(session: FeatureContext["sessionManager"]): number {
+	let highest = 0;
+	for (const entry of session.getEntries()) {
+		const details = entry.type === "message" && entry.message.role === "toolResult" ? entry.message.details : undefined;
+		if (!isRecord(details) || details.kind !== "job-started" || typeof details.job !== "string") continue;
+		const match = /^task-(\d+)$/.exec(details.job);
+		const number = Number(match?.[1]);
+		if (Number.isSafeInteger(number)) highest = Math.max(highest, number);
+	}
+	return highest;
+}
 
 /**
  * Connects the session's `AsyncJobs`: a finished job's report goes to this session through the wake gate (a stop by the
@@ -22,7 +37,8 @@ export function registerAsyncJobs(api: FeatureSetup): void {
 		current = ctx;
 		asyncJobsFor(ctx.sessionManager).attach({
 			work,
-			deliver: (job, outcome) => {
+			lastTaskNumber: () => lastTaskNumber(ctx.sessionManager),
+			deliver: async (job, outcome) => {
 				const stopped = outcome.kind === "stopped";
 				const details = taskDetails(job, outcome);
 				return wakeGateOf(api).emit(
@@ -34,8 +50,15 @@ export function registerAsyncJobs(api: FeatureSetup): void {
 						startedAt: job.startedAt,
 						...(stopped ? { stopped: true } : {}),
 					},
-					{ customType: TASK_TYPE, content: taskReport(job, outcome), display: true, details },
-					{ triggerTurn: !stopped, deliverAs: "followUp", together: true },
+					{
+						customType: TASK_TYPE,
+						content: await taskReport(job, outcome, () =>
+							sessionFolder("output", ctx.sessionManager.getSessionId(), process.env, ctx.cwd),
+						),
+						display: true,
+						details,
+					},
+					{ triggerTurn: !stopped, deliverAs: stopped ? "followUp" : "steer", together: true },
 				);
 			},
 			failed: (job, error) => {

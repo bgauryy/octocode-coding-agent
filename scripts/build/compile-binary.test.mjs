@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { relative } from "node:path";
 import { test } from "node:test";
-import { compileOptions, INK_DEVTOOLS_STUB, inkDevtoolsPlugin } from "./compile-binary.mjs";
+import { compileOptions } from "./compile-binary.mjs";
 
 test("the binary compiles the source entry, embeds the image worker at the path the runtime starts it by", () => {
 	const options = compileOptions("/out/octocode", "bun-linux-x64-baseline");
@@ -18,15 +18,4 @@ test("the binary compiles the source entry, embeds the image worker at the path 
 		autoloadDotenv: false,
 		target: "bun-linux-x64-baseline",
 	});
-});
-
-test("only Ink's devtools module is stubbed", () => {
-	const resolvers = [];
-	inkDevtoolsPlugin.setup({ onResolve: (_filter, fn) => resolvers.push(fn), onLoad: () => {} });
-	const [resolve] = resolvers;
-	assert.deepEqual(resolve({ path: "./devtools.js", importer: "/r/node_modules/ink/build/reconciler.js" }), {
-		path: INK_DEVTOOLS_STUB,
-		namespace: INK_DEVTOOLS_STUB,
-	});
-	assert.equal(resolve({ path: "./devtools.js", importer: "/r/packages/coding-agent/src/x.ts" }), undefined);
 });

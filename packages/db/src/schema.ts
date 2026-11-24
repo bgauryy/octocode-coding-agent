@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import * as schemaVersion from "./queries/schema-version.ts";
 import { ENSURED_OBJECTS, FTS, SCHEMA } from "./schema-sql.ts";
 import { ensureAddedColumns } from "./schema-columns.ts";
+import { ensureWorkspaceEventKeys } from "./schema-events.ts";
 
 /** A foreign file or unsupported schema. Retrying the same file cannot fix it. */
 export class AgentDbError extends Error {}
@@ -16,7 +17,7 @@ export interface FileKind {
 	/** The one schema version this Octocode writes and reads; a file at any other version is refused. */
 	version: number;
 	/** Adds objects an existing current file may lack; runs on every open. */
-	ensure?(db: DatabaseSync): void;
+	ensure?(db: DatabaseSync, transaction: Transaction): void;
 	/** Creates the newest schema in an empty file; returns whether FTS5 was available. */
 	create(db: DatabaseSync): { fts: boolean };
 }
@@ -26,9 +27,10 @@ export const COORDINATION_FILE: FileKind = {
 	applicationId: AGENT_APPLICATION_ID,
 	name: "Octocode agent database",
 	version: 10,
-	ensure: (db) => {
+	ensure: (db, transaction) => {
 		db.exec(ENSURED_OBJECTS);
 		ensureAddedColumns(db);
+		ensureWorkspaceEventKeys(db, transaction);
 	},
 	create: (db) => {
 		db.exec(SCHEMA);
@@ -90,7 +92,7 @@ export function prepareSchema(
 	for (;;) {
 		const state = schemaState(db, file, kind);
 		if (state.status === "current") {
-			kind.ensure?.(db);
+			kind.ensure?.(db, transaction);
 			return { fts: state.fts };
 		}
 		const created = transaction(() => {

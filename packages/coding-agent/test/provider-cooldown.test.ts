@@ -1,3 +1,4 @@
+import { streamSimple } from "@octocodeai/octocode-ai/compat";
 import {
 	type Api,
 	type AssistantMessage,
@@ -128,6 +129,7 @@ describe("provider cool-downs", () => {
 		const cooldowns = new ProviderCooldowns(() => store);
 		cooldowns.record("anthropic", { retryAfterMs: 3_000 });
 		await vi.advanceTimersByTimeAsync(1_000);
+		vi.spyOn(Math, "random").mockReturnValue(0);
 		const heard: (number | undefined)[] = [];
 		let done = false;
 		const waiting = cooldowns.wait("anthropic", { onWait: (until) => heard.push(until) }).then(() => (done = true));
@@ -143,6 +145,42 @@ describe("provider cool-downs", () => {
 		const assertion = expect(aborted).rejects.toMatchObject({ name: "AbortError" });
 		controller.abort();
 		await assertion;
+	});
+
+	it("spreads simultaneous requests after the shared deadline, within the caller's wait limit", async () => {
+		vi.useFakeTimers();
+		const cooldowns = new ProviderCooldowns(() => sharedStore());
+		cooldowns.record("anthropic", { retryAfterMs: 4_000 });
+		vi.spyOn(Math, "random").mockReturnValueOnce(0).mockReturnValueOnce(0.75);
+		const start = Date.now();
+		const sent: number[] = [];
+		const send = () => cooldowns.wait("anthropic", { maxWaitMs: 4_200 }).then(() => sent.push(Date.now() - start));
+		const calls = Promise.all([send(), send()]);
+		await vi.advanceTimersByTimeAsync(4_000);
+		expect(sent).toEqual([4_000]);
+		await vi.advanceTimersByTimeAsync(200);
+		await calls;
+		expect(sent[1]).toBeGreaterThan(4_000);
+		expect(sent[1]).toBeLessThanOrEqual(4_200);
+	});
+
+	it("allows a full quota window after repeated 429s on Bedrock's OpenAI-compatible endpoint", async () => {
+		vi.useFakeTimers();
+		const cooldowns = new ProviderCooldowns(() => sharedStore());
+		const bedrock = {
+			...model("custom"),
+			api: "openai-completions" as const,
+			baseUrl: "https://bedrock-mantle.us-east-1.api.aws/v1",
+		};
+		const error = fauxAssistantMessage("", { stopReason: "error", errorMessage: "429 Too many requests" });
+		for (const pause of [2, 4, 8, 16, 32, 60, 60]) {
+			// Auth selects the physical endpoint after the model was chosen.
+			const step = cooldownStep(model("custom"), undefined, cooldowns);
+			await step.ready(bedrock);
+			step.observer.onEvent?.({ type: "error", reason: "error", error });
+			expect(cooldowns.remainingMs("custom")).toBe(pause * 1_000);
+			await vi.advanceTimersByTimeAsync(pause * 1_000);
+		}
 	});
 
 	it("refuse a wait longer than the caller accepts, without waiting", async () => {
@@ -178,20 +216,25 @@ function failed(message: AssistantMessage): AssistantMessageEventStream {
 }
 
 /** A host whose provider answers each request with the next reply. */
-function hostAnswering(replies: AssistantMessage[]): ModelRequestHost & { sent: number[] } {
+function hostAnswering(
+	replies: AssistantMessage[],
+	send?: Provider["streamSimple"],
+): ModelRequestHost & { sent: number[] } {
 	const sent: number[] = [];
 	const provider = {
-		streamSimple: () => {
-			sent.push(Date.now());
-			const reply = replies.shift() ?? fauxAssistantMessage("done");
-			if (reply.stopReason === "error") return failed(reply);
-			const stream = createAssistantMessageEventStream();
-			queueMicrotask(() => {
-				stream.push({ type: "done", reason: "stop", message: reply });
-				stream.end(reply);
-			});
-			return stream;
-		},
+		streamSimple:
+			send ??
+			(() => {
+				sent.push(Date.now());
+				const reply = replies.shift() ?? fauxAssistantMessage("done");
+				if (reply.stopReason === "error") return failed(reply);
+				const stream = createAssistantMessageEventStream();
+				queueMicrotask(() => {
+					stream.push({ type: "done", reason: "stop", message: reply });
+					stream.end(reply);
+				});
+				return stream;
+			}),
 	} as unknown as Provider;
 	return {
 		sent,
@@ -208,6 +251,68 @@ function hostAnswering(replies: AssistantMessage[]): ModelRequestHost & { sent: 
 }
 
 describe("a chat request through the runtime", () => {
+	it("blocks a sibling model before a real adapter retries and succeeds", async () => {
+		const provider = `retry-sibling-${process.pid}-${Date.now()}`;
+		const first = { ...model(provider), api: "openai-completions" as const };
+		const host = hostAnswering([], streamSimple);
+		const fetch = vi
+			.fn<typeof globalThis.fetch>()
+			.mockResolvedValueOnce(new Response("Too many requests", { status: 429, headers: { "retry-after-ms": "150" } }))
+			.mockResolvedValueOnce(
+				new Response(
+					'data: {"id":"ok","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+					{ headers: { "content-type": "text/event-stream" } },
+				),
+			);
+		const observed: AssistantMessage[] = [];
+		const result = await streamSimpleChatModel(
+			host,
+			first,
+			{ messages: [] },
+			{
+				maxRetries: 1,
+				fetch,
+				async onRateLimit() {
+					observed.push(
+						await streamSimpleChatModel(
+							host,
+							{ ...first, id: "sibling" },
+							{ messages: [] },
+							{ maxRetryDelayMs: 1, fetch },
+						).result(),
+					);
+				},
+			},
+		).result();
+		expect(observed, result.errorMessage).toHaveLength(1);
+		expect(observed[0].errorMessage).toContain("was not sent");
+		expect(result.stopReason).toBe("stop");
+		expect(fetch).toHaveBeenCalledTimes(2);
+	});
+
+	it("shares a physical 429 immediately and rechecks peers before a transport retry", async () => {
+		vi.useFakeTimers();
+		const store = sharedStore();
+		const a = new ProviderCooldowns(() => store);
+		const b = new ProviderCooldowns(() => store);
+		const observe = vi.fn();
+		const request = cooldownStep(model("shared"), { onRateLimit: observe }, a);
+		await request.ready();
+		await request.hooks.onRateLimit?.(500);
+		expect(observe).toHaveBeenCalledWith(500);
+		expect(b.remainingMs("shared")).toBe(500);
+		await vi.advanceTimersByTimeAsync(500);
+		b.record("shared", { retryAfterMs: 1000 });
+		const admitted = vi.fn();
+		const retry = Promise.resolve(request.hooks.onTransportRetry?.()).then(admitted);
+		expect(await cooldownStep(model("other"), undefined, a).ready()).toBeUndefined();
+		await vi.advanceTimersByTimeAsync(999);
+		expect(admitted).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(501);
+		await retry;
+		expect(admitted).toHaveBeenCalledOnce();
+	});
+
 	it("records its provider's cool-down on a rate limit, and the next request waits it out", async () => {
 		const provider = `cooldown-test-${process.pid}-${Date.now()}`;
 		const limited = {

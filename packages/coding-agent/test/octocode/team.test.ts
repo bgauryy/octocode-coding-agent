@@ -330,10 +330,13 @@ describe("agents view", () => {
 		const lines = widgetLines(list, "main-aaaaaa", now, theme, 120);
 		expect(lines.join("\n")).not.toMatch(/main-cccccc|c-0003/);
 		// The root row carries no tally; the marks say who works. A grandchild sits under its parent.
-		expect(lines).toHaveLength(3);
-		expect(lines[0]).toMatch(/^ 🦑 main-aaaaaa ○ · main +1m39s$/);
-		expect(lines[1]).toMatch(/^ └ ○ a-0001 +· a-0001 +10s$/);
-		expect(lines[2]).toMatch(/^ {3}└ ⏺ b-0002 +· b-0002 +· › → localSearch foo +1m$/);
+		// Each agent's role and time are on its open detail line, the time at the terminal's edge.
+		expect(lines).toHaveLength(5);
+		expect(lines[0]).toBe(" 🦑 main-aaaaaa ○");
+		expect(lines[1]).toBe(" └ ○ a-0001");
+		expect(lines[2]).toBe(`${"     a-0001".padEnd(117)}10s`);
+		expect(lines[3]).toBe("   └ ⏺ b-0002     · › → localSearch foo");
+		expect(lines[4]).toBe(`${"       b-0002".padEnd(118)}1m`);
 		expect(
 			widgetLines(
 				[

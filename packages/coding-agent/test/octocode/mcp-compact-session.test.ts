@@ -50,7 +50,8 @@ describe("thin MCP declarations in the agent loop", () => {
 			description: "Read files.",
 			parameters: {
 				type: "object",
-				properties: { queries: { type: "array", maxItems: 2 } },
+				// An array keeps its bounds and the one primitive type of its items.
+				properties: { queries: { type: "array", maxItems: 2, items: { type: "string" } } },
 				additionalProperties: true,
 				required: ["queries"],
 			},

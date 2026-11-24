@@ -6,6 +6,7 @@ import type { GoogleVertexOptions } from "../api/google-vertex.ts";
 import type { MistralOptions } from "../api/mistral-conversations.ts";
 import type { OpenAICompletionsOptions } from "../api/openai-completions.ts";
 import type { OpenAIResponsesOptions } from "../api/openai-responses.ts";
+import type { OpenResponsesOptions } from "../api/openresponses.ts";
 import type { StreamOptions } from "../types.ts";
 import type { Api } from "./ids.ts";
 
@@ -20,6 +21,7 @@ export interface ApiOptionsMap {
 	"anthropic-messages": AnthropicOptions;
 	"openai-completions": OpenAICompletionsOptions;
 	"openai-responses": OpenAIResponsesOptions;
+	openresponses: OpenResponsesOptions;
 	"azure-openai-responses": AzureOpenAIResponsesOptions;
 	"google-generative-ai": GoogleOptions;
 	"google-vertex": GoogleVertexOptions;

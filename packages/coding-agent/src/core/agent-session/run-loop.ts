@@ -389,8 +389,8 @@ export class SessionRunLoop {
 			run.agentRunAbortRequested = true;
 		}
 		session.abortRetry();
-		// Only the user's Stop cancels a running compaction in the loop's `new` mode: a peer's interrupt waits behind it.
-		if (reason !== "peer" || session.settingsManager.getEventLoopMode() !== "new") session.abortCompaction();
+		// Only the user's Stop cancels a running compaction: a peer's interrupt waits behind it.
+		if (reason !== "peer") session.abortCompaction();
 		session.abortBranchSummary();
 		if (run.isBeforeSettle) run.beforeSettleAbort.abort();
 		session.agent.abort();

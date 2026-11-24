@@ -90,7 +90,7 @@ function thinObject(node: unknown, root: unknown, level: number): Schema | undef
 		...entries.filter(([key]) => !required.has(key)),
 	].slice(0, THIN_NESTED_NAMES);
 	// Object.fromEntries defines own properties, so a field named `__proto__` or `constructor` keeps its own type.
-	const properties = Object.fromEntries(ordered.map(([key, value]) => [key, thinProperty(value, root, level)]));
+	const properties = thinFields(ordered, root, level);
 	const listed = ordered.flatMap(([key]) => (required.has(key) ? [key] : []));
 	const complete = ordered.length === entries.length;
 	return {
@@ -158,7 +158,7 @@ function arrayFacts(schema: unknown, root: unknown, withItems: boolean): Schema 
  * and an array's item bounds. A top-level field that is an object, or an array of objects, also names its fields with
  * their thin schemas and the ones it requires; in that level, a field that is an array of objects names its items'
  * fields too (`queries[].ranges[].startLine`), a nested plain object only its type. Without these names a model sees
- * `queries: array` and cannot name a field such as `startLine` before reading the schema. Descriptions and other
+ * `queries: array` and cannot name a field such as `startLine` before reading the schema. Selector conditions survive in `thinFields`; other descriptions and
  * bounds stay out, and truncated or pattern-keyed objects stay open.
  */
 function thinProperty(schema: unknown, root: unknown, level: number): Schema {
@@ -176,6 +176,28 @@ function thinProperty(schema: unknown, root: unknown, level: number): Schema {
 	return { type, ...arrayFacts(schema, root, object === undefined), ...(object ? { items: object } : {}) };
 }
 
+/** Keep the server's sentences that pair a sibling selector with a declared value, such as
+ * `Only with view: matchOnly.` Some MCP servers express the restriction only in the field description.
+ */
+function thinFields(entries: [string, unknown][], root: unknown, level: number): Schema {
+	const fields = Object.fromEntries(entries.map(([name, value]) => [name, thinProperty(value, root, level)]));
+	for (const [name, value] of entries) {
+		const source = resolveLocalRef(value, root);
+		if (!isSchema(source) || typeof source.description !== "string") continue;
+		const conditions = source.description.split(/(?<=[.!?])\s+/u).filter((sentence) => {
+			for (const [, selector, choice] of sentence.matchAll(
+				/([\p{L}\p{N}_-]+)["']?\s*[:=]\s*["']?([\p{L}\p{N}_-]+)/gu,
+			)) {
+				const choices = selector !== name && Object.hasOwn(fields, selector) ? fields[selector].enum : undefined;
+				if (Array.isArray(choices) && choices.some((value) => String(value) === choice)) return true;
+			}
+			return false;
+		});
+		if (conditions.length) fields[name].description = conditions.join(" ");
+	}
+	return fields;
+}
+
 /**
  * The declared parameters of a thin tool: each top-level field with its JSON type (and the few values it allows, and
  * an array's item bounds), the top-level fields the schema requires, open otherwise. Without the top-level types,
@@ -190,9 +212,7 @@ export function thinParameters(inputSchema: unknown, { nested = true }: { nested
 	// Past the last level `thinProperty` names, a field declares only its type.
 	const level = nested ? 0 : 2;
 	// Object.fromEntries defines own properties, so a field named `__proto__` or `constructor` keeps its own type.
-	const properties: Record<string, Schema> = Object.fromEntries(
-		Object.entries(liftedProperties(inputSchema)).map(([key, value]) => [key, thinProperty(value, inputSchema, level)]),
-	);
+	const properties = thinFields(Object.entries(liftedProperties(inputSchema)), inputSchema, level);
 	if (!Object.keys(properties).length) return THIN_PARAMETERS;
 	const required = [...requiredNames(inputSchema, inputSchema)].filter((key) => Object.hasOwn(properties, key));
 	const thin: TSchema = {

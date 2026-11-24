@@ -39,17 +39,17 @@ function rig(over: Partial<LoopOptions<string>> = {}) {
 		onError: (error) => void errors.push(error),
 		...over,
 	});
-	const wake = (event: PayloadEvent, carry = "x", extra: { dedupeKey?: string; steer?: boolean } = {}) =>
+	const wake = (event: PayloadEvent, carry = "x", extra: { dedupeKey?: string } = {}) =>
 		loop.publish({
 			event,
 			source: child("a"),
 			wake: true,
-			steer: extra.steer ?? false,
+			priority: wakeCatalog.priority(event),
 			carry,
 			...(extra.dedupeKey ? { dedupeKey: extra.dedupeKey } : {}),
 		});
 	const ride = (event: PayloadEvent, carry = "x") =>
-		loop.publish({ event, source: child("a"), wake: false, steer: false, carry });
+		loop.publish({ event, source: child("a"), wake: false, priority: "regular", carry });
 	return { loop, sent, errors, store, wake, ride };
 }
 
@@ -87,11 +87,23 @@ describe("a batch", () => {
 		event,
 		source,
 		wake: true,
-		steer: false,
+		priority: "regular",
 		carry: "c",
 		seq,
 		queue: "Q3",
 		arrival: seq,
+	});
+
+	it("delivers raw entries without formatting a digest and computes the optional summary once", () => {
+		const describeEvent = vi.fn(wakeCatalog.describe);
+		const batch = buildBatch({ ...wakeCatalog, describe: describeEvent }, [logged(jobExit("a"), 1)]);
+		expect(batch.entries).toHaveLength(1);
+		expect(batch.trigger).toBe(true);
+		expect(describeEvent).not.toHaveBeenCalled();
+		expect(batch.lines).toHaveLength(1);
+		expect(batch.more).toBe(0);
+		expect(batch.range).toBeUndefined();
+		expect(describeEvent).toHaveBeenCalledTimes(1);
 	});
 
 	it("turns events with one coalescing key into one counted line", () => {
@@ -131,6 +143,49 @@ describe("a batch", () => {
 describe("the event loop", () => {
 	beforeEach(() => vi.useFakeTimers());
 	afterEach(() => vi.useRealTimers());
+
+	it("moves a burst accumulated during compaction to its resumed run in one batch", () => {
+		const { loop, sent } = rig();
+		loop.lock();
+		const notification = {
+			event: jobExit("many"),
+			priority: "regular" as const,
+			wake: true,
+			source: child("worker"),
+			carry: "result",
+		};
+		const count = 150_000;
+		for (let index = 0; index < count; index++) loop.notify(notification);
+		loop.signal("unlock");
+		loop.signal("run_start");
+		loop.stepBoundary();
+		expect(sent).toHaveLength(1);
+		expect(sent[0].batch.entries).toHaveLength(count);
+		expect(sent[0].batch.lines[0].count).toBe(count);
+		expect(loop.queued()).toEqual({ Q1: 0, Q2: 0, Q3: 0 });
+	});
+
+	it("defers a reentrant wake until the next tick and gives queued input priority", async () => {
+		const batches: string[][] = [];
+		let replay: Promise<number> | undefined;
+		const { loop, wake, store } = rig({
+			deliver(batch) {
+				batches.push(batch.entries.map((entry) => entry.carry));
+				if (batches.length === 1) {
+					wake(jobExit("second"), "completion");
+					loop.input("typed", "user");
+					replay = loop.replay(() => "duplicate");
+				}
+			},
+		});
+		wake(jobExit("first"), "first");
+		expect(batches).toEqual([["first"]]);
+		expect(await replay).toBe(0);
+		expect(store.offset()).toBe(1);
+		await vi.runAllTimersAsync();
+		expect(batches).toEqual([["first"], ["user", "completion"]]);
+		expect(store.offset()).toBe(2);
+	});
 
 	it("delivers a wake to an idle session at once when there is no window", () => {
 		const { wake, sent } = rig();
@@ -198,18 +253,34 @@ describe("the event loop", () => {
 		expect(loop.state).toBe("idle");
 	});
 
-	it("joins a steer and typed input to a run at its next step boundary", () => {
+	it("delivers typed input first and both completions at the next step boundary", () => {
 		const { wake, sent, loop } = rig();
 		loop.signal("run_start");
 		wake(jobExit("j1"), "later");
-		wake(report("b"), "steer", { steer: true });
+		wake(report("b"), "report");
 		loop.input("now", "typed");
 		expect(sent).toHaveLength(0);
 		loop.stepBoundary();
 		expect(sent).toHaveLength(1);
 		expect(sent[0]?.point).toBe("boundary");
-		expect(carries(sent[0])).toEqual(["typed", "steer"]);
-		expect(loop.queued().Q3).toBe(1);
+		expect(carries(sent[0])).toEqual(["typed", "later", "report"]);
+		expect(loop.queued()).toEqual({ Q1: 0, Q2: 0, Q3: 0 });
+	});
+
+	it("holds urgent mail past the aborted tool boundary until the stopped run can start its successor", () => {
+		const interrupt = vi.fn();
+		const { wake, sent, loop } = rig({ interrupt });
+		loop.signal("run_start");
+		const message = { kind: "agent.message", from: "parent", replyRequired: false, interrupt: true } as const;
+		wake({ ...message, id: 1 }, "urgent mail");
+		wake({ ...message, id: 2 }, "second mail");
+		expect(interrupt).toHaveBeenCalledOnce();
+		loop.stepBoundary();
+		expect(sent).toHaveLength(0);
+		expect(loop.takeInterrupt()).toBe(true);
+		expect(loop.settle()).toBe(true);
+		expect(carries(sent[0])).toEqual(["urgent mail", "second mail"]);
+		expect(sent[0].point).toBe("settle");
 	});
 
 	it("delivers nothing while compaction holds the lock, then everything once, user input first", () => {
@@ -225,6 +296,8 @@ describe("the event loop", () => {
 		expect(sent).toHaveLength(1);
 		expect(sent[0]?.point).toBe("drain");
 		expect(carries(sent[0])).toEqual(["typed", "event"]);
+		expect(loop.state).toBe("running");
+		loop.signal("run_end");
 		expect(loop.state).toBe("idle");
 	});
 
@@ -242,7 +315,9 @@ describe("the event loop", () => {
 		const { wake, sent, loop } = rig();
 		loop.signal("run_start");
 		loop.signal("stop");
-		wake(jobExit("j1"));
+		wake(jobExit("j1"), "finished");
+		loop.input("later", "user");
+		loop.stepBoundary();
 		expect(loop.settle()).toBe(false);
 		expect(sent).toHaveLength(0);
 		loop.lock();
@@ -261,21 +336,22 @@ describe("the event loop", () => {
 		expect(loop.queued().Q3).toBe(1);
 	});
 
-	it("drops an event whose dedupe key was already logged", () => {
+	it("drops an event whose dedupe key was already logged", async () => {
 		const { wake, sent, loop } = rig({ windowMs: () => 2000 });
-		expect(wake(jobExit("j1"), "first", { dedupeKey: "job:j1" }).accepted).toBe(true);
-		expect(wake(jobExit("j1"), "again", { dedupeKey: "job:j1" }).accepted).toBe(false);
+		expect((await wake(jobExit("j1"), "first", { dedupeKey: "job:j1" })).accepted).toBe(true);
+		expect((await wake(jobExit("j1"), "again", { dedupeKey: "job:j1" })).accepted).toBe(false);
 		vi.advanceTimersByTime(2100);
 		expect(carries(sent[0])).toEqual(["first"]);
 		expect(loop.queued().Q3).toBe(0);
 	});
 
-	it("gives each event its place in one order", () => {
+	it("gives each event its place in one order", async () => {
 		const { wake, ride } = rig({ windowMs: () => 2000 });
-		expect([wake(jobExit("a")).seq, ride(jobExit("b")).seq, wake(jobExit("c")).seq]).toEqual([1, 2, 3]);
+		const events = await Promise.all([wake(jobExit("a")), ride(jobExit("b")), wake(jobExit("c"))]);
+		expect(events.map((event) => event.seq)).toEqual([1, 2, 3]);
 	});
 
-	it("moves the offset past what was delivered only, so a restart replays the rest once", () => {
+	it("moves the offset past what was delivered only, so a restart replays the rest once", async () => {
 		const { wake, ride, store, loop } = rig();
 		ride(jobExit("held"), "held");
 		wake(jobExit("j2"), "sent");
@@ -293,11 +369,11 @@ describe("the event loop", () => {
 			deliver: (batch, point) => void replayed.push({ batch, point }),
 			onError: () => undefined,
 		});
-		expect(restarted.replay(() => "replayed")).toBe(1);
+		expect(await restarted.replay(() => "replayed")).toBe(1);
 		// `agent.report` wakes by the catalog, so the replayed event is delivered, and once
 		expect(replayed.map((each) => carries(each))).toEqual([["replayed"]]);
 		expect(store.offset()).toBe(3);
-		expect(restarted.replay(() => "replayed")).toBe(0);
+		expect(await restarted.replay(() => "replayed")).toBe(0);
 	});
 
 	it("puts a batch back and reports the failure when delivery throws", () => {
@@ -313,7 +389,7 @@ describe("the event loop", () => {
 			},
 			onError: (error) => void errors.push(error),
 		});
-		loop.publish({ event: jobExit("j1"), source: child("a"), wake: true, steer: false, carry: "one" });
+		loop.publish({ event: jobExit("j1"), source: child("a"), wake: true, priority: "regular", carry: "one" });
 		expect(errors).toHaveLength(1);
 		expect(loop.queued().Q3).toBe(1);
 		fail = false;
@@ -335,8 +411,8 @@ describe("the event loop", () => {
 			},
 			onError: () => undefined,
 		});
-		loop.publish({ event: jobExit("j1"), source: child("a"), wake: true, steer: false, carry: "one" });
-		loop.publish({ event: jobExit("j2"), source: child("a"), wake: true, steer: false, carry: "two" });
+		loop.publish({ event: jobExit("j1"), source: child("a"), wake: true, priority: "regular", carry: "one" });
+		loop.publish({ event: jobExit("j2"), source: child("a"), wake: true, priority: "regular", carry: "two" });
 		expect(sent).toHaveLength(1);
 		expect(store.offset()).toBe(0);
 		release();

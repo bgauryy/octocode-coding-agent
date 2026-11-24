@@ -1,10 +1,9 @@
 import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import type { AgentTool } from "@octocodeai/octocode-agent-core";
 import { Type } from "typebox";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { AgentEvent } from "../../../src/octocode/wake/catalog.ts";
-import { branchLines, count, createRig, expectExitQueued, IN_NEW_MODE, wakeGateOf, type Rig } from "./rig.ts";
-import { Mail } from "../../../src/octocode/team/mail.ts";
+import { branchLines, count, createRig, expectExitQueued, wakeGateOf, type Rig } from "./rig.ts";
 import { gateSummary } from "./summary-gate.ts";
 
 /**
@@ -156,51 +155,7 @@ describe("an event during the automatic compaction between two requests of one r
 		await running;
 		await rig.harness.session.waitForIdle();
 		expectAfterSummary(rig);
-		// The live loop (`new`, R6) delivers what the lock held at the summary's end, in order, not into the request the summary
-		// was made for: the message is in the branch once, after the summary (checked above), and the run goes on.
-		if (IN_NEW_MODE) return;
-		// A steer joins the very request the summary was made for; a follow-up waits for the answer to it (one turn later).
-		const carrying = rig.requests.findIndex((request) => count(request, WAKE) > 0);
-		expect(carrying).toBe(deliverAs === "steer" ? 0 : 1);
-		expect(rig.requests.filter((request) => count(request, WAKE) > 0)).toHaveLength(deliverAs === "steer" ? 1 : 1);
 	});
-
-	// `new` also stops at 95% and a peer's interrupt spares a compaction (R5): compaction-stop.test.ts pins that mode.
-	it.skipIf(IN_NEW_MODE)(
-		"never reaches checkCompaction between the first request and the end of the run (run-loop.ts:205, :282)",
-		async () => {
-			const rig = await midRun();
-			const session = rig.harness.session as unknown as { _checkCompaction: (...args: unknown[]) => Promise<boolean> };
-			const order: string[] = [];
-			const original = session._checkCompaction.bind(session);
-			session._checkCompaction = (...args: unknown[]) => {
-				order.push(args[1] === true ? "check:after-run" : "check:before-run");
-				return original(...args);
-			};
-			rig.harness.session.subscribe((event) => {
-				if (event.type === "agent_start" || event.type === "agent_end" || event.type === "compaction_start")
-					order.push(event.type);
-				if (event.type === "turn_end") order.push("turn_end");
-			});
-			const gate = gateSummary(rig.harness.session);
-			const running = rig.harness.session.prompt("run the tools");
-			await gate.started;
-			gate.release();
-			await running;
-			await rig.harness.session.waitForIdle();
-			// The threshold was crossed inside the run and compacted there, by the request hooks, not by checkCompaction.
-			expect(order.slice(0, 6)).toEqual([
-				"check:before-run",
-				"agent_start",
-				"turn_end",
-				"turn_end",
-				"compaction_start",
-				"turn_end",
-			]);
-			expect(order.indexOf("check:after-run")).toBeGreaterThan(order.lastIndexOf("agent_end") - 1);
-			expect(order.filter((entry) => entry.startsWith("check:"))).toEqual(["check:before-run", "check:after-run"]);
-		},
-	);
 });
 
 describe("an event during a manual /compact (prompting.ts:208)", () => {
@@ -220,6 +175,20 @@ describe("an event during a manual /compact (prompting.ts:208)", () => {
 		expect(count(rig.requests[0], WAKE)).toBe(1);
 	});
 
+	it("records the job without waking the session after the user stops compaction", async () => {
+		const rig = await seeded((r) => [r.reply("unexpected wake")]);
+		const pending = gateSummary(rig.harness.session);
+		const compacting = rig.harness.session.compact();
+		const cancelled = expect(compacting).rejects.toThrow(/cancel|abort/i);
+		await pending.started;
+		await send(rig, "steer");
+		await rig.harness.session.abort("interrupted");
+		await cancelled;
+		await rig.harness.session.waitForIdle();
+		expect(count(branchLines(rig.harness), WAKE)).toBe(1);
+		expect(rig.requests).toHaveLength(0);
+	});
+
 	it("also delivers after a failed summary: the wake is not lost with it", async () => {
 		const rig = await seeded((r) => [r.reply("turn A")]);
 		const gate = gateSummary(rig.harness.session);
@@ -234,51 +203,6 @@ describe("an event during a manual /compact (prompting.ts:208)", () => {
 		expect(count(branch, WAKE)).toBe(1);
 		expect(rig.requests).toHaveLength(1);
 	});
-});
-
-describe("a mail interrupt during the automatic compaction after a run (team/mail.ts:126 \u2192 run-loop.ts:354)", () => {
-	// `new` also stops at 95% and a peer's interrupt spares a compaction (R5): compaction-stop.test.ts pins that mode.
-	it.skipIf(IN_NEW_MODE)(
-		"cancels the summary; the mail's turn then compacts again first (before-run check, run-loop.ts:205) and carries the mail after it",
-		async () => {
-			const rig = await seeded((r) => [
-				fauxAssistantMessage(`big:${"e".repeat(5000)}`),
-				r.reply("continued with the mail"),
-				r.reply("must not be consumed"),
-			]);
-			const gate = gateSummary(rig.harness.session);
-			const running = rig.harness.session.prompt("go big");
-			await gate.started;
-			const mail = new Mail(rig.api);
-			const interrupt = {
-				id: 1,
-				from: "parent-1",
-				to: "me",
-				text: "MAIL-STOP",
-				at: 1,
-				replyRequired: false,
-				interrupt: true,
-				wake: true,
-			};
-			expect(mail.deliver([interrupt], "parent-1", rig.ctx)).toBe(true);
-			await running.catch(() => undefined);
-			await rig.harness.session.waitForIdle();
-			// The first summary was cancelled: no compaction entry, no model request, the mail still held.
-			expect(branchLines(rig.harness)).not.toContain("compaction");
-			expect(gate.requests()).toBe(1);
-			expect(rig.requests).toHaveLength(0);
-			expect(mail.settled()).toBe(true);
-			// The turn the mail starts finds the context still over the threshold and summarizes again before it answers (R7 decides
-			// whether a cancelled compaction should be retried at all).
-			await vi.waitFor(() => expect(gate.requests()).toBeGreaterThanOrEqual(2));
-			expect(rig.requests).toHaveLength(0);
-			gate.release();
-			await rig.harness.session.waitForIdle();
-			expectAfterSummaryOf(rig, "MAIL-STOP");
-			expect(rig.requests).toHaveLength(1);
-			expect(count(rig.requests[0], "MAIL-STOP")).toBe(1);
-		},
-	);
 });
 
 describe("the threshold path after a run (run-loop.ts:282, compaction-check.ts:97-98)", () => {

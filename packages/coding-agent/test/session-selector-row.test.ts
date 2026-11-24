@@ -66,7 +66,7 @@ const rowLines = (extras: SessionExtras, width = 100): string[] =>
 describe("a live session's activity in its row", () => {
 	it("shows what another live session is doing as the activity badge, not only the presence dot", () => {
 		const [title, line2] = rowLines({ live: true, activity: "waiting", cost: "≈$1.84" });
-		expect(title).toContain("◇ hello");
+		expect(title).toContain("◐ hello");
 		expect(line2.trimStart().startsWith("needs you · ")).toBe(true);
 		expect(rowLines({ live: true, activity: "error" })[1]).toContain("failed");
 		expect(rowLines({ live: true, activity: "working" })[1]).toContain("working");

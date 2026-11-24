@@ -12,7 +12,6 @@ import {
 	estimateLeafContextTokens,
 	estimateUndeclaredToolTokens,
 	exceedsContextWindow,
-	shouldCompact,
 	shouldStopForCompaction,
 } from "../compaction/index.ts";
 import { withoutHiddenDeclarations } from "../hidden-declarations.ts";
@@ -96,9 +95,7 @@ function needsCompaction(
 	);
 	return compactedSinceLastResponse(projection, session.sessionManager)
 		? exceedsContextWindow(tokens, model.contextWindow, settings, model.maxTokens)
-		: session.settingsManager.getEventLoopMode() === "new"
-			? shouldStopForCompaction(tokens, model.contextWindow, settings)
-			: shouldCompact(tokens, model.contextWindow, settings);
+		: shouldStopForCompaction(tokens, model.contextWindow, settings);
 }
 
 export function installAgentInputPreparation(host: AgentHooksHost): void {

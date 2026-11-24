@@ -101,6 +101,40 @@ describe("event log", () => {
 		expect(rows[0]?.ref).toBe('{"id":"x"}');
 	});
 
+	it.each(["fresh", "legacy"] as const)("deduplicates per workspace in a %s event log", (format) => {
+		if (format === "legacy") {
+			agent.db.exec(`DROP TABLE event_log;
+				CREATE TABLE event_log (
+					seq INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), session_id TEXT,
+					at INTEGER NOT NULL, topic TEXT NOT NULL, key TEXT NOT NULL, source TEXT NOT NULL, payload TEXT NOT NULL,
+					digest TEXT NOT NULL, ref TEXT, dedupe_key TEXT UNIQUE
+				);`);
+		}
+		// A subscriber may have advanced beyond the newest remaining row before the file was closed.
+		agent.db.exec(`INSERT INTO event_log(seq, workspace_id, at, topic, key, source, payload, digest, dedupe_key)
+			VALUES (8, 'w1', 1, 'job.exit', 'old', '{}', '{}', 'done', 'job:1:exit'),
+			       (12, 'w1', 2, 'job.exit', 'gone', '{}', '{}', 'done', NULL);
+			DELETE FROM event_log WHERE seq = 12;`);
+		agent.close();
+		agent = openDatabase(locations(file));
+		const key = "job:1:exit";
+		expect(events.append(agent.db, event("retry", { dedupeKey: key }))).toEqual({ inserted: false, seq: 8 });
+		const second = events.append(agent.db, event("other", { dedupeKey: key, workspaceId: "w2" }));
+		expect(second.inserted).toBe(true);
+		expect(second.seq).toBeGreaterThan(12);
+		expect(events.append(agent.db, event("again", { dedupeKey: key, workspaceId: "w2" }))).toEqual({
+			inserted: false,
+			seq: second.seq,
+		});
+		for (const [workspaceId, original] of [
+			["w1", "old"],
+			["w2", "other"],
+		]) {
+			const rows = events.read(agent.db, { workspaceId, after: 0 });
+			expect(rows.map((row) => [row.key, row.dedupe_key])).toEqual([[original, key]]);
+		}
+	});
+
 	it("does not reuse a seq after the newest event is purged", () => {
 		events.append(agent.db, event("a"));
 		events.purgeBefore(agent.db, 2_000, 10);

@@ -208,6 +208,8 @@ it("keeps notification observers independent of the foreground but cancels them 
 			}),
 	);
 	f.hooks.notification({ type: "permission_prompt", message: "Review" }, { ...f.ctx, signal: AbortSignal.abort() });
+	// The run starts from its `hook.Notification` event, one write after the notice.
+	await vi.waitFor(() => expect(received).toBeDefined());
 	expect(received.aborted).toBe(false);
 	await f.fire("session_shutdown", {}, f.ctx);
 	expect(received.aborted).toBe(true);

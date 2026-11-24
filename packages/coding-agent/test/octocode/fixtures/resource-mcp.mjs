@@ -20,6 +20,13 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 			if (failList) return send({ id: message.id, error: { code: -32603, message: "catalog unavailable" } });
 			result = { tools: [{ name: "link", description: "Get a resource link", inputSchema: { type: "object" } }] };
 			break;
+		case "resources/list":
+			result = { resources: [{ uri, name: "intro" }] };
+			break;
+		case "resources/read":
+			if (message.params.uri !== uri) return send({ id: message.id, error: { code: -32002, message: "Unknown URI" } });
+			result = { contents: [{ uri, text: "Resource evidence" }] };
+			break;
 		case "tools/call":
 			if (message.params.arguments?.failList) {
 				failList = true;

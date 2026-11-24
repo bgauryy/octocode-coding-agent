@@ -5,6 +5,7 @@ import { APP_NAME } from "../../config.ts";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { breakDeadLockSync, guardLockOwner } from "@octocodeai/octocode-common/lock-owner";
 import { type JsonlLine, parseJsonlLine } from "@octocodeai/octocode-common/jsonl";
+import { adoptWrittenReceipt } from "./entry-receipt.ts";
 import { generateId } from "./entries.ts";
 import { sealsLine } from "./sealed-line.ts";
 import type { SessionState } from "./state.ts";
@@ -168,16 +169,16 @@ function readForeignEntries(state: SessionState, file: string, known: number, to
 export function mergeForeignEntries(
 	state: SessionState,
 	file: string,
-	pending: readonly SessionEntry[] = [],
+	pending: SessionEntry[] = [],
 	to = statSync(file).size,
-): void {
+): boolean {
 	const size = to;
 	const known = state.fileSize;
 	if (known === undefined) {
 		state.fileSize = size;
-		return;
+		return false;
 	}
-	if (size === known) return;
+	if (size === known) return false;
 	if (size < known) {
 		throw new Error(`Session file shrank from ${known} to ${size} bytes; another process rewrote it.`);
 	}
@@ -187,11 +188,19 @@ export function mergeForeignEntries(
 	const foreign = readForeignEntries(state, file, known, size).filter((entry) => !state.byId.has(entry.id));
 	for (const entry of foreign) indexSessionEntry(entry, state.byId, state.labelsById, state.labelTimestampsById);
 	state.fileEntries.splice(pendingIndex === -1 ? state.fileEntries.length : pendingIndex, 0, ...foreign);
-	for (const entry of pending) {
-		if (state.byId.has(entry.id)) reassignEntryId(state, entry, pending);
+	for (let index = 0; index < pending.length;) {
+		const entry = pending[index];
+		const existing = state.byId.get(entry.id);
+		if (existing && adoptWrittenReceipt(state, entry, existing, pending)) {
+			pending.splice(index, 1);
+			continue;
+		}
+		if (existing) reassignEntryId(state, entry, pending);
+		index++;
 		state.byId.set(entry.id, entry);
 	}
 	state.fileSize = size;
+	return foreign.length > 0;
 }
 
 function reassignEntryId(state: SessionState, entry: SessionEntry, pending: readonly SessionEntry[]): void {

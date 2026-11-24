@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { withoutSourceHeader } from "@octocodeai/octocode-common/text";
 import path from "node:path";
 import { defaultSessionDirectories, knownSessionDirectories } from "../../core/session-manager/directories.ts";
 import type { CatalogEntry, CatalogRow } from "../../../../db/src/api.ts";
@@ -51,7 +52,7 @@ function rowInfo(row: CatalogRow): SessionInfo {
 		created: new Date(row.created_at),
 		modified: new Date(row.last_active),
 		messageCount: row.message_count,
-		firstMessage: row.first_prompt ?? NO_MESSAGES,
+		firstMessage: withoutSourceHeader(row.first_prompt ?? "") || NO_MESSAGES,
 		allMessagesText: "",
 	};
 }

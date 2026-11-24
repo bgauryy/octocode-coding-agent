@@ -1,4 +1,5 @@
 import type { ScrollView } from "../components/scroll-view.ts";
+import { animationClock } from "../tokens/clock.ts";
 
 /** How often a drag held past the edge of its scroll view scrolls it. */
 const AUTO_SCROLL_INTERVAL_MS = 50;
@@ -27,7 +28,8 @@ export class SelectionAutoScroll {
 	private direction: -1 | 0 | 1 = 0;
 	private distance = 0;
 	private ticks = 0;
-	private timer?: NodeJS.Timeout;
+	/** The animation clock subscription while a drag scrolls. */
+	private timer?: () => void;
 
 	constructor(host: SelectionAutoScrollHost) {
 		this.host = host;
@@ -60,8 +62,8 @@ export class SelectionAutoScroll {
 		this.direction = direction;
 		this.distance = direction < 0 ? visibleTop - pointer.y + 1 : pointer.y - visibleBottom + 1;
 		if (this.timer) return;
-		this.timer = setInterval(() => this.tick(), AUTO_SCROLL_INTERVAL_MS);
-		this.timer.unref();
+		// `info`: the scroll follows the user's drag, so reduced motion and decoration holds do not stop it.
+		this.timer = animationClock.subscribe(() => this.tick(), { everyMs: AUTO_SCROLL_INTERVAL_MS, kind: "info" });
 	}
 
 	/** Scroll one step; stop at the end of the content. */
@@ -83,7 +85,7 @@ export class SelectionAutoScroll {
 	}
 
 	stop(): void {
-		if (this.timer) clearInterval(this.timer);
+		this.timer?.();
 		this.timer = undefined;
 		this.pointer = undefined;
 		this.direction = 0;

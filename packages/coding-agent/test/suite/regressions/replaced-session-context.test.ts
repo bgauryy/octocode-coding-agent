@@ -1,3 +1,4 @@
+import { terminalInput } from "../../octocode/e2e-ui-flows/request.ts";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -240,7 +241,12 @@ describe("replaced session callbacks", () => {
 			runtime.session.messages
 				.filter((message) => message.role !== "system")
 				.map((message) => `${message.role}:${getText(message)}`),
-		).toEqual(["user:seed", "assistant:seed reply", "user:fork callback message", "assistant:fork reply"]);
+		).toEqual([
+			`user:${terminalInput("seed")}`,
+			"assistant:seed reply",
+			"user:fork callback message",
+			"assistant:fork reply",
+		]);
 	});
 
 	it("supports withSession for switchSession", async () => {
@@ -276,6 +282,11 @@ describe("replaced session callbacks", () => {
 			runtime.session.messages
 				.filter((message) => message.role !== "system")
 				.map((message) => `${message.role}:${getText(message)}`),
-		).toEqual(["user:target", "assistant:target reply", "user:switch callback message", "assistant:switch reply"]);
+		).toEqual([
+			`user:${terminalInput("target")}`,
+			"assistant:target reply",
+			"user:switch callback message",
+			"assistant:switch reply",
+		]);
 	});
 });

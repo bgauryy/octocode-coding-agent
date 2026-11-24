@@ -11,6 +11,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { checkAuthFileSafety } from "./auth-storage/file-safety.ts";
 import { applyProviderVisibility } from "./provider-models.ts";
 import { providerSourceGate } from "./provider-sources/gate.ts";
+import { registerSmartRouter } from "./smart-router/index.ts";
 
 /**
  * Non-fatal issues collected while creating services or sessions.
@@ -37,6 +38,8 @@ export interface CreateAgentSessionServicesOptions {
 	settingsManager?: SettingsManager;
 	modelRuntime?: ModelRuntime;
 	modelRuntimeSignal?: AbortSignal;
+	/** Print, JSON and ACP sessions must skip providers whose plans allow interactive use only. */
+	unattended?: boolean;
 	resourceLoaderOptions?: Omit<DefaultResourceLoaderOptions, "cwd" | "agentDir" | "settingsManager">;
 }
 
@@ -84,6 +87,10 @@ export async function createAgentSessionServices(
 			signal: options.modelRuntimeSignal,
 		}));
 	try {
+		registerSmartRouter(modelRuntime, {
+			...settingsManager.getSmartRouterSettings(),
+			unattended: options.unattended,
+		});
 		applyProviderVisibility(modelRuntime, settingsManager);
 		const resourceLoader = new DefaultResourceLoader({
 			...options.resourceLoaderOptions,

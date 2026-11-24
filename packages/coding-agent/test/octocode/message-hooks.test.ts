@@ -165,6 +165,24 @@ describe("message hooks", () => {
 		expect(messages).toEqual([mail, api]);
 	});
 
+	it("discards a late receive and rejects a late send after the same session resumes in another workspace", async () => {
+		const { fire, hooks, ctx } = await setup({});
+		const config = {
+			PreMessageSend: group("touch sent"),
+			PostMessageReceive: group("cat >> received.jsonl; echo >> received.jsonl"),
+		};
+		const resumed = fakeCtx({ cwd: project(config), hasUI: false });
+		await fire("session_start", { reason: "resume" }, resumed);
+		await hooks.messageReceive(inbound(), ctx);
+		await hooks.messageReceive(inbound(), resumed);
+		expect(fs.existsSync(path.join(ctx.cwd, "received.jsonl"))).toBe(false);
+		expect(recorded(resumed.cwd)).toHaveLength(1);
+		await expect(hooks.messageSend(outbound(), ctx)).rejects.toThrow("different session");
+		expect(await hooks.messageSend(outbound(), resumed)).toBeUndefined();
+		expect(fs.existsSync(path.join(ctx.cwd, "sent"))).toBe(false);
+		expect(fs.existsSync(path.join(resumed.cwd, "sent"))).toBe(true);
+	});
+
 	it("skips resumed history and resets receive identity when the session changes", async () => {
 		const { fire, hooks, ctx, cwd } = await setup({
 			PostMessageReceive: group(`cat >> received.jsonl; printf '\\n' >> received.jsonl`),

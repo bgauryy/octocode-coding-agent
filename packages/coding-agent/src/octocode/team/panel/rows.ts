@@ -166,7 +166,7 @@ export function peerLines(f: Frame, peers: readonly GridRow[], hidden: number, o
 /** Each state's mark in the order the `+N more` row counts them: what waits first. */
 const MORE_ORDER = ["waiting", "failed", "running", "done", "stopped", "pending"] as const;
 
-/** `+N more · ⏺ 1 ⏺ 2 ⏺ 1`: the agents left out, counted by their lights (`stillLight`: still, in each state's colour, each state's own glyph without colour); in warning while one of them waits. */
+/** `+N more · ◐ 1 ⏺ 2 ◉ 1`: the agents left out, counted by their lights (`stillLight`: still, in each state's colour, each state's own glyph without colour); in warning while one of them waits. */
 export function moreLine(hidden: PanelEntry[], now: number, theme: Theme, width: number): string {
 	const states = hidden.map((entry) => panelState(entry, now).state);
 	const tone = (text: string) => theme.fg(states.includes("waiting") ? "warning" : "muted", text);

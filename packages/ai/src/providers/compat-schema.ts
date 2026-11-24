@@ -7,7 +7,7 @@ import {
 	optionalSessionAffinityFormat,
 	type SessionAffinityFormatSchema,
 	type ThinkingTokenBudgetFieldSchema,
-	type VercelGatewayRoutingSchema,
+	VercelGatewayRoutingSchema,
 } from "./compat-schema/common.ts";
 import { OpenAICompletionsCompatSchema, OpenAIResponsesCompatSchema } from "./compat-schema/openai.ts";
 
@@ -57,6 +57,7 @@ const GoogleCompatSchema = Type.Object(
 );
 
 const ProviderCompatPropertyOverrides = {
+	vercelGatewayRouting: Type.Optional(VercelGatewayRoutingSchema),
 	supportsDeveloperRole: optionalCompatBoolean({
 		description: "Whether the provider supports the developer role instead of system. Defaults are API-specific.",
 	}),
@@ -147,6 +148,7 @@ function mergeCompatProperties<
 export const CompatSchemasByApi = {
 	"openai-completions": OpenAICompletionsCompatSchema,
 	"openai-responses": OpenAIResponsesCompatSchema,
+	openresponses: OpenAIResponsesCompatSchema,
 	"azure-openai-responses": OpenAIResponsesCompatSchema,
 	"anthropic-messages": AnthropicMessagesCompatSchema,
 	"bedrock-converse-stream": BedrockCompatSchema,

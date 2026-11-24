@@ -106,10 +106,15 @@ export function deleteFiles(db: DatabaseSync, paths: readonly string[]): void {
 }
 
 /** Stores `file` at its stamp with its `passages`, replacing what was stored for that path; returns its row. */
+/** Rows written between two `poll` calls of `replaceFile`: a few milliseconds of inserts. */
+const POLL_ROWS = 1024;
+
 export function replaceFile(
 	db: DatabaseSync,
 	file: { path: string; size: number; mtime: number; ino: number },
 	passages: readonly PassageRow[],
+	/** Called every `POLL_ROWS` rows; it may throw to stop, and the caller's transaction then keeps the file as it was. */
+	poll?: () => void,
 ): IndexedFile {
 	deleteFiles(db, [file.path]);
 	const words = passages.reduce((sum, passage) => sum + passage.length, 0);
@@ -120,7 +125,9 @@ export function replaceFile(
 		"INSERT INTO passages(file, start, end, length, byte_start, byte_end, context) VALUES (?, ?, ?, ?, ?, ?, ?)",
 	);
 	const body = db.prepare("INSERT INTO passages_fts(rowid, body) VALUES (?, ?)");
+	let written = 0;
 	for (const row of passages) {
+		if (poll && ++written % POLL_ROWS === 0) poll();
 		const id = passage.run(
 			lastInsertRowid,
 			row.start,

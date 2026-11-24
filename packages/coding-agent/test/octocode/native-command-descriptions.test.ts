@@ -57,7 +57,7 @@ it("gives every native and bundled extension command a short description with it
 		expect(hints.get("permissions")).toContain("grants");
 		expect(hints.get("plan")).toContain("--approve <revision>");
 		expect(hints.get("resume")).toBe("[all] [<query>|B<n>]");
-		expect(hints.get("archive")).toBe("[<n>]");
+		expect(hints.get("archive")).toBe("[<n> | search <words> | open <anchor>]");
 		expect(hints.get("trust")).toBe("[list|add|remove]");
 		expect(hints.get("modelsettings")).toBe("[check]");
 		expect(hints.get("backlog")).toContain("add <title>");

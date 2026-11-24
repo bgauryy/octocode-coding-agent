@@ -9,7 +9,6 @@ import { AgentsView } from "../../src/octocode/team/panel.ts";
 import { openWidgetLines as widgetLines } from "./two-line-panel.ts";
 import { collapsedRows } from "../../src/octocode/team/panel/rows.ts";
 import { liveMembers, roster } from "../../src/octocode/team/panel/roster.ts";
-import { markFrameMs } from "../../src/theme/status.ts";
 import { PanelMotion, type Moving } from "../../src/octocode/team/panel/motion.ts";
 import { nextMinuteDelay, workRows } from "../../src/octocode/team/panel/work.ts";
 import { Team } from "../../src/octocode/team/session.ts";
@@ -494,7 +493,7 @@ describe("repainting the work clock", () => {
 		return { work, view, team, ctx, mountView, repaints: () => repaints };
 	};
 
-	it("repaints every frame while a bash job and a timer run with the main agent idle: spinner, seconds, countdown; stops when they end", () => {
+	it("repaints once a second while a bash job and a timer run with the main agent idle: seconds, countdown; stops when they end", () => {
 		const { work, view, team, ctx, mountView, repaints } = setup();
 		work.set("bash", [{ ...bash, startedAt: NOW - 20_000 }]);
 		work.set("timer", [{ ...timer, dueAt: NOW + 30_000 }]);
@@ -505,7 +504,8 @@ describe("repainting the work clock", () => {
 		expect(frame()).toMatch(/in 30s\s*$/m);
 		const before = repaints();
 		vi.advanceTimersByTime(3_000);
-		expect(repaints()).toBeGreaterThan(before + 10);
+		// One repaint per second of the clock: no light spins, so nothing repaints faster.
+		expect(repaints()).toBe(before + 3_000 / MOTION.tickMs);
 		expect(frame()).toMatch(/23s\s*$/m);
 		expect(frame()).toMatch(/in 27s\s*$/m);
 		work.set("bash", []);
@@ -518,24 +518,25 @@ describe("repainting the work clock", () => {
 		team.stop();
 	});
 
-	it("repaints once a minute in reduced motion while only a bash job runs, showing minutes, and stops when it ends", () => {
+	it("repaints once a second in reduced motion too while only a bash job runs, showing seconds, and stops when it ends", () => {
 		animationClock.setReducedMotion(true);
 		const { work, view, team, ctx, mountView, repaints } = setup();
 		work.set("bash", [{ ...bash, startedAt: NOW - 20_000 }]);
 		const component = mountView();
-		expect(component.render(100).join("\n")).toMatch(/<1m/);
+		// A running row's clock is information, not decoration: it counts seconds with motion reduced.
+		expect(component.render(100).join("\n")).toMatch(/ 20s\s*$/m);
 		const before = repaints();
 		expect(animationClock.isRunning()).toBe(true);
-		// No repaint inside the first 40 s (until the job's minute turns), then one at the boundary.
+		// One repaint per second, with no extra ones between.
 		vi.advanceTimersByTime(39_000);
-		expect(repaints()).toBe(before);
+		expect(repaints()).toBe(before + 39);
+		expect(component.render(100).join("\n")).toMatch(/ 59s\s*$/m);
 		vi.advanceTimersByTime(2_000);
-		expect(repaints()).toBe(before + 1);
-		expect(component.render(100).join("\n")).toMatch(/1m\s*$/m);
-		// Then one per minute, with no extra ones between.
+		expect(repaints()).toBe(before + 41);
+		expect(component.render(100).join("\n")).toMatch(/ 1m01s\s*$/m);
 		vi.advanceTimersByTime(3 * 60_000);
-		expect(repaints()).toBe(before + 4);
-		expect(component.render(100).join("\n")).toMatch(/4m\s*$/m);
+		expect(repaints()).toBe(before + 41 + 180);
+		expect(component.render(100).join("\n")).toMatch(/ 4m01s\s*$/m);
 		work.set("bash", []);
 		expect(animationClock.isRunning()).toBe(false);
 		const after = repaints();
@@ -545,19 +546,25 @@ describe("repainting the work clock", () => {
 		team.stop();
 	});
 
-	it("runs no clock in reduced motion for work without elapsed or remaining time, and none once idle", () => {
+	it("ticks once a second in reduced motion while any work runs, also work without elapsed or remaining time, and runs no clock once idle", () => {
 		animationClock.setReducedMotion(true);
 		const { work, view, team, ctx, mountView, repaints } = setup();
 		view.setBackground(["general-1a2b"]);
 		mountView();
-		expect(animationClock.isRunning()).toBe(false);
+		// Running work keeps the second clock, which also looks for a child's new row.
+		expect(animationClock.isRunning()).toBe(true);
 		const before = repaints();
-		vi.advanceTimersByTime(5 * 60_000);
-		expect(repaints()).toBe(before);
+		vi.advanceTimersByTime(5_000);
+		expect(repaints()).toBe(before + 5);
 		work.set("timer", [{ ...timer, dueAt: NOW + 10 * 60_000 }]);
+		expect(animationClock.isRunning()).toBe(true);
+		view.setBackground([]);
 		expect(animationClock.isRunning()).toBe(true);
 		work.set("timer", []);
 		expect(animationClock.isRunning()).toBe(false);
+		const after = repaints();
+		vi.advanceTimersByTime(5 * 60_000);
+		expect(repaints()).toBe(after);
 		view.stop(ctx);
 		team.stop();
 	});
@@ -569,7 +576,7 @@ describe("the motion clock and the minute clock share one subscription", () => {
 		vi.useRealTimers();
 	});
 
-	it("shows seconds while a mark moves, whole minutes once it stills, and stops with nothing left", () => {
+	it("shows seconds while a row runs, whole minutes once none does, and stops with nothing left", () => {
 		vi.useFakeTimers({ now: NOW });
 		let marks: Moving[] = [{ state: "running" }];
 		let rows: WorkRow[] = [{ ...bare, startedAt: NOW }];
@@ -582,9 +589,8 @@ describe("the motion clock and the minute clock share one subscription", () => {
 		motion.sync();
 		expect(motion.precise).toBe(true);
 		vi.advanceTimersByTime(1_000);
-		// A moving light repaints at its calm cadence, no faster than the background spinner and no slower than a glow frame.
-		expect(repaints).toBeGreaterThanOrEqual(Math.floor(1_000 / markFrameMs("running", { light: true })));
-		expect(repaints).toBeLessThanOrEqual(Math.ceil(1_000 / MOTION.backgroundSpinnerMs));
+		// A running row repaints once a second, for its clock: its light is still, so nothing repaints faster.
+		expect(repaints).toBe(1_000 / MOTION.tickMs);
 		marks = [];
 		vi.advanceTimersByTime(1_000);
 		expect(motion.precise).toBe(false);
@@ -599,21 +605,29 @@ describe("the motion clock and the minute clock share one subscription", () => {
 		motion.dispose();
 	});
 
-	it("shows minutes in reduced motion, where the marks hold still", () => {
+	it("keeps both clocks in reduced motion: seconds while a row runs, minutes for still rows with a clock", () => {
 		vi.useFakeTimers({ now: NOW });
 		animationClock.setReducedMotion(true);
 		const rows: WorkRow[] = [{ ...bare, startedAt: NOW }];
+		let marks: Moving[] = [{ state: "running" }];
 		let repaints = 0;
 		const motion = new PanelMotion(
-			() => [{ state: "running" }],
+			() => marks,
 			() => repaints++,
 			(now) => nextMinuteDelay(rows, now),
 		);
 		motion.sync();
+		expect(motion.precise).toBe(true);
+		expect(motion.active).toBe(true);
+		vi.advanceTimersByTime(3_000);
+		expect(repaints).toBe(3);
+		// Nothing runs: the next sync falls back to the minute clock, one repaint at the row's minute boundary.
+		marks = [{ state: "waiting" }];
+		motion.sync();
 		expect(motion.precise).toBe(false);
 		expect(motion.active).toBe(true);
 		vi.advanceTimersByTime(61_000);
-		expect(repaints).toBe(1);
+		expect(repaints).toBe(4);
 		motion.dispose();
 	});
 });

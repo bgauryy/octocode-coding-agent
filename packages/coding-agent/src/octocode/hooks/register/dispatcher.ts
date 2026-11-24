@@ -3,7 +3,7 @@ import { notify, say } from "../../shared/commands.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { repoKey } from "../../../utils/git-repository.ts";
 import { asRecord, errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { commandsFor, hookIdentity } from "../config/calls.ts";
+import { hookIdentity } from "../config/calls.ts";
 import type { HookEvent } from "../catalog.ts";
 import type { HookHandler, HookVerdict } from "../contracts.ts";
 import { redactSecrets, visibleControls } from "@octocodeai/octocode-common/sanitize";
@@ -16,7 +16,7 @@ import { createPromptEvaluator, interpretPromptHook } from "../prompt.ts";
 import { boundMcpHookCaller } from "../mcp-gate.ts";
 import { hookPayload } from "../profiles.ts";
 import { conflictingRewrites, decisionOnly, firstRewrite, reducePermission } from "../verdicts.ts";
-import { subscribedDispatch } from "./subscribed.ts";
+import { type MatchedHookRun, subscribedDispatch } from "./subscribed.ts";
 import { capContext, CLAUDE_HOOK_CONTEXT_MAX, claudeJsonRun, failureOf, interpret, runHook } from "../runner.ts";
 import {
 	type Dispatch,
@@ -134,18 +134,8 @@ export function createDispatcher(
 	 * config order. Most tool calls match no hook, so the input (which may join a large tool result) is built only when
 	 * one does.
 	 */
-	const dispatchImpl: Dispatch = async (ctx, event, names, input, requested, protocol, hookFilter) => {
-		const signal = requested ?? ctx.signal;
-		const hooks = commandsFor(session.config, event, names)
-			.filter(
-				(hook) =>
-					!protocol ||
-					(typeof protocol === "string"
-						? (hook.protocol ?? "octocode") === protocol
-						: protocol.includes(hook.protocol ?? "octocode")),
-			)
-			.filter((hook) => !hookFilter || hookFilter(hook));
-		if (hooks.length === 0) return {};
+	const dispatchImpl: MatchedHookRun = async (ctx, event, input, signal, protocol, hooks) => {
+		if (signal?.aborted) return {};
 		session.root ??= repoKey(ctx.cwd).root;
 		const payload: Record<string, unknown> = {
 			session_id: ctx.sessionManager.getSessionId(),
@@ -356,11 +346,12 @@ export function createDispatcher(
 		}
 	};
 
-	const direct: Dispatch = async (ctx, event, names, input, requested, protocol, hookFilter) => {
+	const run = subscribedDispatch(api, session, dispatchImpl);
+	const dispatch: Dispatch = async (ctx, event, names, input, requested, protocol, hookFilter) => {
 		const signal = requested ?? ctx.signal;
 		if (paused?.()) return {};
 		const combined = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
-		const work = dispatchImpl(ctx, event, names, input, combined, protocol, hookFilter);
+		const work = run(ctx, event, names, input, combined, protocol, hookFilter);
 		active.add(work);
 		try {
 			return await work;
@@ -368,8 +359,6 @@ export function createDispatcher(
 			active.delete(work);
 		}
 	};
-	// With `runtime.eventLoop: new` each run with a configured hook starts from its `hook.<Event>` subscription.
-	const dispatch = subscribedDispatch(api, session, direct);
 	return {
 		dispatch,
 		reportFailure,

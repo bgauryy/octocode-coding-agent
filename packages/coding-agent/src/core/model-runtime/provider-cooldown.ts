@@ -27,6 +27,8 @@ export const COOLDOWN_INITIAL_MS = 2_000;
  * covers it without holding the provider's other requests for a whole minute.
  */
 export const COOLDOWN_MAX_MS = 30_000;
+/** Requests waiting for the same deadline spread their starts across at most one second. */
+const RELEASE_SPREAD_MS = 1_000;
 /** A rate limit this long after the last cool-down ended starts the doubling over: one calm per-minute window. */
 const COOLDOWN_FORGET_MS = 60_000;
 /**
@@ -43,11 +45,13 @@ interface RateLimitFailure {
 	now: number;
 	startedAt?: number;
 	retryAfterMs?: number;
+	/** Upper bound on the computed pause when no retry-after arrived. */
+	maxBackoffMs?: number;
 }
 
 /**
  * The cool-down after `failure`, given the one last recorded (ended or not). A provider's wait is kept to the
- * millisecond, up to {@link COOLDOWN_RETRY_AFTER_MAX_MS}. Without one the pause starts at {@link COOLDOWN_INITIAL_MS} and doubles, up to {@link COOLDOWN_MAX_MS}, only
+ * millisecond, up to {@link COOLDOWN_RETRY_AFTER_MAX_MS}. Without one the pause starts at {@link COOLDOWN_INITIAL_MS} and doubles up to the endpoint's cap only
  * for a request that went out after the previous pause ended: the pause was too short. A request already out during it
  * met the same throttle, so siblings failing together never escalate it one after another. An end is never moved earlier.
  */
@@ -62,7 +66,7 @@ export function nextCooldown(previous: Cooldown | undefined, failure: RateLimitF
 	const pauseMs = !recent?.pauseMs
 		? COOLDOWN_INITIAL_MS
 		: escalate
-			? Math.min(recent.pauseMs * 2, COOLDOWN_MAX_MS)
+			? Math.min(recent.pauseMs * 2, failure.maxBackoffMs ?? COOLDOWN_MAX_MS)
 			: recent.pauseMs;
 	return { until: Math.max(floor, failure.now + pauseMs), pauseMs };
 }
@@ -147,9 +151,16 @@ export class ProviderCooldowns {
 				const remainingMs = until - this.now();
 				if (remainingMs <= 0) return undefined;
 				if (maxWaitMs > 0 && remainingMs > maxWaitMs) return { provider, remainingMs, maxWaitMs };
-				onWait?.(until);
+				// A shared deadline can swallow the jitter from session retries. Spread each waiting request independently.
+				const spreadMs = Math.min(
+					RELEASE_SPREAD_MS,
+					remainingMs / 2,
+					maxWaitMs > 0 ? maxWaitMs - remainingMs : Infinity,
+				);
+				const jitterMs = Math.round(Math.random() * spreadMs);
+				onWait?.(until + jitterMs);
 				waited = true;
-				await sleepUnlessAborted(remainingMs, signal, createAbortError);
+				await sleepUnlessAborted(remainingMs + jitterMs, signal, createAbortError);
 			}
 		} finally {
 			if (waited) onWait?.(undefined);

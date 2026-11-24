@@ -1,6 +1,8 @@
 import type { Model, ModelThinkingLevel } from "@octocodeai/octocode-ai";
 import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import type { builtInCompactionSettings, CompactionModel } from "../../compaction/settings.ts";
+import type { ResolvedLimits } from "../../limits.ts";
+import type { SmartRouterOptions } from "../../smart-router/index.ts";
 import type { CacheWarmingMode, Settings } from "../../settings-schema.ts";
 
 /** Resolved `retry` settings; `offlineMaxMs` stays unset unless configured. */
@@ -26,6 +28,8 @@ export interface RuntimeSettingsApi {
 		model?: CompactionPolicyModel,
 		thinkingLevel?: ModelThinkingLevel,
 	): ReturnType<typeof builtInCompactionSettings>;
+	/** The `limits` settings in force for `model` (`provider/model` overrides applied). */
+	getLimits(model?: { provider?: string; id?: string }): ResolvedLimits;
 	getBranchSummarySettings(): { reserveTokens: number; skipPrompt: boolean };
 	getBranchSummarySkipPrompt(): boolean;
 	getRetryEnabled(): boolean;
@@ -41,8 +45,6 @@ export interface RuntimeSettingsApi {
 	getRetryMaxUsageWaitMs(): number;
 	getToolExecutionEarlyStart(): boolean;
 	getHttpIdleTimeoutMs(): number;
-	/** `runtime.eventLoop`: the scheduler mode. `new` also compacts at 95% of the limit and keeps peer interrupts off a compaction. */
-	getEventLoopMode(): "old" | "shadow" | "new";
 	setHttpIdleTimeoutMs(timeoutMs: number): void;
 
 	/** Read from global settings only because warming costs money. */
@@ -54,4 +56,6 @@ export interface RuntimeSettingsApi {
 	/** Turn the rewrite of each submitted prompt on or off, in the global settings. */
 	setOptimizePrompts(enabled: boolean): void;
 	getProviderRetrySettings(): { timeoutMs?: number; maxRetries?: number; maxRetryDelayMs: number };
+	/** Native auto-code policy. Paid escalation comes from global settings only. */
+	getSmartRouterSettings(): SmartRouterOptions;
 }

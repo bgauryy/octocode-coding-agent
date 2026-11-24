@@ -14,11 +14,8 @@ export interface ToolRow {
 	tickedText?: string;
 	/** `checks 1.2s · queued 3s`: the time the call waited before it ran (see `timingOf`). */
 	waits?: string;
-	/** The call was interrupted (Esc, a kill, a requested stop), not failed: drawn `◼` in the warning colour. */
+	/** The call was interrupted (Esc, a kill, a requested stop), not failed: drawn `⊘`. */
 	stopped?: boolean;
-	/** The state the row's animation subscription paints, and how to end it (see `rowMark`). */
-	marking?: string;
-	unmark?: () => void;
 }
 
 /** The part of Octocode's ToolRenderContext these helpers read. */

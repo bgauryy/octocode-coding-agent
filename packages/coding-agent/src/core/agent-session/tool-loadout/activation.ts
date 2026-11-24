@@ -1,19 +1,28 @@
-import type { ToolDefinition, ToolExposure, ToolInfo } from "../../features/index.ts";
+import type { ToolDefinition, ToolInfo } from "../../features/index.ts";
 import type { ToolDefinitionEntry } from "../types.ts";
 
-/** The public description of a registered tool. */
-export function toToolInfo({ definition, sourceInfo }: ToolDefinitionEntry, exposure: ToolExposure): ToolInfo {
-	return {
-		name: definition.name,
-		description: definition.description,
-		parameters: definition.parameters,
-		...(definition.outputSchema ? { outputSchema: definition.outputSchema } : {}),
-		promptGuidelines: definition.promptGuidelines,
-		exposure,
-		...(definition.namespace ? { namespace: definition.namespace } : {}),
-		...(definition.annotations ? { annotations: { ...definition.annotations } } : {}),
-		sourceInfo,
-	};
+/** The selected registry, with the descriptions the active loadout serves and the tools available on demand. */
+export function toolInfos(
+	entries: Iterable<ToolDefinitionEntry>,
+	active: readonly Pick<ToolDefinition, "name" | "description" | "parameters">[],
+	activatable: (name: string) => boolean,
+): ToolInfo[] {
+	const declared = new Map(active.map((tool) => [tool.name, tool]));
+	return Array.from(entries, ({ definition, sourceInfo }) => {
+		const tool = declared.get(definition.name) ?? definition;
+		return {
+			name: tool.name,
+			description: tool.description,
+			parameters: tool.parameters,
+			...(definition.outputSchema ? { outputSchema: definition.outputSchema } : {}),
+			promptGuidelines: definition.promptGuidelines,
+			exposure: definition.exposure ?? "direct",
+			...(definition.onDemand && activatable(tool.name) ? { onDemand: true } : {}),
+			...(definition.namespace ? { namespace: definition.namespace } : {}),
+			...(definition.annotations ? { annotations: { ...definition.annotations } } : {}),
+			sourceInfo,
+		};
+	});
 }
 
 export interface ActivationInput {

@@ -1,22 +1,25 @@
 import type { LoopInput } from "./state.ts";
 
 /**
- * What the host tells a loop about the session: the run, its steps, compaction and the end. The shadow loop and the live
- * loop both take them, so one set of bus handlers feeds both (`wake/loop-host.ts`).
+ * What the host tells the loop about the session: the run, its steps, compaction and the end (`wake/session-signals.ts`
+ * binds them to the bus).
  */
 export interface SessionSignals {
 	/** A run segment started. */
 	runStarted(): void;
 	/** A step of the run ended; `final` is a reply with no tool calls, where the run would stop. */
-	stepEnded(final: boolean): void;
+	stepEnded(final: boolean): void | Promise<void>;
 	/** A turn began. */
 	turnStarted(): void;
-	/** The run settled; `continues` is whether the session holds a message it runs next. */
-	settled(continues: boolean): void;
+	/**
+	 * The run settled; `continues` is whether the session holds a message it runs next, `aborted` whether the run was
+	 * stopped rather than finished.
+	 */
+	settled(continues: boolean, aborted?: boolean): void;
 	/** Compaction took the lock. */
 	compactionStarted(): void;
 	/** Compaction ended, failed or was cancelled. */
-	compactionEnded(): void;
+	compactionEnded(stopped?: boolean): void | Promise<void>;
 	/** The session ends. */
 	end(): unknown;
 }
@@ -30,7 +33,7 @@ interface Dispatcher {
 }
 
 /**
- * The step and settle rules both loops share. A step that ended with a final reply is where the run would stop: if the
+ * The step and settle rules. A step that ended with a final reply is where the run would stop: if the
  * session starts another turn anyway, it took a message it held, and that is where the loop hands over what it holds.
  */
 export class RunSignals {

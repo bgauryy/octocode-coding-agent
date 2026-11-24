@@ -1,3 +1,4 @@
+import { terminalInput } from "./e2e-ui-flows/request.ts";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -22,7 +23,6 @@ import { nativeFeatureSet } from "../helpers/native-features.ts";
  */
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PEER = path.join(HERE, "fixtures", "claude-code-peer.mjs");
-const octocode = (await import(path.join(HERE, "..", "..", "src", "index.ts"))).default as FeatureRegister;
 
 const savedEnv = { ...process.env };
 const sessions: Array<{ dispose(): void }> = [];
@@ -73,10 +73,7 @@ async function claudeCodeSession(env: Record<string, string>, prompts: Step[][])
 		agentDir: path.join(root, "agent"),
 		settingsManager,
 		nativeFeatures: nativeFeatureSet(),
-		features: testFeatures([
-			{ name: "claude-code-provider", factory: provider },
-			{ name: "octocode", factory: octocode },
-		]),
+		features: testFeatures([{ name: "claude-code-provider", factory: provider }]),
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
@@ -178,7 +175,9 @@ describe("Claude Code as the session's model", () => {
 		expect((log.find((entry) => entry.event === "tools")?.names as string[]) ?? []).toEqual(
 			expect.arrayContaining(["bash", "file"]),
 		);
-		expect(log.find((entry) => entry.event === "prompt")).toMatchObject({ text: "What does app.ts export?" });
+		expect(log.find((entry) => entry.event === "prompt")).toMatchObject({
+			text: terminalInput("What does app.ts export?"),
+		});
 		expect(log.find((entry) => entry.event === "result")).toMatchObject({
 			name: "bash",
 			isError: false,
@@ -216,7 +215,7 @@ describe("Claude Code as the session's model", () => {
 			entries()
 				.filter((entry) => entry.event === "prompt")
 				.at(-1),
-		).toMatchObject({ index: 1, text: "Thanks" });
+		).toMatchObject({ index: 1, text: terminalInput("Thanks") });
 	}, 60_000);
 
 	it("asks Octocode's permission gate for Claude Code's call: a headless manual session refuses it, and nothing runs", async () => {
@@ -250,6 +249,6 @@ describe("Claude Code as the session's model", () => {
 		const log = entries();
 		expect(log.filter((entry) => entry.event === "start")).toHaveLength(2);
 		expect(log.find((entry) => entry.event === "resume")).toMatchObject({ sessionId: "peer-session-1" });
-		expect(log.filter((entry) => entry.event === "prompt").at(-1)).toMatchObject({ text: "Continue" });
+		expect(log.filter((entry) => entry.event === "prompt").at(-1)).toMatchObject({ text: terminalInput("Continue") });
 	}, 60_000);
 });

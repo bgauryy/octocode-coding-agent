@@ -39,11 +39,18 @@ export {
 export { type ShimmerOptions, shimmerText } from "./shimmer.ts";
 // Design tokens and the shared animation clock
 export { isScreenReaderMode, setScreenReaderMode } from "./tokens/screen-reader.ts";
-export { type AnimationClock, type AnimationKind, type AnimationSubscription, animationClock } from "./tokens/clock.ts";
+export {
+	type AnimationClock,
+	type AnimationKind,
+	type AnimationSubscription,
+	animationClock,
+	spinnerFrame,
+} from "./tokens/clock.ts";
 export {
 	breathe,
 	ELLIPSIS,
 	GLYPH,
+	LIGHT_GLYPH,
 	MOTION,
 	SEPARATOR,
 	SPINNER,
@@ -280,5 +287,4 @@ export { ThemedText } from "./components/themed-text.ts";
 export { type Header, Lines, type Row } from "./components/lines.ts";
 export { streamingHighlighter, streamingMarkdownTheme } from "./components/markdown/streaming-highlight.ts";
 export { HighlightCache } from "./components/markdown/highlight-cache.ts";
-export { ReasoningFrames } from "./tui/reasoning-frames.ts";
 export { markPromptRows, Osc133ZoneMarker } from "./terminal/osc133-zone.ts";

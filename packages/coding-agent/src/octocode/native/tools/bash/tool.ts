@@ -110,7 +110,7 @@ export function registerBashTool(
 			}
 		};
 		try {
-			// Follow-up records output after this turn; the log distinguishes job IDs reused by a later instance.
+			// The job log distinguishes IDs reused by another owner.
 			const sending = wakeGateOf(api).emit(
 				{
 					kind: "job.exit",
@@ -127,7 +127,7 @@ export function registerBashTool(
 					display: true,
 					details: jobDetails(job, exit, wake),
 				},
-				{ triggerTurn: wake, deliverAs: "followUp", together: true },
+				{ triggerTurn: wake, deliverAs: wake ? "steer" : "followUp", together: true },
 			);
 			if (sending && typeof sending.then === "function") void Promise.resolve(sending).catch(deliveryFailed);
 		} catch {

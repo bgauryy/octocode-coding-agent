@@ -36,6 +36,8 @@ import {
 } from "../simple-options.ts";
 import { augmentGrammarTools } from "./completions-grammar.ts";
 import type { CompletionsState } from "./completions.ts";
+import { autoRouterPlugin } from "../openai-completions/openrouter-router.ts";
+import { vercelGatewayOptions } from "../anthropic-messages/gateway-routing.ts";
 import { completionsMessages } from "./completions-messages.ts";
 
 export function completionsMapping(
@@ -263,7 +265,10 @@ function augmentCompletionsRequest(
 		}
 	}
 	if (model.compat?.openRouterRouting) body.provider = model.compat.openRouterRouting;
-	if (model.compat?.vercelGatewayRouting) body.providerOptions = { gateway: model.compat.vercelGatewayRouting };
+	const autoRouter = autoRouterPlugin(model);
+	if (autoRouter) body.plugins = [...(Array.isArray(body.plugins) ? body.plugins : []), autoRouter];
+	const gateway = vercelGatewayOptions(model, options);
+	if (gateway) body.providerOptions = { ...(body.providerOptions as object | undefined), gateway };
 	Object.assign(body, resolveSamplingParams(model, options.reasoningEffort ?? "off", options.samplingParams));
 	return longCacheWrites;
 }

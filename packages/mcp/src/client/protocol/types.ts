@@ -22,6 +22,8 @@ export interface Root {
 export interface ClientCapabilities {
 	experimental?: Record<string, unknown>;
 	roots?: { listChanged?: boolean };
+	/** Requests for user input the client answers: `form` for a flat form, `url` for a page to open. */
+	elicitation?: { form?: Record<string, unknown>; url?: Record<string, unknown> };
 }
 
 export interface ServerCapabilities {

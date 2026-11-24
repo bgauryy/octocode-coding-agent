@@ -417,7 +417,7 @@ function childrenRunning(script: string): number[] {
 it("reports a server whose process was killed mid-session as down, and calls work again after a restart", async () => {
 	// Servers other tests in this file left running are not this session's.
 	const others = new Set(childrenRunning(path.basename(SERVER)));
-	const { agent, faux, step } = await startMultiToolSession({}, SERVER, "secretecho");
+	const { agent, faux, step } = await startMultiToolSession({ reconnectWaitMs: 0 }, SERVER, "secretecho");
 	const mine = () => childrenRunning(path.basename(SERVER)).filter((pid) => !others.has(pid));
 	const echo = () => fauxToolCall("mcp__secretecho__echo_secret", {});
 	const list = () => fauxToolCall("mcp", { intent: "list", server: "secretecho", reason: "check" });

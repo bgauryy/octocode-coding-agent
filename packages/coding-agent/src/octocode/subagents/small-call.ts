@@ -69,9 +69,10 @@ export async function callSmallModel(ctx: FeatureContext, options: SmallCallOpti
 		const context = normalizeContext({
 			messages: [{ role: "user", content: [{ type: "text", text: options.text }], timestamp: Date.now() }],
 		});
-		const request: SimpleStreamOptions = {
+		const request: SimpleStreamOptions & { requestPriority: "background" } = {
 			signal: options.signal,
 			maxTokens: options.maxTokens,
+			requestPriority: "background",
 			cacheRetention: "none",
 		};
 		const reply = await retrySideCall(() => send(model, context, request), options.retry, options.signal);

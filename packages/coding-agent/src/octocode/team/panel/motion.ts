@@ -1,18 +1,18 @@
-import { animationClock } from "@octocodeai/octocode-tui";
-import { markFrameMs, markMoves, type UiState } from "../../../theme/status.ts";
+import { animationClock, MOTION } from "@octocodeai/octocode-tui";
+import type { UiState } from "../../../theme/status.ts";
 
-/** A mark that may still move: its state and, for a done mark, when it finished. */
+/** A row's state: a running one keeps the panel's second clock ticking. */
 export interface Moving {
 	state: UiState;
-	since?: number;
 }
 
 /** A coarse tick this near the wanted boundary is kept rather than re-subscribed on every sync. */
 const COARSE_SLOP_MS = 1000;
 
 /**
- * Repaints the panel on the animation clock only while one of its marks moves: a spinner while an agent works. Once every mark is still the subscription ends, so an idle panel writes nothing; the panel's
- * 1 s data refresh stays its own.
+ * Repaints the panel on the animation clock once a second while one of its rows runs: the rows' clocks count seconds
+ * and a child's new row is found. The state lights never move, so nothing ticks faster. Once no row runs the
+ * subscription ends, so an idle panel writes nothing.
  */
 export class PanelMotion {
 	private stop: (() => void) | undefined;
@@ -34,7 +34,7 @@ export class PanelMotion {
 		this.coarse = coarse;
 	}
 
-	/** Whether marks move now (a spinner): the panel then repaints often enough to show seconds. False on the coarse clock and when stopped. */
+	/** Whether a row runs now: the panel then repaints often enough to show seconds. False on the coarse clock and when stopped. */
 	get precise(): boolean {
 		return this.fine;
 	}
@@ -46,11 +46,7 @@ export class PanelMotion {
 
 	/** Match the subscription to the marks as they are now: subscribe, change cadence, or let go. */
 	sync(now: number = Date.now(), ticked = false): void {
-		const moving = this.marks(now).filter((mark) =>
-			markMoves(mark.state, { now, light: true, ...(mark.since === undefined ? {} : { since: mark.since }) }),
-		);
-		const fineMs =
-			moving.length === 0 ? 0 : Math.min(...moving.map((mark) => markFrameMs(mark.state, { light: true })));
+		const fineMs = this.marks(now).some((mark) => mark.state === "running") ? MOTION.tickMs : 0;
 		const everyMs = fineMs > 0 ? fineMs : (this.coarse?.(now) ?? 0);
 		const fine = fineMs > 0;
 		// A coarse tick still ahead is kept unless the boundary moved earlier (an older row appeared): a sync right at the
@@ -75,7 +71,7 @@ export class PanelMotion {
 				this.sync(at, true);
 				this.repaint();
 			},
-			{ everyMs, kind: fine ? "decor" : "info" },
+			{ everyMs, kind: "info" },
 		);
 	}
 

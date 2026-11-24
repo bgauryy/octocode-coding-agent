@@ -8,6 +8,7 @@ import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { registerStopHook } from "../../src/octocode/hooks/register/stop.ts";
 import { STOP_CONTINUE_RUN_CAP } from "../../src/octocode/hooks/register/types.ts";
 import type { HookVerdict } from "../../src/octocode/hooks/contracts.ts";
+import * as hookRunner from "../../src/octocode/hooks/runner.ts";
 import { capContext, HOOK_CONTEXT_MAX_BYTES, interpret, runHook } from "../../src/octocode/hooks/runner.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeHost, rendered, theme } from "./fake-host.ts";
@@ -909,19 +910,20 @@ describe("Stop, Notification and hook timing", () => {
 				ui: { notify: (message: string) => notes.push(message), setStatus: () => undefined },
 			};
 			await fire("session_start", { reason: "startup" }, ctx);
-			const call = () => {
-				const done = hooks.preToolUse(
-					{ toolName: "bash", toolCallId: "1", input: { command: "ls" } } as never,
-					ctx as never,
-				);
+			// The hook itself takes the six seconds: the clock moves while it runs, not while its run is logged.
+			const run = vi.spyOn(hookRunner, "runHook").mockImplementation(async () => {
 				vi.setSystemTime(Date.now() + 6_000);
-				return done;
-			};
+				return { code: 0, stdout: "", stderr: "", timedOut: false };
+			});
+			const call = () =>
+				hooks.preToolUse({ toolName: "bash", toolCallId: "1", input: { command: "ls" } } as never, ctx as never);
 			await call();
 			await call();
+			expect(run).toHaveBeenCalledTimes(2);
 			expect(notes).toHaveLength(1);
 			expect(notes[0]).toMatch(/^Slow PreToolUse hook \(6s\): every tool call in a batch waits for it\. true$/);
 		} finally {
+			vi.restoreAllMocks();
 			vi.useRealTimers();
 		}
 	}, 10_000);

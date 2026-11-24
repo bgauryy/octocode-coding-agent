@@ -78,6 +78,13 @@ export function validateMcpServerConfig(name: string, value: unknown): McpServer
 	if (timeout !== undefined && (typeof timeout !== "number" || !(timeout > 0))) {
 		return `server "${name}": timeout must be a positive number of seconds`;
 	}
+	const { reconnectWaitMs, elicitation } = value;
+	if (reconnectWaitMs !== undefined && !(typeof reconnectWaitMs === "number" && reconnectWaitMs >= 0)) {
+		return `server "${name}": reconnectWaitMs must be a number of milliseconds, 0 or more`;
+	}
+	if (elicitation !== undefined && typeof elicitation !== "boolean") {
+		return `server "${name}": elicitation must be a boolean`;
+	}
 	const rolesError = validateRoles(value.roles);
 	if (rolesError) return `server "${name}": ${rolesError}`;
 	if (value.install !== undefined && typeof value.command !== "string") {

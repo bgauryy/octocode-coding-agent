@@ -5,12 +5,6 @@ import { sharedAgentDb } from "../../../src/storage/database.ts";
 import { registeredWorkspace } from "../../../src/storage/workspace-database.ts";
 import { branchLines, count, createRig, type Rig } from "./rig.ts";
 
-/**
- * A callback ticket's result reaches the asker's session as an event: through the wake gate in the old mode and through the
- * live loop in `new` (`OCTOCODE_TEST_EVENT_LOOP`), once, and a result that came while the session was away is delivered
- * when it starts.
- */
-
 const rigs: Rig[] = [];
 afterEach(() => {
 	for (const rig of rigs.splice(0)) rig.cleanup();

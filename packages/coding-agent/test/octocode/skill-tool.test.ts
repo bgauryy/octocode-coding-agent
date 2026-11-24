@@ -182,8 +182,8 @@ describe("skill tool", () => {
 		it("draws the call as `Skill(<name>)` and the result as one compact, expandable line", async () => {
 			const { call, tool } = setup(fixtures().snapshot);
 			expect(rendered(tool.renderCall({ name: "alpha" }, theme, context({ isPartial: true })))).toMatch(
-				// Running: the working spinner, or the full ⏺ without motion; never a half-filled circle.
-				/^[⏺⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Skill\(alpha\)/,
+				// Running: the still ⏺ light, in any motion mode; never a spinner frame or a half-filled circle.
+				/^⏺ Skill\(alpha\)/,
 			);
 			expect(rendered(tool.renderCall({ name: "skill:alpha" }, theme, context()))).toContain("Skill(alpha)");
 			const result = await call("alpha");
@@ -267,8 +267,8 @@ describe("skill tool", () => {
 			const { tool, call } = setup(fixtures().snapshot);
 			void call;
 			tool.renderCall({ name: "alpha" }, recording, context());
-			// The mark, the title and the key argument in its parentheses, as on every tool row.
-			expect(new Set(colors)).toEqual(new Set(["success", "toolTitle", "muted"]));
+			// The mark (a settled light is muted), the title and the key argument in its parentheses, as on every tool row.
+			expect(new Set(colors)).toEqual(new Set(["toolTitle", "muted"]));
 		});
 	});
 });

@@ -38,7 +38,6 @@
 			"registerAwaiting@octocode/ui/awaiting.ts",
 			"registerWake@octocode/wake/register.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerActivity@octocode/ui/activity.ts",
 			"registerCompaction@octocode/compaction/register.ts",
 			"registerNotify@octocode/ui/notify.ts",
@@ -59,7 +58,6 @@
 			"registerUi@octocode/ui/chrome.ts",
 			"registerWake@octocode/wake/register.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerStallRecorder@octocode/profiler/stalls.ts",
 			"registerActivity@octocode/ui/activity.ts",
 			"registerNotify@octocode/ui/notify.ts",
@@ -75,12 +73,14 @@
 			"registerAgentTool@octocode/subagents/tool.ts",
 			"registerQuotaNotice@octocode/subagents/models-quota-notice.ts",
 			"registerSkillDescriptions@octocode/context-optimization/skills.ts",
+			"installLiveInput@octocode/wake/live-input.ts",
 			"registerTurnSetup@octocode/turn.ts",
 			"registerBackgroundHooks@octocode/hooks/background.ts",
 			"registerStopHook@octocode/hooks/register/stop.ts",
 			"registerSessionStartHooks@octocode/hooks/register/session-start.ts",
 			"registerHooksPromptSection@octocode/hooks/prompt-section.ts",
 			"registerSourcePolicy@octocode/permission/source-policy-loader.ts",
+			"registerRunBudget@octocode/run-budget.ts",
 			"registerLoopGuard@octocode/loop-guard.ts",
 			"registerNoticeLines@octocode/ui/notice-lines.ts",
 			"registerNotify@octocode/ui/notify.ts",
@@ -120,6 +120,8 @@
 			"registerStallRecorder@octocode/profiler/stalls.ts",
 			"registerActivity@octocode/ui/activity.ts",
 			"registerTurnBudget@octocode/compaction/turn-budget.ts",
+			"registerRunBudget@octocode/run-budget.ts",
+			"registerRepeatedProseGuard@octocode/repeated-prose.ts",
 			"registerLoopGuard@octocode/loop-guard.ts",
 			"registerUsageRecording@octocode/usage/record.ts",
 			"OctocodeApi.observe@octocode/api/bridge.ts"
@@ -127,11 +129,13 @@
 		"message_start": [
 			"Delivery.install@octocode/ui/delivery.ts",
 			"registerTeamEvents@octocode/team/tools/events.ts",
-			"registerUi@octocode/ui/chrome.ts"
+			"registerUi@octocode/ui/chrome.ts",
+			"registerRepeatedProseGuard@octocode/repeated-prose.ts"
 		],
 		"message_update": [
 			"registerTeamEvents@octocode/team/tools/events.ts",
 			"registerActivity@octocode/ui/activity.ts",
+			"registerRepeatedProseGuard@octocode/repeated-prose.ts",
 			"OctocodeApi.observe@octocode/api/bridge.ts"
 		],
 		"model_select": [
@@ -149,7 +153,6 @@
 			"registerSkills@octocode/skills.ts"
 		],
 		"session_before_compact": [
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerStallRecorder@octocode/profiler/stalls.ts",
 			"registerPreCompactHook@octocode/hooks/register/events.ts",
@@ -183,7 +186,6 @@
 			"registerFooter@octocode/ui/footer.ts",
 			"registerTurnLine@octocode/ui/turn-line.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerStallRecorder@octocode/profiler/stalls.ts",
 			"registerTurnSetup@octocode/turn.ts",
 			"registerSessionStartHooks@octocode/hooks/register/session-start.ts",
@@ -197,7 +199,6 @@
 			"OctocodeApi.observe@octocode/api/bridge.ts"
 		],
 		"session_compact_failed": [
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerCompaction@octocode/compaction/register.ts"
 		],
@@ -237,8 +238,6 @@
 			"registerPhaseLine@octocode/ui/phase-line.ts",
 			"registerAwaiting@octocode/ui/awaiting.ts",
 			"registerWake@octocode/wake/register.ts",
-			"bindSessionSignals@octocode/wake/session-signals.ts",
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"installLive@octocode/wake/live-host.ts",
 			"installTicketResults@octocode/wake/ticket-results.ts",
 			"registerAsyncJobs@octocode/jobs/register.ts",
@@ -303,7 +302,6 @@
 			"registerPhaseLine@octocode/ui/phase-line.ts",
 			"registerAwaiting@octocode/ui/awaiting.ts",
 			"registerUi@octocode/ui/chrome.ts",
-			"installShadow@octocode/wake/shadow-host.ts",
 			"installLive@octocode/wake/live-host.ts",
 			"installTicketResults@octocode/wake/ticket-results.ts",
 			"registerAsyncJobs@octocode/jobs/register.ts",
@@ -322,6 +320,7 @@
 			"registerArchiveTool@octocode/native/tools/archive/tool.ts",
 			"registerArchiveLifecycle@octocode/archive/lifecycle.ts",
 			"registerSkillTool@octocode/native/tools/skill/tool.ts",
+			"registerRunBudget@octocode/run-budget.ts",
 			"registerLoopGuard@octocode/loop-guard.ts",
 			"registerNoticeLines@octocode/ui/notice-lines.ts",
 			"registerNotify@octocode/ui/notify.ts",
@@ -407,7 +406,6 @@
 			"registerAgentTool@octocode/subagents/tool.ts",
 			"registerQuotaNotice@octocode/subagents/models-quota-notice.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerTurnSetup@octocode/turn.ts",
 			"registerBackgroundHooks@octocode/hooks/background.ts",
 			"registerHooks@octocode/hooks/register.ts",
@@ -419,7 +417,6 @@
 		],
 		"turn_start": [
 			"registerTeamEvents@octocode/team/tools/events.ts",
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerTurnBudget@octocode/compaction/turn-budget.ts"
 		],

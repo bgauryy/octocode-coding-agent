@@ -31,6 +31,7 @@ flowchart LR
 | [Environment variables](environment-variables.md)         | Set behaviour from the environment                                              |
 | [Providers](providers.md)                                 | Connect an AI provider                                                          |
 | [Models](models.md)                                       | Pick, route, discover and add models                                            |
+| [Smart routing](smart-routing.md)                         | Route requests safely across configured physical models                         |
 | [Models configuration reference](models-configuration.md) | Look up every `models.json` field                                               |
 | [Permissions](permissions.md)                             | Choose a permission mode and write rules                                        |
 | [Sandbox](sandbox.md)                                     | Confine the agent's shell commands with an operating-system sandbox             |

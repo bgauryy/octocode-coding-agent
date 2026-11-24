@@ -1,4 +1,5 @@
 import { type Static, Type } from "typebox";
+import { StringEnum } from "@octocodeai/octocode-ai";
 import type { ToolContext } from "../../../core/features/index.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { reasonSchema } from "../../shared/reason.ts";
@@ -9,55 +10,44 @@ import { fileShapeError } from "../../tool-input/file-shape.ts";
 
 /** The `file` tool's parameters and the text of its outcomes. */
 
-const QuerySchema = Type.Object({
+const Edit = Type.Object({
+	oldText: Type.String({ description: "Unique original text unless replaceAll" }),
+	newText: Type.String(),
+	line: Type.Optional(
+		Type.Integer({ description: "1-based complete line; pair with the last read or written sourceSha256" }),
+	),
+	sourceSha256: Type.Optional(Type.String()),
+	replaceAll: Type.Optional(Type.Boolean()),
+});
+
+// One flat object, not a union per `type`: strict tool calling takes no object unions, and no size bounds. Which
+// operands go with which `type` is checked when the call runs (`fileShapeError`) before any changes are applied.
+const Query = Type.Object({
 	reason: Type.Optional(Type.String({ description: "Only if it differs from the call's reason" })),
-	// A plain string enum (what octocode-ai's StringEnum emits) keeps the schema portable across providers.
-	type: Type.Unsafe<"edit" | "write" | "delete">({
-		type: "string",
-		enum: ["edit", "write", "delete"],
+	type: StringEnum(["edit", "write", "delete"] as const, {
 		description: "edit: exact replacements; write: create or replace; delete: /rewind restores",
 	}),
-	path: Type.String({ description: "Absolute path or relative to cwd" }),
-	edits: Type.Optional(
-		Type.Array(
-			Type.Object({
-				oldText: Type.String({
-					description: "Exact text, unique unless replaceAll; with line: the whole original line",
-				}),
-				newText: Type.String({ description: "Replacement text" }),
-				line: Type.Optional(Type.Integer({ description: "1-based line anchor; needs sourceSha256" })),
-				sourceSha256: Type.Optional(
-					Type.String({
-						description: "File SHA-256 as last read or written; needs line",
-					}),
-				),
-				replaceAll: Type.Optional(
-					Type.Boolean({
-						description: "Every non-overlapping match (default false)",
-					}),
-				),
-			}),
-			{
-				description: "edit: non-overlapping, matched against the original",
-			},
-		),
-	),
+	path: Type.String(),
+	edits: Type.Optional(Type.Array(Edit, { description: "edit: non-overlapping, matched against the original" })),
 	content: Type.Optional(Type.String({ description: "write: complete file content" })),
-	fromAttachment: Type.Optional(Type.String({ description: "write: sha256 of a received attachment" })),
+	fromAttachment: Type.Optional(Type.String({ description: "write: SHA-256 from received team mail" })),
 });
 
 export const Params = Type.Object({
-	queries: Type.Optional(Type.Array(QuerySchema)),
-	patch: Type.Optional(
-		Type.String({
-			description: "Codex apply_patch text",
-		}),
-	),
-	// Declared here (so `execute` keeps it for a patch's changes) and required like every native tool's: the row shows it.
+	queries: Type.Optional(Type.Array(Query)),
+	patch: Type.Optional(Type.String({ description: "Codex apply_patch text" })),
 	reason: reasonSchema(),
 });
-/** A change as the tool runs it: `renameReasoning` has filled in the reason the model left out. */
-export type FileQuery = Omit<Static<typeof QuerySchema>, "reason"> & { reason: string };
+
+/** A query after preparation: an attachment write may now carry both its reference and the checked text. */
+export interface FileQuery {
+	type: Static<typeof Query>["type"];
+	path: string;
+	reason: string;
+	edits?: Static<typeof Edit>[];
+	content?: string;
+	fromAttachment?: string;
+}
 
 /** `reason` replaced `reasoning`; a call recorded with the old name (a resumed session) still validates. */
 const aliased = <T extends Record<string, unknown>>(value: T): T => {

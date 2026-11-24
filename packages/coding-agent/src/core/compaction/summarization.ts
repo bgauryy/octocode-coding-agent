@@ -34,7 +34,7 @@ import {
 } from "./summary-format.ts";
 import { carryLedger, ledgerPrompt, ledgerOf, type LiftedBullet } from "./ledger.ts";
 import { summaryMaxTokens, summaryThinkingLevel } from "./settings.ts";
-import { summaryFailure } from "./summary-failure.ts";
+import { rethrowSummaryRequestError, summaryFailure } from "./summary-failure.ts";
 import { focusBlock, type SummaryFocus } from "./summary-focus.ts";
 
 const SUMMARIZATION_PROMPT = renderPrompt("workflows/compaction/summarize.md", {
@@ -100,7 +100,7 @@ export async function completeSummarization(
 		streamFn
 			? (await streamFn(model, context, requestOptions)).result()
 			: completeSimple(model, context, requestOptions);
-	return retryAssistantCall(produce, retry, requestOptions.signal, callbacks);
+	return retryAssistantCall(produce, retry, requestOptions.signal, callbacks).catch(rethrowSummaryRequestError);
 }
 
 /**

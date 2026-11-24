@@ -375,8 +375,46 @@ describe("durable agent lifecycle", () => {
 		close();
 	});
 
+	it("rebuilds on the next commit when a foreign view is removed while its contents are being checked", async () => {
+		const view = path.join(root, ".octocode", "agent", "agents.txt");
+		fs.mkdirSync(path.dirname(view), { recursive: true });
+		fs.writeFileSync(view, "foreign data");
+		const read = fs.promises.readFile.bind(fs.promises);
+		const reads = vi.spyOn(fs.promises, "readFile").mockImplementation(async (...args) => {
+			const contents = await read(...args);
+			if (String(args[0]) === view && fs.existsSync(`${view}.lock`) && contents === "foreign data") fs.unlinkSync(view);
+			return contents;
+		});
+		const fake = fakeHost();
+		const close = registerArchiveLifecycle(fake.api, {
+			canProject: () => true,
+			agentId: () => undefined,
+			parentId: () => undefined,
+		});
+		const ctx = fakeCtx({ cwd: root });
+		Object.assign(ctx.sessionManager, {
+			getSessionFile: () => path.join(root, "not-created.jsonl"),
+			getSessionId: () => "session",
+		});
+		try {
+			await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
+			await until(() => ctx.ui.notes.some((note) => note.message.includes("Invalid agents.txt")), "the warning");
+			appendInit(sharedAgentDb(), root, "after-removal");
+			await until(
+				() =>
+					fs.existsSync(view) &&
+					fs.readFileSync(view, "utf8").includes('"id":"after-removal"') &&
+					!fs.existsSync(`${view}.lock`),
+				"the replacement view",
+			);
+		} finally {
+			reads.mockRestore();
+			close();
+		}
+	});
+
 	it("warns once per problem, stops projecting into a foreign view until it changes, and recovers when it is removed", async () => {
-		vi.useFakeTimers({ toFake: ["setTimeout"] });
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 		const view = path.join(root, ".octocode", "agent", "agents.txt");
 		fs.mkdirSync(path.dirname(view), { recursive: true });
 		const foreignRow = {
@@ -429,6 +467,8 @@ describe("durable agent lifecycle", () => {
 			commit("held");
 			await until(() => lockAttempts() >= 2 * budget, "the second retry budget to run out");
 			expect(warnings(/lock/i)).toBe(1);
+			// Only retry waits need a fake clock. A real lock's heartbeat and the filesystem must share elapsed time.
+			vi.useRealTimers();
 			// The lock frees: the foreign view is the next problem, reported once however often the problems alternate.
 			fs.rmdirSync(`${view}.lock`);
 			commit("foreign");
@@ -448,7 +488,8 @@ describe("durable agent lifecycle", () => {
 			fs.rmSync(view);
 			commit("e");
 			await until(
-				() => fs.existsSync(view) && fs.readFileSync(view, "utf8").includes('"id":"e"'),
+				() =>
+					fs.existsSync(view) && fs.readFileSync(view, "utf8").includes('"id":"e"') && !fs.existsSync(`${view}.lock`),
 				"the view to be rebuilt",
 			);
 			expect(fs.readFileSync(view, "utf8")).toContain('"id":"e"');

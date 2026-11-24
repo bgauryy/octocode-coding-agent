@@ -52,7 +52,7 @@ function editQuery(query: Record<string, unknown>, path: string): FileQuery {
 	for (const edit of edits)
 		if (!isRecord(edit) || typeof edit.oldText !== "string" || typeof edit.newText !== "string")
 			return refuse("invalid edit");
-	return { ...(query as FileQuery), path };
+	return { type: "edit", path, reason: typeof query.reason === "string" ? query.reason : "", edits };
 }
 
 /**

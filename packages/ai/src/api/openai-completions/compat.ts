@@ -149,6 +149,7 @@ export function getCompat(model: Model<"openai-completions">): ResolvedOpenAICom
 			model.compat.requiresReasoningContentOnAssistantMessages ?? detected.requiresReasoningContentOnAssistantMessages,
 		thinkingFormat: model.compat.thinkingFormat ?? detected.thinkingFormat,
 		openRouterRouting: model.compat.openRouterRouting ?? {},
+		openRouterAutoRouter: model.compat.openRouterAutoRouter,
 		vercelGatewayRouting: model.compat.vercelGatewayRouting ?? detected.vercelGatewayRouting,
 		chatTemplateKwargs: model.compat.chatTemplateKwargs ?? detected.chatTemplateKwargs,
 		chatTemplateArgs: model.compat.chatTemplateArgs ?? detected.chatTemplateArgs,

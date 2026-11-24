@@ -33,11 +33,16 @@ export const hardLimit = (soft: number): number => Math.ceil(soft * HARD_LIMIT_F
 
 /**
  * The soft limit of a run: the profile's `maxRequests` (0 there turns the budget off for that profile), else
- * `OCTOCODE_SUBAGENT_MAX_REQUESTS` (a non-negative integer, 0 turning it off; anything else is ignored), else
- * `DEFAULT_MAX_REQUESTS`.
+ * `configured` (`limits.subagent.maxRequests` for the child's model), else `OCTOCODE_SUBAGENT_MAX_REQUESTS` (a
+ * non-negative integer, 0 turning it off; anything else is ignored), else `DEFAULT_MAX_REQUESTS`.
  */
-export function maxRequests(profile?: Pick<AgentProfile, "maxRequests">, env: NodeJS.ProcessEnv = process.env): number {
+export function maxRequests(
+	profile?: Pick<AgentProfile, "maxRequests">,
+	env: NodeJS.ProcessEnv = process.env,
+	configured?: number,
+): number {
 	if (profile?.maxRequests !== undefined) return profile.maxRequests;
+	if (configured !== undefined) return configured;
 	const value = envInt(env, MAX_REQUESTS_ENV, DEFAULT_MAX_REQUESTS);
 	return value >= 0 ? value : DEFAULT_MAX_REQUESTS;
 }
@@ -51,8 +56,9 @@ export function taskRequestLimit(
 	profile: Pick<AgentProfile, "name" | "maxRequests"> | undefined,
 	cap: unknown,
 	env: NodeJS.ProcessEnv = process.env,
+	configured?: number,
 ): number {
-	const limit = maxRequests(profile, env);
+	const limit = maxRequests(profile, env, configured);
 	if (cap === undefined) return limit;
 	if (typeof cap !== "number" || !Number.isInteger(cap) || cap < 1)
 		throw new Error(`maxRequests must be a positive integer, not ${JSON.stringify(cap)}.`);

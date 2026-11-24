@@ -263,6 +263,21 @@ describe("Anthropic preferred strict tool fallback", () => {
 		expect(payloads).toHaveLength(1);
 	});
 
+	it("retries the relaxed payload when the fallback is throttled", async () => {
+		const { payloads, options } = harness((payload, attempt) => {
+			if (payload.tools?.[0].strict) return errorResponse();
+			if (attempt === 2) return new Response("busy", { status: 429, headers: { "retry-after-ms": "1" } });
+			return successResponse();
+		});
+		const result = await streamAnthropic(model, context([tool("lookup", "prefer")]), {
+			...options,
+			maxRetries: 1,
+		}).result();
+		expect(result.stopReason).toBe("stop");
+		expect(payloads).toHaveLength(3);
+		expect(payloads[2]).toEqual(payloads[1]);
+	});
+
 	it("remembers the downgrade so later requests skip the rejected strict attempt", async () => {
 		const { payloads, options } = harness((_payload, attempt) => (attempt === 1 ? errorResponse() : successResponse()));
 		const transcript = context([tool("lookup", "prefer"), tool("required", "require")]);

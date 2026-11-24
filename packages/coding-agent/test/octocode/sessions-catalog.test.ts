@@ -7,6 +7,7 @@ import { getDefaultSessionDirPath } from "../../src/core/session-manager/storage
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { quickList } from "../../src/octocode/sessions/catalog.ts";
+import { makeSource, userSource, withSource } from "../../src/octocode/events/source.ts";
 import { registerSessions } from "../../src/octocode/sessions/register.ts";
 import { SessionIndex } from "../../src/octocode/sessions/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -82,6 +83,35 @@ function host(manager: SessionManager) {
 }
 
 describe("session catalog", () => {
+	it("lists the original first prompt for sourced strings and text blocks across live and saved sessions", async () => {
+		const sources = [userSource("terminal"), makeSource("peer", "worker", "db", "self-reported")];
+		for (const content of ["review the result", [{ type: "text" as const, text: "review the result" }]]) {
+			const manager = SessionManager.create(cwd, dir);
+			manager.appendMessage(withSource({ ...user(""), content }, sources));
+			manager.appendMessage(reply("ok"));
+			const { fake, ctx } = host(manager);
+			await fake.fire("agent_end", { type: "agent_end", messages: [] }, ctx);
+			expect((await buildSessionInfo(manager.getSessionFile()!))?.firstMessage).toBe("review the result");
+			expect(
+				index()
+					.catalog({ cwd })
+					.find((row) => row.id === manager.getSessionId())?.first_prompt,
+			).toBe("review the result");
+		}
+	});
+
+	it("shows the prompt in an older cached row that flattened the source header", async () => {
+		const manager = session();
+		const { fake, ctx } = host(manager);
+		await fake.fire("agent_end", { type: "agent_end", messages: [] }, ctx);
+		const store = index();
+		const row = store.catalog()[0];
+		const first = withSource({ content: "Fix the login bug" }, [userSource("terminal")]).content;
+		vi.spyOn(store, "catalog").mockReturnValue([{ ...row, first_prompt: first.replace("\n", " ") }]);
+		const parse = vi.fn((file: string) => buildSessionInfo(file));
+		expect((await quickList(store, { sessionDir: dir }, parse))[0]?.firstMessage).toBe("Fix the login bug");
+		expect(parse).not.toHaveBeenCalled();
+	});
 	it("writes the catalog row when a turn ends, with the listing's own numbers", async () => {
 		const manager = session("Fix the login bug", 2);
 		const { fake, ctx } = host(manager);

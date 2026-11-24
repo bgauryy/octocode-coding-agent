@@ -58,7 +58,7 @@ describe("collapsing a row keeps scrollback", () => {
 
 	test("an assistant message's long response", () => {
 		const keepScrollbackOnCollapse = vi.fn();
-		const row = new AssistantMessageComponent(undefined, true, undefined, undefined, 1, [], {
+		const row = new AssistantMessageComponent(undefined, true, undefined, 1, [], {
 			keepScrollbackOnCollapse,
 		});
 		row.updateMessage({

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { UserMessageComponent } from "../src/modes/interactive/components/user-message.ts";
-import { initTheme, theme } from "../src/theme/theme.ts";
+import { initTheme, setThemeInstance, theme } from "../src/theme/theme.ts";
+import { loadTheme } from "../src/theme/theme-loader.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
@@ -24,7 +25,7 @@ describe("UserMessageComponent", () => {
 	});
 
 	test("keeps user message height stable while moving closing OSC markers off line end", () => {
-		initTheme("dark");
+		setThemeInstance(loadTheme("dark", "truecolor"));
 
 		const component = new UserMessageComponent("hello");
 		const lines = component.render(20);
@@ -87,15 +88,15 @@ describe("UserMessageComponent", () => {
 	});
 
 	test("repaints the accent bar in the new theme's color after a theme switch", () => {
-		initTheme("dark");
+		setThemeInstance(loadTheme("dark", "truecolor"));
 		const component = new UserMessageComponent("hello");
 		const dark = component.render(20);
 		expect(component.render(20)).toEqual(dark);
 
-		initTheme("light");
+		setThemeInstance(loadTheme("light", "truecolor"));
 		const lightBar = theme.fg("accent", "▎");
 		const light = component.render(20);
-		initTheme("dark");
+		setThemeInstance(loadTheme("dark", "truecolor"));
 
 		expect(lightBar).not.toBe(theme.fg("accent", "▎"));
 		for (const line of light) expect(line).toContain(lightBar);

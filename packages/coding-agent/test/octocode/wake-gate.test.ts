@@ -13,7 +13,9 @@ import type { Team } from "../../src/octocode/team/session.ts";
 import { turnLineText } from "../../src/octocode/ui/turn-line.ts";
 import type { AgentEvent } from "../../src/octocode/wake/catalog.ts";
 import { WAKE_TYPE, wakeGateOf } from "../../src/octocode/wake/gate.ts";
-import { registerWake, wakeHoldMs, writtenRefs } from "../../src/octocode/wake/register.ts";
+import { registerWake, writtenRefs } from "../../src/octocode/wake/register.ts";
+import { eventWindowMs } from "../../src/octocode/wake/session-signals.ts";
+import { MemoryEventStore } from "../../src/octocode/events/loop/store.ts";
 import { collapsedWakeRow, wakeLines } from "../../src/octocode/ui/wake-row.ts";
 import { sendAgentReport } from "../../src/octocode/subagents/handoff/wake.ts";
 import { SETTINGS_DEFAULTS } from "../../src/core/settings-defaults.ts";
@@ -30,7 +32,9 @@ beforeEach(() => {
 	process.env.OCTOCODE_AGENT_DB = path.join(tmp, "home", "octocode.db");
 });
 
-afterEach(() => {
+const shutdown: Array<() => Promise<unknown>> = [];
+afterEach(async () => {
+	for (const close of shutdown.splice(0)) await close();
 	vi.useRealTimers();
 	closeSharedAgentDb();
 	if (savedDb === undefined) delete process.env.OCTOCODE_AGENT_DB;
@@ -53,7 +57,8 @@ function setup(settings: Record<string, unknown> = { subagents: { wakeHoldSecond
 	const cwd = path.join(tmp, "repo");
 	fs.mkdirSync(cwd, { recursive: true });
 	const ctx = fakeCtx({ cwd });
-	registerWake(fake.api);
+	const store = new MemoryEventStore();
+	registerWake(fake.api, { live: { store: () => store } });
 	const runs = { running: new Map<string, undefined>(), items: new Map<string, string>() };
 	registerIdleItems(fake.api, { reserved: () => false } as unknown as Team, runs, { onItem: () => undefined });
 	const backlog = openBacklog(ctx, { isSubagent: false });
@@ -67,7 +72,15 @@ function setup(settings: Record<string, unknown> = { subagents: { wakeHoldSecond
 		await fake.emit("agent_settled", { aborted: false }, ctx);
 	};
 	const ids = (items: string[]) => items.map((ref) => ref);
-	return { fake, ctx, runs, hold, run, gate: wakeGateOf(fake.api), ids };
+	return { fake, ctx, runs, hold, run, store, gate: wakeGateOf(fake.api), ids };
+}
+
+/** Starts the real loop when a case needs session scheduling; gate-only cases exercise its unbound fallback. */
+async function active(settings: Record<string, unknown>) {
+	const s = setup(settings);
+	await s.fake.emit("session_start", { reason: "startup" }, s.ctx);
+	shutdown.push(() => s.fake.emit("session_shutdown", { reason: "quit" }, s.ctx));
+	return s;
 }
 
 const nudges = (fake: ReturnType<typeof fakeHost>) =>
@@ -215,7 +228,7 @@ describe("hold window", () => {
 
 	it("holds an idle session's wakes for the default window, then starts one turn for them", async () => {
 		vi.useFakeTimers();
-		const s = setup({});
+		const s = await active({});
 		const windowMs = SETTINGS_DEFAULTS.subagents.wakeHoldSeconds * 1000;
 		expect(windowMs).toBeGreaterThan(0);
 		const first = s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true, deliverAs: "followUp" });
@@ -228,7 +241,7 @@ describe("hold window", () => {
 	});
 
 	it("is off at 0: each wake is sent at once", async () => {
-		const s = setup({ subagents: { wakeHoldSeconds: 0 } });
+		const s = await active({ subagents: { wakeHoldSeconds: 0 } });
 		s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true });
 		s.gate.emit(reportOn(undefined, "b"), msg(2), { triggerTurn: true });
 		expect(s.fake.sent.map((entry) => entry.options.triggerTurn)).toEqual([true, true]);
@@ -236,7 +249,7 @@ describe("hold window", () => {
 
 	it("merges wakes of an idle session that arrive inside the window into one turn", async () => {
 		vi.useFakeTimers();
-		const s = setup({ subagents: { wakeHoldSeconds: 2 } });
+		const s = await active({ subagents: { wakeHoldSeconds: 2 } });
 		const first = s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true, deliverAs: "followUp" });
 		vi.advanceTimersByTime(1000);
 		s.gate.emit(reportOn(undefined, "b"), msg(2), { triggerTurn: true, deliverAs: "followUp" });
@@ -250,34 +263,37 @@ describe("hold window", () => {
 				entry.options.deliverAs,
 			]),
 		).toEqual([
-			["m1", false, "followUp"],
-			["m2", true, "followUp"],
+			["m1", false, "steer"],
+			["m2", true, "steer"],
 		]);
 	});
 
-	it("does not hold a wake while a run is in progress", async () => {
+	it("delivers the wake at the next tool boundary while a run is in progress", async () => {
 		vi.useFakeTimers();
-		const s = setup({ subagents: { wakeHoldSeconds: 2 } });
+		const s = await active({ subagents: { wakeHoldSeconds: 2 } });
 		await s.fake.emit("agent_start", {}, s.ctx);
-		s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true, deliverAs: "followUp" });
+		await s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true, deliverAs: "followUp" });
+		expect(s.fake.sent).toHaveLength(0);
+		await s.fake.emit("turn_end", { toolResults: [{}] }, s.ctx);
 		expect(s.fake.sent).toHaveLength(1);
 	});
 
 	it("sends what is held when the session ends", async () => {
 		vi.useFakeTimers();
-		const s = setup({ subagents: { wakeHoldSeconds: 5 } });
+		const s = await active({ subagents: { wakeHoldSeconds: 5 } });
 		s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true });
 		expect(s.fake.sent).toHaveLength(0);
 		await s.fake.emit("session_shutdown", {}, s.ctx);
 		expect(s.fake.sent).toHaveLength(1);
 	});
 
-	it("caps the setting and treats a bad value as off", () => {
-		expect(wakeHoldMs(3)).toBe(3000);
-		expect(wakeHoldMs(99)).toBe(10_000);
-		expect([wakeHoldMs(0), wakeHoldMs(-1), wakeHoldMs("2"), wakeHoldMs(undefined), wakeHoldMs(Number.NaN)]).toEqual([
-			0, 0, 0, 0, 0,
-		]);
+	it("uses the runtime window before the legacy setting, bounds it, and disables invalid values", () => {
+		const window = (value: unknown) =>
+			eventWindowMs(fakeHost({ runtime: { eventWindowSeconds: value }, subagents: { wakeHoldSeconds: 4 } }).api);
+		expect(window(3)).toBe(3000);
+		expect(window(undefined)).toBe(4000);
+		expect(window(99)).toBe(10_000);
+		expect([0, -1, "2", Number.NaN].map(window)).toEqual([0, 0, 0, 0]);
 	});
 });
 
@@ -405,7 +421,7 @@ describe("session end with held wakes", () => {
 
 	it("sends held messages without starting a turn in the session being torn down", async () => {
 		vi.useFakeTimers();
-		const s = setup({ subagents: { wakeHoldSeconds: 5 } });
+		const s = await active({ subagents: { wakeHoldSeconds: 5 } });
 		s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true, deliverAs: "followUp" });
 		s.gate.emit(reportOn(undefined, "b"), msg(2), { triggerTurn: true, deliverAs: "followUp" });
 		await s.fake.emit("session_shutdown", {}, s.ctx);
@@ -418,9 +434,9 @@ describe("session end with held wakes", () => {
 		expect(s.fake.sent).toHaveLength(2);
 	});
 
-	it("rejects a held send that fails, for its owner to deliver again, and reports it once on stderr", async () => {
+	it("preserves accepted events for replay when shutdown cannot deliver them, and reports it once", async () => {
 		vi.useFakeTimers();
-		const s = setup({ subagents: { wakeHoldSeconds: 5 } });
+		const s = await active({ subagents: { wakeHoldSeconds: 5 } });
 		const written: string[] = [];
 		const stderr = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
 			written.push(String(chunk));
@@ -432,9 +448,9 @@ describe("session end with held wakes", () => {
 			};
 			const first = s.gate.emit(reportOn(undefined, "a"), msg(1), { triggerTurn: true }) as Promise<void>;
 			const second = s.gate.emit(reportOn(undefined, "b"), msg(2), { triggerTurn: true }) as Promise<void>;
+			await Promise.all([first, second]);
 			await s.fake.emit("session_shutdown", {}, s.ctx);
-			await expect(first).rejects.toThrow("session is closed");
-			await expect(second).rejects.toThrow("session is closed");
+			expect(s.store.unread().map((event) => event.topic)).toEqual(["agent.report", "agent.report"]);
 			expect(written).toHaveLength(1);
 			expect(written[0]).toContain("session is closed");
 		} finally {
@@ -444,22 +460,24 @@ describe("session end with held wakes", () => {
 });
 
 describe("a hold does not delay what a busy run takes", () => {
-	it("sends a steer at once while a run is in progress, as mail that continues a settling headless run is", async () => {
+	it("delivers an interrupt once the aborted run has settled", async () => {
 		vi.useFakeTimers();
-		const s = setup({ subagents: { wakeHoldSeconds: 5 } });
+		const s = await active({ subagents: { wakeHoldSeconds: 5 } });
 		await s.fake.emit("agent_start", {}, s.ctx);
 		s.gate.emit(
 			{ kind: "agent.message", from: "boss", id: 1, replyRequired: true, interrupt: true },
 			{ customType: "t", content: "stop", display: true },
 			{ triggerTurn: true, deliverAs: "steer" },
 		);
+		expect(s.fake.sent).toHaveLength(0);
+		await s.fake.emit("agent_settled", { aborted: true }, s.ctx);
 		expect(s.fake.sent).toHaveLength(1);
 		expect(s.fake.sent[0].options.triggerTurn).toBe(true);
 	});
 
 	it("holds again only once the run has settled", async () => {
 		vi.useFakeTimers();
-		const s = setup({ subagents: { wakeHoldSeconds: 5 } });
+		const s = await active({ subagents: { wakeHoldSeconds: 5 } });
 		await s.run();
 		s.gate.emit(
 			{ kind: "agent.message", from: "boss", id: 2, replyRequired: false, interrupt: false },
@@ -539,13 +557,13 @@ describe("woke row lines", () => {
 
 	it("takes a line back when a held send fails at release", async () => {
 		vi.useFakeTimers();
-		const s = setup({ subagents: { wakeHoldSeconds: 2 } });
+		const s = await active({ subagents: { wakeHoldSeconds: 2 } });
 		(s.fake.api.session as unknown as { sendMessage: () => never }).sendMessage = () => {
 			throw new Error("closed");
 		};
-		const held = s.gate.emit(mail(3), msg, { triggerTurn: true }) as Promise<void>;
+		await s.gate.emit(mail(3), msg, { triggerTurn: true });
 		vi.advanceTimersByTime(2000);
-		await expect(held).rejects.toThrow("closed");
+		expect(s.store.unread().map((event) => event.topic)).toEqual(["agent.message"]);
 		await s.fake.emit("agent_start", {}, s.ctx);
 		expect(s.fake.entries).toHaveLength(0);
 	});

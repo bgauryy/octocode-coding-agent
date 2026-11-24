@@ -1,6 +1,7 @@
 import { appendFileSync, statSync } from "node:fs";
 import { getFileStamp } from "@octocodeai/octocode-common/paths";
 import { scheduleSessionSync, sessionSyncFailed, sessionSyncRecovered } from "./deferred-sync.ts";
+import { entryWritten } from "./entry-receipt.ts";
 import { mirrorAppended } from "./mirror.ts";
 import type { SessionState } from "./state.ts";
 import type { SessionEntry } from "./types.ts";
@@ -48,6 +49,7 @@ export function appendRecords(state: SessionState, file: string, pending: readon
 			const held = state.unwritten.indexOf(entry);
 			if (held >= 0) state.unwritten.splice(held, 1);
 			written.push({ entry, line });
+			entryWritten(entry);
 			stamp = getFileStamp(file);
 		}
 	} finally {

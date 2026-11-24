@@ -3,6 +3,8 @@ import {
 	getKeybindings,
 	MOTION,
 	setScreenReaderMode,
+	SPINNER,
+	spinnerFrame,
 	setKeybindings,
 	type TUI,
 	visibleWidth,
@@ -180,11 +182,13 @@ describe("status indicators", () => {
 		vi.useFakeTimers({ now: Date.now() + MOTION.spinnerDelayMs + 50 });
 
 		const topBorder = editor.render(20)[0];
-		expect(stripAnsi(topBorder)).toBe("── ⠋ Working (0s) ──");
+		// Every spinner draws the animation clock's one frame, whichever that is now.
+		const frame = spinnerFrame(SPINNER.braille)!;
+		expect(stripAnsi(topBorder)).toBe(`── ${frame} Working (0s) ──`);
 		expect(visibleWidth(topBorder)).toBe(20);
 		expect(topBorder).toContain(theme.fg("muted", "Working"));
 		expect(topBorder).toContain(theme.fg("dim", " (0s"));
-		expect(topBorder).toContain(theme.fg("thinkingHigh", "⠋"));
+		expect(topBorder).toContain(theme.fg("thinkingHigh", frame));
 		indicator.dispose();
 	});
 

@@ -1,5 +1,5 @@
 import { activity } from "@octocodeai/octocode-projections";
-import { GLYPH, visibleWidth } from "@octocodeai/octocode-tui";
+import { LIGHT_GLYPH, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createStore } from "zustand/vanilla";
 import { type FooterState, footerLines } from "../../src/octocode/ui/footer/rows.ts";
@@ -35,9 +35,9 @@ describe("the footer's activity light", () => {
 	it("leads the model with the light and a word for every state but idle", () => {
 		// The footer is still: a working light is the full ⏺ with its word, never a spinner frame held still.
 		expect(bottom({ ...base, activity: activity({ streaming: true }) })).toMatch(/^⏺ working · claude-opus-5-5:high/);
-		expect(bottom({ ...base, activity: activity({ awaiting: true }) })).toMatch(/^◇ needs you · claude-opus-5-5:high/);
+		expect(bottom({ ...base, activity: activity({ awaiting: true }) })).toMatch(/^◐ needs you · claude-opus-5-5:high/);
 		expect(bottom({ ...base, activity: activity({ phase: { state: "failed", error: "401" } }) })).toMatch(
-			/^✗ failed · claude-opus-5-5:high/,
+			/^⊗ failed · claude-opus-5-5:high/,
 		);
 		expect(bottom({ ...base, activity: activity({ status: "retrying" }) })).toMatch(/^⏺ retrying · claude/);
 		expect(bottom({ ...base, activity: activity({ phase: { state: "done" } }) })).toMatch(/^○ claude-opus-5-5:high/);
@@ -46,9 +46,9 @@ describe("the footer's activity light", () => {
 	});
 
 	it("paints the light in its tone and the word loud only when it asks for attention", () => {
-		// ⏺ means running only: waiting draws ◇ and idle ○, each in its tone.
+		// ⏺ means running only: waiting draws ◐ and idle ○, each in its tone.
 		expect(bottom({ ...base, activity: activity({ awaiting: true }) }, 120, tagged)).toMatch(
-			/^<warning>◇ <warning>needs you<dim> · <accent>claude/,
+			/^<warning>◐ <warning>needs you<dim> · <accent>claude/,
 		);
 		expect(bottom({ ...base, activity: activity({ streaming: true }) }, 120, tagged)).toMatch(
 			/^<success>⏺ <muted>working<dim> · <accent>claude/,
@@ -58,10 +58,10 @@ describe("the footer's activity light", () => {
 
 	it("drops the word before the model is cut, and keeps the light as long as the model shows", () => {
 		const waiting = { ...base, activity: activity({ awaiting: true }), sessionName: "auth flow" };
-		expect(bottom(waiting, 40)).toMatch(/^◇ claude-opus-5-5:high/);
+		expect(bottom(waiting, 40)).toMatch(/^◐ claude-opus-5-5:high/);
 		for (const width of [20, 30, 40, 60, 80]) {
 			const line = bottom(waiting, width);
-			expect(line.startsWith(GLYPH.waiting), `${width}: ${line}`).toBe(true);
+			expect(line.startsWith(LIGHT_GLYPH.waiting), `${width}: ${line}`).toBe(true);
 			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 		}
 	});
@@ -70,12 +70,12 @@ describe("the footer's activity light", () => {
 		const shown = (facts: Parameters<typeof activity>[0]) =>
 			bottom({ ...base, activity: activity(facts) }, 120, colourless).slice(0, 1);
 		expect([shown({ awaiting: true }), shown({ phase: { state: "failed", error: "x" } }), shown({})]).toEqual([
-			GLYPH.waiting,
-			GLYPH.failed,
-			GLYPH.pending,
+			"◐",
+			"⊗",
+			"○",
 		]);
 		// Without colour no settled state uses ⏺, so the full ⏺ stands for working.
-		expect(shown({ streaming: true })).toBe(GLYPH.light);
+		expect(shown({ streaming: true })).toBe("⏺");
 	});
 });
 

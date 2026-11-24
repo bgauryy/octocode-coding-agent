@@ -7,6 +7,7 @@ import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import type { TSchema } from "typebox";
 import type { CallToolResult, Tool as McpTool } from "./client/index.ts";
 import { createOutputChecker } from "./client/output-check.ts";
+import { withCallContext } from "./elicitation-context.ts";
 import { hostCalls } from "./host.ts";
 import type { McpContext, McpToolDefinition, McpToolNamespace, McpToolRenderers } from "./host/types.ts";
 import type { McpExposure } from "./config.ts";
@@ -65,7 +66,8 @@ export interface McpToolDefinitionOptions {
 	defaultActive?: boolean;
 	namespace: McpToolNamespace;
 	timeoutMs: number;
-	getClient: () => Promise<McpToolCaller>;
+	/** The connection to call; `signal` ends its wait for a server that is reconnecting. */
+	getClient: (signal?: AbortSignal) => Promise<McpToolCaller>;
 	/**
 	 * Declare the tool as a thin stub: the description's first sentence and an open input object. The
 	 * model reads the tool's description and schema (a typed signature, or the JSON Schema in plain form) in its server's block of the system prompt; calls are validated against the
@@ -220,25 +222,28 @@ export function createMcpToolDefinition(options: McpToolDefinitionOptions): McpT
 		ctx: McpContext,
 	): Promise<AgentToolResult<McpToolDetails>> {
 		lastFailure = undefined;
-		const client = await options.getClient();
+		const client = await options.getClient(signal);
 		const call = await prepare(requested, ctx);
-		const reply = await client.callTool(tool.name, call.args, {
-			signal,
-			timeoutMs: options.timeoutMs,
-			onProgress: (progress) => {
-				const total = progress.total === undefined ? "" : `/${progress.total}`;
-				const text = visibleControls(progress.message ?? `Progress ${progress.progress}${total}`);
-				onUpdate?.({
-					content: [{ type: "text", text }],
-					details: { server, tool: tool.name },
-					progress: {
-						progress: progress.progress,
-						...(progress.total === undefined ? {} : { total: progress.total }),
-						...(progress.message ? { message: visibleControls(progress.message) } : {}),
-					},
-				});
-			},
-		});
+		// While the call waits, the server may ask the user for input: the question is shown in this call's session.
+		const reply = await withCallContext(client, ctx, () =>
+			client.callTool(tool.name, call.args, {
+				signal,
+				timeoutMs: options.timeoutMs,
+				onProgress: (progress) => {
+					const total = progress.total === undefined ? "" : `/${progress.total}`;
+					const text = visibleControls(progress.message ?? `Progress ${progress.progress}${total}`);
+					onUpdate?.({
+						content: [{ type: "text", text }],
+						details: { server, tool: tool.name },
+						progress: {
+							progress: progress.progress,
+							...(progress.total === undefined ? {} : { total: progress.total }),
+							...(progress.message ? { message: visibleControls(progress.message) } : {}),
+						},
+					});
+				},
+			}),
+		);
 		const result = call.review ? call.review(reply) : reply;
 		const converted = options.presentation
 			? await options.presentation.convertResult(result, ctx)

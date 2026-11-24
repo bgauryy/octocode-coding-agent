@@ -28,7 +28,7 @@ import {
 	type ClearingCost,
 } from "./clearing-cost.ts";
 import { clearedPlaceholder, resultDigest, sessionClearedView } from "./clearing-view.ts";
-import { inRecentUse } from "./clearing-recent.ts";
+import { inRecentUse, type KeepInUse } from "./clearing-recent.ts";
 import { historyReplaced } from "./history-cache.ts";
 import { untrustedResult } from "./untrusted-results.ts";
 
@@ -182,6 +182,8 @@ export interface ClearingOccasion {
 	contextWindow?: number;
 	/** The context's size in tokens as the last reply reported it; else estimated from the messages. */
 	contextTokens?: number;
+	/** `limits.clearing` for the model in use (`clearing-recent.ts`). */
+	keep?: KeepInUse;
 }
 
 /** Why the request rewrites the cache anyway, if it does: the lifetime passed, a compaction replaced the history, or `occasion`. */
@@ -230,7 +232,7 @@ export function clearStaleResults(
 	// Most requests stop here: the old results are too few to be worth a changed prefix and the saved copies.
 	if (tokensOf(counted) < floor) return;
 	const calls = toolCallArguments(messages);
-	const inUse = inRecentUse(counted, messages, calls);
+	const inUse = inRecentUse(counted, messages, calls, occasion.keep);
 	const older = inUse.size === 0 ? counted : counted.filter(({ id }) => !inUse.has(id));
 	if (tokensOf(older) < floor) return;
 	const tokens = messages.map(({ message }) => estimateTokens(message as never));

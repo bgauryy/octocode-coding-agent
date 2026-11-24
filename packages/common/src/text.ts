@@ -46,9 +46,9 @@ export function cutText(
 const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
 const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;
 
-const SOURCE_HEADER_LINE = /^\[src [^\n]*\n/;
+const SOURCE_HEADERS = /^(?:\[src [^\]\n]*\] t[0-4](?:\r?\n| |$))+/;
 
-/** `text` without the leading source header line the event loop writes: a row shows the message, the model reads the header. */
+/** Remove the event loop's leading source headers, including when a session listing joined text blocks with spaces. */
 export function withoutSourceHeader(text: string): string {
-	return text.replace(SOURCE_HEADER_LINE, "");
+	return text.replace(SOURCE_HEADERS, "");
 }

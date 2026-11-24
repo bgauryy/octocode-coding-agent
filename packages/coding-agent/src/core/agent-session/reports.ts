@@ -1,5 +1,6 @@
 /** Session reports that read the session without changing it: fork candidates and HTML export. */
 
+import { withoutSourceHeader } from "@octocodeai/octocode-common/text";
 import { contentText } from "@octocodeai/octocode-ai";
 import { theme } from "../../theme/theme-global.ts";
 import { getThemeByName } from "../../theme/theme-loader.ts";
@@ -18,7 +19,7 @@ export function getUserMessagesForForking(sessionManager: SessionManager): Array
 		if (entry.type !== "message") continue;
 		if (entry.message.role !== "user") continue;
 
-		const text = contentText(entry.message.content, "");
+		const text = withoutSourceHeader(contentText(entry.message.content, ""));
 		if (text) {
 			result.push({ entryId: entry.id, text });
 		}

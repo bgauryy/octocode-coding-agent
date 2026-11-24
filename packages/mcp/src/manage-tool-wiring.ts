@@ -35,8 +35,8 @@ export function registerMcpManageTool(state: McpFeatureState): void {
 		...createMcpManageTool({
 			tools: (name) => toolCatalog(state, name),
 			loaded: (server, tool) => {
-				state.recordToolLoaded(server, tool);
-				if (server === NATIVE_SERVER) state.options.nativeTools?.loaded?.(tool);
+				state.recordToolLoaded(server ?? NATIVE_SERVER, tool);
+				if (server === undefined) state.options.nativeTools?.loaded?.(tool);
 				else loadOnDemand(state, server, tool);
 			},
 			...(state.options.nativeTools ? { nativeTools: state.options.nativeTools } : {}),

@@ -194,4 +194,13 @@ class AnimationClock {
 
 /** The process-wide animation clock. */
 export const animationClock = new AnimationClock();
+
+/**
+ * The frame of a looping animation now: every spinner reads it, so all of them show the same frame and none keeps a
+ * counter. It steps once per `everyMs` of the clock's frame time; undefined for no frames.
+ */
+export function spinnerFrame<T>(frames: readonly T[], everyMs: number = MOTION.spinnerMs): T | undefined {
+	if (frames.length === 0) return undefined;
+	return frames[Math.floor(animationClock.frameTime() / Math.max(1, everyMs)) % frames.length];
+}
 export type { AnimationClock };

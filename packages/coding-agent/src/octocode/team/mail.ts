@@ -118,8 +118,10 @@ export class Mail {
 		ctx?: Pick<FeatureContext, "isIdle" | "abort">,
 		onRejected?: () => void,
 	): boolean {
-		// A steer is read only after the running tool returns: an interrupt stops the run instead (Octocode cancels the tool),
-		// and the batch starts the next turn once the run has settled (`settled`).
+		// Regular mail is the recipient's next task, read after the running tool returns. An interrupt stops the run instead
+		// (Octocode cancels the tool), and the batch starts the next turn once the run has settled (`settled`). The stop is
+		// made here, not left to the event loop: it must also work before a loop is attached, retry a refused hand-off and
+		// cover a manual compaction, which has no settle. A message that could not stop the run goes on as urgent.
 		// The interrupt is not tied to `verified`, on purpose: the agent that started this one is legitimately not "the user"
 		// and may stop it. What limits who can interrupt is the sender (`interruptRefusal`, checked where a message is sent):
 		// only the agent that started the recipient, or the user of its session (`/agents tell --interrupt`; an API client
@@ -183,7 +185,11 @@ export class Mail {
 			{ triggerTurn: batch.some((message) => message.wake), deliverAs: "steer" },
 			onRejected,
 			undefined,
-			batch.filter((message) => message.wake).map(mailEvent),
+			// Mail that already stopped the run is the next task now: only an interrupt that has not stopped anything is
+			// urgent for the event loop (`wake/loop-catalog.ts`), so the two never stop the same run.
+			batch
+				.filter((message) => message.wake)
+				.map((message) => ({ ...mailEvent(message), interrupt: !stopped && message.interrupt === true })),
 			batch.map((message) =>
 				mailSource(message, parentId, { fromUser: this.verified(message), parentSigned: this.parentSigned(message) }),
 			),

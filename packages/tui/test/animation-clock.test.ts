@@ -1,8 +1,9 @@
 import assert from "node:assert";
 import { afterEach, describe, it, mock } from "node:test";
 import { Loader } from "../src/components/loader.ts";
-import { animationClock } from "../src/tokens/clock.ts";
-import { breathe, GLYPH, MOTION, SPINNER, settle } from "../src/tokens/design.ts";
+import { animationClock, spinnerFrame } from "../src/tokens/clock.ts";
+import { breathe, GLYPH, LIGHT_GLYPH, MOTION, SPINNER, settle } from "../src/tokens/design.ts";
+import { visibleWidth } from "../src/utils/width.ts";
 
 /** Advance mocked time frame by frame, as a real event loop would. */
 function advance(ms: number, step = 20): void {
@@ -252,12 +253,41 @@ describe("animationClock", () => {
 });
 
 describe("design tokens", () => {
-	it("gives each state one distinct mark, the running one a static mark apart from the spinner", () => {
+	it("gives each state one distinct mark, the running one a full dot apart from the spinner", () => {
 		const states = [GLYPH.pending, GLYPH.running, GLYPH.waiting, GLYPH.done, GLYPH.failed, GLYPH.stopped];
 		assert.strictEqual(new Set(states).size, states.length);
-		assert.strictEqual(GLYPH.running, "◌");
+		assert.strictEqual(GLYPH.running, "⏺");
 		assert.ok(!(SPINNER.braille as readonly string[]).includes(GLYPH.running));
 		assert.ok(!(states as string[]).includes(GLYPH.live));
+	});
+
+	it("gives each state one state light: a distinct one-cell circle, none a spinner frame", () => {
+		const lights = Object.values(LIGHT_GLYPH);
+		assert.strictEqual(new Set(lights).size, lights.length);
+		for (const light of lights) {
+			assert.strictEqual(visibleWidth(light), 1, light);
+			assert.ok(!(SPINNER.braille as readonly string[]).includes(light));
+		}
+		assert.strictEqual(LIGHT_GLYPH.running, GLYPH.running);
+	});
+
+	it("gives every spinner the same frame, stepping once per interval of the clock's frame time", () => {
+		mock.timers.enable({ apis: ["setInterval", "Date"], now: 1_000_000 });
+		// A subscriber keeps the clock ticking, as the one loader does while it is on screen.
+		const stop = animationClock.subscribe(() => {}, { everyMs: MOTION.spinnerMs, kind: "decor" });
+		try {
+			const seen: string[] = [];
+			for (let frame = 0; frame < SPINNER.braille.length; frame++) {
+				assert.strictEqual(spinnerFrame(SPINNER.braille), spinnerFrame(SPINNER.braille));
+				seen.push(spinnerFrame(SPINNER.braille)!);
+				mock.timers.tick(MOTION.spinnerMs);
+			}
+			assert.strictEqual(new Set(seen).size, SPINNER.braille.length, seen.join(""));
+			assert.strictEqual(spinnerFrame([]), undefined);
+		} finally {
+			stop();
+			mock.timers.reset();
+		}
 	});
 
 	it("shows the running mark for a default Loader in reduced motion, and custom frames their first", () => {
@@ -268,7 +298,7 @@ describe("design tokens", () => {
 		try {
 			const spinner = new Loader(ui, plain, plain, "Working");
 			const custom = new Loader(ui, plain, plain, "Working", { frames: ["a", "b"] });
-			assert.match(line(spinner), /◌ Working/);
+			assert.match(line(spinner), /⏺ Working/);
 			assert.match(line(custom), /a Working/);
 			spinner.stop();
 			custom.stop();
@@ -276,7 +306,7 @@ describe("design tokens", () => {
 			animationClock.setReducedMotion(false);
 		}
 		const moving = new Loader(ui, plain, plain, "Working");
-		assert.match(line(moving), new RegExp(`${SPINNER.braille[0]} Working`));
+		assert.match(line(moving), new RegExp(`[${SPINNER.braille.join("")}] Working`));
 		moving.stop();
 	});
 

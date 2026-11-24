@@ -168,16 +168,16 @@ describe("the file tool's renamed reason", () => {
 			renameReasoning({
 				reasoning: "patch",
 				queries: [
-					{ type: "write", path: "a", reasoning: "old name" },
-					{ type: "write", path: "b", reason: "new name", reasoning: "ignored" },
+					{ type: "write", path: "a", content: "first", reasoning: "old name" },
+					{ type: "write", path: "b", content: "second", reason: "new name", reasoning: "ignored" },
 					{ type: "delete", path: "c", reason: "kept" },
 				],
 			}),
 		).toEqual({
 			reason: "patch",
 			queries: [
-				{ type: "write", path: "a", reason: "old name" },
-				{ type: "write", path: "b", reason: "new name" },
+				{ type: "write", path: "a", content: "first", reason: "old name" },
+				{ type: "write", path: "b", content: "second", reason: "new name" },
 				{ type: "delete", path: "c", reason: "kept" },
 			],
 		});
@@ -209,7 +209,7 @@ describe("the file tool's renamed reason", () => {
 		expect(() => validate(file, renameReasoning({ queries: [{ type: "delete", path: "a" }] }))).toThrow(/reason/);
 	});
 
-	it("executes a real write whose only call reason is on its query", async () => {
+	it.each(["reason", "reasoning"])("writes a file using the query's %s as the call reason", async (field) => {
 		const fake = fakeHost();
 		const cwd = tmp();
 		registerFileTool(withNativePermissionOwners(fake.api), new FileGuard(), fakePermission());
@@ -219,7 +219,7 @@ describe("the file tool's renamed reason", () => {
 		const reason = "Add the crash and resume tests";
 		const outcome = await run(
 			tool,
-			{ queries: [{ type: "write", path: "nested.txt", content: "covered", reason }] },
+			{ queries: [{ type: "write", path: "nested.txt", content: "covered", [field]: reason }] },
 			beforeToolCall,
 		);
 		expect(outcome).toMatchObject({ isError: false });

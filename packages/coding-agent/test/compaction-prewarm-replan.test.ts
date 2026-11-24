@@ -1,7 +1,8 @@
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
 import { afterEach, describe, expect, it } from "vitest";
-import { CompactionPrewarm } from "../src/core/agent-session/compaction-prewarm.ts";
+import { compactionStopTokens } from "../src/core/compaction/boundary-stop.ts";
+import { CompactionPrewarm, prewarmLeadTokens } from "../src/core/agent-session/compaction-prewarm.ts";
 import { estimateProjectedContextTokens } from "../src/core/compaction/index.ts";
 import type { SessionCompactPrewarmEvent } from "../src/core/features/index.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
@@ -11,7 +12,8 @@ const model = { provider: "p", id: "m", contextWindow: 100_000 } as never;
 const other = { provider: "p", id: "other", contextWindow: 100_000 } as never;
 const settings = { enabled: true, reserveTokens: 1_000, keepRecentTokens: 500 };
 const policy = { watch: (stream: never) => stream, retry: {} as never, callbacks: {} };
-const nearThreshold = 100_000 - settings.reserveTokens - 1;
+// One token short of where the run stops for compaction: inside the prewarm lead.
+const nearThreshold = compactionStopTokens(100_000, settings) - 1;
 
 function planned() {
 	const manager = SessionManager.inMemory();
@@ -63,6 +65,15 @@ describe("a prewarm plan that was dropped", () => {
 		expect(prewarm.due(nearThreshold, model, settings)).toBe(false);
 	});
 
+	it("can replan immediately after an edit to the input of the active summary", () => {
+		const { manager, prewarm, events } = planned();
+		const user = manager.getBranch().find((entry) => entry.type === "message" && entry.message.role === "user")!;
+		manager.appendContextEdit(user.id, { content: "corrected" });
+		prewarm.dropIfStale(model, settings, undefined, manager);
+		expect(events[0].signal.aborted).toBe(true);
+		expect(prewarm.due(nearThreshold, model, settings)).toBe(true);
+	});
+
 	it("stays while the branch only grew past it, and ends once the session leaves that branch (a /tree jump)", () => {
 		const { manager, prewarm, events } = planned();
 		const planLeaf = manager.getLeafId();
@@ -82,8 +93,8 @@ describe("a prewarm plan that was dropped", () => {
 
 /** About `tokens` of context, at the estimator's characters per token. */
 const filler = (tokens: number, label: string) => `${label} ${"x".repeat(Math.round(tokens * CHARS_PER_TOKEN))}`;
-/** Halfway into the prewarm lead of a 200k window with a 1,000-token reserve (threshold 199,000, lead 20,000). */
-const IN_THE_LEAD = 199_000 - 10_000;
+/** Halfway into the prewarm lead of the default scheduler. */
+const IN_THE_LEAD = compactionStopTokens(200_000, settings) - prewarmLeadTokens(200_000) / 2;
 
 describe("the session's prewarm", () => {
 	const harnesses: Harness[] = [];
@@ -114,7 +125,11 @@ describe("the session's prewarm", () => {
 			manager.appendMessage(fauxAssistantMessage(`answer ${i}`));
 		}
 		for (let i = 0; i < 5; i++) {
-			manager.appendMessage({ role: "user", content: filler(31_000, `more ${i}`), timestamp: 0 });
+			manager.appendMessage({
+				role: "user",
+				content: filler(Math.floor((IN_THE_LEAD - 40_000) / 5), `more ${i}`),
+				timestamp: 0,
+			});
 			manager.appendMessage(fauxAssistantMessage(`answer more ${i}`));
 		}
 		harness.session.refreshContext();

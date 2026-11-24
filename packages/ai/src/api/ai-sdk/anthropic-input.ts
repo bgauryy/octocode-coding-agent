@@ -11,6 +11,7 @@ import { anthropicSdkCache } from "./anthropic-cache.ts";
 import { buildCacheDiagnosticsParam } from "../anthropic-messages/cache-diagnostics.ts";
 import { preserveAnthropicBoundaries } from "./anthropic-boundaries.ts";
 import { anthropicSdkEvents } from "./anthropic-events.ts";
+import { vercelGatewayOptions } from "../anthropic-messages/gateway-routing.ts";
 import type { SdkMapping } from "./stream.ts";
 
 export function anthropicSdkInput(
@@ -78,6 +79,8 @@ export function anthropicSdkInput(
 				if (Array.isArray(message.content))
 					for (const part of message.content as Record<string, unknown>[])
 						if (part.type === "tool_result" && part.is_error === undefined) part.is_error = false;
+			const gateway = vercelGatewayOptions(model, options);
+			if (gateway) body.providerOptions = { ...(body.providerOptions as object | undefined), gateway };
 			const diagnostics = buildCacheDiagnosticsParam(model, context, options.env);
 			if (diagnostics) body.diagnostics = diagnostics;
 			// SDK model catalog defaults must not override explicit compatibility policy.

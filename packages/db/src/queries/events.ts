@@ -39,7 +39,7 @@ export interface NewEvent {
 	digest: string;
 	/** JSON text of the `Handle` where the full object lives. */
 	ref?: string;
-	/** An event with a dedupe key already in the log is not appended again. */
+	/** An event with a dedupe key already in this workspace's log is not appended again. */
 	dedupeKey?: string;
 }
 
@@ -54,7 +54,7 @@ export function append(db: DatabaseSync, event: NewEvent): Appended {
 	const result = keptStatement(
 		db,
 		`INSERT INTO event_log (workspace_id, session_id, at, topic, key, source, payload, digest, ref, dedupe_key)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(dedupe_key) DO NOTHING`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(workspace_id, dedupe_key) DO NOTHING`,
 	).run(
 		event.workspaceId,
 		event.sessionId ?? null,
@@ -68,9 +68,10 @@ export function append(db: DatabaseSync, event: NewEvent): Appended {
 		event.dedupeKey ?? null,
 	);
 	if (Number(result.changes) > 0) return { seq: Number(result.lastInsertRowid), inserted: true };
-	const earlier = keptStatement(db, "SELECT seq FROM event_log WHERE dedupe_key = ?").get(event.dedupeKey ?? null) as
-		| { seq: number }
-		| undefined;
+	const earlier = keptStatement(db, "SELECT seq FROM event_log WHERE workspace_id = ? AND dedupe_key = ?").get(
+		event.workspaceId,
+		event.dedupeKey ?? null,
+	) as { seq: number } | undefined;
 	if (!earlier) throw new Error("event_log insert was ignored without a matching dedupe key");
 	return { seq: earlier.seq, inserted: false };
 }

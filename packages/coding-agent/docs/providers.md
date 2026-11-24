@@ -438,6 +438,30 @@ The `/providers` sign-in for Bedrock offers a bearer token, an AWS profile or th
 
 See [Amazon Bedrock endpoints](https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html). A provider's page shows the effective base URL and where it comes from. For a host that is not Bedrock, add the **Custom OpenAI-compatible host** template instead. Other official providers whose API takes a base URL (OpenAI, Anthropic) ask for the same optional host at sign-in.
 
+#### Kimi K3.1 throughput
+
+An implicit Kimi K3.1 request reserves 8,192 output tokens. An explicit `maxTokens` still wins, clamped to the model's output limit.
+
+Each assistant response carries one `requestTrace.throughput` record with the wire output limit, estimated uncached input and admission cost, cumulative gate wait, actual input/output/cache usage, model, Bedrock Region, adaptive capacity and the last upstream response’s request ID. It contains measurements, not prompt or response text. Kimi's estimated admission cost is uncached input plus `maxTokens`; its final-TPM reservation is uncached input plus 10 times `maxTokens`. Actual reconciliation uses input plus cache writes plus 10 times output, excluding cache reads.
+
+Kimi requests from every Octocode process share token and request limits by provider, model and Region. Each send, including a transport retry, counts against the preceding 60 seconds. A 429 reduces capacity before the retry can send. The defaults start below the published Service Quota and do not assume an account-specific increase:
+
+| Environment override       | Default | Meaning                                                                                                                |
+| -------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `OCTOCODE_BEDROCK_KIMI_TPM` | 500000  | Final tokens per minute: half of AWS's published 1,000,000 global/cross-region quota, leaving other account use headroom |
+| `OCTOCODE_BEDROCK_KIMI_RPM` | 60      | Local request safety cap; AWS publishes no separate Kimi K3.1 RPM quota                                                  |
+
+Both overrides must be positive integers. Set them from your account's effective Service Quotas and the capacity you want Octocode to use; Octocode does not query Service Quotas automatically. A request larger than a whole window may start in an empty window, but nothing else joins that window.
+
+A 429 halves the key's capacity, down to 10%. Five consecutive successful admitted requests restore 10 percentage points, up to the configured capacity; an ordinary provider failure restarts that success streak. Deferrable work also has a smaller share of each window and is shed instead of waiting when its headroom is full.
+
+| Priority    | Window share | Admission after throttling                                      |
+| ----------- | ------------ | --------------------------------------------------------------- |
+| Foreground  | 100%         | Always eligible; waits for the next window                      |
+| Subagent    | 85%          | Waits while recovered capacity is at least 25%; otherwise shed   |
+| Compaction  | 70%          | Resumes at 80% capacity                                          |
+| Background  | 50%          | Cache warming and small side calls resume only at full capacity  |
+
 `models.json` is for custom providers only. An entry whose id is an official provider (for example `amazon-bedrock`) loads only when it holds nothing but per-model tuning in `modelOverrides`, such as `compat.supportsLongCacheRetention: false` on a Bedrock model or a negotiated `cost` ([fields it may set](models-configuration.md#providers)). Any other field refuses the whole entry, its `modelOverrides` included, with a message naming the file, id and fields, and the rest of the file still loads: rename the entry (for example `bedrock-mantle`) for a custom endpoint, or set the host and key here in `/providers`. Pi's `models.json` entries with an official id are skipped with a warning; Pi's files are never modified.
 
 ### Cloudflare AI Gateway

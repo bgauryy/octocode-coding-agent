@@ -92,9 +92,8 @@ function alertOf(event: AgentEvent): Attention & { delivered: boolean } {
  * to this session and always run. The hook runs in the background under the presence deadline and shutdown waits for
  * it; it cannot block or add context.
  *
- * With `runtime.eventLoop: new` the ledger writes each alert to the event log and the hook hears it as a subscriber of
- * `monitor.alert` (`events/subscribers.ts`): once, with its offset kept across a restart. In `old` and `shadow` it listens to
- * the ledger directly.
+ * The ledger writes each alert to the event log and the hook hears it as a subscriber of
+ * `monitor.alert` (`events/subscribers.ts`): once, with its offset kept across a restart.
  */
 export function registerMonitorHooks(
 	api: FeatureSetup,
@@ -122,17 +121,22 @@ export function registerMonitorHooks(
 	};
 	api.bus.on("session_start", async (_event, ctx) => {
 		stop();
-		const subscribers = hookSubscribersOf(api, ctx);
-		if (!subscribers) {
+		// A session whose store cannot name it has no durable lane: its alerts are observed live, and the reason is logged.
+		let subscribers: Awaited<ReturnType<typeof hookSubscribersOf>>;
+		let unhear: () => void;
+		const fail = (error: unknown) => void recordProblem("hook:monitor-alert", error);
+		try {
+			subscribers = await hookSubscribersOf(api, ctx);
+			unhear = await subscribers.subscribe({
+				hook: "monitor-alert",
+				topic: "monitor.alert",
+				handle: (event) => observe(alertOf(event), ctx),
+			});
+		} catch (error) {
+			fail(error);
 			unsubscribe = monitorLedgerOf(api).subscribe((alert) => observe(alert, ctx));
 			return;
 		}
-		const fail = (error: unknown) => void recordProblem("hook:monitor-alert", error);
-		const unhear = subscribers.subscribe({
-			hook: "monitor-alert",
-			topic: "monitor.alert",
-			handle: (event) => observe(alertOf(event), ctx),
-		});
 		const unpublish = monitorLedgerOf(api).subscribe((alert) => {
 			subscribers.publish(alertEvent(alert, now)).catch(fail);
 		});

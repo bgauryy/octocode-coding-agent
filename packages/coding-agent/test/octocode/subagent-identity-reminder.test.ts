@@ -90,7 +90,7 @@ describe("child identity reminder after compaction", () => {
 		expect(resumed.sent).toHaveLength(1);
 		const { message, options } = resumed.sent[0];
 		expect(message).toMatchObject({ customType: IDENTITY_REMINDER_TYPE, display: false, content: textB });
-		expect(options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(options).toEqual({ triggerTurn: false });
 		for (const gone of ["Goal A", "B1", "Result contract"]) expect(String(message.content)).not.toContain(gone);
 		for (const kept of ["kid", "boss", "/wt/kid/pkg", "Goal B", "B2"]) expect(String(message.content)).toContain(kept);
 	});

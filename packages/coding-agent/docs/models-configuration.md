@@ -154,7 +154,12 @@ See [Describe model input and caching](models.md#describe-model-input-and-cachin
 | `chatTemplateKwargs` | object |  | Kwargs sent as chat_template_kwargs when thinkingFormat is "chat-template". Use $var with "thinking.enabled", "thinking.effort", or "thinking.budget" for Octocode-controlled values. |
 | `chatTemplateArgs` | object |  | Arguments sent as chat_template_args when thinkingFormat is "baseten". Use $var with "thinking.enabled", "thinking.effort", or "thinking.budget" for Octocode-controlled values. |
 | `openRouterRouting` | object |  | OpenRouter provider routing preferences. Controls which upstream providers OpenRouter routes requests to. Sent as the provider field in the OpenRouter API request body. See https://openrouter.ai/docs/guides/routing/provider-selection. |
-| `vercelGatewayRouting` | object |  | Vercel AI Gateway routing preferences. Controls which upstream providers the gateway routes requests to. See https://vercel.com/docs/ai-gateway/models-and-providers/provider-options. |
+| `openRouterAutoRouter` | object |  | OpenRouter Auto Router plugin controls for openrouter/auto and openrouter/auto-beta, sent as an auto-router plugin entry. See https://openrouter.ai/docs/guides/routing/routers/auto-router. |
+| `openRouterAutoRouter.allowed_models` | `string[]` |  | Hard allow list of model patterns, for example ["anthropic/*", "openai/gpt-5.1"]. |
+| `openRouterAutoRouter.excluded_models` | `string[]` |  | Model patterns the router never selects. Applied after allowed_models. |
+| `openRouterAutoRouter.cost_tier` | `"low" \| "medium" \| "high"` |  | Routing policy: low favors cost, medium balances, high favors capability. |
+| `openRouterAutoRouter.metadata` | boolean |  | Request router metadata (X-OpenRouter-Metadata) and record a sanitized summary as an assistant diagnostic. Default: true for openrouter/auto. |
+| `vercelGatewayRouting` | object |  | Vercel AI Gateway routing preferences, sent as providerOptions.gateway on Chat Completions and Anthropic Messages requests. See https://vercel.com/docs/ai-gateway/models-and-providers/provider-options. |
 | `zaiToolStream` | boolean | `false` | Whether z.ai supports top-level tool_stream for streaming tool call deltas. |
 | `thinkingTokenBudgetField` | `"thinking_token_budget" \| "thinking_budget" \| "thinking_budget_tokens"` |  | Top-level request field used to cap reasoning tokens from thinkingBudgets. Reasoning and the answer share max_tokens on these endpoints. "thinking_token_budget" is vLLM, "thinking_budget" is Qwen, DashScope, or SGLang, and "thinking_budget_tokens" is llama.cpp. Off by default and not set on the generated catalog. |
 | `supportsOpenAIGrammarTools` | boolean | `false` | Whether the provider supports OpenAI custom tools with Lark or regex grammar formats. When false, grammar-constrained tools fall back to normal function tools. The generated catalog enables this for capable models. |
@@ -168,11 +173,11 @@ See [Describe model input and caching](models.md#describe-model-input-and-cachin
 | `supportsLongCacheRetention` | boolean |  | Whether the provider supports long prompt cache retention (prompt_cache_retention: "24h" or Anthropic-style cache_control.ttl: "1h", depending on format). Default: auto-detected from provider and URL. |
 | `supportsExplicitPromptCacheMode` | boolean | `false` | Whether the model is GPT-5.6 or later, which replaces prompt_cache_retention with prompt_cache_options. Chat Completions then sends no long-retention field. The generated catalog sets it for verified models; unset means false. |
 | `vllmPriority` | number |  | vLLM scheduler priority sent as the top-level priority request field. Lower values are handled earlier and the server default is 0. Only meaningful with --scheduling-policy priority. Off by default and not set on the generated catalog. |
-| `toolSchemaFlavor` | `"standard" \| "moonshot"` |  | Tool parameter schema flavor. "moonshot" repairs tool schemas to the strict subset the Kimi API requires: a type on every property and no type beside anyOf/oneOf. "standard" disables auto-detection and emits standard JSON Schema as authored. Default: auto-detected for Moonshot endpoints. |
+| `toolSchemaFlavor` | `"standard" \| "moonshot"` |  | Tool declaration format for Chat Completions. Moonshot endpoints and Kimi model IDs use "moonshot", including through gateways. It projects object alternatives and represents scalar choices with enums. Set "standard" to send the authored JSON Schema. Local validation uses the original tool contract. |
 
 ### `openai-responses`
 
-Also applies to `azure-openai-responses`.
+Also applies to `openresponses` and `azure-openai-responses`.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -206,6 +211,7 @@ Also applies to `azure-openai-responses`.
 | `supportsMidConvoEffort` | boolean | `false` | Whether the exact model transport supports effort-only system messages and thinking binding controls. |
 | `supportsMidConvoSystemMessages` | boolean | `false` | Whether the exact model accepts system-role messages inside the conversation. When false, the top-level system prompt stays unchanged and later system messages are sent as marked user messages. |
 | `supportsMidConvoToolChanges` | boolean | `false` | Whether the exact model accepts mid-conversation tool_addition and tool_removal blocks. Requires supportsMidConvoSystemMessages. |
+| `vercelGatewayRouting` | object |  | Vercel AI Gateway routing preferences, sent as providerOptions.gateway on Chat Completions and Anthropic Messages requests. See https://vercel.com/docs/ai-gateway/models-and-providers/provider-options. |
 | `allowedFallbackModels` | `object[]` |  | Models Anthropic accepts for server-side refusal fallback, with local pricing metadata for returned fallback responses. When absent or empty, callers must omit fallbacks; Anthropic rejects the field for models with no permitted fallback targets. |
 | `allowedFallbackModels[].provider` | string |  | Required. |
 | `allowedFallbackModels[].model` | string |  | Required. |

@@ -67,7 +67,7 @@ describe("assistant replies in the terminal", () => {
 		setItemTitles(new Map(Object.entries(known)));
 		const transformers = getMarkdownTransformers({ mermaidMarkdownTransformer: (md: string) => md } as never);
 		const message = reply("B793 is still open; it waits on two subagents.");
-		const view = new AssistantMessageComponent(message, true, undefined, undefined, 1, transformers);
+		const view = new AssistantMessageComponent(message, true, undefined, 1, transformers);
 		const shown = stripAnsi(view.render(120).join("\n"));
 		expect(shown).toContain("B793 “Fix every failing test and check” is still open");
 		expect(message.content[0]).toEqual({ type: "text", text: "B793 is still open; it waits on two subagents." });

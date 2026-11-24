@@ -1,3 +1,4 @@
+import { renderSourceHeader, userSource } from "../events/source.ts";
 import { renderPrompt } from "../../core/prompt-template.ts";
 import { RECOVERY_HEADING } from "../../core/compaction/summary-view.ts";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
@@ -83,7 +84,10 @@ export function transcriptNote(
  */
 export function userText(message: unknown): string | undefined {
 	if (!isRecord(message) || message.role !== "user") return undefined;
-	const text = contentText(message.content, { image: "[image attached]" });
+	const raw = contentText(message.content, { image: "[image attached]" });
+	// Keep remote provenance. A local terminal header is transport metadata.
+	const terminal = `${renderSourceHeader(userSource("terminal"))}\n`;
+	const text = raw.startsWith(terminal) ? raw.slice(terminal.length) : raw;
 	return text === ""
 		? undefined
 		: text.replace(SKILL_BLOCK, (_, name: string, location: string) => `[skill ${name} loaded from ${location}]`);

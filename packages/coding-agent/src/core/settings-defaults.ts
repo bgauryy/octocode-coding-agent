@@ -21,9 +21,9 @@ export const SETTINGS_DEFAULTS = {
 	/** When the main session gets the lean policy: "auto" decides by the model's window and tier (`octocode/turn.ts`). */
 	leanPrompt: "auto" as "auto" | "on" | "off",
 	/**
-	 * Built-in compaction values, not a user setting: `compaction` is not a settings key (a settings file's block is reported as
-	 * unknown and has no effect), and `builtInCompactionSettings` derives the real thresholds from
-	 * these as the ceiling for each model's window.
+	 * Built-in compaction values: `compaction` is not a settings key (a settings file's block is reported as unknown and
+	 * has no effect). `builtInCompactionSettings` derives the real thresholds from these and each model's window; the
+	 * `limits.compaction` setting moves the trigger and the recent tail (`core/limits.ts`).
 	 */
 	compaction: {
 		enabled: true,
@@ -49,7 +49,7 @@ export const SETTINGS_DEFAULTS = {
 		maxUsageWaitMs: 0,
 	},
 	toolExecution: { earlyStart: false },
-	hideThinkingBlock: true,
+	hideThinkingBlock: false,
 	showCacheMissNotices: false,
 	quietStartup: false,
 	/** How file references open: `auto` picks the IDE or GUI editor, `editor` the prompt editor, else a command. */

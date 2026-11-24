@@ -104,6 +104,11 @@ const models: McpHostPorts["models"] = {
 
 const browser: McpHostPorts["browser"] = { mcpAsked: browserMcpAsked };
 
+const elicitation: McpHostPorts["elicitation"] = {
+	/** Loads the question dialogs on the first request, so a command that never asks does not pay for them. */
+	ask: async (request) => (await import("./elicitation.ts")).elicitation.ask(request),
+};
+
 export function installMcpCorePorts(): void {
 	installMcpHost({
 		identity,
@@ -116,5 +121,6 @@ export function installMcpCorePorts(): void {
 		browser,
 		review,
 		calls,
+		elicitation,
 	});
 }

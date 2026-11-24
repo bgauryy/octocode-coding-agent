@@ -2,7 +2,6 @@ import { animationClock, MOTION } from "@octocodeai/octocode-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toolHeader } from "../../src/octocode/render/tool.ts";
 import { stopRowTimers } from "../../src/octocode/render/rows.ts";
-import { stopRowMotion } from "../../src/octocode/render/motion.ts";
 import type { ToolRow } from "../../src/octocode/render/types.ts";
 import { rendered, theme } from "./fake-host.ts";
 
@@ -19,7 +18,6 @@ beforeEach(() => animationClock.setReducedMotion(false));
 afterEach(() => {
 	vi.useRealTimers();
 	stopRowTimers();
-	stopRowMotion();
 	animationClock.setReducedMotion(false);
 });
 
@@ -31,16 +29,20 @@ describe("parallel tool rows", () => {
 		const newer = row();
 		toolHeader(theme, older, "Bash", "sleep 10");
 		toolHeader(theme, newer, "Bash", "seq 1 60");
-		vi.advanceTimersByTime(MOTION.backgroundSpinnerMs * 3);
+		// A running row repaints once a second, for its elapsed time.
+		vi.advanceTimersByTime(MOTION.tickMs * 3);
+		expect(older.invalidate).toHaveBeenCalledTimes(3);
+		expect(newer.invalidate).toHaveBeenCalledTimes(3);
 		const newerDone = { ...newer, isPartial: false, durationMs: 5 };
 		toolHeader(theme, newerDone, "Bash", "seq 1 60");
 		const newerCalls = newer.invalidate.mock.calls.length;
-		vi.advanceTimersByTime(MOTION.backgroundSpinnerMs * 20);
+		vi.advanceTimersByTime(MOTION.tickMs * 20);
 		expect(newer.invalidate.mock.calls.length).toBe(newerCalls);
+		expect(older.invalidate).toHaveBeenCalledTimes(23);
 		const olderDone = { ...older, isPartial: false, durationMs: 10_000 };
 		const first = rendered(toolHeader(theme, olderDone, "Bash", "sleep 10"))[0];
 		const olderCalls = older.invalidate.mock.calls.length;
-		vi.advanceTimersByTime(MOTION.backgroundSpinnerMs * 20);
+		vi.advanceTimersByTime(MOTION.tickMs * 20);
 		expect(rendered(toolHeader(theme, olderDone, "Bash", "sleep 10"))[0]).toBe(first);
 		expect(older.invalidate.mock.calls.length).toBe(olderCalls);
 		expect(animationClock.isRunning()).toBe(false);

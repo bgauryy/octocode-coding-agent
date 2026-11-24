@@ -74,7 +74,7 @@ export function backgroundJoins(
 					display: true,
 					details: joinedDetails(row, how, wake),
 				},
-				{ triggerTurn: wake, deliverAs: "followUp", together: true },
+				{ triggerTurn: wake, deliverAs: wake ? "steer" : "followUp", together: true },
 			);
 			void Promise.resolve(sending)
 				.catch((error: unknown) => warn(`Joined job ${row.job} report failed: ${errorMessage(error)}`))

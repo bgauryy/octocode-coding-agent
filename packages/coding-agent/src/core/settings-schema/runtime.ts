@@ -1,11 +1,9 @@
 import { Type } from "typebox";
 
-/** `runtime.eventLoop`: the scheduler that decides when events and typed input start a turn. */
-export type EventLoopMode = "old" | "shadow" | "new";
+export const MAX_EVENT_WINDOW_SECONDS = 10;
 
-/** What `runtime.*` falls back to; `eventLoop` stays `old` until the loop owns every path. */
+/** Defaults for a session without runtime overrides. */
 export const RUNTIME_DEFAULTS = {
-	eventLoop: "old" as EventLoopMode,
 	eventWindowSeconds: 2,
 } as const;
 
@@ -15,20 +13,79 @@ export const RuntimeSettingsProperties = {
 		Type.Object(
 			{
 				eventLoop: Type.Optional(
-					Type.Union([Type.Literal("old"), Type.Literal("shadow"), Type.Literal("new")], {
+					Type.String({
 						description:
-							"Which scheduler starts turns from background events. `old` (default): the wake gate, unchanged. `shadow`: the event loop runs beside the gate, decides which events would wake the session and in what order, acts on nothing, and records each difference from the gate as a problem (`/status`). `new`: the loop delivers the events it has taken over (a background `bash` job's exit, a child's report or end, and team mail, with the `runtime.eventWindowSeconds` window) and the gate the rest, which behave as in `shadow`. Reports and mail the loop has queued survive a restart or resume and are delivered once. Read at session start.",
-						default: RUNTIME_DEFAULTS.eventLoop,
+							"Ignored. The event loop is the only session scheduler; the key is still accepted so a settings file written for an earlier version loads.",
 					}),
 				),
 				eventWindowSeconds: Type.Optional(
 					Type.Number({
 						description:
-							"Seconds the event loop waits after a background event wakes an idle session, so events that arrive together become one message and one turn. User input is never held. Applies to the events the loop delivers (`runtime.eventLoop: new`: a background job's exit, a child's report or end, team mail); the wake gate keeps `subagents.wakeHoldSeconds` for the rest.",
+							"Seconds the event loop waits after a background event wakes an idle session, so completions that arrive together share one turn. User input releases the window immediately.",
 						default: RUNTIME_DEFAULTS.eventWindowSeconds,
 						minimum: 0,
-						maximum: 10,
+						maximum: MAX_EVENT_WINDOW_SECONDS,
 					}),
+				),
+				smartRouting: Type.Optional(
+					Type.Object(
+						{
+							allow: Type.Optional(
+								Type.Array(Type.String({ minLength: 1 }), {
+									description:
+										'Provider/model patterns the native octocode/auto-code router may select, for example ["openai/gpt-5*", "anthropic/*"]. Empty or omitted allows every eligible model.',
+									maxItems: 64,
+								}),
+							),
+							deny: Type.Optional(
+								Type.Array(Type.String({ minLength: 1 }), {
+									description: "Provider/model patterns auto-code never selects. Deny rules win over allow rules.",
+									maxItems: 64,
+								}),
+							),
+							tiers: Type.Optional(
+								Type.Record(Type.String(), Type.Union([Type.Literal(1), Type.Literal(2), Type.Literal(3)]), {
+									description:
+										"Capability tier overrides keyed by provider/model pattern: 1 light, 2 general, 3 frontier. The first matching pattern wins.",
+								}),
+							),
+							planOnly: Type.Optional(
+								Type.Boolean({
+									description: "Restrict auto-code to flat-rate subscription or coding-plan models. Default false.",
+									default: false,
+								}),
+							),
+							allowPlanToMeteredEscalation: Type.Optional(
+								Type.Boolean({
+									description:
+										"Allow a session that used a flat-rate plan to switch to per-token billing. Default false. Global settings only.",
+									default: false,
+								}),
+							),
+							cooldownRequests: Type.Optional(
+								Type.Integer({
+									description: "Routed requests for which auto-code skips a recently failed model. Default 4.",
+									default: 4,
+									minimum: 0,
+									maximum: 64,
+								}),
+							),
+							outputReserveTokens: Type.Optional(
+								Type.Integer({
+									description:
+										"Output tokens auto-code reserves when checking whether the conversation fits a candidate. Default 8192.",
+									default: 8192,
+									minimum: 0,
+									maximum: 200000,
+								}),
+							),
+						},
+						{
+							description:
+								"Native octocode/auto-code routing policy. The router runs only when that virtual model is selected.",
+							additionalProperties: false,
+						},
+					),
 				),
 			},
 			{ additionalProperties: false },

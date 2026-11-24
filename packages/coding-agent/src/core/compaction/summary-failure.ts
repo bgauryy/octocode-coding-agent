@@ -1,5 +1,7 @@
-import { contentText } from "@octocodeai/octocode-ai";
+import { contentText, isRateLimitedText, isUsageLimitError } from "@octocodeai/octocode-ai";
 import type { AssistantMessage, Model } from "@octocodeai/octocode-ai/compat";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { UsagePersistenceError } from "../usage-totals.ts";
 import { SUMMARY_MAX_OUTPUT_TOKENS } from "./settings.ts";
 
 /**
@@ -29,6 +31,20 @@ export function getSummarizationFailure(response: AssistantMessage, label: strin
  */
 export class SummaryOutputLimitError extends Error {}
 
+/** The retry policy already handled a provider limit. Changing the summary prompt cannot lift it. */
+export class SummaryProviderLimitError extends Error {}
+
+/** Preserve a final throttle across summary fallback paths, including transports that reject with an exception. */
+export function summaryProviderLimit(text: string | undefined): SummaryProviderLimitError | undefined {
+	return text && (isRateLimitedText(text) || isUsageLimitError(text)) ? new SummaryProviderLimitError(text) : undefined;
+}
+
+/** A transport may throw instead of returning an assistant error. Usage recording failures keep their own recovery. */
+export function rethrowSummaryRequestError(error: unknown): never {
+	if (error instanceof UsagePersistenceError) throw error;
+	throw summaryProviderLimit(errorMessage(error)) ?? error;
+}
+
 /** Whether `model`'s own output limit, not Octocode's summary cap, bounds every summary request to it. */
 function ownLimitBinds(model: Pick<Model<any>, "maxTokens">): boolean {
 	const own = model.maxTokens;
@@ -43,6 +59,7 @@ export function summaryFailure(
 ): Error | undefined {
 	const failure = getSummarizationFailure(response, label);
 	if (!failure) return undefined;
+	if (response.stopReason === "error") return summaryProviderLimit(response.errorMessage) ?? new Error(failure);
 	if (response.stopReason !== "length" || !ownLimitBinds(model)) return new Error(failure);
 	return new SummaryOutputLimitError(
 		`${failure}. ${model.maxTokens.toLocaleString("en-US")} tokens is ${model.id}'s own output limit, too small for this summary even when asked for a smaller one: switch to a model with a larger output limit, then compact.`,

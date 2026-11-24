@@ -1,8 +1,6 @@
-import { animationClock, type Component, ELLIPSIS, Text } from "@octocodeai/octocode-tui";
+import { ELLIPSIS } from "@octocodeai/octocode-tui";
 import { expandHint } from "../../../octocode/shared/text.ts";
 import { formatDuration } from "../../../octocode/shared/format.ts";
-import { liveShimmer, stateMark } from "../../../theme/status.ts";
-import { theme } from "../../../theme/theme.ts";
 import { keyText } from "../../../theme/theme-tui-helpers.ts";
 
 /** Reasoning shorter than this reads as `0s` or `1s` noise: the label omits the time. */
@@ -81,42 +79,10 @@ export function interruptedText(message: string | undefined): string {
 	return !text || isAbortWording(text) ? "Interrupted" : text;
 }
 
-/** The live label's text: the one word the working line also shows while the model reasons. */
+/** The label of a block that still streams: the one word the working line also shows while the model reasons. */
 export const THINKING_LABEL = `Thinking${ELLIPSIS}`;
 
 /** The label of a finished block: `Thought` (with its time) or, once interrupted, `Thinking stopped`. */
 export function finishedLabel(interrupted: boolean, ms: number | undefined): string {
 	return interrupted ? "Thinking stopped" : `Thought${thoughtDuration(ms)}`;
-}
-
-/**
- * The label of a reasoning block while it streams: the running spinner mark and `Thinking…` shimmering. It paints from
- * the clock at render time, so the owner only has to request a render per frame while the block streams.
- */
-export class LiveThinkingLabel implements Component {
-	/** When a frame last drew this label: an owner that is no longer on screen stops asking for frames. */
-	renderedAt = Date.now();
-	private readonly hint: string;
-	private readonly padding: number;
-
-	constructor(hint: string, padding: number) {
-		this.hint = hint;
-		this.padding = padding;
-	}
-
-	invalidate(): void {
-		// Painted from the clock on every render; nothing cached.
-	}
-
-	render(width: number): string[] {
-		this.renderedAt = Date.now();
-		// Drawn at the clock's decoration time: a frame painted while the user scrolls shows the label where it stopped.
-		const now = animationClock.decorationTime();
-		const hint = this.hint ? theme.fg("dim", ` ${this.hint}`) : "";
-		return new Text(
-			`${stateMark(theme, "running", { now })} ${liveShimmer(theme, THINKING_LABEL, now)}${hint}`,
-			this.padding,
-			0,
-		).render(width);
-	}
 }

@@ -227,6 +227,7 @@ export function writeScriptedProvider(sandbox: Pick<Sandbox, "agentDir">, server
 				},
 			},
 		}),
+		{ mode: 0o600 },
 	);
 }
 

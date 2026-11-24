@@ -179,7 +179,7 @@ describe("mcp tool contract", () => {
 		expect(properties.intent.enum).toEqual(["list", "tools", "resources", "read", "restart", "stop"]);
 		expect(properties.config).toBeUndefined();
 		expect(properties.server.description).toBe(
-			'Server name; required for every intent except list. "native" with tools reads a deferred native tool',
+			"Required for server operations. Omit for list or to inspect a named native tool.",
 		);
 		for (const intent of ["tools", "resources", "read", "restart", "stop"])
 			await expect(run({ intent })).rejects.toThrow(/Name the server in the server field[^]*Servers: docs\./);

@@ -5,6 +5,7 @@ import { Type } from "typebox";
 import type { FeatureSetup, SetupPick, FeatureContext } from "../../../../core/features/index.ts";
 import { MAX_COMPACTION_INSTRUCTIONS } from "../../../../core/compaction/manual-options.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { limitsFor } from "../../../compaction/limits.ts";
 import { autoCompactAt, compactionThinking } from "../../../shared/tokens.ts";
 import { timedTool } from "../../../render/rows.ts";
 import { isStaleSessionError, textResult } from "../../../shared/util.ts";
@@ -56,7 +57,7 @@ interface Pending {
 export class CompactRequests {
 	readonly #thrash: ThrashBreaker;
 	#pending: Pending | undefined;
-	#inFlight = false;
+	#active: Pending | undefined;
 	#compactions = 0;
 	/** Set by `registerCompactTool`: subagents never have the tool. */
 	toolRegistered = false;
@@ -67,7 +68,7 @@ export class CompactRequests {
 
 	/** Whether the compaction now running was requested by the agent (it counts as automatic). */
 	get inFlight(): boolean {
-		return this.#inFlight;
+		return this.#active !== undefined;
 	}
 
 	get pending(): boolean {
@@ -76,7 +77,7 @@ export class CompactRequests {
 
 	reset(): void {
 		this.#pending = undefined;
-		this.#inFlight = false;
+		this.#active = undefined;
 	}
 
 	compacted(): void {
@@ -98,7 +99,7 @@ export class CompactRequests {
 		const model = ctx.model;
 		const tokens = contextTokens(ctx, toolDefinitionChars(api));
 		if (!model || model.contextWindow <= 0 || tokens === undefined) return refusalText("unknown");
-		const limit = autoCompactAt(model, compactionThinking(api));
+		const limit = autoCompactAt(model, compactionThinking(api), limitsFor(api, model).compaction);
 		if (tokens < COMPACT_MIN_SHARE * limit) {
 			// Rounded down: 49.6% must not read as the 50% floor it is refused under.
 			const percent = Math.floor((tokens / Math.max(1, limit)) * 100);
@@ -123,8 +124,10 @@ export class CompactRequests {
 		const pending = this.#pending;
 		this.#pending = undefined;
 		if (!pending || aborted || pending.compactions !== this.#compactions) return;
-		this.#inFlight = true;
+		this.#active = pending;
 		const send = (content: string, triggerTurn: boolean) => {
+			if (this.#active !== pending) return;
+			this.#active = undefined;
 			// A stale session has no reader for the resume note; any other failure goes to the problems log.
 			const settle = (error: unknown) => {
 				if (!isStaleSessionError(error))
@@ -143,13 +146,11 @@ export class CompactRequests {
 			// The agent's own request: its focus is labelled as its own, and it may reuse the early summary.
 			requestedBy: "agent",
 			onComplete: (result) => {
-				this.#inFlight = false;
 				send(compactResumeText(result, pending.focus), true);
 			},
 			// The session reports the failure to the user; the model learns of it on its next turn, without a new one. A
 			// headless run has no next turn: its last reply was the status line it was told to end with, so it goes on from here.
 			onError: (error) => {
-				this.#inFlight = false;
 				send(renderPrompt("notices/compaction/compact-failed.md", { error: errorMessage(error) }), !ctx.hasUI);
 			},
 		});

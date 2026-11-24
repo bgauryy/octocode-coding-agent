@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { getCompat } from "../src/api/openai-completions/compat.ts";
 import { sanitizeMoonshotToolParameters } from "../src/api/openai-completions/tool-schema-flavor.ts";
 import { streamSimple } from "../src/compat.ts";
+import { validateToolArguments } from "../src/utils/validation.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { Model, Tool } from "../src/types.ts";
 
@@ -96,30 +97,61 @@ describe("sanitizeMoonshotToolParameters", () => {
 			},
 		});
 		expect(sanitized.properties).toMatchObject({
-			ecosystem: { const: "npm", type: "string" },
+			ecosystem: { enum: ["npm"], type: "string" },
 			level: { enum: ["patch", "minor"], type: "string" },
 			anything: { type: "string" },
-			numbered: { const: 3, type: "integer" },
+			numbered: { enum: [3], type: "integer" },
 			flag: { const: true, type: "boolean" },
 		});
 	});
 
-	it("falls back to string for mixed-type enum and const values", () => {
-		const sanitized = sanitizeMoonshotToolParameters({
+	it("keeps every legal mixed enum value callable without string coercion", () => {
+		const parameters = {
 			type: "object",
+			required: ["mode"],
 			properties: {
-				mixedBoolNumber: { enum: [true, 1] },
-				mixedStringNumber: { enum: ["a", 1] },
-				mixedNumberBool: { enum: [1, true] },
-				homogeneousNumbers: { enum: [1, 2, 3] },
+				mode: { enum: ["auto", 1, 2.5, true, null] },
+			},
+		};
+		const tool: Tool = { name: "configure", description: "", parameters, coerceArguments: false };
+		const wire = { ...tool, parameters: sanitizeMoonshotToolParameters(parameters) };
+		const accepts = (candidate: Tool, mode: string | number | boolean | null) =>
+			validateToolArguments(candidate, { type: "toolCall", id: "call", name: "configure", arguments: { mode } });
+		for (const mode of parameters.properties.mode.enum) {
+			expect(() => accepts(tool, mode)).not.toThrow();
+			expect(() => accepts(wire, mode)).not.toThrow();
+		}
+		for (const mode of ["other", 3]) expect(() => accepts(wire, mode)).toThrow();
+		expect(() => accepts(tool, false)).toThrow();
+	});
+
+	it("describes a literal boolean and honors explicit types when projecting a mixed enum", () => {
+		const source: Tool = {
+			name: "open",
+			description: "",
+			parameters: {
+				type: "object",
+				properties: {
+					acknowledge: { type: "boolean", enum: [true], description: "Confirm the action." },
+					mode: { type: ["integer", "string"], enum: [1, 2.5, "auto", true] },
+				},
+			},
+			coerceArguments: false,
+		};
+		const wire = sanitizeMoonshotToolParameters(source.parameters);
+		expect(wire.properties).toMatchObject({
+			acknowledge: { type: "boolean", description: "Confirm the action. Allowed value: true." },
+			mode: {
+				anyOf: [
+					{ type: "integer", enum: [1] },
+					{ type: "string", enum: ["auto"] },
+				],
 			},
 		});
-		expect(sanitized.properties).toMatchObject({
-			mixedBoolNumber: { enum: [true, 1], type: "string" },
-			mixedStringNumber: { enum: ["a", 1], type: "string" },
-			mixedNumberBool: { enum: [1, true], type: "string" },
-			homogeneousNumbers: { enum: [1, 2, 3], type: "integer" },
-		});
+		expect(wire.properties).not.toHaveProperty("acknowledge.enum");
+		expect(() =>
+			validateToolArguments(source, { type: "toolCall", id: "1", name: "open", arguments: { acknowledge: false } }),
+		).toThrow();
 	});
 
 	it("moves a type off a union parent onto its children and infers object children", () => {
@@ -140,21 +172,47 @@ describe("sanitizeMoonshotToolParameters", () => {
 		]);
 	});
 
-	it("keeps the required root object type when the root is a union and types each branch", () => {
+	it("projects root alternatives into named fields and keeps distinct nested query shapes", () => {
 		const sanitized = sanitizeMoonshotToolParameters(KIMI_REJECTED_SCHEMA);
-		// Nested union parents drop type, but the API requires tools.function.parameters.type = object.
 		expect(sanitized.type).toBe("object");
-		expect(sanitized.properties).toEqual({});
-		const firstBranch = (sanitized.anyOf as Array<Record<string, unknown>>)[0];
-		expect(firstBranch.type).toBe("object");
-		const items = ((firstBranch.properties as Record<string, unknown>).queries as Record<string, unknown>)
-			.items as Record<string, unknown>;
+		expect(sanitized.anyOf).toBeUndefined();
+		const properties = sanitized.properties as Record<string, Record<string, unknown>>;
+		expect(properties.cursor).toEqual({ type: "string", minLength: 1 });
+		const items = properties.queries.items as Record<string, unknown>;
 		expect(items.type).toBeUndefined();
 		const rows = items.anyOf as Array<Record<string, Record<string, unknown>>>;
-		expect(rows[0]?.properties?.ecosystem).toMatchObject({ const: "npm", type: "string" });
-		expect(rows[0]?.properties?.operation).toMatchObject({ const: "resolve", type: "string" });
+		expect(rows[0]?.properties?.ecosystem).toMatchObject({ enum: ["npm"], type: "string" });
+		expect(rows[0]?.properties?.operation).toMatchObject({ enum: ["resolve"], type: "string" });
 		expect(rows[0]?.properties?.registryUrl).toEqual({ type: "string" });
 		expect(rows[1]?.properties?.ecosystem).toMatchObject({ enum: ["crates", "maven"], type: "string" });
+	});
+
+	it("projects nested object alternatives from an MCP tool while the original validation keeps exclusive fields", () => {
+		const item = {
+			type: "object",
+			properties: { name: { type: "string" }, text: { type: "string" }, uri: { type: "string" } },
+			required: ["name"],
+			additionalProperties: false,
+			oneOf: [{ required: ["text"] }, { required: ["uri"] }],
+		};
+		const parameters = { type: "object", properties: { batch: { type: "array", items: item } } };
+		const source = { name: "publish", description: "Publish", parameters };
+		const wire = sanitizeMoonshotToolParameters(parameters);
+		expect(wire.properties).toEqual({
+			batch: {
+				type: "array",
+				items: { type: "object", required: ["name"], properties: item.properties, additionalProperties: false },
+			},
+		});
+		const call = (row: Record<string, string>) =>
+			validateToolArguments(source, {
+				type: "toolCall",
+				id: "publish",
+				name: "publish",
+				arguments: { batch: [row] },
+			});
+		expect(() => call({ name: "a", uri: "file:///a" })).not.toThrow();
+		expect(() => call({ name: "a", uri: "file:///a", text: "copy" })).toThrow();
 	});
 
 	it("repairs $defs subschemas but leaves $ref nodes alone", () => {
@@ -163,7 +221,7 @@ describe("sanitizeMoonshotToolParameters", () => {
 			$defs: { name: { const: "npm" } },
 			properties: { ecosystem: { $ref: "#/$defs/name" } },
 		});
-		expect(sanitized.$defs).toEqual({ name: { const: "npm", type: "string" } });
+		expect(sanitized.$defs).toEqual({ name: { enum: ["npm"], type: "string" } });
 		expect((sanitized.properties as Record<string, unknown>).ecosystem).toEqual({ $ref: "#/$defs/name" });
 	});
 
@@ -266,13 +324,10 @@ describe("moonshot tool schema flavor detection", () => {
 		const model = getBuiltinModel("moonshotai", "kimi-k2.6");
 		const parameters = await capturedToolParameters(model, tool);
 		expect(parameters.type).toBe("object");
-		const branch = (parameters.anyOf as Array<Record<string, unknown>>)[0];
-		const items = ((branch.properties as Record<string, unknown>).queries as Record<string, unknown>).items as Record<
-			string,
-			unknown
-		>;
+		const properties = parameters.properties as Record<string, Record<string, unknown>>;
+		const items = properties.queries.items as Record<string, unknown>;
 		const rows = items.anyOf as Array<Record<string, Record<string, unknown>>>;
-		expect(rows[0]?.properties?.ecosystem).toMatchObject({ const: "npm", type: "string" });
+		expect(rows[0]?.properties?.ecosystem).toMatchObject({ enum: ["npm"], type: "string" });
 	});
 
 	it("sends standard parameters to a non-moonshot model", async () => {
@@ -292,13 +347,10 @@ describe("moonshot tool schema flavor detection", () => {
 		const model = { ...localModel, id: "kimi-k3", name: "Kimi K3", provider: "relay" };
 		const parameters = await capturedToolParameters(model, tool);
 		expect(parameters.type).toBe("object");
-		const branch = (parameters.anyOf as Array<Record<string, unknown>>)[0];
-		const items = ((branch.properties as Record<string, unknown>).queries as Record<string, unknown>).items as Record<
-			string,
-			unknown
-		>;
+		const properties = parameters.properties as Record<string, Record<string, unknown>>;
+		const items = properties.queries.items as Record<string, unknown>;
 		const rows = items.anyOf as Array<Record<string, Record<string, unknown>>>;
-		expect(rows[0]?.properties?.ecosystem).toMatchObject({ const: "npm", type: "string" });
+		expect(rows[0]?.properties?.ecosystem).toMatchObject({ enum: ["npm"], type: "string" });
 	});
 
 	it("allows model.compat.toolSchemaFlavor 'standard' to opt out of auto-detection", () => {

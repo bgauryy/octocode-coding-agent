@@ -137,8 +137,8 @@ describe.runIf(posix)("foreground command that reaches the background threshold"
 			/^\[exit 3 · [23]s · [^\n]*\]\nBackground bash bash-1 failed with exit code 3: echo before; sleep 2/,
 		);
 		expect(report).toMatch(/before\nafter$/);
-		// Like any background job: reported as a follow-up that wakes an idle session, and gone from the job list.
-		expect(sent[0].options).toEqual({ triggerTurn: true, deliverAs: "followUp", together: true });
+		// A running session takes the result at its next boundary. An idle session wakes to receive it.
+		expect(sent[0].options).toEqual({ triggerTurn: true, deliverAs: "steer", together: true });
 		expect(sent[0].message.details.id).toBe("bash-1");
 		expect(fs.readFileSync(sent[0].message.details.log, "utf8")).toBe("before\nafter\n");
 		expect(jobs.jobs.size).toBe(0);

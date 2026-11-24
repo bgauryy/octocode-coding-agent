@@ -14,7 +14,7 @@ import type {
 } from "../types.ts";
 import { estimateContextTokens } from "../utils/estimate.ts";
 
-const CONTEXT_SAFETY_TOKENS = 4096;
+export const CONTEXT_SAFETY_TOKENS = 4096;
 const MIN_MAX_TOKENS = 1;
 
 /**
@@ -79,6 +79,8 @@ export function buildBaseOptions(
 		promptCacheKey: options?.promptCacheKey,
 		headers: options?.headers,
 		onPayload: options?.onPayload,
+		onTransportRetry: options?.onTransportRetry,
+		onRateLimit: options?.onRateLimit,
 		onResponse: options?.onResponse,
 		onProviderStreamEvent: options?.onProviderStreamEvent,
 		timeoutMs: options?.timeoutMs,

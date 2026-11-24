@@ -142,23 +142,84 @@ export const OpenRouterRoutingSchema = Type.Object(
 	},
 );
 
+const providerSlugs = (description: string) =>
+	Type.Optional(Type.Array(Type.String({ minLength: 1 }), { description }));
+
 export const VercelGatewayRoutingSchema = Type.Object(
 	{
-		only: Type.Optional(
-			Type.Array(Type.String(), {
-				description:
-					'List of provider slugs to exclusively use for this request, for example ["bedrock", "anthropic"].',
+		only: providerSlugs(
+			'List of provider slugs to exclusively use for this request, for example ["bedrock", "anthropic"].',
+		),
+		order: providerSlugs('List of provider slugs to try in order, for example ["anthropic", "openai"].'),
+		models: providerSlugs(
+			'Fallback model ids the gateway tries when the primary model fails, for example ["openai/gpt-5.1"].',
+		),
+		sort: Type.Optional(
+			Type.Union([Type.Literal("cost"), Type.Literal("ttft"), Type.Literal("tps")], {
+				description: "Rank providers by cost, time to first token (ttft) or throughput (tps).",
 			}),
 		),
-		order: Type.Optional(
-			Type.Array(Type.String(), {
-				description: 'List of provider slugs to try in order, for example ["anthropic", "openai"].',
+		headquarters: providerSlugs(
+			'ISO 3166-1 alpha-2 country codes of provider headquarters to route to; prefix every code with "!" to exclude instead. A list cannot mix both forms.',
+		),
+		caching: Type.Optional(
+			Type.Literal("auto", { description: "Let the gateway apply the provider's caching strategy." }),
+		),
+		zeroDataRetention: Type.Optional(
+			Type.Boolean({ description: "Route only to providers with zero data retention for this request." }),
+		),
+		disallowPromptTraining: Type.Optional(
+			Type.Boolean({ description: "Route only to providers that do not train on prompt data." }),
+		),
+		sessionAffinity: Type.Optional(
+			Type.Boolean({
+				description: "Whether the gateway pins a session to the provider holding its prompt cache. Default: true.",
+			}),
+		),
+		providerTimeouts: Type.Optional(
+			Type.Object(
+				{
+					byok: Type.Record(Type.String({ minLength: 1 }), Type.Integer({ minimum: 1 }), {
+						description: "Milliseconds to wait for a BYOK provider to start responding, by provider slug.",
+					}),
+				},
+				{ description: "Per-provider failover timeouts. Apply to BYOK credentials only." },
+			),
+		),
+	},
+	{
+		description:
+			"Vercel AI Gateway routing preferences, sent as providerOptions.gateway on Chat Completions and Anthropic Messages requests. See https://vercel.com/docs/ai-gateway/models-and-providers/provider-options.",
+	},
+);
+
+export const OpenRouterAutoRouterSchema = Type.Object(
+	{
+		allowed_models: Type.Optional(
+			Type.Array(Type.String({ minLength: 1 }), {
+				description: 'Hard allow list of model patterns, for example ["anthropic/*", "openai/gpt-5.1"].',
+			}),
+		),
+		excluded_models: Type.Optional(
+			Type.Array(Type.String({ minLength: 1 }), {
+				description: "Model patterns the router never selects. Applied after allowed_models.",
+			}),
+		),
+		cost_tier: Type.Optional(
+			Type.Union([Type.Literal("low"), Type.Literal("medium"), Type.Literal("high")], {
+				description: "Routing policy: low favors cost, medium balances, high favors capability.",
+			}),
+		),
+		metadata: Type.Optional(
+			Type.Boolean({
+				description:
+					"Request router metadata (X-OpenRouter-Metadata) and record a sanitized summary as an assistant diagnostic. Default: true for openrouter/auto.",
 			}),
 		),
 	},
 	{
 		description:
-			"Vercel AI Gateway routing preferences. Controls which upstream providers the gateway routes requests to. See https://vercel.com/docs/ai-gateway/models-and-providers/provider-options.",
+			"OpenRouter Auto Router plugin controls for openrouter/auto and openrouter/auto-beta, sent as an auto-router plugin entry. See https://openrouter.ai/docs/guides/routing/routers/auto-router.",
 	},
 );
 export function optionalCompatBoolean(options?: TSchemaOptions) {

@@ -7,6 +7,7 @@ import {
 	persistCheckpointText,
 	spillFileLists,
 	SummaryOutputLimitError,
+	SummaryProviderLimitError,
 } from "../../core/compaction/index.ts";
 import { focusBlock, type SummaryFocus } from "../../core/compaction/summary-focus.ts";
 import type { SetupPick, FeatureContext, SessionBeforeCompactEvent } from "../../core/features/index.ts";
@@ -223,8 +224,9 @@ export async function writeSummary(
 		// Watched as the session watches its own summary (progress, a silent attempt retried), inside the usage record.
 		const send = event.summaryRequest?.watch(ctx.modelRegistry.streamSimple.bind(ctx.modelRegistry));
 		const stream = async (request: typeof model, context: Context, options?: SimpleStreamOptions) => {
-			const response = await (send?.(request, context, options) ??
-				ctx.modelRegistry.streamSimple(request, context, options));
+			const prioritized = { ...options, requestPriority: "compaction" as const };
+			const response = await (send?.(request, context, prioritized) ??
+				ctx.modelRegistry.streamSimple(request, context, prioritized));
 			const result = response.result().then((message) => {
 				recordUsage(message);
 				return message;
@@ -361,7 +363,8 @@ export async function writeSummary(
 		if (failed) return failed;
 		if (event.signal.aborted) return undefined;
 		// The same model cannot write the summary: Octocode's default summary would send the same request once more.
-		if (error instanceof SummaryOutputLimitError) return { cancel: true, failure: error.message };
+		if (error instanceof SummaryOutputLimitError || error instanceof SummaryProviderLimitError)
+			return { cancel: true, failure: error.message };
 		// Octocode's default summary has none of what code appends: built now, from the same inputs and budgets, it follows
 		// that summary as one message (`continuity.ts`). Saving its long texts can fail like Octocode's summary does.
 		if (fallback) {

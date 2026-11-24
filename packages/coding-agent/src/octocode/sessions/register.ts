@@ -115,7 +115,7 @@ function registerRunningWork(api: FeatureSetup, team?: TeamNotes): void {
 					display: false,
 					details: { compactionId: event.compactionEntry?.id ?? null },
 				},
-				{ triggerTurn: false, deliverAs: "followUp" },
+				{ triggerTurn: false },
 			);
 		} catch (error) {
 			// The session was replaced; anything else reaches the bus's error report.

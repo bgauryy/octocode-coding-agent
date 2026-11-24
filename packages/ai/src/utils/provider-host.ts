@@ -26,6 +26,14 @@ export function isOpenRouterModel(model: { provider: string; baseUrl: string }):
 	return model.provider === "openrouter" || matchesHost(model.baseUrl, "openrouter.ai");
 }
 
+/** Bedrock Runtime's public endpoints, whose model-specific token burndown does not apply to Mantle. */
+export function isBedrockRuntimeHost(baseUrl: string): boolean {
+	if (!URL.canParse(baseUrl)) return false;
+	return /^bedrock-runtime(?:-fips)?\.[a-z0-9-]+\.(?:amazonaws\.com(?:\.cn)?|api\.aws)$/.test(
+		new URL(baseUrl).hostname,
+	);
+}
+
 /** Amazon Bedrock's public inference endpoints, including FIPS, dual-stack and China partitions. */
 export function isBedrockInferenceHost(baseUrl: string): boolean {
 	if (!URL.canParse(baseUrl)) return false;

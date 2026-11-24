@@ -50,6 +50,14 @@ describe("provider retry classification", () => {
 	it.each([
 		"400 Upstream request failed: [invalid_request_error] Invalid request",
 		"422 Upstream request failed: [invalid_request_error] Invalid request",
+		JSON.stringify({
+			error: {
+				type: "invalid_request_error",
+				code: "validation_error",
+				message:
+					"Mantle streaming error for requestId 00000000-0000-4000-8000-000000000001: The task request was rejected by the target",
+			},
+		}),
 	])("does not retry a refused request that a gateway words as an upstream failure: %s", (errorMessage) => {
 		expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(false);
 	});

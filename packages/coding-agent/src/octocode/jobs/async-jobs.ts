@@ -47,6 +47,8 @@ export type Started<T> = { status: "done"; value: T } | { status: "job"; job: Jo
 
 /** What the session's wiring gives the jobs of one session. */
 export interface JobPorts {
+	/** Highest task number already recorded in a resumed session, read only on the first hand-off. */
+	lastTaskNumber?(): number;
 	/** Hands a finished job's report to the session that started it. */
 	deliver(job: Job, outcome: JobOutcome): void | Promise<void>;
 	/** A report that could not be delivered. */
@@ -65,7 +67,7 @@ export class AsyncJobs {
 	private readonly live = new Map<string, Live>();
 	/** One promise per job, settled after its report was handed over. */
 	private readonly pending = new Set<Promise<void>>();
-	private next = 0;
+	private next?: number;
 	private ports: JobPorts | undefined;
 
 	/** Connects the session: where reports go and which rows show the jobs. Replaces an earlier connection. */
@@ -136,6 +138,7 @@ export class AsyncJobs {
 		const done = new Promise<void>((resolve) => {
 			reported = resolve;
 		});
+		this.next ??= this.ports?.lastTaskNumber?.() ?? 0;
 		this.pending.add(done);
 		const job: Live = {
 			id: `task-${++this.next}`,

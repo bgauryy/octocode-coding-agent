@@ -1,3 +1,5 @@
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
+
 /**
  * The refusal for a `file` call with neither or both of `queries` and `patch`. It echoes the corrected call built from
  * what the model sent, so the next attempt copies a valid shape instead of repeating the same one. A model that wrote
@@ -49,6 +51,36 @@ function pickChange(source: Record<string, unknown>): Record<string, unknown> {
 	return Object.fromEntries(CHANGE_FIELDS.filter((name) => read[name] !== undefined).map((name) => [name, read[name]]));
 }
 
+/** The wire schema is flat for strict providers. Check operation-specific operands before hooks or file I/O. */
+function operandError(queries: readonly unknown[]): Error | undefined {
+	for (const query of queries) {
+		if (!isRecord(query)) continue;
+		const { type, edits, content, fromAttachment } = query;
+		if (
+			type === "edit" &&
+			(!Array.isArray(edits) || !edits.length || content !== undefined || fromAttachment !== undefined)
+		) {
+			const attachment = fromAttachment === undefined ? "" : " fromAttachment goes with a write query.";
+			return new Error(
+				'For an edit, send type "edit", path and edits: [{oldText, newText}]. Omit write fields and unused keys. Use replaceAll: true inside the replacement for every match.' +
+					attachment +
+					" Nothing was changed.",
+			);
+		}
+		if (type === "write") {
+			if (edits !== undefined)
+				return new Error("A write takes no edits. Send content or fromAttachment. Nothing was changed.");
+			if ((content === undefined) === (fromAttachment === undefined))
+				return new Error("A write takes content or fromAttachment, one of them, not both. Nothing was changed.");
+		}
+		if (type === "delete" && (edits !== undefined || content !== undefined || fromAttachment !== undefined))
+			return new Error(
+				"A delete takes only the path and optional reason. Omit edits, content and fromAttachment. Nothing was changed.",
+			);
+	}
+	return undefined;
+}
+
 /** The refusal for a call whose change-carrying fields are wrong, or undefined when the shape is right. */
 export function fileShapeError(args: Record<string, unknown>): Error | undefined {
 	const reason = typeof args.reason === "string" ? args.reason : undefined;
@@ -56,6 +88,7 @@ export function fileShapeError(args: Record<string, unknown>): Error | undefined
 		const { patch: _dropped, ...kept } = args;
 		return new Error(`${FORMS}. Send one. Corrected call:\n${echo(kept)}`);
 	}
+	if (Array.isArray(args.queries)) return operandError(args.queries);
 	if (args.queries !== undefined || args.patch !== undefined) return undefined;
 	const written = reason !== undefined && reason.includes('<parameter name="');
 	if (written) {

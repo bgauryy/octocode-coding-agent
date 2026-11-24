@@ -34,6 +34,20 @@ const spec = (foregroundMs: number, signal?: AbortSignal) => ({
 });
 
 describe("AsyncJobs.run", () => {
+	it("allocates distinct IDs after resume and consults history only on the first hand-off", async () => {
+		const { jobs, ports } = attached();
+		const lastTaskNumber = vi.fn(() => 9);
+		jobs.attach({ ...ports, lastTaskNumber });
+		await jobs.run(spec(100), async () => "fast");
+		expect(lastTaskNumber).not.toHaveBeenCalled();
+		const slow = gate();
+		const pending = await Promise.all([jobs.run(spec(0), () => slow.promise), jobs.run(spec(0), () => slow.promise)]);
+		expect(pending.map((result) => result.status === "job" && result.job.id)).toEqual(["task-10", "task-11"]);
+		expect(lastTaskNumber).toHaveBeenCalledOnce();
+		slow.release("done");
+		await jobs.settle();
+	});
+
 	it("returns the value of work that ends within the budget and starts no job", async () => {
 		const { jobs, delivered } = attached();
 		const started = await jobs.run(spec(1000), async () => "fast");

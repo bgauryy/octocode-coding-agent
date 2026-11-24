@@ -47,7 +47,7 @@ export const SubagentSettingsSchema = Type.Object(
 				minimum: 0,
 				maximum: 10,
 				description:
-					"Seconds an idle session holds a wake (a child's report, a job's exit, mail) so wakes arriving close together share one turn. The first wake opens the window; everything arriving in it is delivered together when it ends. 0 delivers each wake at once. Costs up to this much latency per wake. Deprecated: with `runtime.eventLoop: \"new\"` it no longer applies to a background job's exit, a child's report or end, or team mail (`runtime.eventWindowSeconds` does), and it is removed when the last event kind moves to the loop.",
+					"Legacy idle wake window in seconds. Use runtime.eventWindowSeconds for the live scheduler. A session with no explicit runtime window inherits this value. Zero delivers at once.",
 				default: SETTINGS_DEFAULTS.subagents.wakeHoldSeconds,
 			}),
 		),

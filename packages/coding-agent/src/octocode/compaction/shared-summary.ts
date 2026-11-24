@@ -16,7 +16,13 @@ import { withoutHiddenDeclarations } from "../../core/hidden-declarations.ts";
 import { convertToLlm } from "../../core/messages.ts";
 import { projectForcedSystemPrompt } from "../../core/forced-system-prompt.ts";
 import { promptCacheKeyFor } from "../../core/cache-key-group.ts";
-import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
+import { CONTEXT_SAFETY_TOKENS } from "@octocodeai/octocode-ai/api/simple-options";
+import {
+	rethrowSummaryRequestError,
+	summaryProviderLimit,
+	SummaryProviderLimitError,
+} from "../../core/compaction/summary-failure.ts";
+import { CHARS_PER_TOKEN, charsToTokens, estimateContextTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { SUMMARY_CHECKPOINT_FORMAT, summarySizeTarget, TLDR_HEADING } from "../../core/compaction/summary-format.ts";
 import { computeFileLists, formatFileOperations } from "../../core/compaction/utils.ts";
 import { applyLedger, ledgerDetails, ledgerOf, ledgerPrompt } from "../../core/compaction/ledger.ts";
@@ -35,7 +41,7 @@ import { historyPrefixRewritten } from "./history-cache.ts";
  * thinking level and routing id) with one user message added at the end. The provider can reuse the cached prefix;
  * uncached suffixes, output and any cache writes remain billable. Tools stay declared and the thinking settings stay as they are,
  * because changing either invalidates the cached messages; the reply is told to be text only, and a reply that calls a
- * tool counts as a failure. Any failure returns nothing and the caller writes the summary the standalone way.
+ * tool counts as a failure. An unusable reply allows a standalone summary. Provider limits and usage persistence failures end the compaction.
  */
 
 /** What writing a summary needs of the feature API, whichever request ends up writing it. */
@@ -98,9 +104,6 @@ function boundaryNote(
 	const first = kept?.messages.map(describeMessage).find((description) => description !== undefined);
 	return first === undefined ? "" : renderPrompt("workflows/compaction/shared-boundary.md", { first });
 }
-
-/** What the provider keeps free of a request's context window (`clampMaxTokensToContext`). */
-const CONTEXT_MARGIN_TOKENS = 4096;
 
 /** Octocode's cap on a summary: what fits inline (`inlineSummaryTokens`), and never beyond what the model can write. */
 function summaryCapTokens(model: Pick<Model<Api>, "maxTokens">, reserveTokens: number): number {
@@ -177,11 +180,8 @@ export async function sharedSummary(
 		const rewritten = prefixRewritten(messages, model);
 		const cold = cacheCold || rewritten || historyPrefixRewritten(ctx.sessionManager);
 		if (requireWarmPrefix && cold) return fail("the request prefix is cold");
-		const cap = summaryCapTokens(model, preparation.settings.reserveTokens);
-		// A near-full window leaves less output than the cap (the provider clamps to it): the reply would only be cut off.
-		const room = model.contextWindow - preparation.tokensBefore - CONTEXT_MARGIN_TOKENS;
-		if (model.contextWindow > 0 && room < cap)
-			return fail(`the window leaves ${Math.max(0, room)} output tokens, under the ${cap} cap`);
+		const ceiling = summaryCapTokens(model, preparation.settings.reserveTokens);
+		const target = summaryTargetTokens(ceiling);
 		// The earlier checkpoint's standing constraints and decisions, which code writes back (`ledger.ts`).
 		const ledger = ledgerOf(
 			preparation.previousSummary === undefined ? undefined : splitSummary(preparation.previousSummary).body,
@@ -190,13 +190,26 @@ export async function sharedSummary(
 			SHARED_SUMMARY_PROMPT,
 			boundaryNote(projection.entries, preparation.firstKeptEntryId),
 			// Every summary gets the size target: a first one without it ran past the cap on long sessions.
-			`${preparation.previousSummary === undefined ? "" : PREVIOUS_SUMMARY_NOTE} ${summarySizeTarget(summaryTargetTokens(cap))}`.trim(),
+			`${preparation.previousSummary === undefined ? "" : PREVIOUS_SUMMARY_NOTE} ${summarySizeTarget(target)}`.trim(),
 			archivedPreviousNote(projection.entries),
 			ledgerPrompt(ledger),
 			instructions,
 		]
 			.filter(Boolean)
 			.join("\n\n");
+		const transcript = convertToLlm(messages);
+		// The plan can predate the current projection. Include the whole suffix, even an archived checkpoint or long focus.
+		const input =
+			Math.max(preparation.tokensBefore, estimateContextTokens(transcript, model).tokens) +
+			charsToTokens(prompt.length, model);
+		if (model.inputLimits?.maxInputTokens !== undefined && input > model.inputLimits.maxInputTokens)
+			return fail(
+				`the summary request needs about ${input} input tokens, over the ${model.inputLimits.maxInputTokens} input limit`,
+			);
+		const cap =
+			model.contextWindow > 0 ? Math.min(ceiling, model.contextWindow - input - CONTEXT_SAFETY_TOKENS) : ceiling;
+		if (cap < Math.max(1, target))
+			return fail(`the window leaves ${Math.max(0, cap)} output tokens, under the ${target}-token checkpoint target`);
 		const level = api.models.getThinkingLevel();
 		const preferences = sessionCachePreferences(ctx, model, settings);
 		// Only `long` instructions over shorter history can outlive the history entry; a rewritten prefix loses both.
@@ -207,15 +220,16 @@ export async function sharedSummary(
 			!instructionsCold;
 		const request = {
 			messages: [
-				...convertToLlm(messages),
+				...transcript,
 				{ role: "user" as const, content: [{ type: "text" as const, text: prompt }], timestamp: Date.now() },
 			],
 		};
 		// The key the session's own requests carry (`create-session.ts`): its prefix group's on OpenAI, else the fork
 		// chain's, so the summary reads the session's cache, and a fork's the parent's shard.
 		const promptCacheKey = promptCacheKeyFor(ctx.sessionManager, ctx.cwd, model, normalizeContext(request).messages);
-		const options: SimpleStreamOptions = {
+		const options: SimpleStreamOptions & { requestPriority: "compaction" } = {
 			...preferences,
+			requestPriority: "compaction",
 			// A cold history is not marked (nothing reads what it writes). History `none` makes octocode-ai send no markers
 			// and drop the cache routing id (OpenCode keeps its required `x-opencode-session` header), unless
 			// `keepInstructionCache` keeps the instruction markers: that entry is live, this request reads it and the next
@@ -239,7 +253,11 @@ export async function sharedSummary(
 			recordUsage?.(attempt);
 			return attempt;
 		};
-		const response = await retryAssistantCall(produce, policy?.retry, event.signal, policy?.callbacks);
+		const response = await retryAssistantCall(produce, policy?.retry, event.signal, policy?.callbacks).catch(
+			rethrowSummaryRequestError,
+		);
+		const limited = response.stopReason === "error" && summaryProviderLimit(response.errorMessage);
+		if (limited) throw limited;
 		if (response.stopReason !== "stop")
 			return fail(
 				response.stopReason === "length"
@@ -260,7 +278,7 @@ export async function sharedSummary(
 			details: { ...lists, ...ledgerDetails(carried.text, carried.lifted) },
 		};
 	} catch (error) {
-		if (error instanceof UsagePersistenceError) throw error;
+		if (error instanceof UsagePersistenceError || error instanceof SummaryProviderLimitError) throw error;
 		// An abort is the user's own cancel: the standalone request is cancelled too, so there is nothing to explain.
 		if (!event.signal.aborted) unusable(errorMessage(error));
 		return undefined;

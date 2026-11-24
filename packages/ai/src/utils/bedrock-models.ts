@@ -33,11 +33,15 @@ export function bedrockRequestEffort(model: Model<Api>, requested?: ThinkingLeve
 	return levels[requested ?? "off"] ?? "low";
 }
 
-/** Kimi reserves output against quota at 10x on Bedrock Runtime. Reserve a normal reply unless the caller asks for more. */
+/** Kimi K3.1 served by Bedrock Runtime, including geographic/global profiles and custom Bedrock endpoints. */
+export function isBedrockKimi31(model: Model<Api>): boolean {
+	return KIMI_31.test(model.id) && (model.api === "bedrock-converse-stream" || isBedrockInferenceHost(model.baseUrl));
+}
+
+/** Kimi's final output TPM burndown is 10x; choose a normal reply by default while explicit budgets still win. */
 export function bedrockReplyBudget(model: Model<Api>, requested?: number): number | undefined {
-	if (!KIMI_31.test(model.id) || (model.api !== "bedrock-converse-stream" && !isBedrockInferenceHost(model.baseUrl)))
-		return undefined;
-	return Math.min(requested ?? 16384, model.maxTokens, KIMI_K3_MAX_TOKENS);
+	if (!isBedrockKimi31(model)) return undefined;
+	return Math.min(requested ?? 8192, model.maxTokens, KIMI_K3_MAX_TOKENS);
 }
 
 export function isBedrockNova2(id: string): boolean {

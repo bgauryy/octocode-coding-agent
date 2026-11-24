@@ -91,7 +91,7 @@ export interface AgentControl {
 }
 
 /** A note to the model that starts no turn, so its send settles at once: awaited, a failure reaches the bus's error report. */
-const NOTE_SEND = { triggerTurn: false, deliverAs: "followUp" } as const;
+const NOTE_SEND = { triggerTurn: false } as const;
 /** Shutdown's wait for stopped background subagents: past the SIGTERM grace, after which they are killed. */
 const SHUTDOWN_WAIT_MS = SUBAGENT_STOP_GRACE_MS + 1_000;
 /** What the `agent` tool needs from the session that composes it. */

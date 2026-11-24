@@ -7,6 +7,7 @@ import type { SessionEntry } from "../../core/session-manager.ts";
 import { type ProviderQuotas, providerQuotas } from "../../core/model-runtime/quota-request.ts";
 import { billingFacts, entryBilling } from "../../core/usage-totals.ts";
 import { chipOf } from "../permission/chip-store.ts";
+import { limitsModelKey, resolveLimits } from "../../core/limits.ts";
 import { autoCompactAt, compactionThinking } from "../shared/tokens.ts";
 import {
 	addReply,
@@ -123,7 +124,13 @@ export function registerFooter(api: FeatureSetup, quotas: Pick<ProviderQuotas, "
 		const window = usage?.contextWindow ?? model?.contextWindow;
 		const compactAt =
 			usage?.compactionThreshold ??
-			(model && window ? autoCompactAt({ ...model, contextWindow: window }, compactionThinking(api)) : undefined);
+			(model && window
+				? autoCompactAt(
+						{ ...model, contextWindow: window },
+						compactionThinking(api),
+						resolveLimits(api.settings.get().limits, limitsModelKey(model)).compaction,
+					)
+				: undefined);
 		// The provider's readings come with each response (`quotaStep`); a plan window near its cap shows (`quotaPart`).
 		const quota = model?.provider ? tightestPlanWindow(quotas.current(model.provider)) : undefined;
 		set({

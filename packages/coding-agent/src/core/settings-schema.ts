@@ -9,6 +9,7 @@ import { ModelAvailabilitySettingsProperties } from "./settings-schema/model-ava
 import { BacklogSettingsSchema } from "./settings-schema/backlog.ts";
 import { RetentionSettingsSchema } from "./settings-schema/retention.ts";
 import { SessionApiTurnPermissionSchema } from "./settings-schema/session-api.ts";
+import { LimitsSchema } from "./settings-schema/limits.ts";
 import { SubagentSettingsSchema } from "./settings-schema/subagents.ts";
 import { TimerSettingsProperties } from "./settings-schema/timer.ts";
 import { MonitorSettingsProperties } from "./settings-schema/monitor.ts";
@@ -362,6 +363,7 @@ export const SettingsSchema = Type.Object(
 		retention: Type.Optional(RetentionSettingsSchema),
 		backlog: Type.Optional(BacklogSettingsSchema),
 		subagents: Type.Optional(SubagentSettingsSchema),
+		limits: Type.Optional(LimitsSchema),
 		optimizePrompts: Type.Optional(OptimizePromptsSchema),
 		leanPrompt: Type.Optional(LeanPromptSchema),
 		tuiMode: Type.Optional(

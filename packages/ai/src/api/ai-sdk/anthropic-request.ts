@@ -4,7 +4,7 @@ import { getCurrentTools, getInitialSystemMessage } from "../../utils/transcript
 import { getAnthropicCompat } from "../anthropic-messages/compat.ts";
 import { resolveToolLoadingMode } from "../../utils/tool-loading.ts";
 import { registerCredentialFetch } from "../anthropic-messages/federation.ts";
-import { hasStrictToolDowngrade, rememberStrictToolDowngrade } from "../anthropic-messages/strict-tool-downgrades.ts";
+import { rememberStrictToolDowngrade } from "../anthropic-messages/strict-tool-downgrades.ts";
 import { anthropicToolSchema } from "./anthropic-map.ts";
 import { repairAnthropicSse } from "./anthropic-sse.ts";
 import { prepareSdkRequest } from "./transport.ts";
@@ -73,9 +73,13 @@ export function anthropicStrictFetch(
 		return changed;
 	};
 	const fetch = options.fetch ?? globalThis.fetch;
+	// A transport retry supplies fresh headers and an abort signal, but reuses the original request body.
+	// Once this request relaxed its schema, every resend must use that same prepared body.
+	let relaxedBody: RequestInit["body"];
 	const wrapper: typeof globalThis.fetch = async (input, init) => {
+		if (relaxedBody !== undefined) return repairAnthropicSse(await fetch(input, { ...init, body: relaxedBody }));
 		const response = repairAnthropicSse(await fetch(input, init));
-		if (response.status !== 400 || hasStrictToolDowngrade(model, current) || options.signal?.aborted) return response;
+		if (response.status !== 400 || options.signal?.aborted) return response;
 		const body = JSON.parse(init?.body as string) as Record<string, unknown>;
 		if (!relax(body)) return response;
 		const error = (await response
@@ -96,6 +100,7 @@ export function anthropicStrictFetch(
 			undefined,
 			finalizeRequest,
 		);
+		relaxedBody = prepared?.body;
 		return repairAnthropicSse(await fetch(input, prepared));
 	};
 	registerCredentialFetch(wrapper, fetch);

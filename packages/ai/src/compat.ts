@@ -16,6 +16,7 @@ export * from "./api/google-vertex.lazy.ts";
 export * from "./api/mistral-conversations.lazy.ts";
 export * from "./api/openai-completions.lazy.ts";
 export * from "./api/openai-responses.lazy.ts";
+export * from "./api/openresponses.lazy.ts";
 export { providersSharingApiKeyEnvVar } from "./auth/api-key-env-vars.ts";
 export * from "./env-api-keys.ts";
 export * from "./images.ts";
@@ -31,6 +32,7 @@ import { googleVertexApi } from "./api/google-vertex.lazy.ts";
 import { mistralConversationsApi } from "./api/mistral-conversations.lazy.ts";
 import { openAICompletionsApi } from "./api/openai-completions.lazy.ts";
 import { openAIResponsesApi } from "./api/openai-responses.lazy.ts";
+import { openResponsesApi } from "./api/openresponses.lazy.ts";
 import { getEnvApiKey } from "./env-api-keys.ts";
 import type { ModelsApiStreamOptions } from "./models.ts";
 import { builtinModels } from "./providers/all.ts";
@@ -161,6 +163,7 @@ const BUILTIN_APIS: [Api, ProviderStreams][] = [
 	["anthropic-messages", anthropicMessagesApi()],
 	["openai-completions", openAICompletionsApi()],
 	["openai-responses", openAIResponsesApi()],
+	["openresponses", openResponsesApi()],
 	["azure-openai-responses", azureOpenAIResponsesApi()],
 	["google-generative-ai", googleGenerativeAIApi()],
 	["google-vertex", googleVertexApi()],

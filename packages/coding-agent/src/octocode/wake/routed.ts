@@ -1,31 +1,45 @@
 import type { Source } from "../events/source-types.ts";
+import type { Priority } from "../events/loop/types.ts";
 import type { PayloadEvent } from "../events/topics.ts";
 import type { GateRoute, Held } from "./gate-types.ts";
 
-/** The sends the live loop holds for the gate (`runtime.eventLoop: new`) and the intake that takes them. */
+/** Only the first wake is displayed in the session phase. */
+export function firstWakeLabel(sends: Iterable<Pick<Held, "labels">>): string | undefined {
+	for (const send of sends) if (send.labels.length) return send.labels[0];
+	return undefined;
+}
+
+/** The messages awaiting dispatch from this session loop. */
 export class Routed {
 	private route: GateRoute | undefined;
 	private readonly held = new Set<Held>();
 
-	/** Attaches the live loop's intake; `undefined` returns cut-over topics to the gate. */
+	/** Attaches the live loop's intake; `undefined` detaches the session route. */
 	set(route: GateRoute | undefined): void {
 		this.route = route;
+		if (!route) this.held.clear();
 	}
 
 	get active(): boolean {
 		return this.route !== undefined;
 	}
 
-	/** The labels of the sends the loop holds: they count as wakes for the session's phase like a held send. */
-	labels(): string[] {
-		return [...this.held].flatMap((each) => each.labels);
+	/** The phase displays the first pending wake. */
+	firstLabel(): string | undefined {
+		return firstWakeLabel(this.held);
 	}
 
 	/** Hands one send to the loop; false when it did not take it (an event it already holds). A throw leaves nothing held. */
-	take(held: Held, events: readonly PayloadEvent[], sources: readonly Source[], steer: boolean): boolean {
+	async take(
+		held: Held,
+		events: readonly PayloadEvent[],
+		sources: readonly Source[],
+		priority: Priority,
+	): Promise<boolean> {
 		this.held.add(held);
 		try {
-			if (this.route?.({ events, sources, steer, held })) return true;
+			const taken = this.route?.({ events, sources, priority, held });
+			if (taken instanceof Promise ? await taken : taken) return true;
 		} catch (error) {
 			this.held.delete(held);
 			throw error;
@@ -40,7 +54,7 @@ export class Routed {
 	}
 
 	/** The loop delivered these. */
-	release(batch: readonly Held[]): void {
-		for (const each of batch) this.held.delete(each);
+	release(held: Held): void {
+		this.held.delete(held);
 	}
 }

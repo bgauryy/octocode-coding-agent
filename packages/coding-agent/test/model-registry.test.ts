@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { normalizeContext } from "@octocodeai/octocode-ai";
 import type { AnthropicMessagesCompat, Api, Model, OpenAICompletionsCompat } from "@octocodeai/octocode-ai/compat";
 import { getBuiltinModels } from "@octocodeai/octocode-ai/providers/all";
-import { getApiProvider, getSupportedThinkingLevels } from "@octocodeai/octocode-ai/compat";
+import { getApiProvider, getSupportedThinkingLevels, streamSimple } from "@octocodeai/octocode-ai/compat";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import type { ModelRegistry, ProviderConfigInput } from "../src/core/model-registry.ts";
@@ -195,6 +195,51 @@ describe("ModelRegistry", () => {
 
 			expect(compat?.supportsUsageInStreaming).toBe(true);
 			expect(compat?.maxTokensField).toBe("max_completion_tokens");
+		});
+
+		test("resolves the tool dialect per model on a shared Chat Completions endpoint", async () => {
+			const baseUrl = "https://gateway.example/v1";
+			writeRawModelsJson({
+				gateway: {
+					api: "openai-completions",
+					baseUrl,
+					apiKey: "fixture",
+					compat: { toolSchemaFlavor: "moonshot" },
+					models: [{ id: "opaque-deployment" }, { id: "kimi-alias", compat: { toolSchemaFlavor: "standard" } }],
+				},
+			});
+			const registry = await createModelRegistry(authStorage, modelsJsonPath);
+			const parameters = { type: "object", properties: { choice: { const: "text" } } };
+			for (const [id, expected] of [
+				["opaque-deployment", { type: "string", enum: ["text"] }],
+				["kimi-alias", { const: "text" }],
+			] as const) {
+				const model = registry.find("gateway", id)!;
+				expect(model).toMatchObject({ provider: "gateway", id, baseUrl, api: "openai-completions" });
+				let wire: unknown;
+				const result = await streamSimple(
+					model,
+					{
+						messages: [{ role: "user", content: "Check", timestamp: 0 }],
+						tools: [{ name: "select", description: "Choose", parameters }],
+					},
+					{
+						apiKey: "fixture",
+						fetch: async () => {
+							throw new Error("Unexpected network request");
+						},
+						onPayload: (payload) => {
+							wire = payload;
+							throw new Error("Captured");
+						},
+					},
+				).result();
+				expect(result.errorMessage).toBe("Captured");
+				expect(wire).toMatchObject({
+					model: id,
+					tools: [{ function: { parameters: { properties: { choice: expected } } } }],
+				});
+			}
 		});
 
 		test("model schema accepts thinkingLevelMap and compat schema accepts supportsStrictMode and cacheControlFormat", async () => {

@@ -8,20 +8,19 @@
  * word for word, including what the run added in between.
  */
 
-import { inputRoomTokens } from "../compaction/settings.ts";
 import type { Model } from "@octocodeai/octocode-ai/compat";
 import {
 	type CompactionPreparation,
 	type CompactionSettings,
+	compactionStopTokens,
 	fitCompactionToWindow,
 	prepareCompaction,
-	shouldCompact,
 	type SummaryRequestPolicy,
 } from "../compaction/index.ts";
 import type { FeatureHost } from "../features/index.ts";
 import { providerCooldowns } from "../model-runtime/provider-cooldown.ts";
 import type { SessionEntry, SessionManager } from "../session-manager.ts";
-import { ancestors } from "../session-manager/ancestors.ts";
+import { ancestors, hasUnchangedContextPrefix, newestFirst } from "../session-manager/ancestors.ts";
 
 /** How far below the compaction threshold the plan is made: about the context a run adds while a summary is written. */
 export function prewarmLeadTokens(contextWindow: number): number {
@@ -44,11 +43,12 @@ const targetOf = (model: Model<any>, settings: CompactionSettings, forced?: stri
 		model.contextWindow,
 		settings.reserveTokens,
 		settings.maxInputTokens,
+		settings.triggerTokens,
 		settings.keepRecentTokens,
 		forced,
 	]);
 
-/** Whether `plan` still fits `branchEntries`: same session, model and settings, grown past its leaf with no compaction or edit. */
+/** Whether `plan` still fits `branchEntries`: same session, model and settings, grown past its leaf with the planned input intact. */
 function holds(
 	plan: Plan,
 	branchEntries: readonly SessionEntry[],
@@ -57,14 +57,12 @@ function holds(
 	settings: CompactionSettings,
 	forcedSystemPrompt?: string,
 ): boolean {
-	const leafAt = branchEntries.findIndex((entry) => entry.id === plan.leafId);
 	return (
 		plan.sessionId === sessionId &&
 		plan.target === targetOf(model, settings, forcedSystemPrompt) &&
-		leafAt >= 0 &&
 		!plan.controller.signal.aborted &&
 		branchEntries.some((entry) => entry.id === plan.preparation.firstKeptEntryId) &&
-		!branchEntries.slice(leafAt + 1).some((entry) => entry.type === "compaction" || entry.type === "context_edit")
+		hasUnchangedContextPrefix(newestFirst(branchEntries), plan.leafId)
 	);
 }
 
@@ -90,15 +88,13 @@ export class CompactionPrewarm {
 	due(tokens: number, model: Model<any>, settings: CompactionSettings): boolean {
 		const window = model.contextWindow;
 		if (this.plan || !settings.enabled || !(window > 0)) return false;
-		if (shouldCompact(tokens, window, settings)) return false;
-		return (
-			tokens > inputRoomTokens(window, settings.reserveTokens, settings.maxInputTokens) - prewarmLeadTokens(window)
-		);
+		const firstCompaction = compactionStopTokens(window, settings);
+		return tokens >= firstCompaction - prewarmLeadTokens(window) && tokens < firstCompaction;
 	}
 
 	/**
 	 * Fixes the plan for the branch as it is now and tells features; does nothing when nothing can be summarized, or while
-	 * the model's provider cools down from a rate limit: the early request and its retries would run beside the turn's
+	 * the model's provider cools down from a rate limit: the early request would run beside the turn
 	 * into the same throttle. The next request past the cool-down plans then, and the compaction requests its own summary.
 	 */
 	start(
@@ -137,7 +133,7 @@ export class CompactionPrewarm {
 
 	/**
 	 * The plan's preparation when it still fits `branchEntries` (same session, model and settings, the branch grew past
-	 * the plan's leaf without another compaction or context edit); otherwise the plan is dropped and undefined returned.
+	 * the plan's leaf without changing the planned input); otherwise the plan is dropped and undefined returned.
 	 */
 	take(
 		branchEntries: readonly SessionEntry[],
@@ -197,8 +193,7 @@ export class CompactionPrewarm {
 		if (plan.target !== targetOf(model, settings, forcedSystemPrompt)) return this.drop();
 		if (!sessionManager) return;
 		if (plan.sessionId !== sessionManager.getSessionId()) return this.drop();
-		for (const entry of ancestors(sessionManager.getLeafEntry(), (id) => sessionManager.getEntry(id)))
-			if (entry.id === plan.leafId) return;
-		this.drop();
+		const branch = ancestors(sessionManager.getLeafEntry(), (id) => sessionManager.getEntry(id));
+		if (!hasUnchangedContextPrefix(branch, plan.leafId)) this.drop();
 	}
 }

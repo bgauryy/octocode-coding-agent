@@ -28,6 +28,8 @@ export const NATIVE_SERVER = "native";
  * the way it reads an MCP tool's, so the model learns a thin native tool's schema without a refused call.
  */
 export interface McpNativeTools {
+	/** A consistent view for a single catalog read. Hosts with a live registry can enumerate it once. */
+	snapshot?(): Pick<McpNativeTools, "deferred" | "schema" | "declared">;
 	/** The names of the native tools this session declares thin (deferred), sorted. */
 	deferred(): string[];
 	/** One of them in full: the description and input JSON schema it declares when direct. Undefined for any other name. */
@@ -58,8 +60,8 @@ export interface McpManageOperations {
 	servers(): ManagedMcpServer[];
 	/** Read the current catalog without connecting or executing a server. */
 	tools?(name: string): McpToolListing[];
-	/** A tool's full description and schema were read (`tools` with `tool`); `server` is `native` for a native tool. */
-	loaded?(server: string, tool: string): void;
+	/** A tool's full description and schema were read. Native lookups have no originating server. */
+	loaded?(server: string | undefined, tool: string): void;
 	/** Deferred native tools, read through `server: "native"`. Without it that name is an unknown server. */
 	nativeTools?: McpNativeTools;
 	/** The server's own instructions from its current connection, shown before its catalog. */
@@ -89,7 +91,7 @@ const ManageSchema = Type.Object({
 	intent: Type.Unsafe<Intent>({ type: "string", enum: [...INTENTS] }),
 	server: Type.Optional(
 		Type.String({
-			description: `Server name; required for every intent except list. "${NATIVE_SERVER}" with tools reads a deferred native tool`,
+			description: "Required for server operations. Omit for list or to inspect a named native tool.",
 		}),
 	),
 	tool: Type.Optional(Type.String({ description: "tools: name for schema" })),
@@ -114,8 +116,8 @@ function readNative(
 	name: string | undefined,
 	operations: McpManageOperations,
 ): { text: string; details: Record<string, unknown> } {
-	const deferred = native.deferred();
 	if (name === undefined) {
+		const deferred = native.deferred();
 		const lines = deferred.flatMap((each) => {
 			const schema = native.schema(each);
 			return schema ? [`${each} [deferred] — ${schema.description.split("\n", 1)[0]}`] : [];
@@ -140,13 +142,15 @@ function readNative(
 		};
 		return { text: formatMcpTool(tool, true), details: { server: NATIVE_SERVER, tool } };
 	}
-	if (!schema)
+	if (!schema) {
+		const deferred = native.deferred();
 		throw new Error(
 			`No native tool named "${name}" in this session. ${
 				deferred.length > 0 ? `Deferred now: ${deferred.join(", ")}.` : "No native tool is deferred in this session."
 			}`,
 		);
-	operations.loaded?.(NATIVE_SERVER, name);
+	}
+	operations.loaded?.(undefined, name);
 	const tool = {
 		name,
 		description: schema.description,
@@ -172,19 +176,20 @@ export function createMcpManageTool(operations: McpManageOperations): McpToolDef
 		throw new Error(
 			name
 				? `No MCP server "${name}" in this session. Servers: ${known}.`
-				: `Name the server in the server field (every intent except list needs it). Servers: ${known}.`,
+				: `Name the server in the server field for this operation. Servers: ${known}.`,
 		);
 	};
-	/** The native tools when `name` asks for them: no configured server has that name, and the host passed the port. */
-	const nativeOf = (name: string | undefined): McpNativeTools | undefined =>
-		name === NATIVE_SERVER && !operations.servers().some((server) => server.name === name)
+	/** A named lookup without a server is native. The older "native" alias still yields to a configured server. */
+	const nativeOf = (name: string | undefined, tool: string | undefined): McpNativeTools | undefined =>
+		(name === undefined && tool !== undefined) ||
+		(name === NATIVE_SERVER && !operations.servers().some((server) => server.name === name))
 			? operations.nativeTools
 			: undefined;
 	return {
 		name: MCP_MANAGE_TOOL_NAME,
 		label: "MCP",
-		promptSnippet: "When an MCP server fails; to check it or load deferred native tools",
-		description: `Manage session MCP servers without changing config. list shows state, tools, group, purpose and errors; name a server for its source. tools lists tools or shows one schema. resources lists resources and URI templates. read takes a URI. restart reconnects (cooldown ${MCP_RESTART_COOLDOWN_MS / 1000}s); stop disconnects. On failure restart, report it and continue with other tools.`,
+		promptSnippet: "Inspect tool schemas and server status, load deferred tools, or read MCP resources",
+		description: `list shows server status and errors. tools lists tools or returns one tool's full schema when you name it. For invalid arguments, check that schema before retrying. resources lists resources and URI templates. To read a resource link, use read with its originating server and URI. restart reconnects a failed server (cooldown ${MCP_RESTART_COOLDOWN_MS / 1000}s). stop disconnects it.`,
 		parameters: ManageSchema,
 		// A removed intent fails the schema's enum with a bare list; this names its replacement instead.
 		prepareArguments(args) {
@@ -210,9 +215,9 @@ export function createMcpManageTool(operations: McpManageOperations): McpToolDef
 					);
 				}
 				case "tools": {
-					const native = nativeOf(params.server);
+					const native = nativeOf(params.server, params.tool);
 					if (native) {
-						const read = readNative(native, params.tool, operations);
+						const read = readNative(native.snapshot?.() ?? native, params.tool, operations);
 						return reply(read.text, read.details);
 					}
 					const server = find(params.server);

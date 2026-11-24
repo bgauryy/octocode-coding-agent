@@ -18,7 +18,10 @@ describe("built-in compaction policy", () => {
 			expect(policy.reserveTokens).toBe(
 				contextWindow / 6 >= 20485 ? Math.min(24_576, Math.floor(contextWindow / 6)) : fraction,
 			);
-			expect(policy.keepRecentTokens).toBe(Math.min(20000, Math.floor(contextWindow / 4)));
+			// A tenth of the window, at least the default, within a quarter of the window.
+			expect(policy.keepRecentTokens).toBe(
+				Math.min(Math.max(20000, Math.floor(contextWindow / 10)), Math.floor(contextWindow / 4)),
+			);
 			expect(policy.reserveTokens + policy.keepRecentTokens).toBeLessThan(contextWindow);
 			expect(reserveTokensFor(model)).toBe(policy.reserveTokens);
 			expect(autoCompactAt(model)).toBe(contextWindow - policy.reserveTokens);

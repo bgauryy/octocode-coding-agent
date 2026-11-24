@@ -91,14 +91,15 @@ function oracleEstimate(projection: SessionProjection, branch: SessionEntry[]) {
 			index = next;
 		}
 		const usageEntryIndex = usageEntryId ? branch.findIndex((entry) => entry.id === usageEntryId) : -1;
-		let invalidating = -1;
-		for (let i = branch.length - 1; i >= 0; i--) {
-			if (branch[i].type === "context_edit" || branch[i].type === "compaction") {
-				invalidating = i;
-				break;
-			}
+		if (usageEntryIndex >= 0) {
+			const prefixIds = new Set(branch.slice(0, usageEntryIndex + 1).map((entry) => entry.id));
+			const changed = branch
+				.slice(usageEntryIndex + 1)
+				.some(
+					(entry) => entry.type === "compaction" || (entry.type === "context_edit" && prefixIds.has(entry.targetId)),
+				);
+			if (!changed) return estimate;
 		}
-		if (usageEntryIndex > invalidating) return estimate;
 	}
 	const currentSystem = getCurrentSystemMessage(projection.messages);
 	let tokens = currentSystem ? estimateTokens(currentSystem) : 0;

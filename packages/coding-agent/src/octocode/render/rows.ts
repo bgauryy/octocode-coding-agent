@@ -4,7 +4,6 @@ import type { ToolDefinition } from "../../core/features/index.ts";
 import { formatDuration } from "../shared/format.ts";
 import { exclusive, takeTiming } from "../shared/locks.ts";
 import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
-import { stopRowMotion } from "./motion.ts";
 import type { Phase, RenderContext, ToolRow } from "./types.ts";
 
 export function phaseOf(context: RenderContext): Phase {
@@ -55,7 +54,6 @@ function stopTick(state: ToolRow): void {
 /** Stop every elapsed clock and forget run starts (on `agent_end` and `session_shutdown`: no row is still running). */
 export function stopRowTimers(): void {
 	for (const state of ticking) stopTick(state);
-	stopRowMotion();
 	waitingRows.clear();
 	runStarts.clear();
 }

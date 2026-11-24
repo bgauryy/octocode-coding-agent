@@ -1,8 +1,9 @@
 import {
+	type CompactionLimits,
 	type CompactionThinking,
 	type CompactionModel,
 	builtInCompactionSettings,
-	inputRoomTokens,
+	compactionThresholdTokens,
 } from "../../core/compaction/settings.ts";
 import type { SetupPick } from "../../core/features/index.ts";
 
@@ -20,9 +21,11 @@ export function reserveTokensFor(
 	return builtInCompactionSettings(model, thinking).reserveTokens;
 }
 
+/** Context size at which automatic compaction starts for `model`; `limits` is its `limits.compaction` (`limitsFor`). */
 export function autoCompactAt(
 	model: CompactionModel & { provider: string; id: string; contextWindow: number },
 	thinking?: CompactionThinking,
+	limits?: CompactionLimits,
 ): number {
-	return inputRoomTokens(model.contextWindow, reserveTokensFor(model, thinking), model.inputLimits?.maxInputTokens);
+	return compactionThresholdTokens(model.contextWindow, builtInCompactionSettings(model, thinking, limits));
 }

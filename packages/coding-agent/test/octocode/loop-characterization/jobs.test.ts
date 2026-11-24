@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { BashJobs } from "../../../src/octocode/files/bash-jobs.ts";
+import { asyncJobsFor } from "../../../src/octocode/jobs/registry.ts";
 import { registerAsyncJobs } from "../../../src/octocode/jobs/register.ts";
 import { runBudgeted } from "../../../src/octocode/jobs/tool.ts";
 import { JOB_TYPE, TASK_TYPE } from "../../../src/octocode/shared/messages.ts";
@@ -12,9 +13,7 @@ import { tmp } from "../helpers.ts";
 
 /**
  * Characterization of the job producers (RFC agent-event-loop R0, §4): an own background `bash` job's exit and an async
- * `task-N` job (a tool call that outlived its foreground budget). Both report through the gate with
- * `{ triggerTurn, deliverAs: "followUp", together: true }`: native/tools/bash/tool.ts:116-134 and jobs/register.ts:30-37.
- * R6 moves these to `job.exit` topics; the asserted behaviour must survive it.
+ * `task-N` job (a tool call that outlived its foreground budget). A waking result joins the next safe model turn.
  */
 
 const rigs: Rig[] = [];
@@ -47,7 +46,7 @@ const jobMessages = (rig: Rig) =>
 	rig.harness.session.messages.filter((message) => message.role === "custom" && message.customType === JOB_TYPE);
 
 describe("an own background bash job's exit", () => {
-	it("wakes an idle interactive session: one turn that carries the report (follow-up, together)", async () => {
+	it("wakes an idle interactive session: one turn that carries the report", async () => {
 		const { rig, jobs } = await bashRig(false);
 		rig.harness.setResponses([bashCall("echo built"), fauxAssistantMessage("started"), rig.reply("woken by the job")]);
 		await rig.harness.session.prompt("build in the background");
@@ -69,23 +68,23 @@ describe("an own background bash job's exit", () => {
 		expect(JSON.stringify(jobMessages(rig)[0])).toContain("3");
 	});
 
-	it("queued as a follow-up when it ends mid-run: its turn comes after the final answer, not inside the run", async () => {
+	it("delivers a completed bash job at the next tool boundary with no additional model request", async () => {
 		const { rig, jobs, slow } = await bashRig(false);
 		rig.harness.setResponses([
 			bashCall("echo built"),
 			fauxAssistantMessage(fauxToolCall("hold", {}), { stopReason: "toolUse" }),
 			rig.reply("final answer"),
-			rig.reply("woken by the job report"),
+			rig.reply("unexpected extra request"),
 		]);
 		const running = rig.harness.session.prompt("build then wait");
 		await slow.started;
 		await vi.waitFor(() => expect(jobs.jobs.size).toBe(0), { timeout: 10_000 });
 		slow.release();
 		await running;
-		await vi.waitFor(() => expect(rig.requests).toHaveLength(2), { timeout: 10_000 });
 		await rig.harness.session.waitForIdle();
-		expect(count(rig.requests[0], "Background bash bash-1")).toBe(0);
-		expect(count(rig.requests[1], "Background bash bash-1")).toBe(1);
+		expect(rig.requests).toHaveLength(1);
+		expect(count(rig.requests[0], "Background bash bash-1")).toBe(1);
+		expect(rig.harness.getPendingResponseCount()).toBe(1);
 	});
 
 	it("in a subagent is recorded quietly and starts no turn", async () => {
@@ -150,6 +149,45 @@ describe("an async task-N job's exit", () => {
 		expect(count(rig.requests[1], "RESULT-OF-THE-FETCH")).toBe(1);
 		const reports = rig.harness.session.messages.filter((m) => m.role === "custom" && m.customType === TASK_TYPE);
 		expect(reports).toHaveLength(1);
+	});
+
+	it("delivers two completions to the newly selected model at the next tool boundary", async () => {
+		const work = Promise.withResolvers<string>();
+		const slow = blockingTool();
+		const rig = await createRig({
+			register: taskTool(work.promise),
+			tools: [slow.tool],
+			models: [{ id: "first" }, { id: "second" }],
+		});
+		rigs.push(rig);
+		rig.harness.setResponses([
+			fauxAssistantMessage([fauxToolCall("slowweb", {}), fauxToolCall("slowweb", {})], { stopReason: "toolUse" }),
+			rig.reply("tasks started"),
+		]);
+		await rig.harness.session.prompt("start both fetches");
+		expect(rig.requests[0].join("\n")).toContain("task-2");
+		await rig.harness.session.setModel(rig.harness.getModel("second")!);
+		rig.harness.setResponses([
+			fauxAssistantMessage(fauxToolCall(slow.tool.name, {}), { stopReason: "toolUse" }),
+			rig.reply("used both results"),
+			rig.reply("unexpected extra request"),
+		]);
+		const run = rig.harness.session.prompt("continue");
+		await slow.started;
+		try {
+			work.resolve("finished-fetch");
+			await asyncJobsFor(rig.ctx.sessionManager).settle();
+			expect(rig.requests).toHaveLength(1);
+		} finally {
+			slow.release();
+		}
+		await run;
+		await rig.harness.session.waitForIdle();
+		expect(rig.requests).toHaveLength(2);
+		for (const id of ["task-1", "task-2"])
+			expect(rig.requests[1].filter((line) => line.includes(id) && line.includes("finished-fetch"))).toHaveLength(1);
+		expect(rig.harness.session.model?.id).toBe("second");
+		expect(rig.harness.getPendingResponseCount()).toBe(1);
 	});
 
 	it("a stopped job (session end) is recorded and starts no turn", async () => {

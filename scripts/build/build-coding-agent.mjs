@@ -60,21 +60,6 @@ const httpsProxyAgentNamedExportPlugin = {
 	},
 };
 
-const INK_DEVTOOLS = "\0ink-devtools-disabled";
-
-// Ink loads React devtools (`./devtools.js`, which statically imports the optional react-devtools-core) when DEV=true.
-// Bundled, that import would load at startup and fail when the package is absent, so the bundle ships no devtools.
-const inkDevtoolsPlugin = {
-	name: "ink-devtools-disabled",
-	resolveId(source, importer) {
-		if (source === "./devtools.js" && importer?.replaceAll("\\", "/").includes("/node_modules/ink/build/"))
-			return INK_DEVTOOLS;
-	},
-	load(id) {
-		if (id === INK_DEVTOOLS) return { code: "export {};", moduleType: "js" };
-	},
-};
-
 // The AI package hides Node-only code behind variable-specifier imports so browser bundles cannot follow them. Here they
 // become literal dynamic imports: Rolldown puts that code in the one file and still runs it only on first use.
 const LAZY_LOADER = /packages\/ai\/dist\/(?:auth\/oauth\/load|api\/bedrock-converse-stream\.lazy)\.js$/;
@@ -113,7 +98,7 @@ async function bundle(input, output, unresolved) {
 		// installed npm package. Relative imports (including the private source workspaces) need no configuration.
 		tsconfig: false,
 		transform: { target: "node24", define: { OCTOCODE_BUNDLED_NODE: "true" } },
-		plugins: [httpsProxyAgentNamedExportPlugin, inlineLazyImportsPlugin, inkDevtoolsPlugin],
+		plugins: [httpsProxyAgentNamedExportPlugin, inlineLazyImportsPlugin],
 		onLog(level, log, defaultHandler) {
 			if (log.code === "UNRESOLVED_IMPORT" && log.exporter) {
 				unresolved.add(log.exporter);

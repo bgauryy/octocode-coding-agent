@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
 	createFauxCore,
 	fauxAssistantMessage,
@@ -31,8 +30,6 @@ import { nativeFeatureSet } from "../helpers/native-features.ts";
  * asks; text that is only a workspace path, the cwd or a model id does not; a clean child's report does not; a session grant
  * for one agent stops the asks about it; `full` does not ask.
  */
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const octocode = (await import(path.join(HERE, "..", "..", "src", "index.ts"))).default as FeatureRegister;
 
 const savedEnv = { ...process.env };
 const sessions: Array<AgentSession> = [];
@@ -139,10 +136,7 @@ async function interactive(
 		agentDir: path.join(root, "agent"),
 		settingsManager,
 		nativeFeatures: nativeFeatureSet(),
-		features: testFeatures([
-			{ name: "faux-provider", factory: fixtures },
-			{ name: "octocode", factory: octocode },
-		]),
+		features: testFeatures([{ name: "faux-provider", factory: fixtures }]),
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,

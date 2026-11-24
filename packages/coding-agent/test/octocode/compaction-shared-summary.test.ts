@@ -9,7 +9,7 @@ import { sharedSummary } from "../../src/octocode/compaction/shared-summary.ts";
 import { SUMMARY_METHOD_DETAILS, writeSummary } from "../../src/octocode/compaction/summary.ts";
 import { renderPrompt } from "../../src/core/prompt-template.ts";
 import { CLEARED_RESULTS_TYPE } from "../../src/octocode/files/reads.ts";
-import { CHARS_PER_TOKEN } from "@octocodeai/octocode-ai/utils/estimate";
+import { CHARS_PER_TOKEN, charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { inlineSummaryTokens, summaryTargetTokens } from "../../src/core/compaction/checkpoint.ts";
 import { builtInCompactionSettings } from "../../src/core/compaction/settings.ts";
 import { summarySizeTarget } from "../../src/core/compaction/summary-format.ts";
@@ -426,13 +426,41 @@ describe("cache-sharing compaction summary", () => {
 		expect(prompt).not.toMatch(/\p{Surrogate}/u);
 	});
 
-	it("goes straight to the standalone request when the window leaves less output than the cap", async () => {
+	it("uses the cached transcript when 17,952 tokens remain below a 22,937-token output ceiling", async () => {
+		const { calls, api, ctx, event, notices } = setup();
+		const preparation = (event as { preparation: { tokensBefore: number; settings: { reserveTokens: number } } })
+			.preparation;
+		preparation.settings.reserveTokens = 28_672;
+		const window = preparation.tokensBefore + 4_096 + 17_952;
+		// Keep the same model identity: a downshift deliberately uses a standalone request.
+		Object.assign(ctx, { model: { ...model, contextWindow: window, maxTokens: 64_000 } });
+		const result = await writeSummary(api, event, ctx);
+		expect(result?.compaction?.details).toMatchObject({ [SUMMARY_METHOD_DETAILS]: { method: "cache-shared" } });
+		expect(calls).toHaveLength(1);
+		expect(calls[0].options.maxTokens).toBeLessThan(17_952);
+		expect(calls[0].options.maxTokens).toBeGreaterThanOrEqual(summaryTargetTokens(inlineSummaryTokens(28_672)));
+		expect(notices).toEqual([]);
+	});
+
+	it("budgets the instructions added to the request against the model's input limit", async () => {
+		const { calls, api, ctx, event } = setup();
+		const limited = { ...model, inputLimits: { maxInputTokens: 15_000 } };
+		const reasons: string[] = [];
+		const result = await sharedSummary(api, event, ctx, limited as never, "focus ".repeat(10_000), (reason) =>
+			reasons.push(reason),
+		);
+		expect(result).toBeUndefined();
+		expect(calls).toHaveLength(0);
+		expect(reasons[0]).toContain("input limit");
+	});
+
+	it("skips the shared request when the checkpoint prompt consumes the remaining output room", async () => {
 		const { calls, api, ctx, event } = setup();
 		const full = { ...model, contextWindow: 12_345 + 4_096 + 100 };
 		const reasons: string[] = [];
 		expect(await sharedSummary(api, event, ctx, full as never, "x", (why) => reasons.push(why))).toBeUndefined();
 		expect(calls).toHaveLength(0);
-		expect(reasons).toEqual([expect.stringMatching(/window leaves 100 output tokens/)]);
+		expect(reasons).toEqual([expect.stringMatching(/window leaves 0 output tokens/)]);
 	});
 
 	// A main session has the model's whole window; a child's window is its context budget, below the model's capacity.
@@ -456,7 +484,8 @@ describe("cache-sharing compaction summary", () => {
 		expect(reasons).toEqual([]);
 		expect(result).toBeDefined();
 		expect(calls).toHaveLength(1);
-		expect(calls[0].options.maxTokens).toBe(inlineSummaryTokens(reserveTokens));
+		const room = window - atThreshold - 4_096 - charsToTokens(finalPrompt(calls[0]).length, budgeted);
+		expect(calls[0].options.maxTokens).toBe(Math.min(inlineSummaryTokens(reserveTokens), room));
 	});
 
 	it("asks every summary, the first one too, to stay under the computed size target", async () => {
@@ -748,6 +777,44 @@ describe("writeSummary with the shared path", () => {
 		expect(out?.compaction?.summary).toContain("standalone after a retry");
 		// Every attempt's usage is recorded, not only the last one's.
 		expect(s.recordedUsage).toHaveLength(4);
+	});
+
+	it.each(["shared", "standalone"] as const)(
+		"keeps a final 429 on the %s path from starting another request sequence",
+		async (path) => {
+			const message = "429 Too many requests";
+			const s = setup({ reply: () => ({ ...reply([], "error"), errorMessage: message, retryAfterMs: 120_000 }) });
+			const event = {
+				...(s.event as object),
+				summaryRequest: {
+					watch: (stream: unknown) => stream,
+					retry: { enabled: true, maxRetries: 2, maxAgentDelayMs: 100, baseDelayMs: 0 },
+					callbacks: {},
+				},
+			};
+			const result = await writeSummary(
+				s.api,
+				event as never,
+				s.ctx,
+				path === "standalone" ? (model as never) : undefined,
+			);
+			expect(result).toMatchObject({ cancel: true, failure: expect.stringContaining(message) });
+			expect(s.calls).toHaveLength(1);
+			expect(s.recordedUsage).toHaveLength(1);
+			expect(s.notices).toEqual([]);
+		},
+	);
+
+	it("ends compaction when the provider throws its throttle instead of returning an error message", async () => {
+		const message = "429 Too many requests";
+		const s = setup({
+			reply: () => {
+				throw new Error(message);
+			},
+		});
+		expect(await writeSummary(s.api, s.event, s.ctx)).toEqual({ cancel: true, failure: message });
+		expect(s.calls).toHaveLength(1);
+		expect(s.notices).toEqual([]);
 	});
 
 	it("names blocked images as the reason for the standalone request, without a warning", async () => {

@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import {
 	ChatTemplateKwargValueSchema,
+	OpenRouterAutoRouterSchema,
 	OpenRouterRoutingSchema,
 	optionalCompatBoolean,
 	optionalSessionAffinityFormat,
@@ -98,6 +99,7 @@ export const OpenAICompletionsCompatSchema = Type.Object(
 			}),
 		),
 		openRouterRouting: Type.Optional(OpenRouterRoutingSchema),
+		openRouterAutoRouter: Type.Optional(OpenRouterAutoRouterSchema),
 		vercelGatewayRouting: Type.Optional(VercelGatewayRoutingSchema),
 		zaiToolStream: Type.Optional(
 			Type.Boolean({
@@ -171,7 +173,7 @@ export const OpenAICompletionsCompatSchema = Type.Object(
 		toolSchemaFlavor: Type.Optional(
 			Type.Union([Type.Literal("standard"), Type.Literal("moonshot")], {
 				description:
-					'Tool parameter schema flavor. "moonshot" repairs tool schemas to the strict subset the Kimi API requires: a type on every property and no type beside anyOf/oneOf. "standard" disables auto-detection and emits standard JSON Schema as authored. Default: auto-detected for Moonshot endpoints.',
+					'Tool declaration format for Chat Completions. Moonshot endpoints and Kimi model IDs use "moonshot", including through gateways. It projects object alternatives and represents scalar choices with enums. Set "standard" to send the authored JSON Schema. Local validation uses the original tool contract.',
 			}),
 		),
 	},

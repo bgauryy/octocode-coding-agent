@@ -41,6 +41,7 @@ const OPENAI_COMPLETIONS_DEFAULT_COMPAT: OpenAICompletionsResolvedCompat = {
 	requiresReasoningContentOnAssistantMessages: false,
 	thinkingFormat: "openai",
 	openRouterRouting: {},
+	openRouterAutoRouter: {},
 	vercelGatewayRouting: {},
 	chatTemplateKwargs: {},
 	chatTemplateArgs: {},
@@ -133,6 +134,7 @@ export function detectOpenAICompletionsCompat(model: Model<"openai-completions">
 							? "openrouter"
 							: "openai",
 		openRouterRouting: {},
+		openRouterAutoRouter: {},
 		vercelGatewayRouting: {},
 		chatTemplateKwargs: {},
 		chatTemplateArgs: {},

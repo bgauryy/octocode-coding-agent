@@ -2,9 +2,10 @@ import type { ModelThinkingLevel } from "@octocodeai/octocode-ai";
 import { type CachePreferences, mergeCachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { builtInCompactionSettings } from "../../compaction/settings.ts";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS } from "../../http-dispatcher.ts";
+import { limitsModelKey, type ResolvedLimits, resolveLimits } from "../../limits.ts";
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
-import { RUNTIME_DEFAULTS } from "../../settings-schema/runtime.ts";
 import type { CacheWarmingMode } from "../../settings-schema.ts";
+import type { SmartRouterOptions } from "../../smart-router/index.ts";
 import type { CompactionPolicyModel, RetrySettings, RuntimeSettingsApi } from "../api/runtime.ts";
 import { CACHE_WARMING_MODES } from "../constants.ts";
 import { parseTimeoutSetting } from "../merge.ts";
@@ -28,7 +29,12 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 		return builtInCompactionSettings(
 			model,
 			thinkingLevel === undefined ? undefined : { level: thinkingLevel, budgets: this.settings.thinkingBudgets },
+			this.getLimits(model).compaction,
 		);
+	}
+
+	getLimits(model?: { provider?: string; id?: string }): ResolvedLimits {
+		return resolveLimits(this.settings.limits, limitsModelKey(model));
 	}
 
 	getBranchSummarySettings(): { reserveTokens: number; skipPrompt: boolean } {
@@ -95,10 +101,6 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 		return this.settings.toolExecution?.earlyStart ?? SETTINGS_DEFAULTS.toolExecution.earlyStart;
 	}
 
-	getEventLoopMode(): "old" | "shadow" | "new" {
-		return this.settings.runtime?.eventLoop ?? RUNTIME_DEFAULTS.eventLoop;
-	}
-
 	getHttpIdleTimeoutMs(): number {
 		return parseTimeoutSetting(this.settings.httpIdleTimeoutMs, "httpIdleTimeoutMs") ?? DEFAULT_HTTP_IDLE_TIMEOUT_MS;
 	}
@@ -149,6 +151,19 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 		this.globalSettings.optimizePrompts = enabled;
 		this.markModified("optimizePrompts");
 		this.save();
+	}
+
+	getSmartRouterSettings(): SmartRouterOptions {
+		const routing = this.settings.runtime?.smartRouting;
+		return {
+			allow: routing?.allow,
+			deny: routing?.deny,
+			tiers: routing?.tiers,
+			planOnly: routing?.planOnly,
+			allowPlanToMeteredEscalation: this.globalSettings.runtime?.smartRouting?.allowPlanToMeteredEscalation,
+			cooldownRequests: routing?.cooldownRequests,
+			outputReserveTokens: routing?.outputReserveTokens,
+		};
 	}
 
 	getProviderRetrySettings(): { timeoutMs?: number; maxRetries?: number; maxRetryDelayMs: number } {

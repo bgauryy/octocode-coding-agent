@@ -363,6 +363,23 @@ describe("/realm switch and resume", () => {
 		expect(output()).toContain("Cancelled: nothing was resumed.");
 	});
 
+	it("resolves a picked id inside its realm even if the picker returns another realm's file", async () => {
+		addWorktree("hotfix");
+		const hotfix = session("s-hot", worktreeFolder("hotfix"));
+		const main = session("s-main", repo.root);
+		const pickSession = vi
+			.fn()
+			.mockResolvedValueOnce({ id: main.id, path: main.file })
+			.mockResolvedValueOnce({ id: hotfix.id, path: main.file });
+		const { ctx, switchSession } = contextAt(repo.root, { hasUI: true, pickSession });
+		const command = realmCommand(deps([hotfix, main]));
+		await command.handler("hotfix resume", ctx);
+		expect(switchSession).not.toHaveBeenCalled();
+		expect(notices.at(-1)?.level).toBe("warning");
+		await command.handler("hotfix resume", ctx);
+		expect(switchSession).toHaveBeenCalledExactlyOnceWith(hotfix.file);
+	});
+
 	it("resume without a UI lists the realm's session ids as text", async () => {
 		addWorktree("hotfix");
 		const sessions = [session("s-hot-1", worktreeFolder("hotfix"), { live: true, name: "fix" })];

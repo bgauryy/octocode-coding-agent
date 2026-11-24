@@ -103,6 +103,7 @@ export async function spawnAgent(
 				resumed ? resumedTask(params, resumed.child, ctx.modelRegistry.getAvailable()) : params,
 				ctx,
 				env.getRefused?.(),
+				api.settings.get().limits,
 			);
 	refuseLeanItem(plan.profile, linked);
 	// An unknown or disabled server name refuses the task before it claims anything. A resumed child is planned the same

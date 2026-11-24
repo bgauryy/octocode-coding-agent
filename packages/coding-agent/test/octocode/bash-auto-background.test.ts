@@ -276,7 +276,8 @@ describe.runIf(posix)("a foreground command past the threshold", () => {
 		expect(withoutSourceHeader(String(sent[0].message.content))).toMatch(
 			/^\[exit 0 · [34]s · log: [^\n]*\]\nBackground bash bash-1 finished: [^\n]*\n[\s\S]*before\nafter$/,
 		);
-		expect(sent[0].options).toEqual({ triggerTurn: true, deliverAs: "followUp", together: true });
+		expect(sent[0].message.details.id).toBe(result.details.job);
+		expect(sent[0].options).toEqual({ triggerTurn: true, deliverAs: "steer", together: true });
 		expect(jobs.jobs.size).toBe(0);
 	});
 

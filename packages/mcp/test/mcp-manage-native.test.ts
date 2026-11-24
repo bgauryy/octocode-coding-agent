@@ -54,8 +54,24 @@ describe("mcp tools with server native", () => {
 		const text = (result.content[0] as { text: string }).text;
 		expect(text).toContain("Fetch a public page. Second sentence with more detail.");
 		expect(text).toContain(JSON.stringify(WEB.parameters, null, 2));
-		expect(loaded).toHaveBeenCalledWith("native", "models");
+		expect(loaded).toHaveBeenCalledWith(undefined, "models");
 		expect(result.details).toMatchObject({ server: "native", tool: { name: "models", inputSchema: WEB.parameters } });
+	});
+
+	it("addresses native and server tools independently when a configured server is called native", async () => {
+		const { run, loaded, operations } = setup();
+		operations.servers = () => [{ name: "native", state: "connected", connected: true }];
+		operations.tools = () => [
+			{ name: "models", description: "External catalog", inputSchema: {}, exposure: "deferred" },
+		];
+		const local = await run({ intent: "tools", tool: "models" });
+		expect(local.details).toMatchObject({ tool: { description: WEB.description } });
+		const external = await run({ intent: "tools", server: "native", tool: "models" });
+		expect(external.details).toMatchObject({ tool: { description: "External catalog" } });
+		expect(loaded.mock.calls).toEqual([
+			[undefined, "models"],
+			["native", "models"],
+		]);
 	});
 
 	it("answers an unknown native tool by naming what is deferred, and counts nothing", async () => {

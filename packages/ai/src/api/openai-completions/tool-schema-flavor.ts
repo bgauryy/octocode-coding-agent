@@ -11,6 +11,7 @@
  */
 
 import type { TSchema } from "typebox";
+import { liftRootComposition } from "../../utils/json-schema-shape.ts";
 
 /** Keys whose values map names to schemas; the map itself is not a schema node. */
 const SCHEMA_MAP_KEYS: ReadonlySet<string> = new Set([
@@ -64,27 +65,53 @@ function jsonTypeOf(value: unknown): string | undefined {
 	}
 }
 
-/** `type` for a schema node that has none: from its keywords, else its `const`/`enum` values, else "string". */
+/** MFJS accepts string and numeric enum values. Keep mixed choices in typed branches.
+ * The host validates exact boolean, null and structured choices against the server schema.
+ */
+function projectEnum(schema: Record<string, unknown>, values: unknown[]): Record<string, unknown> {
+	const declared = Array.isArray(schema.type) ? schema.type : schema.type === undefined ? [] : [schema.type];
+	if (schema.type === "string" && values.every((v) => typeof v === "string")) return schema;
+	if (schema.type === "integer" && values.every(Number.isInteger)) return schema;
+	if (schema.type === "number" && values.every((v) => typeof v === "number")) return schema;
+	const groups = new Map<string, unknown[]>();
+	for (const value of values) {
+		const type = typeof value === "number" ? "number" : jsonTypeOf(value);
+		if (
+			!type ||
+			(declared.length && !declared.includes(type) && !(Number.isInteger(value) && declared.includes("integer")))
+		)
+			continue;
+		const group = groups.get(type);
+		if (group) group.push(value);
+		else groups.set(type, [value]);
+	}
+	const { enum: _enum, type: _type, description, ...constraints } = schema;
+	// A contradictory declaration has no legal value. Keep the enclosing tool usable; execution still rejects it.
+	if (groups.size === 0)
+		return {
+			...constraints,
+			...(description === undefined ? {} : { description }),
+			type: typeof schema.type === "string" ? schema.type : "string",
+		};
+	const branches = Array.from(groups, ([kind, members]) => ({
+		...constraints,
+		type: kind === "number" && members.every(Number.isInteger) ? "integer" : kind,
+		...(kind === "number" || kind === "string" ? { enum: members } : {}),
+		...(kind === "boolean" && members.length === 1
+			? { description: [description, `Allowed value: ${String(members[0])}.`].filter(Boolean).join(" ") }
+			: {}),
+	}));
+	return {
+		...(description === undefined ? {} : { description }),
+		...(branches.length === 1 ? branches[0] : { anyOf: branches }),
+	};
+}
+
+/** Infer the type when the caller supplied no explicit type or enum. */
 function inferType(node: Record<string, unknown>): string {
 	if ("properties" in node || "required" in node || "additionalProperties" in node) return "object";
 	if ("items" in node || "prefixItems" in node) return "array";
-	for (const key of ["const", "enum"] as const) {
-		const value = node[key];
-		if (value === undefined) continue;
-		const samples = key === "const" ? [value] : Array.isArray(value) ? value : [];
-		const types = new Set<string>();
-		for (const sample of samples) {
-			const type = jsonTypeOf(sample);
-			if (type !== undefined) types.add(type);
-		}
-		// MoonshotAI/kimi-cli#2030: mixed const/enum values share no single JSON type, so fall back
-		// to "string". The `enum` keyword is still validated independently, so valid values are not
-		// narrowed.
-		if (types.size === 1) return [...types][0];
-		if (types.size > 1) return "string";
-	}
-	// An unconstrained or only-described node accepts anything; "string" is the safest scalar.
-	return "string";
+	return jsonTypeOf(node.const) ?? "string";
 }
 
 /**
@@ -132,6 +159,22 @@ function repairSchemaNode(value: unknown, definitions: Definitions): unknown {
 	return value;
 }
 
+/** A choice of required fields draws its types from the enclosing object. MFJS needs a self-contained
+ * object at that position. The presented fields stay typed, and local validation enforces the choice.
+ */
+function presenceAlternatives(value: unknown): boolean {
+	return (
+		Array.isArray(value) &&
+		value.length > 0 &&
+		value.every(
+			(branch) =>
+				isSchemaObject(branch) &&
+				Array.isArray(branch.required) &&
+				Object.keys(branch).every((key) => key === "required" || (key === "type" && branch.type === "object")),
+		)
+	);
+}
+
 /**
  * One schema node with the Moonshot repairs applied. The input is never mutated; a node without
  * repairs still returns a copy, so callers can adjust the root afterwards.
@@ -139,7 +182,12 @@ function repairSchemaNode(value: unknown, definitions: Definitions): unknown {
 function repairSchema(schema: Record<string, unknown>, definitions: Definitions): Record<string, unknown> {
 	// Collected as entries: `Object.fromEntries` defines own properties, so a name such as `__proto__` stays a name.
 	const entries: [string, unknown][] = [];
-	for (const [key, value] of Object.entries(schema)) {
+	const source =
+		isSchemaObject(schema.properties) && (presenceAlternatives(schema.oneOf) || presenceAlternatives(schema.anyOf))
+			? liftRootComposition(schema)
+			: schema;
+	for (const [key, value] of Object.entries(source)) {
+		if (key === "oneOf" && Array.isArray(source.anyOf)) continue;
 		let next: unknown = value;
 		if (SCHEMA_MAP_KEYS.has(key) && isSchemaObject(next)) {
 			next = Object.fromEntries(
@@ -158,29 +206,35 @@ function repairSchema(schema: Record<string, unknown>, definitions: Definitions)
 				next = repairSchemaNode(next, definitions);
 			}
 		}
-		entries.push([key, next]);
+		// The model can choose any alternative. The host checks the source schema for exclusivity.
+		entries.push([key === "oneOf" ? "anyOf" : key, next]);
 	}
 	const repaired: Record<string, unknown> = Object.fromEntries(entries);
 	// Beside a union the type belongs on its children (repaired above), never on the parent.
-	if (Array.isArray(repaired.anyOf) || Array.isArray(repaired.oneOf)) {
+	if (Array.isArray(repaired.anyOf)) {
 		const { type: _parentType, ...withoutType } = repaired;
 		return withoutType;
 	}
 	// A `$ref` node takes its type from the referenced definition, which is repaired on its own (`propertyNames` aside).
 	if ("$ref" in repaired) return repaired;
+	if (repaired.const === undefined && Array.isArray(repaired.enum) && repaired.enum.length)
+		return projectEnum(repaired, repaired.enum);
 	repaired.type ??= inferType(repaired);
+	if (typeof repaired.const === "string" || typeof repaired.const === "number") {
+		const { const: literal, ...rest } = repaired;
+		return { ...rest, enum: Array.isArray(rest.enum) ? rest.enum.filter((v) => v === literal) : [literal] };
+	}
 	return repaired;
 }
 
 /**
  * Tool parameters as Moonshot's JSON Schema subset takes them. Non-object parameters become a
- * bare object schema. The root always stays an object, including beside a root union: Moonshot rejects a
- * root without `type: "object"` before it considers the branch-specific `anyOf` rule.
+ * bare object schema. The root always stays an object, with root alternatives projected into its named fields.
  */
 export function sanitizeMoonshotToolParameters(parameters: TSchema): Record<string, unknown> {
 	if (!isSchemaObject(parameters)) return { type: "object", properties: {} };
-	const repaired = repairSchema(parameters, rootDefinitions(parameters));
-	// The root is different from nested union parents: Moonshot requires its tool parameters to be an object.
+	const repaired = repairSchema(liftRootComposition(parameters), rootDefinitions(parameters));
+	// Moonshot requires an object at the tool root.
 	repaired.type = "object";
 	if (repaired.properties === undefined) repaired.properties = {};
 	return repaired;

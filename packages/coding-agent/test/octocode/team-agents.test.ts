@@ -164,28 +164,25 @@ describe("what the team shows about an agent", () => {
 		}),
 	];
 
-	it("draws tree, mark, name, role, spend and goal › activity in aligned columns, the stats under an open row, within the width", () => {
+	it("draws tree, mark, name and goal › activity in aligned columns, the role, model and spend under an open row, within the width", () => {
 		const lines = widgetLines(team, "salty-squid", NOW, theme, 150);
-		// The root row is grid row 0 in the same columns; an agent with no stats yet adds no stats line.
-		// The spend and the detail line's cells after the model end at the terminal's edge.
+		// The root row is grid row 0 in the same columns, with no detail line of its own.
+		// An agent's detail line says its role and model, then its time, cost and counts ending at the terminal's edge.
 		// Idle agents draw ○: ⏺ means running only.
-		const shapes = [
-			/^ 🦑 salty-squid ○  · main        · ship the release +1m$/,
-			/^ ├ ⏺ inky-kraken   · implementer · audit auth token refresh › Thinking +≈\$2\.28 8m38s$/,
-			/^ │   claude-opus-5-5 +56 tool calls · 20 locks$/,
-			/^ └ ○ deep-nautilus · reviewer    · review parser changes +45s$/,
-		];
-		expect(lines).toHaveLength(shapes.length);
-		for (const [index, line] of lines.entries()) {
-			expect(line).toMatch(shapes[index]);
-			expect(visibleWidth(line)).toBe(150);
-		}
-		for (const [first, second] of [
-			["implementer", "reviewer"],
-			["audit", "review parser"],
-		])
-			expect(lines[1].indexOf(first)).toBe(lines[3].indexOf(second));
-		expect(lines[1].indexOf("8m38s") + 5).toBe(lines[3].indexOf("45s") + 3);
+		const edge = (left: string, right: string) =>
+			`${left}${" ".repeat(150 - visibleWidth(left) - visibleWidth(right))}${right}`;
+		expect(lines).toEqual([
+			" 🦑 salty-squid ○  · ship the release",
+			" ├ ⏺ inky-kraken   · audit auth token refresh › Thinking",
+			edge(" │   implementer · claude-opus-5-5", "8m38s · ≈$2.28 · 56 tool calls · 20 locks"),
+			" └ ○ deep-nautilus · review parser changes",
+			edge("     reviewer", "45s"),
+		]);
+		for (const index of [2, 4]) expect(visibleWidth(lines[index])).toBe(150);
+		// The goals start in one column on every row, the roles in one column on every detail line.
+		expect(lines[1].indexOf("audit")).toBe(lines[0].indexOf("ship the release"));
+		expect(lines[3].indexOf("review parser")).toBe(lines[0].indexOf("ship the release"));
+		expect(lines[2].indexOf("implementer")).toBe(lines[4].indexOf("reviewer"));
 		for (const width of [150, 100, 70, 60, 59, 54, 50, 40])
 			for (const line of widgetLines(team, "salty-squid", NOW, theme, width))
 				expect(visibleWidth(line)).toBeLessThanOrEqual(width);
@@ -196,36 +193,56 @@ describe("what the team shows about an agent", () => {
 		const busy = team.map((m) =>
 			m.id === "inky-kraken" ? { ...m, input: 1_200_000, cacheRead: 1_128_000, output: 35_000 } : m,
 		);
-		const at = (width: number) => widgetLines(busy, "salty-squid", NOW, theme, width);
-		const kept = ["claude-opus-5-5", "107k tok", "94% cached", "20 locks"];
-		// A short action beside a whole goal: nothing is cut.
-		const wide = at(100);
-		expect(wide[1]).toMatch(/^ ├ ⏺ inky-kraken   · implementer · audit auth token refresh › Thinking +≈\$2\.28 8m38s$/);
-		for (const text of [...kept, "56 tool calls"]) expect(wide[2]).toContain(text);
-		// The action no longer fits whole: it moves to a ↳ line and the goal stays whole.
-		const medium = at(80);
-		expect(medium[1]).toBe(" ├ ⏺ inky-kraken   · implementer · audit auth token refresh         ≈$2.28 8m38s");
-		expect(medium[2]).toContain("56 tool calls");
-		// Under the goal column, which keeps room for it.
-		expect(medium[3]).toMatch(/^ │ +↳ Thinking$/);
-		expect(medium[3].indexOf("↳")).toBe(medium[1].indexOf("audit"));
-		// Then the elapsed time leaves every row (the cost stays), and the stats line drops its tool calls.
-		const narrow = at(70);
-		expect(narrow[1]).toBe(" ├ ⏺ inky-kraken   · implementer · audit auth token refresh     ≈$2.28");
-		expect(narrow[2]).not.toContain("tool calls");
-		// Then the role is cut (its level would stay) and the cost leaves.
+		const at = (width: number, members = busy) => widgetLines(members, "salty-squid", NOW, theme, width);
+		const kept = ["claude-opus-5-5", "107k tok", "20 locks"];
+		const head = " ├ ⏺ inky-kraken   · audit auth token refresh";
+		const who = " │   implementer · claude-opus-5-5";
+		// A short action beside a whole goal: nothing is cut, on the head row or the stats line.
+		const wide = at(104);
+		expect(wide[1]).toBe(`${head} › Thinking`);
+		expect(wide[2]).toBe(`${who}     8m38s · ≈$2.28 · 107k tok · 94% cached · 56 tool calls · 20 locks`);
+		// The stats line drops its tool calls first; the head row holds no spend, so nothing leaves it.
+		const medium = at(100);
+		expect(medium[1]).toBe(`${head} › Thinking`);
+		expect(medium[2]).toBe(`${who}                 8m38s · ≈$2.28 · 107k tok · 94% cached · 20 locks`);
+		// Then the cached share leaves.
+		const narrow = at(80);
+		expect(narrow[1]).toBe(`${head} › Thinking`);
+		expect(narrow[2]).toBe(`${who}          8m38s · ≈$2.28 · 107k tok · 20 locks`);
+		// The head row is whole down to the last width of the grid.
+		const slim = at(70);
 		const tighter = at(60);
-		expect(tighter[1]).toBe(" ├ ⏺ inky-kraken   · impleme… · audit auth token refresh");
-		for (const lines of [wide, medium, narrow, tighter]) for (const text of kept) expect(lines[2]).toContain(text);
-		// Below 60 columns, the narrow form: `mark name · role`, the goal, the stats, then `↳ action`.
+		for (const lines of [slim, tighter]) expect(lines[1]).toBe(`${head} › Thinking`);
+		// A longer action that no longer fits whole moves to a ↳ line and the goal stays whole.
+		const acting = busy.map((m) =>
+			m.id === "inky-kraken" ? { ...m, activity: "→ localSearch refreshToken in packages/auth/src" } : m,
+		);
+		expect(at(100, acting)[1]).toBe(`${head} › → localSearch refreshToken in packages/auth/src`);
+		const below = at(90, acting);
+		expect(below[1]).toBe(head);
+		expect(below[2]).toBe(`${who}       8m38s · ≈$2.28 · 107k tok · 94% cached · 20 locks`);
+		// Under the goal column, which keeps room for it.
+		expect(below[3]).toBe(" │                   ↳ → localSearch refreshToken in packages/auth/src");
+		expect(below[3].indexOf("↳")).toBe(below[1].indexOf("audit"));
+		// Without that room, under the name.
+		expect(at(60, acting)[3]).toBe(" │   ↳ → localSearch refreshToken in packages/auth/src");
+		// Below 60 columns, the narrow form: `mark name`, the goal, the stats, then `↳ action`.
 		const compact = at(59);
-		expect(compact.slice(1, 5)).toEqual([
-			" ├ ⏺ inky-kraken · implementer",
-			" │   audit auth token refresh",
-			" │   claude-opus-5-5       107k tok · 94% cached · 20 locks",
-			" │   ↳ Thinking",
-		]);
-		expect(compact.join("\n")).not.toMatch(/working|8m38s/);
+		expect(compact.slice(1, 3)).toEqual([" ├ ⏺ inky-kraken", " │   audit auth token refresh"]);
+		// The time and the cost give way before the model, tokens and locks are cut.
+		expect(compact[3]).toBe(" │   implementer · claude-opus-5-5      107k tok · 20 locks");
+		expect(compact[4]).toBe(" │   ↳ Thinking");
+		expect(compact.join("\n")).not.toMatch(/working/);
+		// The stats line keeps its model, tokens and locks at every width.
+		for (const [width, lines] of [
+			[104, wide],
+			[100, medium],
+			[80, narrow],
+			[70, slim],
+			[60, tighter],
+		] as const)
+			for (const text of kept) expect(lines[2], `${width} columns`).toContain(text);
+		for (const text of ["claude-opus-5-5", "107k tok"]) expect(compact[3], "59 columns").toContain(text);
 	});
 
 	it("lists name, role and goal in `coordinate list` and /agents", () => {

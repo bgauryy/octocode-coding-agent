@@ -56,7 +56,7 @@ describe("Bedrock reasoning and output budget on the wire", () => {
 								payload.max_tokens ??
 								payload.max_output_tokens,
 						)
-						.toBe(16384);
+						.toBe(8192);
 			}
 		},
 	);

@@ -148,11 +148,12 @@ describe("worktree root and compact rows", () => {
 	it("collapsed panel rows mark the worktree; the opened stats line names the folder", () => {
 		const entry = { member: isolated, depth: 0, isolated: { folder: isolated.cwd! } };
 		const [row] = collapsedRows([entry], 10, theme, 120);
-		expect(row).toMatch(/^ └ ⏺ iso-1 · general · worktree +0s$/);
-		expect(visibleWidth(row)).toBe(120);
+		// The head row closes with the bare word; the role and the time are on the detail line.
+		expect(row).toBe(" └ ⏺ iso-1 · worktree");
 		const { agents } = gridRows(main, "main", [entry], [], 10, theme);
-		expect(detailLine(theme, agents[0], 120)).toBe(
-			"                                                                                                          worktree iso-1",
-		);
+		const stats = "0s · worktree iso-1";
+		const detail = detailLine(theme, agents[0], 120);
+		expect(detail).toBe(`${"     general".padEnd(120 - stats.length)}${stats}`);
+		expect(visibleWidth(detail!)).toBe(120);
 	});
 });

@@ -1,5 +1,5 @@
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
-import { stateMark } from "../../../theme/status.ts";
+import { stillLight } from "../../../theme/status.ts";
 import type { Theme } from "../../../theme/theme.ts";
 import type { WorkRow } from "../../shared/running-work.ts";
 import { needsYou } from "./attention.ts";
@@ -14,10 +14,10 @@ import { type Marks, workRows } from "./work.ts";
 const MAX_AGENTS = 6;
 const MAX_PEERS = 2;
 
-/** The marks of work rows: the state light the agents' rows use, a spinner while the work runs; a timer's holds still. */
-const workMarks = (theme: Theme, now: number): Marks => ({
-	live: stateMark(theme, "running", { now, light: true }),
-	waiting: stateMark(theme, "waiting", { now, light: true, since: 0 }),
+/** The marks of work rows: the still state light the agents' rows use, running or (a timer) waiting. */
+const workMarks = (theme: Theme): Marks => ({
+	live: stillLight(theme, "running"),
+	waiting: stillLight(theme, "waiting"),
 });
 
 type Step = Detail & { peers: "rows" | "one" | "none" };
@@ -36,7 +36,7 @@ const STEPS: readonly Step[] = [
 
 /**
  * Rows for the widget under the editor; empty when this session has no live subagents. A grid: this session, its agents
- * (agents that need the user sort first) and up to two peer sessions, each `tree mark name · role:effort · spend · goal`
+ * (agents that need the user sort first) and up to two peer sessions, each `tree light name · goal`, the status first,
  * with the columns aligned down the list. Under a row: its action when it does not fit beside the goal, the words its mark
  * says twice (`↳ waits for your approval`), and its latest message as a block of up to three lines. When that takes more
  * than `panelBudget(rows)` rows, detail leaves in steps (`STEPS`).
@@ -58,10 +58,8 @@ export function widgetRows(
 	precise = true,
 	/** Agents (by id) whose detail line shows. */
 	expanded: ReadonlySet<string> | "all" = new Set(),
-	/** When each agent was first seen waiting on a dialog (`needsYou`), kept by the caller across frames. */
-	waitSeen?: Map<string, number>,
 ): WidgetRows {
-	const needs = needsYou(members, traffic, selfId, waitSeen, now);
+	const needs = needsYou(members, traffic, selfId);
 	const { others, tree } = roster(members, selfId, now, finished, needs);
 	const budget = panelBudget(rows);
 	// With agents the work block leaves them three rows of the budget; without, it may take all of it.
@@ -70,7 +68,7 @@ export function widgetRows(
 		now,
 		theme,
 		width,
-		workMarks(theme, now),
+		workMarks(theme),
 		others.length > 0 && selfId ? Math.max(1, budget - 3) : budget,
 		precise,
 	);

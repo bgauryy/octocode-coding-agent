@@ -21,9 +21,11 @@ describe("usage limits", () => {
 		"insufficient_quota",
 		"402 Payment Required",
 		"Insufficient account funds",
+		"429 insufficient funds",
 		"You are out of credit",
 	])("classifies %s as a usage limit", (text) => {
 		expect(isUsageLimitError(text)).toBe(true);
+		expect(isRetryableErrorText(text)).toBe(false);
 	});
 
 	it.each(["429 rate limit, slow down", "400 max_tokens: 150000", "overloaded", "id toolu_01Ab402xYz"])(

@@ -227,7 +227,7 @@
     },
     "hideThinkingBlock": {
       "type": "boolean",
-      "default": true
+      "default": false
     },
     "showCacheMissNotices": {
       "type": "boolean",
@@ -1362,29 +1362,86 @@
       "type": "object",
       "properties": {
         "eventLoop": {
-          "anyOf": [
-            {
-              "type": "string",
-              "const": "old"
-            },
-            {
-              "type": "string",
-              "const": "shadow"
-            },
-            {
-              "type": "string",
-              "const": "new"
-            }
-          ],
-          "description": "Which scheduler starts turns from background events. `old` (default): the wake gate, unchanged. `shadow`: the event loop runs beside the gate, decides which events would wake the session and in what order, acts on nothing, and records each difference from the gate as a problem (`/status`). `new`: the loop delivers the events it has taken over (a background `bash` job's exit, a child's report or end, and team mail, with the `runtime.eventWindowSeconds` window) and the gate the rest, which behave as in `shadow`. Reports and mail the loop has queued survive a restart or resume and are delivered once. Read at session start.",
-          "default": "old"
+          "type": "string",
+          "description": "Ignored. The event loop is the only session scheduler; the key is still accepted so a settings file written for an earlier version loads."
         },
         "eventWindowSeconds": {
           "type": "number",
-          "description": "Seconds the event loop waits after a background event wakes an idle session, so events that arrive together become one message and one turn. User input is never held. Applies to the events the loop delivers (`runtime.eventLoop: new`: a background job's exit, a child's report or end, team mail); the wake gate keeps `subagents.wakeHoldSeconds` for the rest.",
+          "description": "Seconds the event loop waits after a background event wakes an idle session, so completions that arrive together share one turn. User input releases the window immediately.",
           "default": 2,
           "minimum": 0,
           "maximum": 10
+        },
+        "smartRouting": {
+          "type": "object",
+          "properties": {
+            "allow": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Provider/model patterns the native octocode/auto-code router may select, for example [\"openai/gpt-5*\", \"anthropic/*\"]. Empty or omitted allows every eligible model.",
+              "maxItems": 64
+            },
+            "deny": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Provider/model patterns auto-code never selects. Deny rules win over allow rules.",
+              "maxItems": 64
+            },
+            "tiers": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "const": 1
+                    },
+                    {
+                      "type": "number",
+                      "const": 2
+                    },
+                    {
+                      "type": "number",
+                      "const": 3
+                    }
+                  ]
+                }
+              },
+              "description": "Capability tier overrides keyed by provider/model pattern: 1 light, 2 general, 3 frontier. The first matching pattern wins."
+            },
+            "planOnly": {
+              "type": "boolean",
+              "description": "Restrict auto-code to flat-rate subscription or coding-plan models. Default false.",
+              "default": false
+            },
+            "allowPlanToMeteredEscalation": {
+              "type": "boolean",
+              "description": "Allow a session that used a flat-rate plan to switch to per-token billing. Default false. Global settings only.",
+              "default": false
+            },
+            "cooldownRequests": {
+              "type": "integer",
+              "description": "Routed requests for which auto-code skips a recently failed model. Default 4.",
+              "default": 4,
+              "minimum": 0,
+              "maximum": 64
+            },
+            "outputReserveTokens": {
+              "type": "integer",
+              "description": "Output tokens auto-code reserves when checking whether the conversation fits a candidate. Default 8192.",
+              "default": 8192,
+              "minimum": 0,
+              "maximum": 200000
+            }
+          },
+          "description": "Native octocode/auto-code routing policy. The router runs only when that virtual model is selected.",
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -1597,7 +1654,7 @@
           "type": "number",
           "minimum": 0,
           "maximum": 10,
-          "description": "Seconds an idle session holds a wake (a child's report, a job's exit, mail) so wakes arriving close together share one turn. The first wake opens the window; everything arriving in it is delivered together when it ends. 0 delivers each wake at once. Costs up to this much latency per wake. Deprecated: with `runtime.eventLoop: \"new\"` it no longer applies to a background job's exit, a child's report or end, or team mail (`runtime.eventWindowSeconds` does), and it is removed when the last event kind moves to the loop.",
+          "description": "Legacy idle wake window in seconds. Use runtime.eventWindowSeconds for the live scheduler. A session with no explicit runtime window inherits this value. Zero delivers at once.",
           "default": 2
         },
         "peerOverlapWake": {
@@ -1607,6 +1664,193 @@
         }
       },
       "description": "Limits on the subagents a session starts, and how they are checked on.",
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "compaction": {
+          "type": "object",
+          "properties": {
+            "trigger": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Context size at which automatic compaction starts: a share of the working window (0.1 to 1) or a token count (above 1). It can only compact earlier than the built-in point, which keeps room for the reply and the summary; a later value has no effect."
+            },
+            "keepRecent": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "The newest conversation kept word for word across a compaction: a share of the working window (up to 0.25) or a token count (above 1, at most a quarter of the window). Default: 10% of the window, at least 20,000 tokens."
+            }
+          },
+          "additionalProperties": false
+        },
+        "clearing": {
+          "type": "object",
+          "properties": {
+            "keepTurns": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Assistant turns whose tool results are never cleared. Default 10."
+            },
+            "keepInUseTokens": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Tokens of older tool results kept because a recent message names their path. Default 20,000."
+            }
+          },
+          "additionalProperties": false
+        },
+        "run": {
+          "type": "object",
+          "properties": {
+            "maxRequests": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Model requests one run of the main session may make (from a prompt until the agent stops): a note at this count, a stop at 1.5 times it. 0 turns it off. Default: off when a user is present, 300 for a run without one. Read from the global settings file only."
+            }
+          },
+          "additionalProperties": false
+        },
+        "subagent": {
+          "type": "object",
+          "properties": {
+            "maxRequests": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Model requests a subagent task may make: a note at this count, a stop at 1.5 times it. 0 turns it off. An agent profile's `maxRequests` wins. Default 160. Read from the global settings file only."
+            }
+          },
+          "additionalProperties": false
+        },
+        "loop": {
+          "type": "object",
+          "properties": {
+            "noteAt": {
+              "type": "integer",
+              "minimum": 2,
+              "description": "Identical calls with identical results in a row that earn the first note. Default 3."
+            },
+            "stopAt": {
+              "type": "integer",
+              "minimum": 3,
+              "description": "The count that earns the stronger note. Default 5."
+            },
+            "haltAt": {
+              "type": "integer",
+              "minimum": 4,
+              "description": "The count after which the same call is refused and the run ends. Default 8."
+            }
+          },
+          "additionalProperties": false,
+          "description": "The repeated-call guard. The three counts must rise: noteAt, stopAt, haltAt."
+        },
+        "cost": {
+          "type": "object",
+          "properties": {
+            "max": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "US dollars billed per token, the session's own and its subagents', past which the session sends no further model request and starts no subagent. Usage a plan covers never counts. Read from the global settings file only."
+            },
+            "warnAt": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "US dollars at which you are told once what the session has spent. Read from the global settings file only."
+            }
+          },
+          "additionalProperties": false
+        },
+        "models": {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "type": "object",
+              "properties": {
+                "compaction": {
+                  "type": "object",
+                  "properties": {
+                    "trigger": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "description": "Context size at which automatic compaction starts: a share of the working window (0.1 to 1) or a token count (above 1). It can only compact earlier than the built-in point, which keeps room for the reply and the summary; a later value has no effect."
+                    },
+                    "keepRecent": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "description": "The newest conversation kept word for word across a compaction: a share of the working window (up to 0.25) or a token count (above 1, at most a quarter of the window). Default: 10% of the window, at least 20,000 tokens."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "clearing": {
+                  "type": "object",
+                  "properties": {
+                    "keepTurns": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "description": "Assistant turns whose tool results are never cleared. Default 10."
+                    },
+                    "keepInUseTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Tokens of older tool results kept because a recent message names their path. Default 20,000."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "run": {
+                  "type": "object",
+                  "properties": {
+                    "maxRequests": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Model requests one run of the main session may make (from a prompt until the agent stops): a note at this count, a stop at 1.5 times it. 0 turns it off. Default: off when a user is present, 300 for a run without one. Read from the global settings file only."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "subagent": {
+                  "type": "object",
+                  "properties": {
+                    "maxRequests": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Model requests a subagent task may make: a note at this count, a stop at 1.5 times it. 0 turns it off. An agent profile's `maxRequests` wins. Default 160. Read from the global settings file only."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "loop": {
+                  "type": "object",
+                  "properties": {
+                    "noteAt": {
+                      "type": "integer",
+                      "minimum": 2,
+                      "description": "Identical calls with identical results in a row that earn the first note. Default 3."
+                    },
+                    "stopAt": {
+                      "type": "integer",
+                      "minimum": 3,
+                      "description": "The count that earns the stronger note. Default 5."
+                    },
+                    "haltAt": {
+                      "type": "integer",
+                      "minimum": 4,
+                      "description": "The count after which the same call is refused and the run ends. Default 8."
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "The repeated-call guard. The three counts must rise: noteAt, stopAt, haltAt."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "description": "Overrides for one model, keyed `provider/model`; `*` matches any run of characters, e.g. { \"ollama/*\": { \"compaction\": { \"trigger\": 0.7 } } }. An exact key wins over a pattern, and a longer pattern over a shorter one."
+        }
+      },
+      "description": "Bounds on context, repetition, requests and spend. Every key is optional and falls back to the built-in value for the model in use.",
       "additionalProperties": false
     },
     "optimizePrompts": {

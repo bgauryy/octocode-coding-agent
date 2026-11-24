@@ -3,6 +3,7 @@
  * transport that adds a declaration after the cached prefix.
  */
 
+import { nativeLoads } from "./native-port.ts";
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import { supportsNativeToolLoading } from "@octocodeai/octocode-ai/utils/tool-loading";
 import type { SetupPick, ToolDefinition } from "../../core/features/index.ts";
@@ -24,11 +25,17 @@ export interface Forms {
 export type OnDemandApi = SetupPick<"tools", "getActive" | "setActive">;
 
 /** The full form registered on demand: `active` after a load in an earlier turn (resume), else inactive until used. */
-export const onDemandForm = (forms: Forms, active: boolean): ToolDefinition => ({
-	...forms.direct,
-	onDemand: true,
-	...(active ? {} : { defaultActive: false }),
-});
+export function onDemandForm(forms: Forms, active: boolean, api: OnDemandApi): ToolDefinition {
+	const { name } = forms.direct;
+	const parameters = { ...forms.direct.parameters };
+	nativeLoads.set(parameters, {
+		load: () => {
+			const enabled = api.tools.getActive();
+			if (!enabled.includes(name)) api.tools.setActive([...enabled, name]);
+		},
+	});
+	return { ...forms.direct, parameters, onDemand: true, ...(active ? {} : { defaultActive: false }) };
+}
 
 /** An on-demand tool not yet declared: registered, inactive. */
 export const undeclared = (name: string, forms: Forms): boolean =>

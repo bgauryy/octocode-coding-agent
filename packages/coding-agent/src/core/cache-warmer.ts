@@ -286,6 +286,7 @@ export class CacheWarmer {
 				.streamSimple(run.model, run.context, {
 					...run.options,
 					maxTokens: WARM_OUTPUT_TOKENS,
+					requestPriority: "background",
 					maxRetries: 0,
 					signal: run.controller.signal,
 				})

@@ -56,8 +56,9 @@ const scene = (width: number) => widgetLines([main, ...children], ME, NOW, theme
 
 const WIDTHS = [60, 100, 160, 240];
 const plain = (line: string) => line.replace(/\x1b\[[0-9;]*m/g, "");
-const headOf = (lines: string[], id: string) => lines.find((line) => plain(line).includes(` ${id} `))!;
-/** The goal as one head line shows it: the text after the role column, before the action or the spend gap. */
+/** An agent's head line: its name ends the line in the narrow form. */
+const headOf = (lines: string[], id: string) => lines.find((line) => `${plain(line)} `.includes(` ${id} `))!;
+/** The goal as one head line shows it: the text after the name column, before the action. */
 const shownGoal = (lines: string[], id: string) => {
 	const text = plain(headOf(lines, id));
 	const start = text.indexOf("B79");
@@ -68,7 +69,7 @@ const shownGoal = (lines: string[], id: string) => {
 				.split(/ › | {2,}/)[0]
 				.trim();
 };
-/** The lines that carry cells right-aligned to the edge: head lines with spend, detail lines and the work row. */
+/** The lines that carry cells right-aligned to the edge: detail lines and the work row. */
 const edgeLines = (lines: string[]) =>
 	lines.filter((line) => /\d+m\d+s$|\$\d|tok|cached|tool calls|locks?$/.test(plain(line).trimEnd()));
 
@@ -87,20 +88,23 @@ describe("agents panel width", () => {
 		}
 	});
 
-	it("puts every head line's spend at the edge from 100 columns, its clock in the work rows' clock column", () => {
+	it("puts every agent's spend at the edge of its detail line from 100 columns, off its head line, and the work row's clock at the edge", () => {
 		for (const width of WIDTHS.filter((each) => each >= 100)) {
-			const lines = scene(width);
-			const heads = children.map((child) => plain(headOf(lines, child.id)));
-			for (const head of heads) expect(visibleWidth(head)).toBe(width);
-			const end = (head: string, cell: string) => visibleWidth(head.slice(0, head.lastIndexOf(cell) + cell.length));
-			// The elapsed time ends every row, this session's and the bash job's too, in one column at the edge.
-			const job = plain(lines.find((line) => plain(line).includes("bash-28"))!);
-			const clocks = [
-				end(plain(headOf(lines, ME)), "1h"),
-				...heads.map((head) => end(head, "8m26s")),
-				end(job, "10m17s"),
-			];
-			expect(new Set(clocks)).toEqual(new Set([width]));
+			const lines = scene(width).map(plain);
+			// This session's row has no role and no clock.
+			expect(headOf(lines, ME)).toBe(" 🦑 sneaky-tide ⏺");
+			for (const child of children) {
+				const at = lines.indexOf(headOf(lines, child.id));
+				expect(lines[at]).not.toMatch(/implementer|8m26s|≈\$|\d tok|cached/);
+				// The detail line under it: role and model on the left, the elapsed time opening the cells at the edge.
+				expect(lines[at + 1]).toMatch(
+					/^ [│ ] {3}implementer · claude-opus-5-5:high {2,}8m26s · ≈\$3\.34 · 60k tok · 100% cached · /,
+				);
+				expect(visibleWidth(lines[at + 1])).toBe(width);
+			}
+			const job = lines.find((line) => line.includes("bash-28"))!;
+			expect(job.endsWith("  10m17s")).toBe(true);
+			expect(visibleWidth(job)).toBe(width);
 		}
 	});
 

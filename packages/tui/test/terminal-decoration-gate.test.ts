@@ -10,7 +10,8 @@ describe("progress while the terminal is stalled", () => {
 	afterEach(() => mock.timers.reset());
 
 	it("writes nothing while gated, then only the latest state on the next allowed tick", () => {
-		mock.timers.enable({ apis: ["setInterval"] });
+		// The keepalive ticks on the animation clock, which reads the time as well as its interval.
+		mock.timers.enable({ apis: ["setInterval", "Date"] });
 		let allowed = false;
 		const written: string[] = [];
 		const progress = new ProgressIndicator(
@@ -33,7 +34,8 @@ describe("progress while the terminal is stalled", () => {
 	});
 
 	it("retries a clear that had to wait, once, and stops ticking", () => {
-		mock.timers.enable({ apis: ["setInterval"] });
+		// The keepalive ticks on the animation clock, which reads the time as well as its interval.
+		mock.timers.enable({ apis: ["setInterval", "Date"] });
 		let allowed = true;
 		const written: string[] = [];
 		const progress = new ProgressIndicator(
@@ -72,7 +74,7 @@ describe("title while output is backed up", () => {
 	afterEach(() => mock.timers.reset());
 
 	it("holds titles while gated and writes the latest once the terminal reads; forced repaints pass", () => {
-		mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+		mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
 		let allowed = false;
 		let state: TitleState = "waiting";
 		const titles: string[] = [];

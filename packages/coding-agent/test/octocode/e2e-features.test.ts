@@ -313,13 +313,24 @@ describe("Native features through the SDK", () => {
 		};
 		expect(Object.keys(bashParameters.properties ?? {})).toEqual(expect.arrayContaining(["timeout", "background"]));
 		const start = turns.length;
-		await run("bash in the background", [
-			calls(nativeCall("bash", { command: "echo bg-output", background: true })),
-			say("started"),
-			say("saw it"),
-		]);
-		const deadline = Date.now() + 5_000;
-		while (turns.length < start + 3 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+		// Finish the job only after the first turn settles, so this tests the idle wake independently of shell timing.
+		try {
+			await run("bash in the background", [
+				calls(
+					nativeCall("bash", {
+						command: "echo bg-output; while [ ! -f release-bg-job ]; do sleep 0.05; done",
+						background: true,
+						timeout: 20,
+					}),
+				),
+				say("started"),
+				say("saw it"),
+			]);
+			expect(turns).toHaveLength(start + 2);
+		} finally {
+			fs.writeFileSync(path.join(cwd, "release-bg-job"), "");
+		}
+		await vi.waitFor(() => expect(turns).toHaveLength(start + 3), { timeout: 10_000 });
 		const [, started, woken] = turns.slice(start);
 		expect(started.results[0].text).toMatch(/bash-\d+/);
 		expect(woken.context).toMatch(/bash-\d+[\s\S]*echo bg-output[\s\S]*bg-output/);

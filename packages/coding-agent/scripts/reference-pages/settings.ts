@@ -146,7 +146,7 @@ export const settingDescriptions: Readonly<Record<string, string>> = {
 		"Follow-up messages queued until the agent stops: `one-at-a-time` delivers one and waits for the response; `all` delivers them together.",
 	theme: "Name of the active interface theme.",
 	hideThinkingBlock:
-		"Collapse each finished thinking block to one line (`Thought for 4s`); `app.thinking.toggle` (ctrl+t) or a click expands it.",
+		"Collapse each thinking block to one line (`Thought for 4s`) instead of showing its text; `app.thinking.toggle` (ctrl+t) or a click on a block switches.",
 	retry: "Automatic retry of transient model failures.",
 	"retry.provider": "Retries inside the provider SDK, separate from the session retries above.",
 	"retry.enabled": "`false` turns off all retries.",

@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import type * as NodeCrypto from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type FileEntry, SessionManager, type SessionEntry } from "../../src/core/session-manager.ts";
+import { sessionMirrorSettled } from "../../src/core/session-manager/mirror.ts";
 import { assistantMsg, userMsg } from "../utilities.ts";
 
 // Pin the first ids `generateId` hands out so a test can force two writers to pick the same one.
@@ -29,7 +30,10 @@ beforeEach(() => {
 	seed.appendMessage(assistantMsg("hi"));
 	file = seed.getSessionFile()!;
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(async () => {
+	await sessionMirrorSettled();
+	rmSync(dir, { recursive: true, force: true });
+});
 
 const open = () => SessionManager.open(file, dir, dir);
 const records = () =>
@@ -82,6 +86,36 @@ describe("locked session appends", () => {
 		a.appendCustomEntry("a", 1);
 		expect(a.getLabel(target)).toBe("mark");
 		expect(a.getEntries().map((e) => e.id)).toEqual(records().map((e) => e.id));
+	});
+
+	it("two writers recording the same durable completion keep one entry and the original receipt ID", async () => {
+		const first = open();
+		const second = open();
+		const receipt = { entryId: "wake-42", recorded: vi.fn() };
+		for (const session of [first, second]) {
+			expect(session.appendCustomMessageEntry("task", "completed", true, undefined, undefined, receipt)).toBe(
+				receipt.entryId,
+			);
+		}
+		await Promise.resolve();
+		expect(receipt.recorded).toHaveBeenCalledTimes(2);
+		const followUp = second.appendCustomEntry("after", {});
+		expect(open().getEntry(followUp)?.parentId).toBe(receipt.entryId);
+		expect(records().filter((entry) => entry.type === "custom_message")).toHaveLength(1);
+		expect(second.getEntries().map((entry) => entry.id)).toEqual(records().map((entry) => entry.id));
+	});
+
+	it("acknowledges a receipt already indexed from a different writer without switching branches", async () => {
+		const first = open();
+		const second = open();
+		const receipt = { entryId: "wake-5", recorded: vi.fn() };
+		first.appendCustomMessageEntry("task", "done", true, undefined, undefined, receipt);
+		const branch = second.appendCustomEntry("different branch", 1);
+		second.appendCustomMessageEntry("task", "done", true, undefined, undefined, receipt);
+		await Promise.resolve();
+		expect(receipt.recorded).toHaveBeenCalledTimes(2);
+		expect(second.getLeafId()).toBe(branch);
+		expect(records().filter((entry) => entry.type === "custom_message")).toHaveLength(1);
 	});
 
 	it("gives a pending entry a fresh id when a foreign entry already uses its id", () => {

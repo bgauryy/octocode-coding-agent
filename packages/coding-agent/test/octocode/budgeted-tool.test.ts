@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { TEXT_MAX_CHARS } from "../../src/utils/output-budget.ts";
+import { tmp } from "./helpers.ts";
 import { afterEach, describe, expect, it } from "vitest";
 import { asyncJobsFor } from "../../src/octocode/jobs/registry.ts";
 import { runBudgeted } from "../../src/octocode/jobs/tool.ts";
@@ -36,6 +39,29 @@ const call = (owner: object, foregroundMs: number, tool = "web") => ({
 });
 
 describe("runBudgeted", () => {
+	it("delivers a bounded report with readable full text and image files for any model", async () => {
+		const dir = tmp();
+		const huge = "あ".repeat(TEXT_MAX_CHARS + 1);
+		const report = await taskReport(
+			{ id: "task-7", tool: "mcp", title: "read", startedAt: 0 },
+			{
+				kind: "done",
+				durationMs: 100,
+				value: {
+					content: [
+						{ type: "image", mimeType: "image/png", data: Buffer.from("image fixture").toString("base64") },
+						{ type: "text", text: huge },
+					],
+				},
+			},
+			() => dir,
+		);
+		expect(report).toContain("[task-7");
+		expect(report.length).toBeLessThan(TEXT_MAX_CHARS);
+		expect(await readFile(report.match(/Image \(image\/png\): (.+)/)![1], "utf8")).toBe("image fixture");
+		expect(await readFile(report.match(/Full task output: (.+)/)![1], "utf8")).toBe(huge);
+	});
+
 	it("gives a fast call its own result and starts no job", async () => {
 		const { owner, reports } = session();
 		const result = await runBudgeted(call(owner, 500), async () => text("hi"));
@@ -62,7 +88,9 @@ describe("runBudgeted", () => {
 		await asyncJobsFor(owner).settle();
 		expect(reports).toHaveLength(1);
 		const { id, outcome } = reports[0];
-		expect(taskReport({ id, tool: "models", title: "x", startedAt: 0 }, outcome)).toContain("checked 3 providers");
+		expect(await taskReport({ id, tool: "models", title: "x", startedAt: 0 }, outcome, tmp)).toContain(
+			"checked 3 providers",
+		);
 	});
 
 	it("reports a slow call that fails as failed", async () => {
@@ -74,7 +102,7 @@ describe("runBudgeted", () => {
 		await asyncJobsFor(owner).settle();
 		const job = { id: "task-1", tool: "web", title: "x", startedAt: 0 };
 		expect(taskDetails(job, reports[0].outcome).ok).toBe(false);
-		expect(taskReport(job, reports[0].outcome)).toContain("connection reset");
+		expect(await taskReport(job, reports[0].outcome, tmp)).toContain("connection reset");
 	});
 
 	it("drops progress updates of a call that already returned its job id", async () => {

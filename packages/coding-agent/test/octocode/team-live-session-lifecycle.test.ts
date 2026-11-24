@@ -14,10 +14,10 @@ it("shuts native activity down before invalidating a live session", async () => 
 	vi.useFakeTimers();
 	try {
 		await live.session.featureHost.emit({ type: "agent_start" });
-		// The working line counts the run in its own indicator; activity's timer repaints it each second to say when the
-		// model has gone silent, the tab title's timer moves its busy mark, and the title painter's 250 ms paint coalesces
-		// the light's first change (contract change, app-state T2: the title follows the light); closing clears all three.
-		expect(vi.getTimerCount()).toBe(3);
+		// One repeating timer serves everything that ticks: the animation clock, which the working line's indicator,
+		// activity's silence check and the tab title's busy mark all subscribe to. The other timer is the title painter's
+		// one-shot 250 ms paint, which coalesces the light's first change. Closing clears both.
+		expect(vi.getTimerCount()).toBe(2);
 		await Promise.all([live.close(), live.close()]);
 		expect(() => vi.advanceTimersByTime(2_000)).not.toThrow();
 		expect(vi.getTimerCount()).toBe(0);

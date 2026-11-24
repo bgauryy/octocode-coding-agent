@@ -118,7 +118,7 @@ describe("the mid-turn notice of a background report (B11)", () => {
 		queue.stepEnded();
 		const notices = f.sent.filter(({ message }) => message.customType === NOTICE_TYPE);
 		expect(notices).toHaveLength(1);
-		expect(notices[0].options).toEqual({ triggerTurn: false, deliverAs: "steer" });
+		expect(notices[0].options).toEqual({ triggerTurn: false });
 		expect(notices[0].message.display).toBe(false);
 		const reports = f.sent.filter(({ message }) => message.customType === AGENT_RESULT_TYPE);
 		expect(reports.map(({ options }) => options.deliverAs)).toEqual(["followUp", "followUp"]);

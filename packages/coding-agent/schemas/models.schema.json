@@ -1163,25 +1163,139 @@
           },
           "description": "OpenRouter provider routing preferences. Controls which upstream providers OpenRouter routes requests to. Sent as the provider field in the OpenRouter API request body. See https://openrouter.ai/docs/guides/routing/provider-selection."
         },
+        "openRouterAutoRouter": {
+          "type": "object",
+          "properties": {
+            "allowed_models": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Hard allow list of model patterns, for example [\"anthropic/*\", \"openai/gpt-5.1\"]."
+            },
+            "excluded_models": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Model patterns the router never selects. Applied after allowed_models."
+            },
+            "cost_tier": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "low"
+                },
+                {
+                  "type": "string",
+                  "const": "medium"
+                },
+                {
+                  "type": "string",
+                  "const": "high"
+                }
+              ],
+              "description": "Routing policy: low favors cost, medium balances, high favors capability."
+            },
+            "metadata": {
+              "type": "boolean",
+              "description": "Request router metadata (X-OpenRouter-Metadata) and record a sanitized summary as an assistant diagnostic. Default: true for openrouter/auto."
+            }
+          },
+          "description": "OpenRouter Auto Router plugin controls for openrouter/auto and openrouter/auto-beta, sent as an auto-router plugin entry. See https://openrouter.ai/docs/guides/routing/routers/auto-router."
+        },
         "vercelGatewayRouting": {
           "type": "object",
           "properties": {
             "only": {
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "string",
+                "minLength": 1
               },
               "description": "List of provider slugs to exclusively use for this request, for example [\"bedrock\", \"anthropic\"]."
             },
             "order": {
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "string",
+                "minLength": 1
               },
               "description": "List of provider slugs to try in order, for example [\"anthropic\", \"openai\"]."
+            },
+            "models": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Fallback model ids the gateway tries when the primary model fails, for example [\"openai/gpt-5.1\"]."
+            },
+            "sort": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "cost"
+                },
+                {
+                  "type": "string",
+                  "const": "ttft"
+                },
+                {
+                  "type": "string",
+                  "const": "tps"
+                }
+              ],
+              "description": "Rank providers by cost, time to first token (ttft) or throughput (tps)."
+            },
+            "headquarters": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "ISO 3166-1 alpha-2 country codes of provider headquarters to route to; prefix every code with \"!\" to exclude instead. A list cannot mix both forms."
+            },
+            "caching": {
+              "type": "string",
+              "const": "auto",
+              "description": "Let the gateway apply the provider's caching strategy."
+            },
+            "zeroDataRetention": {
+              "type": "boolean",
+              "description": "Route only to providers with zero data retention for this request."
+            },
+            "disallowPromptTraining": {
+              "type": "boolean",
+              "description": "Route only to providers that do not train on prompt data."
+            },
+            "sessionAffinity": {
+              "type": "boolean",
+              "description": "Whether the gateway pins a session to the provider holding its prompt cache. Default: true."
+            },
+            "providerTimeouts": {
+              "type": "object",
+              "required": [
+                "byok"
+              ],
+              "properties": {
+                "byok": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "description": "Milliseconds to wait for a BYOK provider to start responding, by provider slug."
+                }
+              },
+              "description": "Per-provider failover timeouts. Apply to BYOK credentials only."
             }
           },
-          "description": "Vercel AI Gateway routing preferences. Controls which upstream providers the gateway routes requests to. See https://vercel.com/docs/ai-gateway/models-and-providers/provider-options."
+          "description": "Vercel AI Gateway routing preferences, sent as providerOptions.gateway on Chat Completions and Anthropic Messages requests. See https://vercel.com/docs/ai-gateway/models-and-providers/provider-options."
         },
         "zaiToolStream": {
           "type": "boolean",
@@ -1278,7 +1392,7 @@
               "const": "moonshot"
             }
           ],
-          "description": "Tool parameter schema flavor. \"moonshot\" repairs tool schemas to the strict subset the Kimi API requires: a type on every property and no type beside anyOf/oneOf. \"standard\" disables auto-detection and emits standard JSON Schema as authored. Default: auto-detected for Moonshot endpoints."
+          "description": "Tool declaration format for Chat Completions. Moonshot endpoints and Kimi model IDs use \"moonshot\", including through gateways. It projects object alternatives and represents scalar choices with enums. Set \"standard\" to send the authored JSON Schema. Local validation uses the original tool contract."
         },
         "supportsAdditionalTools": {
           "type": "boolean",

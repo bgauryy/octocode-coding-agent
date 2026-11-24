@@ -32,6 +32,10 @@ export class PendingRows {
 		for (const line of lines) if (--line.sends <= 0) this.pending = this.pending.filter((each) => each !== line);
 	}
 
+	clear(): void {
+		this.pending = [];
+	}
+
 	take() {
 		const cutoff = this.now() - PENDING_MAX_AGE_MS;
 		const lines = this.pending

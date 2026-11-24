@@ -53,7 +53,10 @@ async function run(prompt = "go") {
 	server = await startModelServer([{ tool: "bash", args: { command: `touch "${marker}"` } }, { text: "finished" }]);
 	writeScriptedProvider(sandbox, server);
 	const result = await runCli(sandbox, [...QUIET_ARGS, ...SCRIPTED_MODEL_ARGS, "-p", prompt]);
-	return { result, marker, secondRequest: JSON.stringify(server.requests[1] ?? null) };
+	const diagnostics = [result.stderr, result.stdout].filter(Boolean).join("\n");
+	expect(result.code, diagnostics).toBe(0);
+	expect(server.requests.length, diagnostics).toBe(2);
+	return { result, marker, secondRequest: JSON.stringify(server.requests[1]) };
 }
 
 const setup = () => {

@@ -16,7 +16,6 @@ const workspaceSourcePaths = {
 	tuiIndex: fileURLToPath(new URL("./packages/tui/src/index.ts", import.meta.url)),
 	tuiAnsi: fileURLToPath(new URL("./packages/tui/src/utils/ansi-codes.ts", import.meta.url)),
 	tuiText: fileURLToPath(new URL("./packages/tui/src/utils/text.ts", import.meta.url)),
-	tuiInkIndex: fileURLToPath(new URL("./packages/tui-ink/src/index.ts", import.meta.url)),
 } as const;
 
 export default defineConfig({
@@ -83,7 +82,6 @@ export default defineConfig({
 			{ find: /^@octocodeai\/octocode-tui$/, replacement: workspaceSourcePaths.tuiIndex },
 			{ find: /^@octocodeai\/octocode-tui\/ansi$/, replacement: workspaceSourcePaths.tuiAnsi },
 			{ find: /^@octocodeai\/octocode-tui\/text$/, replacement: workspaceSourcePaths.tuiText },
-			{ find: /^@octocodeai\/octocode-tui-ink$/, replacement: workspaceSourcePaths.tuiInkIndex },
 		],
 	},
 });

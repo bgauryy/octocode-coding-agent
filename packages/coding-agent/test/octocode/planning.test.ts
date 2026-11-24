@@ -208,7 +208,7 @@ it("puts the active plan back after a compaction, once, and only while planning"
 	expect(fake.sent).toHaveLength(1);
 	expect(fake.sent[0]).toMatchObject({
 		message: { customType: PLAN_REMINDER_TYPE, display: false },
-		options: { triggerTurn: false, deliverAs: "followUp" },
+		options: { triggerTurn: false },
 	});
 	expect(fake.sent[0].message.content).toContain("revision 3");
 	expect(fake.sent[0].message.content).toContain("1. Inspect\n2. Fix");

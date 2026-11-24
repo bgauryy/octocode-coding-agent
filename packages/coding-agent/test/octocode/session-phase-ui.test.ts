@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { animationClock, GLYPH, SPINNER } from "@octocodeai/octocode-tui";
+import { animationClock, GLYPH, MOTION, SPINNER } from "@octocodeai/octocode-tui";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { runningWorkOf } from "../../src/octocode/shared/running-work.ts";
@@ -239,9 +239,16 @@ describe("the live line", () => {
 			expect(line.render(80)).toEqual([]);
 			store.setWork({ agents: 4, queued: 0, bash: 1, external: 0, timers: [] });
 			store.settleRun({ status: "done" }, []);
-			// The working spinner's first frame, or the full ⏺ without motion: never a half-filled circle.
-			const mark = animationClock.isReducedMotion() ? GLYPH.light : SPINNER.braille[0];
-			expect(rendered(line)).toBe(`\n ${mark} Waiting on 4 agents · 1 bash (1m05s)`);
+			// The shared spinner frame of the clock's frame time, or the full ⏺ without motion: never a half-filled circle.
+			const frameAt = () => Math.floor(animationClock.frameTime() / MOTION.spinnerMs) % SPINNER.braille.length;
+			const mark = () => (animationClock.isReducedMotion() ? GLYPH.running : SPINNER.braille[frameAt()]);
+			expect(GLYPH.running).toBe("⏺");
+			const frame = frameAt();
+			expect(rendered(line)).toBe(`\n ${mark()} Waiting on 4 agents · 1 bash (1m05s)`);
+			// The line keeps no counter: one spinner interval later it draws the clock's next frame.
+			vi.advanceTimersByTime(MOTION.spinnerMs);
+			expect(frameAt()).toBe((frame + 1) % SPINNER.braille.length);
+			expect(rendered(line)).toBe(`\n ${mark()} Waiting on 4 agents · 1 bash (1m05s)`);
 			store.setWork({
 				agents: 0,
 				queued: 0,

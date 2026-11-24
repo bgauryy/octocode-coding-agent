@@ -37,7 +37,10 @@ const described = (item: { title?: string; description?: string; mimeType?: stri
 export async function resourceListing(state: McpFeatureState, name: string, signal?: AbortSignal): Promise<string> {
 	const { client, options } = await clientOf(state, name, signal);
 	if (!client.serverCapabilities?.resources) return `MCP server "${name}" offers no resources.`;
-	const [resources, templates] = [await client.listResources(options), await client.listResourceTemplates(options)];
+	const [resources, templates] = await Promise.all([
+		client.listResources(options),
+		client.listResourceTemplates(options),
+	]);
 	const lines = [
 		...resources.map((resource) => `- ${resource.uri} ${resource.name}${described(resource)}`),
 		...templates.map((template) => `- template ${template.uriTemplate} ${template.name}${described(template)}`),

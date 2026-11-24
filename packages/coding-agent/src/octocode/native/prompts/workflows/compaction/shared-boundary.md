@@ -1,1 +1,1 @@
-The conversation continues after your summary with the messages from the {{first}} on. They stay in context word for word. Summarize only what comes before that point, although you can see later messages. Where the instructions below say "the last messages above", they mean the last ones before it.
+Summarize only the conversation before the {{first}}. That message and all later ones stay in context. Use the last action before this boundary as the stopping point.

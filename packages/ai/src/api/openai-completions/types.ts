@@ -16,6 +16,7 @@ export interface OpenAICompatCacheControl {
 export type ResolvedOpenAICompletionsCompat = Omit<
 	Required<OpenAICompletionsCompat>,
 	| "cacheControlFormat"
+	| "openRouterAutoRouter"
 	| "thinkingTokenBudgetField"
 	| "supportsMidConvoSystemMessages"
 	| "supportsMidConvoToolAdditions"
@@ -25,6 +26,7 @@ export type ResolvedOpenAICompletionsCompat = Omit<
 	| "supportsExplicitPromptCacheMode"
 > & {
 	supportsTemperature?: OpenAICompletionsCompat["supportsTemperature"];
+	openRouterAutoRouter?: OpenAICompletionsCompat["openRouterAutoRouter"];
 	cacheControlFormat?: OpenAICompletionsCompat["cacheControlFormat"];
 	supportsExplicitPromptCacheMode?: OpenAICompletionsCompat["supportsExplicitPromptCacheMode"];
 	thinkingTokenBudgetField?: OpenAICompletionsCompat["thinkingTokenBudgetField"];

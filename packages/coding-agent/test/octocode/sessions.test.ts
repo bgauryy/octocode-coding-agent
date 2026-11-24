@@ -382,7 +382,7 @@ describe("running work after compaction", () => {
 		expect(host.sent).toHaveLength(1);
 		const { message, options } = host.sent[0];
 		expect(message).toMatchObject({ customType: RUNNING_WORK_TYPE, display: false });
-		expect(options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(options).toEqual({ triggerTurn: false });
 		// The running jobs and subagents are the summary's live state (compaction/live-state.ts), not repeated here.
 		expect(message.content).not.toMatch(/Still running|bash-3|general-ab12|general-done/);
 		expect(message.content).toContain(
@@ -422,7 +422,7 @@ describe("running work after compaction", () => {
 		await host.fire("session_compact", { type: "session_compact" }, host.ctx);
 		expect(host.sent).toHaveLength(1);
 		const { message, options } = host.sent[0];
-		expect(options).toEqual({ triggerTurn: false, deliverAs: "followUp" });
+		expect(options).toEqual({ triggerTurn: false });
 		expect(message.content).toBe(
 			`[After compaction] Your last reply before the compaction: "On it"\nLatest user request: "${long}"`,
 		);
@@ -779,7 +779,7 @@ describe("/resume", () => {
 		sessions.setActivity(agent.db, "other", process.pid, "waiting");
 		const ctx = Object.assign(current.ctx, { hasUI: false });
 		await current.commands.get("resume")!.handler("", ctx);
-		expect(ctx.ui.notes.at(-1)!.message).toMatch(/◇ Old task · needs you · feat\/x · 2h ago/);
+		expect(ctx.ui.notes.at(-1)!.message).toMatch(/◐ Old task · needs you · feat\/x · 2h ago/);
 		const calls = stubPicker(current.ctx, async () => undefined);
 		await current.commands.get("resume")!.handler("", Object.assign(current.ctx, { hasUI: true }));
 		expect(calls[0].options.extras!(["other"]).get("other")).toMatchObject({ live: true, activity: "waiting" });

@@ -40,6 +40,12 @@ Octocode starts with a bundled catalog; cached catalog data works offline. `OCTO
 - The compact picker shows context, output limits, image/reasoning support and billing (**billed per token** or **billed by plan**, as in `/providers`). **Alt+I** toggles full identifiers, names, billing and prices first, then limits and cache lifetimes; **PgUp/PgDn** scroll those details. A price you set in `models.json` reads "(your price)" and its billing line "billed per token at your price". A time-limited price (`cost.until` with `cost.after`) shows today's rates. For a provider billed by plan, the API prices shown are estimates at list price. Account terms, retention, long-context tiers, service tiers, credits and regional premiums can change totals.
 - A session records model and thinking changes; resuming restores them without changing defaults.
 
+### Automatic model routing
+
+Select `octocode/auto-code` to choose a physical model and thinking level for each request. The native router filters credentials, provider and account restrictions, modality and context capacity first, then favors session stickiness, suitable capability and lower cost. It raises effort before switching models and fails over after transient errors. Routing uses session data only; it makes no extra model call and stores no prompt text in its diagnostics.
+
+The router never becomes the startup default implicitly. A session that used a flat-rate plan cannot switch to per-token billing unless you explicitly set `runtime.smartRouting.allowPlanToMeteredEscalation: true` in **global** settings. Trusted project settings may set candidate `allow`/`deny` patterns, capability `tiers`, `planOnly`, `cooldownRequests` and `outputReserveTokens`, but cannot enable paid escalation. See [Smart routing](smart-routing.md).
+
 ### Model defaults
 
 | Setting             | How Octocode chooses it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -157,6 +163,8 @@ Providers Octocode builds in (OpenRouter, Together, Fireworks, Groq, Cerebras, D
 The file is written atomically with private permissions (owner read and write only). A `models.json` with `//` comments is left unchanged, since a rewrite would drop them: the error shows the entry to paste. The models.dev listing is read from Octocode's cached copy (refreshed at most once a day; `OCTOCODE_MODELS_DEV=0` turns it off) and may not list every model a host serves. Edit the entry in `models.json` afterwards to change anything; opening `/model` reloads it.
 
 ## Configure a compatible endpoint
+
+A session identifies a model by provider ID and model ID. For a custom model, Octocode resolves `api` and `baseUrl` independently. A value on the model takes precedence over the provider entry, followed by the catalog default when available. The resolved API selects the request format. On Chat Completions, the provider, endpoint and model ID determine the compatibility defaults. Explicit `compat` values on the model take precedence over provider settings. This lets a single gateway serve models with different tool formats.
 
 Use the global `models.json` when an endpoint speaks an API Octocode supports.
 

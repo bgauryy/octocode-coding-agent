@@ -6,11 +6,18 @@ import { mcpHost } from "./mcp-host-fixture.ts";
 const echo = join(import.meta.dirname, "../../coding-agent/test/octocode/fixtures/echo-mcp.mjs");
 const hosts: ReturnType<typeof mcpHost>[] = [];
 
+/** The default servers with `reconnectWaitMs: 0`: a call made while one is down fails at once, which these tests observe. */
+const failAtOnce: NonNullable<Parameters<typeof mcpHost>[0]>["loadConfig"] = (_ctx, defaults) => ({
+	servers: defaults.map((entry) => ({ ...entry, config: { ...entry.config, reconnectWaitMs: 0 } })),
+	errors: [],
+});
+
 /** Launches the echo server; with `relaunch` set, the next launches run that script instead (a server that hangs, say). */
 function host(options: { relaunch?: { args: string[] } } = {}) {
 	const launch = { down: false };
 	const result = mcpHost({
 		updateConfig: () => {},
+		loadConfig: failAtOnce,
 		prepareLaunch: (entry) => ({
 			...entry,
 			config: {
@@ -131,6 +138,7 @@ describe("MCP tools across a dropped connection", () => {
 			const holding = `require("node:child_process").spawn("sleep", ["30"], { stdio: ["ignore", "ignore", "inherit"] }); import(process.argv[1]);`;
 			const result = mcpHost({
 				updateConfig: () => {},
+				loadConfig: failAtOnce,
 				prepareLaunch: (entry) => ({
 					...entry,
 					config: { ...entry.config, command: process.execPath, args: ["-e", holding, echo] },

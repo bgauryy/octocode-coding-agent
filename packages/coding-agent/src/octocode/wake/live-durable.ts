@@ -1,10 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { DbEventStore } from "../events/loop/db-store.ts";
 import { isDeduped, isDurable } from "../events/loop/cutover.ts";
 import type { EventStore } from "../events/loop/store.ts";
 import type { AgentEvent, PayloadEvent } from "../events/topics.ts";
-import { sharedAgentDb } from "../../storage/database.ts";
-import { registeredWorkspace } from "../../storage/workspace-database.ts";
+import { prepareAgentDb, sharedAgentDb } from "../../storage/database.ts";
+import { registeredWorkspaceWhenReady } from "../../storage/workspace-database.ts";
 import { wakeCatalog } from "./loop-catalog.ts";
 import type { Held, Message, SendOptions } from "./gate-types.ts";
 
@@ -18,11 +19,12 @@ export interface SessionOf {
 }
 
 /** The loop's store for a session: its events in the event log, its offset in a subscription of its own. */
-export function sessionStore(ctx: SessionOf, env: NodeJS.ProcessEnv = process.env): EventStore {
+export async function sessionStore(ctx: SessionOf, env: NodeJS.ProcessEnv = process.env): Promise<EventStore> {
+	await prepareAgentDb(env);
 	const agent = sharedAgentDb(env);
 	const sessionId = ctx.sessionManager.getSessionId();
-	return new DbEventStore(agent.db, {
-		workspaceId: registeredWorkspace(ctx.cwd, agent).id,
+	return DbEventStore.open(agent, {
+		workspaceId: (await registeredWorkspaceWhenReady(ctx.cwd, agent)).id,
 		sessionId,
 		// The subscription is unique per workspace and subscriber, so each session's offset is its own.
 		subscriber: `loop:${sessionId}`,
@@ -42,7 +44,9 @@ export function durableOf(
 	sessionId: string,
 ): { dedupeKey?: string; body?: Record<string, unknown> } {
 	if (!events.every(isDurable)) return {};
-	const body = { message: held.message, options: held.options, events };
+	const entryId = randomUUID();
+	held.entryId = entryId;
+	const body = { entryId, message: held.message, options: held.options, events };
 	if (!events.some(isDeduped)) return { body };
 	return { body, dedupeKey: `${sessionId}:${events.map((event) => wakeCatalog.describe(event).key).join("|")}` };
 }

@@ -35,11 +35,21 @@ const strip = (line: string) => line.replace(/\u001b\[[0-9;]*m/g, "");
 describe("team panel: one grid row per agent", () => {
 	beforeAll(() => initTheme("dark"));
 
-	it("shows name, role:effort, elapsed, cost, goal and action on one row, without the stats or a state word", () => {
+	it("shows name, goal and action on one row, without the role, the spend, the stats or a state word", () => {
 		const { lines } = widgetRows(team, "main-0001", NOW, theme, 140);
 		const row = strip(lines.find((line) => line.includes("sneaky-dolphin"))!);
-		expect(row).toMatch(/implementer:medium · B607: Sonnet LLM-judge eval +› shell: yarn vitest run +≈\$1\.00 8m57s$/);
-		for (const hidden of ["claude-sonnet", "tok", "cached", "tool calls", "locks", "working"])
+		expect(row).toBe(" ├ ⏺ sneaky-dolphin · B607: Sonnet LLM-judge eval › shell: yarn vitest run");
+		for (const hidden of [
+			"implementer",
+			"8m57s",
+			"≈$",
+			"claude-sonnet",
+			"tok",
+			"cached",
+			"tool calls",
+			"locks",
+			"working",
+		])
 			expect(row).not.toContain(hidden);
 		expect(lines).toHaveLength(3);
 		// An idle agent's mark says it: no state word.
@@ -47,7 +57,7 @@ describe("team panel: one grid row per agent", () => {
 		expect(strip(lines[2])).not.toContain("idle");
 	});
 
-	it("opens an agent's detail line when expanded, and maps each row to its agent", () => {
+	it("opens an agent's detail line when expanded: role, model, elapsed, cost and stats, and maps each row to its agent", () => {
 		const open = widgetRows(
 			team,
 			"main-0001",
@@ -63,17 +73,26 @@ describe("team panel: one grid row per agent", () => {
 		);
 		const text = open.lines.map(strip);
 		expect(text).toHaveLength(4);
-		expect(text[2]).toMatch(/^ │ {3}claude-sonnet-5-5:medium +209k tok · \d+% cached · 42 tool calls · 2 locks$/);
+		expect(text[2]).toMatch(
+			/^ │ {3}implementer · claude-sonnet-5-5:medium +8m57s · ≈\$1\.00 · 209k tok · \d+% cached · 42 tool calls · 2 locks$/,
+		);
+		expect(text[2]).toHaveLength(140);
 		expect(open.owners).toEqual([undefined, "sneaky-dolphin", "sneaky-dolphin", "wily-kelp"]);
 	});
 
-	it("keeps rows within the width at 80 and 60 columns, the action on its own ↳ line", () => {
-		for (const width of [80, 60]) {
+	it("keeps rows within the width at 80 and 60 columns, the action on its own ↳ line once it no longer fits beside the goal", () => {
+		const at = (width: number) => {
 			const { lines, owners } = widgetRows(team, "main-0001", NOW, theme, width);
 			for (const line of lines) expect(strip(line).length).toBeLessThanOrEqual(width);
-			expect(lines.map(strip)).toContain(" │   ↳ shell: yarn vitest run");
-			expect(owners).toEqual([undefined, "sneaky-dolphin", "sneaky-dolphin", "wily-kelp"]);
-		}
+			return { text: lines.map(strip), owners };
+		};
+		const wide = at(80);
+		expect(wide.text).toContain(" ├ ⏺ sneaky-dolphin · B607: Sonnet LLM-judge eval › shell: yarn vitest run");
+		expect(wide.owners).toEqual([undefined, "sneaky-dolphin", "wily-kelp"]);
+		const tight = at(60);
+		expect(tight.text).toContain(" ├ ⏺ sneaky-dolphin · B607: Sonnet LLM-judge eval");
+		expect(tight.text).toContain(" │   ↳ shell: yarn vitest run");
+		expect(tight.owners).toEqual([undefined, "sneaky-dolphin", "sneaky-dolphin", "wily-kelp"]);
 	});
 });
 

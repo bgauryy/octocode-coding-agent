@@ -345,7 +345,7 @@ export default function octocode(host: FeatureSetup): void {
 		parentId: () => team.parentId,
 	});
 	registerSkillFirstUse(api, registerSkillTool(api, skillCatalog));
-	const runGuards = registerRunGuards(api); // after the file guard: see run-guards.ts
+	const runGuards = registerRunGuards(api, isSubagent); // after the file guard: see run-guards.ts
 	registerHarnessCommand(commands, hooks, api);
 	// Subagents have no terminal of their own: their parent's row and report carry their state. A child follows the parent's `/harness` switches instead.
 	if (isSubagent) registerHarnessSync(api);

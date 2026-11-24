@@ -22,7 +22,7 @@ function rig() {
 			event: jobExit(carry),
 			source: makeSource("job", carry, "in-process", "proven"),
 			wake: true,
-			steer: false,
+			priority: "regular",
 			carry,
 		});
 	return { live, sent, background };

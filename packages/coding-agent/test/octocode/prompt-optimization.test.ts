@@ -13,7 +13,7 @@ import { renderPrompt } from "../../src/core/prompt-template.ts";
 import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
-import octocode from "../../src/octocode/index.ts";
+import { terminalInput } from "./e2e-ui-flows/request.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { resetOctocodeEnv, tmp, trustFolder } from "./helpers.ts";
 import { testFeatures } from "../helpers/features.ts";
@@ -138,10 +138,7 @@ beforeAll(async () => {
 		agentDir,
 		settingsManager,
 		nativeFeatures: nativeFeatureSet(),
-		features: testFeatures([
-			{ name: "faux-provider", factory: provider },
-			{ name: "octocode", factory: octocode },
-		]),
+		features: testFeatures([{ name: "faux-provider", factory: provider }]),
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
@@ -216,7 +213,7 @@ describe("prompt optimization on submit", () => {
 		await prompt("fix teh login bug");
 		expect(helper).not.toHaveBeenCalled();
 		expect(screen.selects).toEqual([]);
-		expect(sent).toEqual(["fix teh login bug"]);
+		expect(sent).toEqual([terminalInput("fix teh login bug")]);
 	});
 
 	it("asks the helper for a rewrite, shows it, and sends the rewrite when chosen", async () => {
@@ -238,7 +235,7 @@ describe("prompt optimization on submit", () => {
 			"Send my original prompt",
 		]);
 		expect(screen.statuses).toEqual([expect.stringContaining("✦ Optimizing prompt…"), undefined]);
-		expect(sent).toEqual(["Fix the login bug."]);
+		expect(sent).toEqual([terminalInput("Fix the login bug.")]);
 	});
 
 	it("opens the rewrite in the editor and sends the edited text", async () => {
@@ -247,7 +244,7 @@ describe("prompt optimization on submit", () => {
 		screen.edits.push("Fix the login bug in auth.ts.");
 		await prompt("fix teh login bug");
 		expect(screen.editors).toEqual([{ title: "Edit the optimized prompt", prefill: "Fix the login bug." }]);
-		expect(sent).toEqual(["Fix the login bug in auth.ts."]);
+		expect(sent).toEqual([terminalInput("Fix the login bug in auth.ts.")]);
 	});
 
 	it("returns to the choice when the editor is dismissed", async () => {
@@ -256,14 +253,14 @@ describe("prompt optimization on submit", () => {
 		screen.edits.push(undefined);
 		await prompt("fix teh login bug");
 		expect(screen.selects).toHaveLength(2);
-		expect(sent).toEqual(["fix teh login bug"]);
+		expect(sent).toEqual([terminalInput("fix teh login bug")]);
 	});
 
 	it("sends the original when asked", async () => {
 		helperReplies("Fix the login bug.");
 		screen.answers.push("Send my original prompt");
 		await prompt("fix teh login bug");
-		expect(sent).toEqual(["fix teh login bug"]);
+		expect(sent).toEqual([terminalInput("fix teh login bug")]);
 	});
 
 	it("sends nothing and returns the prompt to the editor when the choice is dismissed", async () => {
@@ -279,7 +276,7 @@ describe("prompt optimization on submit", () => {
 		helperReplies("fix the login bug");
 		await prompt("fix the login bug");
 		expect(screen.selects).toEqual([]);
-		expect(sent).toEqual(["fix the login bug"]);
+		expect(sent).toEqual([terminalInput("fix the login bug")]);
 	});
 
 	it("never rewrites slash commands, ! lines, other sources or empty input", async () => {
@@ -290,7 +287,12 @@ describe("prompt optimization on submit", () => {
 		await prompt("   ");
 		expect(helper).not.toHaveBeenCalled();
 		expect(screen.selects.map((each) => each.title)).toEqual([expect.stringContaining("Prompt optimization is on")]);
-		expect(sent).toEqual(["!ls -la", "fix the login bug", "fix the login bug", "   "]);
+		expect(sent).toEqual([
+			terminalInput("!ls -la"),
+			"[src external:rpc ✓proven via socket] t1\nfix the login bug",
+			"fix the login bug",
+			terminalInput("   "),
+		]);
 	});
 
 	describe("when the helper fails", () => {
@@ -300,7 +302,7 @@ describe("prompt optimization on submit", () => {
 			await prompt("fix teh login bug");
 			expect(screen.selects[0]?.title).toBe("Prompt optimization failed: provider is down. Send your original prompt?");
 			expect(screen.selects[0]?.options).toEqual(["Send my original prompt", "Cancel"]);
-			expect(sent).toEqual(["fix teh login bug"]);
+			expect(sent).toEqual([terminalInput("fix teh login bug")]);
 			expect(screen.statuses.at(-1)).toBeUndefined();
 		});
 
@@ -329,7 +331,7 @@ describe("prompt optimization on submit", () => {
 			await prompt("fix teh login bug");
 			expect(screen.selects[0]?.title).toBe("Prompt optimization failed: it was skipped. Send your original prompt?");
 			expect(keys.size).toBe(0);
-			expect(sent).toEqual(["fix teh login bug"]);
+			expect(sent).toEqual([terminalInput("fix teh login bug")]);
 		});
 
 		it("treats an empty reply as a failure", async () => {
@@ -337,7 +339,7 @@ describe("prompt optimization on submit", () => {
 			screen.answers.push("Send my original prompt");
 			await prompt("fix teh login bug");
 			expect(screen.selects[0]?.title).toContain("returned an empty reply");
-			expect(sent).toEqual(["fix teh login bug"]);
+			expect(sent).toEqual([terminalInput("fix teh login bug")]);
 		});
 	});
 
@@ -345,7 +347,7 @@ describe("prompt optimization on submit", () => {
 		await prompt("/optimize off");
 		await prompt("fix teh login bug");
 		expect(helper).not.toHaveBeenCalled();
-		expect(sent).toEqual(["fix teh login bug"]);
+		expect(sent).toEqual([terminalInput("fix teh login bug")]);
 		expect(saved().optimizePrompts).toBe(false);
 	});
 });

@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { JsonValue, Tool, ToolCall } from "../src/types.ts";
 import { validateToolArguments } from "../src/utils/validation.ts";
 
@@ -121,6 +121,23 @@ describe("validateToolArguments", () => {
 			nullable: null,
 			metadata: {},
 		});
+	});
+
+	it("prepares normalized strict arguments once and preserves the provider transcript", () => {
+		const tool: Tool = {
+			name: "echo",
+			description: "",
+			parameters: Type.Object({ text: Type.Optional(Type.String()), nullable: Type.Optional(Type.Null()) }),
+		};
+		const call: ToolCall = { type: "toolCall", name: "echo", id: "c", arguments: { text: null, nullable: null } };
+		const prepare = vi.fn((args: ToolCall["arguments"]) => {
+			expect(args).toEqual({ nullable: null });
+			args.text = "prepared";
+			return args;
+		});
+		expect(validateToolArguments(tool, call, prepare)).toEqual({ nullable: null, text: "prepared" });
+		expect(prepare).toHaveBeenCalledOnce();
+		expect(call.arguments).toEqual({ text: null, nullable: null });
 	});
 
 	it("preserves optional nulls whose referenced schema is nullable", () => {
@@ -244,7 +261,11 @@ describe("validateToolArguments", () => {
 			argumentsError: "Unexpected token",
 		};
 
-		expect(() => validateToolArguments(tool, toolCall)).toThrow('Invalid arguments for tool "echo": Unexpected token');
+		const prepare = vi.fn((args: ToolCall["arguments"]) => args);
+		expect(() => validateToolArguments(tool, toolCall, prepare)).toThrow(
+			'Invalid arguments for tool "echo": Unexpected token',
+		);
+		expect(prepare).not.toHaveBeenCalled();
 		expect(() => validateToolArguments(tool, toolCall)).toThrow(
 			/valid JSON object\. If it is long, split it into several smaller calls/,
 		);
@@ -276,6 +297,12 @@ describe("validateToolArguments", () => {
 		it("passes valid arguments on exactly as sent", () => {
 			const args = { count: 2, queries: ["a"], note: "n" };
 			expect(validateToolArguments(tool, call(args))).toEqual(args);
+		});
+
+		it("gives preparation the exact external arguments and validates the server schema", () => {
+			const prepare = vi.fn((args: ToolCall["arguments"]) => args);
+			expect(() => validateToolArguments(tool, call({ note: null }), prepare)).toThrow(/server hint/);
+			expect(prepare).toHaveBeenCalledWith({ note: null });
 		});
 
 		it("rejects what coercion would have repaired, with the tool's hint", () => {

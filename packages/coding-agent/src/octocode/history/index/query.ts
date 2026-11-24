@@ -143,6 +143,7 @@ export async function rankIndexed(
 	filtered: Filtered | undefined,
 	check: () => void | Promise<void>,
 	syncBytes = QUERY_SYNC_BYTES,
+	poll?: () => void,
 ): Promise<Scored> {
 	const query = scanQuery(parseKeywords(keywords));
 	if (query.terms.length === 0) throw new Error("keywords needs at least one word or identifier.");
@@ -156,6 +157,7 @@ export async function rankIndexed(
 			files.map(({ file }) => file),
 			check,
 			syncBytes,
+			poll,
 		);
 		files.forEach(({ file }, fileIndex) => {
 			const held = current.get(file);

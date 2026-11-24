@@ -1,6 +1,7 @@
 import { builtinDescription } from "../../core/slash-commands.ts";
 import path from "node:path";
 import { GLYPH } from "@octocodeai/octocode-tui";
+import { withoutSourceHeader } from "@octocodeai/octocode-common/text";
 import type { FeatureSetup, CommandContext } from "../../core/features/index.ts";
 import { type SessionInfo, SessionManager } from "../../core/session-manager.ts";
 import type { SessionExtras } from "../../core/session-picker.ts";
@@ -121,7 +122,10 @@ function currentInfo(ctx: CommandContext): SessionInfo {
 		created: new Date(header?.timestamp ?? Date.now()),
 		modified: new Date(),
 		messageCount: messages.length,
-		firstMessage: first?.type === "message" ? contentText((first.message as { content?: unknown }).content) : "",
+		firstMessage:
+			first?.type === "message" && "content" in first.message
+				? withoutSourceHeader(contentText(first.message.content))
+				: "",
 		allMessagesText: "",
 	};
 }

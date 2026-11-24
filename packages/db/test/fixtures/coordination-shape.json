@@ -400,6 +400,20 @@
       "source TEXT NOT NULL",
       "updated_at INTEGER NOT NULL"
     ],
+    "provider_throughput_reservations": [
+      "key TEXT NOT NULL PK1",
+      "window_start INTEGER NOT NULL PK2",
+      "reservation_id TEXT NOT NULL PK3",
+      "estimated_tokens INTEGER NOT NULL",
+      "actual_tokens INTEGER",
+      "created_at INTEGER NOT NULL"
+    ],
+    "provider_throughput_state": [
+      "key TEXT NOT NULL PK1",
+      "scale REAL NOT NULL",
+      "successes INTEGER NOT NULL",
+      "updated_at INTEGER NOT NULL"
+    ],
     "session_forks": [
       "child_id TEXT PK1",
       "parent_id TEXT NOT NULL",
@@ -588,6 +602,7 @@
     "memory_sources_pending",
     "messages_age",
     "process_samples_at",
+    "provider_throughput_reservations_window",
     "session_forks_parent",
     "sessions_catalog",
     "sessions_workspace",

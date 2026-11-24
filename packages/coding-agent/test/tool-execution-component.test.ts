@@ -45,7 +45,7 @@ function createFakeTui(): TUI {
 }
 
 beforeEach(() => {
-	// Pin the running spinner to one frame.
+	// Hold decoration still: a row is drawn the same with motion on (the running-mark tests turn it on).
 	animationClock.setReducedMotion(true);
 });
 afterEach(() => {
@@ -124,18 +124,21 @@ describe("ToolExecutionComponent parity", () => {
 	test("marks a tool without a renderer like every other row: pending, lit, then done or failed", () => {
 		const draw = (component: ToolExecutionComponent) => stripAnsi(component.render(120).join("\n"));
 		const pending = new ToolExecutionComponent("mcp_x", "a", {}, {}, undefined, createFakeTui(), process.cwd());
-		// Each settled state draws its own glyph (○ queued, ✗ failed, ✓ done); ⏺ means running only.
+		// Each settled state draws its own light (○ queued, ⊗ failed, ◉ done); ⏺ means running only.
 		expect(draw(pending)).toContain("○ mcp_x");
 		pending.markExecutionStarted();
-		// Running: the working spinner where it moves, a full ⏺ where motion is off; never a half-filled circle.
-		expect(draw(pending)).toMatch(animationClock.isReducedMotion() ? /⏺ mcp_x/ : /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] mcp_x/);
-		expect(draw(pending)).not.toMatch(/[◒◐◓◑]/);
+		// Running: a still full ⏺ with motion off and on; never a spinner frame or a half-filled circle.
+		for (const reduced of [true, false]) {
+			animationClock.setReducedMotion(reduced);
+			expect(draw(pending)).toContain("⏺ mcp_x");
+			expect(draw(pending)).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◒◐◓◑]/);
+		}
 		pending.updateResult({ content: [{ type: "text", text: "bad" }], isError: true });
-		expect(draw(pending)).toContain("✗ mcp_x");
+		expect(draw(pending)).toContain("⊗ mcp_x");
 		expect(animationClock.isRunning()).toBe(false);
 		const restored = new ToolExecutionComponent("mcp_x", "b", {}, {}, undefined, createFakeTui(), process.cwd());
 		restored.updateResult({ content: [{ type: "text", text: "ok" }], isError: false });
-		expect(draw(restored)).toContain("✓ mcp_x");
+		expect(draw(restored)).toContain("◉ mcp_x");
 	});
 
 	test("stacks custom call and result renderers like the old implementation", () => {
@@ -353,7 +356,7 @@ describe("ToolExecutionComponent parity", () => {
 		// The recorded duration, shown once in the header, not again under it.
 		for (const live of [true, false]) {
 			const text = render(live);
-			expect(text).toContain("✓ Bash(sleep 4) · 4.2s");
+			expect(text).toContain("◉ Bash(sleep 4) · 4.2s");
 			expect(text.match(/4\.2s/g)).toHaveLength(1);
 			expect(text).not.toContain("Took");
 		}
@@ -625,17 +628,17 @@ describe("ToolExecutionComponent parity", () => {
 			return component.render(80).join("\n");
 		};
 		const failed = finished(true);
-		expect(stripAnsi(failed)).toMatch(/✗ plain_tool.*(?: · 1\.2s)/);
+		expect(stripAnsi(failed)).toMatch(/⊗ plain_tool.*(?: · 1\.2s)/);
 		expect(failed).toContain(theme.fg("error", "kaboom"));
 		const passed = finished(false);
-		// A settled row draws its state's glyph: ✗ failed above, ✓ done here; ⏺ means running only.
-		expect(stripAnsi(passed)).toMatch(/✓ plain_tool.*(?: · 1\.2s)/);
+		// A settled row draws its state's light: ⊗ failed above, ◉ done here; ⏺ means running only.
+		expect(stripAnsi(passed)).toMatch(/◉ plain_tool.*(?: · 1\.2s)/);
 		expect(passed).toContain(theme.fg("toolOutput", "kaboom"));
 	});
 });
 
 describe("ToolExecutionComponent running mark", () => {
-	test("a running bash row draws the working spinner (a full ⏺ without motion), never a half-filled circle", () => {
+	test("a running bash row draws a still full ⏺ with motion off and on, never a spinner frame or a half-filled circle", () => {
 		const bash = new ToolExecutionComponent(
 			"bash",
 			"b",
@@ -646,9 +649,12 @@ describe("ToolExecutionComponent running mark", () => {
 			process.cwd(),
 		);
 		bash.markExecutionStarted();
-		const drawn = stripAnsi(bash.render(120).join("\n"));
-		expect(drawn).toMatch(animationClock.isReducedMotion() ? /⏺/ : /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
-		expect(drawn).not.toMatch(/[◒◐◓◑]/);
+		for (const reduced of [true, false]) {
+			animationClock.setReducedMotion(reduced);
+			const drawn = stripAnsi(bash.render(120).join("\n"));
+			expect(drawn).toContain("⏺ bash(command=make)");
+			expect(drawn).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◒◐◓◑]/);
+		}
 		bash.dispose?.();
 	});
 });

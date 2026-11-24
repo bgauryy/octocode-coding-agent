@@ -9,7 +9,7 @@ import { renderAgentCall, renderAgentMessage, renderAgentResult } from "../../sr
 import type { RunDetails } from "../../src/octocode/subagents/run-types.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
-/** Colours show as tags, so a mark's colour role is visible: `<warning>◇`. */
+/** Colours show as tags, so a mark's colour role is visible: `<warning>◐`. */
 const tagged = {
 	fg: (color: string, text: string) => `<${color}>${text}`,
 	bg: (_color: string, text: string) => text,
@@ -31,29 +31,32 @@ describe("waiting on you: the ask tool", () => {
 	const tool = fake.tools.get("askUser");
 	const args = { questions: [{ question: "Keep it?", header: "Export" }] };
 
-	it("draws an open question as a still ⏺ in warning when motion is reduced", () => {
+	it("draws an open question as a still ◐ in warning when motion is reduced", () => {
 		animationClock.setReducedMotion(true);
 		const open = row({ isPartial: true, executionStarted: true });
-		expect(first(tool.renderCall(args, tagged, open))).toMatch(/^<warning>◇ /);
+		expect(first(tool.renderCall(args, tagged, open))).toMatch(/^<warning>◐ /);
 	});
 
-	it("shows answered ✓ in success, declined ✗ in error and interrupted ◼ in warning, on the header and the result", () => {
+	it("shows answered ✓ in success, declined ✗ in error and interrupted ◼ in warning on the result, and the state light on the header", () => {
 		const cases = [
 			{
 				details: { cancelled: false, answers: [{ question: "Keep it?", answer: "Yes", custom: false }] },
 				mark: "<success>✓",
+				light: "<muted>◉",
 			},
-			{ details: { cancelled: true, answers: [] }, mark: "<error>✗" },
-			{ details: { cancelled: true, answers: [], reason: "unavailable" }, mark: "<error>✗" },
-			{ details: { cancelled: true, answers: [], reason: "aborted" }, mark: "<warning>◼" },
+			{ details: { cancelled: true, answers: [] }, mark: "<error>✗", light: "<error>⊗" },
+			{ details: { cancelled: true, answers: [], reason: "unavailable" }, mark: "<error>✗", light: "<error>⊗" },
+			{ details: { cancelled: true, answers: [], reason: "aborted" }, mark: "<warning>◼", light: "<error>⊘" },
 		];
-		for (const { details, mark } of cases) {
+		for (const { details, mark, light } of cases) {
 			const context = row();
 			const result = tool.renderResult({ content: [], details }, {}, tagged, context);
 			expect(result.render(120).join("\n")).toContain(mark);
-			// The header reads the same state back from the row, as the light: its state's glyph (⏺ means running only),
+			// The header reads the same state back from the row, as the still state light (⏺ means running only),
 			// red when stopped.
-			expect(first(tool.renderCall(args, tagged, context))).toContain(mark === "<warning>◼" ? "<error>◼" : mark);
+			expect(first(tool.renderCall(args, tagged, context))).toBe(
+				`${light} <toolTitle>Ask<muted>(<muted>Export<muted>)`,
+			);
 		}
 	});
 });
@@ -156,14 +159,14 @@ describe("agent rows", () => {
 			tagged,
 			asking,
 		);
-		expect(call(asking)).toBe("<warning>◇ <toolTitle>Agent<muted>(<muted>audit auth<muted>)");
+		expect(call(asking)).toBe("<warning>◐ <toolTitle>Agent<muted>(<muted>audit auth<muted>)");
 	});
 
 	it.each([
-		// A finished run draws its state's glyph: ⏺ means running only.
-		["done", {}, "<success>✓"],
-		["blocked", { outcome: "blocked" as const }, "<warning>◇"],
-		["failed", { outcome: "failed" as const }, "<error>✗"],
+		// A finished run draws its still state light: ⏺ means running only.
+		["done", {}, "<muted>◉"],
+		["blocked", { outcome: "blocked" as const }, "<warning>◐"],
+		["failed", { outcome: "failed" as const }, "<error>⊗"],
 	])("draws a finished %s foreground run's header mark", (_name, extra, mark) => {
 		animationClock.setReducedMotion(true);
 		const context = row();
@@ -174,9 +177,9 @@ describe("agent rows", () => {
 	});
 
 	it.each([
-		["done", "<success>✓"],
-		["failed", "<error>✗"],
-		["stopped", "<error>◼"],
+		["done", "<muted>◉"],
+		["failed", "<error>⊗"],
+		["stopped", "<error>⊘"],
 	])("draws a background report that %s with its mark", (status, mark) => {
 		const message = renderAgentMessage(
 			{ content: "Done", details: { id: "general-0001", status, summary: "x" } } as never,

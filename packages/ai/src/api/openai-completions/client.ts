@@ -5,6 +5,7 @@ import type { TranscriptContext } from "../../utils/transcript.ts";
 import { getProviderCapabilities } from "../../utils/provider-capabilities.ts";
 import { copilotDynamicHeadersFor } from "../github-copilot-headers.ts";
 import { openAIEnvironmentHeaders } from "../openai-environment-headers.ts";
+import { wantsRouterMetadata } from "./openrouter-router.ts";
 import { getCompat } from "./compat.ts";
 import type { ResolvedOpenAICompletionsCompat } from "./types.ts";
 
@@ -36,6 +37,8 @@ export function createClient(
 	if (sessionId && getProviderCapabilities(model.provider).grokConversationHeader) {
 		headers["x-grok-conv-id"] = sessionId;
 	}
+
+	if (wantsRouterMetadata(model)) headers["X-OpenRouter-Metadata"] = "enabled";
 
 	const url = new URL(model.baseUrl);
 	url.pathname = `${url.pathname.replace(/\/$/, "")}/chat/completions`;

@@ -105,7 +105,6 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 					undefined,
 					view.hideThinking,
 					host.getMarkdownThemeWithSettings(),
-					undefined,
 					view.outputPad,
 					host.getMarkdownTransformers(),
 					contentOptions(),

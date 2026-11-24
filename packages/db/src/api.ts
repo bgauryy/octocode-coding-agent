@@ -54,6 +54,13 @@ export * as shellHistory from "./queries/shell-history.ts";
 export * as providerCooldowns from "./queries/provider-cooldowns.ts";
 export * as providerQuota from "./queries/provider-quota.ts";
 export type { ProviderQuota } from "./queries/provider-quota.ts";
+export * as providerThroughput from "./queries/provider-throughput.ts";
+export type {
+	ThroughputReserveInput,
+	ThroughputReserveResult,
+	ThroughputState,
+	ThroughputUsage,
+} from "./queries/provider-throughput.ts";
 export * as usageDaily from "./queries/usage-daily.ts";
 export type { UsageBilling, UsageDailyRow, UsageTotalRow } from "./queries/usage-daily.ts";
 export {

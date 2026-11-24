@@ -20,6 +20,8 @@ flowchart LR
 | [Auth](docs/auth.md)                                           | Auth resolution, header transforms, credential store, environment variables, OAuth, Vertex AI |
 | [Tools](docs/tools.md)                                         | Defining tools, constrained sampling, partial JSON, validation, event reference               |
 | [Images](docs/images.md)                                       | Image input and generation                                                                    |
+| [Model operations](docs/model-operations.md)                     | Embeddings, reranking, audio, realtime, video, files and batches                              |
+| [Gateway routing](docs/gateway-routing.md)                       | OpenRouter accounting and routing, Vercel routing, and OpenResponses                          |
 | [Classification](docs/classification.md)                       | Classifier models, OpenAI Decisions, llama.cpp                                                |
 | [Thinking and stop reasons](docs/thinking-and-stop-reasons.md) | Reasoning options, thinking events, stop reasons                                              |
 | [Errors and observability](docs/errors-and-observability.md)   | Telemetry, errors, aborts, payload and stream-event debugging                                 |

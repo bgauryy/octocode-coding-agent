@@ -20,7 +20,6 @@ import { blockingTool, count, createRig, type Rig } from "./rig.ts";
  * The hidden and one-off wake producers, driven through their real senders (RFC agent-event-loop R0, §4): graph notice,
  * hook feedback, wake retry and peer notice (wake/senders.ts), a child's report (subagents/handoff/wake.ts:10) and a monitor
  * alert (monitor/register.ts:131). Each case pins how the event reaches an idle session and a busy one.
- * R3/R5 move the producers onto topics; delivery (idle: one turn; busy: steer joins the run, follow-up waits) must not change.
  */
 
 const rigs: Rig[] = [];
@@ -42,14 +41,14 @@ const settled = async (r: Rig, turns: number) => {
 
 type Sender = (r: Rig, text: string) => void | Promise<void>;
 /** Sender, the delivery it uses today, and whether the event is hidden (`display: false`). */
-const SENDERS: Array<[string, Sender, "followUp" | "steer"]> = [
-	["graph notice (item.ready)", (r, text) => sendGraphNotice(r.api, "loop-graph", `${text} B7`), "followUp"],
-	["hook feedback (hook.feedback)", (r, text) => sendHookFeedback(r.api, "loop-hook", text), "followUp"],
-	["wake retry (wake.retry)", (r, text) => sendWakeRetry(r.api, "loop-retry", text, 1, "overloaded"), "followUp"],
-	["peer notice (peer.notice)", (r, text) => sendPeerNotice(r.api, "loop-peer", text), "steer"],
+const SENDERS: Array<[string, Sender]> = [
+	["graph notice (item.ready)", (r, text) => sendGraphNotice(r.api, "loop-graph", `${text} B7`)],
+	["hook feedback (hook.feedback)", (r, text) => sendHookFeedback(r.api, "loop-hook", text)],
+	["wake retry (wake.retry)", (r, text) => sendWakeRetry(r.api, "loop-retry", text, 1, "overloaded")],
+	["peer notice (peer.notice)", (r, text) => sendPeerNotice(r.api, "loop-peer", text)],
 ];
 
-describe.each(SENDERS)("%s", (_name, send, deliverAs) => {
+describe.each(SENDERS)("%s", (_name, send) => {
 	it("wakes an idle session with one turn that carries the text", async () => {
 		const r = await rig();
 		r.harness.setResponses([r.reply("woken")]);
@@ -58,7 +57,7 @@ describe.each(SENDERS)("%s", (_name, send, deliverAs) => {
 		expect(count(r.requests[0], "IDLE-WAKE")).toBe(1);
 	});
 
-	it(`reaches a busy session as a ${deliverAs}: ${deliverAs === "steer" ? "inside the running turn" : "in a turn of its own after it"}`, async () => {
+	it("delivers once at the busy session's next tool boundary", async () => {
 		const slow = blockingTool();
 		const r = await rig({ tools: [slow.tool] });
 		r.harness.setResponses([
@@ -71,9 +70,9 @@ describe.each(SENDERS)("%s", (_name, send, deliverAs) => {
 		await send(r, "BUSY-WAKE");
 		slow.release();
 		await running;
-		await settled(r, deliverAs === "steer" ? 1 : 2);
-		const carrying = r.requests.findIndex((request) => count(request, "BUSY-WAKE") > 0);
-		expect(carrying).toBe(deliverAs === "steer" ? 0 : 1);
+		await settled(r, 1);
+		expect(count(r.requests[0], "BUSY-WAKE")).toBe(1);
+		expect(r.harness.getPendingResponseCount()).toBe(1);
 	});
 });
 
@@ -83,7 +82,7 @@ const report = (id: string, wake: boolean) =>
 
 describe("a child's report (subagents/handoff/wake.ts:10)", () => {
 	it("starts the turn with the last send of a batch, so two reports are one turn (together)", async () => {
-		// `new` delivers reports through the loop's window, which this pins wide enough for both sends.
+		// Both reports arrive within this session's coalescing window.
 		const r = await rig({ settings: { runtime: { eventWindowSeconds: 0.3 } } });
 		r.harness.setResponses([r.reply("read both"), r.reply("must not be consumed")]);
 		void sendAgentReport(r.api, report("a", true), {}, undefined, false);
@@ -104,7 +103,7 @@ describe("a child's report (subagents/handoff/wake.ts:10)", () => {
 		expect(count(r.requests[0], "REPORT-quiet")).toBe(1);
 	});
 
-	it("waits as a follow-up while the parent runs", async () => {
+	it("joins the parent at the next tool boundary", async () => {
 		const slow = blockingTool();
 		const r = await rig({ tools: [slow.tool] });
 		r.harness.setResponses([
@@ -117,9 +116,9 @@ describe("a child's report (subagents/handoff/wake.ts:10)", () => {
 		await sendAgentReport(r.api, report("late", true), {}, undefined, true);
 		slow.release();
 		await running;
-		await settled(r, 2);
-		expect(count(r.requests[0], "REPORT-late")).toBe(0);
-		expect(count(r.requests[1], "REPORT-late")).toBe(1);
+		await settled(r, 1);
+		expect(count(r.requests[0], "REPORT-late")).toBe(1);
+		expect(r.harness.getPendingResponseCount()).toBe(1);
 	});
 });
 

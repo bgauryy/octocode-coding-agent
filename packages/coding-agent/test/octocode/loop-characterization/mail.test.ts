@@ -2,7 +2,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Mail } from "../../../src/octocode/team/mail.ts";
 import type { Message } from "../../../src/octocode/team/model.ts";
-import { blockingTool, branchLines, count, createRig, IN_NEW_MODE, sleep, type Rig } from "./rig.ts";
+import { blockingTool, branchLines, count, createRig, sleep, type Rig } from "./rig.ts";
 import { gateSummary } from "./summary-gate.ts";
 
 /**
@@ -91,7 +91,7 @@ describe("team mail", () => {
 });
 
 describe("an interrupt (team/mail.ts:126)", () => {
-	it("stops the running step, holds the mail, and starts the next turn only when `settled` hands it over", async () => {
+	it("stops the running tool and wakes the next turn once with the urgent mail", async () => {
 		const slow = blockingTool();
 		const r = await rig({ tools: [slow.tool] });
 		r.harness.setResponses([
@@ -104,8 +104,7 @@ describe("an interrupt (team/mail.ts:126)", () => {
 		expect(mail.deliver([message("MAIL-STOP", { interrupt: true, wake: true })], PARENT, r.ctx)).toBe(true);
 		await running.catch(() => undefined);
 		await r.harness.session.waitForIdle();
-		// Nothing was sent: the run ended and the mail is held for the settle handoff.
-		expect(r.requests).toHaveLength(0);
+		// The loop hands over the mail when the aborted run settles.
 		expect(mail.interrupted.aborted).toBe(true);
 		expect(mail.settled()).toBe(true);
 		expect(mail.interrupted.aborted).toBe(false);
@@ -126,41 +125,36 @@ describe("an interrupt (team/mail.ts:126)", () => {
 		expect(mail.settled()).toBe(false);
 	});
 
-	// `new` also stops at 95% and a peer's interrupt spares a compaction (R5): compaction-stop.test.ts pins that mode.
-	it.skipIf(IN_NEW_MODE)(
-		"cancels a running manual compaction (run-loop.ts:354 abortCompaction): no summary is saved, the mail still arrives",
-		async () => {
-			const r = await rig({
-				models: [{ id: "faux-1", contextWindow: 8000, maxTokens: 100 }],
-				compactionPolicy: { enabled: true, reserveTokens: 400, keepRecentTokens: 1 },
-			});
-			r.harness.setResponses([
-				fauxAssistantMessage(`s1:${"a".repeat(1500)}`),
-				fauxAssistantMessage(`s2:${"b".repeat(1500)}`),
-				r.reply("continued with the mail"),
-			]);
-			await r.harness.session.prompt("seed 1");
-			await r.harness.session.prompt("seed 2");
-			const gate = gateSummary(r.harness.session);
-			const mail = mailOf(r);
-			const compacting = r.harness.session.compact().then(
-				() => "saved",
-				(error: Error) => `cancelled: ${error.message}`,
-			);
-			await gate.started;
-			expect(r.harness.session.isCompacting).toBe(true);
-			expect(r.ctx.isIdle()).toBe(false);
-			mail.deliver([message("MAIL-STOP-COMPACTION", { interrupt: true, wake: true })], PARENT, r.ctx);
-			const outcome = await compacting;
-			expect(outcome).toMatch(/^cancelled/);
-			await r.harness.session.waitForIdle();
-			expect(branchLines(r.harness)).not.toContain("compaction");
-			expect(r.harness.session.isCompacting).toBe(false);
-			expect(r.requests).toHaveLength(0);
-			expect(mail.settled()).toBe(true);
-			await settled(r, 1);
-			expect(count(r.requests[0], "MAIL-STOP-COMPACTION")).toBe(1);
-			expect(branchLines(r.harness)).not.toContain("compaction");
-		},
-	);
+	it("queues peer mail during manual compaction and delivers it once behind the saved summary", async () => {
+		const r = await rig({
+			models: [{ id: "faux-1", contextWindow: 8000, maxTokens: 100 }],
+			compactionPolicy: { enabled: true, reserveTokens: 400, keepRecentTokens: 1 },
+		});
+		r.harness.setResponses([
+			fauxAssistantMessage(`s1:${"a".repeat(1500)}`),
+			fauxAssistantMessage(`s2:${"b".repeat(1500)}`),
+			r.reply("continued with the mail"),
+		]);
+		await r.harness.session.prompt("seed 1");
+		await r.harness.session.prompt("seed 2");
+		const gate = gateSummary(r.harness.session);
+		const mail = mailOf(r);
+		const compacting = r.harness.session.compact().then(
+			() => "saved",
+			(error: Error) => `cancelled: ${error.message}`,
+		);
+		await gate.started;
+		expect(r.harness.session.isCompacting).toBe(true);
+		expect(r.ctx.isIdle()).toBe(false);
+		mail.deliver([message("MAIL-STOP-COMPACTION", { interrupt: true, wake: true })], PARENT, r.ctx);
+		gate.release();
+		expect(await compacting).toBe("saved");
+		await r.harness.session.waitForIdle();
+		expect(branchLines(r.harness)).toContain("compaction");
+		expect(r.harness.session.isCompacting).toBe(false);
+		expect(mail.settled()).toBe(true);
+		await settled(r, 1);
+		expect(count(r.requests[0], "MAIL-STOP-COMPACTION")).toBe(1);
+		expect(count(branchLines(r.harness), "MAIL-STOP-COMPACTION")).toBe(1);
+	});
 });

@@ -1,3 +1,4 @@
+import { limitsFor } from "./limits.ts";
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import {
 	type FeatureSetup,
@@ -258,7 +259,10 @@ export function registerCompaction(
 			warn(error);
 		}
 	});
-	api.bus.on("session_shutdown", async () => flushSessionRecords());
+	api.bus.on("session_shutdown", async () => {
+		requests.reset();
+		await flushSessionRecords();
+	});
 	// File contents summarized away by compaction, or on another branch, are no longer in context: the guard keeps only
 	// the reads the context still shows, then the files worked on most recently are read back (and count as read).
 	// Switching to a model whose window the context does not fit compacts first, on the previous model: the next
@@ -301,7 +305,8 @@ export function registerCompaction(
 		// The workflows loaded last come back whole too: a pointer alone is seldom followed (`restore-skills.ts`).
 		await restoreLoadedSkills(api, ctx);
 	});
-	api.bus.on("session_compact_failed", async () => {
+	api.bus.on("session_compact_failed", async (event) => {
+		if (event.aborted && event.reason === "manual") requests.reset();
 		archive.discard();
 		continuity.discard();
 	});
@@ -328,6 +333,7 @@ export function registerCompaction(
 							? usage.contextWindow
 							: ctx.model?.contextWindow,
 				...(typeof usage?.tokens === "number" ? { contextTokens: usage.tokens } : {}),
+				keep: limitsFor(api, ctx.model).clearing,
 			});
 			if (pendingRestore && settleRestoredFiles(event.messages, pendingRestore, guard)) pendingRestore = undefined;
 			// Every request shows the messages as `requestView` describes; the cache-sharing summary request uses it too.

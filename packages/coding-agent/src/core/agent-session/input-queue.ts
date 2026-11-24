@@ -1,3 +1,4 @@
+import { recordCustomMessage } from "./custom-receipt.ts";
 /**
  * Messages waiting for the agent: queued steering and follow-up input with the metadata
  * `user_input` handlers receive, next-turn asides, and context-only custom messages held until the
@@ -353,13 +354,7 @@ export class SessionInputQueue {
 	}
 
 	appendCustomMessage(appMessage: CustomMessage): void {
-		this.host.session.sessionManager.appendCustomMessageEntry(
-			appMessage.customType,
-			appMessage.content,
-			appMessage.display,
-			appMessage.details,
-			appMessage.timestamp,
-		);
+		recordCustomMessage(this.host.session.sessionManager, appMessage);
 		// Announce the message before the refresh: the first event after the refresh makes transcript views rebuild from
 		// every entry, so a view told about the message afterwards would show it twice.
 		this.host.emit({ type: "message_start", message: appMessage });

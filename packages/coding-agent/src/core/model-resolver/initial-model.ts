@@ -10,6 +10,7 @@ import type { ModelRuntime } from "../model-runtime.ts";
 import { defaultModelPerProvider, ownProviderDefault } from "./default-models.ts";
 import { savedDefaultNotice } from "./fallback-notice.ts";
 import type { ScopedModel } from "./scoped-model.ts";
+import { isVirtualModel } from "../virtual-models.ts";
 
 export interface InitialModelResult {
 	model: Model<Api> | undefined;
@@ -111,10 +112,12 @@ export async function findInitialModel(options: {
 		: undefined;
 	if (defaultProviderMatch) return withLevel(defaultProviderMatch);
 
-	// 4. Try first available model with valid API key. An unattended run tries the providers that allow it first.
+	// 4. Try the first available physical model with valid auth. Virtual routers are explicit choices: without a
+	// physical model, registering one must not turn it into the implicit default. Unattended runs try allowed plans first.
+	const automatic = choosable.filter((model) => !isVirtualModel(model));
 	const allowed = (provider: string) => !unattended || modelRuntime.allowsUnattendedUse(provider);
 	for (const pass of unattended ? [true, false] : [true]) {
-		const candidates = choosable.filter((m) => allowed(m.provider) === pass);
+		const candidates = automatic.filter((m) => allowed(m.provider) === pass);
 		if (candidates.length === 0) continue;
 		// The user's per-provider defaults first, then the built-in ones; a provider a subscription pays for comes before a
 		// metered one, so a first message does not spend per-token credit while a plan is signed in.

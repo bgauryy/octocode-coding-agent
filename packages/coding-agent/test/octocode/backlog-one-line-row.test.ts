@@ -28,10 +28,10 @@ function draw(args: Record<string, unknown>, text: string, details: Record<strin
 describe("backlog rows say it once", () => {
 	it("heads a finished item with `Backlog(B561 → done) · Title` and draws no result line", async () => {
 		const out = draw({ op: "done", id: "B561" }, "B561 [done p2] x", { item }, 21);
-		expect(out.before).toBe("✓ Backlog(done B561)");
+		expect(out.before).toBe("◉ Backlog(done B561)");
 		await Promise.resolve();
 		expect(out.invalidate).toHaveBeenCalledTimes(1);
-		expect(out.header).toBe("✓ Backlog(B561 → done) · Idle timeout on provider model streams");
+		expect(out.header).toBe("◉ Backlog(B561 → done) · Idle timeout on provider model streams");
 		expect(out.result).toBe("");
 	});
 
@@ -50,7 +50,7 @@ describe("backlog rows say it once", () => {
 	it("keeps the result line for a read and for an error", () => {
 		const read = draw({ op: "list" }, "B2 [todo p2] second", { shown: 1, total: 1 });
 		expect(read.result).toContain("1 item");
-		expect(read.header).toBe("✓ Backlog(list)");
+		expect(read.header).toBe("◉ Backlog(list)");
 	});
 
 	it("shows a duration from one second, not a fast call's milliseconds", () => {

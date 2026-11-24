@@ -1,3 +1,4 @@
+import { terminalInput, userTexts } from "./e2e-ui-flows/request.ts";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -20,10 +21,6 @@ const shows = (pattern: RegExp | string) => async () => {
 	return typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
 };
 const idle = () => t!.until(() => !t!.host.session.isStreaming, "idle");
-const userTexts = (request: string): string[] =>
-	(JSON.parse(request) as Array<{ role: string; content: Array<{ text?: string }> | string }>)
-		.filter((m) => m.role === "user")
-		.map((m) => (typeof m.content === "string" ? m.content : m.content.map((c) => c.text ?? "").join("")));
 
 describe("approval dialog while the user types", () => {
 	async function openApproval() {
@@ -58,7 +55,7 @@ describe("approval dialog while the user types", () => {
 		await t!.until(shows("all done"), "the reply after approval");
 		await idle();
 		expect(fs.existsSync(marker)).toBe(true);
-		expect(userTexts(t!.requests.at(-1)!).at(-1)).toBe("steer me now");
+		expect(userTexts(t!.requests.at(-1)!).at(-1)).toBe(terminalInput("steer me now"));
 	});
 
 	it("shows the text being typed, lets Backspace edit it, and Esc clears it first and denies only when there is none", async () => {

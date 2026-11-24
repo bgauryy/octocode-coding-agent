@@ -77,7 +77,7 @@ export function registerArchiveLifecycle(
 			const workspace = registeredWorkspace(ctx.cwd, agent);
 			let busy = 0;
 			/** The view file as it was when it proved unusable: no projection until it changes. */
-			let foreign: { file: string; signature: string | undefined } | undefined;
+			let foreign: ForeignViewError | undefined;
 			let projectedSequence: number | undefined;
 			// At most one projection writes at a time; a request meanwhile runs once after it, with the newest events.
 			let running: Promise<void> | undefined;
@@ -108,8 +108,7 @@ export function registerArchiveLifecycle(
 							retry.unref?.();
 							return;
 						}
-						if (error instanceof ForeignViewError)
-							foreign = { file: error.file, signature: await viewSignature(error.file) };
+						if (error instanceof ForeignViewError) foreign = error;
 						// A lock that never frees warns once; later commits get a fresh quiet retry budget.
 						else busy = 0;
 						report(ctx, error);

@@ -11,7 +11,9 @@ import {
 	type StdioTransport,
 } from "../client/index.ts";
 import { raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
-import { hostIdentity, hostOutput } from "../host.ts";
+import type { McpServerEntry } from "../config.ts";
+import { elicitationHandler } from "./elicitation.ts";
+import { hostElicitation, hostIdentity, hostOutput } from "../host.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { McpServerLog } from "../log.ts";
 import { cutText } from "@octocodeai/octocode-common/text";
@@ -167,20 +169,30 @@ export async function connectWithRetries<T>(
 /**
  * A client for the server `name`, with `cwd` as its root. Server log messages and client errors go to
  * `log`. `closeClient` is memoized: a second `client.close()` returns before the first finished
- * closing the transport.
+ * closing the transport. With `connection` (the tool calls waiting on it say who is asked, `elicitation-context.ts`),
+ * the client takes the server's requests for user input, unless the entry sets `elicitation: false` or the host
+ * installed no port to ask through: the capability is then not declared.
  */
 export function createMcpClient(
 	name: string,
 	cwd: string,
 	timeoutMs: number,
 	log: McpServerLog | undefined,
+	connection?: { entry: McpServerEntry },
 ): { client: McpClient; closeClient: () => Promise<void> } {
+	const elicits = connection !== undefined && connection.entry.config.elicitation !== false && hostElicitation();
 	const client = new McpClient({
 		name: "octocode",
 		version: hostIdentity().version,
 		requestTimeoutMs: timeoutMs,
 		roots: [{ uri: pathToFileURL(cwd).href, name: basename(cwd) }],
+		...(elicits ? { capabilities: { elicitation: { form: {} } } } : {}),
 	});
+	if (elicits)
+		client.setRequestHandler(
+			"elicitation/create",
+			elicitationHandler(name, connection, (line) => log?.write(name, { level: "info", logger: "client", data: line })),
+		);
 	if (log) {
 		client.onNotification("notifications/message", (params) => log.write(name, params));
 		// Transport and protocol errors (an oversized frame, a dead stream, malformed JSON) are otherwise dropped.

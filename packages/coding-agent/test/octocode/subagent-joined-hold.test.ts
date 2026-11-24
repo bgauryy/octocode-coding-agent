@@ -14,8 +14,6 @@ import { testFeatures } from "../helpers/features.ts";
 import { tmp } from "./helpers.ts";
 
 const posix = process.platform !== "win32";
-/** `OCTOCODE_TEST_EVENT_LOOP=new` runs these with the wake gate and the live event loop installed, as a session is. */
-const eventLoop = process.env.OCTOCODE_TEST_EVENT_LOOP as "shadow" | "new" | undefined;
 
 /** A subagent session with the real bash tool, the native run-end hold, and a handle on its Stop signal. */
 async function child(options: { jobHoldMs?: number } = {}) {
@@ -24,10 +22,9 @@ async function child(options: { jobHoldMs?: number } = {}) {
 	const stop = new AbortController();
 	const harness = await createHarness({
 		sessionManager: SessionManager.create(root, path.join(root, "sessions")),
-		...(eventLoop ? { settings: { runtime: { eventLoop } } } : {}),
 		features: testFeatures([
 			(api) => {
-				if (eventLoop) registerWake(api);
+				registerWake(api);
 				registerBashTool(api, new Subcommands(), jobs, () => ({ backgroundAfterSeconds: 0 }));
 				registerNativeSessionLifecycle(api, {
 					isSubagent: true,

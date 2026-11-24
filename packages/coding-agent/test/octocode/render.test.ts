@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { animationClock, MOTION, SPINNER, visibleWidth } from "@octocodeai/octocode-tui";
+import { animationClock, MOTION, visibleWidth } from "@octocodeai/octocode-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatAgo, formatDuration, formatSpan } from "../../src/octocode/shared/format.ts";
 import { recordCheck } from "../../src/octocode/shared/locks.ts";
@@ -8,8 +8,6 @@ import { resultBlock, toolHeader } from "../../src/octocode/render/tool.ts";
 import { wholeSeconds } from "../../src/octocode/shared/util.ts";
 import { rendered, theme } from "./fake-host.ts";
 import { appKey, clip, clipColumns, expandKey, plural, queryTarget } from "../../src/octocode/shared/text.ts";
-import { stopRowMotion } from "../../src/octocode/render/motion.ts";
-import { markFrameMs } from "../../src/theme/status.ts";
 import { stopRowTimers, timed, timedTool, timingOf } from "../../src/octocode/render/rows.ts";
 import type { ToolRow } from "../../src/octocode/render/types.ts";
 
@@ -34,12 +32,8 @@ afterEach(() => {
 /** Tags each colour token, so a mark's colour reads in the text. */
 const tagged = { ...(theme as object), fg: (color: string, text: string) => `<${color}>${text}` } as never;
 
-/**
- * A running row's light: the full ⏺ while motion is reduced (the default here), the working spinner's frames while it
- * moves (`SPIN`). Never a half-filled circle: the user asked for an animation or a state.
- */
+/** A running row's light: the full ⏺, still with motion on or reduced. A row never draws a spinner frame. */
 const STILL_RUN = "⏺";
-const SPIN = `[${SPINNER.braille.join("")}]`;
 
 describe("format helpers", () => {
 	it.each([
@@ -110,11 +104,11 @@ describe("toolHeader", () => {
 		expect(rendered(toolHeader(theme, row(), "Bash", "ls"))).toBe("○ Bash(ls)");
 	});
 
-	it("draws each phase as its light: grey, yellow, a spinner, green, red", () => {
+	it("draws each phase as its light: grey, yellow, green while running, quiet when done, red", () => {
 		vi.useFakeTimers();
 		const mark = (context: ReturnType<typeof row>, options?: { state: "waiting" }) =>
-			// ⏺ means running only: each settled phase draws its own glyph (○ ◇ ✓ ✗), in its colour.
-			rendered(toolHeader(tagged, context, "Bash", "ls", options)).match(/^<(\w+)>[○◇⏺✓✗◼]/);
+			// ⏺ means running only: each settled phase draws its own circle (○ ◐ ◉ ⊗ ⊘), in its colour.
+			rendered(toolHeader(tagged, context, "Bash", "ls", options)).match(/^<(\w+)>[○◐⏺◉⊗⊘]/);
 		try {
 			expect(mark(row())?.[1]).toBe("dim");
 			expect(mark(row({ executionStarted: true, toolCallId: "call-phase" }))?.[1]).toBe("warning");
@@ -125,7 +119,7 @@ describe("toolHeader", () => {
 			const done = rendered(
 				toolHeader(tagged, row({ executionStarted: true, isPartial: false, durationMs: 1_500 }), "Bash", "ls"),
 			);
-			expect(done).toContain("<success>✓");
+			expect(done).toContain("<muted>◉");
 			expect(running).toContain("· 0ms");
 			expect(done).toContain("· 1.5s");
 			expect(mark(row({ isPartial: false, isError: true }))?.[1]).toBe("error");
@@ -145,11 +139,11 @@ describe("toolHeader", () => {
 		const doneContext = { ...context, isPartial: false, durationMs: 1_900 };
 		const done = toolHeader(theme, { ...doneContext, lastComponent: header }, "Bash", "sleep 2");
 		expect(done).toBe(header);
-		expect(rendered(done)).toBe("✓ Bash(sleep 2) · 1.9s");
+		expect(rendered(done)).toBe("◉ Bash(sleep 2) · 1.9s");
 		expect(context.state.ticking).toBe(false);
 		vi.advanceTimersByTime(5_000);
 		expect(context.invalidate).toHaveBeenCalledTimes(2);
-		expect(rendered(toolHeader(theme, doneContext, "Bash", "sleep 2"))).toBe("✓ Bash(sleep 2) · 1.9s");
+		expect(rendered(toolHeader(theme, doneContext, "Bash", "sleep 2"))).toBe("◉ Bash(sleep 2) · 1.9s");
 	});
 
 	it("ticks every running row on its own: an older row keeps its time while a newer one runs", () => {
@@ -194,11 +188,11 @@ describe("toolHeader", () => {
 		vi.useFakeTimers();
 		try {
 			const context = row({ executionStarted: true, toolCallId: "call-wait" });
-			expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("◇ Bash(ls) · waiting");
+			expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("◐ Bash(ls) · waiting");
 			vi.advanceTimersByTime(5_000);
 			// Nothing to tick while waiting.
 			expect(context.invalidate).not.toHaveBeenCalled();
-			expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("◇ Bash(ls) · waiting");
+			expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("◐ Bash(ls) · waiting");
 			const run = timed(async (_id: string) => {
 				await new Promise((resolve) => setTimeout(resolve, 2_000));
 				return { content: [] };
@@ -216,7 +210,7 @@ describe("toolHeader", () => {
 			);
 			// Octocode's duration (the run only) matches the live clock.
 			expect(rendered(toolHeader(theme, { ...context, isPartial: false, durationMs: 2_000 }, "Bash", "ls"))).toBe(
-				"✓ Bash(ls) · 2s",
+				"◉ Bash(ls) · 2s",
 			);
 		} finally {
 			stopRowTimers();
@@ -281,10 +275,10 @@ describe("toolHeader", () => {
 			{ meta: "bg" },
 		);
 		const text = rendered(header, 40);
-		// A failed row draws ✗ in red: ⏺ means running only.
-		expect(text.startsWith("✗ Web(xxx")).toBe(true);
+		// A failed row draws ⊗ in red: ⏺ means running only.
+		expect(text.startsWith("⊗ Web(xxx")).toBe(true);
 		const red = rendered(toolHeader(tagged, row({ isPartial: false, isError: true }), "Web", "x"));
-		expect(red).toContain("<error>✗");
+		expect(red).toContain("<error>⊗");
 		expect(text.endsWith(") · bg · 1.5s")).toBe(true);
 		expect(visibleWidth(text)).toBeLessThanOrEqual(40);
 	});
@@ -296,7 +290,7 @@ describe("toolHeader", () => {
 
 	it("shows native duration immediately for restored rows without a result-driven redraw", async () => {
 		const context = row({ isPartial: false, durationMs: 1_200 });
-		expect(rendered(toolHeader(theme, context, "Read", "a.ts"))).toBe("✓ Read(a.ts) · 1.2s");
+		expect(rendered(toolHeader(theme, context, "Read", "a.ts"))).toBe("◉ Read(a.ts) · 1.2s");
 		resultBlock(theme, context, { summary: "Read 3 lines" });
 		await Promise.resolve();
 		expect(context.invalidate).not.toHaveBeenCalled();
@@ -304,20 +298,20 @@ describe("toolHeader", () => {
 
 	it("names a finished row's duration only from one second; a running row keeps its clock", () => {
 		for (const ms of [0, 21, 999]) {
-			expect(rendered(toolHeader(theme, row({ isPartial: false, durationMs: ms }), "Bash", "ls"))).toBe("✓ Bash(ls)");
+			expect(rendered(toolHeader(theme, row({ isPartial: false, durationMs: ms }), "Bash", "ls"))).toBe("◉ Bash(ls)");
 		}
 		expect(rendered(toolHeader(theme, row({ isPartial: false, durationMs: 1_000 }), "Bash", "ls"))).toBe(
-			"✓ Bash(ls) · 1s",
+			"◉ Bash(ls) · 1s",
 		);
 		expect(rendered(toolHeader(theme, row({ isPartial: false, durationMs: 125_000 }), "Bash", "ls"))).toBe(
-			"✓ Bash(ls) · 2m05s",
+			"◉ Bash(ls) · 2m05s",
 		);
 	});
 
 	it("does not invent completed durations when Octocode has no recorded timing", () => {
 		const context = row({ isPartial: false, state: { startedAt: Date.now() - 5_000, durationMs: 1_200 } });
-		expect(rendered(toolHeader(theme, context, "Read", "a.ts"))).toBe("✓ Read(a.ts)");
-		expect(rendered(toolHeader(theme, { ...context, durationMs: 0 }, "Read", "a.ts"))).toBe("✓ Read(a.ts)");
+		expect(rendered(toolHeader(theme, context, "Read", "a.ts"))).toBe("◉ Read(a.ts)");
+		expect(rendered(toolHeader(theme, { ...context, durationMs: 0 }, "Read", "a.ts"))).toBe("◉ Read(a.ts)");
 	});
 });
 
@@ -649,14 +643,14 @@ describe("interrupted rows and expandable prefaces", () => {
 		const state: ToolRow = {};
 		const invalidate = vi.fn();
 		const context = { isPartial: false, isError: true, executionStarted: true, state, invalidate };
-		expect(rendered(toolHeader(colored, context, "Bash", "sleep 9") as never)).toContain("<error>✗");
+		expect(rendered(toolHeader(colored, context, "Bash", "sleep 9") as never)).toContain("<error>⊗");
 		const body = rendered(resultBlock(colored, context, { summary: "Operation aborted" }));
 		expect(body).toContain("<warning>Operation aborted");
 		expect(body).not.toContain("Error:");
 		await Promise.resolve();
 		expect(invalidate).toHaveBeenCalledTimes(1);
-		// The stopped light is red like the failed one, with its own glyph ◼: the row's text says it was interrupted.
-		expect(rendered(toolHeader(colored, context, "Bash", "sleep 9") as never)).toContain("<error>◼");
+		// The stopped light is red like the failed one, with its own glyph ⊘: the row's text says it was interrupted.
+		expect(rendered(toolHeader(colored, context, "Bash", "sleep 9") as never)).toContain("<error>⊘");
 		// A real failure keeps its Error prefix and the red light.
 		const failed = rendered(
 			resultBlock(colored, { isPartial: false, isError: true, state: {} }, { summary: "exit 1" }),
@@ -671,7 +665,7 @@ describe("interrupted rows and expandable prefaces", () => {
 		expect(body).toContain("<warning>Not run: the model response failed");
 		expect(body).not.toContain("Error:");
 		await Promise.resolve();
-		expect(rendered(toolHeader(colored, context, "Bash", "ls") as never)).toContain("<error>◼");
+		expect(rendered(toolHeader(colored, context, "Bash", "ls") as never)).toContain("<error>⊘");
 	});
 
 	it("counts a preface apart from hidden body lines and shows it only when expanded", () => {
@@ -718,16 +712,19 @@ describe("interrupted rows and expandable prefaces", () => {
 describe("tool row motion", () => {
 	beforeEach(() => animationClock.setReducedMotion(false));
 
-	it("repaints a running row from the animation clock at the light's cadence: its spinner turns", () => {
+	it("holds a running row's light still: nothing repaints at spinner pace, only its one-second elapsed clock", () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(10_000);
 		const context = row({ executionStarted: true });
-		const first = rendered(toolHeader(theme, context, "Bash", "ls"))[0];
+		expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe(`${STILL_RUN} Bash(ls) · 0ms`);
+		// The clock runs for the elapsed counter alone.
 		expect(animationClock.isRunning()).toBe(true);
-		vi.advanceTimersByTime(markFrameMs("running", { light: true }));
-		expect(context.invalidate).toHaveBeenCalled();
-		const second = rendered(toolHeader(theme, context, "Bash", "ls"))[0];
-		expect(second).not.toBe(first);
+		vi.advanceTimersByTime(MOTION.spinnerMs * 9);
+		expect(context.invalidate).not.toHaveBeenCalled();
+		expect(rendered(toolHeader(theme, context, "Bash", "ls"))[0]).toBe(STILL_RUN);
+		vi.advanceTimersByTime(MOTION.spinnerMs);
+		expect(context.invalidate).toHaveBeenCalledTimes(1);
+		expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe(`${STILL_RUN} Bash(ls) · 1s`);
 	});
 
 	it("lets go of the clock the moment a row finishes, and writes nothing while idle", () => {
@@ -736,7 +733,7 @@ describe("tool row motion", () => {
 		toolHeader(theme, context, "Bash", "ls");
 		vi.advanceTimersByTime(MOTION.spinnerMs);
 		const done = { ...context, isPartial: false, durationMs: 1_500 };
-		expect(rendered(toolHeader(theme, done, "Bash", "ls"))).toBe("✓ Bash(ls) · 1.5s");
+		expect(rendered(toolHeader(theme, done, "Bash", "ls"))).toBe("◉ Bash(ls) · 1.5s");
 		expect(animationClock.isRunning()).toBe(false);
 		const calls = context.invalidate.mock.calls.length;
 		vi.advanceTimersByTime(5_000);
@@ -748,11 +745,11 @@ describe("tool row motion", () => {
 		toolHeader(theme, restored, "Read", "a.ts");
 		expect(animationClock.isRunning()).toBe(false);
 		const blocked = row({ isPartial: false });
-		expect(rendered(toolHeader(theme, blocked, "Agent", "x", { state: "waiting" }))).toMatch(/^◇ Agent\(x\)/);
+		expect(rendered(toolHeader(theme, blocked, "Agent", "x", { state: "waiting" }))).toMatch(/^◐ Agent\(x\)/);
 		expect(animationClock.isRunning()).toBe(false);
 	});
 
-	it("turns every running row's spinner on its own subscription and lets go when they finish", () => {
+	it("ticks every running row's elapsed second on its own subscription, lights still, and lets go when they finish", () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(10_000);
 		const older = row({ executionStarted: true });
@@ -760,11 +757,14 @@ describe("tool row motion", () => {
 		toolHeader(theme, older, "Bash", "sleep 10");
 		toolHeader(theme, newer, "Bash", "seq 1 60");
 		const first = rendered(toolHeader(theme, older, "Bash", "sleep 10"))[0];
-		vi.advanceTimersByTime(markFrameMs("running", { light: true }) * 13);
-		expect(older.invalidate.mock.calls.length).toBeGreaterThanOrEqual(10);
-		expect(newer.invalidate.mock.calls.length).toBeGreaterThanOrEqual(10);
-		expect(rendered(toolHeader(theme, older, "Bash", "sleep 10"))[0]).not.toBe(first);
-		stopRowMotion();
+		expect(first).toBe(STILL_RUN);
+		vi.advanceTimersByTime(MOTION.spinnerMs * 9);
+		expect(older.invalidate).not.toHaveBeenCalled();
+		expect(newer.invalidate).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(MOTION.tickMs * 13 - MOTION.spinnerMs * 9);
+		expect(older.invalidate).toHaveBeenCalledTimes(13);
+		expect(newer.invalidate).toHaveBeenCalledTimes(13);
+		expect(rendered(toolHeader(theme, older, "Bash", "sleep 10"))[0]).toBe(first);
 		stopRowTimers();
 		expect(animationClock.isRunning()).toBe(false);
 	});
@@ -773,19 +773,21 @@ describe("tool row motion", () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(10_000);
 		const context = row({ executionStarted: true, toolCallId: "call-wait-bound" });
-		expect(rendered(toolHeader(tagged, context, "Bash", "ls"))).toContain("<warning>◇");
+		expect(rendered(toolHeader(tagged, context, "Bash", "ls"))).toContain("<warning>◐");
 		vi.advanceTimersByTime(10_000);
 		expect(context.invalidate).not.toHaveBeenCalled();
-		expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("◇ Bash(ls) · waiting");
+		expect(rendered(toolHeader(theme, context, "Bash", "ls"))).toBe("◐ Bash(ls) · waiting");
 	});
 
-	it("shows a row that waits for its checks or approval as a still yellow light, then the spinner when its run begins", () => {
+	it("shows a row that waits for its checks or approval as a still yellow light, then the green light when its run begins", () => {
 		vi.useFakeTimers();
 		const context = row({ executionStarted: true, toolCallId: "call-breathe" });
-		expect(rendered(toolHeader(tagged, context, "Bash", "ls"))).toContain("<warning>◇");
+		expect(rendered(toolHeader(tagged, context, "Bash", "ls"))).toContain("<warning>◐");
 		void timed(async (_id: string) => ({ content: [] }))("call-breathe");
-		// A running light is green (contract change: status dots, wave C).
-		expect(rendered(toolHeader(tagged, context, "Bash", "ls"))).toMatch(new RegExp(`^<success>${SPIN} `));
+		// A running light is green and still: the row draws no spinner frame.
+		expect(rendered(toolHeader(tagged, context, "Bash", "ls"))).toBe(
+			`<success>${STILL_RUN} <toolTitle>Bash<muted>(<muted>ls<muted>)<dim> · 0ms`,
+		);
 	});
 
 	it("freezes the spinner in reduced motion, keeping only the one-second elapsed clock", () => {

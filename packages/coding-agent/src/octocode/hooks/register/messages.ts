@@ -81,18 +81,19 @@ export function registerMessageHooks(
 	{ dispatch, reportFailure }: { dispatch: Dispatch; reportFailure: ReportFailure },
 ): Pick<HooksView, "messageSend" | "messageReceive"> {
 	let messageAbort = new AbortController();
-	let messageSessionId: string | undefined;
+	let session: { cwd: string; id: string } | undefined;
+	const belongs = (ctx: FeatureContext) => session?.cwd === ctx.cwd && session.id === ctx.sessionManager.getSessionId();
 	const received = new Set<string>();
 	let receivedObjects = new WeakSet<MessageEnvelope>();
 
 	api.bus.on("session_start", async (_event, ctx) => {
 		messageAbort.abort();
 		messageAbort = new AbortController();
-		messageSessionId = undefined;
+		session = undefined;
 		received.clear();
 		receivedObjects = new WeakSet();
 		try {
-			messageSessionId = ctx.sessionManager.getSessionId();
+			session = { cwd: ctx.cwd, id: ctx.sessionManager.getSessionId() };
 			for (const entry of ctx.sessionManager.getBranch?.() ?? []) {
 				const message =
 					entry.type === "message"
@@ -112,8 +113,7 @@ export function registerMessageHooks(
 	api.bus.on("session_shutdown", async () => messageAbort.abort());
 
 	const messageSend: HooksView["messageSend"] = async (message, ctx) => {
-		if (ctx.sessionManager.getSessionId() !== messageSessionId)
-			throw new Error("The message belongs to a different session.");
+		if (!belongs(ctx)) throw new Error("The message belongs to a different session.");
 		const signal = ctx.signal ? AbortSignal.any([messageAbort.signal, ctx.signal]) : messageAbort.signal;
 		signal.throwIfAborted();
 		const verdict = await dispatch(ctx, "PreMessageSend", messageNames(message), () => ({ message }), signal);
@@ -129,7 +129,7 @@ export function registerMessageHooks(
 		const signal = messageAbort.signal;
 		if (signal.aborted) return;
 		try {
-			if (ctx.sessionManager.getSessionId() !== messageSessionId) return;
+			if (!belongs(ctx)) return;
 		} catch {
 			return;
 		}

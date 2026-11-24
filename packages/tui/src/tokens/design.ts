@@ -7,20 +7,20 @@
 export type UiState = "pending" | "running" | "waiting" | "done" | "failed" | "stopped";
 
 /**
- * Spinner frame sets: the one family every running mark animates with. A mark that cannot move is a full mark
- * (`GLYPH.light`), never a frame held still: a half-filled circle reads as half done.
+ * Spinner frame sets. One thing on screen spins, the loader (`Loader`, drawn through `spinnerFrame`); every other
+ * running mark is the still `GLYPH.running`, never a spinner frame held still.
  */
 export const SPINNER = {
 	braille: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
 } as const satisfies Record<string, readonly string[]>;
 
 /**
- * Marks. A state has exactly one glyph (`running` animates through `SPINNER.braille`; `GLYPH.running` is its static
- * mark, a hollow dotted circle shown whenever motion is still); presence and structure marks never stand for a state.
+ * Marks. A state has exactly one glyph (an outcome inside a row: `✓ answered`, `✗ file: error`); the row's own state
+ * is its state light (`LIGHT_GLYPH`). Presence and structure marks never stand for a state.
  */
 export const GLYPH = {
 	pending: "○",
-	running: "◌",
+	running: "⏺",
 	waiting: "◇",
 	done: "✓",
 	failed: "✗",
@@ -40,9 +40,21 @@ export const GLYPH = {
 	/** From one value to another (`A → B`), a state change or a question's answer. */
 	arrow: "→",
 	userBar: "▎",
-	/** The running state light where it cannot move: a full dot, only ever for running (settled lights draw their state's glyph). */
-	light: "⏺",
 } as const;
+
+/**
+ * The state light: the one-cell circle in front of a tool, agent or work row and in the footer. It never moves, and
+ * each state has its own shape, so it reads without colour: empty while idle or queued, full while running, half while
+ * it waits for the user, a ringed dot when done, crossed when failed, barred when stopped.
+ */
+export const LIGHT_GLYPH = {
+	pending: "○",
+	running: GLYPH.running,
+	waiting: "◐",
+	done: "◉",
+	failed: "⊗",
+	stopped: "⊘",
+} as const satisfies Readonly<Record<UiState, string>>;
 
 /** Glyph marks: one cell wide in common terminals, none shared with a `GLYPH` state mark; the theme colours them. */
 const TONE_GLYPH = { calm: "≋", caution: "▲", problem: "◆" } as const;
@@ -90,12 +102,6 @@ export const MOTION = {
 	spinnerMs: 100,
 	/** How long a foreground spinner stays hidden after it starts: work that ends sooner never flashes one. */
 	spinnerDelayMs: 200,
-	/**
-	 * Spinner frame interval of work running in the background (the team panel's agents and jobs). These rows can spin
-	 * for hours while nothing else moves; every frame repaints the terminal, and terminals that render rows as DOM
-	 * (VS Code with GPU acceleration off, screen-reader mode) pay for each one. The foreground keeps `spinnerMs`.
-	 */
-	backgroundSpinnerMs: 200,
 	/** A light band crossing a live label (thinking, the working verb); every band shares one epoch, so labels sweep in step. */
 	shimmerPeriodMs: 2_000,
 	/** One in-and-out breath of a mark that waits on the user. */

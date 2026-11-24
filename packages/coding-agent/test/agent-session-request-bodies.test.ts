@@ -160,7 +160,7 @@ describe("request bodies with read-only context handlers", () => {
 			body.replaceAll(join(tempDir, "reading"), "<dir>").replaceAll(join(tempDir, "copying"), "<dir>");
 		expect(reading.bodies.map(normalize)).toEqual(copying.bodies.map(normalize));
 		const unkeyed = (trace: unknown) =>
-			JSON.stringify(trace, (key, value: unknown) => (key === "entryKey" ? undefined : value));
+			JSON.stringify(trace, (key, value: unknown) => (key === "entryKey" || key === "throughput" ? undefined : value));
 		// The reading path hands the provider the session's own message objects, so every message layer names its entry;
 		// the copying path's handler clones them, so no layer can be tied to an entry.
 		for (const trace of reading.traces) {
@@ -170,6 +170,8 @@ describe("request bodies with read-only context handlers", () => {
 		}
 		expect(copying.traces.every((trace) => trace!.layers.every((layer) => layer.entryKey === undefined))).toBe(true);
 		for (const run of [reading, copying]) {
+			for (const trace of run.traces)
+				expect(trace?.throughput).toMatchObject({ priority: "foreground", actualTokens: 12 });
 			expect(run.traces.map(unkeyed)).toEqual(
 				run.bodies.map((body) => JSON.stringify(describePayloadLayers("anthropic-messages", JSON.parse(body)))),
 			);

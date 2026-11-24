@@ -97,8 +97,7 @@ export function retryDelayFor(
 	}
 	const asked = askedDelayMs(failure);
 	if (!clearsWithWaiting(failure.errorMessage ?? "")) return Math.max(backoffMs, asked);
-	const cap =
-		policy.maxAgentDelayMs === undefined ? Number.POSITIVE_INFINITY : Math.max(backoffMs, policy.maxAgentDelayMs);
+	const cap = policy.maxAgentDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS;
 	const spread = Math.round(backoffMs + (backoffMs / 2) * random());
 	const providerDelay = asked > 0 ? asked + Math.round(RETRY_AFTER_SPREAD_MS * random()) : 0;
 	const delayMs = Math.max(Math.min(Math.max(spread, providerDelay), cap), asked);

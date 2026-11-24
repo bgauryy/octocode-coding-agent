@@ -3,6 +3,7 @@ export type KnownApi =
 	| "openai-completions"
 	| "mistral-conversations"
 	| "openai-responses"
+	| "openresponses"
 	| "azure-openai-responses"
 	| "anthropic-messages"
 	| "bedrock-converse-stream"

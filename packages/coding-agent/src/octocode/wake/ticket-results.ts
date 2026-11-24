@@ -1,7 +1,7 @@
 import type { FeatureSetup } from "../../core/features/index.ts";
 import { recordProblem } from "../../core/diagnostics-log.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
-import { registeredWorkspace } from "../../storage/workspace-database.ts";
+import { registeredWorkspaceWhenReady } from "../../storage/workspace-database.ts";
 import type { AgentDb } from "../../../../db/src/api.ts";
 import { EventSubscribers } from "../events/subscribers.ts";
 import { Tickets } from "../events/tickets.ts";
@@ -11,8 +11,7 @@ import type { WakeGate } from "./gate.ts";
 /**
  * Delivers a callback ticket's result to the agent that asked (`events/tickets.ts`): the result is a `ticket.resolved` or
  * `ticket.rejected` row in the event log under the asker's session, written by whichever process settled the ticket. This
- * reads each such row once, from a stored offset, and hands it to the wake gate: the live loop delivers it when
- * `runtime.eventLoop` is `new`, the gate itself in every other mode. A resumed session reads on from its offset, so a result
+ * reads each such row once, from a stored offset, and hands it to the wake gate for the live loop to deliver. A resumed session reads on from its offset, so a result
  * that arrived while it was away is delivered once. The same timer expires overdue tickets and settles the tickets that
  * events the gate sees (reports, ends, item states, job exits) satisfy.
  */
@@ -33,22 +32,42 @@ class TicketResults {
 
 	constructor(
 		agent: AgentDb,
-		gate: Pick<WakeGate, "emit" | "onEmit">,
 		options: { workspaceId: string; sessionId: string; now?: () => number; failed?: (error: unknown) => void },
 	) {
 		const now = options.now ?? Date.now;
 		const failed = options.failed ?? ((error: unknown) => void recordProblem("ticket-results", String(error)));
 		this.tickets = new Tickets(agent, { ...options, now });
-		this.subscribers = new EventSubscribers(agent.db, {
+		this.subscribers = new EventSubscribers(agent, {
 			...options,
 			pid: process.pid,
 			ttlMs: OFFSET_TTL_MS,
 			now,
 			failed: (hook, event, error) => failed(new Error(`${hook} event ${event.seq}: ${String(error)}`)),
 		});
+		this.failed = failed;
+	}
+
+	/**
+	 * Expires overdue tickets, then delivers every result not yet delivered; calls overlap one at a time. The expiry
+	 * transaction runs only while some ticket is pending; the delivery is an indexed read from the stored offset, so a
+	 * ticket opened and settled between two ticks is still delivered.
+	 */
+	tick(): Promise<void> {
+		return (this.ticking ??= Promise.resolve()
+			.then(async () => {
+				if (this.tickets.anyPending()) this.tickets.expire();
+				await this.subscribers.pump();
+			})
+			.finally(() => {
+				this.ticking = undefined;
+			}));
+	}
+
+	/** Ticks every two seconds until `close`. The timer never keeps the process alive. */
+	async start(gate: Pick<WakeGate, "emit" | "onEmit">, intervalMs = TICK_MS): Promise<void> {
 		for (const topic of ["ticket.resolved", "ticket.rejected"] as const)
 			this.stops.push(
-				this.subscribers.subscribe({
+				await this.subscribers.subscribe({
 					hook: `ticket-results:${topic}`,
 					topic,
 					handle: (event) => deliver(gate, event as AgentEvent<"ticket.resolved" | "ticket.rejected">),
@@ -69,26 +88,9 @@ class TicketResults {
 				});
 			}),
 		);
-		this.failed = failed;
-	}
-
-	/**
-	 * Expires overdue tickets, then delivers every result not yet delivered; calls overlap one at a time. The expiry
-	 * transaction runs only while some ticket is pending; the delivery is an indexed read from the stored offset, so a
-	 * ticket opened and settled between two ticks is still delivered.
-	 */
-	tick(): Promise<void> {
-		const run = (this.ticking ?? Promise.resolve()).then(async () => {
-			if (this.tickets.anyPending()) this.tickets.expire();
-			await this.subscribers.pump();
-		});
-		this.ticking = run.catch(() => undefined);
-		return run;
-	}
-
-	/** Ticks every two seconds until `close`. The timer never keeps the process alive. */
-	start(intervalMs = TICK_MS): void {
-		this.timer ??= setInterval(() => void this.tick().catch(this.failed), intervalMs);
+		this.timer ??= setInterval(() => {
+			if (!this.ticking) void this.tick().catch(this.failed);
+		}, intervalMs);
 		this.timer.unref();
 	}
 
@@ -97,6 +99,7 @@ class TicketResults {
 		this.timer = undefined;
 		for (const stop of this.stops.splice(0)) stop();
 		await this.subscribers.close();
+		await this.ticking;
 	}
 }
 
@@ -121,11 +124,16 @@ export function installTicketResults(api: FeatureSetup, gate: WakeGate): void {
 	api.bus.on("session_start", async (_event, ctx) => {
 		await running?.close();
 		const agent = sharedAgentDb();
-		running = new TicketResults(agent, gate, {
-			workspaceId: registeredWorkspace(ctx.cwd, agent).id,
+		running = new TicketResults(agent, {
+			workspaceId: (await registeredWorkspaceWhenReady(ctx.cwd, agent)).id,
 			sessionId: ctx.sessionManager.getSessionId(),
 		});
-		running.start();
+		try {
+			await running.start(gate);
+		} catch (error) {
+			await running.close();
+			throw error;
+		}
 	});
 	api.bus.on("session_shutdown", async () => {
 		const was = running;

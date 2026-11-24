@@ -1,6 +1,8 @@
 import { calculateCost } from "../../models/model-helpers.ts";
 import type { AssistantMessage, Model } from "../../types.ts";
+import { isOpenRouterModel } from "../../utils/provider-host.ts";
 import { createUsage } from "../../utils/assistant-message.ts";
+import { applyReportedCost, reportedCostUsd, type OpenRouterUsageCost } from "./openrouter-cost.ts";
 
 /**
  * Usage from a Chat Completions usage chunk, priced. `longCacheWrites`: every cache marker the request carried was a 1h
@@ -8,7 +10,7 @@ import { createUsage } from "../../utils/assistant-message.ts";
  * with no split by lifetime, as the Anthropic adapter's `longCache` handles a reply without `cache_creation`.
  */
 export function parseChunkUsage(
-	rawUsage: {
+	rawUsage: OpenRouterUsageCost & {
 		prompt_tokens?: number;
 		completion_tokens?: number;
 		cached_tokens?: number;
@@ -47,5 +49,8 @@ export function parseChunkUsage(
 	});
 	if (longCacheWrites && cacheWriteTokens > 0) usage.cacheWrite1h = cacheWriteTokens;
 	calculateCost(model, usage);
+	// OpenRouter bills the routed model, so its own total beats a static rate (an auto router has none).
+	const reported = isOpenRouterModel(model) ? reportedCostUsd(rawUsage) : undefined;
+	if (reported !== undefined) applyReportedCost(usage, rawUsage, reported);
 	return usage;
 }

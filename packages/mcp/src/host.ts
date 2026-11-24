@@ -16,6 +16,7 @@ import type { McpExposure, McpServerConfig } from "@octocodeai/octocode-contract
 import type { McpCommandContext, McpKeybindings, McpRenderContext, McpTheme, McpToolDefinition } from "./host/types.ts";
 import type { StdioLaunchWrapper } from "./client/transports/stdio-launch.ts";
 import type { McpCallsPort } from "./host/calls.ts";
+import type { McpElicitationPort } from "./host/elicitation.ts";
 
 /** The host application's name, version and runtime. */
 export interface McpIdentityPort {
@@ -344,6 +345,7 @@ export interface McpHostPorts {
 	toolSwitch: McpToolSwitchPort;
 	sandbox: McpSandboxPort;
 	calls: McpCallsPort;
+	elicitation: McpElicitationPort;
 }
 
 let installed: Partial<McpHostPorts> = {};
@@ -375,6 +377,8 @@ export const hostReview = (): McpReviewPort | undefined => installed.review;
 export const hostSandbox = (): McpSandboxPort | undefined => installed.sandbox;
 /** The calls port, or undefined when the host installed none: a call then holds the turn until the server answers. */
 export const hostCalls = (): McpCallsPort | undefined => installed.calls;
+/** The elicitation port, or undefined when the host installed none: servers are then not offered user input. */
+export const hostElicitation = (): McpElicitationPort | undefined => installed.elicitation;
 /** The tool switch port, or undefined when the host installed none. */
 export const hostToolSwitch = (): McpToolSwitchPort | undefined => installed.toolSwitch;
 /** The folder for stdio server owner records, or undefined when no paths port is installed or it names none. */

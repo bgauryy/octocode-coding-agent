@@ -287,15 +287,19 @@ describe("manual /compact: input that arrives while the summary is running", () 
 });
 
 describe("automatic compaction (threshold, mid-run): input that arrives while the summary is running", () => {
-	const tool: AgentTool = {
-		name: "large_result",
-		label: "Large result",
-		description: "Returns enough content to cross the compaction threshold",
-		parameters: Type.Object({}),
-		execute: async () => ({ content: [{ type: "text", text: `big:${"x".repeat(5200)}` }], details: {} }),
-	};
-
 	async function startRun(): Promise<{ harness: Harness; gate: Gate; requests: Request[]; running: Promise<void> }> {
+		// Cross the threshold on the second result so every queued input arrives during the same compaction.
+		let calls = 0;
+		const tool: AgentTool = {
+			name: "large_result",
+			label: "Large result",
+			description: "Returns enough content to cross the compaction threshold",
+			parameters: Type.Object({}),
+			execute: async () => ({
+				content: [{ type: "text", text: `big:${"x".repeat(++calls === 1 ? 800 : 5200)}` }],
+				details: {},
+			}),
+		};
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 3200, maxTokens: 100 }],
 			compactionPolicy: { enabled: true, reserveTokens: 400, keepRecentTokens: 1000 },
@@ -315,6 +319,7 @@ describe("automatic compaction (threshold, mid-run): input that arrives while th
 		const gate = gateSummary(harness);
 		const running = harness.session.prompt("run the tools");
 		await gate.started;
+		expect(calls).toBe(2);
 		return { harness, gate, requests, running };
 	}
 

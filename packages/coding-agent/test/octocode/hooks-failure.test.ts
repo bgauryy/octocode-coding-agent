@@ -5,7 +5,10 @@ import { commandsFor } from "../../src/octocode/hooks/config/calls.ts";
 import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { failureOf } from "../../src/octocode/hooks/runner.ts";
-import { fakeHost } from "./fake-host.ts";
+import { events } from "../../../db/src/api.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { approveFixtureHooks } from "./guard-helpers.ts";
 
@@ -50,6 +53,78 @@ async function run(hook: Hook, options: { hasUI?: boolean; event?: string } = {}
 }
 
 const TIMEOUT: Hook = { type: "command", command: "sleep 5", timeout: 0.2 };
+
+describe("durable hook dispatch", () => {
+	const rows = (cwd: string, id: string, event: string) =>
+		events.read(sharedAgentDb().db, {
+			workspaceId: registeredWorkspace(cwd).id,
+			sessionId: `hooks:${id}`,
+			topic: `hook.${event}`,
+			after: 0,
+		});
+
+	it("records only the one configured SessionStart protocol", async () => {
+		const cwd = project({ type: "command", command: "true" }, "SessionStart");
+		const host = fakeHost();
+		registerHooks(host.api, { env: {}, home: tmp() });
+		const ctx = fakeCtx({ cwd });
+		await host.fire("session_start", { reason: "startup" }, ctx);
+		await host.fire("before_agent_start", {}, ctx);
+		expect(rows(cwd, ctx.sessionManager.getSessionId(), "SessionStart")).toHaveLength(1);
+		await host.fire("session_shutdown", { reason: "quit" }, ctx);
+	});
+
+	it("shuts down a decision-only child before a queued gate can launch a command", async () => {
+		const cwd = project({ type: "command", command: "touch child-hook-started" });
+		const host = fakeHost();
+		const hooks = registerHooks(host.api, {
+			env: { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "decisions" },
+			home: tmp(),
+		});
+		const ctx = fakeCtx({ cwd });
+		await host.fire("session_start", { reason: "startup" }, ctx);
+		const pending = hooks.preToolUse(
+			{ type: "tool_call", toolName: "bash", toolCallId: "stopped", input: { command: "ls" } },
+			ctx,
+		);
+		await host.fire("session_shutdown", { reason: "quit" }, ctx);
+		await pending;
+		expect(fs.existsSync(path.join(cwd, "child-hook-started"))).toBe(false);
+	});
+
+	it("keeps concurrent parent and child decisions in their own session and workspace after resume", async () => {
+		const first = project({ type: "command", command: "echo first >&2; exit 2" });
+		const second = project({ type: "command", command: "echo second >&2; exit 2" });
+		const start = async (env: NodeJS.ProcessEnv, id: string) => {
+			const host = fakeHost();
+			const view = registerHooks(host.api, { env, home: tmp() });
+			const open = async (cwd: string, reason: "startup" | "resume") => {
+				const ctx = fakeCtx({ cwd });
+				ctx.sessionManager.getSessionId = () => id;
+				await host.fire("session_start", { reason }, ctx);
+				return () =>
+					view.preToolUse({ type: "tool_call", toolName: "bash", toolCallId: "call", input: { command: "ls" } }, ctx);
+			};
+			return { open, call: await open(first, "startup") };
+		};
+		const parent = await start({}, "parent");
+		const child = await start(
+			{ OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "decisions", OCTOCODE_PARENT_SESSION: "parent" },
+			"child",
+		);
+		const decisions = await Promise.all([parent.call(), child.call()]);
+		for (const verdict of decisions)
+			expect(verdict).toMatchObject({ block: true, reason: expect.stringContaining("first") });
+		const resumed = await child.open(second, "resume");
+		const [parentVerdict, childVerdict] = await Promise.all([parent.call(), resumed()]);
+		expect(parentVerdict?.reason).toContain("first");
+		expect(childVerdict?.reason).toContain("second");
+		expect(rows(first, "parent", "PreToolUse")).toHaveLength(2);
+		expect(rows(first, "child", "PreToolUse")).toHaveLength(1);
+		expect(rows(second, "child", "PreToolUse")).toHaveLength(1);
+		expect(rows(second, "parent", "PreToolUse")).toHaveLength(0);
+	});
+});
 
 describe("native hook failures outside a gate", () => {
 	it("warns once when a native SessionStart hook times out, and starts the session anyway", async () => {

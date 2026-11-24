@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
 	createFauxCore,
 	fauxAssistantMessage,
@@ -21,12 +20,6 @@ import { nativeFeatureSet } from "../helpers/native-features.ts";
  * A headless Octocode session (no UI, as print and JSON mode run) in a fresh git repository, driven by a scripted model.
  * Only the model provider is faked; the extension, permission gate, tools and filesystem (inside a temp root) are real.
  */
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ENTRY =
-	process.env.OCTOCODE_E2E_ENTRY === "dist"
-		? path.join(HERE, "..", "..", "dist", "index.js")
-		: path.join(HERE, "..", "..", "src", "index.ts");
-const octocode = (await import(ENTRY)).default as FeatureRegister;
 
 export type ToolResult = { toolName: string; isError: boolean; text: string };
 type Reply = (context: TranscriptContext, options?: SimpleStreamOptions) => ReturnType<typeof fauxAssistantMessage>;
@@ -127,10 +120,7 @@ export async function headless(options: HeadlessOptions = {}) {
 		agentDir: path.join(root, "agent"),
 		settingsManager,
 		nativeFeatures: nativeFeatureSet(),
-		features: testFeatures([
-			{ name: "faux-provider", factory: provider },
-			{ name: "octocode", factory: octocode },
-		]),
+		features: testFeatures([{ name: "faux-provider", factory: provider }]),
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: !options.resources?.contextFiles,

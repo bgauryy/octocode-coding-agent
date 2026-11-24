@@ -17,7 +17,7 @@ import { type Moving, PanelMotion } from "./panel/motion.ts";
 import { nextMinuteDelay } from "./panel/work.ts";
 import { TeamOutage } from "./panel/outage.ts";
 import { descendants, liveMembers, peers, roster } from "./panel/roster.ts";
-import { markSince, panelState } from "./panel/state.ts";
+import { panelState } from "./panel/state.ts";
 import { withEndpoints } from "./endpoint.ts";
 import { trafficRow } from "./panel/traffic.ts";
 import type { Team } from "./session.ts";
@@ -33,7 +33,7 @@ const WIDGET_KEY = "octocode-agents";
  * widget already counts the agents. It reads nothing itself: the team session's ticker refreshes a cached view and calls back once a second.
  * The same widget lists the other running work (bash jobs, timers, background subagents the team does not list) from the
  * session's `RunningWork`, and the footer's `running` segment counts it all by type. Those rows repaint when their owner
- * publishes a change. Every work row has a spinner and counts in seconds on the motion clock; in reduced motion, where no mark moves, the clocks repaint once a minute (whole minutes) and nothing repaints when no work has a clock.
+ * publishes a change. While a row runs the panel repaints once a second and its clocks count seconds; with only timers left they repaint once a minute (whole minutes), and nothing repaints when no work has a clock.
  */
 export class AgentsView {
 	private unwatch: (() => void) | undefined;
@@ -45,8 +45,6 @@ export class AgentsView {
 	/** Says a team database failure and its recovery in the messages list; the footer keeps only the short state. */
 	private readonly outage = new TeamOutage();
 	private shown = false;
-	/** When each agent was first seen waiting on a dialog: its waiting mark breathes from then, a few seconds only. */
-	private readonly waitSeen = new Map<string, number>();
 	/** Agents whose detail line is open (a left click on any of their rows toggles it). */
 	private readonly expanded = new Set<string>();
 	/** The agent each line drawn last belongs to, for a click. */
@@ -54,21 +52,21 @@ export class AgentsView {
 	/** Last footer text sent: an unchanged one is not sent again on every tick. */
 	private status: string | undefined;
 	private render: (() => void) | undefined;
-	/** Repaints on the animation clock while an agent works or just finished or any work row runs, and not otherwise. */
+	/** Repaints once a second on the animation clock while an agent works or any work row runs, and not otherwise. */
 	private readonly motion = new PanelMotion(
 		(now) => [
 			...this.teamMarks(now),
-			// Running work moves too: its spinner and second clock show it is alive while the main agent idles.
+			// Running work counts too: its second clock shows it is alive while the main agent idles.
 			...this.workItems()
 				.filter((row) => !row.mark)
 				.map((): Moving => ({ state: "running" })),
 		],
 		() => {
-			// While a mark moves the panel's own clock runs: it also looks for a child's new row, so lines follow within a fraction of a second.
+			// While a row runs the panel's own clock ticks: it also looks for a child's new row, so lines follow within a second.
 			this.team.poll();
 			this.render?.();
 		},
-		// With no mark moving, still-running work repaints once a minute, on the oldest row's boundary.
+		// With no row running, work that still has a clock repaints once a minute, on the oldest row's boundary.
 		(now) => nextMinuteDelay(this.workItems(), now),
 	);
 	/** The marks the team rows draw at `now`: each agent's, and while there are agents, this session's and its peers'. */
@@ -78,15 +76,12 @@ export class AgentsView {
 			this.team.id,
 			now,
 			this.finished.finished,
-			needsYou(this.members, this.traffic, this.team.id, this.waitSeen, now),
+			needsYou(this.members, this.traffic, this.team.id),
 		);
 		if (tree.length === 0) return [];
 		const self = this.members.filter((member) => member.id === this.team.id);
 		return [
-			...tree.map((entry): Moving => {
-				const since = markSince(entry);
-				return { ...panelState(entry, now), ...(since === undefined ? {} : { since }) };
-			}),
+			...tree.map((entry): Moving => panelState(entry, now)),
 			...[...self, ...peers(this.members, this.team.id, now)].map((member): Moving =>
 				panelState({ member, depth: 0 }, now),
 			),
@@ -255,7 +250,6 @@ export class AgentsView {
 		this.finished.clear();
 		this.hold.clear();
 		this.expanded.clear();
-		this.waitSeen.clear();
 		this.owners = [];
 		this.outage.reset();
 	}
@@ -302,7 +296,6 @@ export class AgentsView {
 							this.workItems(),
 							this.motion.precise,
 							this.expanded,
-							this.waitSeen,
 						);
 						this.owners = drawn.owners;
 						return drawn.lines;

@@ -10,6 +10,7 @@ describe("a provider's retry-after", () => {
 		expect(retryDelayFor(policy, 1, rateLimited(45_000), 0, () => 0)).toBe(45_000);
 		// The spread over the provider's wait stays under the cap; the provider's own wait never shrinks to it.
 		expect(retryDelayFor(policy, 1, rateLimited(59_500), 0, () => 1)).toBe(60_000);
+		expect(retryDelayFor({ baseDelayMs: 2_000, maxRetries: 3 }, 1, rateLimited(59_500), 0, () => 1)).toBe(60_000);
 		expect(retryDelayFor({ ...policy, maxAgentDelayMs: 40 }, 1, rateLimited(5_000), 0, () => 0)).toBe(5_000);
 		// Without one, the backoff applies as before.
 		expect(retryDelayFor(policy, 1, rateLimited(), 0, () => 0)).toBe(2_000);

@@ -1,3 +1,4 @@
+import type { EntryReceipt } from "./entry-receipt.ts";
 import type { ImageContent, Message, TextContent, Usage } from "@octocodeai/octocode-ai";
 import type { BashExecutionMessage, CustomMessage, MessageDisplay } from "../messages.ts";
 import type {
@@ -111,6 +112,7 @@ export interface SessionManagerApi {
 		display: MessageDisplay,
 		details?: T,
 		timestamp?: number,
+		receipt?: EntryReceipt,
 	): string;
 
 	/** Append a branch-local edit to an earlier model-visible entry. */

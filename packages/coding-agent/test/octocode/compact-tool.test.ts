@@ -124,6 +124,41 @@ describe("compact tool", () => {
 		expect(overtaken.ctx.compact).not.toHaveBeenCalled();
 	});
 
+	it.each(["shutdown", "cancelled"] as const)("does not resume an ended compaction after %s", async (reason) => {
+		const { fake, ctx, call, settle } = host();
+		await call("old task");
+		await settle();
+		const old = ctx.compact.mock.calls[0][0];
+		if (reason === "shutdown") await fake.emit("session_shutdown", { reason: "resume" }, ctx);
+		else await fake.emit("session_compact_failed", { reason: "manual", aborted: true }, ctx);
+		await call("new task");
+		await settle();
+		if (reason === "shutdown") old.onComplete();
+		else old.onError(new Error("old compaction ended late"));
+		expect(fake.sent).toHaveLength(0);
+		ctx.compact.mock.calls[1][0].onComplete();
+		expect(fake.sent).toHaveLength(1);
+		expect(fake.sent[0].message.customType).toBe(COMPACT_RESUME_TYPE);
+	});
+
+	it("records a failed interactive compaction quietly for the next user turn", async () => {
+		const { fake, ctx, call, settle } = host();
+		ctx.hasUI = true;
+		await call();
+		await settle();
+		ctx.compact.mock.calls[0][0].onError(new Error("summary unavailable"));
+		expect(fake.sent).toEqual([
+			{
+				message: {
+					customType: COMPACT_RESUME_TYPE,
+					display: false,
+					content: expect.stringContaining("summary unavailable"),
+				},
+				options: { triggerTurn: false },
+			},
+		]);
+	});
+
 	it("refuses below half the room before automatic compaction, and right after a compaction", async () => {
 		const { state, call, settle, compacted } = host();
 		state.tokens = 40_000;

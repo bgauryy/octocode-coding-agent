@@ -37,6 +37,16 @@ interface McpServerConfigBase {
 	/** Per-request timeout in seconds. Progress notifications from the server reset it. Default: 60. Startup (`initialize`) that times out is retried once at twice the timeout. */
 	timeout?: number;
 	/**
+	 * How long a tool call made while the server reconnects waits for the connection, in milliseconds, before it fails.
+	 * 0 fails such a call at once. Default: 5000.
+	 */
+	reconnectWaitMs?: number;
+	/**
+	 * Set to false to refuse the server's requests for input from the user (MCP elicitation): the capability is not
+	 * declared to it. Default: true.
+	 */
+	elicitation?: boolean;
+	/**
 	 * Bare tool names (no namespace) by role (`roles.ts`). Roles from a project-scope entry count only when the project
 	 * is trusted.
 	 */

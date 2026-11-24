@@ -9,7 +9,6 @@ import {
 	type MarkdownTheme,
 	MouseRegion,
 	Osc133ZoneMarker,
-	ReasoningFrames,
 	Spacer,
 	Text,
 	renderChanged,
@@ -35,7 +34,6 @@ import {
 	THINKING_LABEL,
 	interruptedText,
 	isAbortWording,
-	LiveThinkingLabel,
 	observeThinking,
 	revealHint,
 	thinkingMs,
@@ -47,7 +45,6 @@ export class AssistantMessageComponent extends Container {
 	private contentContainer: Container;
 	private hideThinkingBlock: boolean;
 	private markdownTheme: MarkdownTheme;
-	private hiddenThinkingLabel: string;
 	private outputPad: number;
 	private markdownTransformers: readonly MarkdownTransformer[];
 	private contentOptions: ContentOptions;
@@ -65,9 +62,6 @@ export class AssistantMessageComponent extends Container {
 	private hasToolCalls = false;
 	private isStreaming = false;
 	private thinkingVisibilityOverrides = new Map<number, boolean>();
-	/** The frame subscription of a streaming reasoning label; held only while one is on screen. */
-	private readonly frames: ReasoningFrames;
-	private liveLabel: LiveThinkingLabel | undefined;
 	/** Whether a tool row already showed the interrupt; decided once, when the message first reads as interrupted. */
 	private interruptShownByTool: boolean | undefined;
 	/** A failed attempt the session sent again: its error is not the turn's outcome. */
@@ -75,9 +69,8 @@ export class AssistantMessageComponent extends Container {
 
 	constructor(
 		message?: AssistantMessage,
-		hideThinkingBlock = true,
+		hideThinkingBlock = false,
 		markdownTheme: MarkdownTheme = getMarkdownTheme(),
-		hiddenThinkingLabel = "Thinking…",
 		outputPad = 1,
 		markdownTransformers: readonly MarkdownTransformer[] = [],
 		contentOptions: ContentOptions = {},
@@ -85,11 +78,9 @@ export class AssistantMessageComponent extends Container {
 		super();
 		this.hideThinkingBlock = hideThinkingBlock;
 		this.markdownTheme = markdownTheme;
-		this.hiddenThinkingLabel = hiddenThinkingLabel;
 		this.outputPad = outputPad;
 		this.markdownTransformers = markdownTransformers;
 		this.contentOptions = contentOptions;
-		this.frames = new ReasoningFrames(() => this.liveLabel, contentOptions.requestRender);
 		this.contentContainer = new Container();
 		this.addChild(this.contentContainer);
 
@@ -197,10 +188,9 @@ export class AssistantMessageComponent extends Container {
 		this.rebuildContent();
 	}
 
-	/** Stop asking for frames; the component may still be rendered, with a static label. */
+	/** Release the rendered Markdown; the component may still be rendered. */
 	dispose(): void {
 		this.contentDirty = false;
-		this.frames.stop();
 		this.markdown.clear();
 	}
 
@@ -250,7 +240,6 @@ export class AssistantMessageComponent extends Container {
 		const blocks = message.content ?? [{ id: `${message.id}:text`, type: "text" as const, text: message.text }];
 		this.contentContainer.clear();
 		this.responses.length = 0;
-		this.liveLabel = undefined;
 
 		const hasVisibleContent = blocks.some((c) => c.type !== "toolCall" && (c.type !== "text" || c.text.trim()));
 
@@ -310,30 +299,21 @@ export class AssistantMessageComponent extends Container {
 				const active = this.isStreaming && i === blocks.length - 1;
 				const interrupted = !this.isStreaming && ["aborted", "error", "length"].includes(message.stopReason ?? "");
 				const elapsed = thinkingMs(spanIds);
-				// One label for a finished block, folded or open: only the fold glyph differs.
-				const label = finishedLabel(interrupted, elapsed);
+				// One still label, folded or open: only the fold glyph differs. The working line is the one moving
+				// indicator, so a block that still streams says `Thinking…` without a spinner.
+				const label = active ? THINKING_LABEL : finishedLabel(interrupted, elapsed);
 				const hint = hidden ? revealHint() : "";
 				const thinkingComponent = new Container();
-				if (active) {
-					this.liveLabel = new LiveThinkingLabel(hint, this.outputPad);
-					thinkingComponent.addChild(this.liveLabel);
-				} else {
-					thinkingComponent.addChild(
-						new Text(
-							theme.fg(
-								interrupted ? STOPPED_COLOR : "thinkingText",
-								`${hidden ? GLYPH.collapsed : GLYPH.expanded} ${label}`,
-							) + (hint ? theme.fg("dim", ` ${hint}`) : ""),
-							this.outputPad,
-							0,
-						),
-					);
-				}
-				if (hidden && this.hiddenThinkingLabel !== THINKING_LABEL) {
-					thinkingComponent.addChild(
-						new Text(theme.fg("thinkingText", sanitizeTerminalText(this.hiddenThinkingLabel)), this.outputPad, 0),
-					);
-				}
+				thinkingComponent.addChild(
+					new Text(
+						theme.fg(
+							interrupted ? STOPPED_COLOR : "thinkingText",
+							`${hidden ? GLYPH.collapsed : GLYPH.expanded} ${label}`,
+						) + (hint ? theme.fg("dim", ` ${hint}`) : ""),
+						this.outputPad,
+						0,
+					),
+				);
 				if (!hidden) {
 					thinkingComponent.addChild(this.markdownBlock(content.id, thinkingBlocks.join("\n\n"), true));
 				}
@@ -360,8 +340,6 @@ export class AssistantMessageComponent extends Container {
 				this.contentContainer.addChild(attachment);
 			}
 		}
-
-		this.frames.sync();
 
 		// Check if incomplete/failed - show after partial content.
 		// An abort with tool calls shows on their rows. A failure shows its error here once; its tool rows say not run.

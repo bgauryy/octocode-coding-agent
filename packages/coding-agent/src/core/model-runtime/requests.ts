@@ -33,10 +33,12 @@ import {
 	type ModelsRequestTransforms,
 	type ModelsSimpleStreamOptions,
 	type ModelThinkingLevel,
+	type LazyStreamObserver,
 	type MutableModels,
 	normalizeContext,
 	type Provider,
 	type ProviderRequestOptions,
+	type RequestPriority,
 	type StreamOptions,
 } from "@octocodeai/octocode-ai";
 import { withCacheEndpoint } from "@octocodeai/octocode-ai/utils/cache-capabilities";
@@ -58,6 +60,7 @@ import { type CooldownRequestOptions, cooldownStep } from "./cooldown-request.ts
 import { instructionCacheBoundaryOption } from "./instruction-boundary.ts";
 import type { ProviderLayers } from "./provider-layers.ts";
 import { quotaStep } from "./quota-request.ts";
+import { throughputStep } from "./throughput-request.ts";
 import type { ModelRuntimeAuthOverrides } from "./types.ts";
 
 type CacheOptions = ReturnType<typeof resolveConfiguredCache>["options"];
@@ -71,8 +74,10 @@ export type RuntimeSimpleStreamOptions = ModelsSimpleStreamOptions & {
 	resolveCache?: (model: Model<Api>) => CacheOptions;
 	/** Names of the declared tools whose definition is `roleVariant`: the tool cache breakpoint sits before the first. */
 	roleVariantTools?: ReadonlySet<string>;
-	/** Hears when the request waits out its provider's rate-limit cool-down (`cooldown-request.ts`), and when it is over. */
+	/** Hears when the request waits out its provider's rate-limit cool-down or throughput window. */
 	onCooldownWait?: CooldownRequestOptions["onCooldownWait"];
+	/** Admission priority; defaults to subagent in a child process and foreground elsewhere. */
+	requestPriority?: RequestPriority;
 };
 
 /**
@@ -185,15 +190,27 @@ async function prepareModelRequest<
 	};
 }
 
+function requestObserver(...observers: LazyStreamObserver[]): LazyStreamObserver {
+	return {
+		onEvent: (event) => {
+			for (const observer of observers) observer.onEvent?.(event);
+		},
+		onResult: (result) => {
+			for (const observer of observers) observer.onResult?.(result);
+		},
+	};
+}
+
 export function streamChatModel<TApi extends Api>(
 	host: ModelRequestHost,
 	model: Model<TApi>,
 	context: Context,
 	options?: ModelsApiStreamOptions<TApi>,
-	hints?: Pick<RuntimeSimpleStreamOptions, "resolveCache" | "roleVariantTools">,
+	hints?: Pick<RuntimeSimpleStreamOptions, "resolveCache" | "roleVariantTools" | "requestPriority">,
 ): AssistantMessageEventStream {
 	const transcript = normalizeContext(context);
 	const cooldown = cooldownStep(model, options);
+	const throughput = throughputStep(model, transcript, { ...options, requestPriority: hints?.requestPriority });
 	const onResponse = quotaStep(model, options);
 	return lazyStream(
 		model,
@@ -202,15 +219,19 @@ export function streamChatModel<TApi extends Api>(
 			assertImageRequestContext(model, transcript.messages);
 			const prepared = await prepareModelRequest(host, model, {
 				...options,
+				...cooldown.hooks,
 				...chatCacheOptions(host, model, transcript.messages, options, hints?.resolveCache, hints?.roleVariantTools),
 				onResponse,
 			});
-			return (
-				(await cooldown.ready()) ??
-				prepared.provider.stream(prepared.model, transcript, prepared.options as ApiStreamOptions<TApi>)
-			);
+			const refused = await cooldown.ready(prepared.model);
+			if (refused) return refused;
+			const hooks = throughput.hooks(prepared.options, prepared.model, prepared.options.env ?? process.env);
+			return prepared.provider.stream(prepared.model, transcript, {
+				...prepared.options,
+				...hooks,
+			} as ApiStreamOptions<TApi>);
 		},
-		cooldown.observer,
+		requestObserver(cooldown.observer, throughput.observer),
 	);
 }
 
@@ -243,8 +264,15 @@ export function streamSimpleChatModel(
 	}
 	// A physical request waits out its provider's cool-down once its auth resolved, so a missing credential still fails at
 	// once; a virtual one waits in the request it routes to.
-	const { resolveCache, roleVariantTools, onCooldownWait: _onCooldownWait, ...requestOptions } = options ?? {};
+	const {
+		resolveCache,
+		roleVariantTools,
+		onCooldownWait: _onCooldownWait,
+		requestPriority: _requestPriority,
+		...requestOptions
+	} = options ?? {};
 	const cooldown = cooldownStep(model, options);
+	const throughput = throughputStep(model, transcript, options);
 	const onResponse = quotaStep(model, requestOptions);
 	return lazyStream(
 		model,
@@ -253,12 +281,16 @@ export function streamSimpleChatModel(
 			assertImageRequestContext(model, transcript.messages);
 			const prepared = await prepareModelRequest(host, model, {
 				...requestOptions,
+				...cooldown.hooks,
 				...chatCacheOptions(host, model, transcript.messages, requestOptions, resolveCache, roleVariantTools),
 				onResponse,
 			});
-			return (await cooldown.ready()) ?? prepared.provider.streamSimple(prepared.model, transcript, prepared.options);
+			const refused = await cooldown.ready(prepared.model);
+			if (refused) return refused;
+			const hooks = throughput.hooks(prepared.options, prepared.model, prepared.options.env ?? process.env);
+			return prepared.provider.streamSimple(prepared.model, transcript, { ...prepared.options, ...hooks });
 		},
-		cooldown.observer,
+		requestObserver(cooldown.observer, throughput.observer),
 	);
 }
 

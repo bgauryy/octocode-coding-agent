@@ -1,11 +1,13 @@
 import type { ModelThinkingLevel, ThinkingBudgets } from "@octocodeai/octocode-ai";
-import { thinkingBudgetForLevel } from "@octocodeai/octocode-ai/api/simple-options";
+import {
+	CONTEXT_SAFETY_TOKENS as CONTEXT_CLAMP_TOKENS,
+	thinkingBudgetForLevel,
+} from "@octocodeai/octocode-ai/api/simple-options";
+import { tokensOfWindow } from "../limits.ts";
 import { DEFAULT_RESERVE_TOKENS, SETTINGS_DEFAULTS } from "../settings-defaults.ts";
 
 /** Tokens kept for the visible answer next to the thinking budget. */
 const ANSWER_ROOM_TOKENS = 8192;
-/** Tokens the request's output clamp (`window - context - 4096`) takes before the reply gets any. */
-const CONTEXT_CLAMP_TOKENS = 4096;
 
 /** The part of a model the policy reads. */
 export interface CompactionModel {
@@ -15,9 +17,32 @@ export interface CompactionModel {
 	compat?: unknown;
 }
 
+/** The `limits.compaction` values in force for the model (`resolveLimits`). */
+export interface CompactionLimits {
+	trigger?: number;
+	keepRecent?: number;
+}
+
+/** The share of the window kept as recent messages when `limits.compaction.keepRecent` names none. */
+const KEEP_RECENT_SHARE = 0.1;
+
 /** Prompt room after reserving output in the combined window and applying any independent input ceiling. */
 export function inputRoomTokens(contextWindow: number, reserveTokens: number, maxInputTokens?: number): number {
 	return Math.max(0, Math.min(contextWindow - reserveTokens, maxInputTokens ?? Infinity));
+}
+
+/**
+ * Context size past which automatic compaction starts: the room the reserve leaves, or the configured
+ * `triggerTokens` when that is lower. The trigger never raises the point: the reserve holds the reply and the summary.
+ */
+export function compactionThresholdTokens(
+	contextWindow: number,
+	settings: { reserveTokens: number; maxInputTokens?: number; triggerTokens?: number },
+): number {
+	return Math.min(
+		inputRoomTokens(contextWindow, settings.reserveTokens, settings.maxInputTokens),
+		settings.triggerTokens ?? Infinity,
+	);
 }
 
 /** The session's thinking setup: the level in force and any custom per-level token budgets. */
@@ -37,10 +62,8 @@ export function thinkingBudgetTokens(model: CompactionModel | undefined, thinkin
 }
 
 /**
- * The reserve that keeps the summary request inside the session's cached request just past the threshold: the room the
- * provider leaves for output there (`reserve - CONTEXT_CLAMP_TOKENS - 1`) holds an inline summary (`inlineSummaryTokens`:
- * 80% of the reserve). With less, that request fails its room check and the whole conversation is sent again outside
- * the cache. The target leaves slack for the context to pass the threshold by a few thousand tokens.
+ * Preserve space for the checkpoint instructions and reply as a turn crosses the threshold. The shared summary
+ * can lower its output ceiling when the checkpoint target still fits after the provider's safety margin.
  */
 const SUMMARY_ROOM_RESERVE_TOKENS = CONTEXT_CLAMP_TOKENS * 6;
 /** The least reserve that still holds an inline summary just past the threshold; a window whose sixth is below it cannot. */
@@ -52,8 +75,16 @@ const SUMMARY_ROOM_MIN_RESERVE_TOKENS = CONTEXT_CLAMP_TOKENS * 5 + 5;
  * plus answer room, up to a sixth of the window, and never lowered. Either way, a window large enough to allow it gets
  * at least {@link SUMMARY_ROOM_RESERVE_TOKENS} (within a sixth of the window), so the summary is written in-cache at
  * the threshold; a smaller one keeps its fraction.
+ *
+ * The recent tail is `limits.keepRecent`, else a tenth of the window and at least the default, within a quarter of the
+ * window either way. `limits.trigger` becomes `triggerTokens`, never below twice the tail: a compaction that frees
+ * less than it keeps would run again at once.
  */
-export function builtInCompactionSettings(model?: CompactionModel, thinking?: CompactionThinking) {
+export function builtInCompactionSettings(
+	model?: CompactionModel,
+	thinking?: CompactionThinking,
+	limits?: CompactionLimits,
+) {
 	const defaults = SETTINGS_DEFAULTS.compaction;
 	const window = model?.contextWindow;
 	if (window === undefined || !Number.isFinite(window) || window <= 0) return { ...defaults };
@@ -62,11 +93,19 @@ export function builtInCompactionSettings(model?: CompactionModel, thinking?: Co
 	const sixth = Math.floor(window / 6);
 	const summaryRoom = sixth >= SUMMARY_ROOM_MIN_RESERVE_TOKENS ? SUMMARY_ROOM_RESERVE_TOKENS : 0;
 	const wanted = thinking ? Math.max(need, summaryRoom) : summaryRoom;
+	const tail =
+		limits?.keepRecent === undefined
+			? Math.max(defaults.keepRecentTokens, Math.floor(window * KEEP_RECENT_SHARE))
+			: tokensOfWindow(limits.keepRecent, window);
+	const keepRecentTokens = Math.max(1, Math.min(tail, Math.floor(window / 4)));
 	return {
 		enabled: true,
 		...(model?.inputLimits?.maxInputTokens ? { maxInputTokens: model.inputLimits.maxInputTokens } : {}),
+		...(limits?.trigger === undefined
+			? {}
+			: { triggerTokens: Math.max(tokensOfWindow(limits.trigger, window), 2 * keepRecentTokens) }),
 		reserveTokens: Math.max(base, Math.min(wanted, sixth)),
-		keepRecentTokens: Math.min(defaults.keepRecentTokens, Math.max(1, Math.floor(window / 4))),
+		keepRecentTokens,
 	};
 }
 

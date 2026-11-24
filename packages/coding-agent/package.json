@@ -38,6 +38,7 @@
 			"@silvia-odwyer/photon-node"
 		],
 		"registry": {
+			"@octocodeai/octocode-chrome-devtools": "0.4.0",
 			"@octocodeai/octocode-native": "20.1.0",
 			"octocode": "20.2.0",
 			"octocode-mcp": "20.2.0"
@@ -72,7 +73,6 @@
 		"@octocodeai/octocode-native": "link:../../../octocode/packages/octocode-native",
 		"@octocodeai/octocode-projections": "1.3.0",
 		"@octocodeai/octocode-tui": "1.3.0",
-		"@octocodeai/octocode-tui-ink": "1.3.0",
 		"@octocodeai/octocode-webview": "1.3.0",
 		"@opencode-ai/models": "~0.0.143",
 		"@silvia-odwyer/photon-node": "^0.3.4",
@@ -88,7 +88,6 @@
 		"octocode": "link:../../../octocode/packages/octocode",
 		"octocode-mcp": "link:../../../octocode/packages/octocode-mcp",
 		"proper-lockfile": "^4.1.2",
-		"react": "^19.3.1",
 		"semver": "^7.8.6",
 		"smol-toml": "^1.9.1",
 		"typebox": "^1.4.7",

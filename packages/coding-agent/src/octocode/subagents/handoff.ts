@@ -285,7 +285,7 @@ export class ReportQueue {
 				void Promise.resolve(
 					this.api.session.sendMessage(
 						{ customType: NOTICE_TYPE, content: noticeText(report), display: false, details: { reportId: id } },
-						{ triggerTurn: false, deliverAs: "steer" },
+						{ triggerTurn: false },
 					),
 				).catch(() => undefined);
 			} catch {

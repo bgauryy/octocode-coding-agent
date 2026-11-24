@@ -42,23 +42,23 @@ function row(
 describe("core bash tool row outcome", () => {
 	beforeAll(() => initTheme("dark"));
 
-	test("marks a success with a check and says its exit code; the time is in the header only", () => {
+	test("marks a success with the done light and says its exit code; the time is in the header only", () => {
 		const { header, result } = row("[exit 0 · 1.2s · 1 line · 3 B]\nok", {
 			details: { exitCode: 0 },
 			durationMs: 1_200,
 		});
-		expect(header).toBe("✓ Bash(make) · 1.2s");
+		expect(header).toBe("◉ Bash(make) · 1.2s");
 		expect(result).toContain("⎿  exit 0 · 1 line");
 		expect(result).not.toContain("1.2s");
 	});
 
-	test("marks a failure with a cross and shows its output in the error colour", () => {
+	test("marks a failure with the failed light and shows its output in the error colour", () => {
 		const { header, result, raw } = row("[exit 1 · 0.4s · 1 line · 5 B]\nboom!", {
 			isError: true,
 			details: { exitCode: 1 },
 		});
-		// A settled row draws its state's glyph: ⏺ means running only.
-		expect(header.startsWith("✗ Bash(make)")).toBe(true);
+		// A settled row draws its state's light: ⏺ means running only.
+		expect(header.startsWith("⊗ Bash(make)")).toBe(true);
 		expect(result).toContain("⎿  Error: exit 1 · 1 line");
 		expect(raw).toContain(theme.fg("error", "boom!"));
 	});
@@ -68,7 +68,7 @@ describe("core bash tool row outcome", () => {
 			isError: true,
 			details: { termination: "aborted" },
 		});
-		expect(header.startsWith("◼ Bash(make)")).toBe(true);
+		expect(header.startsWith("⊘ Bash(make)")).toBe(true);
 		expect(result).toContain("⎿  aborted");
 	});
 

@@ -1,4 +1,5 @@
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
+import { withoutSourceHeader } from "@octocodeai/octocode-common/text";
 import { parseSkillBlock } from "../skill-block.ts";
 import type { SessionInfo } from "./types.ts";
 
@@ -25,5 +26,5 @@ export function cleanTitle(text: string, max = SESSION_TITLE_MAX): string {
 
 /** What a session is called: its name (given by the user, generated, or a subagent's goal), else its first prompt. */
 export function sessionTitle(session: Pick<SessionInfo, "name" | "firstMessage">, max = SESSION_TITLE_MAX): string {
-	return cleanTitle(session.name?.trim() || session.firstMessage, max);
+	return cleanTitle(session.name?.trim() || withoutSourceHeader(session.firstMessage), max);
 }

@@ -1,3 +1,4 @@
+import { animationClock } from "../tokens/clock.ts";
 import { stdoutAcceptsDecoration } from "./stall-watch.ts";
 
 /** What the session is doing, as the terminal tab shows it; `background`: its run ended, its children, jobs or wakes still run. */
@@ -34,13 +35,15 @@ export interface TitleSource {
 /**
  * Writes the terminal title only when its text changes. A busy title animates one frame per `TITLE_FRAME_MS` and stops
  * when the session settles; busy-to-busy swaps are coalesced. While the terminal is not reading, titles wait and only
- * the latest is written once it reads again (a forced repaint is written at once). Timers never keep the process alive.
+ * the latest is written once it reads again (a forced repaint is written at once). Frames tick on the animation clock,
+ * which never keeps the process alive.
  */
 export class TitlePainter {
 	private readonly source: TitleSource;
 	private shown: { state: TitleState; text: string } | undefined;
 	private coalesce: ReturnType<typeof setTimeout> | undefined;
-	private animation: ReturnType<typeof setInterval> | undefined;
+	/** The animation clock subscription of a busy title. */
+	private animation: (() => void) | undefined;
 	private frame = 0;
 
 	private readonly format: TitleFormat;
@@ -111,15 +114,18 @@ export class TitlePainter {
 			return;
 		}
 		if (this.animation) return;
-		this.animation = setInterval(() => {
-			this.frame += 1;
-			this.write(false);
-		}, TITLE_FRAME_MS);
-		this.animation.unref?.();
+		// `info`: the title is the tab's status, so it keeps its pace in reduced motion and without focus.
+		this.animation = animationClock.subscribe(
+			() => {
+				this.frame += 1;
+				this.write(false);
+			},
+			{ everyMs: TITLE_FRAME_MS, kind: "info" },
+		);
 	}
 
 	private stopTimers(): void {
-		if (this.animation) clearInterval(this.animation);
+		this.animation?.();
 		this.animation = undefined;
 		this.frame = 0;
 		if (this.coalesce) clearTimeout(this.coalesce);

@@ -4,6 +4,7 @@ import {
 	GLYPH,
 	MOTION,
 	SPINNER,
+	spinnerFrame,
 	truncateToWidth,
 	type TUI,
 } from "@octocodeai/octocode-tui";
@@ -16,12 +17,11 @@ const animates = (phase: SessionPhase) => phase.state === "waiting" || phase.sta
 
 /**
  * `⠹ Waiting on 4 agents · 1 bash (4m02s)`: one line above the editor, where the host's working indicator sits during a
- * run. It draws the phase (never shown during a run of the session's own: the host indicator does) and the job's clock,
- * and repaints on the animation clock: the working spinner's frames (a full ⏺ in reduced motion) and the second
- * counter.
+ * run. It draws the phase (never shown during a run of the session's own: the host indicator does) and the job's clock:
+ * it stands in for the working line, so it is the one loader then, drawing the same spinner frame (`spinnerFrame`; a
+ * full ⏺ in reduced motion) and the second counter on the animation clock.
  */
 export function phaseLine(tui: Pick<TUI, "requestRender">, theme: Theme, store: SessionPhaseStore) {
-	let frame = 0;
 	const text = (): string | undefined => {
 		const phase = store.phase();
 		const now = Date.now();
@@ -33,11 +33,9 @@ export function phaseLine(tui: Pick<TUI, "requestRender">, theme: Theme, store: 
 	let shown = text();
 	const stopSpinner = animationClock.subscribe(
 		() => {
-			if (!animates(store.phase())) return;
-			frame = (frame + 1) % SPINNER.braille.length;
-			tui.requestRender();
+			if (animates(store.phase())) tui.requestRender();
 		},
-		{ everyMs: MOTION.backgroundSpinnerMs, kind: "decor" },
+		{ everyMs: MOTION.spinnerMs, kind: "decor" },
 	);
 	const stopClock = animationClock.subscribe(
 		() => {
@@ -54,7 +52,11 @@ export function phaseLine(tui: Pick<TUI, "requestRender">, theme: Theme, store: 
 			if (words === undefined) return [];
 			const phase = store.phase();
 			const still = !animates(phase) || animationClock.isReducedMotion();
-			const mark = animates(phase) ? (still ? GLYPH.light : SPINNER.braille[frame]) : GLYPH.waiting;
+			const mark = animates(phase)
+				? still
+					? GLYPH.running
+					: (spinnerFrame(SPINNER.braille) ?? GLYPH.running)
+				: GLYPH.waiting;
 			const color = phase.state === "waiting" ? "accent" : "muted";
 			return ["", truncateToWidth(` ${theme.fg(color, mark)} ${theme.fg("muted", words)}`, Math.max(0, width), "…")];
 		},

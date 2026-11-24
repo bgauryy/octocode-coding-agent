@@ -7,6 +7,8 @@ interface ProviderRetryOptions {
 	maxRetries?: number;
 	maxRetryDelayMs?: number;
 	signal?: AbortSignal;
+	onTransportRetry?: () => void | Promise<void>;
+	onRateLimit?: (retryAfterMs?: number) => void | Promise<void>;
 	/** HTTP statuses that fail at once although the default policy would retry them. */
 	noRetryStatuses?: readonly number[];
 }
@@ -36,6 +38,11 @@ function getProviderError(error: unknown): ProviderError | undefined {
 	return { message: error.message, status: error.status, headers: error.headers };
 }
 
+/** A retry veto must survive the HTTP transport and reach the agent's retry decision. */
+export function providerVetoedRetry(error: unknown): boolean {
+	return getProviderError(error)?.headers?.get("x-should-retry") === "false";
+}
+
 /** Mirrors the pinned OpenAI/Anthropic SDK retry policy; review when either SDK is upgraded. */
 function isRetryableProviderError(error: ProviderError): boolean {
 	const shouldRetry = error.headers?.get("x-should-retry");
@@ -61,8 +68,8 @@ function awsResponseHeaders(error: Error): Headers | undefined {
 }
 
 /** Google's `google.rpc.RetryInfo.retryDelay` (a duration such as "34s" or "0.5s") from a JSON error message. */
-function googleRetryDelayMs(error: Error): number | undefined {
-	const match = /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(error.message);
+function googleRetryDelayMs(text: string): number | undefined {
+	const match = /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(text);
 	return match?.[1] === undefined ? undefined : Number.parseFloat(match[1]) * 1000;
 }
 
@@ -77,13 +84,20 @@ export function retryAfterMsFromError(error: unknown): number | undefined {
 	const providerError = getProviderError(error);
 	if (providerError) delayMs = parseRetryAfterMs(providerError.headers);
 	if (delayMs === undefined && error instanceof Error) {
-		delayMs = parseRetryAfterMs(awsResponseHeaders(error)) ?? googleRetryDelayMs(error);
+		delayMs =
+			parseRetryAfterMs(awsResponseHeaders(error)) ??
+			googleRetryDelayMs(error.message) ??
+			(APICallError.isInstance(error) && error.responseBody ? googleRetryDelayMs(error.responseBody) : undefined);
 	}
 	return delayMs === undefined || !Number.isFinite(delayMs) || delayMs <= 0 ? undefined : Math.ceil(delayMs);
 }
 
-function getRetryDelayMs(error: ProviderError, retryIndex: number, maxRetryDelayMs: number | undefined): number {
-	const serverDelayMs = parseRetryAfterMs(error.headers);
+function getRetryDelayMs(
+	error: ProviderError,
+	serverDelayMs: number | undefined,
+	retryIndex: number,
+	maxRetryDelayMs: number | undefined,
+): number {
 	if (serverDelayMs !== undefined) return validateRetryDelayMs(serverDelayMs, maxRetryDelayMs, error.message, error);
 
 	const exponentialDelay = Math.min(0.5 * 2 ** retryIndex, 8) * 1000;
@@ -112,18 +126,26 @@ export async function retryProviderRequest<T>(
 		} catch (error) {
 			if (options.signal?.aborted) throw createAbortError();
 			const providerError = getProviderError(error);
-			if (retriesRemaining <= 0 || !providerError || !isRetryableProviderError(providerError)) throw error;
-			if (providerError.status !== undefined && options.noRetryStatuses?.includes(providerError.status)) throw error;
+			if (!providerError) throw error;
+
 			// A 429 can name a quota or billing limit (OpenAI `insufficient_quota`), final until the account changes.
 			if (isUsageLimitError(`${providerError.message}\n${normalizeProviderError(error).body ?? ""}`)) throw error;
+
+			const serverDelayMs = parseRetryAfterMs(providerError.headers) ?? retryAfterMsFromError(error);
+			if (providerError.status === 429) await options.onRateLimit?.(serverDelayMs);
+			if (retriesRemaining <= 0 || !isRetryableProviderError(providerError)) throw error;
+			if (providerError.status !== undefined && options.noRetryStatuses?.includes(providerError.status)) throw error;
 
 			const retryIndex = maxRetries - retriesRemaining;
 			retriesRemaining--;
 			await sleepUnlessAborted(
-				getRetryDelayMs(providerError, retryIndex, options.maxRetryDelayMs),
+				getRetryDelayMs(providerError, serverDelayMs, retryIndex, options.maxRetryDelayMs),
 				options.signal,
 				createAbortError,
 			);
 		}
+		options.signal?.throwIfAborted();
+		await options.onTransportRetry?.();
+		options.signal?.throwIfAborted();
 	}
 }

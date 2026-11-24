@@ -58,7 +58,7 @@ export function registerPlanning(api: FeatureSetup, commands: Subcommands, stopW
 		try {
 			await api.session.sendMessage(
 				{ customType: PLAN_REMINDER_TYPE, content: planReminder(state), display: false },
-				{ triggerTurn: false, deliverAs: "followUp" },
+				{ triggerTurn: false },
 			);
 		} catch (error) {
 			// The session was replaced; anything else reaches the bus's error report.

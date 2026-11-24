@@ -3,7 +3,7 @@
  * scroll window with its position label, and the named-outcome prompt. Pure functions: no I/O, no page state.
  */
 
-import { GLYPH } from "@octocodeai/octocode-tui";
+import { LIGHT_GLYPH } from "@octocodeai/octocode-tui";
 import { keyText, type RankedHint } from "./theme-tui-helpers.ts";
 
 // ── Status badge ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -39,14 +39,13 @@ export type ActivityBadgeTone = "working" | "waiting" | "error" | "idle";
 
 /** The activity lights as page badges: each tone its light's colour and its state's own glyph, with a word. */
 const ACTIVITY_BADGES: Record<ActivityBadgeTone, { glyph: string; word: string; tone: BadgeTone }> = {
-	// A list is still: a working light is the full ⏺, never a spinner frame held still.
-	working: { glyph: GLYPH.light, word: "working", tone: "success" },
-	waiting: { glyph: GLYPH.waiting, word: "needs you", tone: "warning" },
-	error: { glyph: GLYPH.failed, word: "failed", tone: "error" },
-	idle: { glyph: GLYPH.pending, word: "idle", tone: "muted" },
+	working: { glyph: LIGHT_GLYPH.running, word: "working", tone: "success" },
+	waiting: { glyph: LIGHT_GLYPH.waiting, word: "needs you", tone: "warning" },
+	error: { glyph: LIGHT_GLYPH.failed, word: "failed", tone: "error" },
+	idle: { glyph: LIGHT_GLYPH.pending, word: "idle", tone: "muted" },
 };
 
-/** The badge of an activity: `⏺ working`, `◇ needs you`, `✗ failed`, `○ idle`. `word` replaces the default word. */
+/** The badge of an activity: `⏺ working`, `◐ needs you`, `⊗ failed`, `○ idle`. `word` replaces the default word. */
 export function activityBadge(tone: ActivityBadgeTone, word?: string): Badge {
 	const entry = ACTIVITY_BADGES[tone];
 	if (!entry) throw new Error(`Unknown activity: ${tone}`);

@@ -1,3 +1,4 @@
+import { joinReceipt, trackEntry, type EntryReceipt } from "./entry-receipt.ts";
 import type { ImageContent, Message, TextContent, Usage } from "@octocodeai/octocode-ai";
 import type { BashExecutionMessage, CustomMessage, MessageDisplay } from "../messages.ts";
 import { noteAppendedSpend, stampSpendBilling } from "../spend-capture.ts";
@@ -174,6 +175,7 @@ export function appendCustomMessageEntry<T = unknown>(
 	display: MessageDisplay,
 	details?: T,
 	timestamp?: number,
+	receipt?: EntryReceipt,
 ): string {
 	const entry: CustomMessageEntry<T> = {
 		type: "custom_message",
@@ -181,11 +183,20 @@ export function appendCustomMessageEntry<T = unknown>(
 		content,
 		display,
 		details,
-		id: generateId(state.byId),
+		id: receipt?.entryId ?? generateId(state.byId),
 		parentId: state.leafId,
 		timestamp: entryTimestamp(timestamp),
 	};
+	if (receipt) {
+		const existing = state.byId.get(receipt.entryId);
+		if (existing) {
+			joinReceipt(entry, existing, receipt);
+			return existing.id;
+		}
+		if (state.persist) trackEntry(entry, receipt);
+	}
 	appendEntry(state, entry);
+	if (receipt && !state.persist) receipt.recorded();
 	return entry.id;
 }
 

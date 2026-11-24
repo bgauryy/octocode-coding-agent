@@ -42,7 +42,7 @@ import { getAgentDir, VERSION } from "../../config.ts";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
 import type { SetupPick, FeatureContext, FeatureSetup, ToolDefinition } from "../../core/features/index.ts";
 import { addsInPlace, type Forms, type OnDemandApi, onDemandForm, undeclared } from "./native-forms.ts";
-import { coreDeclarations, formsByName, loadedNatives, markLoaded } from "./native-port.ts";
+import { nativeLoads } from "./native-port.ts";
 
 export { nativeToolsPort } from "./native-port.ts";
 
@@ -126,7 +126,7 @@ const thinNativeParameters = (parameters: TSchema): TSchema => thinParameters(pa
  * `tool` declared deferred: thin parameters, validation as before, and the schema it declares when direct in a refusal
  * (a tool may validate more loosely than it declares, to answer an old call shape in its own words).
  */
-function deferred<P extends TSchema, D, S>(tool: ToolDefinition<P, D, S>): ToolDefinition<P, D, S> {
+function deferred<P extends TSchema, D, S>(tool: ToolDefinition<P, D, S>, load: () => void): ToolDefinition<P, D, S> {
 	const full = tool.validationParameters ?? tool.parameters;
 	return {
 		...tool,
@@ -136,7 +136,7 @@ function deferred<P extends TSchema, D, S>(tool: ToolDefinition<P, D, S>): ToolD
 			// A call this declaration's schema rejected is demand for its full declaration (`usage-counts.ts`).
 			usage.record("refused", [keyOf(tool.name)]);
 			usage.record("called", [keyOf(tool.name)]);
-			markLoaded(tool.name);
+			load();
 			const own = tool.validationHint?.(failure);
 			return [own, `Input schema (JSON Schema):\n${JSON.stringify(tool.parameters)}`].filter(Boolean).join("\n\n");
 		},
@@ -161,14 +161,15 @@ const declarationBytes = (tool: { description: string; parameters: unknown }): n
  * definition in place; elsewhere the tool list would be resent, so the tool stays thin and its schema stays a tool result.
  */
 export function redeclareLoadedNatives(api: SetupPick<"tools", "register">, ctx: { model?: unknown }): void {
-	if (loadedNatives.size === 0 || !redeclaresInPlace(ctx.model)) return;
-	const registered = formsByApi.get(api);
-	for (const name of loadedNatives) {
-		const forms = registered?.get(name);
+	const registry = registrations.get(api);
+	if (!registry?.pending.size || !redeclaresInPlace(ctx.model)) return;
+	for (const name of registry.pending) {
+		const forms = registry.forms.get(name);
 		if (!forms || !forms.isDeferred || forms.redeclared) continue;
 		try {
 			api.tools.register(forms.direct);
 			forms.redeclared = true;
+			registry.pending.delete(name);
 		} catch {
 			// The tool stays thin; its schema still arrives as a tool result.
 		}
@@ -176,7 +177,7 @@ export function redeclareLoadedNatives(api: SetupPick<"tools", "register">, ctx:
 }
 
 /** The forms of the deferrable tools each feature load registered, by the API it registered them through. */
-const formsByApi = new WeakMap<object, Map<string, Forms>>();
+const registrations = new WeakMap<object, { forms: Map<string, Forms>; pending: Set<string> }>();
 
 function readSettings(api: SetupPick<"settings", "get">): ExposureSettings {
 	try {
@@ -195,27 +196,34 @@ export function withNativeDeferral<P extends TSchema, D, S>(
 	api: SetupPick<"settings", "get">,
 	tool: ToolDefinition<P, D, S>,
 ): ToolDefinition<P, D, S> {
-	if (!DEFERRABLE_ANY.has(tool.name)) {
-		coreDeclarations.set(tool.name, { description: tool.description, parameters: tool.parameters });
-		return tool;
-	}
+	if (!DEFERRABLE_ANY.has(tool.name)) return tool;
+	let registry = registrations.get(api);
+	if (!registry) registrations.set(api, (registry = { forms: new Map(), pending: new Set() }));
+	const { pending } = registry;
+	const load = (): void => {
+		if (forms.isDeferred && !forms.redeclared) pending.add(tool.name);
+	};
 	const recorded: ToolDefinition<P, D, S> = {
 		...tool,
 		execute: (id, params, ...rest) => {
 			uses.record(process.cwd(), keyOf(tool.name));
 			usage.record("called", [keyOf(tool.name)]);
-			markLoaded(tool.name);
+			load();
 			return tool.execute(id, params, ...rest);
 		},
 	};
 	const isDeferred = nativeToolDeferred(tool.name, readSettings(api));
 	declared.set(tool.name, isDeferred);
-	const forms = { direct: recorded, deferred: deferred(recorded), isDeferred, redeclared: false, byRecord: isDeferred };
+	const forms = {
+		direct: recorded,
+		deferred: deferred(recorded, load),
+		isDeferred,
+		redeclared: false,
+		byRecord: isDeferred,
+	};
 	saved.set(tool.name, Math.max(0, declarationBytes(forms.direct) - declarationBytes(forms.deferred)));
-	let registered = formsByApi.get(api);
-	if (!registered) formsByApi.set(api, (registered = new Map()));
-	registered.set(tool.name, forms as unknown as Forms);
-	formsByName.set(tool.name, forms as unknown as Forms);
+	registry.forms.set(tool.name, forms as unknown as Forms);
+	nativeLoads.set(forms.deferred.parameters, { full: recorded, load });
 	return isDeferred ? forms.deferred : forms.direct;
 }
 
@@ -243,9 +251,10 @@ export function settleNativeDeferral(
 	api: SetupPick<"settings", "get"> & SetupPick<"tools", "register"> & Partial<OnDemandApi>,
 	ctx: Pick<FeatureContext, "sessionManager"> & { model?: unknown },
 ): void {
-	const registered = formsByApi.get(api);
+	const registry = registrations.get(api);
+	const registered = registry?.forms;
 	usage.reset();
-	loadedNatives.clear();
+	registry?.pending.clear();
 	if (!registered || registered.size === 0) return;
 	applyNativeDeclarations(api, ctx);
 	// Counted after the snapshot was read: the tools the session declares, and the on-demand ones it lists (its tool
@@ -273,7 +282,7 @@ function applyNativeDeclarations(
 	api: SetupPick<"settings", "get"> & SetupPick<"tools", "register"> & Partial<OnDemandApi>,
 	ctx: Pick<FeatureContext, "sessionManager"> & { model?: unknown },
 ): void {
-	const registered = formsByApi.get(api);
+	const registered = registrations.get(api)?.forms;
 	if (!registered) return;
 	const settings = readSettings(api);
 	let declaredTools: Map<string, { parameters?: unknown }> | undefined;
@@ -313,7 +322,7 @@ function applyNativeDeclarations(
 		const startsOnDemand = fresh && transcript === undefined && leftOnDemand(name, settings);
 		if (tierApplies && onDemandTool(name) && chosen === undefined && (startsOnDemand || loaded)) {
 			try {
-				api.tools.register(onDemandForm(forms, loaded));
+				api.tools.register(onDemandForm(forms, loaded, onDemandApi));
 			} catch {
 				continue;
 			}
@@ -353,7 +362,7 @@ export function reconsiderNativeOnDemand(
 		applyNativeDeclarations(api, ctx);
 		return;
 	}
-	for (const [name, forms] of formsByApi.get(api) ?? []) {
+	for (const [name, forms] of registrations.get(api)?.forms ?? []) {
 		if (!forms.onDemand) continue;
 		const onDemandApi = forms.onDemand;
 		const wasUndeclared = undeclared(name, forms);

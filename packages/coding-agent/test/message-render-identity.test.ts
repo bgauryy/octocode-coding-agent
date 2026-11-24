@@ -40,7 +40,7 @@ describe("message render identity", () => {
 
 	test("an unchanged assistant message returns the same rows, and a streamed update shows its new text", () => {
 		initTheme("dark");
-		const message = new AssistantMessageComponent(assistant("first part"), false, undefined, undefined, undefined);
+		const message = new AssistantMessageComponent(assistant("first part"), false, undefined, undefined);
 		const first = message.render(60);
 		expect(message.render(60)).toBe(first);
 		expect(first[0]).toContain(OSC133_ZONE_START);

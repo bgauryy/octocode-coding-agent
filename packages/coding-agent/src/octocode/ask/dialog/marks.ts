@@ -1,5 +1,5 @@
 import { animationClock } from "@octocodeai/octocode-tui";
-import { markFrameMs, markMoves, stateMark } from "../../../theme/status.ts";
+import { MARK_FRAME_MS, markMoves, stateMark } from "../../../theme/status.ts";
 import type { DialogTheme } from "./theme.ts";
 
 /** When each open dialog's pulse began; a tab mark holds still once the oldest has pulsed for `WAIT_PULSE_MS`. */
@@ -54,7 +54,7 @@ export class Breath {
 				// Past the bound the repaint above drew the still mark: let the clock go.
 				if (!markMoves("waiting", { since: this.since! })) this.stopClock();
 			},
-			{ everyMs: markFrameMs("waiting"), kind: "decor" },
+			{ everyMs: MARK_FRAME_MS, kind: "decor" },
 		);
 	}
 

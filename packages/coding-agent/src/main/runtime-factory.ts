@@ -76,11 +76,14 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 		// The run's own configuration goes onto this manager before tools and resources load from it.
 		await applyRunConfiguration(parsed, { cwd, agentDir, settings: runtimeSettingsManager, projectTrusted });
 		const loading = deadline(15_000);
+		// Print mode and ACP sessions run without anyone watching; interactive-only plans are ineligible.
+		const unattended = acpWorker === true || getAppMode() === "print" || getAppMode() === "json";
 		const services = await createAgentSessionServices({
 			cwd,
 			agentDir,
 			settingsManager: runtimeSettingsManager,
 			modelRuntimeSignal: loading.signal,
+			unattended,
 			resourceLoaderOptions: {
 				skillResourceSnapshot,
 				nativeFeatures,
@@ -99,7 +102,7 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			},
 		}).finally(loading.clear);
 		try {
-			return await createCliRuntime(services, sessionManager, sessionStartEvent);
+			return await createCliRuntime(services, sessionManager, sessionStartEvent, unattended);
 		} catch (error) {
 			services.dispose?.();
 			throw error;
@@ -109,6 +112,7 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 		services: AgentSessionServices,
 		sessionManager: SessionManager,
 		sessionStartEvent: SessionStartEvent | undefined,
+		unattended: boolean,
 	): Promise<CreateAgentSessionRuntimeResult> {
 		const { settingsManager, modelRuntime, resourceLoader } = services;
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
@@ -166,8 +170,6 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 			}
 		}
 
-		// Print mode and an ACP server's session run unattended: the vendor of an interactive-only plan does not allow them.
-		const unattended = acpWorker === true || getAppMode() === "print" || getAppMode() === "json";
 		const created = await createSessionFromServices({
 			services,
 			sessionManager,

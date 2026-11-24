@@ -48,7 +48,7 @@ function wholeMinutes(ms: number, round: "down" | "up"): string {
 
 /**
  * The right-hand cell: a timer's time left, anything else its elapsed time. Empty when the row has no clock. `precise`
- * (the panel repaints every few moments, since a mark moves) shows seconds; otherwise whole minutes, which stay true
+ * (the panel repaints once a second while a row runs) shows seconds; otherwise whole minutes, which stay true
  * until the next minute repaint (`nextMinuteDelay`).
  */
 function clock(row: WorkRow, now: number, precise: boolean): string {

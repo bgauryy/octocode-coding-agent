@@ -21,7 +21,6 @@
 			"registerTeamEvents@octocode/team/tools/events.ts",
 			"registerWake@octocode/wake/register.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerActivity@octocode/ui/activity.ts",
 			"registerCompaction@octocode/compaction/register.ts",
 			"registerWakeRetry@octocode/wake-retry.ts"
@@ -33,7 +32,6 @@
 			"registerTeamEvents@octocode/team/tools/events.ts",
 			"registerWake@octocode/wake/register.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerStallRecorder@octocode/profiler/stalls.ts",
 			"registerActivity@octocode/ui/activity.ts"
 		],
@@ -43,9 +41,11 @@
 			"registerMemorySection@octocode/memory/file/section.ts",
 			"registerMemory@octocode/memory/register.ts",
 			"registerSkillDescriptions@octocode/context-optimization/skills.ts",
+			"installLiveInput@octocode/wake/live-input.ts",
 			"registerTurnSetup@octocode/turn.ts",
 			"registerHooksPromptSection@octocode/hooks/prompt-section.ts",
 			"registerSourcePolicy@octocode/permission/source-policy-loader.ts",
+			"registerRunBudget@octocode/run-budget.ts",
 			"registerLoopGuard@octocode/loop-guard.ts",
 			"registerWakeRetry@octocode/wake-retry.ts",
 			"registerNativeSessionLifecycle@octocode/session-lifecycle.ts"
@@ -73,16 +73,20 @@
 			"registerStallRecorder@octocode/profiler/stalls.ts",
 			"registerActivity@octocode/ui/activity.ts",
 			"registerTurnBudget@octocode/compaction/turn-budget.ts",
+			"registerRunBudget@octocode/run-budget.ts",
+			"registerRepeatedProseGuard@octocode/repeated-prose.ts",
 			"registerLoopGuard@octocode/loop-guard.ts",
 			"registerUsageRecording@octocode/usage/record.ts"
 		],
 		"message_start": [
 			"Delivery.install@octocode/ui/delivery.ts",
-			"registerTeamEvents@octocode/team/tools/events.ts"
+			"registerTeamEvents@octocode/team/tools/events.ts",
+			"registerRepeatedProseGuard@octocode/repeated-prose.ts"
 		],
 		"message_update": [
 			"registerTeamEvents@octocode/team/tools/events.ts",
-			"registerActivity@octocode/ui/activity.ts"
+			"registerActivity@octocode/ui/activity.ts",
+			"registerRepeatedProseGuard@octocode/repeated-prose.ts"
 		],
 		"model_select": [
 			"withNativePermissionOwners@octocode/permission/native-tools.ts",
@@ -93,7 +97,6 @@
 			"registerSkills@octocode/skills.ts"
 		],
 		"session_before_compact": [
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerStallRecorder@octocode/profiler/stalls.ts",
 			"registerPrewarmWatch@octocode/compaction/prewarm-watch.ts",
@@ -121,7 +124,6 @@
 			"registerRecordedSpend@octocode/team/tools/spend.ts",
 			"registerConfinedNote@octocode/team/node-confine.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerStallRecorder@octocode/profiler/stalls.ts",
 			"registerTurnSetup@octocode/turn.ts",
 			"registerPrewarmWatch@octocode/compaction/prewarm-watch.ts",
@@ -131,7 +133,6 @@
 			"registerUsageRecording@octocode/usage/record.ts"
 		],
 		"session_compact_failed": [
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerCompaction@octocode/compaction/register.ts"
 		],
@@ -151,8 +152,6 @@
 			"registerBacklog@octocode/backlog/index.ts",
 			"registerTeamEvents@octocode/team/tools/events.ts",
 			"registerWake@octocode/wake/register.ts",
-			"bindSessionSignals@octocode/wake/session-signals.ts",
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"installLive@octocode/wake/live-host.ts",
 			"installTicketResults@octocode/wake/ticket-results.ts",
 			"registerAsyncJobs@octocode/jobs/register.ts",
@@ -182,7 +181,6 @@
 			"registerTeamEvents@octocode/team/tools/events.ts",
 			"registerRecordedSpend@octocode/team/tools/spend.ts",
 			"registerSkillDescriptions@octocode/context-optimization/skills.ts",
-			"installShadow@octocode/wake/shadow-host.ts",
 			"installLive@octocode/wake/live-host.ts",
 			"installTicketResults@octocode/wake/ticket-results.ts",
 			"registerAsyncJobs@octocode/jobs/register.ts",
@@ -192,6 +190,7 @@
 			"registerCompaction@octocode/compaction/register.ts",
 			"registerArchiveLifecycle@octocode/archive/lifecycle.ts",
 			"registerSkillTool@octocode/native/tools/skill/tool.ts",
+			"registerRunBudget@octocode/run-budget.ts",
 			"registerLoopGuard@octocode/loop-guard.ts",
 			"registerHarnessSync@octocode/subagents/harness-sync.ts",
 			"registerMonitor@octocode/monitor/register.ts",
@@ -252,7 +251,6 @@
 		"turn_end": [
 			"registerTeamEvents@octocode/team/tools/events.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerTurnSetup@octocode/turn.ts",
 			"registerCompaction@octocode/compaction/register.ts",
 			"registerHarnessSync@octocode/subagents/harness-sync.ts"
@@ -262,7 +260,6 @@
 		],
 		"turn_start": [
 			"registerTeamEvents@octocode/team/tools/events.ts",
-			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"bindSessionSignals@octocode/wake/session-signals.ts",
 			"registerTurnBudget@octocode/compaction/turn-budget.ts"
 		],

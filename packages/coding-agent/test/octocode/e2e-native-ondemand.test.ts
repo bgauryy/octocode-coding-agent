@@ -202,12 +202,19 @@ describe("on-demand native tools", () => {
 	it("declares one the mcp tool loads, and the rest deferred after a switch to a model that cannot add tools in place", async () => {
 		await runtime.newSession();
 		await rebind();
-		const [first, second] = await run(capable, [
+		const [first, second, third] = await run(capable, [
 			fauxAssistantMessage(
 				[fauxToolCall("mcp", { intent: "tools", server: "native", tool: "models", reason: "load" })],
 				{
 					stopReason: "toolUse",
 				},
+			),
+			fauxAssistantMessage(
+				[
+					fauxToolCall("mcp", { intent: "tools", tool: "mcp", reason: "Read management schema" }),
+					fauxToolCall("mcp", { intent: "tools", tool: "models", reason: "Inspect loaded declaration" }),
+				],
+				{ stopReason: "toolUse" },
 			),
 			fauxAssistantMessage("done"),
 		]);
@@ -215,6 +222,8 @@ describe("on-demand native tools", () => {
 		expect(results(second)).toContain("Input schema");
 		expect(head(second)).toBe(head(first));
 		expect(declared(second)).toContain("models");
+		expect(results(third)).toContain("mcp [direct]");
+		expect(results(third)).toContain("models [direct]");
 
 		await runtime.session.setModel(runtime.session.modelRuntime.getModel("faux-plain", "plain-1")!);
 		const [switched] = await run(plain, [fauxAssistantMessage("ok")]);

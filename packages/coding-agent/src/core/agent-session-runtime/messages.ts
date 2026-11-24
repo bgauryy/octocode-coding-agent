@@ -1,16 +1,6 @@
+import { contentText } from "@octocodeai/octocode-ai";
+import { withoutSourceHeader } from "@octocodeai/octocode-common/text";
 import type { SessionManager } from "../session-manager.ts";
-
-/** Plain text of a user message, for prefilling the editor after a fork. */
-function extractUserMessageText(content: string | Array<{ type: string; text?: string }>): string {
-	if (typeof content === "string") {
-		return content;
-	}
-
-	return content
-		.filter((part): part is { type: "text"; text: string } => part.type === "text" && typeof part.text === "string")
-		.map((part) => part.text)
-		.join("");
-}
 
 /**
  * Where a fork of `entryId` leaves the new session: at the entry itself (`at`), or before a user message (`before`),
@@ -29,6 +19,6 @@ export function forkTarget(
 	}
 	return {
 		targetLeafId: selectedEntry.parentId,
-		selectedText: extractUserMessageText(selectedEntry.message.content),
+		selectedText: withoutSourceHeader(contentText(selectedEntry.message.content, "")),
 	};
 }

@@ -5,6 +5,7 @@ import { MACHINE_ALERTS_SCHEMA, SAMPLES_SCHEMA } from "./schema-samples.ts";
 import { PROVIDER_COOLDOWNS_SCHEMA } from "./schema-cooldowns.ts";
 import { MEMORY_SOURCES_SCHEMA } from "./schema-memory-sources.ts";
 import { PROVIDER_QUOTA_SCHEMA } from "./schema-quota.ts";
+import { PROVIDER_THROUGHPUT_SCHEMA } from "./schema-throughput.ts";
 import { USAGE_DAILY_SCHEMA } from "./schema-usage-daily.ts";
 import { SESSION_ACTIVITY_BY_COLUMN, SESSION_ACTIVITY_COLUMN } from "./schema-columns.ts";
 
@@ -22,7 +23,7 @@ const AGENT_RUNS_PARENT_INDEX =
 	"CREATE INDEX IF NOT EXISTS agent_runs_parent_session ON agent_runs(parent_session_id);";
 
 /** The objects an existing file of this version may lack; run each time the coordination file is opened. */
-export const ENSURED_OBJECTS = `${AGENT_RUNS_PARENT_INDEX}\n${ITEM_HANDOFFS_SCHEMA}\n${EVENTS_SCHEMA}\n${MACHINE_ALERTS_SCHEMA}\n${PROVIDER_COOLDOWNS_SCHEMA}\n${PROVIDER_QUOTA_SCHEMA}\n${USAGE_DAILY_SCHEMA}\n${MEMORY_SOURCES_SCHEMA}`;
+export const ENSURED_OBJECTS = `${AGENT_RUNS_PARENT_INDEX}\n${ITEM_HANDOFFS_SCHEMA}\n${EVENTS_SCHEMA}\n${MACHINE_ALERTS_SCHEMA}\n${PROVIDER_COOLDOWNS_SCHEMA}\n${PROVIDER_QUOTA_SCHEMA}\n${PROVIDER_THROUGHPUT_SCHEMA}\n${USAGE_DAILY_SCHEMA}\n${MEMORY_SOURCES_SCHEMA}`;
 
 /** `shell_history`: the commands the user ran with `!`, one row per folder and command, for the editor's suggestions. */
 const SHELL_HISTORY_SCHEMA = `

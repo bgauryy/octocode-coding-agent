@@ -10,6 +10,7 @@ import {
 	getSessionFilePath,
 	assertCurrentSessionVersion,
 } from "./entries.ts";
+import { entryWritten, needsTranscript } from "./entry-receipt.ts";
 import { appendRecords } from "./append-records.ts";
 import { encodeSessionLines, SessionCodec } from "./codec.ts";
 import type { LoadedSessionFile } from "./file-reader.ts";
@@ -213,10 +214,7 @@ export function rewriteSessionFile(state: SessionState): void {
 				beforeCommit: () => {
 					release = lockSessionFile(file);
 					if (state.fileSize === undefined || !existsSync(file)) return;
-					const count = state.fileEntries.length;
-					mergeForeignEntries(state, file, state.unwritten);
-					// Only a merge that brought records in reassigns held ids; otherwise the prepared lines are the file.
-					if (state.fileEntries.length !== count) throw new MergedWhileWriting();
+					if (mergeForeignEntries(state, file, state.unwritten)) throw new MergedWhileWriting();
 				},
 			});
 		} catch (error) {
@@ -229,6 +227,7 @@ export function rewriteSessionFile(state: SessionState): void {
 		state.fileSize = Buffer.byteLength(content);
 		state.codec = encoded.codec;
 		state.unwritten.length = 0;
+		for (const entry of state.fileEntries) entryWritten(entry);
 		const stamp = getFileStamp(file);
 		release?.();
 		release = undefined;
@@ -248,6 +247,7 @@ function flushNewSessionFile(state: SessionState, file: string, lockWaitMs?: num
 			state.codec = codec;
 			state.flushed = true;
 			state.unwritten.length = 0;
+			for (const entry of state.fileEntries) entryWritten(entry);
 			mirrorReplaced(state, file, getFileStamp(file), lines);
 		},
 		lockWaitMs,
@@ -269,25 +269,13 @@ export function materializeSession(state: SessionState): void {
 	if (state.unwritten.length === 0) cancelHeldRetry(state);
 }
 
-/**
- * A new session file is created only once the session contains a user or assistant message.
- * Setup entries alone (model, thinking level, system prompt) stay in memory so opening and
- * closing Octocode without chatting leaves no file behind. Starting at the user message (not the
- * first assistant reply) keeps the prompt on disk if the first turn never completes.
- */
-function hasConversation(state: SessionState): boolean {
-	return state.fileEntries.some(
-		(e) => e.type === "message" && (e.message.role === "user" || e.message.role === "assistant"),
-	);
-}
-
 /** Write the held entries, then `entry` when given. */
 export function persistEntry(state: SessionState, entry?: SessionEntry, lockWaitMs?: number): void {
 	if (!state.persist || !state.sessionFile) return;
 	liftWriteBlock(state);
 
 	if (!state.flushed) {
-		if (!hasConversation(state)) return;
+		if (!needsTranscript(state.fileEntries)) return;
 		flushNewSessionFile(state, state.sessionFile, lockWaitMs);
 	} else {
 		const file = state.sessionFile;
@@ -382,7 +370,7 @@ export function createBranchedSession(state: SessionState, leafId: string): stri
 		// has a conversation, otherwise let persistEntry() create the file later.
 		// Not flushed until the file exists: a failed rewrite leaves the next write to create it whole, not append to nothing.
 		state.flushed = false;
-		if (hasConversation(state)) {
+		if (needsTranscript(state.fileEntries)) {
 			rewriteSessionFile(state);
 			state.flushed = true;
 		}

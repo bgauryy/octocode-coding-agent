@@ -1,4 +1,12 @@
-import { eventSubscriptions, events, type Db } from "../../../../db/src/api.ts";
+import { setImmediate as yieldToIO } from "node:timers/promises";
+import {
+	eventSubscriptions,
+	events,
+	isBusy,
+	transactionWhenReady,
+	withoutWaiting,
+	type AgentDb,
+} from "../../../../db/src/api.ts";
 import { fromEventRow, fromSubscriptionRow, type NewAgentEvent, toNewEvent, toNewSubscription } from "./loop/rows.ts";
 import type { AgentEvent, Subscription } from "./topics.ts";
 
@@ -35,77 +43,113 @@ interface Active {
 	sub: HookSubscriber;
 	id: number;
 	offset: number;
+	persisted: number;
 }
 
 const PAGE = 100;
 
 export class EventSubscribers {
-	private readonly db: Db;
+	private readonly agent: AgentDb;
 	private readonly options: SubscribersOptions;
 	private readonly now: () => number;
 	private readonly active = new Set<Active>();
-	private chain: Promise<void> = Promise.resolve();
+	private readonly pendingWrites = new Set<Promise<unknown>>();
+	private running?: Promise<void>;
+	private requested = false;
 	private closed = false;
 
-	constructor(db: Db, options: SubscribersOptions) {
-		this.db = db;
+	constructor(agent: AgentDb, options: SubscribersOptions) {
+		this.agent = agent;
 		this.options = options;
 		this.now = options.now ?? Date.now;
 	}
 
 	/** Subscribes; a new subscription starts at the end of the log, an existing one at its stored offset. Returns what stops it (the offset stays). */
-	subscribe(sub: HookSubscriber): () => void {
+	async subscribe(sub: HookSubscriber): Promise<() => void> {
 		if (this.closed) throw new Error("the subscribers are closed");
 		const { workspaceId, sessionId, pid, ttlMs } = this.options;
-		const row = eventSubscriptions.upsert(
-			this.db,
-			toNewSubscription(
-				{ workspaceId, sessionId, ...(pid === undefined ? {} : { pid }) },
-				{
-					subscriber: `hook:${sub.hook}:${sessionId}`,
-					topic: sub.topic,
-					deliver: "record",
-					durable: true,
-					action: { type: "hook", hook: sub.hook, ...(sub.kinds ? { kinds: sub.kinds } : { kinds: ["internal"] }) },
-					...(ttlMs === undefined ? {} : { expiresAt: this.now() + ttlMs }),
-				},
-				events.lastSeq(this.db, workspaceId),
-				this.now(),
-			),
+		const subscription = toNewSubscription(
+			{ workspaceId, sessionId, ...(pid === undefined ? {} : { pid }) },
+			{
+				subscriber: `hook:${sub.hook}:${sessionId}`,
+				topic: sub.topic,
+				deliver: "record",
+				durable: true,
+				action: { type: "hook", hook: sub.hook, ...(sub.kinds ? { kinds: sub.kinds } : { kinds: ["internal"] }) },
+				...(ttlMs === undefined ? {} : { expiresAt: this.now() + ttlMs }),
+			},
+			events.lastSeq(this.agent.db, workspaceId),
+			this.now(),
 		);
+		const row = await this.write(() => eventSubscriptions.upsert(this.agent.db, subscription));
+		if (this.closed) throw new Error("the subscribers are closed");
 		const stored = fromSubscriptionRow(row);
-		const entry: Active = { sub, id: stored.id, offset: stored.offset };
+		const entry: Active = { sub, id: stored.id, offset: stored.offset, persisted: stored.offset };
 		this.active.add(entry);
 		return () => void this.active.delete(entry);
 	}
 
 	/** Writes the event to the log and delivers it, and anything older a subscriber has not seen, before the promise settles. */
 	async publish(event: NewAgentEvent): Promise<{ seq: number; inserted: boolean }> {
-		const written = events.append(this.db, toNewEvent(this.options.workspaceId, this.options.sessionId, event));
+		const row = toNewEvent(this.options.workspaceId, this.options.sessionId, event);
+		const written = await this.write(() => events.append(this.agent.db, row));
 		if (written.inserted) await this.pump();
 		return written;
 	}
 
 	/** Delivers what the log holds past each subscriber's offset. Runs one at a time, so an event is never handled twice. */
 	pump(): Promise<void> {
-		const run = this.chain.then(() => this.deliver());
-		this.chain = run.catch(() => undefined);
-		return run;
+		this.requested = true;
+		return (this.running ??= Promise.resolve().then(async () => {
+			try {
+				do {
+					this.requested = false;
+					await this.deliver();
+					if (this.requested && !this.closed) await yieldToIO();
+				} while (this.requested && !this.closed);
+			} finally {
+				this.running = undefined;
+			}
+		}));
 	}
 
 	/** Stops delivering and waits for the handler running now. */
 	async close(): Promise<void> {
 		this.closed = true;
 		this.active.clear();
-		await this.chain;
+		await Promise.allSettled(this.pendingWrites);
+		await this.running;
+	}
+
+	/** A single autocommit write usually succeeds immediately. A competing writer yields to timers and I/O. */
+	private async write<T>(work: () => T): Promise<T> {
+		try {
+			return withoutWaiting(this.agent.db, work);
+		} catch (error) {
+			if (!isBusy(error)) throw error;
+			const waiting = transactionWhenReady(this.agent, work);
+			this.pendingWrites.add(waiting);
+			try {
+				return await waiting;
+			} finally {
+				this.pendingWrites.delete(waiting);
+			}
+		}
+	}
+
+	private async saveOffset(entry: Active): Promise<void> {
+		await this.write(() => eventSubscriptions.advance(this.agent.db, entry.id, entry.offset, this.now()));
+		entry.persisted = entry.offset;
 	}
 
 	private async deliver(): Promise<void> {
 		// oxlint-disable-next-line unicorn/no-useless-spread -- subscriptions added by a handler start with the next delivery pass.
 		for (const entry of [...this.active]) {
+			// Retry a failed checkpoint before reading on, without invoking the handler twice.
+			if (entry.persisted !== entry.offset) await this.saveOffset(entry);
 			for (;;) {
 				if (!this.active.has(entry)) break;
-				const rows = events.read(this.db, {
+				const rows = events.read(this.agent.db, {
 					workspaceId: this.options.workspaceId,
 					after: entry.offset,
 					sessionId: this.options.sessionId,
@@ -121,9 +165,10 @@ export class EventSubscribers {
 						this.options.failed(entry.sub.hook, event, error);
 					}
 					entry.offset = event.seq;
-					eventSubscriptions.advance(this.db, entry.id, event.seq, this.now());
+					await this.saveOffset(entry);
 				}
 				if (rows.length < PAGE) break;
+				await yieldToIO();
 			}
 		}
 	}

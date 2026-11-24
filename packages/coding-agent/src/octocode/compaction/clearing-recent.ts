@@ -27,6 +27,12 @@ export const KEEP_RECENT_TURNS = 10;
  */
 export const KEEP_IN_USE_TOKENS = 20_000;
 
+/** `limits.clearing` for the model in use; an absent value is the constant above. */
+export interface KeepInUse {
+	keepTurns?: number;
+	keepInUseTokens?: number;
+}
+
 /** The `path` strings anywhere in a call's arguments (`read`, `file` and Octocode query arrays all spell it so). */
 function pathArgs(value: unknown, into: string[] = []): string[] {
 	if (Array.isArray(value)) for (const each of value) pathArgs(each, into);
@@ -75,17 +81,19 @@ export function inRecentUse(
 	candidates: readonly Candidate[],
 	messages: readonly MessageRef[],
 	calls: ReadonlyMap<string, Record<string, unknown>>,
+	keep: KeepInUse = {},
 ): Set<string> {
+	const keepTurns = keep.keepTurns ?? KEEP_RECENT_TURNS;
 	let start = 0;
 	for (let index = messages.length - 1, turns = 0; index >= 0; index--) {
 		const message = messages[index].message;
-		if (isRecord(message) && message.role === "assistant" && ++turns === KEEP_RECENT_TURNS) {
+		if (isRecord(message) && message.role === "assistant" && ++turns === keepTurns) {
 			start = index;
 			break;
 		}
 	}
 	const inUse = new Set<string>();
-	let room = KEEP_IN_USE_TOKENS * CHARS_PER_TOKEN;
+	let room = (keep.keepInUseTokens ?? KEEP_IN_USE_TOKENS) * CHARS_PER_TOKEN;
 	let text: string | undefined;
 	const mentioned = (candidate: Candidate): boolean => {
 		const keys = pathArgs(calls.get(candidate.id)).flatMap((file) => mentionKey(file) ?? []);

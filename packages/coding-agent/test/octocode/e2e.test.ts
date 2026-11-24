@@ -322,7 +322,7 @@ describe("with Octocode MCP (default)", () => {
 		// Declared mode under the default `mcpExposure: "recent"`, in a folder that never called the server: the block is
 		// the server's purpose, its instructions and an index line per tool; each tool is declared with the server's own
 		// description and its field names and types (nested ones too), the fields it requires, array item bounds and short
-		// value lists, without descriptions; the full schema comes back on a rejected call.
+		// value lists, and field conditions naming a selector value. Other field prose stays in the full schema.
 		expect(turn.systemPrompt).not.toContain("declare namespace");
 		expect(turn.systemPrompt).toContain("\n- localSearch\n");
 		const declared = turn.toolContracts.find((tool) => tool.name === "mcp__octocode__localSearch");
@@ -333,11 +333,18 @@ describe("with Octocode MCP (default)", () => {
 					type: "array",
 					minItems: 1,
 					maxItems: 5,
-					items: { required: ["matchString"], properties: { matchString: { type: "array", maxItems: 100 } } },
+					items: {
+						required: ["matchString"],
+						properties: {
+							matchString: { type: "array", maxItems: 100 },
+							unique: { description: "Only with view: matchOnly." },
+							contextLines: { description: "Only with view: content." },
+						},
+					},
 				},
 			},
 		});
-		expect(JSON.stringify(declared?.parameters)).not.toContain('"description"');
+		expect(declared?.parameters).not.toHaveProperty("properties.queries.items.properties.path.description");
 		// `<tools>` lists native tools one by one; a deferred server's purpose is stated once, in its `<mcps>` block.
 		const toolLines = /<tools>\n([^]*?)\n<\/tools>/.exec(turn.systemPrompt)?.[1].split("\n") ?? [];
 		expect(toolLines.length).toBeGreaterThan(0);

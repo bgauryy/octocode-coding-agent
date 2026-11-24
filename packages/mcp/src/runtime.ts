@@ -178,8 +178,8 @@ export class McpServerConnection implements McpToolCaller {
 	};
 
 	/**
-	 * The error for a call made while the connection is not up, or undefined when connected. A call does not wait: after a
-	 * drop it starts the reconnect in the background (the outcome shows in `state` and `error`) and fails with how to restart.
+	 * The error for a call made while the connection is not up, or undefined when connected. After a drop it starts the
+	 * reconnect in the background (the outcome shows in `state` and `error`); `runtime/reconnect-wait.ts` bounds the wait.
 	 */
 	rejectWhileDown(): Error | undefined {
 		const failure = callWhileDownError(this.entry, {
@@ -288,7 +288,7 @@ export class McpServerConnection implements McpToolCaller {
 	}
 
 	private async connectOnce(signal: AbortSignal, timeoutMs: number): Promise<McpClient> {
-		const { client, closeClient } = createMcpClient(this.entry.name, this.cwd, timeoutMs, this.log);
+		const { client, closeClient } = createMcpClient(this.entry.name, this.cwd, timeoutMs, this.log, this);
 		this.clientError = undefined;
 		trackServerWarnings(client, (line) => (this.serverWarning = line)); // starts by clearing the last one
 		client.onError((error) => {

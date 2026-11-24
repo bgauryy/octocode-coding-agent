@@ -1,5 +1,5 @@
 import type { RequestLayer, RequestTrace } from "@octocodeai/octocode-ai";
-import { chainTrace, extendTrace, isChained } from "./trace-chain.ts";
+import { chainTrace, extendTrace } from "./trace-chain.ts";
 
 /**
  * A request trace lists every layer of the request it describes, so storing each whole grows with the square of the
@@ -101,7 +101,8 @@ export class TraceIndex {
 		if (known && sharesPrefix(layers, best.layers, best.keep)) return delta;
 		const decoded = this.decode(delta);
 		if (!decoded || JSON.stringify(decoded) !== JSON.stringify(trace)) return trace;
-		if (!isChained(trace)) for (let i = 0; i < best.keep; i++) layers[i] = best.layers[i];
+		// A copy of a resumed trace can still point at the original frozen array.
+		if (!Object.isFrozen(layers)) for (let i = 0; i < best.keep; i++) layers[i] = best.layers[i];
 		return delta;
 	}
 

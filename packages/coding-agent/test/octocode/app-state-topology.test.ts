@@ -41,9 +41,7 @@ describe("application state topology", () => {
 
 	it("binds stores to React only in the React surfaces", () => {
 		const react = importing(/from\s+["']zustand["']/);
-		expect(
-			react.filter((file) => !file.startsWith("webview/src/") && !file.startsWith("coding-agent/src/modes/ink/")),
-		).toEqual([]);
+		expect(react.filter((file) => !file.startsWith("webview/src/"))).toEqual([]);
 	});
 
 	// A module-level store is one per process, so it would hold one session's facts for every session the process hosts

@@ -43,6 +43,19 @@ function stored(traces: RequestTrace[]): string[] {
 afterEach(() => vi.restoreAllMocks());
 
 describe("request traces from a memo in the session file", () => {
+	it("round-trips a copied trace that retains a resumed session's frozen layers", () => {
+		const [payload] = payloads(1);
+		const index = new TraceIndex();
+		const resumed = index.share(describePayloadLayers("anthropic-messages", payload)!);
+		const copied = { ...resumed };
+		index.add("first", describePayloadLayers("anthropic-messages", payload)!);
+		expect(Object.isFrozen(copied.layers)).toBe(true);
+		const stored = index.encode(copied);
+		expect(stored).toHaveProperty("base", "first");
+		if (!("base" in stored)) throw new Error("Expected a stored trace delta");
+		expect(index.decode(stored)).toEqual(copied);
+	});
+
 	it("are stored byte for byte as fresh traces are, without the read-back", () => {
 		const requests = payloads(30);
 		const fresh = requests.map((payload) => describePayloadLayers("anthropic-messages", payload)!);

@@ -1,4 +1,5 @@
 import { retentionProblems } from "../../storage/retention.ts";
+import { limitsProblems } from "../limits.ts";
 import { stripBom } from "@octocodeai/octocode-common/text";
 import type { Settings } from "../settings-schema.ts";
 import { globalOnlyKeysIn } from "./global-only.ts";
@@ -80,7 +81,8 @@ export class SettingsPersistence {
 	/**
 	 * Queue one warning naming every key of freshly loaded `settings` that Octocode does not read, one for a leftover
 	 * `extensions` key (extensions are not supported), one naming every global-only key a project file sets (each does
-	 * nothing there, `GLOBAL_ONLY_SETTINGS`), and one for each invalid global `retention` value.
+	 * nothing there, `GLOBAL_ONLY_SETTINGS`), one for each invalid global `retention` value and one for
+	 * each invalid `limits` value.
 	 */
 	recordIgnoredKeys(scope: SettingsScope, settings: Settings): void {
 		const path = this.state.settingsPaths[scope];
@@ -93,6 +95,7 @@ export class SettingsPersistence {
 			...(ignored ? [ignored] : []),
 			...(ignoredKeys.includes("extensions") ? [REMOVED_EXTENSIONS_KEY] : []),
 			...(scope === "project" ? globalOnlyWarning(globalOnlyKeysIn(settings)) : retentionProblems(settings.retention)),
+			...limitsProblems(settings.limits, scope === "project" ? "project" : "global"),
 		];
 		for (const message of messages) this.state.warnings.push({ scope, ...(path ? { path } : {}), message });
 	}

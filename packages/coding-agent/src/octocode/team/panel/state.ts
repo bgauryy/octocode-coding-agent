@@ -1,6 +1,6 @@
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { Theme } from "../../../theme/theme.ts";
-import { stateMark, type UiState } from "../../../theme/status.ts";
+import { stillLight, type UiState } from "../../../theme/status.ts";
 
 /** A subagent joins the team just before its first turn; its stored `idle` then is not news, so the panel shows it working. */
 const STARTING_MS = 3_000;
@@ -29,8 +29,6 @@ export interface Need {
 	message?: Traffic;
 	/** How many questions wait. */
 	count: number;
-	/** When the wait began (`needsYou`): when the wait began. */
-	since?: number;
 }
 
 /** One panel row's agent: its depth under this session, and when it left the team if it did. */
@@ -80,13 +78,5 @@ export function panelState({ member, doneAt, end, need }: PanelEntry, now: numbe
 	return shownWorking(member, now) ? { state: "running", label: "working" } : { state: "pending", label: "idle" };
 }
 
-/** When a row's mark began to move: its finish (which `panelState` shows first), else the start of its wait. */
-export const markSince = ({ doneAt, need }: PanelEntry): number | undefined => doneAt ?? need?.since;
-
-/** The mark in front of an agent's row, painted for `now` (the state light: a spinner while it works, a steady ⏺ in its state's colour after). */
-export const panelMark = (theme: Theme, state: PanelState, now: number, since?: number): string =>
-	stateMark(theme, state.state, {
-		now,
-		light: true,
-		...(since === undefined ? {} : { since }),
-	});
+/** The mark in front of an agent's row: its still state light. */
+export const panelMark = (theme: Theme, state: PanelState): string => stillLight(theme, state.state);

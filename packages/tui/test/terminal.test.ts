@@ -412,7 +412,7 @@ describe("ProcessTerminal progress", () => {
 		const previousWrite = process.stdout.write;
 		const previousLength = Object.getOwnPropertyDescriptor(process.stdout, "writableLength");
 		let queued = 0;
-		mock.timers.enable({ apis: ["setInterval"] });
+		mock.timers.enable({ apis: ["setInterval", "Date"] });
 		process.stdout.write = (chunk: string | Uint8Array) => {
 			writes.push(String(chunk));
 			return true;

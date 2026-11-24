@@ -1,8 +1,13 @@
+import { writeFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { PRIVATE_FILE_MODE } from "@octocodeai/octocode-common/file-mode";
+import { imageExtension } from "../shared/spill.ts";
+import { TEXT_MAX_CHARS, RESULT_DEFAULT_BYTES } from "../../utils/output-budget.ts";
 import type { AgentToolResult } from "@octocodeai/octocode-agent-core";
 import { cutText } from "@octocodeai/octocode-common/text";
 import type { Job, JobOutcome } from "./async-jobs.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { contentText } from "../shared/util.ts";
 
 /**
  * The report of a tool call that became a job: the model reads `taskReport`'s text; the terminal draws the row from
@@ -51,14 +56,42 @@ function isErrorResult(value: unknown): boolean {
 }
 
 /** The text a finished job hands the model: a status line, the call, then what the work returned or why it failed. */
-export function taskReport(job: Job, outcome: JobOutcome): string {
+export async function taskReport(job: Job, outcome: JobOutcome, outputDir: () => string): Promise<string> {
 	const details = taskDetails(job, outcome);
 	const head = `[${job.id} · ${job.tool} ${details.how} after ${details.seconds}s]\n${job.title}`;
 	if (outcome.kind === "stopped") return head;
-	if (outcome.kind === "failed") return `${head}\nError: ${errorMessage(outcome.error)}`;
-	const result = outcome.value as AgentToolResult<unknown> | undefined;
-	const text = result ? contentText(result.content) : "";
-	return text ? `${head}\n${text}` : head;
+	const parts = [head];
+	const save = async (data: string, extension: string, encoding: "utf8" | "base64") => {
+		const dir = outputDir();
+		await mkdir(dir, { recursive: true, mode: 0o700 });
+		const file = join(dir, `${job.id}-${randomUUID()}.${extension}`);
+		await writeFile(file, data, { encoding, flag: "wx", mode: PRIVATE_FILE_MODE });
+		return file;
+	};
+	const result = outcome.kind === "done" ? (outcome.value as AgentToolResult<unknown> | undefined) : undefined;
+	const texts: string[] = [];
+	for (const part of result?.content ?? []) {
+		if (part.type === "image") {
+			try {
+				parts.push(
+					`Image (${part.mimeType}): ${await save(part.data, imageExtension(part.mimeType) ?? "bin", "base64")}`,
+				);
+			} catch (error) {
+				parts.push(`Could not save task image: ${errorMessage(error)}`);
+			}
+		} else texts.push(part.text);
+	}
+	const text = outcome.kind === "failed" ? `Error: ${errorMessage(outcome.error)}` : texts.join("\n");
+	if (text.length > TEXT_MAX_CHARS) {
+		// Only encode the preview on this tick. One extra code unit keeps a surrogate pair at the bound intact.
+		parts.push(cutText(text.slice(0, RESULT_DEFAULT_BYTES + 1), RESULT_DEFAULT_BYTES));
+		try {
+			parts.push(`Full task output: ${await save(text, "txt", "utf8")}`);
+		} catch (error) {
+			parts.push(`Could not save full task output: ${errorMessage(error)}`);
+		}
+	} else if (text) parts.push(text);
+	return parts.join("\n");
 }
 
 /** The reply of a call whose work went on as a job. */

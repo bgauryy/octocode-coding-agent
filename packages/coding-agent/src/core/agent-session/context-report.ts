@@ -1,4 +1,4 @@
-import { inputRoomTokens } from "../compaction/settings.ts";
+import { compactionThresholdTokens } from "../compaction/settings.ts";
 import { contentText, getCurrentSystemMessage, getCurrentTools } from "@octocodeai/octocode-ai";
 import { charsToTokens } from "@octocodeai/octocode-ai/utils/estimate";
 import { parseSkillBlock } from "./prompt-expansion.ts";
@@ -115,7 +115,7 @@ export function contextReport(
 		currentTokens: usage?.tokens ?? null,
 		reportedTokens: measured.lastUsageIndex === null || usage?.tokens === null ? null : measured.usageTokens,
 		reserve: settings.reserveTokens,
-		threshold: capacity ? inputRoomTokens(capacity, settings.reserveTokens, settings.maxInputTokens) : null,
+		threshold: capacity ? compactionThresholdTokens(capacity, settings) : null,
 		estimatedTotal,
 		difference: usage?.tokens === null || usage?.tokens === undefined ? null : usage.tokens - estimatedTotal,
 		contributors,

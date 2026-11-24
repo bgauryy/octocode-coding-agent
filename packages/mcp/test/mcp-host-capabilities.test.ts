@@ -49,7 +49,7 @@ describe("shared MCP host capabilities", () => {
 			await connection.close();
 		}
 	});
-	it("uses the shared lifecycle for tools while ignoring advertised resources", async () => {
+	it("lists a static resource without template support and reads a tool's link from the same server", async () => {
 		const h = mcpHost({
 			prepareLaunch: (entry) => ({ ...entry, config: { ...entry.config, command: process.execPath, args: [fixture] } }),
 		});
@@ -58,9 +58,15 @@ describe("shared MCP host capabilities", () => {
 			await h.prompt();
 			for (const name of ["list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource"])
 				expect(h.tools.has(name)).toBe(false);
-			expect((await h.call("mcp__octocode__link", {})).content).toEqual([
+			const link = await h.call("mcp__octocode__link", {});
+			expect(link.content).toEqual([
 				{ type: "text", text: expect.stringMatching(/^\[resource link \S+\]\nname: intro$/) },
 			]);
+			const uri = link.content[0].text.match(/^\[resource link (\S+)\]/)?.[1];
+			expect((await h.call("mcp", { intent: "resources", server: "octocode" })).content[0].text).toContain(uri);
+			expect((await h.call("mcp", { intent: "read", server: "octocode", uri })).content[0].text).toContain(
+				"Resource evidence",
+			);
 			await h.call("mcp", { intent: "stop", server: "octocode" });
 			expect(h.state.findServer("octocode")!.connection!.isStopped).toBe(true);
 			await expect(h.call("mcp__octocode__link", {})).rejects.toThrow(/stopped|no longer available/);

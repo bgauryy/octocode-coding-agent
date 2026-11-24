@@ -9,7 +9,7 @@ import { prepareCompaction } from "../src/core/compaction/index.ts";
 const model = { provider: "p", id: "m", contextWindow: 100_000 } as never;
 const settings = { enabled: true, reserveTokens: 1_000, keepRecentTokens: 500 };
 const policy = { watch: (stream: never) => stream, retry: {} as never, callbacks: {} };
-const threshold = 100_000 - settings.reserveTokens;
+const threshold = Math.ceil(0.95 * (100_000 - settings.reserveTokens));
 
 function setup(handlers = true) {
 	const manager = SessionManager.inMemory();
@@ -34,13 +34,25 @@ describe("compaction prewarm", () => {
 	it("is due only inside the lead before the threshold, and only while compaction is on", () => {
 		const { prewarm } = setup();
 		const lead = prewarmLeadTokens(100_000);
-		expect(prewarm.due(threshold - lead, model, settings)).toBe(false);
-		expect(prewarm.due(threshold - lead + 1, model, settings)).toBe(true);
-		expect(prewarm.due(threshold, model, settings)).toBe(true);
+		expect(prewarm.due(threshold - lead - 1, model, settings)).toBe(false);
+		expect(prewarm.due(threshold - lead, model, settings)).toBe(true);
+		expect(prewarm.due(threshold - 1, model, settings)).toBe(true);
 		// Past the threshold the compaction itself runs.
-		expect(prewarm.due(threshold + 1, model, settings)).toBe(false);
+		expect(prewarm.due(threshold, model, settings)).toBe(false);
 		expect(prewarm.due(threshold - 1, model, { ...settings, enabled: false })).toBe(false);
 		expect(prewarm.due(threshold - 1, { provider: "p", id: "m", contextWindow: 0 } as never, settings)).toBe(false);
+	});
+
+	it("plans ahead of the compaction boundary on a large window, including a configured earlier trigger", () => {
+		const { prewarm } = setup();
+		const large = { provider: "p", id: "large", contextWindow: 1_000_000 } as never;
+		for (const triggerTokens of [999_000, 300_000]) {
+			const policy = { ...settings, triggerTokens };
+			const stop = Math.ceil(0.95 * triggerTokens);
+			expect(prewarm.due(stop - 10_000, large, policy)).toBe(true);
+			expect(prewarm.due(stop, large, policy)).toBe(false);
+			expect(prewarm.due(triggerTokens - 1, large, policy)).toBe(false);
+		}
 	});
 
 	it("tells extensions the plan once and hands the same preparation to the compaction after the branch grew", () => {
@@ -114,6 +126,20 @@ describe("compaction prewarm", () => {
 			prewarm.take(manager.getBranch(), manager.getSessionId(), model, settings, "Different instructions"),
 		).toBeUndefined();
 		expect(events[0].signal.aborted).toBe(true);
+	});
+
+	it("reuses the planned summary when a 429 received after planning is omitted for a retry", () => {
+		const { events, start, take, manager, prewarm } = setup();
+		start();
+		const id = manager.appendMessage({
+			...fauxAssistantMessage(""),
+			stopReason: "error",
+			errorMessage: "429 Too many requests",
+		});
+		manager.appendContextEdit(id, null);
+		prewarm.dropIfStale(model, settings, undefined, manager);
+		expect(take()).toBe(events[0].preparation);
+		expect(events[0].signal.aborted).toBe(false);
 	});
 
 	it.each(["replace", "omit"] as const)("drops a plan when a later context edit %ss a summarized message", (kind) => {

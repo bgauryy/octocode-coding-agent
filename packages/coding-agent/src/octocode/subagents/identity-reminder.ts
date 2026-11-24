@@ -92,7 +92,7 @@ export function registerIdentityReminder(api: FeatureSetup, env: NodeJS.ProcessE
 		try {
 			await api.session.sendMessage(
 				{ customType: IDENTITY_REMINDER_TYPE, content: latest.text, display: false },
-				{ triggerTurn: false, deliverAs: "followUp" },
+				{ triggerTurn: false },
 			);
 		} catch (error) {
 			if (!isStaleSessionError(error)) throw error;

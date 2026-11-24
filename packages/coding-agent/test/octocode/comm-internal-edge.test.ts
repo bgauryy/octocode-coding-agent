@@ -322,7 +322,8 @@ describe("a headless child holding for its own background job", () => {
 				},
 				ctx,
 			);
-			// The question reached the session (steered, waking) during the hold: delivery is not what is missing.
+			// The question ends the hold, then the session reaches its delivery boundary.
+			await fake.emit("agent_settled", { type: "agent_settled", aborted: false, outcome: "completed" }, ctx);
 			expect(
 				fake.sent.some((entry) => JSON.stringify(entry.message.details ?? {}).includes("status? reply in one line")),
 			).toBe(true);

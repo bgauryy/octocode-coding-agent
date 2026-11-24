@@ -1,6 +1,6 @@
 import { BASH_TOOL } from "./tools/tool-names.ts";
 import { currentToolRoles } from "../../../mcp/src/api.ts";
-import { isMcpToolName } from "@octocodeai/octocode-common/mcp-names";
+import { isMcpToolName, MCP_MANAGE_TOOL_NAME } from "@octocodeai/octocode-common/mcp-names";
 /**
  * System prompt construction and project context loading
  */
@@ -274,7 +274,12 @@ export function buildSystemPromptSections(input: BuildSystemPromptOptions): Syst
 	contents.tools = [
 		...listedTools.map((name) => `- ${name}: ${toolSnippets[name]}`),
 		...(listedOnDemand.length > 0
-			? [renderPrompt("system/tools-on-demand.md", { names: listedOnDemand.join(", ") }).trim()]
+			? [
+					renderPrompt("system/tools-on-demand.md", {
+						names: listedOnDemand.join(", "),
+						canInspect: declaredTools.includes(MCP_MANAGE_TOOL_NAME),
+					}).trim(),
+				]
 			: []),
 		...Object.entries(mcpServers)
 			.filter(([, purpose]) => purpose)

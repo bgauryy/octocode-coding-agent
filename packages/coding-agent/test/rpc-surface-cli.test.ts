@@ -212,22 +212,27 @@ describe("--no-dialogs", () => {
 			[{ tool: "bash", args: { command: "echo ran > ran.txt", reason: "test" } }, { text: "finished" }],
 			{ OCTOCODE_PERMISSION: "manual" },
 		);
-		const rpc = cli(box, ["--mode", "rpc", "--no-dialogs", ...QUIET_ARGS, ...SCRIPTED_MODEL_ARGS]);
-		rpc.send({ id: "p", type: "prompt", message: "run the command" });
-		await vi.waitFor(
-			() =>
-				expect(
-					rpc.records.some((record) => record.type === "agent_settled"),
-					rpc.stderr(),
-				).toBe(true),
-			{ timeout: 45_000 },
-		);
-		expect(rpc.records.filter((record) => record.type === "extension_ui_request")).toEqual([]);
-		expect(existsSync(join(box.project, "ran.txt"))).toBe(false);
-		const end = rpc.records.find((record) => record.type === "tool_execution_end") as WireRecord;
-		expect(end.isError).toBe(true);
-		rpc.child.stdin.end();
-		await rpc.closed();
+		const invocation = getCliInvocation();
+		const client = new RpcClient({
+			ownProcessTree: true,
+			invocation: { command: invocation.command, args: invocation.prefix },
+			cwd: box.project,
+			args: ["--no-dialogs", ...QUIET_ARGS, ...SCRIPTED_MODEL_ARGS],
+			env: box.env,
+		});
+		const dialog = vi.fn();
+		client.onExtensionUIRequest(dialog);
+		try {
+			await client.start();
+			const events = await client.promptAndWait("run the command");
+			expect(dialog).not.toHaveBeenCalled();
+			expect(existsSync(join(box.project, "ran.txt"))).toBe(false);
+			expect(events.find((event) => event.type === "tool_execution_end")).toMatchObject({ isError: true });
+			expect(events.some((event) => event.type === "agent_settled")).toBe(true);
+			expect(server?.requests).toHaveLength(2);
+		} finally {
+			await client.stop();
+		}
 	});
 });
 

@@ -87,7 +87,7 @@ export function registerFileTool(
 					label: "File",
 					promptSnippet: renderPrompt("tools/file/snippet.md"),
 					description:
-						"Changes files; /rewind restores them. Pick the smallest change: edit with the shortest unique oldText; write for a new file or when most of it changes; one Codex-style patch for many hunks or files. Group a file's edits in one query. Queries continue past errors; a patch checks every change first, then stops at the first error; nothing rolls back. Read before write or delete (read tools, search rows and unpiped bash output count); edits need no read. Stale writes and deletes fail. Outside paths need approval.",
+						"Send queries or one Codex patch. Group a file's replacements in edits: [{oldText,newText}], matched against the original. Write creates or replaces a whole file. Read existing files before write or delete. Queries continue after execution errors. A patch checks all changes first and stops on failure. /rewind restores changes.",
 					promptGuidelines: renderPrompt("tools/file/guidelines.md").split("\n"),
 					parameters: Params,
 					prepareArguments: renameReasoning,

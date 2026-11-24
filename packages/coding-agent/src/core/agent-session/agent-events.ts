@@ -1,3 +1,4 @@
+import { recordCustomMessage } from "./custom-receipt.ts";
 /**
  * The session's handling of Agent events: feature dispatch, listener notification, session
  * persistence and per-turn bookkeeping, in that order.
@@ -82,13 +83,7 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent,
 			recordRunMessage(run.outcome, event.message, (message) => host.retry.failureText(message));
 		let entryId: string | undefined;
 		if (event.message.role === "custom") {
-			entryId = session.sessionManager.appendCustomMessageEntry(
-				event.message.customType,
-				event.message.content,
-				event.message.display,
-				event.message.details,
-				event.message.timestamp,
-			);
+			entryId = recordCustomMessage(session.sessionManager, event.message);
 		} else if (
 			event.message.role === "system" ||
 			event.message.role === "user" ||

@@ -65,7 +65,17 @@ export async function listResourceTemplates(
 	request: ListRequest,
 	options: McpRequestOptions,
 ): Promise<McpResourceTemplate[]> {
-	const items = await listAll(request, "resources/templates/list", "resourceTemplates", isTemplate, options);
+	// Some servers publish static resources only. Treat an absent template method as an empty first page.
+	const templates: ListRequest = async (method, params, requestOptions) => {
+		try {
+			return await request(method, params, requestOptions);
+		} catch (error) {
+			if (!params && error instanceof McpError && error.code === JSON_RPC_ERROR_CODES.methodNotFound)
+				return { resourceTemplates: [] };
+			throw error;
+		}
+	};
+	const items = await listAll(templates, "resources/templates/list", "resourceTemplates", isTemplate, options);
 	return items.map((item) => ({
 		uriTemplate: item.uriTemplate as string,
 		name: item.name as string,

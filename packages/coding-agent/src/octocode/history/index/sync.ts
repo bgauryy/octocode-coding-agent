@@ -39,8 +39,17 @@ function regularStat(file: string): fs.Stats | undefined {
 	}
 }
 
-/** Reads and indexes `file` at `stat`; undefined when it changed or went away meanwhile (it stays unindexed). */
-function indexFile(index: ArchiveIndexDb, file: string, stat: fs.Stats): archiveIndex.IndexedFile | undefined {
+/**
+ * Reads and indexes `file` at `stat`; undefined when it changed or went away meanwhile (it stays unindexed). `poll` runs
+ * after the read, after the analysis and between batches of rows: a throw from it stops the work, and the transaction
+ * leaves the index holding the file as it was.
+ */
+function indexFile(
+	index: ArchiveIndexDb,
+	file: string,
+	stat: fs.Stats,
+	poll: () => void,
+): archiveIndex.IndexedFile | undefined {
 	let text: string;
 	let fd: number | undefined;
 	try {
@@ -54,12 +63,19 @@ function indexFile(index: ArchiveIndexDb, file: string, stat: fs.Stats): archive
 	} finally {
 		if (fd !== undefined) fs.closeSync(fd);
 	}
+	poll();
 	const passages = analyzeLines(file, text.split("\n")).map(({ context, ...passage }) => ({
 		...passage,
 		context: context ? JSON.stringify(context) : null,
 	}));
+	poll();
 	return index.transaction(() =>
-		archiveIndex.replaceFile(index.db, { path: file, size: stat.size, mtime: stat.mtimeMs, ino: stat.ino }, passages),
+		archiveIndex.replaceFile(
+			index.db,
+			{ path: file, size: stat.size, mtime: stat.mtimeMs, ino: stat.ino },
+			passages,
+			poll,
+		),
 	);
 }
 
@@ -72,13 +88,15 @@ export interface SyncResult {
 
 /**
  * Brings the index level with `paths`: files gone from disk lose their rows, changed and new ones are indexed until
- * `budgetBytes` of them have been read (the rest stay pending). `check` runs between files: it may throw to stop.
+ * `budgetBytes` of them have been read (the rest stay pending). `check` runs between files and `poll` inside one, so a
+ * long file does not hold a cancellation back: either may throw to stop.
  */
 export async function syncFiles(
 	index: ArchiveIndexDb,
 	paths: readonly string[],
 	check: () => void | Promise<void>,
 	budgetBytes = Number.POSITIVE_INFINITY,
+	poll: () => void = () => undefined,
 ): Promise<SyncResult> {
 	const known = new Map(archiveIndex.files(index.db).map((row) => [row.path, row]));
 	const current = new Map<string, Current>();
@@ -105,7 +123,7 @@ export async function syncFiles(
 		}
 		await check();
 		spent += stat.size;
-		const row = indexFile(index, file, stat);
+		const row = indexFile(index, file, stat, poll);
 		if (!row) {
 			pending.push(file);
 			continue;

@@ -1,1 +1,1 @@
-{{names}} load on first call: call one by name (a rejected call returns its schema) or read it with `mcp` (intent `tools`, server `native`).
+{{names}} load on demand.{{#if canInspect}} Read a native tool's schema with `mcp` using intent `tools` and the tool name.{{else}} Call the tool by name.{{/if}}

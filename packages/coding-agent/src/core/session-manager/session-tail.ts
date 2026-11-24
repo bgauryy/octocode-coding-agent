@@ -89,11 +89,7 @@ function recoveryEntry(state: SessionState, sealed: SealedLine, parentId: string
  * parent (`adoptRecovery`). Returns the recovery record's id, or undefined. Throws, writing nothing, when the end is not
  * provably part of a record (`readTail`). A file that shrank is left to the merge, which refuses it.
  */
-export function endSessionTail(
-	state: SessionState,
-	file: string,
-	pending: readonly SessionEntry[],
-): string | undefined {
+export function endSessionTail(state: SessionState, file: string, pending: SessionEntry[]): string | undefined {
 	if (pending.length === 0) return undefined;
 	const tail = readTail(file);
 	if (tail.kind === "whole") return undefined;
@@ -108,7 +104,7 @@ export function endSessionTail(
 		scheduleSessionSync(file);
 		return undefined;
 	}
-	const entry = recoveryEntry(state, tail, pending[0].parentId);
+	const entry = recoveryEntry(state, tail, pending.length ? pending[0].parentId : state.leafId);
 	appendFileSync(file, `\n${state.codec.line(entry)}\n`);
 	scheduleSessionSync(file);
 	return entry.id;

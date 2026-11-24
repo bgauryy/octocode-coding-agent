@@ -1,6 +1,7 @@
 import { type BillingFacts, billingFacts, meteredCost, runBilling } from "../../core/usage-totals.ts";
 import type { SessionEntry } from "../../core/session-manager.ts";
 import type { FeatureContext, FeatureSetup } from "../../core/features/index.ts";
+import { resolveLimits } from "../../core/limits.ts";
 import type { Settings } from "../../core/settings-schema.ts";
 import { sessionChildren } from "../child-sessions/session-children.ts";
 import { appendNoticeLine, noticeLines } from "../../core/notice-line.ts";
@@ -78,7 +79,14 @@ export function refuseOverLimit(
 	resuming?: string,
 ): void {
 	const entries = ctx.sessionManager.getEntries();
-	const refusal = spawnRefusal(api.settings.get().subagents, entries, runs, billingFacts(ctx), resuming);
+	const settings = api.settings.get();
+	// `limits.cost.max` bounds the whole session (`run-budget.ts`), so it bounds its spawns too; the older key wins.
+	const sessionMax = resolveLimits(settings.limits).cost.max;
+	const limits =
+		settings.subagents?.maxCost === undefined && sessionMax !== undefined
+			? { ...settings.subagents, maxCost: sessionMax }
+			: settings.subagents;
+	const refusal = spawnRefusal(limits, entries, runs, billingFacts(ctx), resuming);
 	if (!refusal) return;
 	const seen = told.get(api) ?? new Set<string>();
 	told.set(api, seen);

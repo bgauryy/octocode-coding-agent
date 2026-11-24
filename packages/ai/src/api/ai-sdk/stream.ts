@@ -17,7 +17,8 @@ import { createPendingAssistantMessage } from "../../utils/assistant-message.ts"
 import { formatProviderError, normalizeProviderError } from "../../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../../utils/event-stream.ts";
 import { providerHeadersToRecord } from "../../utils/headers.ts";
-import { retryAfterMsFromError } from "../../utils/provider-retry.ts";
+import { PROVIDER_RETRY_VETO } from "../../utils/retry-classes.ts";
+import { providerVetoedRetry, retryAfterMsFromError } from "../../utils/provider-retry.ts";
 import { getUserAgent } from "../../utils/user-agent.ts";
 import { openAIEnvironmentHeaders } from "../openai-environment-headers.ts";
 import { failStreamTask } from "../lazy.ts";
@@ -28,6 +29,8 @@ import { applySdkUsage, sdkEventProcessor } from "./events.ts";
 import { sdkMessages, sdkTools } from "./messages.ts";
 import { sdkModel } from "./provider.ts";
 import { sdkProviderOptions } from "./options.ts";
+import { appendAssistantMessageDiagnostic } from "../../utils/diagnostics.ts";
+import { routerMetadataDiagnostic } from "../openai-completions/openrouter-router.ts";
 import { observeSdkResponse, fetchSdkResponse } from "./transport.ts";
 
 export interface SdkMapping {
@@ -177,6 +180,8 @@ export function streamSdk(
 					if (model.api === "openai-completions") signCompletionsThinking(output, completions, true);
 				}
 				if (part.type === "finish") {
+					const routed = routerMetadataDiagnostic(completions.routerMetadata);
+					if (routed) appendAssistantMessageDiagnostic(output, routed);
 					if (model.api === "openai-completions" && completions.usage)
 						output.usage = parseChunkUsage(
 							completions.usage,
@@ -245,6 +250,8 @@ export function streamSdk(
 				output.errorMessage += bedrockErrorHint(output.errorMessage);
 			if (output.errorMessage?.includes("subscription_sharing_usage_limit_exceeded"))
 				output.errorMessage += "\nCheck your ChatGPT usage: https://chatgpt.com/settings/usage";
+			if (output.stopReason === "error" && providerVetoedRetry(error))
+				output.errorMessage += `\n${PROVIDER_RETRY_VETO}`;
 			const retryAfterMs =
 				retryAfterMsFromError(error) ?? retryAfterMsFromError(new Error(normalizeProviderError(error).body ?? ""));
 			if (retryAfterMs !== undefined) output.retryAfterMs = retryAfterMs;

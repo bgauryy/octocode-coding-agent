@@ -18,7 +18,8 @@ const LEAD = 20_000;
  */
 const share = (target: number, current: number, count: number) => Math.ceil((target - current) / count);
 
-it("plans the threshold compaction ahead, beside the run, and that compaction runs the same plan", async () => {
+it("plans before the stop for compaction and consumes the same plan", async () => {
+	const threshold = 95_000;
 	const manager = SessionManager.inMemory();
 	const seen: string[] = [];
 	let planned: CompactionPreparation | undefined;
@@ -27,11 +28,17 @@ it("plans the threshold compaction ahead, beside the run, and that compaction ru
 		sessionManager: manager,
 		models: [{ id: "window-200k", contextWindow: 200_000 }],
 		tools: [],
-		compactionPolicy: { enabled: true, reserveTokens: 1_000, keepRecentTokens: 500 },
+		compactionPolicy: {
+			enabled: true,
+			reserveTokens: 1_000,
+			keepRecentTokens: 500,
+			triggerTokens: 100_000,
+		},
 		builtinCompactionFactories: [
 			(api) => {
 				api.bus.on("session_compact_prewarm", async (event) => {
 					seen.push("prewarm");
+					expect(event.summaryRequest?.retry.enabled).toBe(false);
 					planned = event.preparation;
 				});
 				api.bus.on("session_before_compact", async (event) => {
@@ -62,14 +69,14 @@ it("plans the threshold compaction ahead, beside the run, and that compaction ru
 		await harness.session.prompt("first");
 		expect(seen).toEqual([]);
 
-		// Inside the lead (the threshold is 199,000 tokens, the lead 20,000), halfway in: the plan is made and the run goes on.
-		const more = share(THRESHOLD - LEAD / 2, contextTokens(), 5);
+		// Halfway into this loop's lead: the plan is made and the run goes on.
+		const more = share(threshold - LEAD / 2, contextTokens(), 5);
 		for (let i = 0; i < 5; i++) {
 			manager.appendMessage({ role: "user", content: filler(more, `more ${i}`), timestamp: 0 });
 			manager.appendMessage(fauxAssistantMessage(`answer more ${i}`));
 		}
-		expect(contextTokens()).toBeGreaterThan(THRESHOLD - LEAD);
-		expect(contextTokens()).toBeLessThan(THRESHOLD);
+		expect(contextTokens()).toBeGreaterThan(threshold - LEAD);
+		expect(contextTokens()).toBeLessThan(threshold);
 		harness.session.refreshContext();
 		harness.setResponses([fauxAssistantMessage("near the threshold")]);
 		await harness.session.prompt("second");
@@ -79,11 +86,11 @@ it("plans the threshold compaction ahead, beside the run, and that compaction ru
 		// Add enough new context to cross the threshold, by 10,000 tokens, from the usage-backed baseline after that reply.
 		manager.appendMessage({
 			role: "user",
-			content: filler(share(THRESHOLD + 10_000, contextTokens(), 1), "over"),
+			content: filler(share(threshold + 10_000, contextTokens(), 1), "over"),
 			timestamp: 0,
 		});
 		manager.appendMessage(fauxAssistantMessage("answer over"));
-		expect(contextTokens()).toBeGreaterThan(THRESHOLD);
+		expect(contextTokens()).toBeGreaterThan(threshold);
 		harness.session.refreshContext();
 		harness.setResponses([fauxAssistantMessage("after the compaction")]);
 		await harness.session.prompt("third");

@@ -8,6 +8,7 @@ import { defaultSessionDirectories, knownSessionDirectories, type CwdSessionDire
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { mapConcurrent } from "@octocodeai/octocode-common/map-concurrent";
 import { normalizePath, resolvePath } from "@octocodeai/octocode-common/paths";
+import { withoutSourceHeader } from "@octocodeai/octocode-common/text";
 import {
 	getDefaultSessionDirPath,
 	getSessionHeaderCwd,
@@ -99,7 +100,7 @@ export function sessionInfoFolder(options: { text?: boolean } = {}): SessionInfo
 
 			if (keepText) allMessages.push(textContent);
 			if (!firstMessage && message.role === "user") {
-				firstMessage = textContent;
+				firstMessage = withoutSourceHeader(textContent);
 			}
 		},
 		info(filePath, header, fallbackModified) {

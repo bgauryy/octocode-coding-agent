@@ -74,8 +74,11 @@ describe("AssistantMessageComponent", () => {
 		const message = createAssistantMessage([{ type: "thinking", thinking: "Inspect the test results." }]);
 		const component = new AssistantMessageComponent(undefined, false);
 		component.updateContent(message, true);
-		expect(stripAnsi(component.render(60).join("\n"))).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Thinking…/);
-		expect(stripAnsi(component.render(60).join("\n"))).not.toContain("▾ Thinking…");
+		// The working line is the one moving indicator: a streaming block is a still label over its text.
+		const streamed = stripAnsi(component.render(60).join("\n"));
+		expect(streamed).toContain("▾ Thinking…");
+		expect(streamed).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+		expect(streamed).toContain("Inspect the test results.");
 		const answer = { ...message, content: [...message.content, { type: "text" as const, text: "Tests passed." }] };
 		component.updateContent(answer, true);
 		const rendered = stripAnsi(component.render(60).join("\n"));
@@ -91,32 +94,31 @@ describe("AssistantMessageComponent", () => {
 		expect(hidden).not.toContain("Toggle reasoning");
 	});
 
-	describe("live reasoning label", () => {
+	describe("streaming reasoning label", () => {
 		afterEach(() => {
 			animationClock.setReducedMotion(false);
 			vi.useRealTimers();
 		});
 
-		function streaming(requestRender: () => void): AssistantMessageComponent {
+		function streaming(requestRender: () => void, hide = false): AssistantMessageComponent {
 			initTheme("dark");
-			const component = new AssistantMessageComponent(undefined, false, undefined, "Thinking…", 1, [], {
+			const component = new AssistantMessageComponent(undefined, hide, undefined, 1, [], {
 				requestRender,
 			});
 			component.updateContent(createAssistantMessage([{ type: "thinking", thinking: "Inspect it." }]), true);
 			return component;
 		}
 
-		test("animates only while the block streams", () => {
+		test("is still while the block streams: no clock subscription, no frames asked for", () => {
 			vi.useFakeTimers({ now: 1_000 });
 			const requestRender = vi.fn();
 			const component = streaming(requestRender);
-			expect(animationClock.isRunning()).toBe(true);
+			expect(animationClock.isRunning()).toBe(false);
 			const first = component.render(60).join("\n");
-			vi.advanceTimersByTime(MOTION.spinnerMs);
-			const second = component.render(60).join("\n");
-			expect(second).not.toBe(first);
-			expect(stripAnsi(second)).toContain("Thinking…");
-			expect(requestRender).toHaveBeenCalled();
+			vi.advanceTimersByTime(MOTION.spinnerMs * 5);
+			expect(component.render(60).join("\n")).toBe(first);
+			expect(stripAnsi(first)).toContain("▾ Thinking…");
+			expect(requestRender).not.toHaveBeenCalled();
 
 			const answered = createAssistantMessage([
 				{ type: "thinking", thinking: "Inspect it." },
@@ -124,37 +126,19 @@ describe("AssistantMessageComponent", () => {
 			]);
 			component.updateContent(answered, false);
 			expect(animationClock.isRunning()).toBe(false);
-			const calls = requestRender.mock.calls.length;
-			vi.advanceTimersByTime(500);
-			expect(requestRender.mock.calls.length).toBe(calls);
 			expect(stripAnsi(component.render(60).join("\n"))).toMatch(/▾ Thought/);
 		});
 
-		test("dispose and a later non-streaming update both release the clock", () => {
-			vi.useFakeTimers({ now: 1_000 });
-			const component = streaming(vi.fn());
-			expect(animationClock.isRunning()).toBe(true);
-			component.dispose();
-			expect(animationClock.isRunning()).toBe(false);
+		test("a hidden streaming block is one folded line without its text", () => {
+			const hidden = stripAnsi(streaming(vi.fn(), true).render(60).join("\n"));
+			expect(hidden).toContain("▸ Thinking… (ctrl+t to expand)");
+			expect(hidden).not.toContain("Inspect it.");
 		});
 
-		test("stops asking for frames once nothing draws the label", () => {
-			vi.useFakeTimers({ now: 1_000 });
-			const requestRender = vi.fn();
-			streaming(requestRender);
-			vi.advanceTimersByTime(2_500);
-			expect(animationClock.isRunning()).toBe(false);
-		});
-
-		test("reduced motion shows the first frame and a plain label", () => {
-			vi.useFakeTimers({ now: 1_000 });
+		test("reduced motion draws the same label", () => {
+			const moving = streaming(vi.fn()).render(60).join("\n");
 			animationClock.setReducedMotion(true);
-			const component = streaming(vi.fn());
-			const first = component.render(60).join("\n");
-			vi.advanceTimersByTime(MOTION.spinnerMs);
-			expect(component.render(60).join("\n")).toBe(first);
-			expect(stripAnsi(first)).toContain("◌ Thinking…");
-			expect(animationClock.isRunning()).toBe(false);
+			expect(streaming(vi.fn()).render(60).join("\n")).toBe(moving);
 		});
 	});
 
@@ -239,18 +223,18 @@ describe("AssistantMessageComponent", () => {
 			expect(stripAnsi(component.render(80).join("\n"))).toContain("▸ Thought for 4s (ctrl+t to expand)");
 		});
 
-		test("collapses a finished block to one line by default and keeps an explicit false expanded", () => {
+		test("shows a finished block's text by default and collapses it to one line when hidden", () => {
 			initTheme("dark");
 			const message = createAssistantMessage([
 				{ type: "thinking", thinking: "Hidden reasoning." },
 				{ type: "text", text: "Done." },
 			]);
 			const byDefault = stripAnsi(new AssistantMessageComponent(message).render(80).join("\n"));
-			expect(byDefault).toContain("▸ Thought");
-			expect(byDefault).not.toContain("Hidden reasoning.");
-			const explicit = stripAnsi(new AssistantMessageComponent(message, false).render(80).join("\n"));
-			expect(explicit).toContain("▾ Thought");
-			expect(explicit).toContain("Hidden reasoning.");
+			expect(byDefault).toContain("▾ Thought");
+			expect(byDefault).toContain("Hidden reasoning.");
+			const hidden = stripAnsi(new AssistantMessageComponent(message, true).render(80).join("\n"));
+			expect(hidden).toContain("▸ Thought");
+			expect(hidden).not.toContain("Hidden reasoning.");
 		});
 	});
 
@@ -408,7 +392,6 @@ describe("AssistantMessageComponent", () => {
 			]),
 			false,
 			undefined,
-			"Thinking…",
 			1,
 		);
 		const lines = component.render(80).map((line) => stripAnsi(line));
@@ -426,7 +409,7 @@ describe("AssistantMessageComponent", () => {
 		initTheme("dark");
 		const calls: string[] = [];
 		const message = createAssistantMessage([{ type: "text", text: "The result is $x^2$." }]);
-		const component = new AssistantMessageComponent(message, false, undefined, "Thinking…", 1, [
+		const component = new AssistantMessageComponent(message, false, undefined, 1, [
 			(markdown, context) => {
 				calls.push("formula");
 				expect(context).toEqual({ messageType: "assistant", isStreaming: false, availableWidth: 78 });
@@ -446,7 +429,7 @@ describe("AssistantMessageComponent", () => {
 		initTheme("dark");
 		const streamingStates: boolean[] = [];
 		const message = createAssistantMessage([{ type: "text", text: "partial" }]);
-		const component = new AssistantMessageComponent(undefined, false, undefined, "Thinking…", 1, [
+		const component = new AssistantMessageComponent(undefined, false, undefined, 1, [
 			(markdown, context) => {
 				streamingStates.push(context.isStreaming);
 				return context.isStreaming ? markdown : `${markdown} transformed`;
@@ -468,7 +451,6 @@ describe("AssistantMessageComponent", () => {
 			createAssistantMessage([{ type: "text", text: "answer" }]),
 			false,
 			undefined,
-			"Thinking…",
 			1,
 			[
 				(markdown, context) => {
@@ -491,7 +473,6 @@ describe("AssistantMessageComponent", () => {
 			createAssistantMessage([{ type: "text", text: "still visible" }]),
 			false,
 			undefined,
-			"Thinking…",
 			1,
 			[
 				(markdown) => {
@@ -519,7 +500,7 @@ describe("AssistantMessageComponent", () => {
 			{ type: "text", text: "answer" },
 			{ type: "thinking", thinking: "reasoning" },
 		]);
-		const component = new AssistantMessageComponent(message, false, undefined, "Thinking…", 1, [
+		const component = new AssistantMessageComponent(message, false, undefined, 1, [
 			(markdown, { messageType }) => {
 				return `${messageType}:${markdown}`;
 			},

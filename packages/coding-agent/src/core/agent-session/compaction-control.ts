@@ -229,7 +229,8 @@ export class SessionCompaction {
 		this._prewarm.start(session.sessionManager, session.featureHost, model, settings, {
 			forceSystemPrompt: forced,
 			watch: summaryStreamWatcher({ idleMs: session.settingsManager.getHttpIdleTimeoutMs() }),
-			retry: session.settingsManager.getRetrySettings(),
+			// Speculative work gets one attempt. Foreground compaction owns retries if it needs a summary.
+			retry: { ...session.settingsManager.getRetrySettings(), enabled: false },
 			callbacks: {},
 		});
 	}

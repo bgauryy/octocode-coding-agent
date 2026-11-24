@@ -117,6 +117,7 @@ const ROOT = [
 	"findSuspicious",
 	"firstCallOnly",
 	"firstChoice",
+	"firstToolCallDifference",
 	"formatComparison",
 	"formatSummary",
 	"forwardRequest",

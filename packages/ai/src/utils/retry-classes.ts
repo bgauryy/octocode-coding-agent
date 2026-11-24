@@ -1,6 +1,9 @@
 import type { AssistantMessage } from "../types.ts";
 import { isModelAccessError } from "./credential-errors.ts";
 
+/** Also survives text-only run outcomes used by background recovery. */
+export const PROVIDER_RETRY_VETO = "The provider disabled automatic retries for this request (x-should-retry: false).";
+
 function buildProviderErrorPattern(patterns: readonly string[]): RegExp {
 	return new RegExp(patterns.join("|"), "i");
 }
@@ -28,8 +31,8 @@ const TERMINAL_PROVIDER_LIMIT_ERROR_PATTERN = buildProviderErrorPattern([
 	// quota/billing error code; the other strings cover common gateway wording.
 	"insufficient_quota",
 	"out of budget",
-	"quota exceeded",
-	"billing",
+	"billing[ _-](?:limit|hard|disabled|issue|problem|details|account|inactive|not active|error|required)",
+	"(?:daily|monthly|weekly|per[ _-]day) (?:request |token )?quota exceeded",
 
 	// OpenAI's 429 billing codes: "Retrying billing, spend, or quota errors won't restore API access"
 	// (https://developers.openai.com/api/docs/guides/error-codes).
@@ -59,6 +62,10 @@ const TERMINAL_PROVIDER_LIMIT_ERROR_PATTERN = buildProviderErrorPattern([
 	'"code"\\s*:\\s*"?1308(?![0-9])',
 ]);
 
+// A quota can also be a short-lived bucket. Gateways use both prose and metric names.
+const SHORT_QUOTA =
+	/(?:requests?|tokens?|queries|quota)[ _/-]*(?:per[ _/-]*)?(?:minute|second)|\b(?:rpm|tpm|qpm|rps)\b/i;
+
 /**
  * Bare Node socket error codes, e.g. "read ECONNRESET", "write EPIPE" or "connect ETIMEDOUT 1.2.3.4:443", when a
  * transport reports only the code; not part of a longer identifier such as a tool name.
@@ -87,7 +94,10 @@ const RELAYED_DROPS = [
  * seconds. Every retry path (the session retry and each provider adapter) treats such an error as final.
  */
 export function isTerminalProviderLimitError(errorText: string): boolean {
-	return TERMINAL_PROVIDER_LIMIT_ERROR_PATTERN.test(errorText);
+	return (
+		TERMINAL_PROVIDER_LIMIT_ERROR_PATTERN.test(errorText) ||
+		(/quota exceeded/i.test(errorText) && !SHORT_QUOTA.test(errorText))
+	);
 }
 
 /** No funds: payment required, or no credit, balance or funds left on the account. */
@@ -278,7 +288,7 @@ const CAPACITY_OR_TRANSPORT_PATTERN = buildProviderErrorPattern([
 
 /** Whether provider error text reports a rate limit or quota throttle (not a billing or quota exhaustion). */
 export function isRateLimitedText(text: string): boolean {
-	return RATE_LIMITED_PATTERN.test(text);
+	return RATE_LIMITED_PATTERN.test(text) || (/quota exceeded/i.test(text) && SHORT_QUOTA.test(text));
 }
 
 /** A host that does not resolve: transports wrap this in text that otherwise reads as a dropped connection. */
@@ -306,7 +316,7 @@ export function isRetryableAssistantError(message: AssistantMessage): boolean {
 
 /** {@link isRetryableAssistantError} for text a caller holds without the message, such as a run's recorded outcome. */
 export function isRetryableErrorText(errorMessage: string): boolean {
-	if (isTerminalProviderLimitError(errorMessage)) return false;
+	if (errorMessage.includes(PROVIDER_RETRY_VETO) || isUsageLimitError(errorMessage)) return false;
 	if (isRejectedRequestText(errorMessage) || isModelAccessError(errorMessage)) return false;
-	return RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage);
+	return RETRYABLE_PROVIDER_ERROR_PATTERN.test(errorMessage) || isRateLimitedText(errorMessage);
 }

@@ -140,7 +140,6 @@ export function addMessageToChat(
 				undefined,
 				view.hideThinking,
 				host.getMarkdownThemeWithSettings(),
-				undefined,
 				view.outputPad,
 				host.getMarkdownTransformers(),
 				{

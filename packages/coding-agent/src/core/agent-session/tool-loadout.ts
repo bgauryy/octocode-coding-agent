@@ -17,7 +17,7 @@ import { buildToolDefinitionRegistry, orderToolNames } from "./tool-definitions.
 import { selectsToolPrefix } from "./tool-selection.ts";
 import { PendingMcpTools } from "./pending-mcp-tools.ts";
 import type { ToolDefinitionEntry } from "./types.ts";
-import { companionFloor, toolsToActivate, toToolInfo, withCompanions } from "./tool-loadout/activation.ts";
+import { companionFloor, toolsToActivate, toolInfos, withCompanions } from "./tool-loadout/activation.ts";
 import { heldToolsFor, spanOf, withToolsOffNotice } from "./tool-loadout/held-tools.ts";
 import { runPrepareLoadoutHooks } from "./tool-loadout/prepare-hooks.ts";
 import { ancestors } from "../session-manager/ancestors.ts";
@@ -119,8 +119,8 @@ export class SessionToolLoadout {
 	}
 
 	getAllTools(): ToolInfo[] {
-		return Array.from(this._toolDefinitions.values()).map((entry) =>
-			toToolInfo(entry, this._getToolExposure(entry.definition.name)),
+		return toolInfos(this._toolDefinitions.values(), this.host.session.agent.state.tools, (name) =>
+			this._isActivatable(name),
 		);
 	}
 

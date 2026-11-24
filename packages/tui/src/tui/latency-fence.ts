@@ -89,7 +89,7 @@ export class LatencyFence {
 	private probeTimer: NodeJS.Timeout | undefined;
 	private behindTimer: NodeJS.Timeout | undefined;
 	private lostTimer: NodeJS.Timeout | undefined;
-	private holdTimer: NodeJS.Timeout | undefined;
+	private holdTimer: (() => void) | undefined;
 	private readonly counters = { lastRttMs: 0, maxRttMs: 0, heldFrames: 0 };
 
 	private readonly now: () => number;
@@ -209,18 +209,20 @@ export class LatencyFence {
 	private setBehind(behind: boolean): void {
 		if (this.behind === behind) return;
 		this.behind = behind;
-		clearInterval(this.holdTimer);
+		this.holdTimer?.();
 		this.holdTimer = undefined;
 		if (!behind) return;
 		const hold = () => animationClock.holdDecoration(this.c.probeIntervalMs + 50);
 		hold();
 		// Held decoration paints no frames, so frames alone cannot carry the probe that ends the hold: probe on the timer.
-		this.holdTimer = setInterval(() => {
-			hold();
-			if (this.unsupported || !this.host.isActive()) return;
-			this.framePending = true;
-			this.pump();
-		}, this.c.probeIntervalMs);
-		this.holdTimer.unref?.();
+		this.holdTimer = animationClock.subscribe(
+			() => {
+				hold();
+				if (this.unsupported || !this.host.isActive()) return;
+				this.framePending = true;
+				this.pump();
+			},
+			{ everyMs: this.c.probeIntervalMs, kind: "info" },
+		);
 	}
 }

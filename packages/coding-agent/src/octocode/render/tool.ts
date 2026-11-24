@@ -15,15 +15,15 @@ import { type ColorToken, type Phase, type RenderContext, STOPPED_COLOR } from "
 /**
  * Shared tool presentation:
  *
- *   ✓ Name(summary) · 1.2s
+ *   ◉ Name(summary) · 1.2s
  *     ⎿  one-line summary (ctrl+o to expand)
  *
  * A finished row closes to its summary line. While it runs, or when it failed, it shows the whole body up to 12 lines,
  * else a 5-line preview and `… +K lines (ctrl+o to expand)`; a renderer may pass its own preview size.
  *
- * The mark is the state light (`stateMark` with `light`): grey ⏺ (dim) before execution, yellow ⏺ once Octocode started
- * the call but its checks or approval still run, a ◒◐◓◑ spinner while running (the newest row also has a live 1s
- * clock), green ⏺ when done, red ⏺ on error and when stopped or not run. Only the spinner moves.
+ * The mark is the row's still state light (`rowMark`): `○` before execution, `◐` once Octocode started the call but its
+ * checks or approval still run, green `⏺` while running (the row also has a live 1s clock), `◉` when done, `⊗` on error
+ * and `⊘` when stopped. Nothing on a row moves but its clock.
  * Expanded shows every line. Every string drawn here is sanitized: tool arguments and output are untrusted.
  */
 
@@ -94,7 +94,7 @@ export function toolHeader(
 			: "";
 	const times = [time, finished ? (state.waits ?? "") : ""].filter(Boolean);
 	const text = options.styled ? "" : clip(summary, context.expanded ? SUMMARY_CHARS_EXPANDED : SUMMARY_CHARS);
-	const mark = rowMark(theme, context, state, options.state ?? (waiting ? "waiting" : uiStateOf(phase)));
+	const mark = rowMark(theme, options.state ?? (waiting ? "waiting" : uiStateOf(phase)));
 	const left = `${mark} ${theme.fg("toolTitle", theme.bold(clip(name, 60)))}`;
 	const right = times.length > 0 ? theme.fg("dim", ` · ${times.join(" · ")}`) : "";
 	const meta = `${options.styled?.meta ? `${theme.fg("dim", " · ")}${options.styled.meta}` : ""}${options.meta ? theme.fg("dim", ` · ${clip(options.meta, 60)}`) : ""}`;

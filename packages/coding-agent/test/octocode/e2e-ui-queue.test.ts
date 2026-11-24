@@ -1,3 +1,4 @@
+import { terminalInput, userTexts } from "./e2e-ui-flows/request.ts";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { hang, KEY, startUi, type UiHarness } from "./e2e-ui-flows/ui.ts";
@@ -15,11 +16,6 @@ const shows = (pattern: RegExp | string) => async () => {
 	const text = await t!.text();
 	return typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
 };
-/** The user texts a request carried, oldest first. */
-const userTexts = (request: string): string[] =>
-	(JSON.parse(request) as Array<{ role: string; content: Array<{ text?: string }> | string }>)
-		.filter((m) => m.role === "user")
-		.map((m) => (typeof m.content === "string" ? m.content : m.content.map((c) => c.text ?? "").join("")));
 
 async function startBusy() {
 	t = await startUi();
@@ -47,8 +43,8 @@ describe("queue while streaming", () => {
 		await t!.until(shows("follow reply"), "all three replies");
 		await t!.until(() => !t!.host.session.isStreaming, "idle");
 		expect(t!.requests).toHaveLength(3);
-		expect(userTexts(t!.requests[1]).at(-1)).toBe("steer me");
-		expect(userTexts(t!.requests[2]).slice(-2)).toEqual(["steer me", "follow me"]);
+		expect(userTexts(t!.requests[1]).at(-1)).toBe(terminalInput("steer me"));
+		expect(userTexts(t!.requests[2]).slice(-2)).toEqual(["steer me", "follow me"].map(terminalInput));
 		expect(await t!.text()).not.toMatch(/queued/);
 	});
 
@@ -133,8 +129,8 @@ describe("messages queued before a session switch", () => {
 		await t!.until(shows("follow reply"), "both replies");
 		await t!.until(() => !t!.host.session.isStreaming, "idle");
 		expect(t!.requests).toHaveLength(3);
-		expect(userTexts(t!.requests[1])).toEqual(["steer me"]);
-		expect(userTexts(t!.requests[2])).toEqual(["steer me", "follow me"]);
+		expect(userTexts(t!.requests[1])).toEqual(["steer me"].map(terminalInput));
+		expect(userTexts(t!.requests[2])).toEqual(["steer me", "follow me"].map(terminalInput));
 		expect(await t!.text()).not.toMatch(/queued/);
 	});
 
@@ -157,7 +153,7 @@ describe("messages queued before a session switch", () => {
 		await t!.until(shows(/Edit queued message 2/), "editor for the last message");
 		t!.press(KEY.enter);
 		await t!.until(() => t!.requests.length === 2, "message sent");
-		expect(userTexts(t!.requests[1])).toEqual(["follow me"]);
+		expect(userTexts(t!.requests[1])).toEqual(["follow me"].map(terminalInput));
 		await t!.until(() => !t!.host.session.isStreaming, "idle");
 		// The other message stays listed until the user acts on it.
 		expect(t!.host.uiStore.getState().queue.compaction.map((m) => m.text)).toEqual(["steer me"]);
@@ -180,7 +176,7 @@ describe("the queue list and long queues", () => {
 		first.release();
 		// Queued steering reaches the model together (`steeringMode: "all"`): one request, in the order the list shows.
 		await t!.until(() => t!.requests.length === 2 && !t!.host.session.isStreaming, "the steer turn");
-		expect(userTexts(t!.requests[1]).slice(-2)).toEqual(["steer two", "steer one"]);
+		expect(userTexts(t!.requests[1]).slice(-2)).toEqual(["steer two", "steer one"].map(terminalInput));
 	});
 
 	it("deletes a queued message from the ↑ manager so it is never sent", async () => {
@@ -246,8 +242,8 @@ describe("messages typed during compaction", () => {
 		await t.until(shows("reply b"), "both held messages answered");
 		await t.until(() => !t!.host.session.isStreaming, "idle");
 		expect(t.requests).toHaveLength(6);
-		expect(userTexts(t.requests[4]).at(-1)).toBe("held one");
-		expect(userTexts(t.requests[5]).slice(-2)).toEqual(["held one", "held two"]);
+		expect(userTexts(t.requests[4]).at(-1)).toBe(terminalInput("held one"));
+		expect(userTexts(t.requests[5]).slice(-2)).toEqual(["held one", "held two"].map(terminalInput));
 		expect(await t.text()).not.toMatch(/\d+ queued/);
 	});
 });
@@ -271,7 +267,7 @@ describe("queued messages after a failed turn", () => {
 		await t.until(shows("steer reply"), "the queued message answered after the failure");
 		await t.until(() => !t!.host.session.isStreaming, "idle");
 		expect(t.requests).toHaveLength(2);
-		expect(userTexts(t.requests[1]).at(-1)).toBe("steer me");
+		expect(userTexts(t.requests[1]).at(-1)).toBe(terminalInput("steer me"));
 		expect(await t.text()).not.toMatch(/\d+ queued/);
 	});
 });

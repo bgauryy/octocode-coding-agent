@@ -1,6 +1,7 @@
 import type { FeatureSetup } from "../../core/features/index.ts";
 import type { WakeLine } from "../../core/wake-entry.ts";
 import type { Source } from "../events/source-types.ts";
+import type { Priority } from "../events/loop/types.ts";
 import type { PayloadEvent as AgentEvent } from "../events/topics.ts";
 
 export type Message = Parameters<FeatureSetup["session"]["sendMessage"]>[0];
@@ -28,11 +29,11 @@ export interface Sent {
 }
 
 export interface Held {
+	/** Transcript entry reserved for a durable handoff. */
+	entryId?: string;
 	labels: string[];
 	message: Message;
 	options: SendOptions;
-	/** The observer's name for the emit, when one is attached. */
-	ticket?: number;
 	done: { resolve: () => void; reject: (error: unknown) => void };
 }
 
@@ -43,13 +44,13 @@ export function itemKey(ref: string | undefined): string | undefined {
 }
 
 /**
- * Where a cut-over topic goes (`events/loop/cutover.ts`): the live loop's intake, set while `runtime.eventLoop` is `new`.
+ * The session loop accepts a wake after its durable append succeeds.
  * Returns whether the loop took the event; false (an event it already holds) settles the send without sending.
  */
 export type GateRoute = (entry: {
 	/** The emit's events (one message may carry several, as a batch of mail does) and the source of each. */
 	events: readonly AgentEvent[];
 	sources: readonly Source[];
-	steer: boolean;
+	priority: Priority;
 	held: Held;
-}) => boolean;
+}) => boolean | Promise<boolean>;

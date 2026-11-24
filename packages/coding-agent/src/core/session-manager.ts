@@ -1,3 +1,4 @@
+import type { EntryReceipt } from "./session-manager/entry-receipt.ts";
 import type { ImageContent, Message, TextContent, Usage } from "@octocodeai/octocode-ai";
 import { existsSync } from "node:fs";
 import { normalizePath, resolvePath } from "@octocodeai/octocode-common/paths";
@@ -176,8 +177,9 @@ export class SessionManager extends SessionReader implements SessionManagerApi {
 		display: MessageDisplay,
 		details?: T,
 		timestamp?: number,
+		receipt?: EntryReceipt,
 	): string {
-		return appends.appendCustomMessageEntry(this.state, customType, content, display, details, timestamp);
+		return appends.appendCustomMessageEntry(this.state, customType, content, display, details, timestamp, receipt);
 	}
 
 	appendContextEdit(targetId: string, replacement: ContextEditEntry["replacement"]): string {

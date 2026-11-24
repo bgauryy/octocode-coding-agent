@@ -38,9 +38,42 @@ export interface RequestLayer {
 	entryKey?: string;
 }
 
+export type RequestPriority = "foreground" | "subagent" | "compaction" | "background";
+
+/** Admission and usage measurements for one logical provider request; no prompt or response text. */
+export interface RequestThroughput {
+	model: string;
+	/** Bedrock Region parsed from the runtime endpoint or credential environment. */
+	region?: string;
+	priority: RequestPriority;
+	/** Total time spent waiting for token/RPM admission, excluding the separate provider cool-down. */
+	gateWaitMs: number;
+	/** Output limit read from the final wire payload when the API exposes it. */
+	maxTokens?: number;
+	estimatedInputTokens: number;
+	/** Provider admission charge: estimated uncached input plus maxTokens. */
+	estimatedAdmissionTokens: number;
+	/** Conservative final-TPM reservation: estimated input plus maxTokens times output burndown. */
+	reservedTokens?: number;
+	actualInputTokens?: number;
+	actualOutputTokens?: number;
+	actualCacheReadTokens?: number;
+	actualCacheWriteTokens?: number;
+	/** Reconciled final TPM charge; cache reads are excluded and output includes model burndown. */
+	actualTokens?: number;
+	/** Shared adaptive capacity in force at admission, from 0.1 to 1. */
+	adaptiveScale?: number;
+	/** Upstream response/request identifier, captured in particular for HTTP 429 correlation. */
+	requestId?: string;
+	/** A deferrable request was not sent to preserve foreground capacity. */
+	shed?: boolean;
+}
+
 export interface RequestTrace {
 	/** In wire order: tools, system, then conversation. */
 	layers: RequestLayer[];
+	/** Throughput measurements are filled at admission and completed by the response observer. */
+	throughput?: RequestThroughput;
 	/**
 	 * How the request asked for caching, e.g. `ephemeral`, `ephemeral-1h`, `default-1h` (Bedrock), `key`, `key+24h`,
 	 * `key+12h+breakpoint-12h` (OpenAI explicit mode) or `explicit` (explicit mode without breakpoints: no caching).

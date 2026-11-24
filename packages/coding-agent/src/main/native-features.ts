@@ -30,7 +30,10 @@ export const NATIVE_FEATURES: NativeFeatureSet = {
 			owner: "builtin",
 			hidden: true,
 			register: (api) =>
-				defaultMcpFeature(withCoreToolReason(api), { nativeTools: nativeToolsPort(), leanSession: leanSession(api) }),
+				defaultMcpFeature(withCoreToolReason(api), {
+					nativeTools: nativeToolsPort(api),
+					leanSession: leanSession(api),
+				}),
 		},
 	],
 	native: { id: "octocode", owner: "native", hidden: true, register: octocode },

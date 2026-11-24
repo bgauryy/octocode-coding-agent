@@ -1,3 +1,4 @@
+import { tmp } from "./helpers.ts";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { installMcpHost } from "../../../mcp/src/api.ts";
 import { createMcpToolDefinition } from "../../../mcp/src/tool-definition.ts";
@@ -68,7 +69,7 @@ describe("MCP proxy calls on the host's jobs", () => {
 		await asyncJobsFor(sessionManager).settle();
 		expect(reports).toHaveLength(1);
 		const job = { id: "task-1", tool: "mcp__srv__slow", title: "x", startedAt: 0 };
-		expect(taskReport(job, reports[0].outcome)).toContain("slow answer");
+		expect(await taskReport(job, reports[0].outcome, tmp)).toContain("slow answer");
 	});
 
 	it("names the call and its reason on the job", async () => {

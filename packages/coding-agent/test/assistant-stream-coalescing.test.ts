@@ -49,7 +49,7 @@ describe("streaming assistant presentation", () => {
 	it("does not start a pending reasoning animation during transcript disposal", () => {
 		initTheme("dark");
 		const subscribe = vi.spyOn(animationClock, "subscribe");
-		const component = new AssistantMessageComponent(undefined, true, undefined, undefined, undefined, [], {
+		const component = new AssistantMessageComponent(undefined, true, undefined, undefined, [], {
 			requestRender: () => {},
 		});
 		component.updateMessage({ ...message(""), content: [{ id: "thinking", type: "thinking", text: "working" }] }, true);
@@ -61,7 +61,7 @@ describe("streaming assistant presentation", () => {
 	it("reads a long thinking block's whole text at most once while it streams, not once per delta", () => {
 		initTheme("dark");
 		let reads = 0;
-		const component = new AssistantMessageComponent(undefined, true, undefined, undefined, 1, [], {
+		const component = new AssistantMessageComponent(undefined, true, undefined, 1, [], {
 			readAsset: (id) => {
 				reads++;
 				return { asset: { id, mimeType: "text/plain", size: 0 }, encoding: "utf8", data: "x".repeat(50_000) };

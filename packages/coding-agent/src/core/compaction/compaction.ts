@@ -16,7 +16,7 @@ import { archivedSummary } from "./checkpoint.ts";
 import { findProjectedCutPoint } from "./cut-point.ts";
 import { generateTurnPrefixSummary } from "./bounded-summary.ts";
 import { ledgerDetails, type LiftedBullet } from "./ledger.ts";
-import { inputRoomTokens, replyFloorTokens } from "./settings.ts";
+import { compactionThresholdTokens, inputRoomTokens, replyFloorTokens } from "./settings.ts";
 import { generateSummaryWithUsage } from "./summarization.ts";
 import type { SummaryFocus } from "./summary-focus.ts";
 import { withTurnContext } from "./summary-format.ts";
@@ -98,6 +98,8 @@ function messagesWithEntryIds(entries: ProjectedSessionEntry[]): { messages: Age
 
 export interface CompactionSettings {
 	maxInputTokens?: number;
+	/** `limits.compaction.trigger` in tokens: compaction starts here when it is below the reserve's own point. */
+	triggerTokens?: number;
 	enabled: boolean;
 	reserveTokens: number;
 	keepRecentTokens: number;
@@ -111,7 +113,7 @@ export interface CompactionSettings {
  */
 export function shouldCompact(contextTokens: number, contextWindow: number, settings: CompactionSettings): boolean {
 	if (!settings.enabled || !(contextWindow > 0)) return false;
-	return contextTokens > inputRoomTokens(contextWindow, settings.reserveTokens, settings.maxInputTokens);
+	return contextTokens > compactionThresholdTokens(contextWindow, settings);
 }
 
 /**

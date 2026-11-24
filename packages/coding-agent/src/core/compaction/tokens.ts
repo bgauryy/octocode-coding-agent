@@ -13,13 +13,12 @@ import {
 	type TokenModel,
 } from "@octocodeai/octocode-ai/utils/estimate";
 import type { ReadonlySessionManager, ReadonlySessionProjection, SessionEntry } from "../session-manager.ts";
-import { ancestors } from "../session-manager/ancestors.ts";
+import { ancestors, hasUnchangedContextPrefix, newestFirst } from "../session-manager/ancestors.ts";
 
 /**
  * Estimate context tokens from messages, using the last valid assistant usage and estimating what follows it with
  * `estimateTokens` at `model`'s ratio (the default without one). Session structure owns staleness here:
- * `estimateProjectedContextTokens` and the compaction check drop usage captured before a later compaction or context
- * edit, so timestamps are not consulted.
+ * `estimateProjectedContextTokens` and the compaction check drop usage when its prefix was compacted or edited, so timestamps are not consulted.
  */
 export function estimateContextTokens(messages: readonly AgentMessage[], model?: TokenModel): ContextUsageEstimate {
 	return estimateContextTokensWith(messages, (message) => estimateTokens(message, model), { staleUsage: "none" });
@@ -47,10 +46,6 @@ export function estimateLeafContextTokens(
 	return estimateWithBranch(projection, () => ancestors(session.getLeafEntry(), (id) => session.getEntry(id)), model);
 }
 
-function* newestFirst(entries: readonly SessionEntry[]): Generator<SessionEntry, void, undefined> {
-	for (let i = entries.length - 1; i >= 0; i--) yield entries[i];
-}
-
 function estimateWithBranch(
 	projection: ReadonlySessionProjection,
 	branchNewestFirst: () => Iterable<SessionEntry>,
@@ -69,13 +64,7 @@ function estimateWithBranch(
 			projectedMessageIndex = nextMessageIndex;
 		}
 
-		// The usage counts while its entry comes after the branch's latest context edit or compaction.
-		if (usageEntryId !== undefined) {
-			for (const entry of branchNewestFirst()) {
-				if (entry.type === "context_edit" || entry.type === "compaction") break;
-				if (entry.id === usageEntryId) return estimate;
-			}
-		}
+		if (usageEntryId !== undefined && hasUnchangedContextPrefix(branchNewestFirst(), usageEntryId)) return estimate;
 	}
 
 	const currentSystem = getCurrentSystemMessage(projection.messages);

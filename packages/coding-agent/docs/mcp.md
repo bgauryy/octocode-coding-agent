@@ -2,7 +2,7 @@
 
 MCP adds server-hosted tools to Octocode. MCP support is always on (it is not an `extensions` entry); you switch individual servers. The host supports tools only, not MCP resources or prompts. Octocode ships two default servers, `octocode` (code research) and `browser`, which connect like any other server (the browser's tools are on demand in the main session: listed by name in the prompt, declared on first call or an `mcp` load, so the cached prompt does not change); this page covers how to turn them on or off, never their tools. Details and rarely used options: [MCP reference](mcp-reference.md).
 
-Each server owns its tool schemas and arguments. Octocode adds no required `reason` field to MCP calls: use it only when the tool declares it, with the type and requiredness that server defines. This applies to any configured server.
+Each server owns its tool schemas and arguments. Octocode adds no required `reason` field to MCP calls: use it only when the tool declares it, with the type and requiredness that server defines. This applies to any configured server. Compact declarations retain field instructions that name a sibling selector and its value, such as `Only with view: matchOnly.` The full field descriptions are available through `mcp` with the `tools` intent.
 
 ```mermaid
 flowchart LR
@@ -190,13 +190,13 @@ By default every server is in the main agent's tool selection; a subagent runs o
 
 ## Host and protocol support
 
-| Supported                                                  | Not supported                                                                      |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| stdio and Streamable HTTP; stateful MCP up to `2025-11-25` | Stateless `2026-07-28`, elicitation, resources, prompts, sampling, tasks, MCP Apps |
+| Supported | Not supported |
+| --- | --- |
+| stdio and Streamable HTTP, stateful MCP up to `2025-11-25`, [resources and prompts](mcp-reference.md#resources-and-prompts), [elicitation forms](mcp-reference.md#requests-for-input) | Stateless `2026-07-28`, resource subscriptions, URL-mode elicitation, sampling, tasks, MCP Apps |
 
 ## Let the model manage servers
 
-The agent's `mcp` tool can list state, inspect tools and restart or stop a server for its session (restart also starts a stopped or failed one). Its list shows each server's group and configured description, like a skill entry: `octocode: connected · 14 tools · Core. Code search and read…`. Asked about one server, it also names where that server is defined (`Defined in: ~/.octocode/mcp.json` or `built in`). It never edits configuration; adding and removing stays with you. Subagents use separate connections. [Details and permissions](mcp-reference.md#model-management-and-permissions).
+The agent's `mcp` tool can inspect tool schemas, list resources, read a resource URI from its originating server, and restart or stop a server for its session (restart also starts a stopped or failed one). Its list shows each server's group and configured description, like a skill entry: `octocode: connected · 14 tools · Core. Code search and read…`. Asked about one server, it also names where that server is defined (`Defined in: ~/.octocode/mcp.json` or `built in`). It never edits configuration; adding and removing stays with you. Subagents use separate connections. [Details and permissions](mcp-reference.md#model-management-and-permissions).
 
 ## Catalog caching
 

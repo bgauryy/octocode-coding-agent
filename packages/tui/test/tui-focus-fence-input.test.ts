@@ -26,7 +26,7 @@ describe("TUI focus reports and fence replies", () => {
 			terminal.sendInput("\x1b[O");
 			assert.deepStrictEqual(seen, ["\x1b[O"], "listeners still see focus out");
 			ticks.length = 0;
-			await wait(MOTION.backgroundSpinnerMs * 3 + 50);
+			await wait(MOTION.spinnerMs * 6 + 50);
 			assert.ok(ticks.length <= 4, `slowed: ${ticks.length} ticks`);
 			terminal.sendInput("\x1b[I");
 			assert.deepStrictEqual(seen, ["\x1b[O", "\x1b[I"]);

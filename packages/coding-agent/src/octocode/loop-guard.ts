@@ -7,6 +7,7 @@ import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { argumentsKey } from "./files/dedupe.ts";
 import { plainText } from "./files/reads.ts";
 import { say } from "./shared/commands.ts";
+import { limitsFor } from "./compaction/limits.ts";
 import type { Gate } from "./permission/judge.ts";
 
 /**
@@ -39,10 +40,18 @@ const EXEMPT = new Set(["agent", "askUser", "backlog", "backlogPlan", "coordinat
  */
 const WAITING = /(?:^|[;&|]\s*)(?:sleep|wait|watch)\b|\btail\s+(?:-\S*\s+)*-\S*f/;
 
+/** The three counts in force: `limits.loop` for the model in use, else the constants above. */
+export interface LoopCounts {
+	noteAt: number;
+	stopAt: number;
+	haltAt: number;
+}
+const BUILT_IN: LoopCounts = { noteAt: LOOP_NOTE_AT, stopAt: LOOP_STOP_AT, haltAt: LOOP_HALT_AT };
+
 /** The note for the `count`-th identical outcome in a row, or undefined when none is due. */
-export function loopNote(tool: string, count: number, failed: boolean): string | undefined {
-	if (count === LOOP_NOTE_AT) return renderPrompt("notices/loop-guard/note.md", { tool, count, failed });
-	if (count >= LOOP_STOP_AT && (count - LOOP_STOP_AT) % LOOP_REPEAT_EVERY === 0)
+export function loopNote(tool: string, count: number, failed: boolean, at: LoopCounts = BUILT_IN): string | undefined {
+	if (count === at.noteAt) return renderPrompt("notices/loop-guard/note.md", { tool, count, failed });
+	if (count >= at.stopAt && (count - at.stopAt) % LOOP_REPEAT_EVERY === 0)
 		return renderPrompt("notices/loop-guard/stop.md", { tool, count });
 	return undefined;
 }
@@ -90,6 +99,7 @@ export function registerLoopGuard(api: FeatureSetup): Gate {
 		say(ctx, `Loop guard ended this run: ${previous} identical ${tool} calls with the same outcome.`, "error");
 		ctx.failRun("Stopped by the loop guard.");
 	};
+	const counts = (ctx: Pick<FeatureContext, "model">): LoopCounts => limitsFor(api, ctx.model).loop ?? BUILT_IN;
 	const reset = () => {
 		calls.clear();
 		lastCall = undefined;
@@ -134,14 +144,15 @@ export function registerLoopGuard(api: FeatureSetup): Gate {
 		last = key;
 		lastCall = call.key;
 		// Unknown tools and schema-invalid arguments never reach tool_call. Their result still ends the run here.
-		if (!call.checked && count > LOOP_HALT_AT && message.isError) {
+		const at = counts(ctx);
+		if (!call.checked && count > at.haltAt && message.isError) {
 			halted(ctx, message.toolName, count - 1);
 			ctx.abort("internal");
 			return {
 				message: { ...message, content: [{ type: "text" as const, text: refusal(message.toolName, count - 1) }] },
 			};
 		}
-		const note = loopNote(message.toolName, count, message.isError);
+		const note = loopNote(message.toolName, count, message.isError, at);
 		return note
 			? { message: { ...message, content: [...message.content, { type: "text" as const, text: note }] } }
 			: undefined;
@@ -150,7 +161,7 @@ export function registerLoopGuard(api: FeatureSetup): Gate {
 	return async (event, ctx) => {
 		const call = calls.get(event.toolCallId);
 		if (call) call.checked = true;
-		if (event.parentToolCallId || count < LOOP_HALT_AT) return undefined;
+		if (event.parentToolCallId || count < counts(ctx).haltAt) return undefined;
 		// The count keys calls by the arguments the model sent; `event.input` is already validated (and maybe coerced).
 		const key = calls.has(event.toolCallId)
 			? calls.get(event.toolCallId)?.key

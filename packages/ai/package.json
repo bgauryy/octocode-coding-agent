@@ -20,6 +20,10 @@
 			"types": "./dist/models.d.ts",
 			"import": "./dist/models.js"
 		},
+		"./operations": {
+			"types": "./dist/operations/index.d.ts",
+			"import": "./dist/operations/index.js"
+		},
 		"./compat": {
 			"types": "./dist/compat.d.ts",
 			"import": "./dist/compat.js"
@@ -43,6 +47,10 @@
 		"./api/azure-openai-config": {
 			"types": "./dist/api/azure-openai-config.d.ts",
 			"import": "./dist/api/azure-openai-config.js"
+		},
+		"./api/openresponses": {
+			"types": "./dist/api/openresponses.d.ts",
+			"import": "./dist/api/openresponses.js"
 		},
 		"./api/constrained-sampling": {
 			"types": "./dist/api/constrained-sampling.d.ts",
@@ -107,6 +115,10 @@
 		"./utils/assistant-message": {
 			"types": "./dist/utils/assistant-message.d.ts",
 			"import": "./dist/utils/assistant-message.js"
+		},
+		"./utils/bedrock-throughput": {
+			"types": "./dist/utils/bedrock-throughput.d.ts",
+			"import": "./dist/utils/bedrock-throughput.js"
 		},
 		"./utils/cache-capabilities": {
 			"types": "./dist/utils/cache-capabilities.d.ts",

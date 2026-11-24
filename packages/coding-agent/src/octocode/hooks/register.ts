@@ -28,6 +28,7 @@ import { CHILD_MODE_NOTE, hookCount, hooksReport } from "./register/report.ts";
 import { loadSessionHooks, registerSessionStartHooks } from "./register/session-start.ts";
 import { registerStopHook, registerStopRenderer } from "./register/stop.ts";
 import { testRunHooks } from "./register/test-run.ts";
+import { closeHookSubscribers } from "./register/subscribers.ts";
 import { registerSubagentHooks } from "./register/subagent.ts";
 import type { HookFailureSink, HookHostMetadata, HookSession, HookTiming, HooksView } from "./register/types.ts";
 
@@ -86,13 +87,16 @@ function registerDecisionHooks(
 		true,
 	);
 	view.suspend = () => runner.stop();
-	api.bus.on("session_start", async (_event, ctx) => {
+	const reset = async () => {
 		patches.clear();
+		await runner.stop();
+		await closeHookSubscribers(api);
+	};
+	api.bus.on("session_start", async (_event, ctx) => {
+		await reset();
 		loadSessionHooks(api, session, ctx, options.home, true);
 	});
-	api.bus.on("session_shutdown", async () => {
-		patches.clear();
-	});
+	api.bus.on("session_shutdown", reset);
 	api.bus.on("turn_end", async () => {
 		patches.clear();
 	});

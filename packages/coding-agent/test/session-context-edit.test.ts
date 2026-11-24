@@ -211,6 +211,23 @@ describe("session context edits", () => {
 		expect(estimateProjectedContextTokens(session.buildSessionProjection(), session.getBranch()).tokens).toBe(0);
 	});
 
+	it("keeps measured prefix usage when a later 429 is omitted and counts the projected suffix", () => {
+		const session = SessionManager.inMemory();
+		session.appendMessage({ role: "user", content: "long cached prefix ".repeat(10_000), timestamp: 0 });
+		const response = assistant("done");
+		response.usage = { ...response.usage, input: 184_125, totalTokens: 184_126 };
+		session.appendMessage(response);
+		session.appendMessage({ role: "user", content: "retry", timestamp: 1 });
+		const failed = session.appendMessage({
+			...assistant(""),
+			stopReason: "error",
+			errorMessage: "429 Too many requests",
+		});
+		session.appendContextEdit(failed, null);
+		const estimate = estimateProjectedContextTokens(session.buildSessionProjection(), session.getBranch());
+		expect(estimate).toMatchObject({ usageTokens: 184_126, trailingTokens: 2, tokens: 184_128 });
+	});
+
 	it("uses assistant usage captured after the latest context edit", () => {
 		const session = SessionManager.inMemory();
 		const userId = session.appendMessage({ role: "user", content: "original", timestamp: Date.now() });

@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import { mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 import { declaredExposure, isDefaultActive, isSelected } from "./exposure.ts";
 import type { McpServerConnection } from "./runtime.ts";
+import { downAfterReconnectWait } from "./runtime/reconnect-wait.ts";
 import { declaredInFull } from "./redeclare.ts";
 import { isOnDemand, markOnDemandLoaded } from "./on-demand.ts";
 import { isEnabled } from "./server.ts";
@@ -121,7 +122,7 @@ export function registerTools(state: McpFeatureState, connection: McpServerConne
 						},
 					}
 				: {}),
-			getClient: async () => {
+			getClient: async (signal) => {
 				// A prepared call can outlive this definition's connection while the readiness
 				// hook waits for a disable/re-enable. Resolve the replacement at execution time.
 				const current = state.findServer(server);
@@ -134,8 +135,8 @@ export function registerTools(state: McpFeatureState, connection: McpServerConne
 				) {
 					throw new Error(`MCP tool "${server}/${tool.name}" is no longer available.`);
 				}
-				// A dropped server keeps its tools declared; its calls fail here, at once, until it is connected again.
-				const down = client.rejectWhileDown();
+				// A dropped server keeps its tools declared; its calls fail here, after the bounded wait for a reconnect.
+				const down = await downAfterReconnectWait(client, signal);
 				if (down) throw down;
 				state.recordToolUse(server, tool.name);
 				return client;

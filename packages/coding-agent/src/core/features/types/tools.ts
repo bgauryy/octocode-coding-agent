@@ -332,6 +332,8 @@ export type ToolInfo = Pick<
 	ToolDefinition,
 	"name" | "description" | "parameters" | "outputSchema" | "promptGuidelines"
 > & {
+	/** An inactive tool the session policy allows the model to load by name. */
+	onDemand?: boolean;
 	exposure: ToolExposure;
 	namespace?: ToolNamespace;
 	annotations?: ToolAnnotations;

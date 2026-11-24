@@ -114,7 +114,6 @@ A disposable-registry result is not a production lock: after the dependency tarb
 | [agent](packages/agent/README.md)                                       | library  | The agent loop: streams a model response, runs tool calls, queues steering, emits events                                                                                |
 | [ai](packages/ai/README.md)                                             | library  | Providers, model catalog, auth resolution, streaming, token and cost tracking                                                                                           |
 | [tui](packages/tui/README.md)                                           | library  | Terminal components, input, differential renderer; prebuilt clipboard and modifier-key helpers                                                                          |
-| [tui-ink](packages/tui-ink/README.md)                                   | library  | Opt-in Ink + React renderer (`OCTOCODE_UI=ink`): screen modes, input bridge, clock, theme, `<Legacy>` bridge over `tui` components; `tui` never imports it              |
 | [webview](packages/webview/README.md)                                   | library  | The `/web` page: views, store, transport; never executes or authorizes                                                                                                  |
 | [projections](packages/projections/README.md)                           | library  | Portable frame interpretation every interface shares: ordering, snapshots, receipts, resync; imports only contracts, no Node, DOM or host code                          |
 | [contracts](packages/contracts/README.md)                               | library  | TypeBox schemas and types that cross a package or interface boundary                                                                                                    |
@@ -133,7 +132,6 @@ flowchart LR
   CA[coding-agent] --> AGENT[agent] --> AI[ai] --> TEL[telemetry]
   CA --> AI
   CA --> TUI[tui]
-  CA --> INK[tui-ink] --> TUI
   CA --> WEB[webview] --> PROJ[projections]
   CA -.->|hosts| MCP[mcp]
   CA -.->|hosts| ACP[acp]

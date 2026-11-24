@@ -62,20 +62,26 @@ export async function projectAgents(
 export class ForeignViewError extends Error {
 	readonly code = "EFOREIGNVIEW";
 	readonly file: string;
-	constructor(message: string, file: string) {
+	readonly signature: string;
+	constructor(message: string, file: string, stat: fs.Stats) {
 		super(message);
 		this.name = "ForeignViewError";
 		this.file = file;
+		this.signature = signatureOf(stat);
 	}
+}
+
+function signatureOf(stat: fs.Stats): string {
+	return `${stat.mtimeMs}:${stat.size}:${stat.ino}`;
 }
 
 /** A change signature of the view file; undefined when it does not exist. */
 export async function viewSignature(file: string): Promise<string | undefined> {
 	const stat = await fs.promises.stat(file).catch((error: NodeJS.ErrnoException) => {
-		return error.code === "ENOENT" ? undefined : null;
+		if (error.code === "ENOENT") return undefined;
+		throw error;
 	});
-	if (stat === null) return "unreadable";
-	return stat && `${stat.mtimeMs}:${stat.size}:${stat.ino}`;
+	return stat && signatureOf(stat);
 }
 
 /**
@@ -104,14 +110,15 @@ async function readView(file: string, storeKey: string, formerKey?: string): Pro
 		throw new ForeignViewError(
 			`Invalid agents.txt: the generated view exceeds 1 MiB; remove ${file} to rebuild it.`,
 			file,
+			stat,
 		);
 	const previous = await fs.promises.readFile(file, "utf8");
 	const lines = previous.trim().split("\n");
 	if (!previous.trim() || lines.length > 50)
-		throw new ForeignViewError(`Invalid agents.txt; remove ${file} to rebuild it.`, file);
+		throw new ForeignViewError(`Invalid agents.txt; remove ${file} to rebuild it.`, file, stat);
 	for (const line of lines) {
 		const row = parseRow(line);
-		if (row === undefined) throw new ForeignViewError(`Invalid agents.txt; remove ${file} to rebuild it.`, file);
+		if (row === undefined) throw new ForeignViewError(`Invalid agents.txt; remove ${file} to rebuild it.`, file, stat);
 		if (
 			!isRecord(row) ||
 			row.version !== 1 ||
@@ -127,6 +134,7 @@ async function readView(file: string, storeKey: string, formerKey?: string): Pro
 			throw new ForeignViewError(
 				`agents.txt belongs to another database or format; remove ${file} to rebind it.`,
 				file,
+				stat,
 			);
 	}
 	return previous;

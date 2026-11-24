@@ -1,3 +1,4 @@
+import { resolveLimits } from "../../core/limits.ts";
 import { configuredSubagentModels } from "./configured-models.ts";
 import type { AgentEnd } from "../team/panel/state.ts";
 import { randomUUID } from "node:crypto";
@@ -191,12 +192,15 @@ export type RunPlan = Pick<Run, "profile" | "route"> & { requests?: number };
 /**
  * Checks the profile and routes the model; throws the refusal (unknown profile, unavailable model). `refused` holds why
  * each profile file was refused when the profiles loaded, by file name: an unknown name that is one of them says why.
+ * `limits` is the session's `limits` settings: its request budget for the child's model applies to a task that names
+ * none and whose profile has none.
  */
 export function planRun(
 	profiles: Map<string, AgentProfile>,
 	params: Pick<AgentParams, "profile" | "model" | "headless" | "apps" | "background" | "maxRequests">,
 	ctx: Pick<FeatureContext, "modelRegistry" | "model">,
 	refused: ReadonlyMap<string, string> = new Map(),
+	limits?: unknown,
 ): RunPlan {
 	let profile = params.profile ? profiles.get(params.profile) : undefined;
 	if (params.profile && !profile) {
@@ -213,7 +217,6 @@ export function planRun(
 	}
 	if (params.apps !== undefined && !profile?.permissions?.includes("desktop.control"))
 		throw new Error("apps requires a profile that controls the desktop; use profile: desktop.");
-	const requests = params.maxRequests === undefined ? undefined : taskRequestLimit(profile, params.maxRequests);
 	// An explicit model is strict; a profile's is a preference that falls back to this session's model; a task with
 	// neither a model nor a profile takes the default purpose.
 	const available = childAvailable(ctx.modelRegistry, params.model);
@@ -243,6 +246,15 @@ export function planRun(
 		throw new Error("No enabled model can run this task. Choose a task model in /providers.");
 	const route = routed.model ? { ...routed, model: supportedThinking(routed.model, available) } : routed;
 	const parent = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
+	// `limits.subagent.maxRequests` for the model the child runs on (its `:level` suffix is no part of the key).
+	const childKey = route.model ? route.model.replace(/:[^/:]*$/, "") : parent;
+	const configured = resolveLimits(limits, childKey).subagent.maxRequests;
+	const requests =
+		params.maxRequests === undefined
+			? profile?.maxRequests === undefined
+				? configured
+				: undefined
+			: taskRequestLimit(profile, params.maxRequests, process.env, configured);
 	// The default purpose names its route only when it chose a model other than this session's.
 	const onParent = !route.model || route.model === parent || route.model.startsWith(`${parent}:`);
 	const defaulted = !params.model && !profile && !onParent;

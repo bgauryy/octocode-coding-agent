@@ -12,14 +12,9 @@ import { tmp } from "./helpers.ts";
  * A session with one MonitorAlert group, a real ledger and a dispatch that runs a hook only when the configured matcher
  * selects the rule (`commandsFor`, the dispatcher's own selection), so what it records is what a user's hook would see.
  */
-function harness(
-	matcher: string | undefined | null,
-	options: MonitorHookOptions = {},
-	{ mode = "old", cwd = tmp() }: { mode?: "old" | "new"; cwd?: string } = {},
-) {
+function harness(matcher: string | undefined | null, options: MonitorHookOptions = {}, cwd = tmp()) {
 	const handlers = new Map<string, Array<(event: unknown, ctx: unknown) => unknown>>();
 	const api = {
-		settings: { get: () => ({ runtime: { eventLoop: mode } }) },
 		bus: {
 			on: (event: string, handler: (event: unknown, ctx: unknown) => unknown) =>
 				handlers.set(event, [...(handlers.get(event) ?? []), handler]),
@@ -149,7 +144,7 @@ describe("MonitorAlert hook", () => {
 	});
 });
 
-describe("MonitorAlert hook as an event subscriber (runtime.eventLoop: new)", () => {
+describe("MonitorAlert replay", () => {
 	const alerts = (h: ReturnType<typeof harness>) => {
 		h.ledger.record({ rule: "job", value: 16, threshold: 15, subject: "job-1", at: 1234 }, true);
 		h.ledger.record({ rule: "context", value: 75, threshold: 75 }, false);
@@ -167,24 +162,14 @@ describe("MonitorAlert hook as an event subscriber (runtime.eventLoop: new)", ()
 		},
 	];
 
-	it("runs the hook once per alert with the same input as in old mode", async () => {
-		const h = harness(undefined, {}, { mode: "new" });
-		await h.start();
-		alerts(h);
-		await h.flush();
-		await h.flush();
-		expect(h.runs).toEqual(expected);
-		await h.shutdown();
-	});
-
 	it("does not run an alert again after a restart of the session", async () => {
 		const cwd = tmp();
-		const first = harness(undefined, {}, { mode: "new", cwd });
+		const first = harness(undefined, {}, cwd);
 		await first.start();
 		alerts(first);
 		await first.flush();
 		await first.shutdown();
-		const second = harness(undefined, {}, { mode: "new", cwd });
+		const second = harness(undefined, {}, cwd);
 		await second.start();
 		await second.flush();
 		expect(first.runs).toEqual(expected);

@@ -10,7 +10,32 @@ export function buildBatch<C>(
 	entries: ReadonlyArray<Logged<C>>,
 	cap = MAX_BATCH_LINES,
 ): Batch<C> {
-	const ordered = [...entries.filter((each) => each.queue === "Q1"), ...entries.filter((each) => each.queue !== "Q1")];
+	const ordered = entries.some((entry) => entry.type === "input")
+		? [...entries.filter((entry) => entry.type === "input"), ...entries.filter((entry) => entry.type !== "input")]
+		: entries.slice();
+	// The session sends the original completions. Format digests only for a consumer that reads them.
+	let summary: Pick<Batch<C>, "lines" | "more" | "range"> | undefined;
+	const read = () => (summary ??= summarize(catalog, ordered, cap));
+	return {
+		entries: ordered,
+		trigger: ordered.some((entry) => entry.type === "input" || entry.wake),
+		get lines() {
+			return read().lines;
+		},
+		get more() {
+			return read().more;
+		},
+		get range() {
+			return read().range;
+		},
+	};
+}
+
+function summarize<C>(
+	catalog: EventCatalog,
+	ordered: ReadonlyArray<Logged<C>>,
+	cap: number,
+): Pick<Batch<C>, "lines" | "more" | "range"> {
 	const lines = new Map<string, BatchLine>();
 	for (const entry of ordered) {
 		if (entry.type !== "event") continue;
@@ -33,14 +58,22 @@ export function buildBatch<C>(
 	}
 	const all = [...lines.values()];
 	const shown = all.length <= cap ? all : roundRobin(all, cap);
-	const hidden = all.filter((line) => !shown.includes(line));
-	const hiddenSeqs = hidden.flatMap((line) => line.seqs);
+	const visible = new Set(shown);
+	let more = 0;
+	let from = Infinity;
+	let to = -Infinity;
+	for (const line of all) {
+		if (visible.has(line)) continue;
+		more += line.count;
+		for (const seq of line.seqs) {
+			from = Math.min(from, seq);
+			to = Math.max(to, seq);
+		}
+	}
 	return {
-		entries: ordered,
 		lines: shown,
-		more: hidden.reduce((total, line) => total + line.count, 0),
-		...(hiddenSeqs.length > 0 ? { range: { from: Math.min(...hiddenSeqs), to: Math.max(...hiddenSeqs) } } : {}),
-		trigger: ordered.some((entry) => entry.type === "input" || entry.wake),
+		more,
+		...(more > 0 ? { range: { from, to } } : {}),
 	};
 }
 
@@ -49,7 +82,9 @@ function roundRobin(lines: readonly BatchLine[], cap: number): BatchLine[] {
 	const bySource = new Map<string, BatchLine[]>();
 	for (const line of lines) {
 		const id = `${line.source.kind}:${line.source.id}`;
-		bySource.set(id, [...(bySource.get(id) ?? []), line]);
+		const source = bySource.get(id);
+		if (source) source.push(line);
+		else bySource.set(id, [line]);
 	}
 	const taken = new Set<BatchLine>();
 	const queues = [...bySource.values()];

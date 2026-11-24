@@ -13,7 +13,6 @@ import { gateSummary } from "./summary-gate.ts";
 /**
  * RFC agent-event-loop R5: the nudge at 90% and the stop at 95% of the compaction limit (window minus reserve), at a step
  * boundary; compaction then continues the task; events queue behind it; only the user's Stop cancels it.
- * The stop is the `new` mode's; the nudge is the context-usage band that exists today.
  */
 
 const rigs: Rig[] = [];
@@ -49,13 +48,13 @@ const bigResult: AgentTool = {
 };
 
 /** A 3200-token window, limit 2800, stop at 2660: the first tool result lands between the stop and the limit. */
-async function midRun(mode: "old" | "new") {
+async function midRun() {
 	const rig = await createRig({
 		models: [{ id: "faux-1", contextWindow: 3200, maxTokens: 100 }],
 		compactionPolicy: settings,
 		tools: [bigResult],
 		// No window: these cases are about compaction, not about how long the loop holds a wake.
-		settings: { runtime: { eventLoop: mode, eventWindowSeconds: 0 } },
+		settings: { runtime: { eventWindowSeconds: 0 } },
 	});
 	rigs.push(rig);
 	rig.harness.setResponses([
@@ -73,7 +72,7 @@ async function midRun(mode: "old" | "new") {
 
 describe("the hard stop at a step boundary", () => {
 	it("compacts between the tool call and the next request at 95%, then continues the task", async () => {
-		const rig = await midRun("new");
+		const rig = await midRun();
 		const gate = gateSummary(rig.harness.session);
 		const running = rig.harness.session.prompt("run the tool");
 		await gate.started;
@@ -91,16 +90,8 @@ describe("the hard stop at a step boundary", () => {
 		expect(branch.at(-1)).toContain("turn A");
 	});
 
-	it("leaves 95% to the limit in the old mode: no compaction in that run", async () => {
-		const rig = await midRun("old");
-		await rig.harness.session.prompt("run the tool");
-		await rig.harness.session.waitForIdle();
-		expect(branchLines(rig.harness).filter((line) => line === "compaction").length).toBeLessThanOrEqual(1);
-		expect(rig.requests[0]?.some((line) => line.includes("The conversation history"))).toBe(false);
-	});
-
 	it("queues an event that arrives during that compaction and delivers it once, after it", async () => {
-		const rig = await midRun("new");
+		const rig = await midRun();
 		const gate = gateSummary(rig.harness.session);
 		const running = rig.harness.session.prompt("run the tool");
 		await gate.started;
@@ -134,7 +125,7 @@ describe("who cancels a running compaction", () => {
 	};
 
 	it("a peer's interrupt does not cancel it: the summary is saved, the mail arrives after it", async () => {
-		const rig = await midRun("new");
+		const rig = await midRun();
 		const gate = gateSummary(rig.harness.session);
 		const running = rig.harness.session.prompt("run the tool");
 		await gate.started;
@@ -152,7 +143,7 @@ describe("who cancels a running compaction", () => {
 	});
 
 	it("the user's Stop does: no summary is saved", async () => {
-		const rig = await midRun("new");
+		const rig = await midRun();
 		const gate = gateSummary(rig.harness.session);
 		const running = rig.harness.session.prompt("run the tool");
 		await gate.started;

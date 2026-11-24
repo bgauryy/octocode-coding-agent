@@ -63,59 +63,72 @@ describe("agents panel rows", () => {
 	beforeEach(() => animationClock.setReducedMotion(true));
 	afterEach(() => animationClock.setReducedMotion(false));
 
-	it("roots the tree at this session: name, mark, role and clock in the grid's columns, with no cost and no tally", () => {
+	it("roots the tree at this session: name and mark, with no role, no clock, no cost and no tally", () => {
 		const lines = widgetLines(team, "tidal-whale", NOW, theme, 200);
-		expect(lines[0]).toBe(
-			" 🦑 tidal-whale ○ · main                                                                                                                                                                           4m49s",
-		);
+		expect(lines[0]).toBe(" 🦑 tidal-whale ○");
 		expect(lines.join("\n")).not.toMatch(/working|idle|≈\$0\.00/);
 	});
 
-	it("shows who, role, spend, goal and action on the row; model, tokens, cache, tools and locks on the open detail line", () => {
+	it("shows who, goal and action on the row; role, model, spend, tokens, cache, tools and locks on the open detail line", () => {
 		const lines = widgetLines(team, "tidal-whale", NOW, theme, 200);
 		expect(rowOf(lines, "inky-kraken")).toBe(
-			" ├ ⏺ inky-kraken  · researcher · Checking vision routing refusal                  › localSearch vision_route                                                         46.1k tok 74% cached · ≈$0.41 4m49s",
+			" ├ ⏺ inky-kraken  · Checking vision routing refusal                  › localSearch vision_route",
 		);
 		expect(rowOf(lines, "plucky-otter")).toContain(
 			"Checking timeout handling in serve_client.rs ✉ 1 › localFetch serve_client.rs",
 		);
 		expect(detailOf(lines, "inky-kraken")).toBe(
-			" │   claude-sonnet-4-5                                                                                                                                            46.1k tok · 74% cached · 14 tool calls",
+			` │   researcher · claude-sonnet-4-5${" ".repeat(110)}4m49s · ≈$0.41 · 46.1k tok · 74% cached · 14 tool calls`,
 		);
 		expect(detailOf(lines, "brave-squid")).toBe(
-			"     claude-sonnet-4-5                                                                                                                                    46.1k tok · 74% cached · 3 tool calls · 1 lock",
+			`     general · claude-sonnet-4-5${" ".repeat(105)}4m49s · ≈$0.41 · 46.1k tok · 74% cached · 3 tool calls · 1 lock`,
 		);
 		expect(lines.join("\n")).not.toContain("anthropic/");
 	});
 
 	it("starts the detail line under the name: the tree line continues beside it, blank under the last agent", () => {
 		const lines = widgetLines(team, "tidal-whale", NOW, theme, 120);
-		expect(detailOf(lines, "inky-kraken")).toMatch(/^ │ {3}claude-sonnet/);
-		expect(detailOf(lines, "brave-squid")).toMatch(/^ {5}claude-sonnet/);
+		expect(detailOf(lines, "inky-kraken")).toMatch(/^ │ {3}researcher · claude-sonnet/);
+		expect(detailOf(lines, "brave-squid")).toMatch(/^ {5}general · claude-sonnet/);
 	});
 
-	it("keeps name, role, goal and messages from 60 to 120 columns; the action moves below, then elapsed and cost give way", () => {
+	it("keeps name, goal and messages on the row from 60 to 120 columns, the role and spend on the detail line; the action moves below, then tool calls and the cached share give way", () => {
 		for (const width of [60, 70, 80, 90, 120]) {
 			const lines = widgetLines(team, "tidal-whale", NOW, theme, width);
 			expect(lines.every((line) => visibleWidth(line) <= width)).toBe(true);
-			for (const id of ["inky-kraken", "plucky-otter", "brave-squid"])
-				expect(rowOf(lines, id)).toMatch(/· (researc|general)/);
+			for (const id of ["inky-kraken", "plucky-otter", "brave-squid"]) {
+				expect(rowOf(lines, id)).toMatch(new RegExp(`^ [├└] [⏺○] ${id} +· (Checking|Searching) `));
+				expect(rowOf(lines, id)).not.toMatch(/researcher|general|4m49s|≈\$/);
+				// The time is the first of the spend cells to give way, then the cost; the model, tokens and locks stay whole.
+				expect(detailOf(lines, id)).toMatch(
+					width > 60
+						? /^ [│ ] {3}(researcher|general) · claude-sonnet-4-5 .*4m49s · ≈\$0\.41 · [\d.]+k tok/
+						: /^ [│ ] {3}(researcher|general) · claude-sonnet-4-5 +(≈\$0\.41 · )?[\d.]+k tok( · 1 lock)?$/,
+				);
+			}
 			expect(rowOf(lines, "plucky-otter")).toContain("✉ 1");
 			expect(lines.join("\n")).toContain("localFetch serve_client.rs");
 		}
 		const at = (width: number) => widgetLines(team, "tidal-whale", NOW, theme, width);
 		expect(rowOf(at(120), "inky-kraken")).toContain("› localSearch vision_route");
+		expect(rowOf(at(80), "inky-kraken")).toContain("› localSearch vision_route");
 		// It moves to a ↳ line under the goal column, which keeps room for it.
-		expect(at(80).some((line) => /^ │ +↳ localSearch vision_route$/.test(line))).toBe(true);
-		expect(rowOf(at(80), "inky-kraken")).toContain("≈$0.41 4m49s");
-		expect(rowOf(at(60), "inky-kraken")).not.toMatch(/4m49s|≈\$/);
-		expect(rowOf(at(60), "inky-kraken")).toContain("researc…");
+		expect(at(60).some((line) => /^ │ +↳ localSearch vision_route$/.test(line))).toBe(true);
+		expect(rowOf(at(60), "inky-kraken")).toBe(" ├ ⏺ inky-kraken  · Checking vision routing refusal");
+		// The detail line: tool calls leave first, then the cached share, then the time, so no cell is cut.
+		expect(detailOf(at(80), "inky-kraken")).toBe(
+			" │   researcher · claude-sonnet-4-5      4m49s · ≈$0.41 · 46.1k tok · 74% cached",
+		);
+		expect(detailOf(at(70), "inky-kraken")).toBe(
+			" │   researcher · claude-sonnet-4-5         4m49s · ≈$0.41 · 46.1k tok",
+		);
+		expect(detailOf(at(60), "inky-kraken")).toBe(" │   researcher · claude-sonnet-4-5       ≈$0.41 · 46.1k tok");
 	});
 
 	it("lines up every column down the list", () => {
 		for (const width of [80, 120, 200]) {
 			const rows = widgetLines(team, "tidal-whale", NOW, theme, width).filter((line) => /^ (🦑|[├└])/.test(line));
-			// This session's row has no goal, so it ends after its clock; its columns still match.
+			// This session's row has no goal, so it ends after its mark; its columns still match.
 			const columns = separators(rows[1]).slice(0, 3);
 			for (const row of rows) expect(separators(row).slice(0, 3)).toEqual(columns.slice(0, separators(row).length));
 		}

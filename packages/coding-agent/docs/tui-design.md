@@ -28,16 +28,16 @@ A state never rests on color alone: every state has a glyph, and badges and warn
 
 ### State colors
 
-Six states cover tools, agents, questions and runs. Each has one mark and one color role.
+Six states cover tools, agents, questions and runs. Each has one outcome mark and one color role; these mark an outcome inside a row (`✓ question → answer`, `✗ file: error`). A row's own state is its [state light](#the-state-light).
 
-| State     | Mark | Color role | Meaning                                         |
-| --------- | ---- | ---------- | ----------------------------------------------- |
-| `pending` | `○`  | `dim`      | Queued, not started                             |
-| `running` | `⠋`  | `accent`   | In progress; the mark animates (`◌` when still) |
-| `waiting` | `◇`  | `warning`  | Needs you; the mark breathes                    |
-| `done`    | `✓`  | `success`  | Finished; the mark glows briefly                |
-| `failed`  | `✗`  | `error`    | Ended with an error                             |
-| `stopped` | `◼`  | `warning`  | Interrupted or cancelled                        |
+| State     | Mark | Color role | Meaning                                  |
+| --------- | ---- | ---------- | ---------------------------------------- |
+| `pending` | `○`  | `dim`      | Queued, not started                      |
+| `running` | `⏺`  | `accent`   | In progress; a full dot, never a spinner |
+| `waiting` | `◇`  | `warning`  | Needs you; the mark breathes             |
+| `done`    | `✓`  | `success`  | Finished; the mark glows briefly         |
+| `failed`  | `✗`  | `error`    | Ended with an error                      |
+| `stopped` | `◼`  | `warning`  | Interrupted or cancelled                 |
 
 Motion applies in this order:
 
@@ -46,7 +46,6 @@ flowchart TD
     A[Mark drawn] --> B{Reduced motion?}
     B -- yes --> S[Static glyph in its color]
     B -- no --> C{State}
-    C -- running --> R[Spinner frame every 100 ms after a 200 ms start delay; 200 ms frames for background work]
     C -- waiting --> W[Breathes for 4 s, then holds still]
     C -- done --> D[Glows for 450 ms, then settles]
     C -- other --> S
@@ -56,7 +55,7 @@ A still screen writes nothing: marks that no longer move stop requesting repaint
 
 ### One running idiom
 
-Running work looks one way: the braille spinner (one cell, `accent`) on the main working line, and a shimmer on its label. Nothing else on screen spins at the same time: tool rows and agent rows use the state light, and a second moving mark never joins the working line.
+Running work looks one way: the braille spinner (one cell, `accent`) on the main working line, and a shimmer on its label. Nothing else on screen spins: tool rows, agent rows and thinking blocks are still, and the waiting line draws the spinner only while it stands in for the working line. Every spinner reads its frame from the one animation clock, a new frame every 100 ms, so the terminal tab's and the working line's never drift apart.
 
 - The working spinner stays hidden for its first 200 ms, so a short run never flashes one; its cell stays blank so the label does not shift when it appears.
 - Every shimmer shares one epoch (the animation clock's time), so labels sweep in step. A band runs from the terminal's default foreground dimmed toward its background at rest up to the full foreground at its center; with 16 colors, where there is nothing to mix, the band is bold on dim text. With no color, a shimmer is plain text.
@@ -76,7 +75,7 @@ Use one style per meaning and never stack bold, italic and underline on one run 
 
 ### Motion gating
 
-Decoration (spinners, shimmer, glow) is still, and a running mark is the static `◌`, when any of these holds: `terminal.reduceMotion` is `true`; it is `"auto"` and stdout is not a terminal, `CI` is set (anything but empty, `0` or `false`), or `OCTOCODE_REDUCE_MOTION`, `REDUCE_MOTION` or `NO_MOTION` is `1` or `true`. An explicit `false` keeps motion on. Piped output therefore never collects spinner frames.
+Decoration (the spinner, shimmer, glow) is still, and the spinner is a full `⏺`, when any of these holds: `terminal.reduceMotion` is `true`; it is `"auto"` and stdout is not a terminal, `CI` is set (anything but empty, `0` or `false`), or `OCTOCODE_REDUCE_MOTION`, `REDUCE_MOTION` or `NO_MOTION` is `1` or `true`. An explicit `false` keeps motion on. Piped output therefore never collects spinner frames.
 
 ### Contrast
 
@@ -84,18 +83,18 @@ Every theme meets WCAG contrast against the backgrounds its text can land on (bl
 
 ### The state light
 
-Every transcript tool row (bash, file, MCP, Agent cards and background reports), the agents panel and `/agents`, the footer's agent and work rows, and the `+N more` counts draw one light in place of the state glyphs above. A running light is an animation or a state, never a spinner frame held still: where the row moves it turns the working spinner's frames (the braille of the main working line, in green); where it cannot move (reduced motion, the footer, a list, `+N more`) it is a full green `⏺` beside its word. A settled state is its own glyph, steady, in its color: `⏺` means running and nothing else, so a still running light never looks like a done one.
+Every transcript tool row (bash, file, MCP, Agent cards and background reports), the agents panel and `/agents`, the footer's agent and work rows, and the `+N more` counts draw one light in place of the outcome marks above. A light is one still cell, a circle whose shape is the state, so it reads without color; it never moves.
 
-| State                    | Light color | Light                                                                            |
-| ------------------------ | ----------- | -------------------------------------------------------------------------------- |
-| `running`                | `success`   | The working spinner (`⠋ ⠙ ⠹ …`) at the background pace; `⏺` where it cannot move |
-| `waiting`                | `warning`   | Steady `◇`                                                                       |
-| `done`                   | `success`   | Steady `✓`                                                                       |
-| `failed`                 | `error`     | Steady `✗`                                                                       |
-| `stopped`                | `error`     | Steady `◼`                                                                       |
-| `pending` (idle, queued) | `dim`       | Steady `○`                                                                       |
+| State                    | Light | Light color | Reads as                |
+| ------------------------ | ----- | ----------- | ----------------------- |
+| `running`                | `⏺`   | `success`   | Full: working           |
+| `waiting`                | `◐`   | `warning`   | Half: needs you         |
+| `done`                   | `◉`   | `muted`     | Ringed dot: finished    |
+| `failed`                 | `⊗`   | `error`     | Crossed: ended in error |
+| `stopped`                | `⊘`   | `error`     | Barred: interrupted     |
+| `pending` (idle, queued) | `○`   | `dim`       | Empty: nothing runs     |
 
-Each state has this one glyph, with and without color (`NO_COLOR` drops only the color); no two states share one, and `⏺` always means running. An idle agent or session is the `pending` state: nothing runs until it gets work. Reduced motion draws a running light as the full green `⏺`. The `+N more` row counts hidden agents with the same lights. In `/web` a running mark is an arc turning on a faint ring, and a full dot under reduced motion.
+Each state has this one glyph, with and without color (`NO_COLOR` drops only the color); no two states share one. Green is only ever running, so a glance finds what is alive. An idle agent or session is the `pending` state: nothing runs until it gets work. The `+N more` row counts hidden agents with the same lights. In `/web` a running mark is an arc turning on a faint ring, and a full dot under reduced motion.
 
 ### Activity light
 
@@ -104,11 +103,11 @@ The session's light answers one question, what is it doing, with four tones. The
 | Tone    | State     | Light      | Without color | Word beside it                                                                 | When                                                                                                            |
 | ------- | --------- | ---------- | ------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
 | Working | `running` | green `⏺`  | `⏺`           | `working`, `compacting`, `retrying`, `not answering`, `background`, `resuming` | A run, compaction, a retry wait, a model that went quiet, background work or a report about to wake the session |
-| Waiting | `waiting` | yellow `◇` | `◇`           | `needs you`                                                                    | A dialog or question waits for you                                                                              |
-| Error   | `failed`  | red `✗`    | `✗`           | `failed`, `stopped`                                                            | The job failed, or stopped with work left open                                                                  |
+| Waiting | `waiting` | yellow `◐` | `◐`           | `needs you`                                                                    | A dialog or question waits for you                                                                              |
+| Error   | `failed`  | red `⊗`    | `⊗`           | `failed`, `stopped`                                                            | The job failed, or stopped with work left open                                                                  |
 | Idle    | `pending` | dim `○`    | `○`           | `idle`, `done`, `scheduled`                                                    | Nothing runs: the job is done, or only a timer will wake it                                                     |
 
-In the terminal these places draw the light still, so working is a full green `⏺` beside its word, never a spinner frame held still (`/web` turns its running mark); the list badges read `⏺ working`, `◇ needs you`, `✗ failed`, `○ idle`, the glyphs of the state light. A pending timer alone is idle: nothing is working until it fires. In the footer the light leads line 2, before `model:effort`, with its word (`◇ needs you · model:effort`); an idle session shows the light alone, and on a narrow terminal the word goes before the session name while the light stays. The word is quiet except `needs you` in `warning` and `failed` or `stopped` in `error`, so the light is never the only cue. The `/web` session list writes the light's word capitalized (**Working**, **Needs you**, **Compacting**, **Failed**, **Stopped**, **Idle** and the rest), the words `octocode remote list` prints.
+In the terminal these places draw the light still, so working is a full green `⏺` beside its word, never a spinner frame held still (`/web` turns its running mark); the list badges read `⏺ working`, `◐ needs you`, `⊗ failed`, `○ idle`, the glyphs of the state light. A pending timer alone is idle: nothing is working until it fires. In the footer the light leads line 2, before `model:effort`, with its word (`◐ needs you · model:effort`); an idle session shows the light alone, and on a narrow terminal the word goes before the session name while the light stays. The word is quiet except `needs you` in `warning` and `failed` or `stopped` in `error`, so the light is never the only cue. The `/web` session list writes the light's word capitalized (**Working**, **Needs you**, **Compacting**, **Failed**, **Stopped**, **Idle** and the rest), the words `octocode remote list` prints.
 
 ### Page badges
 

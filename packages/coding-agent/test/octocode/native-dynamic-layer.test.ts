@@ -63,6 +63,14 @@ const deferrableTool = () => ({
 async function session(model: Model<Api> = changes, settings: Record<string, unknown> = { mcpExposure: "recent" }) {
 	vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", tmp());
 	const host = fakeHost(settings);
+	const getAll = host.api.tools.getAll;
+	host.api.tools.getAll = () =>
+		getAll().map((tool) => ({
+			...tool,
+			sourceInfo: { ...tool.sourceInfo, owner: tool.name === "mcp" ? "builtin" : "native" },
+		}));
+	const mcpTools = { ...host.api.tools, setActive: vi.fn() };
+	const port = nativeToolsPort({ tools: mcpTools });
 	const api = withNativePermissionOwners(host.api);
 	const full = deferrableTool();
 	api.tools.register(full as never);
@@ -74,13 +82,13 @@ async function session(model: Model<Api> = changes, settings: Record<string, unk
 	const registered = () => host.tools.get(TOOL);
 	const thin = registered();
 	const ended = (toolName = "mcp") => host.fire("tool_execution_end", { toolName }, ctx);
-	return { host, full, thin, registered, ended, ctx };
+	return { host, api, mcpTools, port, full, thin, registered, ended, ctx };
 }
 
 describe("the native tools port the mcp tool reads", () => {
 	it("describes the tools this session declares thin, in full, and nothing else", async () => {
 		const s = await session();
-		const port = nativeToolsPort();
+		const port = s.port;
 		expect(port.deferred()).toContain(TOOL);
 		expect(port.schema(TOOL)).toEqual({
 			description: "Plan backlog items. Second sentence.",
@@ -90,10 +98,52 @@ describe("the native tools port the mcp tool reads", () => {
 		expect(port.schema("nope")).toBeUndefined();
 	});
 
+	it("reads and promotes only the calling registry, including its own management tool", async () => {
+		const left = await session();
+		const right = await session(changes, { mcpExposure: "direct" });
+		const mcp = { ...deferrableTool(), name: "mcp", description: "Left management tool" };
+		left.host.api.tools.register(mcp);
+		expect(left.port.declared?.("mcp")?.description).toBe(mcp.description);
+		expect(right.port.declared?.("mcp")).toBeUndefined();
+		expect(left.port.schema(TOOL)?.parameters).toBe(left.full.parameters);
+		expect(right.port.declared?.(TOOL)?.parameters).toBe(right.full.parameters);
+		left.port.loaded?.(TOOL);
+		await right.ended();
+		expect(left.registered()).toBe(left.thin);
+		await left.ended();
+		expect(left.port.deferred()).not.toContain(TOOL);
+		expect(left.port.declared?.(TOOL)?.parameters).toBe(left.full.parameters);
+		left.host.api.tools.setActive(["mcp"]);
+		expect(left.port.declared?.(TOOL)).toBeUndefined();
+		left.port.loaded?.(TOOL);
+		expect(left.host.api.tools.getActive()).toEqual(["mcp"]);
+	});
+
+	it("loads an eligible on-demand native but leaves unregistered, hidden and inactive tools unavailable", async () => {
+		const s = await session(changes, { mcpExposure: "usage" });
+		const api = s.host.api;
+		const archive = { ...deferrableTool(), name: "archive" };
+		api.tools.register({ ...archive, name: "mcp" });
+		s.api.tools.register(archive);
+		api.tools.register({ ...archive, name: "unavailable", defaultActive: false });
+		await s.host.fire("session_start", {}, s.ctx);
+		s.mcpTools.getHiddenDeclarations = () => [TOOL];
+		expect(s.port.deferred()).toEqual(["archive"]);
+		expect(s.port.schema("unavailable")).toBeUndefined();
+		s.port.loaded?.("unavailable");
+		s.port.loaded?.("missing");
+		expect(api.tools.getActive()).not.toContain("unavailable");
+		expect(s.port.schema("archive")?.parameters).toEqual(archive.parameters);
+		s.port.loaded?.("archive");
+		expect(api.tools.getActive()).toContain("archive");
+		expect(s.mcpTools.setActive).not.toHaveBeenCalled();
+		expect(s.port.declared?.("archive")?.parameters).toEqual(archive.parameters);
+	});
+
 	it("does not list a tool the session declares in full", async () => {
-		await session(changes, { mcpExposure: "direct" });
-		expect(nativeToolsPort().deferred()).not.toContain(TOOL);
-		expect(nativeToolsPort().schema(TOOL)).toBeUndefined();
+		const s = await session(changes, { mcpExposure: "direct" });
+		expect(s.port.deferred()).not.toContain(TOOL);
+		expect(s.port.schema(TOOL)).toBeUndefined();
 	});
 });
 
@@ -101,20 +151,20 @@ describe("a deferred native tool after it is loaded", () => {
 	it("is declared in full once, in place, on a transport with native tool changes", async () => {
 		const s = await session();
 		expect(s.thin.parameters).not.toBe(s.full.parameters);
-		nativeToolsPort().loaded?.(TOOL);
+		s.port.loaded?.(TOOL);
 		// Nothing changes while the `mcp` tool call that loaded it is still running.
 		expect(s.registered()).toBe(s.thin);
 		await s.ended();
 		expect(s.registered()?.parameters).toBe(s.full.parameters);
 		const declared = s.registered();
-		nativeToolsPort().loaded?.(TOOL);
+		s.port.loaded?.(TOOL);
 		await s.ended();
 		expect(s.registered()).toBe(declared);
 	});
 
 	it("stays thin on a transport that would resend its whole tool list", async () => {
 		const s = await session(plain);
-		nativeToolsPort().loaded?.(TOOL);
+		s.port.loaded?.(TOOL);
 		await s.ended();
 		expect(s.registered()).toBe(s.thin);
 	});
@@ -135,7 +185,7 @@ describe("a deferred native tool after it is loaded", () => {
 		const s = await session();
 		await s.ended("bash");
 		expect(s.registered()).toBe(s.thin);
-		nativeToolsPort().loaded?.(TOOL);
+		s.port.loaded?.(TOOL);
 		await s.ended();
 		await s.host.fire("session_start", {}, s.ctx);
 		expect(s.registered()?.parameters).toBe(s.thin?.parameters);
@@ -144,7 +194,7 @@ describe("a deferred native tool after it is loaded", () => {
 	it("keeps the tool list and instruction blocks first sent, adding one tool_addition after them", async () => {
 		const s = await session();
 		const before = s.registered() as Tool;
-		nativeToolsPort().loaded?.(TOOL);
+		s.port.loaded?.(TOOL);
 		await s.ended();
 		const after = s.registered() as Tool;
 		const first: Message[] = [

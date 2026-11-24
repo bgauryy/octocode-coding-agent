@@ -20,6 +20,7 @@ interface DeltaCall {
 	custom?: { name?: string; input?: string };
 }
 interface Chunk {
+	openrouter_metadata?: unknown;
 	usage?: Parameters<typeof parseChunkUsage>[0];
 	choices?: {
 		finish_reason?: string | null;
@@ -34,6 +35,8 @@ export interface CompletionsState extends StreamedReasoningDetails {
 	streamStarted?: boolean;
 	blockedPrompt?: string;
 	usage?: Chunk["usage"];
+	/** The last `openrouter_metadata` the stream carried; summarized into a diagnostic at the end. */
+	routerMetadata?: unknown;
 	/** Every cache marker the request carried was a 1h marker, so its reported writes are 1h writes (`parseChunkUsage`). */
 	longCacheWrites?: boolean;
 	reasoningField?: string;
@@ -73,6 +76,7 @@ export function normalizeCompletionsResponse(
 			const chunk = (options.onProviderStreamEvent ? structuredClone(parsed) : parsed) as Chunk;
 			const choice = chunk.choices?.[0];
 			if (choice?.finish_reason) finished = true;
+			if (chunk.openrouter_metadata !== undefined) state.routerMetadata = chunk.openrouter_metadata;
 			const usage = chunk.usage ?? choice?.usage;
 			if (usage) {
 				state.usage = usage;

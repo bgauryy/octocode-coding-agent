@@ -69,11 +69,6 @@ function view(chain: Chain, fields: object): RequestTrace {
 	return trace as unknown as RequestTrace;
 }
 
-/** Whether `trace` is a chained trace, whose `layers` is rebuilt (and frozen) on each read. */
-export function isChained(trace: RequestTrace): boolean {
-	return chains.has(trace);
-}
-
 /** Same own keys in the same order with the same values: the same JSON. */
 function sameFields(left: object, right: object): boolean {
 	if (left === right) return true;

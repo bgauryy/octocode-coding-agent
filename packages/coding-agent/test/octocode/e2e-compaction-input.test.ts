@@ -1,3 +1,4 @@
+import { terminalInput, userTexts } from "./e2e-ui-flows/request.ts";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { getMessageText } from "../suite/harness.ts";
@@ -19,11 +20,7 @@ const shows = (pattern: RegExp | string) => async () => {
 	const text = await t!.text();
 	return typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
 };
-/** The user texts a request carried, oldest first. */
-const userTexts = (request: string): string[] =>
-	(JSON.parse(request) as Array<{ role: string; content: Array<{ text?: string }> | string }>)
-		.filter((m) => m.role === "user")
-		.map((m) => (typeof m.content === "string" ? m.content : m.content.map((c) => c.text ?? "").join("")));
+
 const CHECKPOINT = "write a context checkpoint";
 const isSummaryText = (text: string) =>
 	text.includes(CHECKPOINT) || text.startsWith("<conversation>") || text.startsWith("# Conversation\n");
@@ -104,8 +101,8 @@ describe("interactive input during /compact", () => {
 
 		const sent = turnRequests().slice(3);
 		expect(sent).toHaveLength(2);
-		expect(userTexts(sent[0]).at(-1)).toBe("held one");
-		expect(userTexts(sent[1]).slice(-2)).toEqual(["held one", "held two"]);
+		expect(userTexts(sent[0]).at(-1)).toBe(terminalInput("held one"));
+		expect(userTexts(sent[1]).slice(-2)).toEqual(["held one", "held two"].map(terminalInput));
 		const transcript = JSON.stringify(t!.host.session.messages);
 		expect(occurrences(transcript, "held one")).toBe(1);
 		expect(occurrences(transcript, "held two")).toBe(1);
@@ -148,7 +145,7 @@ describe("interactive input during /compact", () => {
 			else t!.host.session.abortCompaction();
 			await t!.until(shows("reply a"), "the prompt answered after the compaction");
 			await t!.until(() => !t!.host.session.isStreaming && !t!.host.session.isCompacting, "idle");
-			expect(userTexts(turnRequests()[3]).at(-1)).toBe("direct prompt");
+			expect(userTexts(turnRequests()[3]).at(-1)).toBe(terminalInput("direct prompt"));
 			expect(occurrences(JSON.stringify(t!.host.session.messages), "direct prompt")).toBe(1);
 			expect(turnRequests()).toHaveLength(4);
 			expect(t!.host.session.getQueuedInputs()).toEqual([]);

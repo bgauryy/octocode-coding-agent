@@ -145,7 +145,7 @@ An MCP transport owns framing and I/O. It delivers individual JSON-RPC messages 
 - OAuth protected-resource and authorization-server discovery
 - PKCE authorization code flow, dynamic client registration, token refresh (one refresh shared by concurrent 401s), and step-up authorization for `insufficient_scope`
 
-The stateless `2026-07-28` protocol is not implemented. Batch JSON-RPC messages, server implementation, resource subscriptions, sampling, elicitation, annotations, and tasks are outside this client's supported surface. The coding-agent host's [MCP reference](../coding-agent/docs/mcp.md#host-and-protocol-support) describes its exposed features and conformance limits.
+The stateless `2026-07-28` protocol is not implemented. Batch JSON-RPC messages, server implementation, resource subscriptions, sampling, annotations, and tasks are outside this client's supported surface. Elicitation is answered by the host workspace, not this client: it declares the `elicitation` capability and registers the `elicitation/create` handler (form mode only). The coding-agent host's [MCP reference](../coding-agent/docs/mcp.md#host-and-protocol-support) describes its exposed features and conformance limits.
 
 ## Testing
 

@@ -1,3 +1,37 @@
+import type { DatabaseSync } from "node:sqlite";
+
+const EVENT_LOG_TABLE = `
+CREATE TABLE IF NOT EXISTS event_log (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), session_id TEXT,
+  at INTEGER NOT NULL, topic TEXT NOT NULL, key TEXT NOT NULL, source TEXT NOT NULL, payload TEXT NOT NULL,
+  digest TEXT NOT NULL, ref TEXT, dedupe_key TEXT, UNIQUE(workspace_id, dedupe_key));`;
+
+const EVENT_LOG_INDEXES = `
+CREATE INDEX IF NOT EXISTS event_log_topic ON event_log(workspace_id, topic, seq);
+CREATE INDEX IF NOT EXISTS event_log_key ON event_log(workspace_id, key, seq);
+CREATE INDEX IF NOT EXISTS event_log_at ON event_log(at);`;
+
+/** Upgrade the version-10 table whose UNIQUE(dedupe_key) constraint crossed workspace boundaries. */
+export function ensureWorkspaceEventKeys(db: DatabaseSync, transaction: (work: () => void) => void): void {
+	const legacy = db.prepare(`SELECT 1 FROM pragma_index_list('event_log') AS idx
+		JOIN pragma_index_info(idx.name) AS col ON col.seqno = 0
+		WHERE idx.origin = 'u' AND col.name = 'dedupe_key'`);
+	if (!legacy.get()) return;
+	transaction(() => {
+		// Another opening process can complete the upgrade while we wait for the write lock.
+		if (!legacy.get()) return;
+		db.exec(`ALTER TABLE event_log RENAME TO event_log_global_dedupe;
+			${EVENT_LOG_TABLE}
+			INSERT INTO event_log SELECT * FROM event_log_global_dedupe;
+			-- Retention may have deleted every row at or below a subscription's last delivered seq.
+			UPDATE sqlite_sequence SET seq = max(seq, coalesce(
+				(SELECT seq FROM sqlite_sequence WHERE name = 'event_log_global_dedupe'), 0))
+				WHERE name = 'event_log';
+			DROP TABLE event_log_global_dedupe;
+			${EVENT_LOG_INDEXES}`);
+	});
+}
+
 /**
  * The durable event log, its subscriptions and the callback tickets (`queries/events.ts`, `queries/event-subscriptions.ts`,
  * `queries/tickets.ts`). A ticket is a request one agent made of another that a reply or an event resolves at most once; its
@@ -10,13 +44,8 @@
  * and `action` are JSON text the caller serialized; the database never reads inside them.
  */
 export const EVENTS_SCHEMA = `
-CREATE TABLE IF NOT EXISTS event_log (
-  seq INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), session_id TEXT,
-  at INTEGER NOT NULL, topic TEXT NOT NULL, key TEXT NOT NULL, source TEXT NOT NULL, payload TEXT NOT NULL,
-  digest TEXT NOT NULL, ref TEXT, dedupe_key TEXT UNIQUE);
-CREATE INDEX IF NOT EXISTS event_log_topic ON event_log(workspace_id, topic, seq);
-CREATE INDEX IF NOT EXISTS event_log_key ON event_log(workspace_id, key, seq);
-CREATE INDEX IF NOT EXISTS event_log_at ON event_log(at);
+${EVENT_LOG_TABLE}
+${EVENT_LOG_INDEXES}
 CREATE TABLE IF NOT EXISTS event_subscriptions (
   id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), session_id TEXT,
   subscriber TEXT NOT NULL, topic TEXT NOT NULL, filter TEXT NOT NULL DEFAULT '',

@@ -120,7 +120,7 @@ describe("the /agents panel row keeps the effort", () => {
 		...(parentId ? { parentId } : {}),
 	});
 
-	it("shows the main session's effort on its row and a child's route without its provider, level included", () => {
+	it("keeps the main session's row to its name and shows a child's role and route without its provider, level included", () => {
 		const lines = widgetLines(
 			[row("salty-squid", "anthropic/claude-opus-5-5:high"), row("inky-kraken", "openai/gpt-5.5:low", "salty-squid")],
 			"salty-squid",
@@ -128,15 +128,13 @@ describe("the /agents panel row keeps the effort", () => {
 			theme,
 			150,
 		);
-		// The root row says `role:effort`; its model is the footer's. A child's full route is on its stats line.
-		expect(lines).toHaveLength(3);
-		expect(lines[0]).toMatch(/^ 🦑 salty-squid ○ · main:high +1m$/);
-		expect(lines[1]).toMatch(/^ └ ○ inky-kraken  · main:low +1m$/);
-		expect(lines[2]).toBe("     gpt-5.5:low");
+		// The root row is its name and light: its model and effort are the footer's. A child's role and full route, level
+		// included, are on its detail line, its time at the terminal's edge.
+		expect(lines).toEqual([" 🦑 salty-squid ○", " └ ○ inky-kraken", `${"     main · gpt-5.5:low".padEnd(148)}1m`]);
 		expect(lines.join("\n")).not.toMatch(/anthropic\/|openai\//);
 	});
 
-	it("draws each agent's effort after its role, and the role alone when the effort is unknown", () => {
+	it("draws each agent's effort on its detail line: in its model's level, the role alone when unknown, `?` for a runner", () => {
 		const child = (id: string, extra: Partial<Member>): Member => ({
 			...row(id, "", "salty-squid"),
 			role: "implementer",
@@ -148,7 +146,9 @@ describe("the /agents panel row keeps the effort", () => {
 				child("inky-kraken", { model: "openai/gpt-5.5:low" }),
 				// Held: reserved, no model yet.
 				child("held-otter", { model: undefined }),
-				// A runner owns its effort: a level-like suffix in its model says nothing, and the cell shows `?`.
+				// A runner owns its effort: without a model the role says `?`.
+				child("pull-crab", { model: undefined, mailbox: "pull" }),
+				// A level-like suffix in a runner's model says nothing, and the cell shows `?`.
 				child("codex-heron", { model: "codex/gpt-5:high", mailbox: "pull" }),
 			],
 			"salty-squid",
@@ -156,10 +156,14 @@ describe("the /agents panel row keeps the effort", () => {
 			theme,
 			150,
 		);
-		const head = (id: string) => text.find((line) => line.includes(id))!.replace(/ +/g, " ");
-		expect(head("inky-kraken")).toContain("inky-kraken · implementer:low ");
-		expect(head("held-otter")).toMatch(/held-otter · implementer(?!:)/);
-		expect(head("codex-heron")).toContain("codex-heron · implementer:? ");
+		// The head row names the agent alone; the line under it says who it is.
+		const head = (id: string) => text.find((line) => line.includes(id))!;
+		const detail = (id: string) => text[text.findIndex((line) => line.includes(id)) + 1].replace(/ +/g, " ");
+		expect(head("inky-kraken")).toBe(" ├ ○ inky-kraken");
+		expect(detail("inky-kraken")).toBe(" │ implementer · gpt-5.5:low 1m");
+		expect(detail("held-otter")).toBe(" │ implementer 1m");
+		expect(detail("pull-crab")).toBe(" │ implementer:? 1m");
+		expect(detail("codex-heron")).toContain(" implementer:? ");
 	});
 
 	it("cuts a long model id, never its level", () => {

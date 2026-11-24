@@ -45,20 +45,6 @@ export type ToolCallHooks = Pick<
 	"beforeToolCall" | "afterToolCall" | "unknownToolMessage" | "resolveUndeclaredTool" | "onListenerError"
 >;
 
-function prepareToolCallArguments(tool: AgentTool<any>, toolCall: AgentToolCall): AgentToolCall {
-	if (!tool.prepareArguments) {
-		return toolCall;
-	}
-	const preparedArguments = tool.prepareArguments(toolCall.arguments);
-	if (preparedArguments === toolCall.arguments) {
-		return toolCall;
-	}
-	return {
-		...toolCall,
-		arguments: preparedArguments as Record<string, any>,
-	};
-}
-
 export async function prepareToolCall(
 	currentContext: AgentContext,
 	assistantMessage: AssistantMessage,
@@ -113,8 +99,7 @@ async function prepareCallUntimed(
 	}
 
 	try {
-		const preparedToolCall = prepareToolCallArguments(tool, toolCall);
-		let validatedArgs = validateToolArguments(tool, preparedToolCall);
+		let validatedArgs = validateToolArguments(tool, toolCall, tool.prepareArguments?.bind(tool));
 		let revalidate: PreparedToolCall["revalidate"];
 		if (config.beforeToolCall) {
 			const beforeResult = await config.beforeToolCall(
@@ -146,7 +131,7 @@ async function prepareCallUntimed(
 					isError: true,
 				};
 			}
-			validatedArgs = validateToolArguments(tool, { ...preparedToolCall, arguments: validatedArgs });
+			validatedArgs = validateToolArguments(tool, { ...toolCall, arguments: validatedArgs });
 			revalidate = beforeResult?.revalidate;
 		}
 		if (signal?.aborted) {

@@ -15,7 +15,7 @@ import { routeThinking } from "../../render/route-thinking.ts";
 import { runnerMember } from "../runner-kind.ts";
 import { activityText } from "./activity.ts";
 import { fitName, safe } from "./compact.ts";
-import { markSince, type PanelEntry, panelMark, panelState } from "./state.ts";
+import { type PanelEntry, panelMark, panelState } from "./state.ts";
 
 /** A model id keeps this many cells on the detail line; a longer one is cut before its `:level`. */
 const MODEL_MAX = 28;
@@ -108,7 +108,7 @@ export function row(entry: PanelEntry, kind: RowKind, now: number, theme: Theme,
 	return {
 		entry,
 		kind,
-		mark: panelMark(theme, state, now, markSince(entry)),
+		mark: panelMark(theme, state),
 		// An agent that waits for the user reads as live as one that works.
 		lively: working || state.state === "waiting",
 		name: fitName(safe(member.id, 64), NAME_MAX),
@@ -139,12 +139,6 @@ const ITEM_LEAD = /^((?:B\d+[+,]?)+:)/;
 export function paintGoal(theme: Theme, goal: string, color: "text" | "muted"): string {
 	const lead = ITEM_LEAD.exec(goal)?.[1] ?? "";
 	return `${lead ? theme.fg("dim", lead) : ""}${theme.fg(color, goal.slice(lead.length))}`;
-}
-
-/** `role:effort` painted: the role muted, `:level` dim. */
-export function paintRole(theme: Theme, role: string, effort: string): string {
-	if (!role) return effort ? theme.fg("dim", effort) : "";
-	return `${theme.fg("muted", role)}${effort ? theme.fg("dim", `:${effort}`) : ""}`;
 }
 
 export const widest = (texts: readonly string[]) => Math.max(0, ...texts.map((text) => visibleWidth(text)));

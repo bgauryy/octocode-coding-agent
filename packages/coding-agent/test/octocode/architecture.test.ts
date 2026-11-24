@@ -65,7 +65,8 @@ const ALLOWED: Record<string, string[]> = {
 	"child-sessions": ["shared"],
 	// Where worktree sessions live: the member and own worktree roots and the prompt root a worktree session rebases to.
 	"worktree-paths": ["shared"],
-	"mcp-host": ["shared", "skill", "trust", "web", "render", "guard", "jobs"],
+	// `ask`: a server's request for user input (MCP elicitation) is a question to a person.
+	"mcp-host": ["shared", "skill", "trust", "web", "render", "guard", "jobs", "ask"],
 	jobs: ["shared", "render", "wake"],
 	// `events`: an API message carries its source (`events/source.ts`).
 	api: ["shared", "render", "events"],
@@ -91,7 +92,9 @@ const ALLOWED: Record<string, string[]> = {
 	web: ["shared", "permission", "render"],
 	// `sessions`: the summary's live state names the background work with the reader the reorient brief uses (`compaction/live-state.ts`);
 	// `timer`: it names the active timers as their rows say (`timer/work.ts`). `monitor`: the context band rule.
+	// events supplies the trusted terminal header omitted from checkpointed user text.
 	compaction: [
+		"events",
 		"shared",
 		"files",
 		"permission",

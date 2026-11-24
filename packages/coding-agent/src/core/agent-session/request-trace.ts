@@ -77,6 +77,12 @@ export function branchTraceSource(
 
 const messageLayers = (trace: RequestTrace): RequestLayer[] => trace.layers.filter((layer) => layer.kind === "message");
 
+/** The runtime observer completes throughput on the final message; layer tracing must not replace it. */
+function stampTrace(message: AssistantMessage, trace: RequestTrace): void {
+	const throughput = message.requestTrace?.throughput;
+	message.requestTrace = throughput ? { ...trace, throughput } : trace;
+}
+
 /**
  * `final` with `entryKey` on each message layer that provably is a session entry's message: the request as built
  * (`built`, described before any payload hook ran) has one message layer per source message, the layer at the same
@@ -139,14 +145,14 @@ export function withRequestTrace<TOptions extends Pick<SimpleStreamOptions, "onP
 		try {
 			for await (const event of source) {
 				const message = messageOf(event);
-				if (trace && message) message.requestTrace = trace;
+				if (trace && message) stampTrace(message, trace);
 				traced.push(event);
 			}
 		} finally {
 			traced.end();
 			// A provider may finish with `end(result)` and no done event: forward that result too, or callers wait forever.
 			void source.result().then((message) => {
-				if (trace) message.requestTrace ??= trace;
+				if (trace) stampTrace(message, trace);
 				traced.end(message);
 			});
 		}

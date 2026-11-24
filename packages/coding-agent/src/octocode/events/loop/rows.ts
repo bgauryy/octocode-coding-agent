@@ -1,5 +1,6 @@
 import type { EventRow, NewEvent, NewSubscription, SubscriptionRow } from "../../../../../db/src/api.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import type { EventCatalog, EventEntry } from "./types.ts";
 import type { Handle, Source } from "../source-types.ts";
 import { type AgentEvent, isTopic, type Subscription, type TopicFilter, type TopicPayload } from "../topics.ts";
 
@@ -11,6 +12,22 @@ import { type AgentEvent, isTopic, type Subscription, type TopicFilter, type Top
 
 /** An event before the log gave it a `seq`. */
 export type NewAgentEvent = Omit<AgentEvent, "seq">;
+
+/** The durable event fields derived from a live input, before the log assigns its sequence. */
+export function publication<C>(entry: Omit<EventEntry<C>, "type">, catalog: EventCatalog, at: number): NewAgentEvent {
+	const { label, key } = catalog.describe(entry.event);
+	const { kind, ...payload } = entry.event;
+	return {
+		topic: kind,
+		key,
+		at,
+		source: entry.source,
+		payload,
+		digest: label,
+		...(entry.dedupeKey === undefined ? {} : { dedupeKey: entry.dedupeKey }),
+		...(entry.body === undefined ? {} : { body: entry.body }),
+	};
+}
 
 /** The topic a subscription to every topic carries (the database reads a pattern only as `group.*`). */
 export const ALL_TOPICS = "*";

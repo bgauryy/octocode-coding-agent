@@ -1,4 +1,4 @@
-import { animationClock } from "../tokens/clock.ts";
+import { animationClock, spinnerFrame } from "../tokens/clock.ts";
 import { isScreenReaderMode } from "../tokens/screen-reader.ts";
 import { ELLIPSIS, GLYPH, MOTION, SPINNER } from "../tokens/design.ts";
 import type { TUI } from "../tui.ts";
@@ -21,7 +21,6 @@ const DEFAULT_INTERVAL_MS: number = MOTION.spinnerMs;
 export class Loader extends Text {
 	private frames = [...DEFAULT_FRAMES];
 	private intervalMs: number = DEFAULT_INTERVAL_MS;
-	private currentFrame = 0;
 	private unsubscribe: (() => void) | undefined;
 	private ui: TUI | null = null;
 	private renderIndicatorVerbatim = false;
@@ -76,7 +75,6 @@ export class Loader extends Text {
 		this.defaultFrames = indicator?.frames === undefined;
 		this.frames = this.defaultFrames ? [...DEFAULT_FRAMES] : [...indicator!.frames!];
 		this.intervalMs = indicator?.intervalMs && indicator.intervalMs > 0 ? indicator.intervalMs : DEFAULT_INTERVAL_MS;
-		this.currentFrame = 0;
 		this.start();
 	}
 
@@ -85,14 +83,11 @@ export class Loader extends Text {
 		if (this.frames.length <= 1) {
 			return;
 		}
-		this.unsubscribe = animationClock.subscribe(
-			() => {
-				// Called once more when motion is reduced or resumed: repaint without advancing then.
-				if (!animationClock.isReducedMotion()) this.currentFrame = (this.currentFrame + 1) % this.frames.length;
-				this.updateDisplay();
-			},
-			{ everyMs: this.intervalMs, kind: "decor" },
-		);
+		// The frame is read from the clock at paint (`spinnerFrame`): the tick only asks for the repaint.
+		this.unsubscribe = animationClock.subscribe(() => this.updateDisplay(), {
+			everyMs: this.intervalMs,
+			kind: "decor",
+		});
 	}
 
 	/**
@@ -115,7 +110,8 @@ export class Loader extends Text {
 		// A screen reader hears the message, not a glyph.
 		if (isScreenReaderMode()) return "";
 		const still = animationClock.isReducedMotion();
-		const frame = still && this.defaultFrames ? GLYPH.running : (this.frames[still ? 0 : this.currentFrame] ?? "");
+		const moving = still ? this.frames[0] : spinnerFrame(this.frames, this.intervalMs);
+		const frame = still && this.defaultFrames ? GLYPH.running : (moving ?? "");
 		return this.renderIndicatorVerbatim ? frame : this.spinnerColorFn(frame);
 	}
 

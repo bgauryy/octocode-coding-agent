@@ -1,3 +1,4 @@
+import { animationClock } from "../tokens/clock.ts";
 import { stdoutStalled } from "./stall-watch.ts";
 
 const TERMINAL_PROGRESS_KEEPALIVE_MS = 1000;
@@ -5,7 +6,7 @@ const TERMINAL_PROGRESS_ACTIVE_SEQUENCE = "\x1b]9;4;3\x07";
 const TERMINAL_PROGRESS_CLEAR_SEQUENCE = "\x1b]9;4;0\x07";
 
 /**
- * The terminal's indeterminate progress indicator (OSC 9;4), kept alive while active. Keepalives are skipped while
+ * The terminal's indeterminate progress indicator (OSC 9;4), kept alive on the animation clock while active. Keepalives are skipped while
  * output is backed up. While the terminal has stopped reading, a change waits too: the next allowed tick writes only
  * the latest state, so a stalled terminal never collects progress sequences.
  */
@@ -13,7 +14,8 @@ export class ProgressIndicator {
 	private readonly allowsKeepalive: () => boolean;
 	private readonly allowsChange: () => boolean;
 	private readonly writeOut: (sequence: string) => void;
-	private interval?: ReturnType<typeof setInterval>;
+	/** The animation clock subscription of the keepalive. */
+	private interval?: () => void;
 	/** Whether the last sequence written turned the indicator on. */
 	private shown = false;
 	/** The state asked for; it differs from `shown` while a change waits for the terminal. */
@@ -41,7 +43,10 @@ export class ProgressIndicator {
 		if (this.allowsChange()) this.show();
 		// Active: keep it alive. Inactive: retry a clear that had to wait.
 		if (this.wanted || this.shown) {
-			this.interval ??= setInterval(() => this.tick(), TERMINAL_PROGRESS_KEEPALIVE_MS);
+			this.interval ??= animationClock.subscribe(() => this.tick(), {
+				everyMs: TERMINAL_PROGRESS_KEEPALIVE_MS,
+				kind: "info",
+			});
 		} else {
 			this.stopTimer();
 		}
@@ -70,7 +75,7 @@ export class ProgressIndicator {
 	}
 
 	private stopTimer(): void {
-		if (this.interval) clearInterval(this.interval);
+		this.interval?.();
 		this.interval = undefined;
 	}
 }
