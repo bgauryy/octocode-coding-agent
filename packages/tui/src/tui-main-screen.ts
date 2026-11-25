@@ -4,7 +4,6 @@ import { BEGIN_SYNCHRONIZED_OUTPUT, END_SYNCHRONIZED_OUTPUT } from "./terminal/s
 import { isImageLine } from "./terminal-image.ts";
 import { renderRowFrame } from "./tui/container-walk.ts";
 import { LayoutRecorder, recordLayout } from "./tui/layout-recorder.ts";
-import type { RenderCounters } from "./tui/render-counters.ts";
 import { type Component, type TUI, TuiBase, type TuiStopOptions } from "./tui.ts";
 import { clearWidthCache } from "./utils/width.ts";
 import { writeRedrawLog, writeRenderDebugLog } from "./tui-main-screen/debug-logs.ts";
@@ -46,10 +45,6 @@ export class TuiMainScreen extends TuiBase implements TUI {
 	private replayRows = DEFAULT_REPLAY_ROWS;
 	/** A row collapse was announced: the next frame may keep scrollback when the transcript shrank above the screen. */
 	private collapseAnnounced = false;
-
-	get renderCounters(): Readonly<RenderCounters> {
-		return this.ledger.snapshot(this.fullRedrawCount);
-	}
 
 	isAboveViewport(component: Component): boolean {
 		const start = this.componentLayout?.starts.get(component);

@@ -85,8 +85,9 @@ export class SettingsSelectorComponent extends Container {
 				id: "mermaid-rendering",
 				label: "Mermaid diagrams",
 				description: "Render Mermaid code blocks as Unicode diagrams",
-				currentValue: config.mermaidRenderingMode,
-				values: ["off", "final", "streaming"],
+				// A saved `streaming` behaves as `final`: a streaming reply shows as plain text.
+				currentValue: config.mermaidRenderingMode === "streaming" ? "final" : config.mermaidRenderingMode,
+				values: ["off", "final"],
 			},
 			{
 				id: "cache-miss-notices",

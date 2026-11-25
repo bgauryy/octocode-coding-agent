@@ -31,7 +31,7 @@ describe("configuration selector", () => {
 	it("filters by typing, toggles with Enter and writes the scope Tab chose", async () => {
 		const selector = await open();
 		for (const key of "timer") selector.handleInput(key);
-		const text = () => selector.render(120).join("\n");
+		const text = () => stripVTControlCharacters(selector.render(120).join("\n"));
 		expect(text()).toContain("tool:timer");
 		expect(text()).not.toContain("tool:backlog");
 		selector.handleInput("\r");

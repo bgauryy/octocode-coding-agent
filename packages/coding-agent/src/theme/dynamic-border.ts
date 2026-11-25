@@ -1,8 +1,11 @@
 import type { Component } from "@octocodeai/octocode-tui";
-import { theme } from "./theme.ts";
+import { borderRule } from "./gradients.ts";
 
-/** One full-width `─` rule in the neutral `border` token (or `color`); empty for a width of 0. */
-export function ruleLine(width: number, color: (str: string) => string = (str) => theme.fg("border", str)): string {
+/**
+ * One full-width `─` rule in the neutral `border` token, softened toward the background at both ends where colors
+ * blend (or `color`); empty for a width of 0.
+ */
+export function ruleLine(width: number, color: (str: string) => string = (str) => borderRule(str)): string {
 	return width > 0 ? color("─".repeat(width)) : "";
 }
 
@@ -14,7 +17,7 @@ export class DynamicBorder implements Component {
 	private color: (str: string) => string;
 	private cached?: { width: number; lines: string[] };
 
-	constructor(color: (str: string) => string = (str) => theme.fg("border", str)) {
+	constructor(color: (str: string) => string = (str) => borderRule(str)) {
 		this.color = color;
 	}
 

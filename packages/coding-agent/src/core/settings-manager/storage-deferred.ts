@@ -120,7 +120,7 @@ async function commit(path: string, entry: PendingWrite): Promise<void> {
 				committed = true;
 			} else {
 				const merged = entry.merge(current);
-				if (merged !== undefined) atomicWriteFileSync(path, merged);
+				if (merged !== undefined && merged !== current) atomicWriteFileSync(path, merged);
 			}
 		} finally {
 			release();
@@ -146,7 +146,7 @@ function commitPendingAtExit(): void {
 			try {
 				const current = readIfExists(path);
 				const merged = current === entry.base ? entry.content : entry.merge(current);
-				if (merged !== undefined) atomicWriteFileSync(path, merged);
+				if (merged !== undefined && merged !== current) atomicWriteFileSync(path, merged);
 			} finally {
 				release();
 			}
@@ -177,6 +177,8 @@ export function writeSettingsFileDeferred(
 	const base = previous ? previous.content : readIfExists(path);
 	const content = merge(base);
 	if (content === undefined) return previous?.done ?? Promise.resolve();
+	// The file already holds it and no write is in flight: no temp file, fsync, lock or rename.
+	if (!previous && content === base) return Promise.resolve();
 	const entry: PendingWrite = { content, base, merge, started: false, done: Promise.resolve() };
 	if (pending.size === 0) process.on("exit", commitPendingAtExit);
 	pending.set(path, entry);

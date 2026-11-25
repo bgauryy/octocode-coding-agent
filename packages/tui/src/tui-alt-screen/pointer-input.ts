@@ -31,6 +31,17 @@ export interface AltScreenPointerHost {
 	scrollToBottom(): void;
 }
 
+/** End selection auto-scroll, presses, wheel and arrow bursts, scrollbar hover and drags, and component gestures. */
+export function stopPointerGestures(host: AltScreenPointerHost & { readonly arrowBurst: { cancel(): void } }): void {
+	host.selection.stopSelectionAutoScroll();
+	host.wheelScroll.clearPending();
+	host.arrowBurst.cancel();
+	host.selection.selectionPressActive = false;
+	host.scrollbar.stopScrollbarHover();
+	host.scrollbar.stopScrollbarDrag();
+	host.mouse.clearComponentMouseGesture();
+}
+
 /** Drop pointer state when the terminal loses focus: presses, drags, hover and multi-click history. */
 function handlePointerFocusOut(host: AltScreenPointerHost): void {
 	const selection = host.selection;

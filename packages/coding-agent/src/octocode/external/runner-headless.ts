@@ -190,7 +190,8 @@ async function runHeadlessTurn(
 				if (!isRecord(event)) return;
 				parser.line(event);
 				if (!parser.done || closing) return;
-				// One more reading before the input closes, so the CLI's helpers are known when it exits.
+				// Readings turn frequent, and one more runs before the input closes, so the CLI's late helpers are known when it exits.
+				descendants.hurry();
 				closing = descendants.snapshot().then(() => void child.stdin.end());
 			});
 			child.once("close", (code) => {

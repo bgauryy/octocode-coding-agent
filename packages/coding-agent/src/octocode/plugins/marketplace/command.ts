@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline/promises";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { requireInput } from "../../../cli/no-input.ts";
 import { APP_NAME, getAgentDir } from "../../../config.ts";
 import { SettingsManager } from "../../../core/settings-manager.ts";
 import { marketplacePaths } from "./fetch.ts";
@@ -45,7 +46,9 @@ export interface MarketplaceCommandIo {
 	timeoutMs?: number;
 }
 
-async function askOnTerminal(question: string): Promise<boolean> {
+/** Asks on the terminal; under `--no-input` it throws `NoInputError` (the CLI exits 1) instead of waiting for an answer. */
+export async function askOnTerminal(question: string): Promise<boolean> {
+	requireInput(question);
 	const lines = createInterface({ input: process.stdin, output: process.stderr });
 	try {
 		return /^y(es)?$/i.test((await lines.question(`${question} [y/N] `)).trim());

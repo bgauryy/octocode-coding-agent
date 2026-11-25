@@ -80,19 +80,19 @@ describe("interactive view store", () => {
 		uiStore.getState().setToolsExpanded(true);
 		const expanded = rows(chatContainer).length;
 		expect(expanded).toBeGreaterThan(collapsed);
-		// Two store changes (the expansion and its notice) and the notice's status line in the messages list.
-		expect(requestRender).toHaveBeenCalledTimes(3);
+		// One frame per drawn change: the expanded rows and the notice's status line in the messages list.
+		expect(requestRender).toHaveBeenCalledTimes(2);
 		expect(rows(chatContainer).join("\n")).toContain("Output: expanded");
 
 		uiStore.getState().setToolsExpanded(true);
-		expect(requestRender).toHaveBeenCalledTimes(3);
+		expect(requestRender).toHaveBeenCalledTimes(2);
 
 		uiStore.getState().toggleToolsExpanded();
 		// The tool row is back to its collapsed height; below it, one spacer and one status line, updated in place.
 		expect(rows(chatContainer).length).toBe(collapsed + 2);
 		expect(rows(chatContainer).join("\n")).toContain("Output: collapsed");
 		expect(rows(chatContainer).join("\n")).not.toContain("Output: expanded");
-		expect(requestRender).toHaveBeenCalledTimes(6);
+		expect(requestRender).toHaveBeenCalledTimes(4);
 	});
 
 	it("leaves rows above a regular-mode viewport as the terminal holds them when ctrl+o toggles", () => {
@@ -190,12 +190,12 @@ describe("interactive view store", () => {
 		// A hidden, finished block reads as a past event (assistant-message.ts: "Thought").
 		expect(rows(chatContainer).join("\n")).toContain("Thought");
 		expect(host.settingsManager.setHideThinkingBlock).toHaveBeenCalledWith(true);
-		// The hidden flag, the notice in the store and its status line in the messages list.
-		expect(requestRender).toHaveBeenCalledTimes(3);
+		// One frame per drawn change: the hidden thinking rows and the notice's status line in the messages list.
+		expect(requestRender).toHaveBeenCalledTimes(2);
 		expect(rows(chatContainer).join("\n")).toContain("Thinking blocks: hidden");
 
 		uiStore.getState().setHideThinking(true);
-		expect(requestRender).toHaveBeenCalledTimes(3);
+		expect(requestRender).toHaveBeenCalledTimes(2);
 	});
 
 	it("says each notice in the messages list, never in the footer, and a burst keeps one line", () => {

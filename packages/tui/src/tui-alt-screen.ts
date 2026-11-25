@@ -30,7 +30,7 @@ import {
 import { AltScreenImages, budgetImageRows } from "./tui-alt-screen/images.ts";
 import { MOUSE_CAPTURE_FLASH_MS, mouseCaptureMessage, TerminalSelectionHint } from "./tui-alt-screen/mouse-capture.ts";
 import { AltScreenMouseGesture, type AltScreenMouseGestureHost } from "./tui-alt-screen/mouse-gesture.ts";
-import { type AltScreenPointerHost, handlePointerInput } from "./tui-alt-screen/pointer-input.ts";
+import { type AltScreenPointerHost, handlePointerInput, stopPointerGestures } from "./tui-alt-screen/pointer-input.ts";
 import { AltScreenScrollbar, type AltScreenScrollbarHost } from "./tui-alt-screen/scrollbar-controller.ts";
 import { TrimmedRowsMemo } from "./tui-alt-screen/scroll-shift.ts";
 import { AltScreenSearchController, type AltScreenSearchHost } from "./tui-alt-screen/search-controller.ts";
@@ -261,15 +261,9 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		});
 	}
 
-	/** End selection auto-scroll, presses, scrollbar hover and drags, component gestures and flashes. */
+	/** End every pointer gesture and the flashes. */
 	private stopPointerGestures(): void {
-		this.selection.stopSelectionAutoScroll();
-		this.wheelScroll.clearPending();
-		this.viewport.arrowBurst.cancel();
-		this.selection.selectionPressActive = false;
-		this.scrollbar.stopScrollbarHover();
-		this.scrollbar.stopScrollbarDrag();
-		this.mouse.clearComponentMouseGesture();
+		stopPointerGestures(this.viewport);
 		this.flashes.dispose();
 	}
 
@@ -388,7 +382,10 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			synchronized: this.terminal.synchronizedOutput === true,
 		});
 		if (fullRedraw) this.fullRedrawCount += 1;
-		if (buffer) this.terminal.write(buffer, "frame");
+		if (buffer) {
+			this.terminal.write(buffer, "frame");
+			this.ledger.counters.written += 1;
+		}
 
 		this.previousScreen = screen;
 		this.previousScreenWidth = width;

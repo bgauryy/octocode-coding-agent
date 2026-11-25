@@ -31,6 +31,7 @@ type AgentEventsHost = Pick<
 	| "addMessageToChat"
 	| "chatContainer"
 	| "clearStatusIndicator"
+	| "editor"
 	| "entriesRenderedByRebuild"
 	| "getMarkdownThemeWithSettings"
 	| "getMarkdownTransformers"

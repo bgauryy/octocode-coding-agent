@@ -131,13 +131,11 @@ export class QueueListComponent implements Component, Focusable {
 		else if (kb.matches(data, "tui.select.cancel")) this.onClose();
 		else if (data === "K" || key("shift+up", "shift+k")) this.onAction("moveUp", selected);
 		else if (data === "J" || key("shift+down", "shift+j")) this.onAction("moveDown", selected);
-		else if (key("k")) this.list.move(-1);
-		else if (key("j")) this.list.move(1);
 		else if (key("e")) this.onAction("edit", selected);
 		else if (key("d", "delete", "backspace")) this.onAction("remove", selected);
 		else if (key("s")) this.onAction("toggleMode", selected);
 		else if (key("q")) this.onClose();
-		// Up/down, page keys and Home/End move the cursor, clamped at the ends.
+		// Up/down (and k/j), page keys and Home/End move the cursor, clamped at the ends.
 		else this.list.handleInput(data);
 	}
 

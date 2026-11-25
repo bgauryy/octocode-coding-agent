@@ -9,6 +9,7 @@ import {
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
 import { keyText, moveHint, type RankedHint, renderHintLine } from "../../../theme/theme-tui-helpers.ts";
+import { selectedText } from "../../../theme/gradients.ts";
 import { theme } from "../../../theme/theme.ts";
 import { labelColumn, listTheme, syncEmpty } from "./list-kit.ts";
 import { plainText } from "./styled-line.ts";
@@ -89,7 +90,7 @@ export class SettingsListView implements Component {
 	private row(item: SettingItem, state: { selected: boolean; width: number }): string {
 		const head = truncateToWidth(plainText(item.label), this.column, "…");
 		const pad = " ".repeat(Math.max(0, this.column - visibleWidth(head)));
-		const label = state.selected ? theme.fg("accent", theme.bold(head)) : theme.fg("text", head);
+		const label = state.selected ? theme.bold(selectedText(head)) : theme.fg("text", head);
 		const value = theme.fg(state.selected ? "accent" : "muted", plainText(item.currentValue));
 		return truncateToWidth(`${label}${pad}  ${value}`, state.width, "…");
 	}

@@ -129,11 +129,14 @@ export function healthParts(state: FooterState, theme: FooterPaint): FooterPart[
 	let ctx: FooterPart = { text: "", priority: PRIORITY.ctxWindow, floor: PRIORITY.ctxFloor, keep: true, whole: true };
 	if (context) {
 		const label = theme.fg("muted", "ctx");
+		const unknown = theme.fg("dim", "?");
 		const window = theme.fg("dim", `of ${formatTokens(context.window)}`);
-		if (context.percent === null)
+		// A window of 0 is no window at all (the model declares none): the gauge says it does not know.
+		if (context.window <= 0) ctx = { ...ctx, text: `${label} ${unknown}`, short: `${label} ${unknown}` };
+		else if (context.percent === null) {
 			// Right after compaction, until the next reply: unknown, never `0%`.
-			ctx = { ...ctx, text: `${label} ${theme.fg("dim", "?")} ${window}`, short: `${label} ${theme.fg("dim", "?")}` };
-		else {
+			ctx = { ...ctx, text: `${label} ${unknown} ${window}`, short: `${label} ${unknown}` };
+		} else {
 			const shown = Math.round(context.percent);
 			const { bar, color } = contextBar(context.percent, alarmPercent(context));
 			const figure = theme.fg(color, usagePercent(context.percent));

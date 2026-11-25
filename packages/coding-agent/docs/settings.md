@@ -180,7 +180,7 @@ See [packages](packages.md), [skills](skills.md), [plugins](plugins.md) and [hoo
 | `showHardwareCursor` | boolean |  | Show the terminal cursor while still positioning it for IME. |
 | `markdown` | object |  | Rendering of Markdown in the transcript. |
 | `markdown.codeBlockIndent` | string | `"  "` | Indent prepended to code blocks in rendered Markdown. |
-| `markdown.mermaid` | `"off" \| "final" \| "streaming"` | `"streaming"` | Render Mermaid code blocks as Unicode diagrams: `off`, `final` (after a response completes) or `streaming` (also while it streams). |
+| `markdown.mermaid` | `"off" \| "final" \| "streaming"` | `"final"` | Render Mermaid code blocks as Unicode diagrams once a response completes (`final`) or never (`off`). A streaming response shows as plain text; a saved `streaming` acts as `final`. |
 | `warnings` | object |  | Optional warnings. |
 | `warnings.anthropicExtraUsage` | boolean | `true` | Show the once-per-run notice that a saved Claude subscription token is refused; `false` turns it off. The token is refused either way. |
 | `tuiMode` | `"regular" \| "fullscreen"` | `"fullscreen"` | Interface layout; `regular` uses the terminal's normal scrollback. `--tui-mode` overrides it for one run. |

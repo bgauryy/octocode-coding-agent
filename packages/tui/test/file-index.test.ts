@@ -187,6 +187,30 @@ describe("file index", { skip }, () => {
 		assert.strictEqual(getFileIndexStatus(cwd).source, "git");
 	});
 
+	it("does not retry a failing fd on every request within the refresh window", async () => {
+		execFileSync("git", ["init", "-q"], { cwd });
+		write("only.ts");
+		const fd = fakeFd("exit 2");
+		await getFileIndex(cwd, fd);
+		for (let i = 0; i < 3; i++) {
+			await getFileIndex(cwd, fd);
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		}
+		assert.strictEqual(spawns(), 1);
+	});
+
+	it("rebuilds a fallback index with fd once fd becomes available", async () => {
+		execFileSync("git", ["init", "-q"], { cwd });
+		write("only.ts");
+		await getFileIndex(cwd, null);
+		assert.strictEqual(getFileIndexStatus(cwd).source, "git");
+		const fd = fakeFd(`printf 'only.ts\\n'`);
+		await getFileIndex(cwd, fd);
+		for (let i = 0; i < 20 && getFileIndexStatus(cwd).source !== "fd"; i++)
+			await new Promise((resolve) => setTimeout(resolve, 25));
+		assert.strictEqual(getFileIndexStatus(cwd).source, "fd");
+	});
+
 	it("walks the directory when there is neither fd nor a git repository", async () => {
 		write("a/b/c.txt");
 		write("node_modules/pkg/index.js");

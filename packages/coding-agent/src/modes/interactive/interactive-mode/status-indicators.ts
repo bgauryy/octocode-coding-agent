@@ -8,11 +8,11 @@ import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { WorkingIndicatorOptions } from "../../../core/features/index.ts";
 import type { StatusTone } from "../../../core/footer-data-provider.ts";
 import type { ToolStatus } from "../../../utils/tools-manager.ts";
-import { type StatusIndicator, WorkingStatusIndicator } from "../components/status-indicator.ts";
+import type { StatusIndicator } from "../components/status-indicator.ts";
 import { LongResponse } from "../components/long-response.ts";
 import { styleNotice } from "../../../theme/notice.ts";
 import { theme } from "../../../theme/theme.ts";
-import { selectWorkingIndicator, selectWorkingMessage } from "../state/status-slice.ts";
+import type { StatusIndicatorRequest } from "../state/status-slice.ts";
 import { webCommandContext } from "./web-command-context.ts";
 import { isEmbeddedStatus } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
@@ -61,11 +61,21 @@ export function setEditorWorkingStatusIndicator(
 	return true;
 }
 
+/** Shows the indicator `request` describes; `bindStatusIndicator` mounts it and asks for the frame. */
+export function showStatusIndicator(host: StatusIndicatorsHost, request: StatusIndicatorRequest): void {
+	host.uiStore.getState().showStatusIndicator(request);
+}
+
+/** Removes the indicator; with `kind`, only when that kind is shown. */
+export function clearStatusIndicator(host: StatusIndicatorsHost, kind?: StatusIndicator["kind"]): void {
+	host.uiStore.getState().clearStatusIndicator(kind);
+}
+
 /**
- * Shows `indicator` in the editor when the editor embeds status lines, otherwise on its own row: an active indicator is
+ * Mounts `indicator` in the editor when the editor embeds status lines, otherwise on its own row: an active indicator is
  * embedded exactly when the status row does not hold it, so that is never stored separately.
  */
-export function showStatusIndicator(host: StatusIndicatorsHost, indicator: StatusIndicator): void {
+export function mountStatusIndicator(host: StatusIndicatorsHost, indicator: StatusIndicator): void {
 	host.activeStatusIndicator?.dispose();
 	host.activeStatusIndicator = indicator;
 	host.statusContainer.clear();
@@ -73,10 +83,8 @@ export function showStatusIndicator(host: StatusIndicatorsHost, indicator: Statu
 	if (!host.setEditorWorkingStatusIndicator(indicator)) host.statusContainer.addChild(indicator);
 }
 
-export function clearStatusIndicator(host: StatusIndicatorsHost, kind?: StatusIndicator["kind"]): void {
-	if (kind && host.activeStatusIndicator?.kind !== kind) {
-		return;
-	}
+/** Unmounts the active indicator; a cleared status row keeps its height where the regular screen clears on shrink. */
+export function unmountStatusIndicator(host: StatusIndicatorsHost): void {
 	const clearedIndicator = host.activeStatusIndicator;
 	const clearedIndicatorWasEmbedded =
 		clearedIndicator !== undefined && !host.statusContainer.children.includes(clearedIndicator);
@@ -95,22 +103,12 @@ export function clearStatusIndicator(host: StatusIndicatorsHost, kind?: StatusIn
 }
 
 export function showWorkingStatusIndicator(host: StatusIndicatorsHost): void {
-	const colorFn = isEmbeddedStatus(host.editor)
-		? (text: string) =>
-				(host.editor.borderColor ?? theme.getThinkingBorderColor(host.session.thinkingLevel || "off"))(text)
-		: undefined;
-	const state = host.uiStore.getState();
-	host.showStatusIndicator(
-		new WorkingStatusIndicator(host.ui, selectWorkingMessage(state), selectWorkingIndicator(state), colorFn),
-	);
+	host.showStatusIndicator({ kind: "working" });
 }
 
+/** A feature's working-indicator frames, for the indicator shown now and every later one. */
 export function setWorkingIndicator(host: StatusIndicatorsHost, options?: WorkingIndicatorOptions): void {
 	host.uiStore.getState().setWorkingIndicator(options);
-	if (host.activeStatusIndicator?.kind === "working") {
-		host.activeStatusIndicator.setIndicator(options);
-	}
-	host.ui.requestRender();
 }
 
 export function showManagedToolStatus(host: StatusIndicatorsHost, status: ToolStatus): void {

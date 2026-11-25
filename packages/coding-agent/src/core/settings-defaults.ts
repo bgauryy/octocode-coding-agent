@@ -108,7 +108,7 @@ export const SETTINGS_DEFAULTS = {
 	autocompleteMaxVisible: 5,
 	markdown: {
 		codeBlockIndent: "  ",
-		mermaid: "streaming",
+		mermaid: "final",
 	},
 	warnings: {
 		anthropicExtraUsage: true,

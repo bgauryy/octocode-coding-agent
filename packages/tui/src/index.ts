@@ -21,6 +21,7 @@ export {
 	foregroundAnsi,
 	type IndexedColor,
 	indexedColor,
+	isColorForced,
 	mixColors,
 	type OkhslChannels,
 	type OklchChannels,
@@ -36,6 +37,7 @@ export {
 	type TextAttributes,
 	type TextStyle,
 } from "./colors.ts";
+export { canBlendColors, createGradient, type GradientOptions } from "./gradient.ts";
 export { type ShimmerOptions, shimmerText } from "./shimmer.ts";
 // Design tokens and the shared animation clock
 export { isScreenReaderMode, setScreenReaderMode } from "./tokens/screen-reader.ts";
@@ -181,6 +183,7 @@ export { formatProgramStatus, type ProgramStatus } from "./program-status.ts";
 export { StdinBuffer, type StdinBufferEventMap, type StdinBufferOptions } from "./stdin-buffer.ts";
 // Terminal interface and implementations
 export { isAppleTerminalSession, type OutputTelemetry, ProcessTerminal, type Terminal } from "./terminal.ts";
+export { isScreenOwned, onScreenOwnerChange } from "./terminal/screen-owner.ts";
 // Terminal colors
 export {
 	parseTerminalColorSchemeReport,
@@ -285,6 +288,6 @@ export { type HorizontalViewportRow, renderHorizontalViewport } from "./layout/h
 export { CountdownTimer } from "./components/countdown-timer.ts";
 export { ThemedText } from "./components/themed-text.ts";
 export { type Header, Lines, type Row } from "./components/lines.ts";
-export { streamingHighlighter, streamingMarkdownTheme } from "./components/markdown/streaming-highlight.ts";
+export { StreamingText } from "./components/markdown/streaming-text.ts";
 export { HighlightCache } from "./components/markdown/highlight-cache.ts";
 export { markPromptRows, Osc133ZoneMarker } from "./terminal/osc133-zone.ts";

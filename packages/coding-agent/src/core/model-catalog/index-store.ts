@@ -252,13 +252,13 @@ export async function loadCatalog(
 
 /**
  * The index to use now (the saved one, or undefined), refreshing it in the background for later calls. Off with
- * `OCTOCODE_MODELS_DEV=0`; offline it reads the saved index and fetches nothing.
+ * `OCTOCODE_MODELS_DEV=0`; offline it reads the saved index and fetches nothing. A fresh saved index is not parsed
+ * whole: `refreshCatalog` vouches for it from its first bytes, and routing reads only its partial files.
  */
 export function currentCatalog(env: NodeJS.ProcessEnv = process.env): Catalog | undefined {
 	if (!modelsDevEnabled(env)) return undefined;
-	const file = catalogFile(env);
-	void loadCatalog({ file, env });
-	return routingCatalog(file);
+	refreshCatalog(env);
+	return routingCatalog(catalogFile(env));
 }
 
 /** Per index file: the partial index `routingCatalog` built from one parse of the listings and routing files. */

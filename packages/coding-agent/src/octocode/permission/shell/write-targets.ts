@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { RELATIVE_AFTER_CD } from "../bash-cwd.ts";
@@ -17,19 +18,45 @@ type ShellTarget = BashFileTarget & { allowed: boolean };
  * it is reaching for is on the line.
  */
 function stateFolderWord(command: string, cwd: string): string | undefined {
-	// By its text, not the parse: a variable set on its own (`H=…; …`) belongs to no command.
-	const words = command.split(/[\s;&|()<>=`'"]+/).map((word) => homeSpelling(word) ?? word);
 	const state = canonicalPath(getOctocodeHome());
 	const home = canonicalPath(os.homedir());
-	for (const word of words) {
+	for (const { word, dir } of wordsWithDirectory(command, cwd)) {
 		if (!/[\\/]/.test(word)) continue;
-		const place = canonicalPath(shellPath(cwd, word));
+		const place = canonicalPath(shellPath(dir, word));
 		if (memoryFileRefusal(place, word, "Bash", cwd) ?? stateFolderRefusal(place, word, "Bash", cwd)) return word;
 		// A folder on the way to it (`~/.octocode`), though not the home folder, which holds everything.
 		if (place !== home && isWithin(place, home) && isWithin(state, place)) return state;
 	}
 	return undefined;
 }
+
+/** A command that moves in and out of directories where a text scan cannot tell which runs: groups, `||`, backticks, background jobs. */
+const UNFOLLOWABLE = /[()`]|(?:^|[\s;&|])\{\s|\|\||(?<![&>])&(?![&>])/;
+
+/**
+ * The words of `command` by its text, each with the directory it runs in: `cwd`, or after a `cd <plain existing folder>`
+ * in a plain `&&`/`;` chain the folder it entered, so `cd pkg && t > ../../x` names `x` beside `pkg/../..`, as the shell
+ * does. Any other `cd` (a variable, `-`, a missing folder) or a command the text cannot follow keeps `cwd`.
+ */
+function wordsWithDirectory(command: string, cwd: string): { word: string; dir: string }[] {
+	// By its text, not the parse: a variable set on its own (`H=…; …`) belongs to no command.
+	const split = (text: string) => text.split(/[\s;&|()<>=`'"]+/).map((word) => homeSpelling(word) ?? word);
+	if (UNFOLLOWABLE.test(command)) return split(command).map((word) => ({ word, dir: cwd }));
+	const found: { word: string; dir: string }[] = [];
+	let dir = cwd;
+	for (const statement of command.split(/&&|;|\n/)) {
+		const operand = /^\s*cd\s+([^\s$*?[\\~'"<>-][^\s$*?[\\'"<>]*)\s*$/.exec(statement)?.[1];
+		if (operand !== undefined) {
+			const target = canonicalPath(shellPath(dir, operand));
+			if (isDirectory(target)) dir = target;
+			continue;
+		}
+		for (const word of split(statement)) found.push({ word, dir });
+	}
+	return found;
+}
+
+const isDirectory = (file: string): boolean => fs.statSync(file, { throwIfNoEntry: false })?.isDirectory() === true;
 
 /**
  * Every place a `bash` call writes by its parse (`shellMutation`: redirects, `tee`, `cp`/`mv`/`touch` operands,

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { APP_NAME } from "../config.ts";
+import { requireInput } from "./no-input.ts";
 import { prepareAgentDb } from "../storage/database.ts";
 import type { GrantTarget } from "../octocode/trust/grants.ts";
 import {
@@ -43,6 +44,7 @@ export interface TrustCommandIo {
 }
 
 async function askOnTerminal(question: string): Promise<boolean> {
+	requireInput(question);
 	const lines = createInterface({ input: process.stdin, output: process.stderr });
 	try {
 		return /^y(es)?$/i.test((await lines.question(`${question} [y/N] `)).trim());

@@ -12,6 +12,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import { getModelSearchText } from "../model-search.ts";
 import { keyText } from "../../../theme/theme-tui-helpers.ts";
+import { selectedText } from "../../../theme/gradients.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { shortcutsFooter } from "./scoped-models-selector/footer.ts";
@@ -176,7 +177,7 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 		// Model ids, names and providers can come from vendor model lists and the remote catalog.
 		const id = plainText(item.model?.id ?? item.fullId);
 		const styledId = item.model ? id : theme.strikethrough(id);
-		const modelText = state.selected ? theme.fg("accent", theme.bold(styledId)) : styledId;
+		const modelText = state.selected ? theme.bold(selectedText(styledId)) : styledId;
 		const provider = item.model?.provider;
 		const badge = provider ? providerBadge(plainText(provider), this.providerKind?.(provider)) : "[unavailable]";
 		const providerText = theme.fg("muted", ` ${badge}`);

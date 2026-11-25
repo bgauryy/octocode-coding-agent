@@ -169,6 +169,7 @@ function augmentCompletionsRequest(
 						getInitialSystemMessage(context.messages)!,
 						options.instructionCacheBoundary,
 						options.instructionVolatileBoundary,
+						options.instructionWorkspaceBoundary,
 					)
 				: undefined,
 			options.toolCacheBoundary,

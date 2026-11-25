@@ -3,6 +3,11 @@
  * motion timings. Pure data: colours stay in the host's theme, which maps each state to a colour role.
  */
 
+import { isAsciiLocale } from "./charset.ts";
+
+/** Read once at startup: a locale without UTF-8 gets ASCII stand-ins, one per mark, so every state keeps its own. */
+const ascii = isAsciiLocale(process.env, process.platform);
+
 /** The six states a tool, agent, question or run can be in. */
 export type UiState = "pending" | "running" | "waiting" | "done" | "failed" | "stopped";
 
@@ -11,14 +16,14 @@ export type UiState = "pending" | "running" | "waiting" | "done" | "failed" | "s
  * running mark is the still `GLYPH.running`, never a spinner frame held still.
  */
 export const SPINNER = {
-	braille: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+	braille: ascii ? ["|", "/", "-", "\\"] : ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
 } as const satisfies Record<string, readonly string[]>;
 
 /**
  * Marks. A state has exactly one glyph (an outcome inside a row: `✓ answered`, `✗ file: error`); the row's own state
  * is its state light (`LIGHT_GLYPH`). Presence and structure marks never stand for a state.
  */
-export const GLYPH = {
+const UNICODE_GLYPH = {
 	pending: "○",
 	running: "⏺",
 	waiting: "◇",
@@ -42,26 +47,62 @@ export const GLYPH = {
 	userBar: "▎",
 } as const;
 
+const ASCII_GLYPH: Readonly<Record<keyof typeof UNICODE_GLYPH, string>> = {
+	pending: "o",
+	running: "*",
+	waiting: "?",
+	done: "+",
+	failed: "x",
+	stopped: "#",
+	live: "@",
+	message: "=",
+	warning: "!",
+	turn: "~",
+	collapsed: ">",
+	expanded: "v",
+	cursor: ">",
+	gutter: "|",
+	reason: "L",
+	note: ">",
+	arrow: "->",
+	userBar: "|",
+};
+
+export const GLYPH: Readonly<Record<keyof typeof UNICODE_GLYPH, string>> = ascii ? ASCII_GLYPH : UNICODE_GLYPH;
+
 /**
  * The state light: the one-cell circle in front of a tool, agent or work row and in the footer. It never moves, and
  * each state has its own shape, so it reads without colour: empty while idle or queued, full while running, half while
  * it waits for the user, a ringed dot when done, crossed when failed, barred when stopped.
  */
-export const LIGHT_GLYPH = {
+const UNICODE_LIGHT = {
 	pending: "○",
-	running: GLYPH.running,
+	running: UNICODE_GLYPH.running,
 	waiting: "◐",
 	done: "◉",
 	failed: "⊗",
 	stopped: "⊘",
 } as const satisfies Readonly<Record<UiState, string>>;
 
+const ASCII_LIGHT: Readonly<Record<UiState, string>> = {
+	pending: "o",
+	running: "*",
+	waiting: "?",
+	done: "+",
+	failed: "x",
+	stopped: "#",
+};
+
+export const LIGHT_GLYPH: Readonly<Record<UiState, string>> = ascii ? ASCII_LIGHT : UNICODE_LIGHT;
+
 /** Glyph marks: one cell wide in common terminals, none shared with a `GLYPH` state mark; the theme colours them. */
-const TONE_GLYPH = { calm: "≋", caution: "▲", problem: "◆" } as const;
+const TONE_GLYPH: Readonly<Record<"calm" | "caution" | "problem", string>> = ascii
+	? { calm: "~", caution: "^", problem: "!" }
+	: { calm: "≋", caution: "▲", problem: "◆" };
 /** Sea emoji: the opt-in branding for the same three tones. */
 const TONE_EMOJI = { calm: "🐚", caution: "🦀", problem: "🦈" } as const;
 /** The mark of the main session in a terminal title. */
-const TITLE_GLYPH = "◈";
+const TITLE_GLYPH = ascii ? "*" : "◈";
 const TITLE_EMOJI = "🦑";
 
 let emojiMarks = false;
@@ -112,6 +153,10 @@ export const MOTION = {
 	glowFrameMs: 200,
 	/** Step of decoration while the terminal is unfocused: it keeps moving, slowly, so a background session still looks alive. */
 	unfocusedDecorMs: 500,
+	/** A color moving from one state to the next (the editor border's tone): short enough not to delay the state it shows. */
+	fadeMs: 240,
+	/** Frame interval of a fade: six steps across `fadeMs`, a one-off cost per state change. */
+	fadeFrameMs: 40,
 	/** Elapsed-time counters. */
 	tickMs: 1_000,
 } as const;

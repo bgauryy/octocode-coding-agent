@@ -209,7 +209,6 @@
 			"registerTeamEvents@octocode/team/tools/events.ts"
 		],
 		"tool_call": [
-			"registerTurnSetup@octocode/turn.ts",
 			"registerToolGates@octocode/tool-gates.ts"
 		],
 		"tool_call_discarded": [
@@ -254,9 +253,6 @@
 			"registerTurnSetup@octocode/turn.ts",
 			"registerCompaction@octocode/compaction/register.ts",
 			"registerHarnessSync@octocode/subagents/harness-sync.ts"
-		],
-		"turn_prompt": [
-			"registerTurnSetup@octocode/turn.ts"
 		],
 		"turn_start": [
 			"registerTeamEvents@octocode/team/tools/events.ts",

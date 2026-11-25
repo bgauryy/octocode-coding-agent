@@ -3,6 +3,7 @@
  * with an exit code.
  */
 
+import { exitOnNoInput } from "./no-input-exit.ts";
 import { loadMcpCommand } from "../../../mcp/src/api.ts";
 import { parseArgs } from "../cli/args.ts";
 import { CLI_COMMAND_NAMES, isSubcommand } from "../cli/completion.ts";
@@ -63,7 +64,11 @@ function misplacedSubcommand(args: readonly string[]): number | undefined {
  * Runs the one-shot command `args` names, if any, and says whether it did. Package and config commands exit the
  * process, so a feature they load cannot keep it alive; the others set `process.exitCode` and return.
  */
-export async function runSubcommand(args: string[], context: SubcommandContext): Promise<boolean> {
+export function runSubcommand(args: string[], context: SubcommandContext): Promise<boolean> {
+	return exitOnNoInput(() => runSubcommandUnguarded(args, context));
+}
+
+async function runSubcommandUnguarded(args: string[], context: SubcommandContext): Promise<boolean> {
 	if (await handlePackageCommand(args)) {
 		const exitCode = process.exitCode ?? 0;
 		// On Windows, Node can assert after fetch() when process.exit(0) runs during teardown

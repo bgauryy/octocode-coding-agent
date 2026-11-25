@@ -26,7 +26,7 @@ import { ResizeDebounce } from "./tui/resize-debounce.ts";
 import { InputListeners, isolateInput, type TuiInputListener } from "./tui/input-listeners.ts";
 import { OverlayCompositor } from "./tui/overlay-compositor.ts";
 import type { OverlayHandle, OverlayOptions } from "./tui/overlay-types.ts";
-import { RenderLedger } from "./tui/render-counters.ts";
+import { type RenderCounters, RenderLedger } from "./tui/render-counters.ts";
 import type { RenderPacingOptions, RenderPacingStats } from "./tui/render-pacing.ts";
 import { appendRenderErrorLog, type RenderErrorListener, withRenderIsolation } from "./tui/render-isolation.ts";
 import { RenderScheduler } from "./tui/render-scheduler.ts";
@@ -143,6 +143,10 @@ export abstract class TuiBase extends Container implements TUI {
 		return this.fullRedrawCount;
 	}
 
+	get renderCounters(): Readonly<RenderCounters> {
+		return this.ledger.snapshot(this.fullRedrawCount);
+	}
+
 	getShowHardwareCursor(): boolean {
 		return this.showHardwareCursor;
 	}
@@ -150,9 +154,7 @@ export abstract class TuiBase extends Container implements TUI {
 	setShowHardwareCursor(enabled: boolean): void {
 		if (this.showHardwareCursor === enabled) return;
 		this.showHardwareCursor = enabled;
-		if (!enabled) {
-			this.hideTerminalCursor();
-		}
+		if (!enabled) this.hideTerminalCursor();
 		this.requestRender();
 	}
 

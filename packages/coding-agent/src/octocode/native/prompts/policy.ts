@@ -50,11 +50,6 @@ interface PromptInputs {
 	canWeb?: boolean;
 	/** Whether the `backlog` and `backlogPlan` tools are declared (default true): delegation plans and waits on items only then. */
 	canBacklog?: boolean;
-	/**
-	 * Whether this session has started a child or messaged another agent (`turn.ts`): the `children` section, the rules
-	 * for running children and using their reports, is sent from then on and is absent before.
-	 */
-	childStarted?: boolean;
 	/** Whether MCP tools are available; their tools can write too. */
 	canMcp?: boolean;
 	/** Whether this agent drives its own isolated browser: its profile declares `browser.control` and it holds the browser server. */
@@ -97,7 +92,6 @@ function policyFlags(input: PromptInputs) {
 		canSave: input.canSave !== false,
 		agentTool: input.canUseAgent !== false,
 		runner: input.canStartRunner === true,
-		childStarted: input.childStarted === true,
 		// Combinations a template reads by name.
 		gitState: !main && shell,
 		// A browser or desktop specialist: code and dependency research routes do not apply to it.
@@ -141,7 +135,5 @@ export function octocodePromptSections(input: PromptInputs): Record<string, stri
 
 /** Complete policy text for SDK consumers and prompt inspection: every section, `children` included. */
 export function octocodePrompt(input: PromptInputs): string {
-	return Object.values(octocodePromptSections({ childStarted: true, ...input }))
-		.filter(Boolean)
-		.join("\n\n");
+	return Object.values(octocodePromptSections(input)).filter(Boolean).join("\n\n");
 }

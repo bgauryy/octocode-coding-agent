@@ -12,6 +12,9 @@ import { buildCacheDiagnosticsParam } from "../anthropic-messages/cache-diagnost
 import { preserveAnthropicBoundaries } from "./anthropic-boundaries.ts";
 import { anthropicSdkEvents } from "./anthropic-events.ts";
 import { vercelGatewayOptions } from "../anthropic-messages/gateway-routing.ts";
+import { capCacheBreakpoints } from "../anthropic-messages/cache-breakpoints.ts";
+import { CACHE_PROFILES } from "../../utils/cache-profiles.ts";
+import { requestDiagnostics } from "./request-diagnostics.ts";
 import type { SdkMapping } from "./stream.ts";
 
 export function anthropicSdkInput(
@@ -34,7 +37,8 @@ export function anthropicSdkInput(
 			providerOptions: { anthropic: { deferLoading: true } },
 		});
 	const messages = anthropicSdkMessages(model, context, options, inline, disablePreferredStrictTools);
-	const longCache = anthropicSdkCache(model, context, options, messages, tools);
+	const diagnostics = requestDiagnostics();
+	const longCache = anthropicSdkCache(model, context, options, messages, tools, diagnostics);
 	const disabled = model.reasoning && options.thinkingEnabled === false && model.thinkingLevelMap?.off !== null;
 	const thinks =
 		model.reasoning &&
@@ -52,6 +56,7 @@ export function anthropicSdkInput(
 				? { type: "enabled", budgetTokens: nonZeroOr(1024, options.thinkingBudgetTokens) }
 				: undefined;
 	const choice = options.toolChoice;
+	const events = anthropicSdkEvents(model, options, longCache);
 	return {
 		messages,
 		tools,
@@ -72,17 +77,27 @@ export function anthropicSdkInput(
 		finalizeRequest: (body) => {
 			if (body && typeof body === "object") (body as Record<string, unknown>).stream = true;
 		},
-		onPart: anthropicSdkEvents(model, options, longCache),
+		onPart: (part, output, stream) => {
+			if (part.type === "finish" || part.type === "error") diagnostics.flush(output);
+			return events(part, output, stream);
+		},
 		augmentRequest: (body) => {
 			preserveAnthropicBoundaries(body, messages);
+			const removed = capCacheBreakpoints(body, CACHE_PROFILES.anthropic.maxMarkers);
+			if (removed > 0)
+				diagnostics.report("cache_markers_capped", {
+					removed,
+					max: CACHE_PROFILES.anthropic.maxMarkers,
+					model: model.id,
+				});
 			for (const message of (body.messages ?? []) as { content?: unknown }[])
 				if (Array.isArray(message.content))
 					for (const part of message.content as Record<string, unknown>[])
 						if (part.type === "tool_result" && part.is_error === undefined) part.is_error = false;
 			const gateway = vercelGatewayOptions(model, options);
 			if (gateway) body.providerOptions = { ...(body.providerOptions as object | undefined), gateway };
-			const diagnostics = buildCacheDiagnosticsParam(model, context, options.env);
-			if (diagnostics) body.diagnostics = diagnostics;
+			const cacheDiagnostics = buildCacheDiagnosticsParam(model, context, options.env);
+			if (cacheDiagnostics) body.diagnostics = cacheDiagnostics;
 			// SDK model catalog defaults must not override explicit compatibility policy.
 			if (thinking) {
 				if (thinking.type === "enabled")

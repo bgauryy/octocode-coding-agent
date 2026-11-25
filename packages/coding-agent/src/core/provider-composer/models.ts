@@ -5,6 +5,28 @@ import type { ModelsJsonModel, ModelsJsonModelOverride, ModelsJsonProvider } fro
 import type { KnownModelLookup } from "./known-models.ts";
 import type { ProviderConfigInput, ProviderModelConfig } from "./types.ts";
 
+type DefaultedField = "cost" | "input" | "contextWindow" | "maxTokens";
+
+const ASSUMED_DEFAULTS: Record<DefaultedField, string> = {
+	cost: "cost 0 (usage shows as free)",
+	input: 'input ["text"]',
+	contextWindow: "contextWindow 128000 tokens",
+	maxTokens: "maxTokens 16384",
+};
+
+/** Custom models whose fields neither models.json nor a built-in twin set, by `provider/id`: what composition assumed. */
+const defaultedFields = new Map<string, DefaultedField[]>();
+
+/**
+ * One sentence naming every field a custom model got by default, and how to set them, or undefined when it has none.
+ * A `modelOverrides` entry that sets a field removes it from the list.
+ */
+export function defaultedModelNotice(provider: string, id: string): string | undefined {
+	const fields = defaultedFields.get(`${provider}/${id}`);
+	if (!fields?.length) return undefined;
+	return `${provider}/${id} sets no ${fields.join(", ")} in models.json and has no built-in twin to take them from: assuming ${fields.map((field) => ASSUMED_DEFAULTS[field]).join(", ")}. Set them on the model's entry${fields.includes("contextWindow") ? ", above all contextWindow, so compaction runs before the real window fills" : ""}.`;
+}
+
 export function getAllProviderModels(provider: Provider | undefined): readonly AnyModel[] {
 	return provider ? (provider.getAllModels?.() ?? provider.getModels()) : [];
 }
@@ -93,6 +115,14 @@ function mergeCost(base: Model<Api>["cost"], override: ModelsJsonModelOverride["
 }
 
 export function applyModelOverride(model: Model<Api>, override: ModelsJsonModelOverride): Model<Api> {
+	const key = `${model.provider}/${model.id}`;
+	const assumed = defaultedFields.get(key);
+	if (assumed) {
+		const set = (field: DefaultedField) => override[field] !== undefined;
+		const left = assumed.filter((field) => !set(field));
+		if (left.length > 0) defaultedFields.set(key, left);
+		else defaultedFields.delete(key);
+	}
 	return {
 		...model,
 		name: override.name ?? model.name,
@@ -152,6 +182,13 @@ function modelFromJson(
 		(knownBase
 			? undefined
 			: inferThinkingLevelMap({ id: definition.id, provider: providerId, api, reasoning, compat }));
+	const defaulted: DefaultedField[] = [];
+	if (!definition.cost && !known?.cost) defaulted.push("cost");
+	if (!definition.input && !known?.input) defaulted.push("input");
+	if (definition.contextWindow === undefined && known?.contextWindow === undefined) defaulted.push("contextWindow");
+	if (definition.maxTokens === undefined && known?.maxTokens === undefined) defaulted.push("maxTokens");
+	if (defaulted.length > 0) defaultedFields.set(`${providerId}/${definition.id}`, defaulted);
+	else defaultedFields.delete(`${providerId}/${definition.id}`);
 	return {
 		id: definition.id,
 		name: definition.name ?? known?.name ?? definition.id,

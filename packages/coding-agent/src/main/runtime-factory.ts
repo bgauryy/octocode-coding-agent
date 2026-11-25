@@ -25,6 +25,7 @@ import { setPlanStartup } from "../octocode/plan/startup.ts";
 import { recordOperatorLimits } from "../octocode/subagents/process/operator-limits.ts";
 import { applyRunConfiguration } from "./run-configuration.ts";
 import { missingCliPathWarnings } from "./cli-path-warnings.ts";
+import { defaultedModelWarning } from "./defaulted-model-warning.ts";
 import { buildSessionOptions, resolveCliPaths } from "./session-options.ts";
 import type { AppMode } from "./startup.ts";
 
@@ -186,6 +187,8 @@ export function createCliRuntimeFactory(options: CliRuntimeFactoryOptions): Crea
 		const chosen = created.session.model;
 		const notice = unattended && chosen ? unattendedUseNotice(chosen, modelRuntime) : undefined;
 		if (notice) diagnostics.push({ type: "warning", message: notice });
+		const defaulted = defaultedModelWarning(chosen, getAppMode() === "interactive");
+		if (defaulted) diagnostics.push(defaulted);
 
 		return {
 			...created,

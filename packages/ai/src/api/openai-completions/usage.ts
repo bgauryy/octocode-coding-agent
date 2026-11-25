@@ -15,6 +15,9 @@ export function parseChunkUsage(
 		completion_tokens?: number;
 		cached_tokens?: number;
 		prompt_cache_hit_tokens?: number;
+		/** Anthropic-format gateways (LiteLLM and similar) report these at the top level next to `prompt_tokens`. */
+		cache_read_input_tokens?: number;
+		cache_creation_input_tokens?: number;
 		prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
 		completion_tokens_details?: { reasoning_tokens?: number };
 	},
@@ -23,8 +26,13 @@ export function parseChunkUsage(
 ): AssistantMessage["usage"] {
 	const promptTokens = rawUsage.prompt_tokens ?? 0;
 	const cacheReadTokens =
-		rawUsage.prompt_tokens_details?.cached_tokens ?? rawUsage.prompt_cache_hit_tokens ?? rawUsage.cached_tokens ?? 0;
-	const cacheWriteTokens = rawUsage.prompt_tokens_details?.cache_write_tokens ?? 0;
+		rawUsage.prompt_tokens_details?.cached_tokens ??
+		rawUsage.prompt_cache_hit_tokens ??
+		rawUsage.cached_tokens ??
+		rawUsage.cache_read_input_tokens ??
+		0;
+	const cacheWriteTokens =
+		rawUsage.prompt_tokens_details?.cache_write_tokens ?? rawUsage.cache_creation_input_tokens ?? 0;
 
 	// Follow documented OpenAI/OpenRouter semantics: cached_tokens is cache-read
 	// tokens (hits). Providers disagree on placement: OpenAI/OpenRouter use

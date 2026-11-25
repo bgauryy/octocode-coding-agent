@@ -11,6 +11,7 @@ import type { Model, Usage } from "@octocodeai/octocode-ai/compat";
 import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { type CompactionEntry, type ProjectedSessionEntry, type SessionEntry } from "../session-manager.ts";
 import { buildPathProjection } from "../session-manager/context.ts";
+import { renderPrompt } from "../prompt-template.ts";
 import { combineUsage } from "../usage-totals.ts";
 import { archivedSummary } from "./checkpoint.ts";
 import { findProjectedCutPoint } from "./cut-point.ts";
@@ -280,6 +281,8 @@ export async function compact(
 	let summaryUsage: Usage;
 	// The carried bullets the model lifted (`ledger.ts`), recorded with the compaction.
 	let lifted: LiftedBullet[] = [];
+	// Messages the summary request left out because they did not fit: the reader of the summary is told how many.
+	let dropped = 0;
 
 	if (isSplitTurn && turnPrefixMessages.length > 0) {
 		let historyText = previousSummary ?? "No prior history.";
@@ -305,6 +308,7 @@ export async function compact(
 			historyText = historyResult.text;
 			historyUsage = historyResult.usage;
 			lifted = historyResult.lifted;
+			dropped = historyResult.dropped;
 		}
 		const turnPrefixResult = await generateTurnPrefixSummary(
 			turnPrefixMessages,
@@ -346,7 +350,9 @@ export async function compact(
 		summary = result.text;
 		summaryUsage = result.usage;
 		lifted = result.lifted;
+		dropped = result.dropped;
 	}
+	if (dropped > 0) summary += `\n\n${renderPrompt("workflows/compaction/dropped-summary-note.md", { dropped })}`;
 
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);
 	summary += formatFileOperations(readFiles, modifiedFiles);

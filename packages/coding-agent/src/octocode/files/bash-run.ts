@@ -228,7 +228,8 @@ function waitForExit(child: ChildProcess): {
  * command returned on its own. At the deadline a command still running goes to `handoff` when there is one (it
  * keeps running; exec then throws the usual `timeout:` error, and the caller knows the job from its own handoff); with
  * none, `stopAtDeadline`, or when the handoff fails, or after an abort, the whole group is stopped. With `watch`, a
- * command that has run a moment also moves as soon as a user message is waiting, so the agent can answer it.
+ * command that has run a moment also moves as soon as a user message is waiting, so the agent can answer it. A command
+ * that cannot move (`sleep`) is stopped instead when `stopOnMessage` is called: waiting out a pure wait only delays the answer.
  */
 export function foregroundOperations(
 	settings: ShellSettings,
@@ -239,7 +240,8 @@ export function foregroundOperations(
 		watch,
 		stopAtDeadline = false,
 		unsandboxed = false,
-	}: { watch?: PendingWatch; stopAtDeadline?: boolean; unsandboxed?: boolean } = {},
+		stopOnMessage,
+	}: { watch?: PendingWatch; stopAtDeadline?: boolean; unsandboxed?: boolean; stopOnMessage?: () => void } = {},
 ): BashOperations {
 	return {
 		exec: async (command, cwd, { onData, signal, timeout: requestedTimeout, env }) => {
@@ -297,7 +299,7 @@ export function foregroundOperations(
 							if (stopAtDeadline || !moveToBackground("deadline")) stop();
 						}, timeout * 1000);
 			const stopWatcher =
-				watch && handoff
+				watch && (handoff || stopOnMessage)
 					? sharedClock.subscribe(
 							() => {
 								if (timedOut || Date.now() - startedAt < (watch.afterMs ?? DEFAULT_WATCH_AFTER_MS)) return;
@@ -308,7 +310,11 @@ export function foregroundOperations(
 								}
 								timedOut = true;
 								movedAfter = Math.round((Date.now() - startedAt) / 1000);
-								if (moveToBackground("message")) stopWatcher?.();
+								if (!handoff) {
+									stopOnMessage?.();
+									stop();
+									stopWatcher?.();
+								} else if (moveToBackground("message")) stopWatcher?.();
 								else timedOut = false;
 							},
 							{ everyMs: watch.pollMs ?? DEFAULT_WATCH_POLL_MS },

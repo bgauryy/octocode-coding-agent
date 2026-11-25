@@ -1,49 +1,45 @@
 /**
  * A short note the prompt's bottom rule shows for a moment (`ctrl+c again to exit`): the place the eye already is,
  * kept out of the transcript and the footer. One note at a time; a newer one replaces it. The prompt's decoration
- * (`ui/editor.ts`) draws it and repaints when it comes and goes.
+ * (`ui/editor.ts`) draws it and repaints when the shown text changes.
  */
 
-interface Note {
-	text: string;
-	timer: ReturnType<typeof setTimeout>;
+import { createStore } from "zustand/vanilla";
+
+interface PromptNoteState {
+	/** The note in force, if any. */
+	text: string | undefined;
 }
 
-let current: Note | undefined;
-const listeners = new Set<() => void>();
+/** The note the prompt shows: a state source the editor watches. */
+export const promptNoteStore = createStore<PromptNoteState>(() => ({ text: undefined }));
 
-const changed = () => {
-	for (const listener of listeners) listener();
+let timer: ReturnType<typeof setTimeout> | undefined;
+
+const setText = (text: string | undefined) => {
+	if (promptNoteStore.getState().text !== text) promptNoteStore.setState({ text });
 };
 
 /** Shows `text` in the prompt's bottom rule for `ms`. */
 export function showPromptNote(text: string, ms: number): void {
-	if (current) clearTimeout(current.timer);
-	const note: Note = {
-		text,
-		timer: setTimeout(() => {
-			if (current !== note) return;
-			current = undefined;
-			changed();
-		}, ms),
-	};
+	if (timer) clearTimeout(timer);
+	const own = setTimeout(() => {
+		if (timer !== own) return;
+		timer = undefined;
+		setText(undefined);
+	}, ms);
 	// The note never keeps the process alive: an exit within the window must not wait for it.
-	note.timer.unref?.();
-	current = note;
-	changed();
+	own.unref?.();
+	timer = own;
+	setText(text);
 }
 
-/** Removes the note now (the second press acted on it); the next frame draws the plain rule. */
+/** Removes the note now (the second press acted on it). */
 export function clearPromptNote(): void {
-	if (current) clearTimeout(current.timer);
-	current = undefined;
+	if (timer) clearTimeout(timer);
+	timer = undefined;
+	setText(undefined);
 }
 
 /** The note in force, if any. */
-export const promptNote = (): string | undefined => current?.text;
-
-/** Calls `listener` when a note comes or goes; returns what stops it. */
-export function onPromptNote(listener: () => void): () => void {
-	listeners.add(listener);
-	return () => listeners.delete(listener);
-}
+export const promptNote = (): string | undefined => promptNoteStore.getState().text;

@@ -6,6 +6,7 @@
 
 import { type ListView, type ListViewTheme, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
 import { keyText, noMatchMessage, type RankedHint } from "../../../theme/theme-tui-helpers.ts";
+import { selectedText } from "../../../theme/gradients.ts";
 import { theme } from "../../../theme/theme.ts";
 import { plainText } from "./styled-line.ts";
 
@@ -62,7 +63,7 @@ export function numberedRow(
 ): string {
 	const number = index < 9 ? `${index + 1}. ` : "   ";
 	const text = plainText(label);
-	const shown = state.selected ? theme.fg("accent", theme.bold(text)) : theme.fg("text", text);
+	const shown = state.selected ? theme.bold(selectedText(text)) : theme.fg("text", text);
 	const after = note ? `  ${theme.fg("muted", plainText(note))}` : "";
 	return truncateToWidth(`${theme.fg("dim", number)}${shown}${after}`, state.width, "…");
 }
@@ -100,7 +101,7 @@ export function columnRow(
 ): string {
 	const text = plainText(label);
 	const detail = description ? plainText(description) : "";
-	const shown = state.selected ? theme.fg("accent", theme.bold(text)) : theme.fg("text", text);
+	const shown = state.selected ? theme.bold(selectedText(text)) : theme.fg("text", text);
 	if (!detail || state.width < column + 12) return truncateToWidth(shown, state.width, "…");
 	const head = truncateToWidth(shown, column, "…");
 	const gap = " ".repeat(Math.max(1, column - visibleWidth(head)) + 1);

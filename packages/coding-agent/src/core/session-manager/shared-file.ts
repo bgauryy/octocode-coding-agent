@@ -80,9 +80,15 @@ export function isSessionLockTimeout(error: unknown): boolean {
  * callback (`rewriteSessionFile`). The release never throws: a failed one leaves a stale lock that is reclaimed.
  */
 export function lockSessionFile(file: string, waitMs = LOCK_WAIT_MS): () => void {
-	// A new session may belong to a folder that does not exist yet.
-	mkdirSync(dirname(file), { recursive: true });
-	const release = acquireSessionLock(canonicalPath(file), waitMs);
+	let release: () => void;
+	try {
+		release = acquireSessionLock(canonicalPath(file), waitMs);
+	} catch (error) {
+		if ((error as { code?: unknown } | null)?.code !== "ENOENT") throw error;
+		// A new session may belong to a folder that does not exist yet: created only then, not on every write.
+		mkdirSync(dirname(file), { recursive: true });
+		release = acquireSessionLock(canonicalPath(file), waitMs);
+	}
 	return () => {
 		try {
 			release();

@@ -316,26 +316,31 @@ export class Theme {
 		return this.mode;
 	}
 
-	getThinkingBorderColor(level: ThinkingLevel): (str: string) => string {
-		// Map thinking levels to dedicated theme colors
-		switch (level) {
-			case "off":
-				return (str: string) => this.fg("thinkingOff", str);
+	/** The token an editor border tone paints with: bash mode, else the thinking level's dedicated color. */
+	getEditorBorderToken(tone: ThinkingLevel | "bash"): ThemeColor {
+		switch (tone) {
+			case "bash":
+				return "bashMode";
 			case "minimal":
-				return (str: string) => this.fg("thinkingMinimal", str);
+				return "thinkingMinimal";
 			case "low":
-				return (str: string) => this.fg("thinkingLow", str);
+				return "thinkingLow";
 			case "medium":
-				return (str: string) => this.fg("thinkingMedium", str);
+				return "thinkingMedium";
 			case "high":
-				return (str: string) => this.fg("thinkingHigh", str);
+				return "thinkingHigh";
 			case "xhigh":
-				return (str: string) => this.fg("thinkingXhigh", str);
+				return "thinkingXhigh";
 			case "max":
-				return (str: string) => this.fg("thinkingMax", str);
+				return "thinkingMax";
 			default:
-				return (str: string) => this.fg("thinkingOff", str);
+				return "thinkingOff";
 		}
+	}
+
+	getThinkingBorderColor(level: ThinkingLevel): (str: string) => string {
+		const token = this.getEditorBorderToken(level);
+		return (str: string) => this.fg(token, str);
 	}
 
 	getBashModeBorderColor(): (str: string) => string {

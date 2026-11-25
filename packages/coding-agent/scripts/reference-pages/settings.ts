@@ -174,7 +174,7 @@ export const settingDescriptions: Readonly<Record<string, string>> = {
 	tuiMode: "Interface layout; `regular` uses the terminal's normal scrollback. `--tui-mode` overrides it for one run.",
 	"markdown.codeBlockIndent": "Indent prepended to code blocks in rendered Markdown.",
 	"markdown.mermaid":
-		"Render Mermaid code blocks as Unicode diagrams: `off`, `final` (after a response completes) or `streaming` (also while it streams).",
+		"Render Mermaid code blocks as Unicode diagrams once a response completes (`final`) or never (`off`). A streaming response shows as plain text; a saved `streaming` acts as `final`.",
 	"warnings.anthropicExtraUsage":
 		"Show the once-per-run notice that a saved Claude subscription token is refused; `false` turns it off. The token is refused either way.",
 };

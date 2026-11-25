@@ -103,6 +103,14 @@ describe("OpenAI Chat Completions usage (cached tokens are inside prompt_tokens)
 		expect(usage.cost.total).toBeCloseTo(0.6225, 12);
 	});
 
+	it("reads the Anthropic-style top-level cache fields an Anthropic-format gateway reports", () => {
+		const usage = parseChunkUsage(
+			{ prompt_tokens: 100, completion_tokens: 5, cache_read_input_tokens: 80, cache_creation_input_tokens: 10 },
+			model,
+		);
+		expect(usage).toMatchObject({ input: 10, cacheRead: 80, cacheWrite: 10 });
+	});
+
 	it("switches tier strictly above the threshold, counting cache reads and writes in the prompt", () => {
 		const at = parseChunkUsage({ prompt_tokens: 272_000, completion_tokens: 0 }, model);
 		const above = parseChunkUsage({ prompt_tokens: 272_001, completion_tokens: 0 }, model);

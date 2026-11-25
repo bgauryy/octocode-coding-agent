@@ -125,6 +125,11 @@ function buildSummarizationContext(promptText: string): TranscriptContext {
 	});
 }
 
+/** How many of the oldest messages the last request of a summary left out because it did not fit. */
+interface DroppedTally {
+	dropped: number;
+}
+
 /** Share of the remaining messages each overflow retry drops from the oldest end; its length bounds the retries. */
 const OVERFLOW_TRIM_SHARES = [0.25, 0.4, 0.6];
 
@@ -174,6 +179,7 @@ async function completeWithOverflowTrim(
 	retry?: RetryPolicy,
 	callbacks?: RetryCallbacks,
 	first?: AssistantMessage,
+	tally?: DroppedTally,
 ): Promise<AssistantMessage> {
 	let remaining = messages;
 	let pending = first;
@@ -192,6 +198,8 @@ async function completeWithOverflowTrim(
 				callbacks,
 			));
 		pending = undefined;
+		// The count of the request whose answer is returned: a later shrink retry starts over from every message.
+		if (tally) tally.dropped = dropped;
 		if (!overflowed(response, options.signal)) return response;
 		const share = OVERFLOW_TRIM_SHARES[trims];
 		const trimmed = share === undefined ? undefined : dropOldestMessages(remaining, share);
@@ -243,6 +251,7 @@ function sizedPrompt(prompt: string, room: number, shrink: number): string {
  * time (from the second retry the output cap halves too). The usage reported is the sum over every request.
  * `sizing.room`: the tokens the summary is sized against, applied from the first request; without it only retries
  * carry a size target (against the model's output cap). `sizing.first`: a response the whole request already got.
+ * `sizing.tally` receives how many of the oldest messages the answer's request left out.
  */
 export async function completeBounded(
 	messages: AgentMessage[],
@@ -252,7 +261,7 @@ export async function completeBounded(
 	streamFn?: StreamFn,
 	retry?: RetryPolicy,
 	callbacks?: RetryCallbacks,
-	sizing?: { room?: number; first?: AssistantMessage },
+	sizing?: { room?: number; first?: AssistantMessage; tally?: DroppedTally },
 ): Promise<AssistantMessage> {
 	const room = sizing?.room;
 	const firstPrompt =
@@ -266,6 +275,7 @@ export async function completeBounded(
 		retry,
 		callbacks,
 		sizing?.first,
+		sizing?.tally,
 	);
 	// Every retry is billed: the usage reported is the sum over the requests, not the last one's.
 	let usage = response.usage;
@@ -281,7 +291,17 @@ export async function completeBounded(
 		shrink *= 2;
 		const sized = (remaining: AgentMessage[]) =>
 			sizedPrompt(buildPrompt(remaining), room ?? summaryMaxTokens(model), shrink);
-		response = await completeWithOverflowTrim(messages, sized, model, current, streamFn, retry, callbacks);
+		response = await completeWithOverflowTrim(
+			messages,
+			sized,
+			model,
+			current,
+			streamFn,
+			retry,
+			callbacks,
+			undefined,
+			sizing?.tally,
+		);
 		usage = combineUsage(usage, response.usage);
 	}
 	return response.usage === usage ? response : { ...response, usage };
@@ -308,7 +328,7 @@ export async function generateSummaryWithUsage(
 	callbacks?: RetryCallbacks,
 	sessionId?: string,
 	cache?: CachePreferences,
-): Promise<{ text: string; usage: Usage; lifted: LiftedBullet[] }> {
+): Promise<{ text: string; usage: Usage; lifted: LiftedBullet[]; dropped: number }> {
 	// Every summary is asked for a size (a first one without it ran past the cap); `completeBounded` halves it per retry.
 	const room = reserveTokens ? inlineSummaryTokens(reserveTokens) : summaryMaxTokens(model);
 	const buildPrompt =
@@ -328,8 +348,17 @@ export async function generateSummaryWithUsage(
 		};
 
 	const options = createSummarizationOptions(model, apiKey, headers, env, signal, thinkingLevel, sessionId, cache);
-	const complete = (messages: AgentMessage[], previous: string | undefined, first?: AssistantMessage) =>
-		completeBounded(messages, buildPrompt(previous), model, options, streamFn, retry, callbacks, { room, first });
+	const complete = (
+		messages: AgentMessage[],
+		previous: string | undefined,
+		first?: AssistantMessage,
+		tally?: DroppedTally,
+	) =>
+		completeBounded(messages, buildPrompt(previous), model, options, streamFn, retry, callbacks, {
+			room,
+			first,
+			tally,
+		});
 
 	const whole = await completeSummarization(
 		model,
@@ -343,19 +372,27 @@ export async function generateSummaryWithUsage(
 	// Nothing to split (it fits, it failed otherwise, or it is one message): the whole request's answer stands, and an
 	// overflow goes on by dropping the oldest messages.
 	if (split === undefined) {
-		const response = await complete(currentMessages, previousSummary, whole);
-		return { ...carryLedger(keptSummaryText(response, model), previousSummary), usage: response.usage };
+		const tally = { dropped: 0 };
+		const response = await complete(currentMessages, previousSummary, whole, tally);
+		return {
+			...carryLedger(keptSummaryText(response, model), previousSummary),
+			usage: response.usage,
+			dropped: tally.dropped,
+		};
 	}
 	// Too large for one request: the older part is summarized on its own, and that summary is the previous summary of
 	// the newer part, so the oldest history is condensed twice instead of left out. A part that still does not fit
 	// drops its own oldest messages and says so.
-	const older = await complete(currentMessages.slice(0, split), previousSummary);
+	const olderTally = { dropped: 0 };
+	const older = await complete(currentMessages.slice(0, split), previousSummary, undefined, olderTally);
 	const olderPart = carryLedger(keptSummaryText(older, model), previousSummary);
-	const newer = await complete(currentMessages.slice(split), olderPart.text);
+	const newerTally = { dropped: 0 };
+	const newer = await complete(currentMessages.slice(split), olderPart.text, undefined, newerTally);
 	const newerPart = carryLedger(keptSummaryText(newer, model), olderPart.text);
 	return {
 		text: newerPart.text,
 		usage: combineUsage(older.usage, newer.usage),
 		lifted: [...olderPart.lifted, ...newerPart.lifted],
+		dropped: olderTally.dropped + newerTally.dropped,
 	};
 }

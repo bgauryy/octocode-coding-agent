@@ -113,6 +113,13 @@ describe("refreshCatalog", () => {
 		expect((await observe((env) => catalog.refreshCatalog(env), "reordered")).readWhole).toBe(true);
 	});
 
+	it("currentCatalog answers routing from a fresh index without parsing it whole", async () => {
+		const fresh = await observe((env) => catalog.currentCatalog(env), "fresh");
+		expect(fresh.didFetch).toBe(false);
+		expect(fresh.readWhole).toBe(false);
+		expect(fresh.after?.models["claude-small-1"]).toEqual({ toolCall: true, lab: "anthropic" });
+	});
+
 	it("does nothing with models.dev off or offline", async () => {
 		const { env, file } = await home("missing");
 		const fetched = vi.spyOn(globalThis, "fetch");

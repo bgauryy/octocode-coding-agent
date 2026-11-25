@@ -5,6 +5,7 @@ import { transcripts } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../storage/database.ts";
 import { cliStyle } from "../utils/cli-style.ts";
 import type { Args } from "../cli/args.ts";
+import { requireInput } from "../cli/no-input.ts";
 import { selectSession } from "../cli/session-picker.ts";
 import { showStartupSelector } from "../cli/startup-ui.ts";
 import { assertValidSessionId, SessionManager } from "../core/session-manager.ts";
@@ -106,6 +107,7 @@ function isInteractiveStart(parsed: Args): boolean {
 }
 
 async function promptConfirm(message: string): Promise<boolean> {
+	requireInput(message);
 	return new Promise((resolve) => {
 		const rl = createInterface({
 			input: process.stdin,

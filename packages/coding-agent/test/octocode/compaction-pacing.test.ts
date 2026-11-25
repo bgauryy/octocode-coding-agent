@@ -172,6 +172,7 @@ describe("pacing wired into the session", () => {
 			hasUI: true,
 			ui: { notify: vi.fn() },
 			abort: vi.fn(),
+			failRun: vi.fn(),
 			compact: vi.fn(),
 			model: undefined,
 			getContextUsage: () => ({ tokens, contextWindow: 1, percent: 1 }),
@@ -272,6 +273,16 @@ describe("pacing wired into the session", () => {
 			},
 		]);
 		expect(await fire("session_before_compact", beforeCompact("manual"))).toBeUndefined();
+	});
+
+	it("records the thrash stop as the run's failure without a UI, where nothing else says why the run ended", async () => {
+		const { ctx, fire } = session(2);
+		ctx.hasUI = false;
+		await trip(fire);
+		expect(await fire("session_before_compact", beforeCompact("overflow"))).toEqual({ cancel: true });
+		expect(ctx.ui.notify).not.toHaveBeenCalled();
+		expect(ctx.failRun).toHaveBeenCalledWith(THRASH_MESSAGE);
+		expect(ctx.abort).toHaveBeenCalledWith("internal");
 	});
 
 	it("compacts before switching to a model whose window the context does not fit", async () => {

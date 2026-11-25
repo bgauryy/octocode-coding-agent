@@ -33,4 +33,23 @@ describe("applyNoColor", () => {
 		applyNoColor([], { NO_COLOR: "", OCTOCODE_NO_COLOR: "" });
 		expect(chalk.level).toBe(3);
 	});
+
+	it("lets FORCE_COLOR beat NO_COLOR, but not 0 or false", () => {
+		applyNoColor([], { NO_COLOR: "1", FORCE_COLOR: "1" });
+		expect(chalk.level).toBe(3);
+		applyNoColor([], { NO_COLOR: "1", FORCE_COLOR: "0" });
+		expect(chalk.red("x")).toBe("x");
+	});
+
+	it("lets --color beat NO_COLOR and --no-color beat both", () => {
+		const env: NodeJS.ProcessEnv = { NO_COLOR: "1", OCTOCODE_NO_COLOR: "1" };
+		applyNoColor(["--color"], env);
+		expect(chalk.level).toBe(3);
+		expect(env.NO_COLOR).toBeUndefined();
+		expect(env.FORCE_COLOR).toBe("1");
+		const both: NodeJS.ProcessEnv = { FORCE_COLOR: "1" };
+		applyNoColor(["--color", "--no-color"], both);
+		expect(chalk.red("x")).toBe("x");
+		expect(both.FORCE_COLOR).toBeUndefined();
+	});
 });

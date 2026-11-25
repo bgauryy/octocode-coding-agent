@@ -1,5 +1,6 @@
 import { fuzzyFilter } from "../fuzzy.ts";
 import { getKeybindings } from "../keybindings.ts";
+import { matchesKey } from "../keys/match.ts";
 import { GLYPH } from "../tokens/design.ts";
 import type { Component, Focusable, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
 import { CURSOR_MARKER } from "../tui/cursor.ts";
@@ -214,13 +215,20 @@ export class ListView<T> implements Component, Focusable {
 			else this.onCancel?.();
 			return;
 		}
-		if (kb.matches(data, "tui.select.up")) this.move(-1, this.options.wrap === true);
-		else if (kb.matches(data, "tui.select.down")) this.move(1, this.options.wrap === true);
+		// Without a search line no key types text, so the vim aliases k and j move too, space confirms and q cancels.
+		const vim = !this.options.search;
+		if (vim && matchesKey(data, "q")) {
+			this.onCancel?.();
+			return;
+		}
+		const wrap = this.options.wrap === true;
+		if (kb.matches(data, "tui.select.up") || (vim && matchesKey(data, "k"))) this.move(-1, wrap);
+		else if (kb.matches(data, "tui.select.down") || (vim && matchesKey(data, "j"))) this.move(1, wrap);
 		else if (kb.matches(data, "tui.select.pageUp")) this.move(-this.rows(), false);
 		else if (kb.matches(data, "tui.select.pageDown")) this.move(this.rows(), false);
 		else if (kb.matches(data, "tui.select.home")) this.move(-this.shown.length, false);
 		else if (kb.matches(data, "tui.select.end")) this.move(this.shown.length, false);
-		else if (kb.matches(data, "tui.select.confirm")) this.confirm();
+		else if (kb.matches(data, "tui.select.confirm") || (vim && data === " ")) this.confirm();
 		else if (this.options.search) this.typeInSearch(data);
 	}
 

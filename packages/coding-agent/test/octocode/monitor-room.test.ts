@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import { registerMonitorRoom } from "../../src/octocode/monitor-room/command.ts";
 import { roomRows, roomText } from "../../src/octocode/monitor-room/rows.ts";
@@ -98,7 +99,8 @@ describe("/monitor", () => {
 					const component = (
 						factory as (...args: unknown[]) => { render(width: number): string[]; handleInput(data: string): void }
 					)({ terminal: { rows: 40 }, requestRender: () => undefined }, {}, {}, (value: unknown) => (answer = value));
-					screens.push(component.render(160).join("\n"));
+					// Visible text: the selected row is colored cell by cell.
+					screens.push(stripVTControlCharacters(component.render(160).join("\n")));
 					// The list opens the highlighted rule with Enter; the rule page and the list's second visit end with Escape.
 					component.handleInput(screens.length === 1 ? "\r" : "\u001b");
 					return answer;

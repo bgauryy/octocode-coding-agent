@@ -1,6 +1,6 @@
 /**
  * Renders run-state events: the end and settling of an agent run, compaction, and automatic retries of a turn or a
- * summary.
+ * summary. Status indicators are requested through the status slice; its binder mounts them and asks for the frames.
  */
 
 import type { AgentSessionEvent } from "../../../core/agent-session.ts";
@@ -8,32 +8,23 @@ import { disposeComponent, disposeTranscript } from "./transcript-dispose.ts";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { createCompactionSummaryMessage } from "../../../core/messages.ts";
 import { compactionUsage } from "./compaction-cost.ts";
-import {
-	BranchSummaryStatusIndicator,
-	CompactionStatusIndicator,
-	OfflineRetryStatusIndicator,
-	RetryStatusIndicator,
-} from "../components/status-indicator.ts";
 import { cooldownWaitText, modelWaitText, offlineRetryText } from "../../../core/agent-session/model-wait.ts";
-import { theme } from "../../../theme/theme.ts";
-import { selectWorkingMessage } from "../state/status-slice.ts";
-import { isEmbeddedStatus } from "./helpers.ts";
+import type { StatusIndicatorRequest } from "../state/status-slice.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { markRetriedAttempt } from "./retried-attempts.ts";
 
 type RetryScheduledEvent = Extract<AgentSessionEvent, { type: "auto_retry_start" | "summarization_retry_scheduled" }>;
 
 /** Offline: one static row with the failure and a countdown. Otherwise the numbered retry spinner. */
-function retryIndicator(host: Pick<RunStateEventsHost, "ui">, event: RetryScheduledEvent) {
-	return event.offlineSince === undefined
-		? new RetryStatusIndicator(host.ui, event.attempt, event.maxAttempts, event.delayMs)
-		: new OfflineRetryStatusIndicator(host.ui, offlineRetryText(event.attempt, event.errorMessage), event.delayMs);
+function retryIndicator(event: RetryScheduledEvent): StatusIndicatorRequest {
+	const { attempt, maxAttempts, delayMs } = event;
+	const offline = event.offlineSince === undefined ? undefined : offlineRetryText(attempt, event.errorMessage);
+	return { kind: "retry", attempt, maxAttempts, delayMs, offline };
 }
 
 /** Interactive-mode members used by the run-state event handler. */
 export type RunStateEventsHost = Pick<
 	InteractiveModeHost,
-	| "activeStatusIndicator"
 	| "addCompactionCostNotice"
 	| "addMessageToChat"
 	| "autoCompactionEscapeHandler"
@@ -41,7 +32,6 @@ export type RunStateEventsHost = Pick<
 	| "checkShutdownRequested"
 	| "clearStatusIndicator"
 	| "defaultEditor"
-	| "editor"
 	| "entriesRenderedByRebuild"
 	| "flushCompactionQueue"
 	| "pendingTools"
@@ -93,7 +83,6 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 				// The tab progress follows the activity light (`bindSessionPhase`): background agents or a wake keep it on.
 				// The working indicator goes either way; the phase line replaces it.
 				host.clearStatusIndicator("working");
-				host.ui.requestRender();
 			}
 			await host.checkShutdownRequested();
 			break;
@@ -104,38 +93,29 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 			host.defaultEditor.onEscape = () => {
 				getApplicationPort(host.session).invoke("abortCompaction");
 			};
-			const colorFn = isEmbeddedStatus(host.editor)
-				? (text: string) =>
-						(host.editor.borderColor ?? theme.getThinkingBorderColor(host.session.thinkingLevel || "off"))(text)
-				: undefined;
-			host.showStatusIndicator(new CompactionStatusIndicator(host.ui, event.reason, colorFn));
-			host.ui.requestRender();
+			host.showStatusIndicator({ kind: "compaction", reason: event.reason });
 			break;
 		}
 
 		case "model_wait": {
 			// The working indicator says the model is quiet, or that the request waits out its provider's rate-limit cool-down;
 			// it returns to its own message when the model answers, the request goes out or it ends.
-			if (host.activeStatusIndicator?.kind === "working") {
-				const cooldownS = event.cooldown && Math.max(1, Math.ceil((event.cooldown.until - Date.now()) / 1000));
-				host.activeStatusIndicator.setMessage(
+			const cooldownS = event.cooldown && Math.max(1, Math.ceil((event.cooldown.until - Date.now()) / 1000));
+			host.uiStore
+				.getState()
+				.setWorkingWait(
 					event.cooldown
 						? `${cooldownWaitText(event.cooldown.provider)} (${cooldownS}s)`
 						: event.idleMs > 0
 							? modelWaitText(event.idleMs)
-							: selectWorkingMessage(host.uiStore.getState()),
+							: undefined,
 				);
-				host.ui.requestRender();
-			}
 			break;
 		}
 
 		case "compaction_progress": {
 			// A retry's countdown stays until its attempt starts; then the new compaction indicator takes the progress.
-			if (host.activeStatusIndicator instanceof CompactionStatusIndicator) {
-				host.activeStatusIndicator.setProgress(event);
-				host.ui.requestRender();
-			}
+			host.uiStore.getState().setCompactionProgress({ elapsedMs: event.elapsedMs, receivedChars: event.receivedChars });
 			break;
 		}
 
@@ -182,7 +162,7 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 		case "auto_retry_start": {
 			// Escape keeps its own handler: the run is still going while it waits to retry, so Escape stops it as any Stop
 			// does (queued messages back to the editor), instead of cancelling only the wait.
-			host.showStatusIndicator(retryIndicator(host, event));
+			host.showStatusIndicator(retryIndicator(event));
 			// The attempt that failed is sent again: its error reads as retried, not as the turn's outcome.
 			markRetriedAttempt(host.chatContainer);
 			host.ui.requestRender();
@@ -204,29 +184,20 @@ export async function handleRunStateEvent(host: RunStateEventsHost, event: Agent
 
 		case "summarization_retry_scheduled": {
 			// The status row carries the failure; a transcript error per attempt is noise, and a final failure reports itself.
-			host.showStatusIndicator(retryIndicator(host, event));
-			host.ui.requestRender();
+			host.showStatusIndicator(retryIndicator(event));
 			break;
 		}
 
 		case "summarization_retry_attempt_start": {
-			host.clearStatusIndicator("retry");
-			if (event.source === "branchSummary") {
-				host.showStatusIndicator(new BranchSummaryStatusIndicator(host.ui));
-			} else {
-				const colorFn = isEmbeddedStatus(host.editor)
-					? (text: string) =>
-							(host.editor.borderColor ?? theme.getThinkingBorderColor(host.session.thinkingLevel || "off"))(text)
-					: undefined;
-				host.showStatusIndicator(new CompactionStatusIndicator(host.ui, event.reason, colorFn));
-			}
-			host.ui.requestRender();
+			// The new attempt's indicator replaces the retry countdown.
+			host.showStatusIndicator(
+				event.source === "branchSummary" ? { kind: "branchSummary" } : { kind: "compaction", reason: event.reason },
+			);
 			break;
 		}
 
 		case "summarization_retry_finished": {
 			host.clearStatusIndicator("retry");
-			host.ui.requestRender();
 			break;
 		}
 		default:

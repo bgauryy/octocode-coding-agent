@@ -213,6 +213,7 @@ export const ThinkingBudgetsSettingsSchema = thinkingBudgetsSettings();
 
 export const MarkdownSettingsSchema = Type.Object({
 	codeBlockIndent: Type.Optional(Type.String({ default: SETTINGS_DEFAULTS.markdown.codeBlockIndent })),
+	// `streaming` is a saved value from before replies streamed as plain text: it loads and acts as `final`.
 	mermaid: Type.Optional(
 		Type.Union([Type.Literal("off"), Type.Literal("final"), Type.Literal("streaming")], {
 			default: SETTINGS_DEFAULTS.markdown.mermaid,

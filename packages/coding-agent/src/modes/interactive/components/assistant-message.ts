@@ -5,7 +5,6 @@ import {
 	type Component,
 	Container,
 	GLYPH,
-	type Markdown,
 	type MarkdownTheme,
 	MouseRegion,
 	Osc133ZoneMarker,
@@ -97,12 +96,18 @@ export class AssistantMessageComponent extends Container {
 		}
 	}
 
-	setHideThinkingBlock(hide: boolean): void {
+	/** Shows or hides the thinking blocks; returns whether a drawn row changed (false without thinking blocks). */
+	setHideThinkingBlock(hide: boolean): boolean {
+		const overridden = this.thinkingVisibilityOverrides.size > 0;
+		const changed = overridden || (hide !== this.hideThinkingBlock && this.hasThinking());
 		this.hideThinkingBlock = hide;
 		this.thinkingVisibilityOverrides.clear();
-		if (this.lastMessage) {
-			this.updateMessage(this.lastMessage);
-		}
+		if (changed && this.lastMessage) this.updateMessage(this.lastMessage);
+		return changed;
+	}
+
+	private hasThinking(): boolean {
+		return this.lastMessage?.content?.some((block) => block.type === "thinking") === true;
 	}
 
 	setOutputPad(padding: number): void {
@@ -138,7 +143,7 @@ export class AssistantMessageComponent extends Container {
 		for (const tool of this.tools.values()) tool.setImageWidthCells(imageWidthCells);
 	}
 
-	private markdownBlock(id: string, text: string, thinking = false): Markdown {
+	private markdownBlock(id: string, text: string, thinking = false): Component {
 		return this.markdown.get(id, text, {
 			streaming: this.isStreaming,
 			thinking,

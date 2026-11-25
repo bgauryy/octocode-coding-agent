@@ -1,7 +1,7 @@
 import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, Model } from "@octocodeai/octocode-ai";
 import { describe, expect, it, vi } from "vitest";
-import { generateSummaryWithUsage, generateTurnPrefixSummary } from "../src/core/compaction/index.ts";
+import { compact, generateSummaryWithUsage, generateTurnPrefixSummary } from "../src/core/compaction/index.ts";
 import { SUMMARY_MAX_OUTPUT_TOKENS } from "../src/core/compaction/settings.ts";
 import { promptSource } from "../src/core/prompt-template.ts";
 
@@ -170,6 +170,48 @@ describe("summarization retries on context overflow", () => {
 		expect(prompts[2]).toContain(DROPPED_NOTE);
 		expect(prompts[3]).toContain("NEWEST");
 		expect(prompts[3]).not.toContain(DROPPED_NOTE);
+	});
+
+	it("tells the reader of the summary how many messages the request left out", async () => {
+		// The whole request and the older part overflow; the older part fits once its oldest quarter is dropped.
+		const overflowTwice = () => {
+			let calls = 0;
+			return vi.fn(async () => ({ result: async () => (++calls <= 2 ? overflow() : response({})) }) as never) as never;
+		};
+		const preparation = {
+			firstKeptEntryId: "k",
+			messagesToSummarize: longHistory,
+			turnPrefixMessages: [],
+			isSplitTurn: false,
+			tokensBefore: 100,
+			settings: { enabled: true, reserveTokens: 16_384, keepRecentTokens: 20_000 },
+			fileOps: { read: new Set<string>(), written: new Set<string>(), edited: new Set<string>() },
+		};
+		const { dropped } = await summarize(overflowTwice(), undefined, longHistory);
+		expect(dropped).toBeGreaterThan(0);
+		const result = await compact(
+			preparation,
+			model,
+			"key",
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			overflowTwice(),
+		);
+		expect(result.summary).toContain(`${dropped} oldest messages`);
+		// A request that fit leaves nothing to report.
+		const fitted = await compact(
+			preparation,
+			model,
+			"key",
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			fakeStream(0).streamFn,
+		);
+		expect(fitted.summary).not.toContain("oldest messages");
 	});
 
 	it("gives up after three trims of the older part and reports the overflow", async () => {

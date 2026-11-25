@@ -2,6 +2,7 @@ import { isNativeModifierPressed, warmNativeModifiers } from "./native-modifiers
 import type { ProgramStatus } from "./program-status.ts";
 import { hasTmuxSession } from "./multiplexer.ts";
 import { StdinBuffer } from "./stdin-buffer.ts";
+import { setScreenOwned } from "./terminal/screen-owner.ts";
 import { POP_TITLE, WindowTitle } from "./terminal/window-title.ts";
 import { BracketedPasteRearm, DISABLE_BRACKETED_PASTE, ENABLE_BRACKETED_PASTE } from "./terminal/bracketed-paste.ts";
 import { DEVICE_ATTRIBUTES_QUERY } from "./terminal/device-attributes.ts";
@@ -113,6 +114,7 @@ export class ProcessTerminal implements Terminal {
 	}
 
 	start(onInput: (data: string) => void, onResize: () => void, onCapabilitiesChange?: () => void): void {
+		setScreenOwned(true);
 		this.inputHandler = onInput;
 		this.resizeHandler = () => {
 			this.bracketedPaste.activity();
@@ -267,6 +269,7 @@ export class ProcessTerminal implements Terminal {
 
 	/** Undo the modes start() turned on when the process ends without stop(): the same synchronous writes stop() makes. */
 	private restoreOnExit(): void {
+		setScreenOwned(false);
 		const write = (data: string) => this.output.writeOnExit(data);
 		this.progress.clear(write, true);
 		this.programStatusReporter.restoreOnExit(write);
@@ -275,6 +278,7 @@ export class ProcessTerminal implements Terminal {
 	}
 
 	stop(): void {
+		setScreenOwned(false);
 		clearTimeout(this.nativeShiftWarmup);
 		this.graphicsProbe.stop();
 		this.capabilitiesHandler = undefined;

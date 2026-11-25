@@ -425,3 +425,49 @@ describe.runIf(posix)("a user message queued during a foreground command", () =>
 		}
 	});
 });
+
+describe.runIf(posix)("a message waiting while a foreground call runs", () => {
+	const withMessageAfter = (ms: number | undefined) => {
+		const made = setup({});
+		const start = Date.now();
+		const ctx = { ...made.ctx, hasPendingMessages: () => ms !== undefined && Date.now() - start >= ms };
+		const run = async (params: Record<string, unknown>) => {
+			try {
+				return {
+					text: (await made.tool.execute("t", params, undefined, undefined, ctx)).content[0].text,
+				};
+			} catch (error) {
+				return { text: (error as Error).message };
+			} finally {
+				await made.jobs.stopAll("session end");
+			}
+		};
+		return { ...made, run, elapsed: () => Date.now() - start };
+	};
+
+	it("ends a sleep at once and says the sleep did not complete", async () => {
+		const { run, elapsed } = withMessageAfter(100);
+		const { text } = await run({ command: "sleep 4", reason: "wait" });
+		expect(elapsed()).toBeLessThan(1500);
+		expect(text).toMatch(/message is waiting for you.*sleep did not complete/s);
+	});
+
+	it("lets a sleep run to its end when no message waits", async () => {
+		const { run, elapsed } = withMessageAfter(undefined);
+		const { text } = await run({ command: "sleep 1.2; echo finished", reason: "wait" });
+		expect(elapsed()).toBeGreaterThanOrEqual(1200);
+		expect(text).toContain("finished");
+		expect(text).not.toContain("message is waiting");
+	});
+
+	it("moves other commands to the background, and stops one with its own timeout at the deadline", async () => {
+		const moved = withMessageAfter(100);
+		const first = await moved.run({ command: "echo a; sleep 6", reason: "work" });
+		expect(first.text).toMatch(/moved to the background as bash-1/);
+		const timed = withMessageAfter(undefined);
+		const second = await timed.run({ command: "echo a; sleep 6", timeout: 1, reason: "work" });
+		expect(timed.elapsed()).toBeLessThan(4000);
+		expect(second.text).toMatch(/timed out after 1s/i);
+		expect(second.text).not.toContain("message is waiting");
+	});
+});

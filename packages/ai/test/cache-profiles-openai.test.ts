@@ -130,3 +130,14 @@ describe("Bedrock mantle Qwen (openai-completions route)", () => {
 		expect(usage.input).toBe(360);
 	});
 });
+
+describe("Azure GPT-6 Astra without explicit mode", () => {
+	it("resolves to the profile that describes what is sent: key plus 30m instruction breakpoints, no history marker", () => {
+		const profile = responsesCacheProfile(getResponsesCompat(getBuiltinModel("azure", "gpt-6-astra") as never));
+		expect(profile).toBe(CACHE_PROFILES.azureInstructionBreakpoints);
+		expect(profile.ttl).toEqual({ default: "30m" });
+		expect(profile.markers).toEqual({ tools: false, instructions: true, history: false });
+		// The request-body half (breakpoints without a ttl key, key, no prompt_cache_options) is asserted in
+		// cache-edge-openai.test.ts "Azure gpt-6-astra: 30m instruction breakpoints in implicit mode".
+	});
+});

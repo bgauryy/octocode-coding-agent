@@ -20,8 +20,6 @@ import { BROWSER_SERVER, DESKTOP_SERVER, mcpNamespace } from "@octocodeai/octoco
 import { browserMcpTool } from "@octocodeai/octocode-common/browser-mcp";
 import { type AgentProfile, profileSelectsBrowser, profileSelectsServer } from "./subagents/profiles.ts";
 import { currentRouting, ROUTING_NOTICE_ID, RoutingWatch } from "./subagents/routing-watch.ts";
-import { agentCall } from "./child-sessions/agent-call.ts";
-import { entryMessage } from "./shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 
 /**
@@ -65,11 +63,6 @@ export function registerTurnSetup(
 ): { reset(): void } {
 	let prompt: Record<string, string> | undefined;
 	let promptKey: string | undefined;
-	// The `children` section (how to run children and use their reports) is sent from the session's first `agent` call
-	// that starts a child or messages an agent, and stays from then on: `delegated` never turns false within a session.
-	let delegated = false;
-	let entriesRead = false;
-	let policyInputs: (Parameters<typeof octocodePromptSections>[0] & { childStarted: boolean }) | undefined;
 	const role = options.isSubagent ? readRolePrompt() : undefined;
 	const readOnly = options.isSubagent && envFlag(process.env, READ_ONLY_ENV);
 	const lean = options.isSubagent && envFlag(process.env, LEAN_ENV);
@@ -124,11 +117,6 @@ export function registerTurnSetup(
 		const desktopControl = ownProfile?.permissions?.includes("desktop.control") === true;
 		// The main session names no desktop tool of its own, so it delegates to the profiles that select the desktop server.
 		const desktopMcp = selected.some((name) => name.startsWith(`${mcpNamespace(DESKTOP_SERVER)}__`));
-		// A resumed, reloaded or forked session: its entries say whether it delegated before this process. Read once.
-		if (!options.isSubagent && !delegated && !entriesRead) {
-			entriesRead = true;
-			delegated = hasDelegated(ctx.sessionManager?.getEntries() ?? []);
-		}
 		const inputs = {
 			research,
 			profiles: profiles.map(({ name, description }) => ({ name, description, model: routes?.profiles[name] })),
@@ -163,10 +151,8 @@ export function registerTurnSetup(
 			canMcp: canReachMcp(selected),
 			browserControl,
 			desktopControl,
-			childStarted: delegated,
 		};
 		const leanNow = lean || leanMain;
-		policyInputs = leanNow ? undefined : inputs;
 		const key = JSON.stringify([leanNow, inputs]);
 		if (prompt === undefined || key !== promptKey) {
 			promptKey = key;
@@ -211,21 +197,6 @@ export function registerTurnSetup(
 		return notice ? { message: { customType: ROUTING_NOTICE_ID, content: notice, display: false } } : undefined;
 	});
 
-	// The call is seen before it runs, so the rules are in the request that reads its result: a foreground child's report
-	// arrives as that result. A refused call counts too; the section is then early, never missing.
-	api.bus.on("tool_call", (event) => {
-		if (!options.isSubagent && event.toolName === "agent" && waitsOnAnAgent(event.input)) delegated = true;
-	});
-
-	// The next request of the same run: before_agent_start runs only when a run starts, and the first child starts inside one.
-	api.bus.on("turn_prompt", (event) => {
-		if (!delegated || policyInputs === undefined || policyInputs.childStarted) return;
-		policyInputs = { ...policyInputs, childStarted: true };
-		promptKey = JSON.stringify(policyInputs);
-		prompt = octocodePromptSections(policyInputs);
-		if (prompt.children) event.systemPromptOptions.sections.children = prompt.children;
-	});
-
 	api.bus.on("session_compact", () => routing.compacted());
 
 	// A change made during a run (a command while the agent works) reaches it after the current turn, not at the next prompt.
@@ -245,9 +216,6 @@ export function registerTurnSetup(
 		reset() {
 			prompt = undefined;
 			promptKey = undefined;
-			policyInputs = undefined;
-			delegated = false;
-			entriesRead = false;
 			routing.reset();
 		},
 	};
@@ -260,24 +228,6 @@ export function registerTurnSetup(
  */
 const ownsPrompt = (ctx: Pick<FeatureContext, "model" | "modelRegistry">): boolean =>
 	ctx.model !== undefined && ctx.modelRegistry.getProviderKind(ctx.model.provider) === "CLI";
-
-/** Whether an `agent` call starts something the session then waits on: a child, or a message to a peer or an outside agent. Only `coordinate` does not. */
-const waitsOnAnAgent = (args: unknown): boolean => agentCall(args).type !== "coordinate";
-
-/** Whether the session's entries hold such a call. */
-function hasDelegated(entries: readonly unknown[]): boolean {
-	return entries.some((entry) => {
-		const message = entryMessage(entry);
-		return (
-			isRecord(message) &&
-			message.role === "assistant" &&
-			Array.isArray(message.content) &&
-			message.content.some(
-				(part) => isRecord(part) && part.type === "toolCall" && part.name === "agent" && waitsOnAnAgent(part.arguments),
-			)
-		);
-	});
-}
 
 /** Whether this session can reach MCP at all: the native `mcp` tool or declared server tools. */
 const canReachMcp = (selected: readonly string[]): boolean =>

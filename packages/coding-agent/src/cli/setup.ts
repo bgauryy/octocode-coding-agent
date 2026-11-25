@@ -1,4 +1,5 @@
 import { applyNoColor } from "./no-color.ts";
+import { applyNoInput } from "./no-input.ts";
 import { configureHttpDispatcher } from "../core/http-dispatcher.ts";
 import { initialTitle, setProcessTitle } from "../octocode/shared/process-title.ts";
 import { dropForeignChildEnv } from "../octocode/subagents/process/child-env.ts";
@@ -12,6 +13,7 @@ export function setupCli(argv: readonly string[] = []): void {
 	process.env.AI_AGENT = "octocode";
 	process.emitWarning = () => {};
 	applyNoColor(argv);
+	applyNoInput(argv);
 
 	// Configure undici before provider SDKs issue requests. Settings are applied
 	// once SettingsManager has loaded global/project configuration.

@@ -27,8 +27,8 @@ import { handleRightClickPaste } from "../src/modes/interactive/interactive-mode
 import { handleCopyCommand } from "../src/modes/interactive/interactive-mode/session-commands.ts";
 import { renderSessionEntries } from "../src/modes/interactive/interactive-mode/session-render.ts";
 import {
-	clearStatusIndicator,
-	showStatusIndicator,
+	mountStatusIndicator,
+	unmountStatusIndicator,
 } from "../src/modes/interactive/interactive-mode/status-indicators.ts";
 import { stopInteractiveTui, switchTuiMode } from "../src/modes/interactive/interactive-mode/view-state.ts";
 import { initTheme } from "../src/theme/theme.ts";
@@ -490,7 +490,7 @@ describe("clear-on-shrink status spacing", () => {
 		];
 		try {
 			for (const indicator of indicators) {
-				showStatusIndicator(createFakeHost(context), indicator);
+				mountStatusIndicator(createFakeHost(context), indicator);
 				expect(context.activeStatusIndicator).toBe(indicator);
 				// Embedded exactly when the status row does not hold it.
 				expect(context.statusContainer.children.includes(indicator)).toBe(!embedWorkingStatus);
@@ -522,7 +522,7 @@ describe("clear-on-shrink status spacing", () => {
 				idleStatus: new Text("", 0, 0),
 			};
 
-			clearStatusIndicator(createFakeHost(context));
+			unmountStatusIndicator(createFakeHost(context));
 
 			expect(dispose).toHaveBeenCalledOnce();
 			expect(editor.setWorkingStatusIndicator).toHaveBeenCalledWith(undefined);
@@ -537,7 +537,7 @@ describe("clear-on-shrink status spacing", () => {
 		] as const) {
 			const defaultEditor: StatusEditor = { embedWorkingStatus: true, setWorkingStatusIndicator: vi.fn() };
 			const customEditor = { embedWorkingStatus: false, setWorkingStatusIndicator: vi.fn() };
-			// Standalone: the indicator has the status row to itself, as `showStatusIndicator` leaves it.
+			// Standalone: the indicator has the status row to itself, as `mountStatusIndicator` leaves it.
 			const indicator = Object.assign(new Text("", 0, 0), { kind: "working" as const, dispose: vi.fn() });
 			const statusContainer = new Container();
 			statusContainer.addChild(indicator);
@@ -551,7 +551,7 @@ describe("clear-on-shrink status spacing", () => {
 				idleStatus: new Text("", 0, 0),
 			};
 
-			clearStatusIndicator(createFakeHost(context));
+			unmountStatusIndicator(createFakeHost(context));
 
 			expect(defaultEditor.setWorkingStatusIndicator).toHaveBeenCalledWith(undefined);
 			expect(customEditor.setWorkingStatusIndicator).not.toHaveBeenCalled();

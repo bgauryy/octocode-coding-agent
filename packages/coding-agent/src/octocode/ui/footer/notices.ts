@@ -1,5 +1,6 @@
 import { fallbackNotice } from "../../../core/agent-session/fallback-switch.ts";
 import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
+import { defaultedModelNotice } from "../../../core/provider-composer/models.ts";
 import { notify } from "../../shared/commands.ts";
 import { modelLookup, unpricedModel } from "../../shared/util.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -71,6 +72,26 @@ export function registerReasoningNotice(api: FeatureSetup): void {
 			`${key} does not declare reasoning in models.json, so Octocode never asks it to think. ${twin.provider}/${twin.id} declares it: add ${fields} to its entry.`,
 			"warning",
 		);
+	};
+	api.bus.on("session_start", async (event, ctx) => {
+		warned.clear();
+		await check(event, ctx);
+	});
+	api.bus.on("model_select", check);
+}
+
+/** Says once per model and session which fields a custom model got by default (its context window above all), at the site that assumed them. */
+export function registerDefaultedModelNotice(api: FeatureSetup): void {
+	const warned = new Set<string>();
+	const check = async (_event: unknown, ctx: FeatureContext) => {
+		const model = ctx.model;
+		if (!ctx.hasUI || !model) return;
+		const key = `${model.provider}/${model.id}`;
+		if (warned.has(key)) return;
+		const text = defaultedModelNotice(model.provider, model.id);
+		if (!text) return;
+		warned.add(key);
+		notify(ctx.ui, text, "warning");
 	};
 	api.bus.on("session_start", async (event, ctx) => {
 		warned.clear();

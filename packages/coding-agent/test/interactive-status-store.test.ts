@@ -7,6 +7,8 @@ import {
 	showManagedToolStatus,
 	showWorkingStatusIndicator,
 } from "../src/modes/interactive/interactive-mode/status-indicators.ts";
+import type { StatusIndicator } from "../src/modes/interactive/components/status-indicator.ts";
+import { bindStatusIndicator } from "../src/modes/interactive/state/bind-status.ts";
 import { selectWorkingIndicator, selectWorkingMessage } from "../src/modes/interactive/state/status-slice.ts";
 import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { initTheme } from "../src/theme/theme.ts";
@@ -16,17 +18,19 @@ import { createFakeHost } from "./interactive-mode-host.ts";
 function setup() {
 	const host = createFakeHost({
 		uiStore: createUiStore(),
-		ui: { requestRender: vi.fn() } as unknown as TUI,
+		ui: { requestRender: vi.fn(), getClearOnShrink: () => false } as unknown as TUI,
 		chatContainer: new Container(),
 		statusContainer: new Container(),
 		editor: {},
 		defaultEditor: { setWorkingStatusIndicator: vi.fn() },
 		session: { thinkingLevel: "off" },
-		activeStatusIndicator: undefined,
+		activeStatusIndicator: undefined as StatusIndicator | undefined,
 		options: { tuiMode: "main-screen" },
 		lastStatusSpacer: undefined,
 		lastStatusText: undefined,
 	});
+	// The mode's host mounts indicators through this binder for its lifetime.
+	bindStatusIndicator(host);
 	return host;
 }
 

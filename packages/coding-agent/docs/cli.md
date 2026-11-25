@@ -118,17 +118,19 @@ flowchart TD
 
 ### Resources and interface
 
-| Flag                                                 | Does                                                            |
-| ---------------------------------------------------- | --------------------------------------------------------------- |
-| `--skill <path>` / `--no-skills`                     | Load a skill file or directory (repeatable) / disable skills    |
-| `--prompt-template <path>` / `--no-prompt-templates` | Same for [prompt templates](prompt-templates.md)                |
-| `--theme <path>` / `--no-themes`                     | Same for [themes](themes.md)                                    |
-| `--use-theme <name[/name]>`                          | Initial theme for this run                                      |
-| `--no-context-files`                                 | Skip `AGENTS.md` discovery                                      |
-| `--tui-mode fullscreen\|regular`                     | Terminal UI mode (default `fullscreen`)                         |
-| `--no-color`                                         | Turn off ANSI color, like `NO_COLOR` (also `OCTOCODE_NO_COLOR`) |
-| `--verbose`                                          | Verbose startup, overriding `quietStartup`                      |
-| `--help`, `-h` / `--version`, `-v`                   | Help / version                                                  |
+| Flag                                                 | Does                                                                                                                                                    |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--skill <path>` / `--no-skills`                     | Load a skill file or directory (repeatable) / disable skills                                                                                            |
+| `--prompt-template <path>` / `--no-prompt-templates` | Same for [prompt templates](prompt-templates.md)                                                                                                        |
+| `--theme <path>` / `--no-themes`                     | Same for [themes](themes.md)                                                                                                                            |
+| `--use-theme <name[/name]>`                          | Initial theme for this run                                                                                                                              |
+| `--no-context-files`                                 | Skip `AGENTS.md` discovery                                                                                                                              |
+| `--tui-mode fullscreen\|regular`                     | Terminal UI mode (default `fullscreen`)                                                                                                                 |
+| `--no-color`                                         | Turn off ANSI color, like `NO_COLOR` (also `OCTOCODE_NO_COLOR`)                                                                                         |
+| `--color`                                            | Keep ANSI color despite `NO_COLOR`, like `FORCE_COLOR=1`; `--no-color` wins when both are given                                                         |
+| `--no-input`                                         | Never prompt: runs in print mode, and a question that would wait for an answer (trust, session picker, confirmations) exits with code 1 and a message; also `OCTOCODE_NO_INPUT` |
+| `--verbose`                                          | Verbose startup, overriding `quietStartup`                                                                                                              |
+| `--help`, `-h` / `--version`, `-v`                   | Help / version                                                                                                                                          |
 
 ### Headless
 

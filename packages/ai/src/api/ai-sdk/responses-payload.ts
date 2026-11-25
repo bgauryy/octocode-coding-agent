@@ -39,6 +39,7 @@ export function responsesPayload(model: ResponsesModel, context: TranscriptConte
 				(value) => value && value.content !== undefined && ["system", "developer"].includes(value.role),
 			);
 			if (item) {
+				// No workspace boundary: explicit mode uses two instruction blocks plus the implicit breakpoint (three write slots).
 				const blocks = splitSystemMessageIntoBlocks(
 					initial,
 					options.instructionCacheBoundary,

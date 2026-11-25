@@ -9,10 +9,18 @@ import type { ProcessRow } from "./process-table.ts";
  */
 const DESCENDANT_POLL_MS = PS_CACHE_MS + 100;
 
+/** The pace after `hurry`: a helper forked while the CLI winds down is read before the CLI exits and reparents it. */
+const HURRY_POLL_MS = 150;
+
 /** The descendants of one process seen since the poller started. */
 export interface DescendantPoller {
 	/** One reading now, without stopping; every descendant seen so far. */
 	snapshot(): Promise<ProcessRow[]>;
+	/**
+	 * After the result: the CLI forks its last helpers while it winds down, so readings turn fresh and frequent until
+	 * `stop`. Idempotent.
+	 */
+	hurry(): void;
 	/** Stops polling, takes one last reading, and returns every descendant seen, each once. */
 	stop(): Promise<ProcessRow[]>;
 }
@@ -42,7 +50,20 @@ export function pollDescendants(pid: number | undefined, intervalMs = DESCENDANT
 		},
 		{ everyMs: intervalMs },
 	);
+	let stopHurry: (() => void) | undefined;
+	let hurryReading = false;
+	const readHurry = () => {
+		if (stopped || hurryReading) return;
+		hurryReading = true;
+		void read(true).finally(() => {
+			hurryReading = false;
+		});
+	};
 	return {
+		hurry() {
+			if (stopped || stopHurry) return;
+			stopHurry = sharedClock.subscribe(readHurry, { everyMs: HURRY_POLL_MS });
+		},
 		async snapshot() {
 			await read(true);
 			return [...seen.values()];
@@ -50,6 +71,7 @@ export function pollDescendants(pid: number | undefined, intervalMs = DESCENDANT
 		async stop() {
 			stopped = true;
 			stopTimer();
+			stopHurry?.();
 			await read(true);
 			return [...seen.values()];
 		},

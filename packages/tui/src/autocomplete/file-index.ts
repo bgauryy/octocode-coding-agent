@@ -30,6 +30,8 @@ interface BuiltIndex {
 	entries: IndexedPath[];
 	truncated: boolean;
 	source: "fd" | "git" | "walk";
+	/** The fd the build was given: a fallback index is rebuilt for a newly available fd, not again for the one that failed. */
+	triedFd?: string | null;
 }
 
 interface CacheSlot {
@@ -112,6 +114,7 @@ async function build(cwd: string, fdPath: string | null, slot: CacheSlot): Promi
 function startBuild(cwd: string, fdPath: string | null, slot: CacheSlot): Promise<BuiltIndex> {
 	const running = build(cwd, fdPath, slot).then(
 		(built) => {
+			built.triedFd = fdPath;
 			slot.built = built;
 			slot.builtAt = Date.now();
 			slot.building = null;
@@ -147,7 +150,8 @@ export async function getFileIndex(cwd: string, fdPath: string | null): Promise<
 
 	const stale =
 		slot.built !== null &&
-		(Date.now() - slot.builtAt > FILE_INDEX_REFRESH_MS || (fdPath !== null && slot.built.source !== "fd"));
+		(Date.now() - slot.builtAt > FILE_INDEX_REFRESH_MS ||
+			(fdPath !== null && slot.built.source !== "fd" && slot.built.triedFd !== fdPath));
 	if (slot.built && stale && !slot.building) {
 		// The refresh is fire-and-forget; a failed one keeps the old index and the next @ retries.
 		startBuild(cwd, fdPath, slot).catch(() => {});

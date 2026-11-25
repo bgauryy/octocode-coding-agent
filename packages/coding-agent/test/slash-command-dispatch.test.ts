@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { BUILTIN_SLASH_COMMANDS, getBuiltinCommand, parseSlashCommand } from "../src/core/slash-commands.ts";
 import { CommandSelectorComponent } from "../src/modes/interactive/components/command-selector.ts";
@@ -358,7 +359,8 @@ describe("command picker", () => {
 	it("finds a command by its description and inserts it without executing it", () => {
 		const choose = vi.fn();
 		const picker = new CommandSelectorComponent("Commands", BUILTIN_SLASH_COMMANDS, choose, vi.fn(), "Report a bug");
-		expect(picker.render(120).join("\n")).toContain("/bug");
+		// The selected row is colored cell by cell: compare the visible text.
+		expect(stripVTControlCharacters(picker.render(120).join("\n"))).toContain("/bug");
 		expect(choose).not.toHaveBeenCalled();
 		picker.handleInput("\r");
 		expect(choose).toHaveBeenCalledWith("bug");

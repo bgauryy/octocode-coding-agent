@@ -142,7 +142,7 @@ Transcript rows follow one shape: a state mark, a one-word title, the key argume
 | Images        | Inline when the terminal supports them.                                                                                        | `terminal.showImages`, `terminal.images`, `OCTOCODE_IMAGE_PROTOCOL`; see [terminal images](configuration.md#terminal-images) |
 | Notifications | Desktop notice when an answer is ready, a run fails or Octocode asks you something.                                            | `OCTOCODE_NOTIFY=off\|unfocused\|always`, `OCTOCODE_NOTIFY_METHOD`; see [tmux](tmux.md#notifications)                        |
 | Motion        | Spinners and shimmer freeze; elapsed times keep ticking.                                                                       | `terminal.reduceMotion`, `OCTOCODE_REDUCE_MOTION=1`                                                                          |
-| Mermaid       | Mermaid blocks in replies draw as Unicode diagrams; the agent is told so and writes them only while this is on.                | `markdown.mermaid` (`off`, `final`, `streaming`)                                                                             |
+| Mermaid       | Mermaid blocks in replies draw as Unicode diagrams; the agent is told so and writes them only while this is on.                | `markdown.mermaid` (`off`, `final`)                                                                                          |
 
 All variables: [environment variables](environment-variables.md).
 

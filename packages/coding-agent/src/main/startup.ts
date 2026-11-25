@@ -3,6 +3,7 @@ import { cliStyle } from "../utils/cli-style.ts";
 import type { Args, Mode } from "../cli/args.ts";
 import { processFileArguments } from "../cli/file-processor.ts";
 import { buildInitialMessage } from "../cli/initial-message.ts";
+import { isInputDisabled } from "../cli/no-input.ts";
 import { showStartupSelector } from "../cli/startup-ui.ts";
 import type { AgentSessionRuntimeDiagnostic } from "../core/agent-session-services.ts";
 import { formatMissingSessionCwdPrompt, type SessionCwdIssue } from "../core/session-cwd.ts";
@@ -70,14 +71,20 @@ export function requirePrompt(appMode: AppMode, initialMessage: string | undefin
 	process.exit(2);
 }
 
-export function resolveAppMode(parsed: Args, stdinIsTTY: boolean, stdoutIsTTY: boolean): AppMode {
+/** The run's mode. `--no-input` runs in print mode even on a terminal: the interactive app would wait for typed input. */
+export function resolveAppMode(
+	parsed: Args,
+	stdinIsTTY: boolean,
+	stdoutIsTTY: boolean,
+	env: NodeJS.ProcessEnv = process.env,
+): AppMode {
 	if (parsed.mode === "rpc") {
 		return "rpc";
 	}
 	if (parsed.mode === "json") {
 		return "json";
 	}
-	if (parsed.print || !stdinIsTTY || !stdoutIsTTY) {
+	if (parsed.print || !stdinIsTTY || !stdoutIsTTY || isInputDisabled(env)) {
 		return "print";
 	}
 	return "interactive";

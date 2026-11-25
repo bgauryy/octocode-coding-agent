@@ -190,9 +190,12 @@ export function streamSdk(
 						);
 					else if (mapping?.usage) output.usage = mapping.usage(part.totalUsage);
 					else applySdkUsage(output, part.totalUsage, model);
+					// Some compatible servers end a tool-call turn with `stop`; the turn still waits on its calls.
 					output.stopReason =
 						part.finishReason === "stop"
-							? "stop"
+							? output.content.some((block) => block.type === "toolCall")
+								? "toolUse"
+								: "stop"
 							: part.finishReason === "length"
 								? "length"
 								: part.finishReason === "tool-calls"

@@ -1,3 +1,4 @@
+import { isColorForced } from "@octocodeai/octocode-common/force-color";
 import { linearSrgbToRgb, okhslToRgb, oklabToLinearSrgb, rgbToOkhsl, rgbToOklab } from "./oklab.ts";
 import { ANSI16_RGB, ansi16Code, rgbToAnsi16 } from "./ansi16.ts";
 import type { RgbColor } from "./terminal-colors.ts";
@@ -283,12 +284,15 @@ function rgbToAnsi256(color: RgbColor): number {
 	return cubeIndex;
 }
 
+export { isColorForced };
+
 /**
  * Whether the environment asks for no ANSI color: a non-empty `NO_COLOR` (https://no-color.org) or `OCTOCODE_NO_COLOR`
- * (`--no-color` sets it), or `TERM=dumb`.
+ * (`--no-color` sets it), or `TERM=dumb`, unless `FORCE_COLOR` forces color on (`--color` sets it).
  * Bold, dim, underline and inverse stay allowed, and motion is a separate choice.
  */
 export function isColorDisabled(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+	if (isColorForced(env)) return false;
 	return Boolean(env.NO_COLOR) || Boolean(env.OCTOCODE_NO_COLOR) || env.TERM?.toLowerCase() === "dumb";
 }
 

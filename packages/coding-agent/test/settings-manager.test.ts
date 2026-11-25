@@ -739,23 +739,29 @@ describe("SettingsManager", () => {
 	});
 
 	describe("markdown.mermaid", () => {
-		it("defaults to streaming and persists rendering modes", async () => {
+		it("defaults to final and persists rendering modes", async () => {
 			const manager = SettingsManager.create(projectDir, agentDir);
 
-			expect(manager.getMermaidRenderingMode()).toBe("streaming");
+			expect(manager.getMermaidRenderingMode()).toBe("final");
 
-			manager.setMermaidRenderingMode("final");
+			manager.setMermaidRenderingMode("off");
 			await manager.flush();
 
-			expect(manager.getMermaidRenderingMode()).toBe("final");
+			expect(manager.getMermaidRenderingMode()).toBe("off");
 			const savedSettings = JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf-8"));
-			expect(savedSettings.markdown.mermaid).toBe("final");
+			expect(savedSettings.markdown.mermaid).toBe("off");
 		});
 
-		it("falls back to streaming for unsupported values", () => {
+		it("falls back to final for unsupported values", () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ markdown: { mermaid: "sometimes" } }));
 
-			expect(SettingsManager.create(projectDir, agentDir).getMermaidRenderingMode()).toBe("streaming");
+			expect(SettingsManager.create(projectDir, agentDir).getMermaidRenderingMode()).toBe("final");
+		});
+
+		it("reads a saved streaming value as final", () => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ markdown: { mermaid: "streaming" } }));
+
+			expect(SettingsManager.create(projectDir, agentDir).getMermaidRenderingMode()).toBe("final");
 		});
 	});
 

@@ -101,8 +101,10 @@ describe("dialog contract: trust and setup", () => {
 		expect(lines.join("\n")).not.toContain("skip setup");
 		setup.handleInput("2");
 		expect(onThemePreview).toHaveBeenLastCalledWith("dark");
+		// k is the vim alias of up in a list without a search line: it moves and previews the theme it lands on.
 		setup.handleInput("k");
-		expect(onThemePreview).toHaveBeenCalledTimes(1);
+		expect(onThemePreview).toHaveBeenCalledTimes(2);
+		expect(onThemePreview).toHaveBeenLastCalledWith("system");
 		clickOn(setup, "Light");
 		expect(onThemePreview).toHaveBeenLastCalledWith("light");
 		clickOn(setup, "Light");

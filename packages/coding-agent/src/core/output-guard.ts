@@ -1,3 +1,5 @@
+import { formatWithOptions } from "node:util";
+
 interface StdoutTakeoverState {
 	rawStdoutWrite: (chunk: string, callback?: (error?: Error | null) => void) => boolean;
 	rawStderrWrite: (chunk: string, callback?: (error?: Error | null) => void) => boolean;
@@ -159,4 +161,34 @@ export async function flushRawStdout(): Promise<void> {
 		if (!rawStdoutFailureHandler) throw error;
 		rawStdoutFailureHandler(error as Error);
 	}
+}
+
+const CONSOLE_METHODS = ["log", "info", "debug", "warn", "error"] as const;
+type ConsoleMethod = (typeof CONSOLE_METHODS)[number];
+
+/**
+ * Sends `console.log/info/debug/warn/error` to `sink` while `isScreenOwned()` is true, so a stray line cannot land in
+ * the middle of a fullscreen frame; at any other moment (the terminal stopped for a suspend, a crash report or the exit)
+ * the call reaches the real console. Returns the function that puts the real methods back.
+ */
+export function captureConsole(
+	sink: (level: ConsoleMethod, text: string) => void,
+	isScreenOwned: () => boolean,
+): () => void {
+	const original = {} as Record<ConsoleMethod, (...args: unknown[]) => void>;
+	const installed = {} as Record<ConsoleMethod, (...args: unknown[]) => void>;
+	for (const level of CONSOLE_METHODS) {
+		const real = console[level].bind(console) as (...args: unknown[]) => void;
+		original[level] = console[level];
+		installed[level] = (...args: unknown[]) => {
+			if (isScreenOwned()) sink(level, formatWithOptions({ colors: false }, ...args));
+			else real(...args);
+		};
+		console[level] = installed[level];
+	}
+	return () => {
+		for (const level of CONSOLE_METHODS) {
+			if (console[level] === installed[level]) console[level] = original[level];
+		}
+	};
 }

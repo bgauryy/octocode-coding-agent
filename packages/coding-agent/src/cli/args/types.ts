@@ -67,6 +67,10 @@ export interface Args {
 	verbose?: boolean;
 	/** `--no-color`: no ANSI color (the process already runs with `OCTOCODE_NO_COLOR` set). */
 	noColor?: boolean;
+	/** `--color`: keep ANSI color despite `NO_COLOR` (the process already runs with `FORCE_COLOR` set). */
+	color?: boolean;
+	/** `--no-input`: no prompt waits for an answer (the process already runs with `OCTOCODE_NO_INPUT` set). */
+	noInput?: boolean;
 	/** `--trust`: record the user's grant for the working folder, then run. */
 	trust?: boolean;
 	messages: string[];

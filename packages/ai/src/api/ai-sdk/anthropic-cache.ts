@@ -8,6 +8,7 @@ import { CACHE_PROFILES, countHistoryTurns, planCacheMarkers } from "../../utils
 import { splitSystemMessageIntoBlocks } from "../../utils/instruction-split.ts";
 import { getInitialSystemMessage } from "../../utils/transcript.ts";
 import { sanitizeSurrogates } from "../../utils/sanitize-unicode.ts";
+import { modelKey, type RequestDiagnostics } from "./request-diagnostics.ts";
 
 type Control = { type: "ephemeral"; ttl?: "1h" | "5m" };
 function mark(target: { providerOptions?: ProviderOptions }, control: Control): void {
@@ -34,9 +35,11 @@ export function anthropicSdkCache(
 	options: AnthropicOptions,
 	messages: ModelMessage[],
 	tools: ToolSet,
+	diagnostics?: RequestDiagnostics,
 ): boolean {
 	const compat = getAnthropicCompat(model);
-	const { instructions, history } = getLayeredCacheControl(model, resolveLayeredCacheRetention(options), options.env);
+	const requested = resolveLayeredCacheRetention(options);
+	const { instructions, history } = getLayeredCacheControl(model, requested, options.env);
 	const initial = getInitialSystemMessage(context.messages);
 	const split =
 		instructions && initial
@@ -61,6 +64,22 @@ export function anthropicSdkCache(
 		tools: compat.supportsCacheControlOnTools ? names.length : 0,
 		toolBoundary: sharedEnd > 0,
 	});
+	const downgraded =
+		!compat.supportsLongCacheRetention &&
+		((requested.instructions === "long" && instructions !== undefined && (plan.tool || plan.blocks.some(Boolean))) ||
+			(requested.history === "long" && history !== undefined && plan.history > 0));
+	if (downgraded)
+		// The marker still goes out, at the 5-minute tier: only the lifetime is lost.
+		diagnostics?.report(
+			"cache_retention_downgraded",
+			{
+				requested: "1h",
+				sent: "5m",
+				model: model.id,
+				fix: "This host is not verified for 1-hour cache entries. If it accepts them, set the model's compat.supportsLongCacheRetention to true.",
+			},
+			modelKey(model),
+		);
 	const ttls = new Set<string>();
 	const markWith = (target: { providerOptions?: ProviderOptions }, control: Control) => {
 		mark(target, control);

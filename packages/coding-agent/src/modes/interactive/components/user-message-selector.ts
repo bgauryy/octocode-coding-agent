@@ -1,5 +1,6 @@
 import { HintBar, keyText } from "../../../theme/theme-tui-helpers.ts";
 import { Container, ListView, Spacer, Text, truncateToWidth } from "@octocodeai/octocode-tui";
+import { selectedText } from "../../../theme/gradients.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { listRows, listTheme, syncEmpty, typeKeepingSelection } from "./list-kit.ts";
@@ -38,7 +39,7 @@ export class UserMessageSelectorComponent extends Container {
 			row: (row, { selected, width }) => {
 				const text = truncateToWidth(plainText(row.text), width, "…");
 				return [
-					selected ? theme.fg("accent", theme.bold(text)) : theme.fg("text", text),
+					selected ? theme.bold(selectedText(text)) : theme.fg("text", text),
 					theme.fg("muted", `Message ${row.position} of ${total}`),
 				];
 			},

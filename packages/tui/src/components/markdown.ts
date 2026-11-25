@@ -5,7 +5,7 @@ import { renderChanged, trackRenderChanges } from "../tui/render-signal.ts";
 import { wrapTextWithAnsi } from "../utils/wrap.ts";
 import { fitHorizontalPadding, frameBlankRow, frameContentRows } from "../utils.ts";
 import { renderToken } from "./markdown/blocks.ts";
-import { type LexedMarkdown, lexMarkdown } from "./markdown/incremental.ts";
+import { markdownParser, trimPartialClosingFences } from "./markdown/parser.ts";
 import type {
 	DefaultTextStyle,
 	InlineStyleContext,
@@ -15,14 +15,11 @@ import type {
 } from "./markdown/types.ts";
 
 let nextMarkdownId = 0;
-const MAX_STREAMING_CACHE_CHARS = 128 * 1024;
 
-/** One top-level block's rendered rows at a content width, and the same rows framed to the component's width. */
-interface BlockRows {
-	width: number;
-	nextType: string | undefined;
-	rows: string[];
-	framed?: { width: number; bg: ((text: string) => string) | undefined; rows: string[] };
+/** The top-level tokens of a Markdown source. */
+interface LexedMarkdown {
+	source: string;
+	tokens: Token[];
 }
 
 export class Markdown implements Component {
@@ -41,13 +38,6 @@ export class Markdown implements Component {
 	// about ten times the size of its source, and every message of a long transcript keeps a Markdown component. The
 	// tokens survive a burst of re-renders, such as a theme preview, and are collected afterwards.
 	private cachedTokens?: WeakRef<LexedMarkdown>;
-	private streamingTokens?: LexedMarkdown;
-	// Rendered and wrapped rows of each top-level token, so a streamed update re-renders only the blocks it changed.
-	// Rows depend on the theme, the default style and the width: `invalidate` clears them, a new width replaces them.
-	// `framed` holds the same rows padded to the full width, so an update pads only the rows of blocks it changed: padding
-	// every row of a long reply after each delta made the reply cost more with every token.
-	private blockRows = new WeakMap<Token, BlockRows>();
-	private blockRowsWidth = 0;
 	private readonly linkPrefix = `oc${++nextMarkdownId}`;
 
 	constructor(
@@ -68,25 +58,12 @@ export class Markdown implements Component {
 
 	setText(text: string): void {
 		this.text = text;
-		if (text.length > MAX_STREAMING_CACHE_CHARS || !text) this.streamingTokens = undefined;
 		this.clearOutput();
 		renderChanged(this);
 	}
 
-	/** Keep the active stream's small parse tree alive across GC; historical content remains reclaimable. */
-	setStreaming(streaming: boolean): void {
-		this.options.streaming = streaming;
-		const tokens = streaming ? this.cachedTokens?.deref() : undefined;
-		this.streamingTokens = tokens && tokens.source.length <= MAX_STREAMING_CACHE_CHARS ? tokens : undefined;
-	}
-
-	dispose(): void {
-		this.setStreaming(false);
-	}
-
 	invalidate(): void {
 		this.clearOutput();
-		this.blockRows = new WeakMap();
 		renderChanged(this);
 	}
 
@@ -107,7 +84,6 @@ export class Markdown implements Component {
 
 		// Don't render anything if there's no actual text
 		if (!text || text.trim() === "") {
-			this.streamingTokens = undefined;
 			const result: string[] = [];
 			this.cachedText = this.text;
 			this.cachedWidth = width;
@@ -118,39 +94,25 @@ export class Markdown implements Component {
 		// Replace tabs with 3 spaces for consistent rendering
 		const normalizedText = text.replace(/\t/g, "   ");
 
-		// Parse markdown to tokens, keeping those of blocks that an appended update cannot change
-		const previous = this.streamingTokens ?? this.cachedTokens?.deref();
-		const lexed = previous?.source === normalizedText ? previous : lexMarkdown(normalizedText, previous);
-		this.cachedTokens = new WeakRef(lexed);
-		this.streamingTokens =
-			this.options.streaming && normalizedText.length <= MAX_STREAMING_CACHE_CHARS ? lexed : undefined;
+		let lexed = this.cachedTokens?.deref();
+		if (lexed?.source !== normalizedText) {
+			const tokens = markdownParser.lexer(normalizedText);
+			trimPartialClosingFences(tokens);
+			lexed = { source: normalizedText, tokens };
+			this.cachedTokens = new WeakRef(lexed);
+		}
 		const tokens = lexed.tokens;
 
-		// Convert tokens to styled terminal output, then wrap (NO padding, NO background yet)
-		if (this.blockRowsWidth !== contentWidth) {
-			this.blockRows = new WeakMap();
-			this.blockRowsWidth = contentWidth;
-		}
+		// Convert tokens to styled terminal output, then wrap, then pad and apply the background
 		const bg = this.defaultTextStyle?.bgColor;
-		const contentLines: string[] = [];
+		const rows: string[] = [];
 		for (let i = 0; i < tokens.length; i++) {
-			const token = tokens[i];
-			const nextType = tokens[i + 1]?.type;
-			let entry = this.blockRows.get(token);
-			if (!entry || entry.width !== contentWidth || entry.nextType !== nextType) {
-				const host = this.renderHost(i);
-				const rows: string[] = [];
-				for (const line of renderToken(host, token, contentWidth, nextType)) {
-					if (isImageLine(line)) rows.push(line);
-					else rows.push(...wrapTextWithAnsi(line, contentWidth));
-				}
-				entry = { width: contentWidth, nextType, rows };
-				this.blockRows.set(token, entry);
+			for (const line of renderToken(this.renderHost(i), tokens[i], contentWidth, tokens[i + 1]?.type)) {
+				if (isImageLine(line)) rows.push(line);
+				else rows.push(...wrapTextWithAnsi(line, contentWidth));
 			}
-			if (!entry.framed || entry.framed.width !== width || entry.framed.bg !== bg)
-				entry.framed = { width, bg, rows: frameContentRows(entry.rows, width, paddingX, bg, isImageLine) };
-			for (const row of entry.framed.rows) contentLines.push(row);
 		}
+		const contentLines = frameContentRows(rows, width, paddingX, bg, isImageLine);
 
 		const blank: string[] = [];
 		for (let i = 0; i < this.paddingY; i++) blank.push(frameBlankRow(width, bg));
@@ -223,7 +185,7 @@ export class Markdown implements Component {
 
 	/** The component's theme, options and default style, as the token renderers read them. */
 	private renderHost(blockIndex: number): MarkdownRenderHost {
-		// Source order, rather than token lifetime, keeps links stable when a streaming block is re-lexed.
+		// Ids follow source order, so a re-render gives each link the same id.
 		const linkIds = new WeakMap<object, number>();
 		let nextLinkId = 0;
 		return {

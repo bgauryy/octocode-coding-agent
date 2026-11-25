@@ -182,6 +182,8 @@ export function registerCompaction(
 			if (requests.inFlight || (event.reason !== "overflow" && fitsWindow(ctx, toolDefinitionChars(api))))
 				return { cancel: true, failure: THRASH_MESSAGE };
 			if (ctx.hasUI) notify(ctx.ui, THRASH_MESSAGE, "error");
+			// The abort also cancels this compaction, so the session drops a failure returned here: record it first.
+			ctx.failRun(THRASH_MESSAGE);
 			ctx.abort("internal");
 			return { cancel: true };
 		}

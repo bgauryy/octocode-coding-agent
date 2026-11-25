@@ -16,6 +16,7 @@ import {
 	wrapTextWithAnsi,
 } from "@octocodeai/octocode-tui";
 import { ruleLine } from "./dynamic-border.ts";
+import { selectedText } from "./gradients.ts";
 import { theme } from "./theme.ts";
 import { type BadgeState, type EnterVerb, legend, pageHints, positionLabel } from "./page-kit.ts";
 import { cursorMark, hintLine, keyText, type RankedHint, renderHintLine } from "./theme-tui-helpers.ts";
@@ -253,7 +254,7 @@ export class ManagePageComponent implements Component, Focusable {
 
 	private rowLine(row: PageRow, width: number, nameWidth: number, selected: boolean): string {
 		const name = pad(row.name, nameWidth);
-		const left = `${cursorMark(selected)}${selected ? theme.fg("accent", name) : theme.fg("text", name)}${row.detail ? `  ${theme.fg("muted", row.detail)}` : ""}`;
+		const left = `${cursorMark(selected)}${selected ? selectedText(name) : theme.fg("text", name)}${row.detail ? `  ${theme.fg("muted", row.detail)}` : ""}`;
 		if (!row.badge) return truncateToWidth(` ${left}`, width, "…");
 		// Keep the selection marker and a name column while reserving room for the status.
 		const badge = truncateToWidth(theme.fg(row.tone ?? "muted", row.badge), Math.max(0, width - 5), "…");

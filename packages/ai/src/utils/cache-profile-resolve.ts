@@ -23,9 +23,14 @@ export function completionsCacheProfile(model: Model<"openai-completions">): Cac
 	return { ...base, key };
 }
 
-/** The cache profile of an OpenAI Responses request: explicit breakpoints where the compat opts in, else key routing. */
+/**
+ * The cache profile of an OpenAI Responses request: explicit breakpoints where the compat opts into explicit mode, 30m
+ * instruction breakpoints where it only supports those (Azure GPT-6 Astra), else key routing.
+ */
 export function responsesCacheProfile(
-	compat: Pick<OpenAIResponsesCompat, "supportsExplicitPromptCacheMode">,
+	compat: Pick<OpenAIResponsesCompat, "supportsExplicitPromptCacheMode"> &
+		Partial<Pick<OpenAIResponsesCompat, "supportsInstructionBreakpoints">>,
 ): CacheProfile {
-	return compat.supportsExplicitPromptCacheMode ? CACHE_PROFILES.openaiExplicit : CACHE_PROFILES.openaiKey;
+	if (compat.supportsExplicitPromptCacheMode) return CACHE_PROFILES.openaiExplicit;
+	return compat.supportsInstructionBreakpoints ? CACHE_PROFILES.azureInstructionBreakpoints : CACHE_PROFILES.openaiKey;
 }

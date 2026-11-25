@@ -8,14 +8,10 @@ import type {
 	ChatCompletionContentPartText,
 } from "../ai-sdk/openai-wire-types.ts";
 import type { CacheRetention, Model } from "../../types.ts";
-import { CACHE_PROFILES } from "../../utils/cache-profiles.ts";
+import { CACHE_PROFILES, countHistoryTurns, planCacheMarkers } from "../../utils/cache-profiles.ts";
 import type { AssistantMessageDiagnostic } from "../../utils/diagnostics.ts";
-import { instructionBlockTexts, keepsToolBreakpoint, type InstructionBlocks } from "../../utils/instruction-split.ts";
-import {
-	countCacheBreakpoints,
-	findPreviousTailIndex,
-	MAX_CACHE_BREAKPOINTS,
-} from "../anthropic-messages/cache-breakpoints.ts";
+import { instructionBlockTexts, type InstructionBlocks } from "../../utils/instruction-split.ts";
+import { findPreviousTailIndex } from "../anthropic-messages/cache-breakpoints.ts";
 import type { OpenAICompatCacheControl, ResolvedOpenAICompletionsCompat } from "./types.ts";
 
 type ChatCompletionInstructionMessageParam = ChatCompletionDeveloperMessageParam | ChatCompletionSystemMessageParam;
@@ -75,7 +71,7 @@ export function getCompatCacheControl(
 }
 
 /**
- * Marks the leading instructions and last tool with `instructionCacheControl` and the last
+ * Places markers where `planCacheMarkers` says (the layout the Anthropic adapter uses): marks the leading instructions and last tool with `instructionCacheControl` and the last
  * conversation message with `cacheControl`, and returns whether every marker placed was a 1h marker: the endpoint reports
  * one write count with no split by lifetime, so that is when the write is billed at the 1h rate (`parseChunkUsage`).
  * Either control may be undefined to skip that layer. A second history breakpoint
@@ -103,32 +99,41 @@ export function applyAnthropicCacheControl(
 	const placed = (control: OpenAICompatCacheControl, marked: boolean) => {
 		if (marked) ttls.add(control.ttl ?? "5m");
 	};
-	if (instructionCacheControl) {
-		const sharedEnd = toolCacheBoundary
+	const system = messages.find((candidate) => candidate.role === "system" || candidate.role === "developer");
+	const split =
+		splitSystem && system && system.content === instructionBlockTexts(splitSystem).join("") ? splitSystem : undefined;
+	const sharedEnd =
+		instructionCacheControl && toolCacheBoundary
 			? Math.max(
 					0,
 					(tools ?? []).findIndex((tool) => toolName(tool) === toolCacheBoundary),
 				)
 			: 0;
-		const sharedTool = sharedEnd > 0 ? tools?.[sharedEnd - 1] : undefined;
-		const splitMarks = splitSystem
-			? addSplitCacheControlToSystemPrompt(messages, splitSystem, instructionCacheControl, !!sharedTool)
-			: undefined;
-		const split = splitMarks !== undefined;
+	const plan = planCacheMarkers(CACHE_PROFILES.completionsMarkers, {
+		instructionBlocks: split ? split.cached.length : system ? 1 : 0,
+		workspaceBlock: split?.workspace === true,
+		instructions: instructionCacheControl !== undefined,
+		history: cacheControl !== undefined,
+		historyTurns: countHistoryTurns(messages),
+		tools: tools?.length ?? 0,
+		toolBoundary: sharedEnd > 0,
+	});
+	if (instructionCacheControl) {
+		if (split) setSplitSystemPrompt(system!, split, instructionCacheControl, plan.blocks);
 		placed(
 			instructionCacheControl,
-			split ? splitMarks > 0 : addCacheControlToSystemPrompt(messages, instructionCacheControl),
+			split
+				? plan.blocks.some(Boolean)
+				: plan.blocks[0] && addCacheControlToSystemPrompt(messages, instructionCacheControl),
 		);
-		if (sharedTool) placed(instructionCacheControl, markTool(sharedTool, instructionCacheControl));
-		else if (!split || keepsToolBreakpoint(splitSystem))
-			placed(instructionCacheControl, addCacheControlToLastTool(tools, instructionCacheControl));
+		if (plan.tool && tools) {
+			const tool = tools[sharedEnd > 0 ? sharedEnd - 1 : tools.length - 1];
+			placed(instructionCacheControl, markTool(tool, instructionCacheControl));
+		}
 	}
-	if (cacheControl) {
+	if (cacheControl && plan.history > 0) {
 		placed(cacheControl, addCacheControlToLastConversationMessage(messages, cacheControl));
-		placed(
-			cacheControl,
-			addHistoryLookbackBreakpoint(messages, cacheControl, countCacheBreakpoints([messages, tools])),
-		);
+		if (plan.history > 1) placed(cacheControl, addHistoryLookbackBreakpoint(messages, cacheControl));
 	}
 	return ttls.size === 1 && ttls.has("1h");
 }
@@ -141,35 +146,26 @@ export function applyAnthropicCacheControl(
 function addHistoryLookbackBreakpoint(
 	messages: ChatCompletionMessageParam[],
 	cacheControl: OpenAICompatCacheControl,
-	usedBreakpoints: number,
 ): boolean {
-	if (usedBreakpoints >= MAX_CACHE_BREAKPOINTS) return false;
 	const tailIndex = findPreviousTailIndex(messages);
 	if (tailIndex < 0) return false;
 	const message = messages[tailIndex];
 	return (message.role === "user" || message.role === "tool") && addCacheControlToMessage(message, cacheControl);
 }
 
-/**
- * The markers placed on the leading prompt split into its blocks, or undefined when it is not the blocks joined (it then
- * stays one block). `sharedTools`: a shared-tool marker takes the base block's slot when there are two cached blocks.
- */
-function addSplitCacheControlToSystemPrompt(
-	messages: ChatCompletionMessageParam[],
+/** Replaces the leading prompt with its cached blocks, each marked where the plan says, then the unmarked volatile block. */
+function setSplitSystemPrompt(
+	message: ChatCompletionInstructionMessageParam,
 	blocks: InstructionBlocks,
 	cacheControl: OpenAICompatCacheControl,
-	sharedTools: boolean,
-): number | undefined {
-	const message = messages.find((candidate) => candidate.role === "system" || candidate.role === "developer");
-	if (!message || message.content !== instructionBlockTexts(blocks).join("")) return undefined;
-	const skipBase = sharedTools && blocks.cached.length > 1;
+	marked: readonly boolean[],
+): void {
 	message.content = [
 		...blocks.cached.map((text, index) =>
-			skipBase && index === 0 ? { type: "text", text } : { type: "text", text, cache_control: cacheControl },
+			marked[index] ? { type: "text", text, cache_control: cacheControl } : { type: "text", text },
 		),
 		...(blocks.volatile === undefined ? [] : [{ type: "text", text: blocks.volatile }]),
 	] as ChatCompletionTextPartWithCacheControl[];
-	return skipBase ? blocks.cached.length - 1 : blocks.cached.length;
 }
 
 function addCacheControlToSystemPrompt(
@@ -193,17 +189,6 @@ function addCacheControlToLastConversationMessage(
 		}
 	}
 	return false;
-}
-
-function addCacheControlToLastTool(
-	tools: ChatCompletionTool[] | undefined,
-	cacheControl: OpenAICompatCacheControl,
-): boolean {
-	if (!tools || tools.length === 0) {
-		return false;
-	}
-
-	return markTool(tools[tools.length - 1], cacheControl);
 }
 
 function markTool(tool: ChatCompletionTool, cacheControl: OpenAICompatCacheControl): true {

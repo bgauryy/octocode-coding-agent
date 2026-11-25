@@ -5,9 +5,10 @@ import {
 	type TuiMouseEvent,
 	truncateToWidth,
 	visibleWidth,
+	watchSelection,
 } from "@octocodeai/octocode-tui";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
-import { onPromptNote, promptNote } from "./prompt-note.ts";
+import { promptNote, promptNoteStore } from "./prompt-note.ts";
 import { skillWordHighlight, skillWordSources } from "./skill-words.ts";
 import { CustomEditor } from "../../theme/custom-editor.ts";
 import type { Theme } from "../../theme/theme.ts";
@@ -170,7 +171,7 @@ export function registerEditor(api: FeatureSetup, permission: EditorPermission):
 	let installed: EditorFactory | undefined;
 	let context: FeatureContext;
 	let started = false;
-	// A passing note in the bottom rule (`prompt-note.ts`) repaints the prompt when it comes and goes. Its listener set is
+	// A passing note in the bottom rule (`prompt-note.ts`) repaints the prompt when its text changes. Its store is
 	// module-level, so the subscription ends with the session: kept, it would hold this host and its session after a
 	// /new, /resume or /reload.
 	let repaint: (() => void) | undefined;
@@ -189,7 +190,11 @@ export function registerEditor(api: FeatureSetup, permission: EditorPermission):
 	api.bus.on("session_tree", async (_event, ctx) => sample(ctx));
 	api.bus.on("session_start", async (_event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
-		stopNotes ??= onPromptNote(() => repaint?.());
+		stopNotes ??= watchSelection(
+			promptNoteStore,
+			(note) => note.text,
+			() => repaint?.(),
+		);
 		context = ctx;
 		sample(ctx);
 		const previous = ctx.ui.getEditorComponent();

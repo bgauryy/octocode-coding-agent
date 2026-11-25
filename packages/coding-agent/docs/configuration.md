@@ -387,7 +387,13 @@ In regular mode the transcript lives in the terminal's scrollback, which the ter
 
 ## No color
 
-A non-empty `NO_COLOR` or `OCTOCODE_NO_COLOR`, the `--no-color` flag (it sets `OCTOCODE_NO_COLOR` for the process and its subagents), or `TERM=dumb` removes every ANSI color sequence (foreground, background, tints, diff tints, shimmer); bold, dim, underline and inverse stay. An empty `NO_COLOR` is ignored. It does not reduce motion. `terminal.trueColor` and `OCTOCODE_TRUE_COLOR` choose only the color depth. HTML exports made with these set are plain text on the themed page.
+A non-empty `NO_COLOR` or `OCTOCODE_NO_COLOR`, the `--no-color` flag (it sets `OCTOCODE_NO_COLOR` for the process and its subagents), or `TERM=dumb` removes every ANSI color sequence (foreground, background, tints, diff tints, shimmer); bold, dim, underline and inverse stay. An empty `NO_COLOR` is ignored. `FORCE_COLOR` set to anything but empty, `0` or `false`, and the `--color` flag (it sets `FORCE_COLOR=1` and clears the no-color variables), keep color on despite `NO_COLOR`, as [no-color.org](https://no-color.org) recommends; `--no-color` beats both. It does not reduce motion. `terminal.trueColor` and `OCTOCODE_TRUE_COLOR` choose only the color depth. HTML exports made with these set are plain text on the themed page.
+
+## Console output and prompts
+
+While the fullscreen terminal interface owns the screen, `console.*` output from the process goes to `octocode-console.log` in the agent folder (owner-only, secrets redacted, restarted past 1 MiB) instead of the frame, and prints normally again once the interface stops (suspend, crash report, exit).
+
+`--no-input` or a non-empty `OCTOCODE_NO_INPUT` makes every startup prompt (trust, session picker, confirmations) fail at once with an error and exit code 1 instead of waiting for an answer, and the run uses print mode even on a terminal; the variable reaches subagents.
 
 ## Reduced motion
 

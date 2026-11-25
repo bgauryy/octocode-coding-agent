@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	buildSkillVocabulary,
 	findSkillWords,
@@ -46,7 +46,7 @@ describe("skill words", () => {
 		const v = buildSkillVocabulary([{ name: "pdf-tools", triggers: ["invoice"] }]);
 		expect(findSkillWords("an invoice", v)).toHaveLength(1);
 	});
-	it("rebuilds when the skill list changes", () => {
+	it("rebuilds when the skill list changes, from the next render on", async () => {
 		let list = [{ name: "octocode-research" }];
 		const highlight = skillWordHighlight(
 			() => list,
@@ -54,7 +54,18 @@ describe("skill words", () => {
 		);
 		expect(highlight.find("debug")).toEqual([]);
 		list = [{ name: "octocode-debugging" }];
+		await Promise.resolve();
 		expect(highlight.find("debug")).toHaveLength(1);
+	});
+	it("reads the skills once per render, however many lines it highlights", async () => {
+		const skills = vi.fn(() => names.map((name) => ({ name })));
+		const highlight = skillWordHighlight(skills, (s) => s);
+		for (const line of ["go debug", "then research", "and brainstorm"]) highlight.find(line);
+		highlight.hintAt("go debug", 4);
+		expect(skills).toHaveBeenCalledTimes(1);
+		await Promise.resolve();
+		highlight.find("debug again");
+		expect(skills).toHaveBeenCalledTimes(2);
 	});
 	it("derives skill names from commands", () => {
 		expect(

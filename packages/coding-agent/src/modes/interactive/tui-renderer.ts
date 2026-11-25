@@ -10,6 +10,7 @@ import { copyToClipboard } from "../../utils/clipboard.ts";
 import { openItemLink, setItemClicksIntercepted } from "../../octocode/shared/item-ref.ts";
 import { openTarget } from "@octocodeai/octocode-common/open-target";
 import { keyText } from "../../theme/theme-tui-helpers.ts";
+import { searchMatchText } from "../../theme/gradients.ts";
 import { theme } from "../../theme/theme.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 
@@ -35,7 +36,7 @@ export function createInteractiveTui(options: InteractiveTuiOptions): TuiMainScr
 	// Drawn backlog ids are links only where this mode routes their click (`openUrl` below).
 	setItemClicksIntercepted(options.tuiMode === "fullscreen");
 	if (options.tuiMode === "fullscreen") {
-		const styleSearchMatch = (text: string) => theme.bg("searchMatchBg", theme.fg("searchMatchText", text));
+		const styleSearchMatch = (text: string) => searchMatchText(text);
 		return new TuiAltScreen(terminal, options.showHardwareCursor, options.logDirectory, {
 			searchMatchStyle: (text) => theme.underline(styleSearchMatch(text)),
 			searchCurrentMatchStyle: (text) => theme.bold(theme.inverse(styleSearchMatch(text))),

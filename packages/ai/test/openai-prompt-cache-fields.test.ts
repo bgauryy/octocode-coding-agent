@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { azureInstructionCacheTtl } from "../src/api/azure-openai-config.ts";
 import { resolveOpenAIResponsesCacheFields } from "../src/api/openai-prompt-cache.ts";
 import { isChatGPTSignIn } from "../src/api/openai-responses/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
@@ -46,6 +47,28 @@ describe("resolveOpenAIResponsesCacheFields", () => {
 			prompt_cache_options: { ttl: "12h" },
 			instructionCacheTtl: "12h",
 		});
+	});
+
+	it("keeps the instruction breakpoint of a cold-history request that sets keepInstructionCache", () => {
+		const options = { cacheRetention: "none", instructionCacheRetention: "long", sessionId } as const;
+		expect(resolveOpenAIResponsesCacheFields(explicit, options, false)).toEqual({
+			prompt_cache_key: undefined,
+			prompt_cache_options: { mode: "explicit" },
+		});
+		expect(resolveOpenAIResponsesCacheFields(explicit, { ...options, keepInstructionCache: true }, false)).toEqual({
+			prompt_cache_key: undefined,
+			prompt_cache_options: { mode: "explicit" },
+			instructionCacheTtl: "12h",
+		});
+	});
+
+	it("keeps Azure Astra's instruction breakpoints for cold history only with keepInstructionCache", () => {
+		const astra = { compat: { supportsInstructionBreakpoints: true } };
+		const options = { cacheRetention: "none", instructionCacheRetention: "long" } as const;
+		expect(azureInstructionCacheTtl(astra, options)).toBeUndefined();
+		expect(azureInstructionCacheTtl(astra, { ...options, keepInstructionCache: true })).toBe("30m");
+		expect(azureInstructionCacheTtl(astra, { ...options, instructionCacheRetention: undefined })).toBeUndefined();
+		expect(azureInstructionCacheTtl(astra, { cacheRetention: "none", keepInstructionCache: true })).toBeUndefined();
 	});
 
 	it("keeps only the key for credentials that reject the cache parameters", () => {

@@ -1,5 +1,14 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import lockfile from "proper-lockfile";
@@ -53,6 +62,28 @@ describe("deferred settings writes", () => {
 		await manager.flush();
 		expect(readSettings(file).theme).toBe("theme-6");
 		expect(manager.drainErrors()).toEqual([]);
+		expect(readdirSync(agentDir).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+	});
+
+	it("leaves the file untouched when a change sets the value it already holds", async () => {
+		const { agentDir, cwd, file } = folders();
+		const manager = SettingsManager.create(cwd, agentDir);
+		manager.setTheme("light");
+		await manager.flush();
+		const before = statSync(file, { bigint: true });
+		// Held by another writer: a commit would wait for it, a skipped one does not.
+		const second = SettingsManager.create(cwd, agentDir);
+		const release = lockfile.lockSync(file, { realpath: false });
+		try {
+			second.setTheme("light");
+			await second.flush();
+		} finally {
+			release();
+		}
+		expect(second.drainErrors()).toEqual([]);
+		const after = statSync(file, { bigint: true });
+		expect([after.ino, after.mtimeNs]).toEqual([before.ino, before.mtimeNs]);
+		expect(readSettings(file).theme).toBe("light");
 		expect(readdirSync(agentDir).filter((name) => name.endsWith(".tmp"))).toEqual([]);
 	});
 

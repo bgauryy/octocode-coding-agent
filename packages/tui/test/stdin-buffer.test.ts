@@ -661,6 +661,23 @@ describe("StdinBuffer", () => {
 			assert.deepStrictEqual(emittedSequences, ["a"]);
 		});
 
+		it("keeps a paste whose start marker a slow read split, so its newline is not typed", (t) => {
+			t.mock.timers.enable({ apis: ["setTimeout"] });
+			processInput("\x1b[20");
+			t.mock.timers.tick(60);
+			processInput("0~a\r\nb\x1b[201~");
+			assert.deepStrictEqual(emittedPaste, ["a\r\nb"]);
+			assert.deepStrictEqual(emittedSequences, []);
+		});
+
+		it("still emits a lone marker prefix once the paste wait passes", (t) => {
+			t.mock.timers.enable({ apis: ["setTimeout"] });
+			processInput("\x1b[20");
+			t.mock.timers.tick(PASTE_IDLE_TIMEOUT_MS);
+			assert.ok(emittedSequences.length > 0);
+			assert.deepStrictEqual(emittedPaste, []);
+		});
+
 		it("waits longer for a paste's end marker when configured", (t) => {
 			t.mock.timers.enable({ apis: ["setTimeout"] });
 			const slow = new StdinBuffer({ pasteTimeout: 5000 });

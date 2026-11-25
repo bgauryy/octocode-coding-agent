@@ -37,6 +37,12 @@ const DEFAULT_ESCAPE_TIMEOUT_MS = 10;
 export const PASTE_IDLE_TIMEOUT_MS = 1000;
 const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
+/**
+ * A strict prefix of the paste start marker (`\x1b[2`, `\x1b[20`, `\x1b[200`), cut off where a read split it. It waits as
+ * long as a paste does: flushed at the key timeout, the pasted text that follows would be typed, and its newlines submit.
+ */
+const isPasteStartPrefix = (text: string): boolean =>
+	text.length >= 3 && text.length < BRACKETED_PASTE_START.length && BRACKETED_PASTE_START.startsWith(text);
 /** The start of a Kitty flags or device attributes reply, as the keyboard protocol parser buffers it. */
 const REPLY_PREFIX = /^\x1b\[(?:\?[\d;]*)?$/;
 
@@ -159,7 +165,12 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 			// terminator into Ctrl+G (the external editor shortcut). Other input,
 			// including Alt+] followed by text, must retain bounded recovery.
 			if (TERMINAL_REPLY_HEADER_PATTERN.test(this.buffer)) return;
-			const timeoutMs = this.buffer === ESC ? this.escapeTimeoutMs : this.timeoutMs;
+			const timeoutMs =
+				this.buffer === ESC
+					? this.escapeTimeoutMs
+					: isPasteStartPrefix(this.buffer)
+						? this.pasteTimeoutMs
+						: this.timeoutMs;
 			this.timeout = setTimeout(() => {
 				const flushed = this.flush();
 

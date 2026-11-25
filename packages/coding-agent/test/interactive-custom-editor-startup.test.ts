@@ -1,5 +1,5 @@
-import { Container, setKeybindings, TuiMainScreen } from "@octocodeai/octocode-tui";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Container, MOTION, setKeybindings, TuiMainScreen } from "@octocodeai/octocode-tui";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { CustomEditor } from "../src/theme/custom-editor.ts";
@@ -65,7 +65,11 @@ describe("custom editor installed during startup", () => {
 		expect(host.showStatus).not.toHaveBeenCalled();
 	});
 
-	it("enables app shortcuts and shell-mode feedback after startup", () => {
+	it("enables app shortcuts and shell-mode feedback after startup", async () => {
+		vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
 		const host = createStartupHost();
 		host.editor.handleInput("\x0f");
 		expect(host.toggleToolOutputExpansion).not.toHaveBeenCalled();
@@ -75,6 +79,8 @@ describe("custom editor installed during startup", () => {
 		expect(host.toggleToolOutputExpansion).toHaveBeenCalledOnce();
 		host.editor.handleInput("!");
 		expect(host.uiStore.getState().editor.bashMode).toBe(true);
+		// The border fades to the shell tone, then settles on it.
+		await vi.advanceTimersByTimeAsync(MOTION.fadeMs * 2);
 		expect(host.editor.borderColor?.("x")).toBe(theme.getBashModeBorderColor()("x"));
 	});
 

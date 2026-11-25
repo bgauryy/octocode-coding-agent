@@ -302,6 +302,20 @@ export const FLAG_SPECS: readonly FlagSpec[] = [
 		apply: set((a) => (a.noColor = true)),
 	},
 	{
+		name: "--color",
+		kind: "boolean",
+		help: [
+			"Keep ANSI color even when NO_COLOR is set or output is not a terminal (like FORCE_COLOR=1); --no-color wins",
+		],
+		apply: set((a) => (a.color = true)),
+	},
+	{
+		name: "--no-input",
+		kind: "boolean",
+		help: ["Never prompt: a question that would wait for an answer fails with a message (also OCTOCODE_NO_INPUT)"],
+		apply: set((a) => (a.noInput = true)),
+	},
+	{
 		name: "--verbose",
 		kind: "boolean",
 		help: ["Force verbose startup (overrides quietStartup setting)"],

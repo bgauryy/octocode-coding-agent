@@ -8,12 +8,12 @@ import { trustedMarkdownTransformer } from "./markdown-transform.ts";
 const markdownParser = new Marked();
 /**
  * A fence line whose info string names Mermaid: a cheap superset of what `isMermaid` accepts, so text without one skips
- * lexing. A streamed answer is transformed on every chunk, and lexing all of it each time grows with its length.
+ * lexing.
  */
 const MERMAID_FENCE = /(?:`{3}|~{3})[^\n]*mermaid/i;
 /**
- * Diagrams by source, least recently drawn first: a streamed answer renders the same finished diagram again on every
- * chunk, while each chunk of an unfinished one is a new source that must not evict the finished ones.
+ * Diagrams by source, least recently drawn first: a message drawn again (a new width, a theme change, a reload) reuses
+ * its diagrams.
  */
 const renderedDiagrams = new Map<string, MermaidArt | undefined>();
 const MAX_RENDERED_DIAGRAMS = 32;
@@ -95,7 +95,9 @@ export function createMermaidMarkdownTransformer(options: MermaidTransformerOpti
 		if (
 			mode === "off" ||
 			context.messageType === "assistant-thinking" ||
-			(context.isStreaming && mode !== "streaming") ||
+			// A streaming reply shows as plain text, so diagrams wait for the final reply; a saved `streaming` mode acts
+			// as `final`.
+			context.isStreaming ||
 			!MERMAID_FENCE.test(markdown)
 		) {
 			return markdown;
@@ -107,7 +109,7 @@ export function createMermaidMarkdownTransformer(options: MermaidTransformerOpti
 				if (!isMermaid(token)) return token.raw;
 				const art = renderDiagram(token.text);
 				if (!art || art.width > context.availableWidth) return token.raw;
-				if (!context.isStreaming && art.warnings.length > 0) {
+				if (art.warnings.length > 0) {
 					const suffix = art.warnings.length > 1 ? ` (+${art.warnings.length - 1} more)` : "";
 					const warning = `Mermaid diagram not rendered: ${art.warnings[0]}${suffix}`;
 					const styledWarning = options.theme ? options.theme.fg("warning", warning) : warning;

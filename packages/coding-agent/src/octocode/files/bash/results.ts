@@ -152,6 +152,11 @@ export function foregroundFailure(
 		if (options.clamped) details.notices = [...(details.notices ?? []), `(${CLAMP_NOTE})`];
 		throw failure ? new BashExecutionError(text, details) : new Error(text);
 	}
+	if (options.how === "message") {
+		const note = `The wait ended early after ${formatDuration((failure.details.timeoutSeconds ?? 0) * 1000)} because a message is waiting for you: the sleep did not complete and was stopped. Answer the message; repeat the wait afterwards if it is still needed.`;
+		details.notices = [...(details.notices ?? []), note];
+		throw new BashExecutionError([output.trimEnd(), note].filter(Boolean).join("\n\n"), details);
+	}
 	const how = options.clamped
 		? `with background: true and check its log (${CLAMP_NOTE})`
 		: "with a longer timeout, or with background: true and check its log";

@@ -3,6 +3,8 @@
  * arguments and terminal ask for (interactive, print, JSON or RPC).
  */
 
+import { captureConsoleToLog } from "./console-capture.ts";
+import { exitOnNoInput } from "./no-input-exit.ts";
 import { setCapabilityOverrides } from "@octocodeai/octocode-tui";
 import { cliStyle } from "../utils/cli-style.ts";
 import {
@@ -84,7 +86,11 @@ function guideSignInFromShell(mode: AppMode): void {
 	if (mode !== "interactive" && !envFlag(process.env, SUBAGENT_ENV)) setAuthGuidanceSurface("cli");
 }
 
-export async function runSession(
+export function runSession(args: string[], context: SessionRunContext): Promise<void> {
+	return exitOnNoInput(() => runSessionUnguarded(args, context));
+}
+
+async function runSessionUnguarded(
 	args: string[],
 	{ cwd, agentDir, offlineMode, nativeFeatures }: SessionRunContext,
 ): Promise<void> {
@@ -356,7 +362,12 @@ export async function runSession(
 		}
 
 		printTimings();
-		await interactiveMode.run();
+		const restoreConsole = captureConsoleToLog();
+		try {
+			await interactiveMode.run();
+		} finally {
+			restoreConsole();
+		}
 	} else {
 		printTimings();
 		const exitCode = await runPrintMode(runtime, {

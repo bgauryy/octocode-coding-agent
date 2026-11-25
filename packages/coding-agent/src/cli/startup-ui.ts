@@ -7,6 +7,7 @@ import {
 	TuiMainScreen,
 } from "@octocodeai/octocode-tui";
 import { existsSync } from "node:fs";
+import { requireInput } from "./no-input.ts";
 import { APP_NAME, CONFIG_DIR_NAME, ENV_AGENT_DIR, getAgentDir, getSettingsPath, PACKAGE_NAME } from "../config.ts";
 import { areExperimentalFeaturesEnabled } from "../core/experimental.ts";
 import { KeybindingsManager } from "../core/keybindings.ts";
@@ -82,6 +83,7 @@ async function loadStartupThemes(settingsManager: SettingsManager): Promise<Them
 }
 
 export async function createStartupTui(settingsManager: SettingsManager): Promise<TUI> {
+	requireInput("a startup question");
 	setCapabilityOverrides(settingsManager.getTerminalCapabilityOverrides());
 	setRegisteredThemes(await loadStartupThemes(settingsManager));
 	// The system theme starts in grayscale until the terminal reports its colors.

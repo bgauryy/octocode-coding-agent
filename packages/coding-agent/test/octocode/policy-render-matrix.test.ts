@@ -25,7 +25,6 @@ const FLAGS = [
 	"canMcp",
 	"browserControl",
 	"desktopControl",
-	"childStarted",
 ] as const satisfies ReadonlyArray<keyof Inputs>;
 const POLICY = SYSTEM_PROMPT_SECTIONS.filter((section) => section.group === "policy").map((section) => section.name);
 

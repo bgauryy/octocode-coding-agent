@@ -14,7 +14,6 @@ import { sessionFileRunningPid } from "../../../octocode/shared/session-liveness
 import { copyToClipboard } from "../../../utils/clipboard.ts";
 import { sharedPickerRemoval } from "../../../octocode/sessions/delete.ts";
 import { SessionSelectorComponent } from "../components/session-selector.ts";
-import { BranchSummaryStatusIndicator } from "../components/status-indicator.ts";
 import { TreeSelectorComponent } from "../components/tree-selector.ts";
 import { UserMessageSelectorComponent } from "../components/user-message-selector.ts";
 import { prependToEditorDraft } from "./helpers.ts";
@@ -216,7 +215,7 @@ export function showTreeSelector(host: SessionNavigationHost, initialSelectedId?
 						getApplicationPort(host.session).invoke("abortBranchSummary");
 					};
 					host.chatContainer.addChild(new Spacer(1));
-					host.showStatusIndicator(new BranchSummaryStatusIndicator(host.ui));
+					host.showStatusIndicator({ kind: "branchSummary" });
 					showingSummaryIndicator = true;
 					host.ui.requestRender();
 				}

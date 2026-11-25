@@ -19,14 +19,6 @@ export function instructionBlockTexts(blocks: InstructionBlocks): string[] {
 }
 
 /**
- * Whether the tools keep their own breakpoint beside these blocks. A second cached block takes that slot: the base
- * block's breakpoint already covers the tools that precede it, and the request stays within four breakpoints.
- */
-export function keepsToolBreakpoint(blocks: InstructionBlocks | undefined): boolean {
-	return !blocks || blocks.cached.length < 2;
-}
-
-/**
  * Splits a leading system message into up to four instruction blocks, for adapters with explicit cache breakpoints.
  * The base block holds the content and every section before `boundary`; the session block runs from `boundary` up to
  * `workspaceBoundary` (the sections that differ between workspaces, so the blocks before it are shared across them) or

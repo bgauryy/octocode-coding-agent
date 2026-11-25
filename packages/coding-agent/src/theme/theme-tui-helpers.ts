@@ -7,6 +7,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import { guessLanguage } from "../utils/code-sniff.ts";
 import { highlight, isHighlightable, resolveLanguage } from "../utils/syntax-highlight.ts";
+import { selectedText } from "./gradients.ts";
 import type { Theme } from "./theme-class.ts";
 import type { ThemeColor } from "./theme-types.ts";
 import { theme } from "./theme-global.ts";
@@ -216,7 +217,7 @@ export function getMarkdownTheme(source: Theme = theme): MarkdownTheme {
 
 export function getSelectListTheme(): SelectListTheme {
 	return {
-		selectedText: (text: string) => theme.fg("accent", text),
+		selectedText: (text: string) => selectedText(text),
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("muted", text),
 		noMatch: (text: string) => theme.fg("muted", text),

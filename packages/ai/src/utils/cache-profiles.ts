@@ -102,6 +102,20 @@ export const CACHE_PROFILES = {
 		key: "cached",
 		source: OPENAI_DOC,
 	},
+	/**
+	 * Azure GPT-6 Astra outside explicit mode: `prompt_cache_key` plus a 30m breakpoint on each cached instruction block
+	 * (history stays implicit). Microsoft documents 12h only for explicit mode. No `extendedRetention`: GPT-6 and later take
+	 * no `prompt_cache_retention` (the AI SDK drops it for them), even where a deployment sets `supportsLongCacheRetention`.
+	 */
+	azureInstructionBreakpoints: {
+		id: "azure-instruction-breakpoints",
+		mechanism: "explicit-breakpoint",
+		maxMarkers: 4,
+		markers: { tools: false, instructions: true, history: false },
+		ttl: { default: "30m" },
+		key: "cached",
+		source: "https://learn.microsoft.com/azure/ai-foundry/openai/how-to/prompt-caching",
+	},
 	/** Chat Completions hosts whose compat sets `cacheControlFormat: "anthropic"`: Anthropic markers on the wire, four per request. */
 	completionsMarkers: {
 		id: "completions-markers",

@@ -11,7 +11,8 @@ Part of the [`@octocodeai/octocode-tui` guide](../README.md). To write your own,
 | `Spacer`                                        | `new Spacer(lines = 1)`                                                    | Empty lines                                                                                                     |
 | `Input`                                         | `new Input(options?)`                                                      | Options `secret`, `prompt` (`"> "`), `placeholder`, `placeholderStyle`; `onSubmit`, `setValue`, `getValue`      |
 | `Editor`                                        | `new Editor(tui, theme, options?)`                                         | `tui` is required for height-aware scrolling                                                                    |
-| `Markdown`                                      | `new Markdown(text, paddingX, paddingY, theme, defaultStyle?, options?)`   | `setText`, `setStreaming`, `dispose`                                                                            |
+| `Markdown`                                      | `new Markdown(text, paddingX, paddingY, theme, defaultStyle?, options?)`   | `setText`                                                                                                       |
+| `StreamingText`                                 | `new StreamingText(text, paddingX, style?, transform?)`                    | Markdown source as plain wrapped text while it streams; `setText`                                               |
 | `Loader`                                        | `new Loader(tui, spinnerFn, messageFn, message = "Loading…", indicator?)`  | `start`, `stop`, `setMessage`                                                                                   |
 | `CancellableLoader`                             | Same as `Loader`                                                           | Escape aborts: `signal`, `aborted`, `onAbort`                                                                   |
 | `SelectList`                                    | `new SelectList(items, maxVisible, theme, layout?, options?)`              | `onSelect`, `onCancel`, `onSelectionChange`, `setFilter`                                                        |
@@ -72,7 +73,7 @@ Supports headings, emphasis, code blocks, lists, links, blockquotes, tables (rul
 
 `MarkdownOptions`: `preserveOrderedListMarkers` (also keeps task lists as source `[ ]`/`[x]`), `preserveBackslashEscapes`, `transform(markdown, availableWidth)`. `DefaultTextStyle`: `color`, `bgColor`, `bold`, `italic`, `strikethrough`, `underline`.
 
-For streamed text, pass `{ streaming: true }` or call `setStreaming(true)`. A parse cache for sources up to 128 Ki UTF-16 code units survives GC so appended text can reuse finished blocks. Call `setStreaming(false)` on completion or `dispose()` when removing the component; larger sources and completed content use reclaimable caches. Owners displaying several blocks should keep only the currently growing block in streaming mode.
+Markdown does not render streamed text incrementally. Show text that is still streaming with `StreamingText`: plain wrapped text, no Markdown parsing, where an append re-wraps only the text after the last line break. Replace it with a `Markdown` once the text is final. Parsed tokens are held weakly, so a re-render after a theme or width change can reuse them until they are collected.
 
 ## SelectList and SettingsList
 
@@ -92,10 +93,10 @@ const settings = new SettingsList(
 );
 ```
 
-| List           | Theme fields                                                                                                      | Controls                                                                                                      |
-| -------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| List           | Theme fields                                                                                    | Controls                                                                                                      |
+| -------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `SelectList`   | `selectedText`, `description`, `scrollInfo`, `noMatch` (optional `matchHighlight`, `directory`) | Arrows move, `Enter` selects, `Escape` cancels; mouse move/wheel highlights, click selects (alternate screen) |
-| `SettingsList` | `label(text, selected)`, `value(text, selected)`, `description`, `cursor`, `hint`                                 | Arrows move, `Enter`/`Space` cycles `values` or opens the `submenu`, `Escape` cancels; mouse as above         |
+| `SettingsList` | `label(text, selected)`, `value(text, selected)`, `description`, `cursor`, `hint`               | Arrows move, `Enter`/`Space` cycles `values` or opens the `submenu`, `Escape` cancels; mouse as above         |
 
 ## Image
 

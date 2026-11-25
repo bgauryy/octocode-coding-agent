@@ -61,16 +61,19 @@ function toTtl(retention: CacheRetention, compat: CacheCompat): OpenAIPromptCach
 export function resolveOpenAIResponsesCacheFields(
 	compat: CacheCompat,
 	options:
-		| Pick<StreamOptions, "cacheRetention" | "instructionCacheRetention" | "sessionId" | "promptCacheKey" | "env">
+		| Pick<
+				StreamOptions,
+				"cacheRetention" | "instructionCacheRetention" | "keepInstructionCache" | "sessionId" | "promptCacheKey" | "env"
+		  >
 		| undefined,
 	omitUnsupportedFields: boolean,
 	breakpointsCarryTtl = true,
 ): OpenAIResponsesCacheFields {
 	const history = resolveCacheRetention(options?.cacheRetention, options?.env);
 	const profile = responsesCacheProfile(compat);
-	// Unlike Chat Completions (`completionsCacheProfile` limits the key to api.openai.com and hosts that opt in), every
-	// Responses host here documents `prompt_cache_key` (OpenAI, Azure, xAI, OpenCode, Codex, Bedrock's OpenAI models),
-	// and a custom Responses host is by definition one that implements OpenAI's request shape.
+	// Unlike Chat Completions (`completionsCacheProfile` limits the key to api.openai.com and hosts that opt in), the
+	// Responses API's own docs (OpenAI prompt caching guide, Azure prompt caching) define `prompt_cache_key`; other
+	// Responses hosts accept OpenAI's request shape and their wire tests assert the field (see docs/prompt-caching.md).
 	const fields: OpenAIResponsesCacheFields = {
 		prompt_cache_key:
 			history === "none" || profile.key === "never"
@@ -79,7 +82,8 @@ export function resolveOpenAIResponsesCacheFields(
 	};
 	if (omitUnsupportedFields) return fields;
 	const instructions = resolveInstructionCacheRetention(options);
-	if (profile.mechanism !== "explicit-breakpoint") {
+	// Explicit mode only: Azure Astra's instruction breakpoints (azureInstructionBreakpoints) are set by the caller.
+	if (profile !== CACHE_PROFILES.openaiExplicit) {
 		const long = history === "long" || (history !== "none" && instructions === "long");
 		if (long && compat.supportsLongCacheRetention && profile.extendedRetention)
 			fields.prompt_cache_retention = profile.extendedRetention;
@@ -87,6 +91,8 @@ export function resolveOpenAIResponsesCacheFields(
 	}
 	if (history === "none") {
 		fields.prompt_cache_options = { mode: "explicit" };
+		// Only `keepInstructionCache` leaves an instruction tier at history `none` (a summary over live instructions).
+		if (instructions !== undefined && instructions !== "none") fields.instructionCacheTtl = toTtl(instructions, compat);
 		return fields;
 	}
 	if (!breakpointsCarryTtl && toTtl(history, compat) === "12h") fields.prompt_cache_options = { ttl: "12h" };

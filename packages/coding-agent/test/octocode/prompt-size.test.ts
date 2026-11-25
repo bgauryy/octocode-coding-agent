@@ -160,8 +160,10 @@ const BACKLOG_ENTITIES_CEILING = 1_750;
  * `paths`' second "files or dir/"), so +84. Raised to 33_400 (measured 33_394; user request "do all" of the evidence RFC)
  * for source anchors: the memory tool's `sources` field (note provenance) and one archive sentence saying a search hit's
  * anchor is a `get` id (the anchor rides on `id`, no new archive field); about 7 of the rest came from other changes.
+ * Raised to 35_000 (measured 34_644) because the children policy is present from the first request: paying 1,250 cached
+ * bytes up front prevents the first delegation from rewriting the whole system prefix and its cached conversation.
  */
-const MAIN_CEILING = 33_400;
+const MAIN_CEILING = 35_000;
 /**
  * A specialist with the shared file and communication tools, excluding entity fields. It declares
  * `backlog` alone (five work operations), never `backlogPlan`. Raised from 21_050 for the rules that make every specialist
@@ -203,7 +205,8 @@ const MCP_SKILLS_BROWSER = 33_900;
  */
 const FIRST_REQUEST_CEILINGS: Record<string, Omit<Layers, "freellama"> & { loads: number }> = {
 	main: {
-		system: 14_350,
+		// system measured 14,668 with the children policy stable from the first request.
+		system: 15_450,
 		mcpInstructions: 6_600,
 		// skills: the octocode-code-review core skill (user request) measured 7,874. Octocode declares every tool:
 		// mcpTools measured 26,634, total 70,228 (the same mcpTools in every child below except browser).

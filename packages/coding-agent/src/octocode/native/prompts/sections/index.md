@@ -18,7 +18,7 @@
 | hooks | session | keep | - | - | sections/hooks.md and the hooks configured for this session |
 | role | session | keep | - | - | agents/<profile>.md and its skills |
 | harnesses | session | keep | - | - | system/harnesses.md and system/harness.md, for the harnesses that are on and supply something (`core/discovery/vendors/prompt.ts`); none when no harness does; the main session only |
-| children | session | keep | policy | `policy/children.md` main agentTool childStarted | the policy renderer; the main session, from its first `agent` call that starts a child or messages an agent; last of its tier, so its arrival keeps the sections before it cached |
+| children | session | keep | policy | `policy/children.md` main agentTool | the policy renderer; every main session with the agent tool, from its first request so delegation never rewrites the prompt |
 | cwd | volatile | keep | - | - | the working directory |
 | environment | volatile | keep | - | - | system/environment.md |
 | planning | volatile | keep | - | - | workflows/planning.md |

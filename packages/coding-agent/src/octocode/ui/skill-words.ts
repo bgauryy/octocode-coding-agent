@@ -103,8 +103,9 @@ export interface SkillWordHighlight extends EditorWordHighlight {
 }
 
 /**
- * Reads the loaded skills on every call and rebuilds its vocabulary only when their names or triggers change, so a
- * skill reload shows on the next keystroke.
+ * Reads the loaded skills once per render and rebuilds its vocabulary only when their names or triggers change, so a
+ * skill reload shows on the next keystroke. A render calls `find` for every editor line, and reading the skills
+ * rebuilds the session's whole command list: the read is kept until the render's synchronous work ends.
  */
 export function skillWordHighlight(
 	skills: () => readonly SkillWordSource[],
@@ -112,7 +113,13 @@ export function skillWordHighlight(
 ): SkillWordHighlight {
 	let signature = "";
 	let vocabulary = buildSkillVocabulary([]);
+	let checked = false;
 	const current = () => {
+		if (checked) return vocabulary;
+		checked = true;
+		queueMicrotask(() => {
+			checked = false;
+		});
 		const list = skills();
 		const next = list.map((skill) => `${skill.name}\u0000${(skill.triggers ?? []).join("\u0001")}`).join("\u0002");
 		if (next !== signature) {

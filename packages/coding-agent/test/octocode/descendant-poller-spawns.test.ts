@@ -4,7 +4,7 @@ import { pollDescendants } from "../../src/octocode/shared/descendant-poller.ts"
 import { resetPsSnapshot } from "../../src/octocode/shared/ps-snapshot.ts";
 
 /** Every `ps` answers at once with an empty table, so only the poller's own timing decides how many run. */
-const ps = vi.hoisted(() => ({ spawns: 0 }));
+const ps = vi.hoisted(() => ({ spawns: 0, block: false, waiting: [] as Array<() => void> }));
 vi.mock("node:child_process", async (actual) => {
 	const real = await actual<typeof ChildProcess>();
 	return {
@@ -12,7 +12,8 @@ vi.mock("node:child_process", async (actual) => {
 		execFile: ((command: string, args: string[], options: unknown, done: (e: Error | null, out: string) => void) => {
 			if (command !== "ps") return (real.execFile as (...a: unknown[]) => unknown)(command, args, options, done);
 			ps.spawns++;
-			queueMicrotask(() => done(null, ""));
+			if (ps.block) ps.waiting.push(() => done(null, ""));
+			else queueMicrotask(() => done(null, ""));
 			return undefined;
 		}) as typeof real.execFile,
 	};
@@ -20,6 +21,8 @@ vi.mock("node:child_process", async (actual) => {
 
 beforeEach(() => {
 	ps.spawns = 0;
+	ps.block = false;
+	ps.waiting = [];
 	resetPsSnapshot();
 	vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
 });
@@ -41,3 +44,20 @@ it.skipIf(process.platform === "win32")(
 		expect(ps.spawns).toBe(before + 1);
 	},
 );
+
+it.skipIf(process.platform === "win32")("coalesces hurry reads while a slow ps is still running", async () => {
+	const poller = pollDescendants(process.pid);
+	await vi.advanceTimersByTimeAsync(0);
+	const before = ps.spawns;
+	ps.block = true;
+	poller.hurry();
+	poller.hurry();
+	await vi.advanceTimersByTimeAsync(1000);
+	expect(ps.spawns).toBe(before + 1);
+	ps.block = false;
+	for (const done of ps.waiting.splice(0)) done();
+	await vi.advanceTimersByTimeAsync(0);
+	const stopping = poller.stop();
+	await vi.advanceTimersByTimeAsync(0);
+	await stopping;
+});

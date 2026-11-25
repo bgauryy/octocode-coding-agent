@@ -15,11 +15,11 @@ import { createHarness, type Harness } from "./harness.ts";
 import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 /**
- * A real session on a scripted model: the rules for running children and using reports are absent from the first
- * request, arrive as a section patch in the request that reads the result of the first `agent` call that waits on an
- * agent, stay in every later request, and are back in the first request after the session reloads from its entries.
+ * A real session on a scripted model: a main session with the `agent` tool carries the rules for running children and
+ * using reports from its first request, so the first delegating call never rewrites the cached prompt; they stay in
+ * every later request and are in the first request after the session reloads.
  */
-it("sends the run-and-report rules with the first delegating call and keeps them, without rewriting the first prompt", async () => {
+it("sends the run-and-report rules from the first request and never rewrites the first prompt", async () => {
 	const root = mkdtempSync(join(tmpdir(), "octocode-children-"));
 	const HEADING = "<children>";
 	const requests: Array<{ prompt: string; initial: string }> = [];
@@ -91,15 +91,13 @@ it("sends the run-and-report rules with the first delegating call and keeps them
 		]);
 		await harness.session.prompt("Ask the team.");
 		expect(requests).toHaveLength(3);
-		// Before any delegating call, and after a `coordinate` call: the delegation policy without the rules.
-		for (const request of requests.slice(0, 2)) {
+		// Every request, before and after the delegating call, has the delegation policy and the rules, under one first prompt.
+		for (const request of requests) {
 			expect(request.prompt).toContain("<delegation>");
-			expect(request.prompt).not.toContain(HEADING);
+			expect(request.prompt).toContain(HEADING);
+			expect(request.initial).toBe(requests[0].initial);
 		}
-		// The request that reads the message call's result has them, and the first prompt it was cached under is unchanged.
-		expect(requests[2].prompt).toContain(HEADING);
-		expect(requests[2].initial).toBe(requests[0].initial);
-		expect(requests[2].initial).not.toContain(HEADING);
+		expect(requests[2].prompt).toBe(requests[0].prompt);
 
 		harness.setResponses([
 			(context) => {

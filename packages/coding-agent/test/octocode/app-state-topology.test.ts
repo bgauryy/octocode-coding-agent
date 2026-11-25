@@ -47,10 +47,14 @@ describe("application state topology", () => {
 	// A module-level store is one per process, so it would hold one session's facts for every session the process hosts
 	// (an ACP host runs several). T5 scoped the last two (the permission chip and the live agents) per session: a new
 	// entry needs a fact that is truly process-wide.
+	// The prompt note belongs to the terminal's prompt, and a process has at most one terminal interface (an ACP host
+	// runs sessions without one), so it is truly process-wide.
+	const processWide = ["coding-agent/src/octocode/ui/prompt-note.ts"];
 	it("adds no process-wide store", () => {
 		const moduleStores = sources
 			.filter(({ text }) => /^(?:export )?const \w+ = createStore\b/m.test(text))
 			.map(({ file }) => file)
+			.filter((file) => !processWide.includes(file))
 			.sort();
 		expect(moduleStores).toEqual([]);
 	});

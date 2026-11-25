@@ -5,10 +5,8 @@ import { fakeHost } from "./fake-host.ts";
 import { allSections } from "./helpers.ts";
 
 /**
- * The rules for running children and using their reports (`policy/children.md`) are sent once, as the `children`
- * section, from the session's first `agent` call that starts a child or messages an agent. These tests show the text
- * reaches the model in every case where it applies: in the request that reads that call's result, in every later
- * request, and in a resumed session whose entries hold such a call.
+ * The rules for running children and using their reports (`policy/children.md`) are present from the first request of
+ * every main session with the `agent` tool. Starting or messaging an agent must not rewrite the leading system prompt.
  */
 type Sections = Record<string, string>;
 const options = (selectedTools: string[]) => ({
@@ -44,13 +42,14 @@ const assistantCall = (args: Record<string, unknown>) => ({
 const resumed = (entries: unknown[]) => ({ sessionManager: { getEntries: () => entries } });
 
 describe("the children section", () => {
-	it("is absent until the session delegates, and `coordinate` calls do not send it", async () => {
+	it("is present before the first delegation and stays byte-identical across turns and runs", async () => {
 		const s = session();
-		expect((await s.start()).children ?? "").toBe("");
+		const first = await s.start();
+		expect(first.children).toBeTruthy();
 		await s.call("bash", { command: "ls" });
 		await s.call("agent", { type: "coordinate", action: "list", reason: "who is here" });
-		expect((await s.next()).children ?? "").toBe("");
-		expect((await s.start()).children ?? "").toBe("");
+		expect((await s.next()).children).toBe(first.children);
+		expect((await s.start()).children).toBe(first.children);
 	});
 
 	it.each([
@@ -60,74 +59,49 @@ describe("the children section", () => {
 		["an outside agent", { type: "external", externalAction: "prompt", promptText: "p" }],
 		["a legacy envelope", { type: "task", input: { goal: "g", task: "t" } }],
 		["a call without a type", { goal: "g" }],
-	])("reaches the request that reads the result of %s, and every later one", async (_name, input) => {
+	])("does not change the prompt after %s", async (_name, input) => {
 		const s = session();
 		const first = await s.start();
-		expect(first.children ?? "").toBe("");
 		await s.call("agent", input);
-		// Same run, next request: the rules arrive with the tool result.
 		const next = await s.next();
-		expect(next.children).toBeTruthy();
-		expect(next.delegation).toBe(first.delegation);
-		// Later requests of the run and later runs keep the same bytes, so nothing is sent twice.
-		expect((await s.next()).children).toBe(next.children);
-		const later = await s.start();
-		expect(later.children).toBe(next.children);
-		expect((await s.next()).children).toBe(next.children);
-		// As a section patch: the first request's sections stay byte for byte, and one section is added.
+		expect(next).toEqual(first);
+		expect((await s.start()).children).toBe(first.children);
 		const patch = diffSystemPromptSections(
 			buildSystemPromptSections({ cwd: "/w", sections: first }),
-			buildSystemPromptSections({ cwd: "/w", sections: later }),
+			buildSystemPromptSections({ cwd: "/w", sections: next }),
 		);
-		expect(Object.keys(patch ?? {})).toEqual(["children"]);
+		expect(patch).toBeUndefined();
 	});
 
-	it("is sent by the run that follows when the call was the run's last step", async () => {
+	it("does not depend on earlier session entries", async () => {
 		const s = session();
-		await s.start();
-		await s.call("agent", { type: "task", goal: "g", task: "t" });
-		// No further request in that run (aborted): the child's report starts the next run.
-		expect((await s.start()).children).toBeTruthy();
+		const empty = await s.start(resumed([]));
+		expect(empty.children).toBeTruthy();
+		expect((await s.start(resumed([assistantCall({ type: "task", goal: "g", task: "t" })]))).children).toBe(
+			empty.children,
+		);
 	});
 
-	it("is present from the first request of a resumed session that delegated before", async () => {
-		for (const args of [
-			{ type: "task", goal: "g", task: "t" },
-			{ type: "message", to: "peer", message: "m" },
-			{ type: "task", input: { goal: "g", task: "t" } },
-		]) {
-			const s = session();
-			const sections = await s.start(
-				resumed([{ type: "message", message: { role: "user", content: "hi" } }, assistantCall(args)]),
-			);
-			expect(sections.children).toBeTruthy();
-		}
-		// A session that only coordinated has nothing to wait on.
-		const solo = session();
-		const entries = [assistantCall({ type: "coordinate", action: "lock", paths: ["a.ts"] })];
-		expect((await solo.start(resumed(entries))).children ?? "").toBe("");
-	});
-
-	it("starts over with a new session and reads that session's entries", async () => {
+	it("keeps the same bytes after a reset", async () => {
 		const s = session();
-		await s.start();
+		const first = await s.start();
 		await s.call("agent", { type: "task", goal: "g", task: "t" });
-		expect((await s.next()).children).toBeTruthy();
 		s.turn.reset();
-		expect((await s.start(resumed([]))).children ?? "").toBe("");
+		expect((await s.start(resumed([]))).children).toBe(first.children);
 		s.turn.reset();
-		expect((await s.start(resumed([assistantCall({ type: "task", goal: "g", task: "t" })]))).children).toBeTruthy();
+		expect((await s.start(resumed([assistantCall({ type: "task", goal: "g", task: "t" })]))).children).toBe(
+			first.children,
+		);
 	});
 
 	it("is never sent where the rules do not apply: a subagent, or a session without the agent tool", async () => {
 		const child = session(true);
-		await child.start();
+		expect((await child.start()).children ?? "").toBe("");
 		await child.call("agent", { type: "message", to: "parent", message: "m" });
 		expect((await child.next()).children ?? "").toBe("");
-		expect((await child.start()).children ?? "").toBe("");
 
 		const bare = session();
-		await bare.start({}, ["bash"]);
+		expect((await bare.start({}, ["bash"])).children ?? "").toBe("");
 		await bare.call("agent", { type: "task", goal: "g", task: "t" });
 		expect((await bare.next()).children ?? "").toBe("");
 	});

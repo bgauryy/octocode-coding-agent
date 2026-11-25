@@ -549,12 +549,20 @@ describe("every catalog model gets its longest supported cache tier by default",
 		expect(long.prompt_cache_options).toBeUndefined();
 		expect(long.prompt_cache_retention).toBeUndefined();
 		expect(long.prompt_cache_key).toBe("edge-session");
+		expect(long.input).not.toContain("12h");
 		expect(describePayloadLayers(astra().api, long)?.cacheMode).toBe("key+breakpoint-30m");
 		const short = await rawPayload(astra(), "test-key", turn, {
 			cacheRetention: "short",
 			instructionCacheRetention: "short",
 		});
 		expect(firstBreakpoint(short)).toStrictEqual({ mode: "explicit" });
+		// GPT-6 takes no request-level retention: a deployment that sets supportsLongCacheRetention still sends none.
+		const optedIn = { ...astra(), compat: { ...astra().compat, supportsLongCacheRetention: true } };
+		const retained = await rawPayload(optedIn, "test-key", turn, DEFAULTS);
+		expect(retained.prompt_cache_retention).toBeUndefined();
+		expect(firstBreakpoint(retained)).toStrictEqual({ mode: "explicit" });
+		expect(retained.prompt_cache_options).toBeUndefined();
+		expect(JSON.stringify(retained.input)).not.toContain("12h");
 		const split = await rawPayload(astra(), "test-key", turn, {
 			...DEFAULTS,
 			instructionCacheBoundary: "environment",

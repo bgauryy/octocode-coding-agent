@@ -1,7 +1,6 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import { Markdown } from "../src/components/markdown.ts";
-import { lexMarkdown } from "../src/components/markdown/incremental.ts";
 import type { DefaultTextStyle } from "../src/components/markdown/types.ts";
 import { getCapabilities, resetCapabilitiesCache, setCapabilities } from "../src/terminal-image/capabilities.ts";
 import { defaultMarkdownTheme } from "./test-themes.ts";
@@ -198,20 +197,6 @@ describe("Markdown streaming", () => {
 		}
 	});
 
-	it("frames only the rows of the block an append changed", () => {
-		let framed = 0;
-		const counting: DefaultTextStyle = { bgColor: (text) => (framed++, `\x1b[40m${text}\x1b[49m`) };
-		const paragraphs = Array.from({ length: 200 }, (_, i) => `Paragraph ${i} with enough words to wrap twice.`);
-		const streamed = new Markdown(paragraphs.join("\n\n"), 1, 1, defaultMarkdownTheme, counting);
-		const total = streamed.render(30).length;
-		framed = 0;
-		streamed.setText(`${paragraphs.join("\n\n")} more`);
-		const rows = streamed.render(30);
-		assert.strictEqual(rows.length, total);
-		// The last paragraph's rows and the blank rows above and below, not the hundreds of rows before them.
-		assert.ok(framed <= 8, `framed ${framed} of ${total} rows`);
-	});
-
 	it("re-renders for a new width and after invalidate with a changed theme", () => {
 		let marker = "A";
 		const theme = { ...defaultMarkdownTheme, heading: (text: string) => `[${marker}:${text}` };
@@ -253,20 +238,5 @@ describe("Markdown streaming", () => {
 			before.map(([, url]) => url),
 		);
 		assert.ok(!other.some(([id]) => before.some(([seen]) => seen === id)));
-	});
-
-	it("keeps the tokens of finished blocks when the source grows", () => {
-		const first = lexMarkdown("One.\n\nTwo.\n\nThree.\n\nFour");
-		const second = lexMarkdown("One.\n\nTwo.\n\nThree.\n\nFour and more", first);
-		assert.strictEqual(second.tokens[0], first.tokens[0]);
-		assert.notStrictEqual(second.tokens.at(-1), first.tokens.at(-1));
-		assert.deepStrictEqual(
-			second.tokens.map((token) => token.raw),
-			lexMarkdown("One.\n\nTwo.\n\nThree.\n\nFour and more").tokens.map((token) => token.raw),
-		);
-		// A link reference definition can change earlier links, so the whole source is lexed again.
-		const withDefinition = lexMarkdown("One.\n\nTwo.\n\nThree.\n\nFour\n\n[a]: https://x.test", second);
-		assert.notStrictEqual(withDefinition.tokens[0], first.tokens[0]);
-		assert.strictEqual(withDefinition.extendable, false);
 	});
 });

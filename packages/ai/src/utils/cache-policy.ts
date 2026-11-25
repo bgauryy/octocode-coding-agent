@@ -13,8 +13,11 @@ export function resolvePromptCacheKey(
 }
 /**
  * The id routing headers carry: the prompt cache key (a fork's root, a child's group key) or else the session id, and
- * nothing when history caching is off. Headers and the body key must agree, or the same prefix is routed to another
- * replica than the one holding it.
+ * nothing when history caching is off. Where a provider routes by header and groups by body key, the header carries the
+ * same id as the body key so the prefix reaches the replica holding it. Mistral is the exception (`mistralSdkModel`):
+ * its body `prompt_cache_key` groups siblings (the shared key wins), while `x-affinity` follows the session
+ * (`promptCacheKey` or else `sessionId`, never the shared key), so siblings share a cache key without all being pinned
+ * to one replica. Tested offline only (`mistral-protocol-regressions.test.ts`).
  */
 export function resolveCacheAffinityId(
 	options?: Pick<StreamOptions, "promptCacheKey" | "sessionId" | "env" | "cacheRetention">,

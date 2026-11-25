@@ -67,10 +67,27 @@ describe("Mermaid rendering", () => {
 		expect(rendered).toContain(SGR.accent);
 	});
 
-	it("renders incomplete Mermaid blocks during streaming", () => {
+	it("leaves Mermaid blocks as source while a reply streams, in every mode", () => {
 		const partialMarkdown = "```mermaid\nflowchart LR\n  A --> B";
+		const finished = `${partialMarkdown}\n\`\`\``;
 
-		expect(transformMermaid(partialMarkdown, { isStreaming: true })).toContain("───▶");
+		for (const mode of ["streaming", "final"] as const) {
+			expect(transformMermaid(partialMarkdown, { mode, isStreaming: true })).toBe(partialMarkdown);
+			expect(transformMermaid(finished, { mode, isStreaming: true })).toBe(finished);
+		}
+	});
+
+	it("renders a saved streaming mode exactly as final", () => {
+		const markdown =
+			"```mermaid\nflowchart LR\n  A[Foo] --> B[Bar]\n```\n\n```mermaid\nflowchart LR\n  A[Foo] invalid\n```";
+		const final = transformMermaid(markdown, { mode: "final" });
+
+		expect(final).toContain("│ Foo ├───▶│ Bar │");
+		expect(final).toContain("Mermaid diagram not rendered");
+		expect(transformMermaid(markdown, { mode: "streaming" })).toBe(final);
+		expect(transformMermaid(markdown, { mode: "streaming", theme: ansiTheme })).toBe(
+			transformMermaid(markdown, { mode: "final", theme: ansiTheme }),
+		);
 	});
 
 	it("renders diagrams with class assignments", () => {
@@ -86,16 +103,12 @@ describe("Mermaid rendering", () => {
 		const markdown = "```mermaid\nflowchart LR\n  A[Foo] invalid\n```";
 		const final = transformMermaid(markdown);
 		const followedByText = transformMermaid(`${markdown}\nFollowing text`);
-		const streaming = transformMermaid(markdown, { isStreaming: true });
 
 		expect(final).toContain(markdown);
 		expect(final).toContain("```\n`Mermaid diagram not rendered");
 		expect(final).toContain('dropped, expected a link: "invalid"');
 		expect(final).not.toContain("more)");
 		expect(followedByText).toContain("  \nFollowing text");
-		expect(streaming).not.toContain("Mermaid diagram not rendered");
-		expect(streaming).not.toContain("```mermaid");
-		expect(streaming).toContain("│ Foo │");
 	});
 
 	it("summarizes additional partial-render warnings", () => {
@@ -148,10 +161,10 @@ describe("Mermaid rendering", () => {
 		}
 	});
 
-	it("draws the same diagram the same way on every streamed chunk", () => {
+	it("draws the same diagram the same way whatever text follows it", () => {
 		const diagram = "```mermaid\nflowchart LR\n  A[Start] --> B[Done]\n```\n";
-		const first = transformMermaid(`${diagram}one`, { isStreaming: true });
-		const second = transformMermaid(`${diagram}one two`, { isStreaming: true });
+		const first = transformMermaid(`${diagram}one`);
+		const second = transformMermaid(`${diagram}one two`);
 		expect(first).toContain("│ Start ├───▶│ Done │");
 		expect(second).toBe(`${first} two`);
 	});

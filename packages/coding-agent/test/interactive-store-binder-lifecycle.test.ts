@@ -35,12 +35,13 @@ describe("UI store binders follow the host's lifetime", () => {
 		const showStatus = vi.spyOn(host, "showStatus").mockImplementation(() => {});
 		const store = host.uiStore;
 
-		store.getState().setHideThinking(true);
+		store.getState().takeSlot({});
 		expect(requestRender).toHaveBeenCalledTimes(1);
 
 		host.stop();
 		requestRender.mockClear();
-		store.getState().setHideThinking(false);
+		store.getState().clearSlot();
+		store.getState().setHideThinking(true);
 		store.getState().setToolsExpanded(true);
 
 		expect(requestRender).not.toHaveBeenCalled();

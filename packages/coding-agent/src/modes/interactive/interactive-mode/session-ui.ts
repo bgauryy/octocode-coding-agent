@@ -7,7 +7,6 @@ import type { SessionUI } from "../../../core/features/index.ts";
 import { getThemeByName, Theme, theme } from "../../../theme/theme.ts";
 import { isCancelledText } from "../../../octocode/shared/commands.ts";
 import { countProblem, noticeLine } from "./display.ts";
-import { DEFAULT_WORKING_MESSAGE } from "../state/status-slice.ts";
 import { askInTerminal } from "./ask-dialog.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { pickSession } from "./session-picker.ts";
@@ -15,7 +14,6 @@ import { pickSession } from "./session-picker.ts";
 /** Interactive-mode members used by the feature UI context. */
 type SessionUIHost = Pick<
 	InteractiveModeHost,
-	| "activeStatusIndicator"
 	| "addFeatureTerminalInputListener"
 	| "autocompleteProviderWrappers"
 	| "chatContainer"
@@ -58,12 +56,7 @@ export function createSessionUI(host: SessionUIHost): SessionUI {
 		notify: (message, type) => showNotify(host, message, type),
 		onTerminalInput: (handler) => host.addFeatureTerminalInputListener(handler),
 		setStatus: (key, text, tone) => host.setFeatureStatus(key, text, tone),
-		setWorkingMessage: (message) => {
-			host.uiStore.getState().setWorkingMessage(message);
-			if (host.activeStatusIndicator?.kind === "working") {
-				host.activeStatusIndicator.setMessage(message ?? DEFAULT_WORKING_MESSAGE);
-			}
-		},
+		setWorkingMessage: (message) => host.uiStore.getState().setWorkingMessage(message),
 		setWorkingIndicator: (options) => host.setWorkingIndicator(options),
 		setWidget: (key, content, options) => host.setFeatureWidget(key, content, options),
 		setFooter: (factory) => host.setFeatureFooter(factory),

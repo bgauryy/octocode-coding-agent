@@ -255,6 +255,24 @@ describe("footer", () => {
 		).toEqual(["~/code/app", "claude-opus-5-5:high"]);
 	});
 
+	it("shows `ctx ?` for a model with no known window instead of hiding the gauge", () => {
+		const [top] = footerLines(
+			{
+				...state,
+				thinking: undefined,
+				context: { percent: null, window: 0 },
+				usage: { input: 0, cacheRead: 0, output: 0, cost: 0, unpriced: false },
+				sessionName: undefined,
+				chip: undefined,
+			},
+			null,
+			new Map(),
+			theme,
+			120,
+		);
+		expect(top).toBe(`~/code/app${" ".repeat(52)}ctx ?`);
+	});
+
 	it("drops the least important parts first on narrow terminals, never the model, context, permission mode, running work or Σ", () => {
 		const [top, bottom] = footerLines(
 			state,

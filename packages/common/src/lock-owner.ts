@@ -49,16 +49,26 @@ function ownStartTime(): string | undefined {
 /**
  * Right after taking the lock at `lockfilePath`: record this process as its owner. Returns cleanup for after release:
  * removing this holder's record. A record that cannot be written leaves the owner unknown, which is today's behavior.
+ * `dir`: the lock directory's identity when the caller just read it.
  */
-export function recordLockOwner(lockfilePath: string): () => void {
+export function recordLockOwner(lockfilePath: string, dir = directoryIdentity(lockfilePath)): () => void {
+	return writeLockOwner(lockfilePath, dir).forget;
+}
+
+/** `recordLockOwner`, also telling whether this call wrote the record. */
+function writeLockOwner(lockfilePath: string, dir: string | undefined): { written: boolean; forget: () => void } {
 	let recorded: string | undefined;
+	let written = false;
 	try {
-		recorded = ownerRecord(lockfilePath);
-		if (recorded) fs.writeFileSync(ownerPath(lockfilePath), recorded, { mode: 0o600 });
+		recorded = ownerRecord(lockfilePath, dir);
+		if (recorded) {
+			fs.writeFileSync(ownerPath(lockfilePath), recorded, { mode: 0o600 });
+			written = true;
+		}
 	} catch {
 		// Unknown owner: waiters fall back to the stale limit.
 	}
-	return forgetLockOwner(lockfilePath, recorded);
+	return { written, forget: forgetLockOwner(lockfilePath, recorded) };
 }
 
 function ownerRecord(lockfilePath: string, dir = directoryIdentity(lockfilePath)): string | undefined {
@@ -254,18 +264,37 @@ export function guardLockOwner(lockfilePath: string, base: LockFileSystem = fs):
 	let observed: string | undefined;
 	let created: string | undefined;
 	let held: string | undefined;
+	/** A synchronous acquisition wrote its owner record itself (not a successor's, not an asynchronous publication). */
+	let wroteRecord = false;
+	/** This holder's record was removed with its directory still in place, so release has nothing left to forget. */
+	let forgotten = false;
 	const locked = () =>
 		Object.assign(new Error("Lock file is already being held"), { code: "ELOCKED", file: lockfilePath });
 	const check = () => {
+		observed = directoryIdentity(lockfilePath);
+		// No lock directory: no record can describe it, so the free lock costs one stat.
+		if (observed === undefined) return;
 		const owner = readOwner(lockfilePath);
-		if (owner && sameDirectory(lockfilePath, owner.dir) && !(ownerGone(owner) && breakDeadLockSync(lockfilePath)))
-			throw locked();
+		if (owner?.dir !== observed) return;
+		if (!(ownerGone(owner) && breakDeadLockSync(lockfilePath))) throw locked();
 		observed = directoryIdentity(lockfilePath);
 	};
 	const beforeRemoval = (target: fs.PathLike) => {
 		if (String(target) !== lockfilePath) return true;
 		const current = directoryIdentity(lockfilePath);
-		if (!acquiring) return held !== undefined && current === held;
+		if (!acquiring) {
+			if (held === undefined || current !== held) return false;
+			if (!wroteRecord) return true;
+			// While this holder's directory stands, no other acquirer can publish a record: the record this holder wrote is
+			// removed without reading it back. A missing record only ever makes waiters wait.
+			try {
+				fs.rmSync(ownerPath(lockfilePath), { force: true });
+				forgotten = true;
+			} catch {
+				// Left to the release's own forget, which checks the record before removing it.
+			}
+			return true;
+		}
 		// A failed probe can clean up the directory this attempt just created. A stale takeover must still name the
 		// directory checked before acquisition, including when a successor has not published its owner record yet.
 		if (created !== undefined && current === created) return true;
@@ -304,7 +333,11 @@ export function guardLockOwner(lockfilePath: string, base: LockFileSystem = fs):
 		acquired: () => {
 			acquiring = false;
 			held = directoryIdentity(lockfilePath);
-			return recordLockOwner(lockfilePath);
+			const { written, forget } = writeLockOwner(lockfilePath, held);
+			wroteRecord = written;
+			return () => {
+				if (!forgotten) forget();
+			};
 		},
 		acquiredAsync: async () => {
 			acquiring = false;

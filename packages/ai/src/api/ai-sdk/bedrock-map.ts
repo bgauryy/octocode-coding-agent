@@ -5,7 +5,7 @@ import { calculateCost } from "../../models/model-helpers.ts";
 import { createUsage, sumUsageTokens } from "../../utils/assistant-message.ts";
 import { collapseSystemMessages, getInitialSystemMessage, getCurrentTools } from "../../utils/transcript.ts";
 import { splitSystemMessageIntoBlocks } from "../../utils/instruction-split.ts";
-import { countHistoryTurns, planCacheMarkers } from "../../utils/cache-profiles.ts";
+import { CACHE_PROFILES, countHistoryTurns, planCacheMarkers } from "../../utils/cache-profiles.ts";
 import { resolveLayeredCacheRetention } from "../../utils/cache-policy.ts";
 import { charsToTokens, ESTIMATED_IMAGE_TOKENS } from "../../utils/estimate.ts";
 import type { BedrockOptions } from "../bedrock-converse-stream/types.ts";
@@ -29,6 +29,8 @@ import { sdkUsage } from "./events.ts";
 import { bedrockNetworkFetch, bedrockSdkModel } from "./bedrock-provider.ts";
 import { appendBedrockFailureDiagnostic, formatBedrockError } from "../bedrock-converse-stream/errors.ts";
 import { parseRetryAfterMs } from "../../utils/retry.ts";
+import { capCacheBreakpoints } from "../anthropic-messages/cache-breakpoints.ts";
+import { modelKey, requestDiagnostics } from "./request-diagnostics.ts";
 import type { SdkMapping } from "./stream.ts";
 
 /** Profiles whose missing cache points this process already reported: once per profile, not on every reply. */
@@ -157,14 +159,51 @@ export function bedrockSdkMapping(
 		if (previous && (previous.role === "user" || previous.role === "tool") && plan.history > 1)
 			previous.providerOptions = point(history);
 	}
+	const diagnostics = requestDiagnostics();
+	const longRequested =
+		(retention.instructions === "long" && (toolPoints || plan.blocks.some(Boolean))) ||
+		(retention.history === "long" && plan.history > 0);
+	if (
+		profile === CACHE_PROFILES.bedrockClaude &&
+		longRequested &&
+		point("long") !== undefined &&
+		!longCacheTtl(model, "long").ttl
+	)
+		diagnostics.report(
+			"cache_retention_downgraded",
+			{
+				requested: "1h",
+				sent: "5m",
+				model: model.id,
+				fix: "This model is not verified for 1-hour cache points. If it accepts them, set the model's compat.supportsLongCacheRetention to true.",
+			},
+			modelKey(model),
+		);
 	if (profile.maxCachedTokens !== undefined) {
 		let prefix = charsToTokens(JSON.stringify(syntheticTools ? {} : tools).length);
+		let stripped = 0;
 		for (const message of messages) {
 			prefix += charsToTokens(JSON.stringify(message.content).length);
 			if (Array.isArray(message.content))
 				prefix += message.content.filter((p) => p.type === "image").length * ESTIMATED_IMAGE_TOKENS;
-			if (profile.maxCachedTokens !== undefined && prefix >= profile.maxCachedTokens) delete message.providerOptions;
+			if (prefix >= profile.maxCachedTokens) {
+				if (message.providerOptions?.bedrock?.cachePoint) stripped++;
+				delete message.providerOptions;
+			}
 		}
+		if (stripped > 0)
+			// Once per model: every later request of a long session is past the limit too.
+			diagnostics.report(
+				"cache_markers_stripped",
+				{
+					reason: "estimated_prefix_over_cache_limit",
+					model: model.id,
+					stripped,
+					maxCachedTokens: profile.maxCachedTokens,
+					estimatedPrefixTokens: prefix,
+				},
+				modelKey(model),
+			);
 	}
 	const rich = bedrockRichEvents();
 	let rawUsage: Usage | undefined;
@@ -188,6 +227,11 @@ export function bedrockSdkMapping(
 					delete inference.temperature;
 					delete inference.topP;
 				}
+			}
+			if (profile.maxMarkers > 0) {
+				const removed = capCacheBreakpoints(body, profile.maxMarkers);
+				if (removed > 0)
+					diagnostics.report("cache_markers_capped", { removed, max: profile.maxMarkers, model: model.id });
 			}
 			if (Array.isArray(body.system) && body.system.length === 0) delete body.system;
 			if (emptyMessages) body.messages = [];
@@ -243,6 +287,7 @@ export function bedrockSdkMapping(
 			return result;
 		},
 		onPart(part, output, stream) {
+			if (part.type === "finish" || part.type === "error") diagnostics.flush(output);
 			if (part.type === "finish" && part.rawFinishReason === "model_context_window_exceeded")
 				part.finishReason = "length";
 			if (part.type === "finish" && uncachedProfile && !reportedUncachedProfiles.has(model.id)) {

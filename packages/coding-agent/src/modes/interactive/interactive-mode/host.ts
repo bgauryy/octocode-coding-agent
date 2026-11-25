@@ -37,6 +37,7 @@ import type { ToolStatus } from "../../../utils/tools-manager.ts";
 import type { LatestOctocodeRelease } from "../../../utils/version-check.ts";
 import type { AuthSelectorProvider } from "../components/oauth-selector.ts";
 import type { StatusIndicator } from "../components/status-indicator.ts";
+import type { StatusIndicatorRequest } from "../state/status-slice.ts";
 import type { AskView } from "../../../octocode/shared/ask-view.ts";
 import type { BlockedStatus } from "../program-status-reporter.ts";
 import type { Theme } from "../../../theme/theme.ts";
@@ -236,7 +237,7 @@ export interface InteractiveModeMethods {
 	/** Open the queued-messages list focused on the first (default) or last message; false when nothing is queued. */
 	showQueueManager(focus?: "first" | "last"): boolean;
 	showStatus(message: StatusText): void;
-	showStatusIndicator(indicator: StatusIndicator): void;
+	showStatusIndicator(request: StatusIndicatorRequest): void;
 	showTreeSelector(initialSelectedId?: string): void;
 	showUserMessageSelector(): void;
 	showWarning(warningMessage: string): void;

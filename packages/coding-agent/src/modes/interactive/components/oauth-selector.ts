@@ -1,6 +1,7 @@
 import type { ApiKeyAuth, AuthCheck, OAuthAuth } from "@octocodeai/octocode-ai";
 import { Container, type Focusable, ListView, Spacer, TruncatedText, truncateToWidth } from "@octocodeai/octocode-tui";
 import { HintBar, keyText, moveHint, type RankedHint } from "../../../theme/theme-tui-helpers.ts";
+import { selectedText } from "../../../theme/gradients.ts";
 import { theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { listRows, listTheme, syncEmpty, typeKeepingSelection } from "./list-kit.ts";
@@ -94,7 +95,7 @@ export class OAuthSelectorComponent extends Container implements Focusable {
 				const type = showAuthTypeLabels
 					? theme.fg("muted", ` [${formatAuthSelectorProviderType(provider.authType, provider.subscription)}]`)
 					: "";
-				const label = selected ? theme.fg("accent", theme.bold(name)) : theme.fg("text", name);
+				const label = selected ? theme.bold(selectedText(name)) : theme.fg("text", name);
 				return truncateToWidth(`${label}${type}${status}`, width, "…");
 			},
 		});

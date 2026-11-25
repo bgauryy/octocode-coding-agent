@@ -131,6 +131,47 @@ describe("ListView", () => {
 		}
 	});
 
+	it("takes j and k as down and up without a search line, and types them into one", () => {
+		const { view } = list(3);
+		view.handleInput("j");
+		view.handleInput("j");
+		assert.strictEqual(view.getSelectedIndex(), 2);
+		view.handleInput("k");
+		assert.strictEqual(view.getSelectedIndex(), 1);
+		const searchable = new ListView<string>({
+			items: ["jk", "x"],
+			row: (i) => i,
+			maxRows: 5,
+			theme,
+			search: { text: (i) => i },
+		});
+		searchable.handleInput("j");
+		searchable.handleInput("k");
+		assert.strictEqual(searchable.getQuery(), "jk");
+		assert.strictEqual(searchable.getSelectedIndex(), 0);
+	});
+
+	it("confirms on space and cancels on q without a search line, and types them into one", () => {
+		const plainList = list(3);
+		plainList.view.handleInput("j");
+		plainList.view.handleInput(" ");
+		plainList.view.handleInput("q");
+		assert.deepStrictEqual(plainList.events, ["select item 2", "cancel"]);
+		const searchable = new ListView<string>({
+			items: ["a q", "b"],
+			row: (i) => i,
+			maxRows: 5,
+			theme,
+			search: { text: (i) => i },
+		});
+		const events: string[] = [];
+		searchable.onSelect = (item) => events.push(`select ${item}`);
+		searchable.onCancel = () => events.push("cancel");
+		for (const key of ["a", " ", "q"]) searchable.handleInput(key);
+		assert.strictEqual(searchable.getQuery(), "a q");
+		assert.deepStrictEqual(events, []);
+	});
+
 	it("filters with a ⌕ search line; esc clears the search first, then cancels", () => {
 		const items = ["alpha", "beta", "gamma"];
 		const view = new ListView<string>({ items, row: (i) => i, maxRows: 5, theme, search: { text: (i) => i } });

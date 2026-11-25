@@ -1,5 +1,6 @@
 import type { Api, Model, StreamOptions } from "../types.ts";
-import { resolveCacheRetention, resolveInstructionCacheRetention } from "../utils/cache-policy.ts";
+import { CACHE_PROFILES } from "../utils/cache-profiles.ts";
+import { resolveInstructionCacheRetention } from "../utils/cache-policy.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 
 const DEFAULT_AZURE_API_VERSION = "v1";
@@ -151,10 +152,13 @@ export function azureSupportsInstructionBreakpoints(model: Pick<Model<Api>, "com
 /** TTL of the 30m instruction breakpoints of an Azure model outside explicit mode (GPT-6 Astra), or undefined for none. */
 export function azureInstructionCacheTtl(
 	model: Pick<Model<Api>, "compat">,
-	options: Pick<StreamOptions, "cacheRetention" | "instructionCacheRetention" | "env"> | undefined,
+	options:
+		| Pick<StreamOptions, "cacheRetention" | "instructionCacheRetention" | "keepInstructionCache" | "env">
+		| undefined,
 ): "30m" | undefined {
 	if (azureSupportsExplicitPromptCacheMode(model) || !azureSupportsInstructionBreakpoints(model)) return undefined;
-	if (resolveCacheRetention(options?.cacheRetention, options?.env) === "none") return undefined;
+	// History `none` yields instruction retention `none` unless `keepInstructionCache` keeps it.
 	const instructions = resolveInstructionCacheRetention(options);
-	return instructions === undefined || instructions === "none" ? undefined : "30m";
+	if (instructions === undefined || instructions === "none") return undefined;
+	return CACHE_PROFILES.azureInstructionBreakpoints.ttl.default;
 }

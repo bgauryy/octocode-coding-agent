@@ -61,6 +61,27 @@ describe("prompt note subscription", () => {
 		clearPromptNote();
 		expect(tui.requestRender).not.toHaveBeenCalled();
 	});
+
+	it("repaints only when the shown note changes: the same note again paints nothing, clearing it paints", async () => {
+		initTheme("dark", false);
+		const fake = fakeHost();
+		const ctx = fakeCtx({ cwd: "/private/tmp/editor" });
+		registerEditor(fake.api, { cycle: vi.fn() });
+		await fake.fire("session_start", {}, ctx);
+		const { tui, keys } = terminal();
+		ctx.ui.getEditorComponent()!(tui, editorTheme, keys);
+		try {
+			showPromptNote("note", 60_000);
+			vi.mocked(tui.requestRender).mockClear();
+			showPromptNote("note", 60_000);
+			expect(tui.requestRender).not.toHaveBeenCalled();
+			clearPromptNote();
+			expect(tui.requestRender).toHaveBeenCalledTimes(1);
+		} finally {
+			clearPromptNote();
+			await fake.fire("session_shutdown", {}, ctx);
+		}
+	});
 });
 
 describe("permission shortcut in the Octocode editor", () => {

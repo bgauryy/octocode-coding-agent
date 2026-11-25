@@ -131,7 +131,8 @@ describe("selectors drawing untrusted text", () => {
 			() => {},
 		);
 		const lines = selector.render(120);
-		expect(lines.join("\n")).toContain("pasted ABCDEF");
+		// The selected row fades its color along the text: read the text without its SGR colors.
+		expect(lines.join("\n").replace(/\x1b\[[0-9;:]*m/g, "")).toContain("pasted ABCDEF");
 		expect(unsafe(lines)).toEqual([]);
 	});
 

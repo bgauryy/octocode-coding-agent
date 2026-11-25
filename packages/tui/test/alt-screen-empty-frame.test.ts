@@ -42,6 +42,27 @@ it("writes nothing for a frame that changes no row and leaves the cursor where i
 	tui.stop();
 });
 
+it("counts painted and written frames: a frame that changes nothing paints but writes none", async () => {
+	const terminal = new FrameTerminal(30, 4);
+	const tui = new TuiAltScreen(terminal);
+	const text = new Text("alpha", 0, 0);
+	tui.addChild(text);
+	tui.start();
+	await terminal.waitForRender();
+	const start = { ...tui.renderCounters };
+	assert.equal(start.written, terminal.frames.length, "each frame write counts once");
+
+	tui.renderNow();
+	const quiet = tui.renderCounters;
+	assert.equal(quiet.painted - start.painted, 1);
+	assert.equal(quiet.written - start.written, 0, "an unchanged frame writes nothing");
+
+	text.setText("beta");
+	tui.renderNow();
+	assert.equal(tui.renderCounters.written - start.written, 1);
+	tui.stop();
+});
+
 it("budgets multiple encoded screenshots before the first frame and a forced recovery", async () => {
 	setCapabilities({ images: "kitty", trueColor: true, hyperlinks: true });
 	const terminal = new (class extends FrameTerminal {

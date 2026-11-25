@@ -29,8 +29,14 @@ export function endOfLastRecord(fd: number, size: number): number {
 	return 0;
 }
 
-/** The file's size and its last line (`offset`, `bytes`) when that line has no newline. */
-type Tail = { kind: "whole" } | ({ kind: "unterminated" | "torn"; size: number } & SealedLine);
+/** The file's size and modification time (ns), as one `fstat` read them. */
+export interface FileEnd {
+	size: number;
+	mtime: string;
+}
+
+/** How the file ends, and its last line (`offset`, `bytes`) when that line has no newline. */
+type Tail = ({ kind: "whole" } | ({ kind: "unterminated" | "torn" } & SealedLine)) & FileEnd;
 
 /**
  * How the file ends: `whole` (empty, or a newline), `unterminated` (a whole record lacking only its newline: a hand
@@ -41,17 +47,20 @@ type Tail = { kind: "whole" } | ({ kind: "unterminated" | "torn"; size: number }
 function readTail(file: string): Tail {
 	const fd = openSync(file, "r");
 	try {
-		const size = fstatSync(fd).size;
+		const stat = fstatSync(fd, { bigint: true });
+		const size = Number(stat.size);
+		const mtime = String(stat.mtimeNs);
 		const last = Buffer.alloc(1);
-		if (size === 0 || (readSync(fd, last, 0, 1, size - 1) === 1 && last[0] === 10)) return { kind: "whole" };
+		if (size === 0 || (readSync(fd, last, 0, 1, size - 1) === 1 && last[0] === 10))
+			return { kind: "whole", size, mtime };
 		const start = endOfLastRecord(fd, size);
 		const tail = Buffer.alloc(size - start);
 		if (start > 0 && readSync(fd, tail, 0, tail.length, start) === tail.length) {
 			const parsed = parseJsonlLine(tail.toString("utf8"));
 			if (!parsed || (parsed.ok && typeof parsed.value === "object" && parsed.value !== null)) {
-				return { kind: "unterminated", size, offset: start, bytes: tail.length };
+				return { kind: "unterminated", size, mtime, offset: start, bytes: tail.length };
 			}
-			if (!parsed.ok) return { kind: "torn", size, offset: start, bytes: tail.length };
+			if (!parsed.ok) return { kind: "torn", size, mtime, offset: start, bytes: tail.length };
 		}
 		throw new Error(`Session has an incomplete final record. ${forkHint(file)}`);
 	} finally {
@@ -86,28 +95,34 @@ function recoveryEntry(state: SessionState, sealed: SealedLine, parentId: string
  * merged first (`mergeForeignEntries`), so a file the merge refuses is left as it was. A record lacking only its newline
  * gets it. Part of a record is sealed, and the recovery record naming it goes in the same append, as a child of
  * `pending[0]`'s parent; the merge that follows reads that record like any other, and the caller makes it `pending[0]`'s
- * parent (`adoptRecovery`). Returns the recovery record's id, or undefined. Throws, writing nothing, when the end is not
+ * parent (`adoptRecovery`). Returns the recovery record's id (`recovery`), and the file's end (`end`) when nothing was
+ * written here, so the merge and the append need no stat of their own. Throws, writing nothing, when the end is not
  * provably part of a record (`readTail`). A file that shrank is left to the merge, which refuses it.
  */
-export function endSessionTail(state: SessionState, file: string, pending: SessionEntry[]): string | undefined {
-	if (pending.length === 0) return undefined;
+export function endSessionTail(
+	state: SessionState,
+	file: string,
+	pending: SessionEntry[],
+): { recovery?: string; end?: FileEnd } {
+	if (pending.length === 0) return {};
 	const tail = readTail(file);
-	if (tail.kind === "whole") return undefined;
+	const end = { size: tail.size, mtime: tail.mtime };
+	if (tail.kind === "whole") return { end };
 	const known = state.fileSize;
 	if (known === undefined) throw new Error(`Session has an incomplete final record. ${forkHint(file)}`);
-	if (tail.size < known) return undefined;
+	if (tail.size < known) return { end };
 	if (known < tail.offset) mergeForeignEntries(state, file, pending, tail.offset);
 	if (tail.kind === "unterminated") {
 		appendFileSync(file, "\n");
 		// Known to this state already (it read or wrote the record): stay level with the file.
 		if (state.fileSize === tail.size) state.fileSize += 1;
 		scheduleSessionSync(file);
-		return undefined;
+		return {};
 	}
 	const entry = recoveryEntry(state, tail, pending.length ? pending[0].parentId : state.leafId);
 	appendFileSync(file, `\n${state.codec.line(entry)}\n`);
 	scheduleSessionSync(file);
-	return entry.id;
+	return { recovery: entry.id };
 }
 
 /** After the merge: the recovery record `id` becomes the parent of `pending[0]`, so the branch stays one line. */

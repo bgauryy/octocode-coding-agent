@@ -142,6 +142,7 @@
 			"withNativePermissionOwners@octocode/permission/native-tools.ts",
 			"registerTeamEvents@octocode/team/tools/events.ts",
 			"registerReasoningNotice@octocode/ui/footer/notices.ts",
+			"registerDefaultedModelNotice@octocode/ui/footer/notices.ts",
 			"registerFallbackNotice@octocode/ui/footer/notices.ts",
 			"registerFooter@octocode/ui/footer.ts",
 			"registerCompaction@octocode/compaction/register.ts"
@@ -296,6 +297,7 @@
 			"registerSkillDescriptions@octocode/context-optimization/skills.ts",
 			"registerUnpricedNotice@octocode/ui/footer/notices.ts",
 			"registerReasoningNotice@octocode/ui/footer/notices.ts",
+			"registerDefaultedModelNotice@octocode/ui/footer/notices.ts",
 			"registerFooter@octocode/ui/footer.ts",
 			"registerPhaseFeed@octocode/ui/phase-feed.ts",
 			"registerPhasePort@octocode/ui/phase-port.ts",
@@ -346,7 +348,6 @@
 			"registerFooter@octocode/ui/footer.ts"
 		],
 		"tool_call": [
-			"registerTurnSetup@octocode/turn.ts",
 			"registerToolGates@octocode/tool-gates.ts"
 		],
 		"tool_call_discarded": [
@@ -412,9 +413,6 @@
 			"registerHooks@octocode/hooks/register.ts",
 			"registerPostToolBatchHook@octocode/hooks/register/events.ts",
 			"registerCompaction@octocode/compaction/register.ts"
-		],
-		"turn_prompt": [
-			"registerTurnSetup@octocode/turn.ts"
 		],
 		"turn_start": [
 			"registerTeamEvents@octocode/team/tools/events.ts",

@@ -265,6 +265,8 @@ export function registerBashTool(
 				// A command still running at its deadline becomes a background job (see `adoptAtDeadline`).
 				let adopted: BashJob | undefined;
 				let movedFor = "deadline" as HandoffReason;
+				// A sleep, which cannot move, was stopped because a message is waiting.
+				let endedForMessage = false;
 				const run = createBashToolDefinition(process.cwd(), {
 					...settings,
 					spawnHook: ownerSpawnHook(owner),
@@ -294,6 +296,7 @@ export function registerBashTool(
 						{
 							watch: { pending: () => ctx.hasPendingMessages() },
 							stopAtDeadline: deliberate,
+							stopOnMessage: movable ? undefined : () => (endedForMessage = true),
 							unsandboxed: params.sandbox === false,
 						},
 					),
@@ -381,7 +384,8 @@ export function registerBashTool(
 						clamped,
 						cwd: ctx.cwd,
 						verification,
-						how: movedFor === "message" ? "message" : capped ? "cap" : auto ? "threshold" : "deadline",
+						how:
+							movedFor === "message" || endedForMessage ? "message" : capped ? "cap" : auto ? "threshold" : "deadline",
 					});
 				}
 			},

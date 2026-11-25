@@ -284,10 +284,10 @@ export function persistEntry(state: SessionState, entry?: SessionEntry, lockWait
 			() => {
 				const pending = entry && !state.unwritten.includes(entry) ? [...state.unwritten, entry] : [...state.unwritten];
 				// Part of a record a stopped writer left is sealed first, and the record naming it is merged like any other.
-				const recovery = endSessionTail(state, file, pending);
-				mergeForeignEntries(state, file, pending);
+				const { recovery, end } = endSessionTail(state, file, pending);
+				mergeForeignEntries(state, file, pending, end?.size);
 				adoptRecovery(state, recovery, pending);
-				appendRecords(state, file, pending);
+				appendRecords(state, file, pending, end);
 			},
 			lockWaitMs,
 		);

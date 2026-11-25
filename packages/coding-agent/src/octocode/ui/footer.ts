@@ -22,7 +22,12 @@ import {
 } from "../shared/util.ts";
 import { SpendScan } from "../shared/spend.ts";
 import { liveAgentsOf, reportedAgent } from "../shared/team-spend.ts";
-import { registerFallbackNotice, registerReasoningNotice, registerUnpricedNotice } from "./footer/notices.ts";
+import {
+	registerDefaultedModelNotice,
+	registerFallbackNotice,
+	registerReasoningNotice,
+	registerUnpricedNotice,
+} from "./footer/notices.ts";
 import { githubTokenPresent } from "./footer/github.ts";
 import { tightestPlanWindow } from "../shared/quota-text.ts";
 import { followSessionActivity } from "../activity/session-activity.ts";
@@ -51,6 +56,7 @@ function messageEntry(message: unknown): SessionEntry {
 export function registerFooter(api: FeatureSetup, quotas: Pick<ProviderQuotas, "current"> = providerQuotas): void {
 	registerUnpricedNotice(api);
 	registerReasoningNotice(api);
+	registerDefaultedModelNotice(api);
 	registerFallbackNotice(api);
 	// This session's chip and live agents (a process may host several sessions).
 	const chipStore = chipOf(api);
@@ -138,6 +144,7 @@ export function registerFooter(api: FeatureSetup, quotas: Pick<ProviderQuotas, "
 			kind: model ? ctx.modelRegistry.getProviderKind(model.provider) : undefined,
 			quota: quota && { label: quota.label, usedFraction: quota.usedFraction, resetsAt: quota.resetsAt },
 			thinking: model?.reasoning ? api.models.getThinkingLevel() : undefined,
+			// A model with no known window still shows the gauge, as `ctx ?`: hiding it reads as nothing to worry about.
 			context:
 				window && window > 0
 					? {
@@ -145,7 +152,9 @@ export function registerFooter(api: FeatureSetup, quotas: Pick<ProviderQuotas, "
 							window,
 							...(compactAt && compactAt > 0 ? { compactAt } : {}),
 						}
-					: undefined,
+					: model
+						? { percent: null, window: 0 }
+						: undefined,
 			cwd: ctx.cwd,
 			sessionName: ctx.sessionManager.getSessionName?.(),
 			githubToken: githubTokenPresent(),
