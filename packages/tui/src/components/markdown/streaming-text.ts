@@ -11,6 +11,7 @@ import { fitHorizontalPadding, frameContentRows } from "../../utils.ts";
 interface Settled {
 	width: number;
 	mark: string;
+	rawPrefix: string;
 	source: string;
 	rows: string[];
 }
@@ -25,23 +26,27 @@ export class StreamingText implements Component {
 	private readonly paddingX: number;
 	private readonly style: ((line: string) => string) | undefined;
 	private readonly transform: ((text: string, availableWidth: number) => string) | undefined;
+	private readonly incrementalTransform: boolean;
 	private settled: Settled | undefined;
 	private cached: { text: string; width: number; mark: string; lines: string[] } | undefined;
 
 	/**
 	 * `style` colours each source line before it wraps; `transform` maps the source (for example, sanitizes it) with the
-	 * width available for content, and the result is wrapped.
+	 * width available for content, and the result is wrapped. Set `incrementalTransform` when `transform` preserves line
+	 * breaks and operates independently on appended lines (e.g. plain terminal sanitization).
 	 */
 	constructor(
 		text: string,
 		paddingX: number,
 		style?: (line: string) => string,
 		transform?: (text: string, availableWidth: number) => string,
+		incrementalTransform = false,
 	) {
 		this.text = text;
 		this.paddingX = paddingX;
 		this.style = style;
 		this.transform = transform;
+		this.incrementalTransform = incrementalTransform;
 	}
 
 	setText(text: string): void {
@@ -63,7 +68,7 @@ export class StreamingText implements Component {
 			return this.cached.lines;
 		const paddingX = fitHorizontalPadding(width, this.paddingX);
 		const contentWidth = Math.max(1, width - paddingX * 2);
-		const source = (this.transform?.(this.text, contentWidth) ?? this.text).replace(/\t/g, "   ");
+		const mapSource = (raw: string): string => (this.transform?.(raw, contentWidth) ?? raw).replace(/\t/g, "   ");
 		const wrap = (text: string): string[] =>
 			frameContentRows(
 				text
@@ -73,20 +78,43 @@ export class StreamingText implements Component {
 				paddingX,
 			);
 		let lines: string[];
-		if (!source.trim()) lines = [];
-		else {
-			let settled = this.settled;
-			if (!settled || settled.width !== width || settled.mark !== mark || !source.startsWith(settled.source))
-				settled = { width, mark, source: "", rows: [] };
-			const end = source.lastIndexOf("\n") + 1;
-			if (end > settled.source.length) {
-				const added = wrap(source.slice(settled.source.length, end - 1));
-				flattenLines(added);
-				for (const row of added) settled.rows.push(row);
-				settled.source = source.slice(0, end);
+		if (this.incrementalTransform) {
+			if (!this.text.trim()) {
+				lines = [];
+			} else {
+				let settled = this.settled;
+				if (!settled || settled.width !== width || settled.mark !== mark || !this.text.startsWith(settled.rawPrefix))
+					settled = { width, mark, rawPrefix: "", source: "", rows: [] };
+				const tailRaw = this.text.slice(settled.rawPrefix.length);
+				const tailSource = mapSource(tailRaw);
+				const end = tailSource.lastIndexOf("\n") + 1;
+				if (end > 0) {
+					const rawEnd = tailRaw.lastIndexOf("\n") + 1;
+					const added = wrap(tailSource.slice(0, end - 1));
+					flattenLines(added);
+					for (const row of added) settled.rows.push(row);
+					settled.rawPrefix = this.text.slice(0, settled.rawPrefix.length + rawEnd);
+				}
+				this.settled = settled;
+				lines = settled.rows.concat(wrap(tailSource.slice(end)));
 			}
-			this.settled = settled;
-			lines = settled.rows.concat(wrap(source.slice(end)));
+		} else {
+			const source = mapSource(this.text);
+			if (!source.trim()) lines = [];
+			else {
+				let settled = this.settled;
+				if (!settled || settled.width !== width || settled.mark !== mark || !source.startsWith(settled.source))
+					settled = { width, mark, rawPrefix: "", source: "", rows: [] };
+				const end = source.lastIndexOf("\n") + 1;
+				if (end > settled.source.length) {
+					const added = wrap(source.slice(settled.source.length, end - 1));
+					flattenLines(added);
+					for (const row of added) settled.rows.push(row);
+					settled.source = source.slice(0, end);
+				}
+				this.settled = settled;
+				lines = settled.rows.concat(wrap(source.slice(end)));
+			}
 		}
 		this.cached = { text: this.text, width, mark, lines };
 		return lines;

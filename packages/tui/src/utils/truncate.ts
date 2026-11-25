@@ -1,6 +1,6 @@
 import { ansiCodeLength, extractAnsiCode } from "./ansi-codes.ts";
 import { getActiveOsc8Close } from "./ansi-tracker.ts";
-import { graphemeSegmenter, graphemeWidth, isPrintableAscii, visibleWidth } from "./width.ts";
+import { graphemeSegments, graphemeWidth, isPrintableAscii, visibleWidth } from "./width.ts";
 
 function truncateFragmentToWidth(text: string, maxWidth: number): { text: string; width: number } {
 	if (maxWidth <= 0 || text.length === 0) {
@@ -17,7 +17,7 @@ function truncateFragmentToWidth(text: string, maxWidth: number): { text: string
 	if (!hasAnsi && !hasTabs) {
 		let result = "";
 		let width = 0;
-		for (const { segment } of graphemeSegmenter.segment(text)) {
+		for (const segment of graphemeSegments(text)) {
 			const w = graphemeWidth(segment);
 			if (width + w > maxWidth) {
 				break;
@@ -56,7 +56,7 @@ function truncateFragmentToWidth(text: string, maxWidth: number): { text: string
 		}
 
 		const end = plainRunEnd(text, i);
-		for (const { segment } of graphemeSegmenter.segment(text.slice(i, end))) {
+		for (const segment of graphemeSegments(text.slice(i, end))) {
 			const w = graphemeWidth(segment);
 			if (width + w > maxWidth) {
 				return { text: result, width };
@@ -97,9 +97,16 @@ function isPrintableAsciiPrefix(text: string, length: number): boolean {
 
 /** End of the run starting at `start` that contains no tab or ANSI sequence. */
 function plainRunEnd(text: string, start: number): number {
-	let end = start;
-	while (end < text.length && text[end] !== "\t" && !extractAnsiCode(text, end)) end++;
-	return end;
+	const tab = text.indexOf("\t", start);
+	const limit = tab === -1 ? text.length : tab;
+	let pos = start;
+	while (pos < limit) {
+		const esc = text.indexOf("\x1b", pos);
+		if (esc === -1 || esc >= limit) return limit;
+		if (ansiCodeLength(text, esc) > 0) return esc;
+		pos = esc + 1;
+	}
+	return limit;
 }
 
 function finalizeTruncatedResult(
@@ -252,7 +259,7 @@ export function truncateToWidth(text: string, maxWidth: number, ellipsis: string
 			if (isPrintableAsciiCode(next) && asciiStretch(text, end)) break;
 			end++;
 		}
-		for (const { segment } of graphemeSegmenter.segment(text.slice(i, end))) {
+		for (const segment of graphemeSegments(text.slice(i, end))) {
 			if (!take(segment, graphemeWidth(segment))) break;
 		}
 		i = end;

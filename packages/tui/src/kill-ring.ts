@@ -5,8 +5,12 @@
  * into a single entry. Supports yank (paste most recent) and yank-pop
  * (cycle through older entries).
  */
+const MAX_KILL_RING_ENTRIES = 60;
+const MAX_KILL_RING_CHARS = 1024 * 1024;
+
 export class KillRing {
 	private ring: string[] = [];
+	private totalChars = 0;
 
 	/**
 	 * Add text to the kill ring.
@@ -21,9 +25,20 @@ export class KillRing {
 
 		if (opts.accumulate && this.ring.length > 0) {
 			const last = this.ring.pop()!;
-			this.ring.push(opts.prepend ? text + last : last + text);
+			const merged = opts.prepend ? text + last : last + text;
+			this.ring.push(merged);
+			this.totalChars += text.length;
 		} else {
 			this.ring.push(text);
+			this.totalChars += text.length;
+		}
+
+		while (
+			this.ring.length > MAX_KILL_RING_ENTRIES ||
+			(this.ring.length > 1 && this.totalChars > MAX_KILL_RING_CHARS)
+		) {
+			const evicted = this.ring.shift()!;
+			this.totalChars -= evicted.length;
 		}
 	}
 

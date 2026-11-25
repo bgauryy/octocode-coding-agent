@@ -1,4 +1,4 @@
-import { type Component, type Container, ThemedText } from "@octocodeai/octocode-tui";
+import { type Component, type Container, ThemedText, TuiAltScreen } from "@octocodeai/octocode-tui";
 /**
  * Live transcript window for the main screen. Every row a live session adds would otherwise stay mounted, with its
  * rendered lines and its share of the renderer's row array, for the rest of the session. Rows that scrolled into the
@@ -27,11 +27,10 @@ interface Fold {
 }
 const folds = new WeakMap<Container, Fold>();
 
-function foldRow(count: number): Component {
+function foldRow(count: number, fullscreen: boolean): Component {
+	const label = fullscreen ? `↑ ${count} earlier rows folded ` : `↑ ${count} earlier rows left in terminal scrollback `;
 	return new ThemedText(
-		() =>
-			theme.fg("dim", `↑ ${count} earlier rows left in terminal scrollback `) +
-			keyHint("app.session.loadEarlier", "to load the transcript"),
+		() => theme.fg("dim", label) + keyHint("app.session.loadEarlier", "to load the transcript"),
 		1,
 		0,
 	);
@@ -56,8 +55,14 @@ function holdsLive(component: Component, live: ReadonlySet<Component>): boolean 
  */
 export function foldScrolledTranscript(host: LiveWindowHost, keep = LIVE_WINDOW_ROWS, batch = LIVE_FOLD_BATCH): number {
 	const { ui, chatContainer, pendingTools, streamingComponent } = host;
-	if (!ui.isAboveViewport || !ui.keepScrollbackOnCollapse) return 0;
-	const children = chatContainer.children;
+	const fullscreen = ui instanceof TuiAltScreen;
+	if (fullscreen) {
+		// In fullscreen, only fold when following the bottom so we never shift rows under a scrolled-up reader.
+		if (!ui.isFollowingOutput) return 0;
+	} else if (!ui.isAboveViewport || !ui.keepScrollbackOnCollapse) {
+		return 0;
+	}
+	const children = chatContainer.peekChildren();
 	const fold = currentFold(chatContainer, children);
 	const start = fold ? 1 : 0;
 	if (children.length - start - keep < batch) return 0;
@@ -72,21 +77,23 @@ export function foldScrolledTranscript(host: LiveWindowHost, keep = LIVE_WINDOW_
 			}
 		}
 	}
-	// The first kept row started above the screen, so every folded row ended there: the terminal holds all of them.
-	while (cut > start && !ui.isAboveViewport(children[cut])) cut--;
+	// On the main screen, the first kept row started above the screen, so every folded row ended there.
+	if (!fullscreen && ui.isAboveViewport) {
+		while (cut > start && !ui.isAboveViewport(children[cut])) cut--;
+	}
 	if (cut <= start) return 0;
 	const folded = children.slice(start, cut);
 	const count = (fold?.count ?? 0) + folded.length;
-	const row = foldRow(count);
+	const row = foldRow(count, fullscreen);
 	chatContainer.children = [row, ...children.slice(cut)];
 	folds.set(chatContainer, { row, count });
 	for (const component of folded) disposeComponent(component);
-	ui.keepScrollbackOnCollapse();
+	if (!fullscreen) ui.keepScrollbackOnCollapse?.();
 	ui.requestRender();
 	return folded.length;
 }
 
 /** Whether the transcript has rows a live fold took out. */
 export function hasLiveFold(container: Container): boolean {
-	return currentFold(container, container.children) !== undefined;
+	return currentFold(container, container.peekChildren()) !== undefined;
 }

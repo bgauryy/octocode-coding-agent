@@ -90,6 +90,12 @@ export function signalledChildren(component: Component): ReadonlySet<Component> 
 	return states.get(component)?.dirty;
 }
 
+/** Clear a container's queued child signals after another layout engine (e.g. `VirtualDocument`) has absorbed them. */
+export function clearSignalledChildren(component: Component): void {
+	const state = states.get(component);
+	if (state) state.dirty = undefined;
+}
+
 let structureVersion = 0;
 
 /** Count a possible edit of some container's children list: an add, a removal, or a read through `children`. */

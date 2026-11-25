@@ -39,6 +39,6 @@ describe("ASCII marks off UTF-8", () => {
 		assert.strictEqual(isAsciiLocale({ LANG: "POSIX" }, "darwin"), true);
 		assert.strictEqual(isAsciiLocale({}, "darwin"), false);
 		assert.strictEqual(isAsciiLocale({}, "win32"), false);
-		assert.strictEqual(isAsciiLocale({}, "linux"), true);
+		assert.strictEqual(isAsciiLocale({}, "linux"), false);
 	});
 });

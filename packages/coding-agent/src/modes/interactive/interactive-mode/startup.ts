@@ -28,6 +28,7 @@ import { renderInitialSessionState } from "./resume-notice.ts";
 import { cancelStartupSubmit, dispatchStartupSubmit } from "./command-dispatch.ts";
 import { submitPrompt } from "./refused-input.ts";
 import { announceReloadErrors } from "./reload-notice.ts";
+import { checkTmuxKeyboardSetup } from "./startup-checks.ts";
 import { withStartupCleanup } from "./startup-cleanup.ts";
 
 /** Interactive-mode members used by startup and the main loop. */
@@ -36,7 +37,6 @@ type StartupHost = Pick<
 	| "builtInHeader"
 	| "chatContainer"
 	| "checkForPackageUpdates"
-	| "checkTmuxKeyboardSetup"
 	| "clearStatusIndicator"
 	| "defaultEditor"
 	| "documentContainer"
@@ -69,6 +69,7 @@ type StartupHost = Pick<
 	| "session"
 	| "sessionManager"
 	| "settingsManager"
+	| "setupAutocompleteProvider"
 	| "setupEditorSubmitHandler"
 	| "setupKeyHandlers"
 	| "shouldShowStartupDetails"
@@ -80,6 +81,7 @@ type StartupHost = Pick<
 	| "showPackageUpdateNotification"
 	| "showStatus"
 	| "showWarning"
+	| "signalCleanupHandlers"
 	| "statusContainer"
 	| "stop"
 	| "themeController"
@@ -106,19 +108,6 @@ export async function init(host: StartupHost): Promise<void> {
 
 		// Load changelog (only show new entries, skip for resumed sessions)
 		host.uiStore.getState().setChangelog(host.getChangelogForDisplay());
-
-		if (host.session.scopedModels.length > 0 && host.shouldShowStartupDetails()) {
-			const modelList = host.session.scopedModels
-				.map((sm) => {
-					const thinkingStr = sm.thinkingLevel ? `:${sm.thinkingLevel}` : "";
-					return `${sm.model.id}${thinkingStr}`;
-				})
-				.join(", ");
-			const cycleKeys = host.keybindings.getKeys("app.model.cycleForward");
-			const cycleHint =
-				cycleKeys.length > 0 ? theme.fg("muted", ` (${formatKeyText(cycleKeys.join("/"))} to cycle)`) : "";
-			process.stdout.write(`${theme.fg("dim", `Model scope: ${modelList}${cycleHint}`)}\n`);
-		}
 
 		// Keep one component tree and remount it when changing renderers.
 		host.renderWidgets(); // Initialize with default spacer
@@ -228,6 +217,15 @@ export async function init(host: StartupHost): Promise<void> {
 			host.builtInHeader = new Text("", 0, 0);
 			host.headerContainer.addChild(host.builtInHeader);
 		}
+		if (host.session.scopedModels.length > 0 && host.shouldShowStartupDetails()) {
+			const modelList = host.session.scopedModels
+				.map((sm) => `${sm.model.id}${sm.thinkingLevel ? `:${sm.thinkingLevel}` : ""}`)
+				.join(", ");
+			const cycleKeys = host.keybindings.getKeys("app.model.cycleForward");
+			const cycleHint =
+				cycleKeys.length > 0 ? theme.fg("muted", ` (${formatKeyText(cycleKeys.join("/"))} to cycle)`) : "";
+			host.headerContainer.addChild(new Text(theme.fg("dim", `Model scope: ${modelList}${cycleHint}`), 1, 0));
+		}
 		host.ui.requestRender();
 
 		// Ensure fd and rg after mounting the TUI (downloads if missing, adds to PATH via getBinDir). Feature startup is
@@ -238,6 +236,7 @@ export async function init(host: StartupHost): Promise<void> {
 		]);
 		const [, [fdPath]] = await Promise.all([host.rebindCurrentSession(), managedTools]);
 		host.uiStore.getState().setFdPath(fdPath);
+		if (fdPath) host.setupAutocompleteProvider();
 
 		// Enable remaining input only after both independent setup paths complete, and keep resources before messages.
 		host.setupKeyHandlers();
@@ -247,11 +246,13 @@ export async function init(host: StartupHost): Promise<void> {
 		host.ui.requestRender();
 		renderInitialSessionState(host);
 
-		onThemeChange(() => {
-			host.ui.invalidate();
-			host.updateEditorBorderColor();
-			host.ui.requestRender();
-		});
+		host.signalCleanupHandlers.push(
+			onThemeChange(() => {
+				host.ui.invalidate();
+				host.updateEditorBorderColor();
+				host.ui.requestRender();
+			}),
+		);
 
 		// Footer data (branch, statuses, providers) is a state source: each real change asks for one frame,
 		// so its writers never request frames themselves.
@@ -313,7 +314,7 @@ export async function run(host: StartupHost): Promise<void> {
 			}
 		});
 
-	void host.checkTmuxKeyboardSetup().then((warning) => {
+	void checkTmuxKeyboardSetup().then((warning) => {
 		if (warning) {
 			host.showWarning(warning);
 		}
@@ -372,7 +373,6 @@ export async function run(host: StartupHost): Promise<void> {
 		}
 	}
 
-	const { session, clearStatusIndicator } = host;
 	while (true) {
 		const userInput = await host.getUserInput();
 		try {
@@ -381,7 +381,7 @@ export async function run(host: StartupHost): Promise<void> {
 			host.showError(errorMessage(error));
 		} finally {
 			// Submit shows the working indicator; a prompt refused or consumed before a run started never settles.
-			if (!session.isStreaming) clearStatusIndicator.call(host, "working");
+			if (!host.session.isStreaming) host.clearStatusIndicator("working");
 		}
 	}
 }

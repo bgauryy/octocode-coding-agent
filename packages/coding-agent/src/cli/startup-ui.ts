@@ -69,17 +69,91 @@ function loadThemes(resources: ResolvedResource[]): Theme[] {
 	return themes;
 }
 
+let cachedStartupThemes: { key: string; themes: Theme[] } | undefined;
+let startupScopeDepth = 0;
+let sharedStartupTui: { ui: TUI; started: boolean } | undefined;
+
+/**
+ * Runs a sequence of startup prompts on one shared `TuiMainScreen` lifecycle instead of tearing down and recreating
+ * the terminal between trust, `--resume`, missing-cwd, and first-time setup prompts. The shared TUI is created lazily
+ * on the first prompt and stopped once when the outermost scope exits.
+ */
+export async function withStartupTuiScope<T>(run: () => Promise<T>): Promise<T> {
+	startupScopeDepth++;
+	try {
+		return await run();
+	} finally {
+		startupScopeDepth--;
+		if (startupScopeDepth === 0 && sharedStartupTui) {
+			const { ui, started } = sharedStartupTui;
+			sharedStartupTui = undefined;
+			if (started) {
+				await clearStartupTui(ui);
+				ui.stop();
+			}
+		}
+	}
+}
+
+/** Acquire a startup TUI: reuses the active scoped TUI when inside `withStartupTuiScope`, else creates a fresh one. */
+export async function acquireStartupTui(
+	settingsManager: SettingsManager,
+): Promise<{ ui: TUI; shared: boolean; started: boolean }> {
+	if (startupScopeDepth > 0) {
+		if (!sharedStartupTui) {
+			sharedStartupTui = { ui: await createStartupTui(settingsManager), started: false };
+		} else {
+			sharedStartupTui.ui.clear();
+		}
+		return { ui: sharedStartupTui.ui, shared: true, started: sharedStartupTui.started };
+	}
+	return { ui: await createStartupTui(settingsManager), shared: false, started: false };
+}
+
+/** Start (or repaint) a startup TUI acquired via `acquireStartupTui`. */
+export function mountStartupTui(
+	handle: { ui: TUI; shared: boolean; started: boolean },
+	settingsManager: SettingsManager,
+): void {
+	if (handle.started) {
+		handle.ui.requestRender(true);
+		return;
+	}
+	startStartupTui(handle.ui, settingsManager);
+	handle.started = true;
+	if (handle.shared && sharedStartupTui?.ui === handle.ui) {
+		sharedStartupTui.started = true;
+	}
+}
+
+/** Release a startup TUI: clears the screen when shared (stopping on scope exit), or clears and stops when standalone. */
+export async function releaseStartupTui(handle: { ui: TUI; shared: boolean }): Promise<void> {
+	if (handle.shared) {
+		handle.ui.clear();
+		handle.ui.requestRender();
+		return;
+	}
+	await clearStartupTui(handle.ui);
+	handle.ui.stop();
+}
+
 async function loadStartupThemes(settingsManager: SettingsManager): Promise<Theme[]> {
+	const cwd = process.cwd();
+	const agentDir = getAgentDir();
+	const key = `${cwd}\0${agentDir}`;
+	if (cachedStartupThemes?.key === key) return cachedStartupThemes.themes;
 	const globalSettingsManager = SettingsManager.inMemory(settingsManager.getGlobalSettings(), {
 		projectTrusted: false,
 	});
 	const packageManager = new DefaultPackageManager({
-		cwd: process.cwd(),
-		agentDir: getAgentDir(),
+		cwd,
+		agentDir,
 		settingsManager: globalSettingsManager,
 	});
 	const resolvedPaths = await packageManager.resolve(async () => "skip");
-	return loadThemes(resolvedPaths.themes);
+	const themes = loadThemes(resolvedPaths.themes);
+	cachedStartupThemes = { key, themes };
+	return themes;
 }
 
 export async function createStartupTui(settingsManager: SettingsManager): Promise<TUI> {
@@ -156,7 +230,8 @@ export async function showStartupSelector<T>(
 	title: string,
 	options: Array<{ label: string; value: T }>,
 ): Promise<T | undefined> {
-	const ui = await createStartupTui(settingsManager);
+	const handle = await acquireStartupTui(settingsManager);
+	const { ui } = handle;
 	return new Promise((resolve) => {
 		let settled = false;
 		const finish = async (result: T | undefined) => {
@@ -164,8 +239,7 @@ export async function showStartupSelector<T>(
 				return;
 			}
 			settled = true;
-			await clearStartupTui(ui);
-			ui.stop();
+			await releaseStartupTui(handle);
 			resolve(result);
 		};
 
@@ -178,13 +252,14 @@ export async function showStartupSelector<T>(
 		);
 		ui.addChild(selector);
 		ui.setFocus(selector);
-		startStartupTui(ui, settingsManager);
+		mountStartupTui(handle, settingsManager);
 	});
 }
 
 /** Show the first-time setup dialog and persist the result */
 export async function showFirstTimeSetup(settingsManager: SettingsManager): Promise<void> {
-	const ui = await createStartupTui(settingsManager);
+	const handle = await acquireStartupTui(settingsManager);
+	const { ui } = handle;
 	return new Promise((resolve) => {
 		let settled = false;
 		const finish = async (result: FirstTimeSetupResult | undefined) => {
@@ -197,12 +272,15 @@ export async function showFirstTimeSetup(settingsManager: SettingsManager): Prom
 				settingsManager.setEnableAnalytics(result.shareAnalytics);
 				await settingsManager.flush();
 			}
-			await clearStartupTui(ui);
-			ui.stop();
+			await releaseStartupTui(handle);
 			resolve();
 		};
 
-		ui.start();
+		if (!handle.started) {
+			ui.start();
+			handle.started = true;
+			if (handle.shared && sharedStartupTui?.ui === ui) sharedStartupTui.started = true;
+		}
 		let previewTheme = SYSTEM_THEME_NAME;
 		setTheme(previewTheme);
 		const component = new FirstTimeSetupComponent({
@@ -227,7 +305,8 @@ export async function showStartupInput(
 	title: string,
 	placeholder?: string,
 ): Promise<string | undefined> {
-	const ui = await createStartupTui(settingsManager);
+	const handle = await acquireStartupTui(settingsManager);
+	const { ui } = handle;
 	return new Promise((resolve) => {
 		let settled = false;
 		const finish = async (result: string | undefined) => {
@@ -236,8 +315,7 @@ export async function showStartupInput(
 			}
 			settled = true;
 			input.dispose();
-			await clearStartupTui(ui);
-			ui.stop();
+			await releaseStartupTui(handle);
 			resolve(result);
 		};
 
@@ -252,6 +330,6 @@ export async function showStartupInput(
 		);
 		ui.addChild(input);
 		ui.setFocus(input);
-		startStartupTui(ui, settingsManager);
+		mountStartupTui(handle, settingsManager);
 	});
 }

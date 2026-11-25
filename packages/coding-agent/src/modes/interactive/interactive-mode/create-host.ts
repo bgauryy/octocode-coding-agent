@@ -21,6 +21,7 @@ import { bindUiState } from "../state/bind-ui.ts";
 import { createUiStore } from "../state/store.ts";
 import { createInteractiveTui, createInteractiveTuiReference } from "../tui-renderer.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { createInteractiveModeControllers } from "./host-controllers.ts";
 import { bindInteractiveModeMethods } from "./host-methods.ts";
 import { handleRightClickPaste } from "./input-handlers.ts";
 import { installRenderErrorNotices } from "./render-errors.ts";
@@ -120,6 +121,7 @@ export function createInteractiveModeHost(
 		},
 	} satisfies Partial<WritableHost> as unknown as WritableHost;
 	bindInteractiveModeMethods(host);
+	host.controllers = createInteractiveModeControllers(host);
 
 	setCapabilityOverrides(host.settingsManager.getTerminalCapabilityOverrides());
 	const tuiMode = options.tuiMode ?? host.settingsManager.getTuiMode();

@@ -7,7 +7,7 @@ import {
 	worktreeTrustPrompt,
 } from "../modes/interactive/components/folder-trust-prompt.ts";
 import type { TrustPromptComponent } from "../modes/interactive/components/trust-prompt.ts";
-import { clearStartupTui, createStartupTui, startStartupTui } from "./startup-ui.ts";
+import { acquireStartupTui, mountStartupTui, releaseStartupTui } from "./startup-ui.ts";
 
 /**
  * The questions the startup gate asks the user, before any session exists. The gate (`main/trust-gate.ts`) owns what the
@@ -22,20 +22,20 @@ async function ask<T>(
 	settingsManager: SettingsManager,
 	build: (done: (value: T) => void, ui: TUI) => TrustPromptComponent<T>,
 ): Promise<T> {
-	const ui = await createStartupTui(settingsManager);
+	const handle = await acquireStartupTui(settingsManager);
+	const { ui } = handle;
 	return new Promise<T>((resolve) => {
 		let settled = false;
 		const finish = async (value: T) => {
 			if (settled) return;
 			settled = true;
-			await clearStartupTui(ui);
-			ui.stop();
+			await releaseStartupTui(handle);
 			resolve(value);
 		};
 		const prompt = build((value) => void finish(value), ui);
 		ui.addChild(prompt);
 		ui.setFocus(prompt);
-		startStartupTui(ui, settingsManager);
+		mountStartupTui(handle, settingsManager);
 	});
 }
 

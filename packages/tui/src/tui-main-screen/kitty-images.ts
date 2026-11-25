@@ -86,6 +86,10 @@ export function carryKittyImageRows(
 export class KittyImageRowCache {
 	private entries: Array<{ lines: readonly string[]; rows: KittyImageRows }> = [];
 
+	reset(): void {
+		this.entries = [];
+	}
+
 	/** `same`: `lines` shares its first `unchanged` rows (same strings) with the `from` lines. */
 	of(lines: readonly string[], same?: { from: readonly string[]; unchanged: number }): KittyImageRows {
 		const hit = this.entries.find((entry) => entry.lines === lines);

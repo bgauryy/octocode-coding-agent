@@ -1,7 +1,11 @@
 import { isImageLine } from "../terminal-image.ts";
 import { sliceByColumn } from "../utils/columns.ts";
 import { visibleWidth } from "../utils/width.ts";
+import { applyLineReset } from "./composite.ts";
 import { arrayWithPrefix } from "./row-arrays.ts";
+
+/** Line reset + width clipping for one terminal row. */
+export const finishScreenRow = (line: string, width: number): string => clipLineToWidth(applyLineReset(line), width);
 
 /**
  * Clip rows wider than the terminal. A component that returns an over-wide row (an extension, a custom
@@ -29,6 +33,12 @@ export class FinishedLines {
 
 	constructor(finish: (line: string, width: number) => string) {
 		this.finish = finish;
+	}
+
+	reset(): void {
+		this.inputs = [];
+		this.outputs = [];
+		this.width = -1;
 	}
 
 	/** The input is read-only here; the caller gets a new array, so a frame's later edits cannot reach the memory. */

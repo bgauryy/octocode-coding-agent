@@ -43,6 +43,7 @@ export class ApplicationAssets {
 		}
 	>();
 	private readonly options: { memory?: boolean; tempDir?: () => string };
+	private readonly openSlots = new Set<string>();
 	constructor(options: { memory?: boolean; tempDir?: () => string } = {}) {
 		this.options = options;
 	}
@@ -102,6 +103,7 @@ export class ApplicationAssets {
 			writeFileSync(join(this.directory, id), value, { mode: 0o600, flag: existing ? "w" : "wx" });
 		}
 		this.assets.set(id, { asset, encoding, ...(this.options.memory ? { value } : {}), ...(hash ? { hash } : {}) });
+		if (hash) this.openSlots.add(id);
 		this.bytes = nextBytes;
 		return { ...asset };
 	}
@@ -121,6 +123,7 @@ export class ApplicationAssets {
 		stored.pending.chunks.push(value);
 		stored.pending.bytes += value.length;
 		if (stored.pending.bytes >= PENDING_BYTES) this.store(stored);
+		else this.openSlots.add(stored.asset.id);
 		stored.hash.update(value);
 		const before = stored.asset.revision;
 		stored.asset = { ...stored.asset, size, revision: stored.hash.copy().digest("hex") };
@@ -182,10 +185,22 @@ export class ApplicationAssets {
 		return this.putValue(value, input.mimeType, "base64", input.name);
 	}
 
+	/** Flush pending streamed buffers and release native `Hash` contexts once streaming finishes. */
+	finalizePending(): void {
+		for (const id of this.openSlots) {
+			const stored = this.assets.get(id);
+			if (!stored) continue;
+			this.store(stored);
+			stored.hash = undefined;
+		}
+		this.openSlots.clear();
+	}
+
 	clear(): void {
 		if (this.directory) rmSync(this.directory, { recursive: true, force: true });
 		this.directory = undefined;
 		this.assets.clear();
+		this.openSlots.clear();
 		this.texts.clear();
 		this.bytes = 0;
 	}

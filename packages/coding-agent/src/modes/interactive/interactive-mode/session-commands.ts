@@ -44,7 +44,6 @@ type SessionCommandsHost = Pick<
 	| "customHeader"
 	| "editor"
 	| "editorContainer"
-	| "getPathCommandArgument"
 	| "handleFatalRuntimeError"
 	| "uiStore"
 	| "keybindings"

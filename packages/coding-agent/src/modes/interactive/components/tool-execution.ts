@@ -9,6 +9,7 @@ import {
 	type TUI,
 	type TuiMouseEvent,
 	renderChanged,
+	settleRender,
 	trackRenderChanges,
 } from "@octocodeai/octocode-tui";
 import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../core/features/types.ts";
@@ -23,6 +24,7 @@ import { releaseToolRowState } from "./tool-execution/release.ts";
 import type { ToolExecutionOptions, ToolExecutionResult } from "./tool-execution/types.ts";
 import { displayRenderers, rowDisplay } from "./tool-execution/display.ts";
 import { noImages, updateImageRows, type ImageRows } from "./tool-execution/images.ts";
+import { renderSelfShell } from "./tool-execution/self-render.ts";
 import * as life from "./tool-execution/state.ts";
 import { resultPurposeData, type ToolDisplay } from "@octocodeai/octocode-contracts";
 export type { ToolExecutionOptions } from "./tool-execution/types.ts";
@@ -256,25 +258,14 @@ export class ToolExecutionComponent extends Container {
 
 	private renderContent(width: number): string[] {
 		if (this.hideComponent) {
+			settleRender(this, true);
 			return [];
 		}
 
 		if (this.hasRendererDefinition() && this.getRenderShell() === "self") {
-			const contentLines = this.selfRenderContainer.render(width);
-			this.selfRenderHeight = contentLines.length;
-			if (contentLines.length === 0 && this.images.components.length === 0) {
-				return [];
-			}
-
-			const lines: string[] = [];
-			if (contentLines.length > 0) {
-				lines.push("");
-				lines.push(...contentLines);
-			}
-			for (const [index, image] of this.images.components.entries()) {
-				lines.push(...(this.images.spacers[index]?.render(width) ?? []), ...image.render(width));
-			}
-			return lines;
+			const rendered = renderSelfShell(this, this.selfRenderContainer, this.images, width);
+			this.selfRenderHeight = rendered.selfRenderHeight;
+			return rendered.lines;
 		}
 
 		return super.render(width);

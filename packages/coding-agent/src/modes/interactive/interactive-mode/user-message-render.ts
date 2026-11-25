@@ -35,7 +35,7 @@ export function addApplicationUserMessage(
 			.map((block) => contentText(block, readAsset))
 			.join("") ?? message.text;
 	if (!message.content?.length && !text) return;
-	if (host.chatContainer.children.length) host.chatContainer.addChild(new Spacer(1));
+	if (host.chatContainer.peekChildren().length) host.chatContainer.addChild(new Spacer(1));
 	const { view } = host.uiStore.getState();
 	const skill = message.content?.some((block) => block.type !== "text")
 		? undefined

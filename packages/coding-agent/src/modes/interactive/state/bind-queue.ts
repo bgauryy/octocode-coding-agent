@@ -12,13 +12,11 @@ import { theme } from "../../../theme/theme.ts";
 import { hintLine, interruptKey, type KeyHintPair } from "../../../theme/theme-tui-helpers.ts";
 import { stripAnsi } from "../../../utils/ansi.ts";
 import type { InteractiveModeHost } from "../interactive-mode/host.ts";
+import { getAppKeyDisplay } from "../interactive-mode/info-commands.ts";
 import { refreshQueueList } from "../interactive-mode/queue-list.ts";
 import { selectHeldMessages } from "./queue-slice.ts";
 
-type BindQueueHost = Pick<
-	InteractiveModeHost,
-	"getAppKeyDisplay" | "pendingMessagesContainer" | "session" | "ui" | "uiStore"
->;
+type BindQueueHost = Pick<InteractiveModeHost, "pendingMessagesContainer" | "session" | "ui" | "uiStore">;
 
 export interface QueueView {
 	steering: readonly string[];
@@ -79,7 +77,7 @@ export function renderPendingMessages(host: BindQueueHost, view: QueueView): voi
 		area.addChild(new TruncatedText(line, 1, 0));
 	}
 	if (total > 3) area.addChild(new TruncatedText(theme.fg("muted", `… ${total - 3} more queued`), 1, 0));
-	const dequeueHint = host.getAppKeyDisplay("app.message.dequeue");
+	const dequeueHint = getAppKeyDisplay("app.message.dequeue");
 	const hints: KeyHintPair[] = [
 		...(view.carried > 0 && !view.compacting ? ([["enter", "sends"]] as KeyHintPair[]) : []),
 		["↑", "manage"],

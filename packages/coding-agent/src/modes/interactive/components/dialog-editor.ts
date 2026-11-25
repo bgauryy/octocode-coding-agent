@@ -16,6 +16,7 @@ import {
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { KeybindingsManager } from "../../../core/keybindings.ts";
 import { editInExternalEditor } from "../external-editor.ts";
+import { suspendTuiForForegroundChild } from "../suspend-tui.ts";
 import { getEditorTheme, theme } from "../../../theme/theme.ts";
 import { DynamicBorder } from "../../../theme/dynamic-border.ts";
 import { keyHint } from "../../../theme/theme-tui-helpers.ts";
@@ -122,21 +123,17 @@ export class DialogEditorComponent extends Container implements Focusable {
 		// The external editor gets pasted text in full, as the main editor sends it.
 		const content = this.editor.getExpandedText();
 		this.notice.setText("");
-		this.tui.stop();
-		try {
-			const result = await editInExternalEditor({
+		const result = await suspendTuiForForegroundChild(this.tui, () =>
+			editInExternalEditor({
 				command: this.externalEditorCommand,
 				content,
-			});
-			if (result.status === "complete") {
-				this.editor.setText(result.content);
-			} else if (result.error) {
-				// A non-zero exit (a deliberate cancel) has no error and stays silent, as in the main editor.
-				this.notice.setText(theme.fg("error", sanitizeTerminalText(`External editor failed: ${result.error}`)));
-			}
-		} finally {
-			this.tui.start();
-			this.tui.requestRender(true);
+			}),
+		);
+		if (result.status === "complete") {
+			this.editor.setText(result.content);
+		} else if (result.error) {
+			// A non-zero exit (a deliberate cancel) has no error and stays silent, as in the main editor.
+			this.notice.setText(theme.fg("error", sanitizeTerminalText(`External editor failed: ${result.error}`)));
 		}
 	}
 }

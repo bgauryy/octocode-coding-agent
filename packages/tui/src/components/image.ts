@@ -68,7 +68,7 @@ export class Image implements Component {
 	private theme: ImageTheme;
 	private options: ImageOptions;
 	private imageId?: number;
-	/** Converted PNG data for Kitty. Failures are not stored so a later transcoder can retry. */
+	/** Converted PNG data for Kitty. Failures are not stored so a later transcoder can retry; cleared on `dispose()`. */
 	private pngData?: string;
 
 	private cachedLines?: string[];
@@ -97,6 +97,11 @@ export class Image implements Component {
 	invalidate(): void {
 		this.cachedLines = undefined;
 		this.cachedWidth = undefined;
+	}
+
+	dispose(): void {
+		this.pngData = undefined;
+		this.invalidate();
 	}
 
 	render(width: number): string[] {

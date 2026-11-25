@@ -56,6 +56,7 @@ const SWEEP_MIN = 64;
 /** Both live transcript adapters consume these semantic events; native events retain terminal controls and diagnostics. */
 export function applicationRenderer(host: Host, port: ApplicationService): (event: ApplicationEvent) => void {
 	const messages = new Map<string, ApplicationMessage>();
+	const seenUserMessages = new Set<string>();
 	const assistants = new Map<string, AssistantMessageComponent>();
 	const fullContent = transcriptContent;
 	const readAsset = (id: string) => port.readAsset(id);
@@ -81,7 +82,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 	let sweepAt = SWEEP_MIN;
 	const forgetDetached = () => {
 		if (assistants.size < sweepAt) return;
-		const mounted = new Set(host.chatContainer.children);
+		const mounted = new Set(host.chatContainer.peekChildren());
 		for (const [id, component] of assistants)
 			if (!mounted.has(component)) {
 				assistants.delete(id);
@@ -91,12 +92,16 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 	};
 	const showMessage = (received: ApplicationMessage) => {
 		const message = fullContent.message(received, readAsset);
+		if (message.role === "user") {
+			if (seenUserMessages.has(message.id)) return;
+			seenUserMessages.add(message.id);
+			addApplicationUserMessage(host, message);
+			host.ui.requestRender();
+			return;
+		}
 		const previous = messages.get(message.id);
 		messages.set(message.id, message);
-		if (message.role === "user") {
-			if (previous) return;
-			addApplicationUserMessage(host, message);
-		} else if (message.role === "assistant") {
+		if (message.role === "assistant") {
 			let component = assistants.get(message.id);
 			if (!component) {
 				forgetDetached();
@@ -156,6 +161,7 @@ export function applicationRenderer(host: Host, port: ApplicationService): (even
 				const entries = host.sessionManager.buildContextEntries();
 				const liveTools = retainLiveTools(entries, host.pendingTools);
 				messages.clear();
+				seenUserMessages.clear();
 				assistants.clear();
 				sweepAt = SWEEP_MIN;
 				host.pendingTools.clear();

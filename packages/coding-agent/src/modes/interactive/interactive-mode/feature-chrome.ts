@@ -26,6 +26,7 @@ type FeatureChromeHost = Pick<
 	| "defaultEditor"
 	| "disposeActiveSelector"
 	| "editor"
+	| "editorChangeListeners"
 	| "editorComponentFactory"
 	| "editorContainer"
 	| "editorDialog"
@@ -164,6 +165,7 @@ export function resetFeatureUI(host: FeatureChromeHost): void {
 	// Custom overlays are answered and disposed; a custom component in the editor slot is, by setCustomEditorComponent below.
 	if (!closeDialogOverlays(host)) host.ui.hideOverlay();
 	host.clearFeatureTerminalInputListeners();
+	host.editorChangeListeners?.clear();
 	// The footer stays mounted: the next session start replaces it, so no empty or stale layout flashes in between.
 	host.setFeatureHeader(undefined);
 	clearFeatureWidgets(host);

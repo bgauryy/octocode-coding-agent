@@ -13,6 +13,29 @@ export interface ToolSource {
 	projected?: boolean;
 }
 
+/** Insert into `map` at the newest position, evicting the oldest key when `limit` is positive and exceeded. */
+export function putBounded<K, V>(map: Map<K, V>, key: K, value: V, limit: number): void {
+	map.delete(key);
+	map.set(key, value);
+	if (limit > 0 && map.size > limit) map.delete(map.keys().next().value as K);
+}
+
+/** Fallback message payload when a stored session message cannot be displayed. */
+export function unavailableMessagePayload(source: Record<string, unknown>): Record<string, unknown> {
+	return {
+		role: typeof source.role === "string" ? source.role.slice(0, 128) : "custom",
+		stopReason: source.stopReason,
+		display: source.display === true || source.display === "only",
+		content: [
+			{
+				type: "unsupported",
+				providerType: "content-unavailable",
+				text: "Content could not be displayed; the original remains in the session.",
+			},
+		],
+	};
+}
+
 /**
  * The source the transcript keeps of a finished result: a bash result's structured data in its released form
  * (`savedOutputTwin`), the one its message will hold, so the 1 MiB output for programmatic callers is read from its

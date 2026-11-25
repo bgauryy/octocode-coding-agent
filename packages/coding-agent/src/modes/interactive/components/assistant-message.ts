@@ -20,7 +20,7 @@ import { normalizeApplicationMessage } from "../../../core/application/normalize
 import { getMarkdownTheme, theme } from "../../../theme/theme.ts";
 import { STOPPED_COLOR } from "../../../octocode/render/types.ts";
 import { toolInterruptShown } from "../../../core/application/interrupted-tools.ts";
-import { AssistantMarkdown } from "./assistant-markdown.ts";
+import { appendStopReasonFooter, AssistantMarkdown, tryUpdateStreamingBlocks } from "./assistant-markdown.ts";
 import { LongResponse } from "./long-response.ts";
 import {
 	ContentAttachmentComponent,
@@ -28,15 +28,7 @@ import {
 	transcriptContent,
 	type ContentOptions,
 } from "./application-content.ts";
-import {
-	finishedLabel,
-	THINKING_LABEL,
-	interruptedText,
-	isAbortWording,
-	observeThinking,
-	revealHint,
-	thinkingMs,
-} from "./reasoning-label.ts";
+import { finishedLabel, THINKING_LABEL, observeThinking, revealHint, thinkingMs } from "./reasoning-label.ts";
 import type { ToolExecutionComponent } from "./tool-execution.ts";
 
 /** Renders a complete assistant message. */
@@ -53,6 +45,7 @@ export class AssistantMessageComponent extends Container {
 	private readonly tools = new Map<string, ToolExecutionComponent>();
 	private readonly markdown = new AssistantMarkdown();
 	private contentDirty = false;
+	private streamingStructureKey?: string;
 	private readonly attachments = new Map<string, ContentAttachmentComponent>();
 	private readonly fullContent = transcriptContent;
 	private expanded = false;
@@ -91,6 +84,7 @@ export class AssistantMessageComponent extends Container {
 	override invalidate(): void {
 		super.invalidate();
 		this.markdown.clear();
+		this.streamingStructureKey = undefined;
 		if (this.lastMessage) {
 			this.updateMessage(this.lastMessage);
 		}
@@ -102,6 +96,7 @@ export class AssistantMessageComponent extends Container {
 		const changed = overridden || (hide !== this.hideThinkingBlock && this.hasThinking());
 		this.hideThinkingBlock = hide;
 		this.thinkingVisibilityOverrides.clear();
+		this.streamingStructureKey = undefined;
 		if (changed && this.lastMessage) this.updateMessage(this.lastMessage);
 		return changed;
 	}
@@ -113,6 +108,7 @@ export class AssistantMessageComponent extends Container {
 	setOutputPad(padding: number): void {
 		this.outputPad = padding;
 		this.markdown.clear();
+		this.streamingStructureKey = undefined;
 		for (const tool of this.tools.values()) tool.setOutputPad(padding);
 		if (this.lastMessage) {
 			this.updateMessage(this.lastMessage);
@@ -193,17 +189,24 @@ export class AssistantMessageComponent extends Container {
 		this.rebuildContent();
 	}
 
-	/** Release the rendered Markdown; the component may still be rendered. */
+	/** Release the rendered Markdown; `disposeTranscript` handles child tool disposal while respecting retained live tools. */
 	dispose(): void {
 		this.contentDirty = false;
+		this.streamingStructureKey = undefined;
 		this.markdown.clear();
+		this.attachments.clear();
+		this.responses.length = 0;
+		this.lastMessage = undefined;
 	}
 
 	updateMessage(received: ApplicationMessage, isStreaming = this.isStreaming): void {
 		const message = this.fullContent.message(received, this.contentOptions.readAsset);
 		if (received.complete) this.fullContent.forget(received.full);
 		this.lastMessage = message;
-		if (this.isStreaming !== isStreaming) this.markdown.clear();
+		if (this.isStreaming !== isStreaming) {
+			this.markdown.clear();
+			this.streamingStructureKey = undefined;
+		}
 		this.isStreaming = isStreaming;
 		const now = Date.now();
 		message.content?.forEach((block, index, blocks) => {
@@ -243,6 +246,20 @@ export class AssistantMessageComponent extends Container {
 		this.contentDirty = false;
 		const message = this.lastMessage;
 		const blocks = message.content ?? [{ id: `${message.id}:text`, type: "text" as const, text: message.text }];
+		if (this.isStreaming && !message.stopReason) {
+			const res = tryUpdateStreamingBlocks({
+				blocks,
+				previousSignature: this.streamingStructureKey,
+				hasMountedChildren: this.contentContainer.peekChildren().length > 0,
+				hasTool: (id) => this.tools.has(id),
+				isThinkingHidden: (run) => this.thinkingVisibilityOverrides.get(run) ?? this.hideThinkingBlock,
+				readText: (block) => contentText(block, this.contentOptions.readAsset),
+				updateMarkdown: (id, text, thinking) => this.markdownBlock(id, text, thinking),
+				updateAttachment: (block) => this.attachments.get(block.id)?.updateBlock(block),
+			});
+			this.streamingStructureKey = res.signature;
+			if (res.updated) return;
+		} else this.streamingStructureKey = undefined;
 		this.contentContainer.clear();
 		this.responses.length = 0;
 
@@ -351,32 +368,15 @@ export class AssistantMessageComponent extends Container {
 		// Length stops can happen before a tool call is complete, so surface them here too.
 		const hasToolCalls = blocks.some((c) => c.type === "toolCall");
 		this.hasToolCalls = hasToolCalls;
-		if (message.stopReason === "length") {
-			this.contentContainer.addChild(new Spacer(1));
-			this.contentContainer.addChild(
-				new Text(theme.fg("error", "Response was truncated before completion."), this.outputPad, 0),
-			);
-		} else if (message.stopReason === "error" && !isAbortWording(message.errorMessage)) {
-			const errorMsg = sanitizeTerminalText(message.errorMessage || "Unknown error");
-			const line = this.retried
-				? theme.fg("dim", `Retried after error: ${errorMsg}`)
-				: theme.fg("error", `Error: ${errorMsg}`);
-			this.contentContainer.addChild(new Spacer(1));
-			this.addResponse(`${message.id}:error`, new Text(line, this.outputPad, 0));
-		} else if (!hasToolCalls && (message.stopReason === "aborted" || message.stopReason === "error")) {
-			// A tool row that already says `aborted` is the one statement of the interrupt.
-			this.interruptShownByTool ??= toolInterruptShown();
-			if (!this.interruptShownByTool) {
-				this.contentContainer.addChild(new Spacer(1));
-				this.contentContainer.addChild(
-					new Text(
-						theme.fg(STOPPED_COLOR, sanitizeTerminalText(interruptedText(message.errorMessage))),
-						this.outputPad,
-						0,
-					),
-				);
-			}
-		}
+		appendStopReasonFooter({
+			message,
+			hasToolCalls,
+			retried: this.retried,
+			outputPad: this.outputPad,
+			container: this.contentContainer,
+			addResponse: (id, body) => this.addResponse(id, body),
+			isInterruptShownByTool: () => (this.interruptShownByTool ??= toolInterruptShown()),
+		});
 	}
 }
 trackRenderChanges(AssistantMessageComponent.prototype); // Pending state is marked before its children are rebuilt.

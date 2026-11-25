@@ -7,7 +7,7 @@ const { confirm, livePid, selectors, ui } = vi.hoisted(() => ({
 	confirm: vi.fn(),
 	livePid: vi.fn(),
 	selectors: [] as unknown[][],
-	ui: { stop: vi.fn(), addChild: vi.fn(), setFocus: vi.fn(), requestRender: vi.fn() },
+	ui: { start: vi.fn(), stop: vi.fn(), addChild: vi.fn(), setFocus: vi.fn(), requestRender: vi.fn() },
 }));
 vi.mock("../src/octocode/shared/session-liveness.ts", async (importOriginal) => ({
 	...(await importOriginal<typeof Liveness>()),
@@ -63,10 +63,21 @@ describe("startup session picker", () => {
 		expect(ui.stop).toHaveBeenCalled();
 	});
 
-	it("does not return a live selection when confirmation is rejected", async () => {
+	it("returns to the session picker when live-session confirmation is rejected", async () => {
 		livePid.mockReturnValue(42);
 		confirm.mockResolvedValue(false);
-		await expect(select("/tmp/other.jsonl")).resolves.toBeNull();
+		const pending = selectSession(
+			async () => [],
+			async () => [],
+			{} as SettingsManager,
+		);
+		await vi.waitFor(() => expect(selectors.length).toBeGreaterThan(0));
+		const onSelect = selectors.at(-1)?.[2] as (path: string) => Promise<void>;
+		const onCancel = selectors.at(-1)?.[3] as () => void;
+		await onSelect("/tmp/other.jsonl");
 		expect(confirm).toHaveBeenCalledOnce();
+		expect(ui.start).toHaveBeenCalledOnce();
+		onCancel();
+		await expect(pending).resolves.toBeNull();
 	});
 });

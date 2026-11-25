@@ -24,7 +24,15 @@ import { toolResultText } from "./service/projection.ts";
 import { streamHint, type StreamHint } from "./service/wire.ts";
 import { messageDelta, TranscriptStream, unchangedDisplay } from "./transcript-stream.ts";
 import { ToolCallStream } from "./transcript-toolcalls.ts";
-import { keptToolSource, showsToolResult, spillTool, spillToolData, type ToolSource } from "./transcript-tools.ts";
+import {
+	keptToolSource,
+	putBounded,
+	showsToolResult,
+	spillTool,
+	spillToolData,
+	type ToolSource,
+	unavailableMessagePayload,
+} from "./transcript-tools.ts";
 import { toolDisplay, type TranscriptSession } from "./transcript-display.ts";
 import { adoptContext, transcriptHistory, transcriptWindow } from "./transcript-history.ts";
 import type { ToolOutputProjector } from "./service/types.ts";
@@ -156,21 +164,7 @@ export class ApplicationTranscript {
 	/** A display failure does not rewrite the model's outcome or discard the original session message. */
 	unavailable(value: unknown, id?: string): ApplicationMessage {
 		const source = asRecord(value);
-		return this.normalize(
-			{
-				role: typeof source.role === "string" ? source.role.slice(0, 128) : "custom",
-				stopReason: source.stopReason,
-				display: source.display === true || source.display === "only",
-				content: [
-					{
-						type: "unsupported",
-						providerType: "content-unavailable",
-						text: "Content could not be displayed; the original remains in the session.",
-					},
-				],
-			},
-			id ?? this.identities.get(source),
-		);
+		return this.normalize(unavailableMessagePayload(source), id ?? this.identities.get(source));
 	}
 
 	/** `release` receives an unchanged update that ends a streamed block, which only serialized views need. */
@@ -202,15 +196,23 @@ export class ApplicationTranscript {
 		const hint = update && streamHint(source, update);
 		const extended = hint && this.stream.extend(previous, source, hint);
 		// Keeping the display publishes nothing, as an unchanged whole normalize would not.
-		if (update?.type === "toolcall_delta" && previous && !previous.complete && this.toolCalls.skip(id, source, update))
-			return void this.sources.set(id, source);
+		if (
+			update?.type === "toolcall_delta" &&
+			previous &&
+			!previous.complete &&
+			this.toolCalls.skip(id, source, update)
+		) {
+			putBounded(this.sources, id, source, this.projector ? 0 : 64);
+			return;
+		}
 		const message = extended ?? this.display(event, id, previous);
 		this.putMessage(id, message);
-		this.sources.set(id, source);
+		putBounded(this.sources, id, source, this.projector ? 0 : 64);
 		if (source.role === "assistant") this.activeMessage = complete ? undefined : id;
 		if (complete) {
 			this.stream.forget(id);
 			this.toolCalls.forget(id);
+			this.assets.finalizePending();
 		} else if (!extended) {
 			if (hint) this.stream.record(message, hint);
 			this.toolCalls.record(id, source);
@@ -283,7 +285,8 @@ export class ApplicationTranscript {
 
 	private toolData(value: unknown, id: string, owner: string, streaming = false): Partial<ApplicationTool> {
 		const projected = this.projected(owner, value);
-		this.toolSources.set(id, { ...keptToolSource(value, owner, streaming), projected: projected !== undefined });
+		const kept = { ...keptToolSource(value, owner, streaming), projected: projected !== undefined };
+		putBounded(this.toolSources, id, kept, this.projector ? 0 : 32);
 		const source = projected === undefined ? value : { ...asRecord(value), content: projected };
 		const data = {
 			...normalizeToolData(source, `tool:${id}`, this.assets, streaming),
@@ -362,6 +365,7 @@ export class ApplicationTranscript {
 		const source = this.toolSources.get(event.toolCallId);
 		tool.display = toolDisplay(tool, source?.value, replacesResult, this.displays, source?.projected);
 		spillTool(tool, this.assets, type === "tool.completed");
+		if (type === "tool.completed") this.assets.finalizePending();
 		this.putTool(event.toolCallId, tool);
 		return { ...tool, type: event.type, ...(event.failed === undefined ? {} : { failed: event.failed }) };
 	}

@@ -10,7 +10,13 @@
 
 import type { Component } from "../tui/component.ts";
 import { Container } from "../tui/container.ts";
-import { containerStructureVersion, paintedChildren, readChildren, signalledChildren } from "../tui/container-state.ts";
+import {
+	clearSignalledChildren,
+	containerStructureVersion,
+	paintedChildren,
+	readChildren,
+	signalledChildren,
+} from "../tui/container-state.ts";
 import { bindRenderIsolation, renderFailed, renderIsolated } from "../tui/render-isolation.ts";
 import {
 	CHILD_RENDER_CHANGED,
@@ -140,6 +146,8 @@ export class VirtualDocument {
 				for (const child of signalledChildren(container) ?? []) this.forget(child);
 			}
 		}
+		// Drain container dirty sets (including unlinked/removed children) so virtualized containers never retain detached nodes.
+		for (const container of containers) clearSignalledChildren(container);
 		for (const child of this.dirty) this.forget(child);
 		if (!this.tableCurrent || width !== this.width || !sameItems(items, this.items))
 			this.rebuild(items, width, painted);

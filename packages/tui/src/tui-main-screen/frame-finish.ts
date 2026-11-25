@@ -30,6 +30,15 @@ export class FrameFinisher {
 	private lastPath: "plain" | "overlay" | undefined;
 	private lastOutput: readonly string[] | undefined;
 
+	reset(): void {
+		this.frameRows.reset();
+		this.cursorRows.reset();
+		this.finishedLines.reset();
+		this.lastSource = undefined;
+		this.lastPath = undefined;
+		this.lastOutput = undefined;
+	}
+
 	finish(
 		source: RowSource,
 		showHardwareCursor: boolean,
@@ -44,6 +53,7 @@ export class FrameFinisher {
 		const shared = sharedRowsOf(lastSource, source);
 		let frame: { lines: string[]; cursor: { row: number; col: number } | null; unchanged: number };
 		if (overlays) {
+			if (lastPath === "plain") this.frameRows.reset();
 			const lines = isRowFrame(source) ? frameLines(source) : source;
 			const resolved = this.cursorRows.resolveFrom(
 				lines,
@@ -60,6 +70,10 @@ export class FrameFinisher {
 			};
 			this.lastPath = "overlay";
 		} else {
+			if (lastPath === "overlay") {
+				this.cursorRows.reset();
+				this.finishedLines.reset();
+			}
 			frame = this.frameRows.apply(
 				source,
 				showHardwareCursor,

@@ -6,7 +6,7 @@ import { detachScrollViews } from "./layout/detach.ts";
 import type { Terminal } from "./terminal.ts";
 import { registerTerminalRestore, unregisterAfterOutput } from "./terminal/exit-restore.ts";
 import { BEGIN_SYNCHRONIZED_OUTPUT, END_SYNCHRONIZED_OUTPUT, OSC133_ZONE_PREFIX } from "./terminal/sequences.ts";
-import { clipLinesToWidth } from "./tui/clip.ts";
+import { clipLinesToWidth, FinishedLines, finishScreenRow } from "./tui/clip.ts";
 import { readChildren } from "./tui/container-state.ts";
 import {
 	type Component,
@@ -40,6 +40,7 @@ import { ScrollToEndIndicator } from "./tui-alt-screen/end-indicator.ts";
 import type { TuiAltScreenOptions } from "./tui-alt-screen/types.ts";
 import { type AltScreenViewportKeysHost, handleViewportKeys } from "./tui-alt-screen/viewport-keys.ts";
 import { ArrowBurstScroll } from "./tui-alt-screen/arrow-burst.ts";
+import { clearWidthCache } from "./utils/width.ts";
 import { WheelScrollAccelerator, type WheelScrollLines } from "./wheel-scroll.ts";
 
 /** Alternate-screen TUI with a scrollable, application-owned viewport. */
@@ -60,6 +61,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private readonly trimmedRows = new TrimmedRowsMemo();
 	private readonly imageRows = new ImageRowsMemo();
 	private readonly cursorMemo = new FrameCursorMemo();
+	private readonly finishedLines = new FinishedLines(finishScreenRow);
 	private readonly search: AltScreenSearchController;
 	private readonly selection: AltScreenSelection;
 	private readonly scrollbar: AltScreenScrollbar;
@@ -72,7 +74,6 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private readonly modes: AltScreenTerminalModes;
 	private readonly endIndicator: ScrollToEndIndicator;
 	private copyOnSelect: boolean;
-
 	constructor(
 		terminal: Terminal,
 		showHardwareCursor?: boolean,
@@ -309,6 +310,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.previousScreenWidth = 0;
 		this.previousScreenHeight = 0;
 		this.cursorMemo.reset();
+		this.finishedLines.reset();
 	}
 
 	// Scrolling follows a key or the pointer: its frame takes the scheduler's interactive path, not the streaming cadence.
@@ -348,22 +350,23 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		const holdSize = this.resizePending && this.previousScreenWidth > 0 && this.previousScreenHeight > 0;
 		const width = holdSize ? this.previousScreenWidth : Math.max(1, this.terminal.columns);
 		const height = holdSize ? this.previousScreenHeight : Math.max(1, this.terminal.rows);
+		if (this.previousScreenWidth !== 0 && this.previousScreenWidth !== width) clearWidthCache();
 		const root = this.layoutRoot ?? this.implicitScrollView;
 		let nextLayout = renderLayoutFrame(root, width, height, () => this.requestRender());
-		if (this.search.refreshSearch(nextLayout)) {
+		if (this.search.refreshSearch(nextLayout))
 			nextLayout = renderLayoutFrame(root, width, height, () => this.requestRender());
-		}
-		// Resolve fake cursors before highlighting and compositing, which only track SGR codes
-		let screen = this.resolveFakeCursors(nextLayout.lines.map((line) => line.replace(OSC133_ZONE_PREFIX, "")));
+		const rawLines = nextLayout.lines.some((line) => line.includes("\x1b]133;"))
+			? nextLayout.lines.map((line) => line.replace(OSC133_ZONE_PREFIX, ""))
+			: nextLayout.lines;
+		let screen = this.resolveFakeCursors(rawLines);
 		screen = this.search.highlight(screen, nextLayout, width);
 		screen = this.endIndicator.composite(screen, nextLayout, width, this.implicitScrollView);
 		screen = this.compositeOverlays(screen, width, height);
 		if (screen.length > height) screen = screen.slice(screen.length - height);
 		screen = this.selection.applySelection(screen, nextLayout);
 		screen = compositeFlashLines(screen, this.flashes.render(width).slice(-height), width, height);
-
 		const cursorPos = this.extractCursorPosition(screen, height);
-		screen = clipLinesToWidth(this.applyLineResets(screen), width);
+		screen = this.finishedLines.apply(screen, width);
 		screen = budgetImageRows(screen, width, this.terminal.frameOutputCap);
 		const { buffer, fullRedraw } = renderAltScreenOutput({
 			screen,

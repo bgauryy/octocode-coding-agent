@@ -3,6 +3,7 @@
  */
 
 import { GLYPH } from "@octocodeai/octocode-tui";
+import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import type { ResourceDiagnostic } from "../../../core/resource-loader.ts";
 import type { SourceInfo } from "../../../core/source-info.ts";
@@ -12,10 +13,7 @@ import type { InteractiveModeHost } from "./host.ts";
 import type { ScopeGroup, ScopeGroupFormatOptions, ScopeGroupName, SourcedPath } from "./types.ts";
 
 /** Interactive-mode members used by the resource groups and diagnostics. */
-type ResourceGroupsHost = Pick<
-	InteractiveModeHost,
-	"formatDisplayPath" | "getScopeGroup" | "getShortPath" | "isPackageSource"
->;
+type ResourceGroupsHost = Pick<InteractiveModeHost, "getShortPath">;
 
 function getDisplaySourceInfo(sourceInfo?: SourceInfo): {
 	label: string;
@@ -60,7 +58,7 @@ export function isPackageSource(sourceInfo?: SourceInfo): boolean {
 	return source.startsWith("npm:") || source.startsWith("git:");
 }
 
-export function buildScopeGroups(host: ResourceGroupsHost, items: SourcedPath[]): ScopeGroup[] {
+export function buildScopeGroups(_host: ResourceGroupsHost, items: SourcedPath[]): ScopeGroup[] {
 	const groups: Record<ScopeGroupName, ScopeGroup> = {
 		user: { scope: "user", paths: [], packages: new Map() },
 		project: { scope: "project", paths: [], packages: new Map() },
@@ -68,11 +66,11 @@ export function buildScopeGroups(host: ResourceGroupsHost, items: SourcedPath[])
 	};
 
 	for (const item of items) {
-		const groupKey = host.getScopeGroup(item.sourceInfo);
+		const groupKey = getScopeGroup(item.sourceInfo);
 		const group = groups[groupKey];
 		const source = item.sourceInfo?.source ?? "local";
 
-		if (host.isPackageSource(item.sourceInfo)) {
+		if (isPackageSource(item.sourceInfo)) {
 			const list = group.packages.get(source) ?? [];
 			list.push(item);
 			group.packages.set(source, list);
@@ -132,7 +130,7 @@ function formatPathWithSource(host: ResourceGroupsHost, p: string, sourceInfo?: 
 		const labelText = scopeLabel ? `${label} (${scopeLabel})` : label;
 		return sanitizeTerminalText(`${labelText} ${shortPath}`);
 	}
-	return sanitizeTerminalText(host.formatDisplayPath(p));
+	return sanitizeTerminalText(homeTilde(p));
 }
 
 export function formatDiagnostics(

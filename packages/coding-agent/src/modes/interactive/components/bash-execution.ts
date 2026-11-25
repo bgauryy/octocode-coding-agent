@@ -27,7 +27,7 @@ import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { styleShellLines } from "../../../theme/output-style.ts";
 import { STATE_COLOR, stateMark, type UiState } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
-import { OutputPreview, outcomeParts } from "./bash-execution-parts.ts";
+import { OutputPreview, outcomeParts, sliceRunningPreview } from "./bash-execution-parts.ts";
 import { hintText, interruptKey } from "../../../theme/theme-tui-helpers.ts";
 import { STOPPED_COLOR } from "../../../octocode/render/types.ts";
 import { expandHint } from "../../../octocode/shared/text.ts";
@@ -68,6 +68,8 @@ export class BashExecutionComponent extends Container {
 	private expandable = false;
 	/** Output arrived since the last layout: rebuilt once per frame in render(), not once per streamed chunk. */
 	private layoutStale = false;
+	private runningHeader?: Text;
+	private runningPreview?: OutputPreview;
 	private readonly startedAt = Date.now();
 	/** The 1 s tick that keeps the running time current; gone once the command ends or the row leaves. */
 	private stopClock: (() => void) | undefined;
@@ -252,8 +254,51 @@ export class BashExecutionComponent extends Container {
 		}
 	}
 
+	private updateRunningCollapsedDisplay(): void {
+		const pad = this.outputPad;
+		const { lines: previewLogicalLines, hiddenCount } = sliceRunningPreview(
+			this.tailLines,
+			this.currentLine,
+			PREVIEW_LINES,
+			this.droppedLines,
+		);
+		this.expandable = hiddenCount > 0;
+		const prompt = `${this.excludeFromContext ? "!!" : "!"} ${sanitizeTerminalText(this.command)}`;
+		const headerText = theme.fg(this.colorKey, theme.bold(prompt)) + theme.fg("dim", " · you");
+		const styledOutput =
+			previewLogicalLines.length > 0 ? styleShellLines(theme, previewLogicalLines, "muted").join("\n") : "";
+		const previewPad = pad + HANG.length;
+
+		if (this.runningHeader) {
+			this.runningHeader.setText(headerText);
+			if (styledOutput) {
+				if (this.runningPreview) this.runningPreview.setText(styledOutput, previewPad);
+				else {
+					this.runningPreview = new OutputPreview(styledOutput, PREVIEW_LINES, previewPad);
+					this.contentContainer.children = [this.runningHeader, this.runningPreview, this.loader];
+				}
+			} else if (this.runningPreview) {
+				this.runningPreview = undefined;
+				this.contentContainer.children = [this.runningHeader, this.loader];
+			}
+			return;
+		}
+		this.contentContainer.clear();
+		this.runningHeader = new Text(headerText, pad, 0);
+		this.contentContainer.addChild(this.runningHeader);
+		this.runningPreview = styledOutput ? new OutputPreview(styledOutput, PREVIEW_LINES, previewPad) : undefined;
+		if (this.runningPreview) this.contentContainer.addChild(this.runningPreview);
+		this.contentContainer.addChild(this.loader);
+	}
+
 	private updateDisplay(): void {
 		this.layoutStale = false;
+		if (this.status === "running" && !this.expanded) {
+			this.updateRunningCollapsedDisplay();
+			return;
+		}
+		this.runningHeader = undefined;
+		this.runningPreview = undefined;
 		// Apply truncation for LLM context limits (same limits as bash tool)
 		const fullOutput = this.getOutput();
 		const contextTruncation = truncateTail(fullOutput, {

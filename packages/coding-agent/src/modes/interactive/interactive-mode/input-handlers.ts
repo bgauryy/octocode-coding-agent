@@ -11,6 +11,7 @@ import { getApplicationPort } from "../../../core/application/index.ts";
 import { readClipboardFilePaths, readClipboardText } from "../../../utils/clipboard.ts";
 import { extensionForImageMimeType, readClipboardImage } from "../../../utils/clipboard-image.ts";
 import { editInExternalEditor } from "../external-editor.ts";
+import { suspendTuiForForegroundChild } from "../suspend-tui.ts";
 import { bindEditorHandlers } from "./feature-chrome.ts";
 import { quoteIfNeeded } from "./helpers.ts";
 import { rewritePastedImagePaths } from "./paste-image-paths.ts";
@@ -201,14 +202,13 @@ export async function handleClipboardPaste(host: InputHandlersHost): Promise<voi
 async function handleOpenExternalEditor(host: InputHandlersHost): Promise<void> {
 	const editorCmd = host.settingsManager.getExternalEditorCommand();
 	const content = host.editor.getExpandedText?.() ?? host.editor.getText();
-	host.ui.stop();
 	try {
-		// The restore sequences `stop` queued reach the terminal before the editor draws on it.
-		await host.ui.terminal?.drainOutput?.();
-		const result = await editInExternalEditor({
-			command: editorCmd,
-			content,
-		});
+		const result = await suspendTuiForForegroundChild(host.ui, () =>
+			editInExternalEditor({
+				command: editorCmd,
+				content,
+			}),
+		);
 		if (result.status === "complete") {
 			host.editor.setText(result.content);
 		} else if (result.error) {
@@ -216,9 +216,6 @@ async function handleOpenExternalEditor(host: InputHandlersHost): Promise<void> 
 		}
 	} catch (error) {
 		host.showError(`External editor failed: ${errorMessage(error)}`);
-	} finally {
-		host.ui.start();
-		host.ui.requestRender(true);
 	}
 }
 

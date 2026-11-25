@@ -88,8 +88,7 @@ function prefixAutocompleteDescription(description: string | undefined, sourceIn
 
 export function getBuiltInCommandConflictDiagnostics(featureHost: FeatureHost): ResourceDiagnostic[] {
 	const builtinNames = new Set(BUILTIN_SLASH_COMMANDS.map((command) => command.name));
-	return featureHost
-		.getRegisteredCommands()
+	return (featureHost.getRegisteredCommands?.() ?? [])
 		.filter((command) => builtinNames.has(command.name) && command.sourceInfo.owner !== "native")
 		.map((command) => ({
 			type: "warning" as const,

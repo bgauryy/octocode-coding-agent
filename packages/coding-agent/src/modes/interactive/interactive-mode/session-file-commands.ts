@@ -25,7 +25,6 @@ type SessionFileCommandsHost = Pick<
 	| "clearStatusIndicator"
 	| "editor"
 	| "editorContainer"
-	| "getPathCommandArgument"
 	| "handleFatalRuntimeError"
 	| "promptForMissingSessionCwd"
 	| "runtimeHost"
@@ -64,7 +63,7 @@ export function unsaved(sessionManager: SessionFileCommandsHost["sessionManager"
 }
 
 export async function handleExportCommand(host: SessionFileCommandsHost, text: string): Promise<void> {
-	const outputPath = host.getPathCommandArgument(text, "/export");
+	const outputPath = getPathCommandArgument(text, "/export");
 	if (nothingSavedYet(host, "export")) return;
 
 	try {
@@ -113,7 +112,7 @@ export function getPathCommandArgument(text: string, command: "/export" | "/impo
 }
 
 export async function handleImportCommand(host: SessionFileCommandsHost, text: string): Promise<void> {
-	const inputPath = host.getPathCommandArgument(text, "/import");
+	const inputPath = getPathCommandArgument(text, "/import");
 	if (!inputPath) {
 		host.showWarning("Usage: /import <path.jsonl>");
 		return;

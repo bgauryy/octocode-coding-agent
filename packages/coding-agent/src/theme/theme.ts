@@ -96,8 +96,13 @@ export function setThemeInstance(themeInstance: Theme): void {
 	}
 }
 
-export function onThemeChange(callback: () => void): void {
+export function onThemeChange(callback: () => void): () => void {
 	onThemeChangeCallback = callback;
+	return () => {
+		if (onThemeChangeCallback === callback) {
+			onThemeChangeCallback = undefined;
+		}
+	};
 }
 
 function startThemeWatcher(): void {

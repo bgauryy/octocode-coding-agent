@@ -7,6 +7,7 @@ import { insideSessionShell, sessionShellRefusal } from "../octocode/trust/sessi
 import { describeWorktree } from "../octocode/worktrees/create.ts";
 import { confirmWorktreeTrust } from "./trust-prompt.ts";
 import { enterWorktree } from "../octocode/worktrees/enter.ts";
+import { isInputDisabled } from "./no-input.ts";
 import { parseArgs } from "./args.ts";
 import { isSubcommand } from "./completion.ts";
 import { prepareAgentDb } from "../storage/database.ts";
@@ -29,7 +30,7 @@ export async function startupCwd(args: string[]): Promise<string> {
 	if (parsed.trust === true && insideSessionShell()) fail(sessionShellRefusal("record trust for --trust"));
 	// `--trust` lets a headless run (or a later isolated subagent) record the grant for a worktree it creates.
 	allowWorktreeGrants(parsed.trust === true);
-	if (worktree === undefined || help || version) return process.cwd();
+	if (worktree === undefined || help || version || parsed.diagnostics.length > 0) return process.cwd();
 	const notSession = isSubcommand(args)
 		? `the "${args[0]}" command`
 		: parsed.mode === "acp"
@@ -54,7 +55,8 @@ export async function startupCwd(args: string[]): Promise<string> {
 	}
 	try {
 		await prepareAgentDb();
-		const interactive = process.stdin.isTTY && process.stdout.isTTY && !parsed.print && parsed.mode === undefined;
+		const interactive =
+			process.stdin.isTTY && process.stdout.isTTY && !parsed.print && parsed.mode === undefined && !isInputDisabled();
 		const ask = interactive
 			? (request: WorktreeTrustRequest) =>
 					confirmWorktreeTrust(SettingsManager.create(process.cwd(), getAgentDir(), { projectTrusted: false }), request)

@@ -35,7 +35,6 @@ type AgentEventsHost = Pick<
 	| "entriesRenderedByRebuild"
 	| "getMarkdownThemeWithSettings"
 	| "getMarkdownTransformers"
-	| "getAppKeyDisplay"
 	| "getRegisteredToolDefinition"
 	| "handleEvent"
 	| "uiStore"

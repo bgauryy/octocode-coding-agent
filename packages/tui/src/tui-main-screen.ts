@@ -107,6 +107,9 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		this.maxLinesRendered = 0;
 		this.previousViewportTop = 0;
 		this.cursorHidden = false;
+		this.componentLayout = undefined;
+		this.finisher.reset();
+		this.kittyRows.reset();
 		this.scrollback.reset();
 	}
 

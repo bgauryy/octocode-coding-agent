@@ -124,7 +124,7 @@ export function renderSessionItems(
 		// Assistant messages need special handling for tool calls
 		if (message.role === "assistant") {
 			host.addMessageToChat(message);
-			const last = host.chatContainer.children.at(-1);
+			const last = host.chatContainer.peekChildren().at(-1);
 			const parent = last instanceof AssistantMessageComponent ? last : undefined;
 			if (options.retriedMessages?.has(message)) parent?.markRetried();
 			for (const content of message.content) {

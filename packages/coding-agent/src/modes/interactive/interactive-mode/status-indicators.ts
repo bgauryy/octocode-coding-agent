@@ -87,7 +87,8 @@ export function mountStatusIndicator(host: StatusIndicatorsHost, indicator: Stat
 export function unmountStatusIndicator(host: StatusIndicatorsHost): void {
 	const clearedIndicator = host.activeStatusIndicator;
 	const clearedIndicatorWasEmbedded =
-		clearedIndicator !== undefined && !host.statusContainer.children.includes(clearedIndicator);
+		clearedIndicator !== undefined &&
+		!(host.statusContainer.peekChildren?.() ?? host.statusContainer.children).includes(clearedIndicator);
 	clearedIndicator?.dispose();
 	host.activeStatusIndicator = undefined;
 	host.statusContainer.clear();
@@ -148,7 +149,7 @@ function formatStatusText(text: StatusText): string {
  */
 export function showStatus(host: StatusIndicatorsHost, status: StatusText): void {
 	const message = formatStatusText(status);
-	const children = host.chatContainer.children;
+	const children = host.chatContainer.peekChildren?.() ?? host.chatContainer.children;
 	const last = children.length > 0 ? children[children.length - 1] : undefined;
 	const secondLast = children.length > 1 ? children[children.length - 2] : undefined;
 

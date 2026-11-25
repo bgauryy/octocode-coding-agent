@@ -26,6 +26,12 @@ export class CursorRows {
 	/** The last call returned its stripped rows, not an overlay composite: the next result may say what it shares. */
 	private returnedStripped = false;
 
+	reset(): void {
+		this.last = { inputs: [], stripped: [], marked: new Map() };
+		this.showHardwareCursor = false;
+		this.returnedStripped = false;
+	}
+
 	/** `unchanged`: leading rows of `lines` that are the same strings as in the lines of the last call. */
 	private resolveRows(lines: readonly string[], showHardwareCursor: boolean, unchanged: number): ResolvedRows {
 		const last = this.last;

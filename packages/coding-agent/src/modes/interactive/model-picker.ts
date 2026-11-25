@@ -70,15 +70,13 @@ export function showModelSelector(host: ModelPickerHost, initialSearchInput?: st
 			if (persist && settingsManager.isProjectTrusted()) {
 				// A default saved from a session defaults to this project (per-process isolated) so it never leaks to
 				// every process; "Global: every project" is the explicit choice to change the default for all.
-				const choice = await host.showSelectorDialog(`Save ${model.provider}/${model.id} as the default model`, [
-					SAVE_PROJECT,
-					SAVE_GLOBAL,
-				]);
-				if (choice === undefined) {
-					done();
-					host.ui.requestRender();
-					return;
-				}
+				// Stacked on the editor slot so pressing Esc restores the live `/model` picker with its search & cursor intact.
+				const choice = await host.showSelectorDialog(
+					`Save ${model.provider}/${model.id} as the default model`,
+					[SAVE_PROJECT, SAVE_GLOBAL],
+					{ stack: true },
+				);
+				if (choice === undefined) return;
 				if (choice === SAVE_PROJECT) scope = "project";
 			}
 			if (persist) host.showStatus(`Saving default model: ${model.provider}/${model.id}…`);

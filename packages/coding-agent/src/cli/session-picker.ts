@@ -45,8 +45,9 @@ export async function selectSession(
 						],
 					);
 					if (!confirmed) {
-						resolved = true;
-						resolve(null);
+						selecting = false;
+						ui.start();
+						ui.requestRender(true);
 						return;
 					}
 				}

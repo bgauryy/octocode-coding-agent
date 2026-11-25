@@ -1,4 +1,3 @@
-import { captureCommandDialog } from "./web-command-context.ts";
 /**
  * View controls: switching between the regular and fullscreen renderers, tool-output and thinking-block expansion,
  * the editor border color, and the selector shown in place of the editor.
@@ -7,7 +6,7 @@ import { captureCommandDialog } from "./web-command-context.ts";
 import {
 	type Component,
 	type Terminal,
-	type TuiAltScreen,
+	TuiAltScreen,
 	TuiMainScreen,
 	type TuiMainScreenRenderState,
 } from "@octocodeai/octocode-tui";
@@ -18,6 +17,7 @@ import { applyEditorBorder } from "../state/bind-editor.ts";
 import { selectEditorBorder } from "../state/editor-slice.ts";
 import { createInteractiveTui } from "../tui-renderer.ts";
 import { openReference } from "../reference-opener.ts";
+import { getEditorSlot } from "./dialog-slot.ts";
 import type { InteractiveModeHost } from "./host.ts";
 
 /** Interactive-mode members used by the view controls. */
@@ -25,9 +25,11 @@ type ViewStateHost = Pick<
 	InteractiveModeHost,
 	| "activeSelectorDispose"
 	| "activeStatusIndicator"
+	| "clearStatusIndicator"
 	| "disposeActiveSelector"
 	| "editor"
 	| "editorContainer"
+	| "programStatus"
 	| "footerDataProvider"
 	| "fullscreenLayoutRoot"
 	| "uiStore"
@@ -113,6 +115,10 @@ export function switchTuiMode(
 		replayRows: settingsManager.getReplayRows(),
 	});
 	nextUi.setClearOnShrink(clearOnShrink);
+	nextUi.setRenderPacing({ latencyFence: settingsManager.isLatencyFenceActive() });
+	if (nextUi instanceof TuiAltScreen) {
+		nextUi.setFrameOutputCap(settingsManager.getFullscreenFrameQueueLimitBytes());
+	}
 	nextUi.onDebug = onDebug;
 	nextUi.onRenderError = onRenderError;
 	const mainScreenState = mainScreenStates.get(terminal);
@@ -160,41 +166,34 @@ export function toggleThinkingBlockVisibility(host: ViewStateHost): void {
 }
 
 export function disposeActiveSelector(host: ViewStateHost): void {
-	const dispose = host.activeSelectorDispose;
-	host.uiStore.getState().clearSlot();
-	host.activeSelectorDispose = undefined;
-	dispose?.();
+	getEditorSlot(host).disposeAll();
 }
 
 /**
- * Shows a selector component in place of the editor.
+ * Shows a selector component in place of the editor via the shared `EditorSlot` state machine.
  * @param create Factory that receives a `done` callback and returns the component and focus target
  */
 export function showSelector(
 	host: ViewStateHost,
 	create: (done: () => void) => { component: Component; focus: Component; dispose?: () => void },
 ): void {
-	const token = {};
-	// oxlint-disable-next-line prefer-const -- `done` may run before `create` returns, while `dispose` is still unset
-	let dispose: (() => void) | undefined;
+	let closed = false;
+	const lease = getEditorSlot(host).acquire({
+		cancel: () => {
+			closed = true;
+		},
+	});
 	const done = () => {
-		dispose?.();
-		if (!host.uiStore.getState().releaseSlot(token)) return;
-		host.activeSelectorDispose = undefined;
-		host.editorContainer.clear();
-		host.editorContainer.addChild(host.editor);
-		host.ui.setFocus(host.editor);
+		if (closed) return;
+		closed = true;
+		lease.release();
 	};
 	const created = create(done);
-	dispose = created.dispose;
-	host.disposeActiveSelector();
-	host.activeSelectorDispose = dispose;
-	host.editorContainer.clear();
-	host.editorContainer.addChild(created.component);
-	host.ui.setFocus(created.focus);
-	captureCommandDialog(host.ui, created.component, created.focus);
-	// Last, so the frame the store write requests shows the selector.
-	host.uiStore.getState().takeSlot(token);
+	if (closed || !lease.isCurrent()) {
+		created.dispose?.();
+		return;
+	}
+	lease.mount(created.component, created.focus, created.dispose);
 }
 
 /** Update the footer's available provider count from the current snapshot without refreshing catalogs. */

@@ -31,7 +31,11 @@ export function bindViewState(host: BindViewHost): () => void {
 			// transcript, so the toggle reaches only what starts in view or below.
 			const reaches = (component: Component) => host.ui.isAboveViewport?.(component) !== true;
 			const header = host.customHeader ?? host.builtInHeader;
-			const targets = [header, ...host.loadedResourcesContainer.children, ...host.chatContainer.children];
+			const targets = [
+				header,
+				...(host.loadedResourcesContainer.peekChildren?.() ?? host.loadedResourcesContainer.children),
+				...(host.chatContainer.peekChildren?.() ?? host.chatContainer.children),
+			];
 			let changed = false;
 			for (const target of targets) {
 				if (!target || !isExpandable(target) || !reaches(target)) continue;

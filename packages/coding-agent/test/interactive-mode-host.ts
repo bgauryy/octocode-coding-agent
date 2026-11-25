@@ -5,6 +5,7 @@
 
 import { createStore } from "zustand/vanilla";
 import type { InteractiveModeHost } from "../src/modes/interactive/interactive-mode/host.ts";
+import { createInteractiveModeControllers } from "../src/modes/interactive/interactive-mode/host-controllers.ts";
 import { interactiveModeMethodImplementations } from "../src/modes/interactive/interactive-mode/host-methods.ts";
 import type { CompactionQueuedMessage } from "../src/modes/interactive/interactive-mode/types.ts";
 import { createUiStore } from "../src/modes/interactive/state/store.ts";
@@ -51,6 +52,9 @@ export function createFakeHost<T extends object>(fake: T): T & InteractiveModeHo
 		if (name in fake) continue;
 		const call = implementation as (host: T, ...args: unknown[]) => unknown;
 		methods[name] = (...args: unknown[]) => call(fake, ...args);
+	}
+	if (!("controllers" in fake)) {
+		methods.controllers = createInteractiveModeControllers(fake as unknown as InteractiveModeHost);
 	}
 	return fake as T & InteractiveModeHost;
 }

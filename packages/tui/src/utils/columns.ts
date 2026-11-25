@@ -1,19 +1,27 @@
-import { extractAnsiCode } from "./ansi-codes.ts";
+import { ansiCodeLength, extractAnsiCode } from "./ansi-codes.ts";
 import { AnsiCodeTracker } from "./ansi-tracker.ts";
-import { graphemeSegmenter, graphemeWidth } from "./width.ts";
+import { graphemeSegments, graphemeWidth } from "./width.ts";
 
 const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
 
-function* segmentedGraphemes(text: string): Generator<string> {
-	for (const { segment } of graphemeSegmenter.segment(text)) yield segment;
-}
-
 /**
- * The graphemes of a run of text between escape codes. In printable ASCII every character is its own grapheme, so
- * the run is iterated directly: segmenting is the main cost of slicing rows, which happens for every row of a frame.
+ * The graphemes of a run of text between escape codes. In printable ASCII every character is its own grapheme;
+ * otherwise `graphemeSegments` uses the standalone-width fast path and only invokes `Intl.Segmenter` when needed.
  */
 function graphemes(text: string): Iterable<string> {
-	return PRINTABLE_ASCII.test(text) ? text : segmentedGraphemes(text);
+	return PRINTABLE_ASCII.test(text) ? text : graphemeSegments(text);
+}
+
+/** End of the run starting at `start` before the next valid ANSI escape sequence. */
+function plainAnsiRunEnd(line: string, start: number): number {
+	let pos = start;
+	while (pos < line.length) {
+		const esc = line.indexOf("\x1b", pos);
+		if (esc === -1) return line.length;
+		if (ansiCodeLength(line, esc) > 0) return esc;
+		pos = esc + 1;
+	}
+	return line.length;
 }
 
 interface GraphemeCellRange {
@@ -31,8 +39,7 @@ export function getGraphemeCellRange(line: string, column: number): GraphemeCell
 			i += ansi.length;
 			continue;
 		}
-		let textEnd = i;
-		while (textEnd < line.length && !extractAnsiCode(line, textEnd)) textEnd++;
+		const textEnd = plainAnsiRunEnd(line, i);
 		for (const segment of graphemes(line.slice(i, textEnd))) {
 			const width = graphemeWidth(segment);
 			if (width > 0 && column >= currentCol && column < currentCol + width) {
@@ -58,8 +65,7 @@ export function getOsc8LinkAtColumn(line: string, column: number): string | unde
 			i += ansi.length;
 			continue;
 		}
-		let textEnd = i;
-		while (textEnd < line.length && !extractAnsiCode(line, textEnd)) textEnd++;
+		const textEnd = plainAnsiRunEnd(line, i);
 		for (const segment of graphemes(line.slice(i, textEnd))) {
 			const width = segment === "\t" ? 3 : graphemeWidth(segment);
 			if (column >= currentCol && column < currentCol + width) return activeUrl;
@@ -105,8 +111,7 @@ export function sliceWithWidth(
 			continue;
 		}
 
-		let textEnd = i;
-		while (textEnd < line.length && !extractAnsiCode(line, textEnd)) textEnd++;
+		const textEnd = plainAnsiRunEnd(line, i);
 
 		for (const segment of graphemes(line.slice(i, textEnd))) {
 			const w = graphemeWidth(segment);
@@ -174,8 +179,7 @@ export function extractSegments(
 			continue;
 		}
 
-		let textEnd = i;
-		while (textEnd < line.length && !extractAnsiCode(line, textEnd)) textEnd++;
+		const textEnd = plainAnsiRunEnd(line, i);
 
 		for (const segment of graphemes(line.slice(i, textEnd))) {
 			const w = graphemeWidth(segment);

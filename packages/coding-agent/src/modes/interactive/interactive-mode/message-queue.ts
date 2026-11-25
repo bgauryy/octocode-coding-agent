@@ -5,6 +5,7 @@
 
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { withInputOrigin } from "../../../core/input-origin.ts";
+import { getBuiltinCommand, parseSlashCommand } from "../../../core/slash-commands.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { prependToEditorDraft } from "./helpers.ts";
@@ -92,6 +93,14 @@ export async function handleInputDuringCompaction(
 export async function handleFollowUp(host: MessageQueueHost): Promise<void> {
 	const text = (host.editor.getExpandedText?.() ?? host.editor.getText()).trim();
 	if (!text) return;
+
+	// Built-in slash commands and `!` bash commands run immediately rather than queueing as LLM follow-up text.
+	const parsed = parseSlashCommand(text);
+	if (((parsed && getBuiltinCommand(parsed.name)) || text.startsWith("!")) && host.editor.onSubmit) {
+		host.editor.setText("");
+		host.editor.onSubmit(text);
+		return;
+	}
 
 	// No await unless compaction runs: the editor is cleared before the next key, so keys typed in the same tick
 	// start a new message instead of joining the one being queued.

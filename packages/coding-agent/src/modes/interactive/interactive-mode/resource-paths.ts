@@ -8,20 +8,18 @@ import type { SourceInfo } from "../../../core/source-info.ts";
 import { parseGitUrl } from "../../../utils/git.ts";
 import { getCwdRelativePath } from "@octocodeai/octocode-common/paths";
 import type { InteractiveModeHost } from "./host.ts";
+import { isPackageSource } from "./resource-groups.ts";
 import type { SourcedPath } from "./types.ts";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 
 /** Interactive-mode members used by the resource path labels. */
 type ResourcePathsHost = Pick<
 	InteractiveModeHost,
-	| "formatDisplayPath"
 	| "getCompactDisplayPathSegments"
 	| "getCompactFeatureLabel"
 	| "getCompactNonPackageFeatureLabel"
-	| "getCompactPackageSourceLabel"
 	| "getCompactPathLabel"
 	| "getShortPath"
-	| "isPackageSource"
 	| "sessionManager"
 >;
 
@@ -29,8 +27,8 @@ export function formatDisplayPath(p: string): string {
 	return homeTilde(p);
 }
 
-export function formatFeatureDisplayPath(host: ResourcePathsHost, path: string): string {
-	let result = host.formatDisplayPath(path);
+export function formatFeatureDisplayPath(_host: ResourcePathsHost, path: string): string {
+	let result = formatDisplayPath(path);
 	result = result.replace(/\/index\.ts$/, "").replace(/\/index\.js$/, "");
 	return result;
 }
@@ -43,16 +41,16 @@ export function formatContextPath(host: ResourcePathsHost, p: string): string {
 		return relativePath;
 	}
 
-	return host.formatDisplayPath(absolutePath);
+	return formatDisplayPath(absolutePath);
 }
 
 /**
  * Get a short path relative to the package root for display.
  */
-export function getShortPath(host: ResourcePathsHost, fullPath: string, sourceInfo?: SourceInfo): string {
+export function getShortPath(_host: ResourcePathsHost, fullPath: string, sourceInfo?: SourceInfo): string {
 	const normalizedFullPath = fullPath.replace(/\\/g, "/");
 	const baseDir = sourceInfo?.baseDir;
-	if (baseDir && host.isPackageSource(sourceInfo)) {
+	if (baseDir && isPackageSource(sourceInfo)) {
 		const normalizedBaseDir = baseDir.replace(/\\/g, "/");
 		const npmRootMatch = normalizedBaseDir.match(/^(.*\/node_modules)\/(@?[^/]+(?:\/[^/]+)?)$/);
 		// If fullPath is under the same node_modules root as baseDir, preserve that relative topology.
@@ -83,7 +81,7 @@ export function getShortPath(host: ResourcePathsHost, fullPath: string, sourceIn
 		return gitMatch[1];
 	}
 
-	return host.formatDisplayPath(fullPath);
+	return formatDisplayPath(fullPath);
 }
 
 export function getCompactPathLabel(host: ResourcePathsHost, resourcePath: string, sourceInfo?: SourceInfo): string {
@@ -111,11 +109,11 @@ export function getCompactPackageSourceLabel(sourceInfo?: SourceInfo): string {
 }
 
 export function getCompactFeatureLabel(host: ResourcePathsHost, resourcePath: string, sourceInfo?: SourceInfo): string {
-	if (!host.isPackageSource(sourceInfo)) {
+	if (!isPackageSource(sourceInfo)) {
 		return host.getCompactPathLabel(resourcePath, sourceInfo);
 	}
 
-	const sourceLabel = host.getCompactPackageSourceLabel(sourceInfo);
+	const sourceLabel = getCompactPackageSourceLabel(sourceInfo);
 	if (!sourceLabel) {
 		return host.getCompactPathLabel(resourcePath, sourceInfo);
 	}
@@ -131,9 +129,8 @@ export function getCompactFeatureLabel(host: ResourcePathsHost, resourcePath: st
 	return `${sourceLabel}:${packagePath}`;
 }
 
-export function getCompactDisplayPathSegments(host: ResourcePathsHost, resourcePath: string): string[] {
-	return host
-		.formatDisplayPath(resourcePath)
+export function getCompactDisplayPathSegments(_host: ResourcePathsHost, resourcePath: string): string[] {
+	return formatDisplayPath(resourcePath)
 		.replace(/\\/g, "/")
 		.split("/")
 		.filter((segment) => segment.length > 0 && segment !== "~");
@@ -181,10 +178,10 @@ export function getCompactFeatureLabels(host: ResourcePathsHost, features: Sourc
 				segments,
 			};
 		})
-		.filter((feature) => !host.isPackageSource(feature.sourceInfo));
+		.filter((feature) => !isPackageSource(feature.sourceInfo));
 
 	return features.map((feature) => {
-		if (host.isPackageSource(feature.sourceInfo)) {
+		if (isPackageSource(feature.sourceInfo)) {
 			return host.getCompactFeatureLabel(feature.path, feature.sourceInfo);
 		}
 

@@ -18,7 +18,7 @@ import {
 import { normalizePath } from "@octocodeai/octocode-common/paths";
 import { normalizeSessionName, parseArgs, printHelp } from "../cli/args.ts";
 import { listModels } from "../cli/list-models.ts";
-import { shouldRunFirstTimeSetup, showFirstTimeSetup } from "../cli/startup-ui.ts";
+import { shouldRunFirstTimeSetup, showFirstTimeSetup, withStartupTuiScope } from "../cli/startup-ui.ts";
 import { ENV_SESSION_DIR, VERSION } from "../config.ts";
 import { prepareAgentDb } from "../storage/database.ts";
 import { createAgentSessionRuntime } from "../core/agent-session-runtime.ts";
@@ -187,37 +187,41 @@ async function runSessionUnguarded(
 		gateStartup({ parsed, appMode, cwd: folder, settingsManager: startupSettingsManager });
 	// A new, continued or forked session runs in `cwd`, so the gate goes first and a refused run writes nothing there.
 	// `--session` and `--resume` open a saved session whose folder is known only once it is open.
+	// Share one StartupTui across sequential startup prompts (trust, resume, missing-cwd, first-time setup).
 	const gated = requireTrust && parsed.session === undefined && !parsed.resume ? cwd : undefined;
-	if (gated) await gate(gated);
-	let sessionManager = await createSessionManager(parsed, cwd, sessionDir, startupSettingsManager);
-	const missingSessionCwdIssue = getMissingSessionCwdIssue(sessionManager, cwd);
-	if (missingSessionCwdIssue) {
-		if (appMode === "interactive") {
-			const selectedCwd = await promptForMissingSessionCwd(missingSessionCwdIssue, startupSettingsManager);
-			if (!selectedCwd) {
-				process.exit(0);
+	const sessionManager = await withStartupTuiScope(async () => {
+		if (gated) await gate(gated);
+		let manager = await createSessionManager(parsed, cwd, sessionDir, startupSettingsManager);
+		const missingSessionCwdIssue = getMissingSessionCwdIssue(manager, cwd);
+		if (missingSessionCwdIssue) {
+			if (appMode === "interactive") {
+				const selectedCwd = await promptForMissingSessionCwd(missingSessionCwdIssue, startupSettingsManager);
+				if (!selectedCwd) {
+					process.exit(0);
+				}
+				manager = await SessionManager.openAsync(missingSessionCwdIssue.sessionFile!, sessionDir, selectedCwd);
+			} else {
+				console.error(cliStyle.error(new MissingSessionCwdError(missingSessionCwdIssue).message));
+				process.exit(1);
 			}
-			sessionManager = await SessionManager.openAsync(missingSessionCwdIssue.sessionFile!, sessionDir, selectedCwd);
-		} else {
-			console.error(cliStyle.error(new MissingSessionCwdError(missingSessionCwdIssue).message));
-			process.exit(1);
 		}
-	}
-	if (requireTrust && sessionManager.getCwd() !== gated) await gate(sessionManager.getCwd());
-	if (parsed.name !== undefined) {
-		const name = normalizeSessionName(parsed.name);
-		if (name === undefined) {
-			console.error(cliStyle.error("Error: --name requires a non-empty value"));
-			process.exit(1);
+		if (requireTrust && manager.getCwd() !== gated) await gate(manager.getCwd());
+		if (parsed.name !== undefined) {
+			const name = normalizeSessionName(parsed.name);
+			if (name === undefined) {
+				console.error(cliStyle.error("Error: --name requires a non-empty value"));
+				process.exit(1);
+			}
+			manager.appendSessionInfo(name);
 		}
-		sessionManager.appendSessionInfo(name);
-	}
-	time("createSessionManager");
+		time("createSessionManager");
 
-	if (appMode === "interactive" && requireTrust && shouldRunFirstTimeSetup()) {
-		await showFirstTimeSetup(startupSettingsManager);
-		time("firstTimeSetup");
-	}
+		if (appMode === "interactive" && requireTrust && shouldRunFirstTimeSetup()) {
+			await showFirstTimeSetup(startupSettingsManager);
+			time("firstTimeSetup");
+		}
+		return manager;
+	});
 	const createRuntime = createCliRuntimeFactory({
 		parsed,
 		cwd,

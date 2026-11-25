@@ -9,7 +9,9 @@ import {
 	type TUI,
 	animationClock,
 	isScreenReaderMode,
+	renderChanged,
 	stripTerminalSequences,
+	trackRenderChanges,
 	truncateToWidth,
 	visibleWidth,
 } from "@octocodeai/octocode-tui";
@@ -67,7 +69,8 @@ export class StatusIndicator extends Loader {
 }
 
 export class WorkingStatusIndicator extends StatusIndicator {
-	private workingMessage: string;
+	private styledDetail: string;
+	private plainDetail: string;
 	private readonly createdAt = Date.now();
 	/** Repaints when the run clock's text changes, independent of the spinner. */
 	private shownElapsed: string;
@@ -82,7 +85,8 @@ export class WorkingStatusIndicator extends StatusIndicator {
 			message,
 			indicator,
 		);
-		this.workingMessage = message;
+		this.styledDetail = styledLine(message);
+		this.plainDetail = stripTerminalSequences(this.styledDetail);
 		this.shownElapsed = this.elapsed();
 		this.unsubscribeClock = animationClock.subscribe(
 			() => {
@@ -90,6 +94,7 @@ export class WorkingStatusIndicator extends StatusIndicator {
 				const text = this.elapsed();
 				if (text === this.shownElapsed) return;
 				this.shownElapsed = text;
+				renderChanged(this);
 				ui.requestRender();
 			},
 			{ everyMs: MOTION.tickMs, kind: "info" },
@@ -101,9 +106,16 @@ export class WorkingStatusIndicator extends StatusIndicator {
 		return MOTION.spinnerDelayMs;
 	}
 
+	/** `WorkingStatusIndicator` composes its own line in `render()`, so skip `Loader`'s unused `Text.setText()` work. */
+	protected override updateDisplay(): void {
+		renderChanged(this);
+		this.ui?.requestRender();
+	}
+
 	override setMessage(message: string): void {
-		this.workingMessage = message;
-		super.setMessage(message);
+		this.styledDetail = styledLine(message);
+		this.plainDetail = stripTerminalSequences(this.styledDetail);
+		this.updateDisplay();
 	}
 
 	override dispose(): void {
@@ -123,17 +135,22 @@ export class WorkingStatusIndicator extends StatusIndicator {
 	 */
 	private compose(width: number, paint: (detail: string) => string, withHint: boolean): string {
 		// Model thinking and tool targets reach this line, so only colours survive.
-		const detail = styledLine(this.workingMessage);
+		const detail = this.styledDetail;
 		// While the spinner is hidden its cell stays blank, so the detail does not shift when it appears.
 		const prefix = isScreenReaderMode() ? " working: " : ` ${this.getRenderedIndicator() || " "} `;
+		const prefixWidth = visibleWidth(prefix);
 		const key = withHint ? interruptKey() : "";
 		const paintedSuffix = (hint: boolean) =>
 			theme.fg("dim", ` (${this.elapsed()}`) +
 			(hint ? theme.fg("dim", SEPARATOR) + rawKeyHint(key, "interrupt") : "") +
 			theme.fg("dim", ")");
 		let suffix = paintedSuffix(Boolean(key));
-		if (key && width - visibleWidth(prefix) - visibleWidth(suffix) < MIN_DETAIL_COLUMNS) suffix = paintedSuffix(false);
-		const room = Math.max(0, width - visibleWidth(prefix) - visibleWidth(suffix));
+		let suffixWidth = visibleWidth(suffix);
+		if (key && width - prefixWidth - suffixWidth < MIN_DETAIL_COLUMNS) {
+			suffix = paintedSuffix(false);
+			suffixWidth = visibleWidth(suffix);
+		}
+		const room = Math.max(0, width - prefixWidth - suffixWidth);
 		const shown = visibleWidth(detail) <= room ? paint(detail) : paint(truncateToWidth(detail, room, "…"));
 		return truncateToWidth(`${prefix}${shown}${suffix}`, Math.max(0, width), "…");
 	}
@@ -152,7 +169,7 @@ export class WorkingStatusIndicator extends StatusIndicator {
 	 * loader's frame timer drives the redraws; a static indicator, or a theme without concrete colors, draws it plain.
 	 */
 	private paintDetail(detail: string): string {
-		const plain = stripTerminalSequences(detail);
+		const plain = detail === this.styledDetail ? this.plainDetail : stripTerminalSequences(detail);
 		if (!this.isAnimated() || plain !== detail || plain.length > SHIMMER_MAX_CHARS) return theme.fg("text", detail);
 		return liveShimmer(theme, plain);
 	}
@@ -296,3 +313,7 @@ export class IdleStatus implements Component {
 		return [emptyLine, emptyLine];
 	}
 }
+
+trackRenderChanges(StatusIndicator.prototype);
+trackRenderChanges(WorkingStatusIndicator.prototype);
+trackRenderChanges(IdleStatus.prototype);

@@ -1,6 +1,7 @@
 import { animationClock, spinnerFrame } from "../tokens/clock.ts";
 import { isScreenReaderMode } from "../tokens/screen-reader.ts";
 import { ELLIPSIS, GLYPH, MOTION, SPINNER } from "../tokens/design.ts";
+import { trackRenderChanges } from "../tui/render-signal.ts";
 import type { TUI } from "../tui.ts";
 import { Text } from "./text.ts";
 
@@ -22,7 +23,7 @@ export class Loader extends Text {
 	private frames = [...DEFAULT_FRAMES];
 	private intervalMs: number = DEFAULT_INTERVAL_MS;
 	private unsubscribe: (() => void) | undefined;
-	private ui: TUI | null = null;
+	protected ui: TUI | null = null;
 	private renderIndicatorVerbatim = false;
 	private defaultFrames = true;
 	private spinnerColorFn: (str: string) => string;
@@ -115,7 +116,7 @@ export class Loader extends Text {
 		return this.renderIndicatorVerbatim ? frame : this.spinnerColorFn(frame);
 	}
 
-	private updateDisplay(): void {
+	protected updateDisplay(): void {
 		const renderedFrame = this.getRenderedIndicator();
 		const indicator = renderedFrame.length > 0 ? `${renderedFrame} ` : "";
 		this.setText(`${indicator}${this.messageColorFn(this.message)}`);
@@ -124,3 +125,5 @@ export class Loader extends Text {
 		}
 	}
 }
+
+trackRenderChanges(Loader.prototype);

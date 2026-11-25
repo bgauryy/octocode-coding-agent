@@ -20,6 +20,7 @@ import type { PageRow, PageSection } from "../../../theme/manage-page.ts";
 import type { ProviderSourceEnvironment } from "../../../core/provider-sources/types.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { showPage } from "./provider-ui.ts";
+import { suspendTuiForForegroundChild } from "../suspend-tui.ts";
 
 const RUNNER_ROW = "runner";
 const runnerRowId = (id: string): string => `${RUNNER_ROW}:${id}`;
@@ -221,19 +222,12 @@ export async function showRunnerDetail(
 		);
 	if (cli)
 		actions.set(`Sign in with ${spec.name}'s own login (${[spec.cli, ...spec.login].join(" ")})`, async () => {
-			page.ui.stop();
-			let exit: TerminalExit;
-			try {
-				// The restore sequences `stop` queued reach the terminal before this line and the vendor's CLI.
-				await page.ui.terminal?.drainOutput?.();
+			const exit: TerminalExit = await suspendTuiForForegroundChild(page.ui, () => {
 				process.stdout.write(
 					`Running \`${[spec.cli, ...spec.login].join(" ")}\`: finish the sign-in, then exit it. Octocode reads nothing of it.\n\n`,
 				);
-				exit = await (options.run ?? spawnInTerminal)(cli, spec.login, agentEnv(spec.id, env));
-			} finally {
-				page.ui.start();
-				page.ui.requestRender(true);
-			}
+				return (options.run ?? spawnInTerminal)(cli, spec.login, agentEnv(spec.id, env));
+			});
 			if ("error" in exit) page.showError(`Could not run ${spec.cli}: ${exit.error}`);
 			const now = await checkRunner(id, options.source, true, reportError);
 			if (now) reportCheck(page, spec.name, now);

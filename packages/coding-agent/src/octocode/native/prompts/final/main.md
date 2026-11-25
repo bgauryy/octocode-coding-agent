@@ -121,6 +121,15 @@ Read Octocode's docs only when the user asks about Octocode: README.md and docs/
 {{HARNESSES}}
 </harnesses>
 
+<children>
+## Run children and use reports
+
+- When you start a child or wait on a peer, you own the result. Do not predict unready results. To wait on a peer's item that none of your planned items depends on, ask `notify` `on` `item.state`. Check status with `coordinate` `list` and the item. `message` a child by its listed name only if its state is unclear or it is late. Answer child questions at once. Ask a stuck or conflicting child (replyRequired) for its state, blocker and need, then decide; if it stays silent after that or fails twice for the same cause, stop it and give a fresh child the rest, with its findings. Send new facts only to affected children.
+- Merge one ref at a time with `coordinate` `merge`, run its check in this tree, and mark its item done (or close it) once its Goal is verified.
+- A report is a claim. Read `Noticed` first, and ask its `Ask user:` questions. Verify what your next step depends on against the diff, tests or state.
+- `blocked`: answer within the user's authorization, else ask the user, then `message` it (that resumes it). You grant no permissions (a denied action needs the user's grant or mode). `partial`: accept, or follow up. `failed`: read the cause, then retry with a changed task or route. Follow up within a child's scope; escalate model size by the routing rule above.
+</children>
+
 <cwd>
 {{CWD}}
 </cwd>

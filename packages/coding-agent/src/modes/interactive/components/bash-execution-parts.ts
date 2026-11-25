@@ -20,17 +20,42 @@ export function outcomeParts(header: string): { text: string; time?: string; pat
 	return { text, ...(ms >= 1000 ? { time: formatDuration(ms, true) } : {}), ...(path ? { path } : {}) };
 }
 
-/** The last lines of a command's output, cut to `maxLines` visual rows per width; the text never changes after construction. */
+/** Last `maxLines` non-trailing-empty lines from `tailLines` + `currentLine`, without joining the whole buffer. */
+export function sliceRunningPreview(
+	tailLines: readonly string[],
+	currentLine: string,
+	maxLines: number,
+	droppedLines: number,
+): { lines: string[]; hiddenCount: number } {
+	let total = tailLines.length + (currentLine ? 1 : 0);
+	if (!currentLine) {
+		while (total > 0 && tailLines[total - 1] === "") total--;
+	}
+	const start = Math.max(0, total - maxLines);
+	const lines: string[] = [];
+	for (let i = start; i < total; i++) lines.push(i < tailLines.length ? tailLines[i] : currentLine);
+	return { lines, hiddenCount: droppedLines + total - lines.length };
+}
+
+/** The last lines of a command's output, cut to `maxLines` visual rows per width. */
 export class OutputPreview implements Component {
-	private readonly text: string;
+	private text: string;
 	private readonly maxLines: number;
-	private readonly pad: number;
+	private pad: number;
 	private cached?: { width: number; lines: string[] };
 
 	constructor(text: string, maxLines: number, pad: number) {
 		this.text = text;
 		this.maxLines = maxLines;
 		this.pad = pad;
+	}
+
+	setText(text: string, pad = this.pad): void {
+		if (text === this.text && pad === this.pad) return;
+		this.text = text;
+		this.pad = pad;
+		this.cached = undefined;
+		renderChanged(this);
 	}
 
 	invalidate(): void {

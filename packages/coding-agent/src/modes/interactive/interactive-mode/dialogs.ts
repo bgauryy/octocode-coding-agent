@@ -14,7 +14,7 @@ import { confirmInAsk } from "../../../octocode/ask/confirm.ts";
 import { DialogSelectorComponent } from "../components/dialog-selector.ts";
 import type { BlockedStatus } from "../program-status-reporter.ts";
 import { type Theme, theme } from "../../../theme/theme.ts";
-import { openDialog, takeOpenDialog, takeSlot } from "./dialog-slot.ts";
+import { getEditorSlot, openDialog, type SlotLease } from "./dialog-slot.ts";
 import type { InteractiveModeHost, SelectorCard } from "./host.ts";
 
 /** Interactive-mode members used by the feature dialogs. */
@@ -66,7 +66,7 @@ export function showSelectorDialog(
 	host: DialogsHost,
 	title: string,
 	options: string[],
-	opts?: DialogOptions,
+	opts?: DialogOptions & { stack?: boolean },
 	blocked: BlockedStatus = { kind: "question", message: title },
 	card?: SelectorCard,
 ): Promise<string | undefined> {
@@ -76,7 +76,16 @@ export function showSelectorDialog(
 			return;
 		}
 
-		const finish = openDialog(host, resolve, () => host.hideSelectorDialog(), opts?.signal);
+		const { lease, finish } = openDialog(
+			host,
+			resolve,
+			() => {
+				host.selectorDialog?.dispose();
+				host.selectorDialog = undefined;
+			},
+			opts?.signal,
+			{ blocked, stack: opts?.stack },
+		);
 		host.selectorDialog = new DialogSelectorComponent(title, options, finish, () => finish(undefined), {
 			tui: host.ui,
 			timeout: opts?.timeout,
@@ -86,14 +95,7 @@ export function showSelectorDialog(
 			// (dialog unit tests build hosts without a session).
 			onSubmitText: host.session?.isStreaming ? (text) => host.defaultEditor.onSubmit?.(text) : undefined,
 		});
-
-		host.editorContainer.clear();
-		host.editorContainer.addChild(host.selectorDialog);
-		host.ui.setFocus(host.selectorDialog);
-		captureCommandDialog(host.ui, host.selectorDialog);
-		// Feature dialogs share the editor slot: opening one replaces the status of a displaced one.
-		host.programStatus.setBlocked("feature-dialog", blocked);
-		host.ui.requestRender();
+		lease.mount(host.selectorDialog);
 	});
 }
 
@@ -101,12 +103,11 @@ export function showSelectorDialog(
  * Hide the feature selector.
  */
 export function hideSelectorDialog(host: DialogsHost): void {
-	const cancel = takeOpenDialog(host);
-	if (cancel) return cancel();
+	if (getEditorSlot(host).cancelActive()) return;
 	host.selectorDialog?.dispose();
+	host.selectorDialog = undefined;
 	host.editorContainer.clear();
 	host.editorContainer.addChild(host.editor);
-	host.selectorDialog = undefined;
 	host.programStatus.setBlocked("feature-dialog", undefined);
 	host.ui.setFocus(host.editor);
 	host.ui.requestRender();
@@ -123,21 +124,17 @@ export async function showConfirmDialog(
 	opts?: DialogOptions,
 ): Promise<boolean> {
 	if (opts?.signal?.aborted) return false;
-	const clear = () => host.programStatus.setBlocked("feature-dialog", undefined);
-	host.programStatus.setBlocked("feature-dialog", { kind: "question", message: title });
-	try {
-		return await confirmInAsk(
-			{ ui: { custom: (factory, options) => host.showCustomDialog(factory, options) } },
-			title,
-			message,
-			opts,
-			clear,
-		);
-	} catch (error) {
-		// Its factory failed, so nothing disposed the dialog (once open, disposal runs `clear` before a successor reports).
-		clear();
-		throw error;
-	}
+	return confirmInAsk(
+		{
+			ui: {
+				custom: (factory, options) =>
+					host.showCustomDialog(factory, { ...options, blocked: { kind: "question", message: title } } as never),
+			},
+		},
+		title,
+		message,
+		opts,
+	);
 }
 
 export async function promptForMissingSessionCwd(
@@ -163,18 +160,21 @@ export function showInputDialog(
 			return;
 		}
 
-		const finish = openDialog(host, resolve, () => host.hideInputDialog(), opts?.signal);
+		const { lease, finish } = openDialog(
+			host,
+			resolve,
+			() => {
+				host.inputDialog?.dispose();
+				host.inputDialog = undefined;
+			},
+			opts?.signal,
+			{ blocked: { kind: "question", message: title } },
+		);
 		host.inputDialog = new DialogInputComponent(title, placeholder, finish, () => finish(undefined), {
 			tui: host.ui,
 			timeout: opts?.timeout,
 		});
-
-		host.editorContainer.clear();
-		host.editorContainer.addChild(host.inputDialog);
-		host.ui.setFocus(host.inputDialog);
-		captureCommandDialog(host.ui, host.inputDialog);
-		host.programStatus.setBlocked("feature-dialog", { kind: "question", message: title });
-		host.ui.requestRender();
+		lease.mount(host.inputDialog);
 	});
 }
 
@@ -182,12 +182,11 @@ export function showInputDialog(
  * Hide the feature input.
  */
 export function hideInputDialog(host: DialogsHost): void {
-	const cancel = takeOpenDialog(host);
-	if (cancel) return cancel();
+	if (getEditorSlot(host).cancelActive()) return;
 	host.inputDialog?.dispose();
+	host.inputDialog = undefined;
 	host.editorContainer.clear();
 	host.editorContainer.addChild(host.editor);
-	host.inputDialog = undefined;
 	host.programStatus.setBlocked("feature-dialog", undefined);
 	host.ui.setFocus(host.editor);
 	host.ui.requestRender();
@@ -208,7 +207,15 @@ export function showEditorDialog(
 			return;
 		}
 
-		const finish = openDialog(host, resolve, () => host.hideEditorDialog(), opts?.signal);
+		const { lease, finish } = openDialog(
+			host,
+			resolve,
+			() => {
+				host.editorDialog = undefined;
+			},
+			opts?.signal,
+			{ blocked: { kind: "question", message: title } },
+		);
 		host.editorDialog = new DialogEditorComponent(
 			host.ui,
 			host.keybindings,
@@ -219,13 +226,7 @@ export function showEditorDialog(
 			undefined,
 			host.settingsManager.getExternalEditorCommand(),
 		);
-
-		host.editorContainer.clear();
-		host.editorContainer.addChild(host.editorDialog);
-		host.ui.setFocus(host.editorDialog);
-		captureCommandDialog(host.ui, host.editorDialog);
-		host.programStatus.setBlocked("feature-dialog", { kind: "question", message: title });
-		host.ui.requestRender();
+		lease.mount(host.editorDialog);
 	});
 }
 
@@ -233,11 +234,10 @@ export function showEditorDialog(
  * Hide the feature editor.
  */
 export function hideEditorDialog(host: DialogsHost): void {
-	const cancel = takeOpenDialog(host);
-	if (cancel) return cancel();
+	if (getEditorSlot(host).cancelActive()) return;
+	host.editorDialog = undefined;
 	host.editorContainer.clear();
 	host.editorContainer.addChild(host.editor);
-	host.editorDialog = undefined;
 	host.programStatus.setBlocked("feature-dialog", undefined);
 	host.ui.setFocus(host.editor);
 	host.ui.requestRender();
@@ -260,6 +260,8 @@ export async function showCustomDialog<T>(
 		overlay?: boolean;
 		overlayOptions?: OverlayOptions | (() => OverlayOptions);
 		onHandle?: (handle: OverlayHandle) => void;
+		blocked?: BlockedStatus;
+		stack?: boolean;
 	},
 ): Promise<T | undefined> {
 	const savedText = host.editor.getText();
@@ -276,49 +278,61 @@ export async function showCustomDialog<T>(
 	};
 
 	return new Promise((resolve, reject) => {
-		let component: Component & { dispose?(): void };
+		let component: (Component & { dispose?(): void }) | undefined;
 		let overlayHandle: OverlayHandle | undefined;
-		let release: (() => void) | undefined;
+		let releaseOverlay: (() => void) | undefined;
+		let lease: SlotLease | undefined;
 		let closed = false;
 
-		const close = (result: T | undefined) => {
-			if (closed) return;
-			closed = true;
-			release?.();
-			// Remove this overlay, not the topmost one: another overlay may have opened above it.
-			if (isOverlay) overlayHandle?.hide();
-			else restoreEditor();
-			// Note: both branches above already call requestRender
-			resolve(result);
+		const disposeComponent = (c: (Component & { dispose?(): void }) | undefined) => {
 			try {
-				component?.dispose?.();
+				c?.dispose?.();
 			} catch {
 				/* ignore dispose errors */
 			}
 		};
 
+		const close = (result: T | undefined) => {
+			if (closed) return;
+			closed = true;
+			if (isOverlay) {
+				releaseOverlay?.();
+				overlayHandle?.hide();
+				resolve(result);
+				disposeComponent(component);
+			} else {
+				const target = component;
+				component = undefined;
+				lease?.release();
+				resolve(result);
+				disposeComponent(target);
+			}
+		};
+
+		// Reserve the editor slot synchronously before an async factory runs so a newer dialog cannot be clobbered.
+		if (!isOverlay) {
+			lease = getEditorSlot(host).acquire({
+				cancel: () => close(undefined),
+				blocked: options?.blocked,
+				stack: options?.stack,
+				restoreEditor,
+			});
+		}
+
 		Promise.resolve(factory(host.ui, theme, host.keybindings, close))
 			.then((c) => {
 				// `done` ran before the factory returned: `close` had no component to dispose, so dispose it here.
 				if (closed) {
-					try {
-						c.dispose?.();
-					} catch {
-						/* ignore dispose errors */
-					}
+					disposeComponent(c);
 					return;
 				}
 				component = c;
-				captureCommandDialog(host.ui, component);
 				if (isOverlay) {
-					// Resolve overlay options - can be static or dynamic function
+					captureCommandDialog(host.ui, component);
 					const resolveOptions = (): OverlayOptions | undefined => {
 						if (options?.overlayOptions) {
-							const opts =
-								typeof options.overlayOptions === "function" ? options.overlayOptions() : options.overlayOptions;
-							return opts;
+							return typeof options.overlayOptions === "function" ? options.overlayOptions() : options.overlayOptions;
 						}
-						// Fallback: use component's width property if available
 						const w = (component as { width?: number }).width;
 						return w ? { width: w } : undefined;
 					};
@@ -327,20 +341,16 @@ export async function showCustomDialog<T>(
 					openOverlays.set(host, overlays);
 					const cancel = () => close(undefined);
 					overlays.add(cancel);
-					release = () => overlays.delete(cancel);
-					// Expose handle to caller for visibility control
+					releaseOverlay = () => overlays.delete(cancel);
 					options?.onHandle?.(overlayHandle);
 				} else {
-					release = takeSlot(host, () => close(undefined));
-					host.editorContainer.clear();
-					host.editorContainer.addChild(component);
-					host.ui.setFocus(component);
-					host.ui.requestRender();
+					lease?.mount(component);
 				}
 			})
 			.catch((err) => {
 				if (closed) return;
-				if (!isOverlay) restoreEditor();
+				closed = true;
+				if (!isOverlay) lease?.release();
 				reject(err);
 			});
 	});

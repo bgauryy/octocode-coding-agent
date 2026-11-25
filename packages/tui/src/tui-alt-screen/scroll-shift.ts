@@ -48,33 +48,53 @@ export function planScrollShift(
 	for (let row = 0; row < height; row++) if (screen[row] !== previous[row]) baseline++;
 	if (baseline < MIN_SAVED_ROWS + 1) return undefined;
 
-	let best: { shift: number; top: number; bottom: number; cost: number } | undefined;
-	for (let distance = 1; distance < height; distance++) {
-		for (const shift of [distance, -distance]) {
-			let first = -1;
-			let last = -1;
-			let matches = 0;
-			for (let row = 0; row < height; row++) {
-				const source = row + shift;
-				if (source < 0 || source >= height) continue;
-				const line = screen[row];
-				if (line === previous[row] || line === "" || line !== previous[source]) continue;
-				if (first < 0) first = row;
-				last = row;
-				matches++;
-			}
-			if (matches < MIN_SAVED_ROWS) continue;
-			const top = shift > 0 ? first : first + shift;
-			const bottom = shift > 0 ? last + shift : last;
-			let cost = 0;
-			for (let row = 0; row < height; row++) {
-				const inRegion = row >= top && row <= bottom;
-				const source = row + shift;
-				const shown = inRegion ? (source >= top && source <= bottom ? previous[source] : "") : previous[row];
-				if (screen[row] !== shown) cost++;
-			}
-			if (!best || cost < best.cost) best = { shift, top, bottom, cost };
+	// Vote for candidate shift distances by indexing non-empty rows of `previous`: avoids scanning all 2*height shifts.
+	const prevIndex = new Map<string, number[]>();
+	for (let row = 0; row < height; row++) {
+		const line = previous[row];
+		if (!line) continue;
+		const rows = prevIndex.get(line);
+		if (rows) rows.push(row);
+		else prevIndex.set(line, [row]);
+	}
+	const votes = new Map<number, number>();
+	for (let row = 0; row < height; row++) {
+		const line = screen[row];
+		if (!line || line === previous[row]) continue;
+		const sources = prevIndex.get(line);
+		if (!sources) continue;
+		for (const source of sources) {
+			const shift = source - row;
+			if (shift !== 0) votes.set(shift, (votes.get(shift) ?? 0) + 1);
 		}
+	}
+
+	let best: { shift: number; top: number; bottom: number; cost: number } | undefined;
+	for (const [shift, count] of votes) {
+		if (count < MIN_SAVED_ROWS) continue;
+		let first = -1;
+		let last = -1;
+		let matches = 0;
+		for (let row = 0; row < height; row++) {
+			const source = row + shift;
+			if (source < 0 || source >= height) continue;
+			const line = screen[row];
+			if (line === previous[row] || line === "" || line !== previous[source]) continue;
+			if (first < 0) first = row;
+			last = row;
+			matches++;
+		}
+		if (matches < MIN_SAVED_ROWS) continue;
+		const top = shift > 0 ? first : first + shift;
+		const bottom = shift > 0 ? last + shift : last;
+		let cost = 0;
+		for (let row = 0; row < height; row++) {
+			const inRegion = row >= top && row <= bottom;
+			const source = row + shift;
+			const shown = inRegion ? (source >= top && source <= bottom ? previous[source] : "") : previous[row];
+			if (screen[row] !== shown) cost++;
+		}
+		if (!best || cost < best.cost) best = { shift, top, bottom, cost };
 	}
 	if (!best || baseline - best.cost < MIN_SAVED_ROWS) return undefined;
 	const { shift, top, bottom } = best;

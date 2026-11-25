@@ -25,7 +25,6 @@ import { hotkeysMarkdown } from "./hotkeys-table.ts";
 type InfoCommandsHost = Pick<
 	InteractiveModeHost,
 	| "chatContainer"
-	| "getAppKeyDisplay"
 	| "getMarkdownThemeWithSettings"
 	| "keybindings"
 	| "uiStore"

@@ -63,8 +63,16 @@ export class Container implements Component {
 		}
 	}
 
+	/** Read-only view of the children in render order without marking structure changed. */
+	peekChildren(): readonly Component[] {
+		return this.#childList;
+	}
+
 	clear(): void {
 		this.#replaceChildren([]);
+		this.#renderState.frame = undefined;
+		this.#renderState.dirty = undefined;
+		this.#renderState.painted = undefined;
 	}
 
 	/** Every edit of the list links the children it renders and marks those it unlinked (`relinkRenderChildren`). */

@@ -24,12 +24,15 @@ import type { SourceInfo } from "../../../core/source-info.ts";
 import { expandHint } from "../../../octocode/shared/text.ts";
 import { legend } from "../../../theme/page-kit.ts";
 import { theme } from "../../../theme/theme.ts";
+import { getBuiltInCommandConflictDiagnostics } from "./autocomplete.ts";
 import { ExpandableText } from "./helpers.ts";
 import type { InteractiveModeHost } from "./host.ts";
 import { harnessRow, startupWarnings, viewRows } from "./discovery-rows.ts";
 import { sessionHarnesses } from "../../../core/discovery/vendors/prompt.ts";
 import { mcpRow } from "./loaded-mcp.ts";
 import { LoadedRow, type LoadedRowSpec, loadedColumns } from "./loaded-row.ts";
+import { formatScopeGroups } from "./resource-groups.ts";
+import { formatDisplayPath } from "./resource-paths.ts";
 import type { SourcedPath } from "./types.ts";
 
 /** Interactive-mode members used by the loaded-resources listing. */
@@ -38,10 +41,7 @@ type LoadedResourcesHost = Pick<
 	| "buildScopeGroups"
 	| "formatContextPath"
 	| "formatDiagnostics"
-	| "formatDisplayPath"
 	| "formatFeatureDisplayPath"
-	| "formatScopeGroups"
-	| "getBuiltInCommandConflictDiagnostics"
 	| "getCompactFeatureLabels"
 	| "getShortPath"
 	| "getStartupExpansionState"
@@ -129,7 +129,7 @@ export function showLoadedResources(
 		view = loadedContextView(host, skillsResult.skills);
 		const budget = skillListingBudgetChars(host.session.model?.contextWindow, host.session.model);
 		const prompt = host.session.systemPrompt ?? "";
-		const viewSpecs = viewRows(view, (path) => host.formatDisplayPath(path), {
+		const viewSpecs = viewRows(view, (path) => formatDisplayPath(path), {
 			context: { chars: projectContextOf(prompt)?.length ?? 0, budget },
 			skill: { chars: skillListingChars(skillsResult.skills), budget },
 		});
@@ -157,7 +157,7 @@ export function showLoadedResources(
 		if (features.length > 0) {
 			const groups = host.buildScopeGroups(features);
 			const extList = () =>
-				host.formatScopeGroups(groups, {
+				formatScopeGroups(groups, {
 					formatPath: (item) => host.formatFeatureDisplayPath(item.path),
 					formatPackagePath: (item) => host.formatFeatureDisplayPath(host.getShortPath(item.path, item.sourceInfo)),
 				});
@@ -303,7 +303,7 @@ export function showLoadedResources(
 
 		const commandDiagnostics = host.session.featureHost.getCommandDiagnostics();
 		featureDiagnostics.push(...commandDiagnostics);
-		featureDiagnostics.push(...host.getBuiltInCommandConflictDiagnostics(host.session.featureHost));
+		featureDiagnostics.push(...getBuiltInCommandConflictDiagnostics(host.session.featureHost));
 
 		if (featureDiagnostics.length > 0) {
 			const warningLines = () => host.formatDiagnostics(featureDiagnostics, sourceInfos);

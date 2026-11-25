@@ -26,6 +26,14 @@ export class FrameRows {
 		return this.output;
 	}
 
+	reset(): void {
+		this.input = undefined;
+		this.output = [];
+		this.marks = new Map();
+		this.showHardwareCursor = false;
+		this.width = -1;
+	}
+
 	/**
 	 * `shared.rows`: leading rows of `input` that are the same strings as in `shared.from`, used when that is the last
 	 * input. The result's `unchanged` counts the leading rows equal to the last result's. Neither `input` nor the result
