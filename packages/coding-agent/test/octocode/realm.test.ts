@@ -5,9 +5,9 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommandContext } from "../../src/core/features/index.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../src/core/slash-commands.ts";
-import { realmCommand } from "../../src/octocode/realm/command.ts";
-import { buildRealms, findRealm, type RealmFolder, type RealmSession } from "../../src/octocode/realm/model.ts";
-import { realmSession } from "../../src/octocode/realm/sessions.ts";
+import { realmCommand, type RealmCommandDependencies } from "../../src/octocode/realm/command.ts";
+import { buildPlaces, findPlace, type PlaceFolder, type PlaceSession } from "../../src/octocode/realm/model.ts";
+import { placeSession } from "../../src/octocode/realm/sessions.ts";
 import type { SessionExtra } from "../../src/octocode/sessions/store.ts";
 import { worktreesDir } from "../../src/octocode/worktree-paths/own-worktree.ts";
 import { GIT_TEST_ENV, makeRepo, sh, type TestRepo } from "./worktree-fixture.ts";
@@ -38,7 +38,7 @@ function member(id: string, extra: Partial<Member> = {}): Member {
 	};
 }
 
-const session = (id: string, cwd: string, extra: Partial<RealmSession> = {}): RealmSession => ({
+const session = (id: string, cwd: string, extra: Partial<PlaceSession> = {}): PlaceSession => ({
 	id,
 	cwd,
 	modified: NOW - 5 * 60_000,
@@ -76,13 +76,19 @@ function contextAt(cwd: string, options: ContextOptions = {}) {
 	return { ctx, newSession, switchSession, select, confirm };
 }
 
+/** `/realm places`, typed as `/realm` would take it, with a realm that has no children. */
+function placesOf(deps: Omit<RealmCommandDependencies, "realm">) {
+	const command = realmCommand({ realm: { id: () => undefined, members: () => [], serving: () => [] }, ...deps });
+	return { ...command, handler: (args: string, ctx: CommandContext) => command.handler(`places ${args}`.trim(), ctx) };
+}
+
 const worktreeFolder = (name: string) => path.join(repo.root, ".octocode", "agent", "worktrees", name);
 const addWorktree = (name: string) =>
 	sh(repo.root, "worktree", "add", "-q", "-b", `worktree-${name}`, worktreeFolder(name));
 
 beforeEach(() => {
 	for (const [name, value] of Object.entries(GIT_TEST_ENV)) vi.stubEnv(name, value);
-	home = mkdtempSync(path.join(tmpdir(), "octocode-realm-home-"));
+	home = mkdtempSync(path.join(tmpdir(), "octocode-place-home-"));
 	vi.stubEnv("OCTOCODE_HOME", home);
 	notices = [];
 	stderr = "";
@@ -99,8 +105,64 @@ afterEach(() => {
 	rmSync(home, { recursive: true, force: true });
 });
 
-describe("/realm listing", () => {
-	it("lists the checkout, a worktree, a gone worktree and a live session in no realm", async () => {
+describe("/realm", () => {
+	const source = (members: Member[], id: string | undefined, serving: Array<[string, string]> = []) => ({
+		realm: { id: () => id, members: () => members, serving: () => serving },
+		members: () => members,
+		sessions: async () => [],
+		now: () => NOW,
+	});
+
+	it("shows this session, its place, live children with item and place, and refs to merge", async () => {
+		addWorktree("hotfix");
+		sh(repo.root, "update-ref", "refs/octocode/gone-ref", "HEAD");
+		const members = [
+			member("calm-prawn", { role: "main", status: "idle", cwd: repo.root, checkout: repo.root, branch: "main" }),
+			member("busy-eel", { parentId: "calm-prawn", cwd: repo.root, checkout: repo.root }),
+			member("iso-owl", {
+				role: "reviewer",
+				parentId: "calm-prawn",
+				checkout: repo.root,
+				cwd: path.join(worktreesDir(repo.root), "iso-owl"),
+			}),
+			member("done-elk", { parentId: "calm-prawn", status: "settled" }),
+			member("other-main", { role: "main", cwd: repo.root }),
+			member("their-child", { parentId: "other-main" }),
+		];
+		const { ctx } = contextAt(repo.root);
+		await realmCommand(source(members, "calm-prawn", [["busy-eel", "B12"]])).handler("", ctx);
+		const text = output();
+		expect(text).toContain("Session: calm-prawn · main · idle");
+		expect(text).toContain(`Place: main checkout ${repo.root}`);
+		expect(text).toContain("Children (2):");
+		expect(text).toMatch(/busy-eel · implementer · working · item B12 · in-tree · under calm-prawn/);
+		expect(text).toMatch(/iso-owl · reviewer · working · isolated worktree iso-owl/);
+		expect(text).not.toContain("done-elk");
+		expect(text).not.toContain("their-child");
+		expect(text).toContain("Isolated results to merge (1 ref): gone-ref");
+	});
+
+	it("names the orchestrator of a session in a linked worktree", async () => {
+		addWorktree("hotfix");
+		const { ctx } = contextAt(worktreeFolder("hotfix"));
+		await realmCommand(source([], undefined)).handler("", ctx);
+		const text = output();
+		expect(text).toContain(`Place: linked worktree ${worktreeFolder("hotfix")}`);
+		expect(text).toContain(`Orchestrator: the main-checkout session of ${repo.root}`);
+		expect(text).toContain("Children: none running.");
+		expect(text).toContain("not in the team yet");
+	});
+
+	it("takes only places as an argument", async () => {
+		const { ctx } = contextAt(repo.root);
+		await realmCommand(source([], undefined)).handler("hotfix", ctx);
+		expect(notices[0]?.level).toBe("warning");
+		expect(output()).toContain("Usage: /realm [places");
+	});
+});
+
+describe("/realm places listing", () => {
+	it("lists the checkout, a worktree, a gone worktree and a live session in no place", async () => {
 		addWorktree("hotfix");
 		addWorktree("old");
 		rmSync(worktreeFolder("old"), { recursive: true });
@@ -117,7 +179,7 @@ describe("/realm listing", () => {
 			session("s-far-1", "/somewhere/else", { live: true }),
 		];
 		const { ctx } = contextAt(repo.root);
-		await realmCommand({ members: () => members, sessions: async () => sessions, now: () => NOW }).handler("", ctx);
+		await placesOf({ members: () => members, sessions: async () => sessions, now: () => NOW }).handler("", ctx);
 
 		const text = output();
 		expect(text).toContain("main · this repository's main checkout · branch main · 1 changed");
@@ -128,7 +190,7 @@ describe("/realm listing", () => {
 		expect(text).toContain("✗ broken  old · worktree (gone)");
 		expect(text).toContain("git worktree prune");
 		expect(text).toContain("current");
-		// Section (c): the agent with no folder and the live session whose folder is in no realm.
+		// Section (c): the agent with no folder and the live session whose folder is in no place.
 		expect(text).toContain("Other live agents and sessions in this repository");
 		expect(text).toContain("lost-owl");
 		expect(text).toContain("/somewhere/else");
@@ -139,55 +201,52 @@ describe("/realm listing", () => {
 
 	it("prints text without a UI and opens no picker", async () => {
 		const { ctx, select } = contextAt(repo.root, { hasUI: false });
-		await realmCommand({ members: () => [], sessions: async () => [], now: () => NOW }).handler("", ctx);
+		await placesOf({ members: () => [], sessions: async () => [], now: () => NOW }).handler("", ctx);
 		expect(select).not.toHaveBeenCalled();
-		expect(stderr).toContain("Realms of repo:");
+		expect(stderr).toContain("Places of repo:");
 		expect(stderr).toContain("main · this repository's main checkout");
 	});
 
-	it("still lists realms when the session list fails, and says why", async () => {
+	it("still lists places when the session list fails, and says why", async () => {
 		const { ctx } = contextAt(repo.root);
-		const sessions = async (): Promise<RealmSession[]> => {
+		const sessions = async (): Promise<PlaceSession[]> => {
 			throw new Error("database is locked");
 		};
-		await realmCommand({ members: () => [], sessions, now: () => NOW }).handler("", ctx);
+		await placesOf({ members: () => [], sessions, now: () => NOW }).handler("", ctx);
 		expect(output()).toContain("main · this repository's main checkout");
 		expect(output()).toContain("Sessions are not shown: database is locked");
 	});
 
-	it("shows one realm with its agents (model, status, time, tokens) and sessions", async () => {
+	it("shows one place with its agents (model, status, time, tokens) and sessions", async () => {
 		addWorktree("hotfix");
 		const members = [member("busy-eel", { checkout: repo.root, cwd: worktreeFolder("hotfix") })];
 		const sessions = [session("s-hot-2", worktreeFolder("hotfix"), { name: "old fix" })];
 		const { ctx } = contextAt(repo.root);
-		await realmCommand({ members: () => members, sessions: async () => sessions, now: () => NOW }).handler(
-			"hotfix",
-			ctx,
-		);
+		await placesOf({ members: () => members, sessions: async () => sessions, now: () => NOW }).handler("hotfix", ctx);
 		const text = output();
-		expect(text).toContain("Realm hotfix — ✓ ready");
+		expect(text).toContain("Place hotfix — ✓ ready");
 		expect(text).toContain("busy-eel · implementer · working · opus-5-5 · 12m here · 34k tokens · ≈$0.40 · pid 4000");
 		expect(text).toContain("old fix · 5m ago");
 		expect(text).toContain("last activity: 1m ago");
 		expect(text).toContain("/realm hotfix switch moves this session here");
 	});
 
-	it("names the realms when the name is unknown", async () => {
+	it("names the places when the name is unknown", async () => {
 		const { ctx } = contextAt(repo.root);
-		await realmCommand({ members: () => [], sessions: async () => [], now: () => NOW }).handler("nope", ctx);
+		await placesOf({ members: () => [], sessions: async () => [], now: () => NOW }).handler("nope", ctx);
 		expect(notices[0]).toMatchObject({ level: "warning" });
-		expect(output()).toContain("No realm named nope. Realms: main");
+		expect(output()).toContain("No place named nope. Places: main");
 	});
 
 	it("is a built-in one-word command", () => {
-		const realm = BUILTIN_SLASH_COMMANDS.find((command) => command.name === "realm");
-		expect(realm?.requiresNative).toBe(true);
-		expect(realm?.description.length).toBeLessThanOrEqual(50);
+		const place = BUILTIN_SLASH_COMMANDS.find((command) => command.name === "realm");
+		expect(place?.requiresNative).toBe(true);
+		expect(place?.description.length).toBeLessThanOrEqual(50);
 	});
 });
 
 describe("member placement", () => {
-	const folder = (name: string, extra: Partial<RealmFolder> = {}): RealmFolder => ({
+	const folder = (name: string, extra: Partial<PlaceFolder> = {}): PlaceFolder => ({
 		path: `/repo/${name}`,
 		kind: "worktree",
 		gone: false,
@@ -198,7 +257,7 @@ describe("member placement", () => {
 	it("puts an agent where its folder is, the innermost worktree first, and an isolated child in its private one", () => {
 		const nested = folder(".octocode/agent/worktrees/a");
 		const isolated = folder("agent-x", { path: "/home/octocode/worktrees/k/agent-x", kind: "isolated" });
-		const view = buildRealms({
+		const view = buildPlaces({
 			main: "/repo",
 			folders: [main, nested, isolated],
 			members: [
@@ -213,28 +272,28 @@ describe("member placement", () => {
 			sessions: [],
 			here: "/repo",
 		});
-		const ids = (name: string) => findRealm(view, name)?.agents.map((agent) => agent.id);
+		const ids = (name: string) => findPlace(view, name)?.agents.map((agent) => agent.id);
 		expect(ids("main")).toEqual(["in-main"]);
 		expect(ids("a")).toEqual(["in-a", "old-row"]);
 		expect(ids("agent-x")).toEqual(["child"]);
 		expect(view.otherAgents.map((agent) => agent.id)).toEqual(["nowhere"]);
 	});
 
-	it("gives an agent working in a folder git no longer lists a realm of its own, marked gone", () => {
-		const view = buildRealms({
+	it("gives an agent working in a folder git no longer lists a place of its own, marked gone", () => {
+		const view = buildPlaces({
 			main: "/repo",
 			folders: [main],
 			members: [member("orphan", { checkout: "/vanished/tree", cwd: "/vanished/tree" })],
 			sessions: [],
 			here: "/repo",
 		});
-		const realm = findRealm(view, "tree");
-		expect(realm?.folder.gone).toBe(true);
-		expect(realm?.agents.map((agent) => agent.id)).toEqual(["orphan"]);
+		const place = findPlace(view, "tree");
+		expect(place?.folder.gone).toBe(true);
+		expect(place?.agents.map((agent) => agent.id)).toEqual(["orphan"]);
 	});
 
 	it("keeps names unique and resolves a unique prefix", () => {
-		const view = buildRealms({
+		const view = buildPlaces({
 			main: "/repo",
 			folders: [
 				main,
@@ -246,10 +305,10 @@ describe("member placement", () => {
 			sessions: [],
 			here: "/repo",
 		});
-		expect(view.realms.map((realm) => realm.name)).toEqual(["main", "main-2", "lint", "lint-2"]);
-		expect(findRealm(view, "main-2")?.folder.path).toBe("/repo/.octocode/agent/worktrees/main");
-		expect(findRealm(view, "lint")?.name).toBe("lint");
-		expect(findRealm(view, "li")).toBeUndefined();
+		expect(view.places.map((place) => place.name)).toEqual(["main", "main-2", "lint", "lint-2"]);
+		expect(findPlace(view, "main-2")?.folder.path).toBe("/repo/.octocode/agent/worktrees/main");
+		expect(findPlace(view, "lint")?.name).toBe("lint");
+		expect(findPlace(view, "li")).toBeUndefined();
 	});
 
 	it("lists an isolated agent worktree as its own kind", async () => {
@@ -258,13 +317,13 @@ describe("member placement", () => {
 		sh(repo.root, "worktree", "add", "-q", "--detach", path.join(dir, "agent-x"), "HEAD");
 		const members = [member("agent-x", { parentId: "boss", checkout: repo.root, cwd: path.join(dir, "agent-x") })];
 		const { ctx } = contextAt(repo.root);
-		await realmCommand({ members: () => members, sessions: async () => [], now: () => NOW }).handler("", ctx);
+		await placesOf({ members: () => members, sessions: async () => [], now: () => NOW }).handler("", ctx);
 		expect(output()).toMatch(/agent-x · isolated agent worktree · detached · clean · 1 agent \(1 working\)/);
 	});
 });
 
-describe("/realm switch and resume", () => {
-	const deps = (sessions: RealmSession[] = []) => ({
+describe("/realm places switch and resume", () => {
+	const deps = (sessions: PlaceSession[] = []) => ({
 		members: () => [],
 		sessions: async () => sessions,
 		now: () => NOW,
@@ -273,7 +332,7 @@ describe("/realm switch and resume", () => {
 	it("switch hands the worktree to switchToWorktree", async () => {
 		addWorktree("hotfix");
 		const { ctx, newSession } = contextAt(repo.root);
-		await realmCommand(deps()).handler("hotfix switch", ctx);
+		await placesOf(deps()).handler("hotfix switch", ctx);
 		expect(newSession).toHaveBeenCalledTimes(1);
 		expect((newSession.mock.calls[0] as unknown[])[0]).toMatchObject({ cwd: worktreeFolder("hotfix") });
 	});
@@ -281,26 +340,26 @@ describe("/realm switch and resume", () => {
 	it("switch main from a worktree starts a session in the main checkout", async () => {
 		addWorktree("hotfix");
 		const { ctx, newSession } = contextAt(worktreeFolder("hotfix"));
-		await realmCommand(deps()).handler("main switch", ctx);
+		await placesOf(deps()).handler("main switch", ctx);
 		expect((newSession.mock.calls[0] as unknown[])[0]).toMatchObject({ cwd: repo.root });
 	});
 
 	it("refuses while a turn runs and starts nothing", async () => {
 		addWorktree("hotfix");
 		const { ctx, newSession } = contextAt(repo.root, { idle: false });
-		await realmCommand(deps()).handler("hotfix switch", ctx);
+		await placesOf(deps()).handler("hotfix switch", ctx);
 		expect(newSession).not.toHaveBeenCalled();
 		expect(notices.at(-1)).toMatchObject({ level: "warning" });
 		expect(output()).toContain("A turn is running");
 	});
 
-	it("explains why a gone, isolated or linked realm cannot be entered", async () => {
+	it("explains why a gone, isolated or linked place cannot be entered", async () => {
 		addWorktree("old");
 		rmSync(worktreeFolder("old"), { recursive: true });
 		const other = path.join(path.dirname(repo.root), "elsewhere");
 		sh(repo.root, "worktree", "add", "-q", "-b", "side", other);
 		const { ctx, newSession } = contextAt(repo.root);
-		const command = realmCommand(deps());
+		const command = placesOf(deps());
 		await command.handler("old switch", ctx);
 		await command.handler("elsewhere switch", ctx);
 		await command.handler("main switch", ctx);
@@ -311,7 +370,7 @@ describe("/realm switch and resume", () => {
 		rmSync(other, { recursive: true, force: true });
 	});
 
-	it("the page offers switch for an enterable realm and runs it", async () => {
+	it("the page offers switch for an enterable place and runs it", async () => {
 		addWorktree("hotfix");
 		const choices: string[][] = [];
 		const select = async (_title: string, options: string[]) => {
@@ -321,14 +380,14 @@ describe("/realm switch and resume", () => {
 			);
 		};
 		const { ctx, newSession } = contextAt(repo.root, { hasUI: true, select });
-		await realmCommand(deps()).handler("", ctx);
+		await placesOf(deps()).handler("", ctx);
 		expect(choices[0]).toHaveLength(2);
 		expect(choices[1]).toEqual(["Switch this session to hotfix", "Back"]);
 		expect(newSession).toHaveBeenCalledTimes(1);
 		expect(stderr).toBe("");
 	});
 
-	it("resume opens the session picker scoped to the realm's sessions and switches to the pick", async () => {
+	it("resume opens the session picker scoped to the place's sessions and switches to the pick", async () => {
 		addWorktree("hotfix");
 		const sessions = [session("s-hot-1", worktreeFolder("hotfix")), session("s-main-1", repo.root)];
 		const pickSession = vi.fn(async (options: { onlySessions?: ReadonlySet<string> }) => ({
@@ -340,7 +399,7 @@ describe("/realm switch and resume", () => {
 			hasUI: true,
 			pickSession: pickSession as unknown as ContextOptions["pickSession"],
 		});
-		await realmCommand(deps(sessions)).handler("hotfix resume", ctx);
+		await placesOf(deps(sessions)).handler("hotfix resume", ctx);
 		expect([...((pickSession.mock.calls[0] as unknown[])[0] as { onlySessions: Set<string> }).onlySessions]).toEqual([
 			"s-hot-1",
 		]);
@@ -356,13 +415,13 @@ describe("/realm switch and resume", () => {
 			pickSession: pickSession as unknown as ContextOptions["pickSession"],
 		});
 		confirm.mockResolvedValueOnce(false);
-		await realmCommand(deps(sessions)).handler("hotfix resume", ctx);
+		await placesOf(deps(sessions)).handler("hotfix resume", ctx);
 		expect(confirm).toHaveBeenCalledTimes(1);
 		expect(switchSession).not.toHaveBeenCalled();
 		expect(output()).toContain("Cancelled: nothing was resumed.");
 	});
 
-	it("resolves a picked id inside its realm even if the picker returns another realm's file", async () => {
+	it("resolves a picked id inside its place even if the picker returns another place's file", async () => {
 		addWorktree("hotfix");
 		const hotfix = session("s-hot", worktreeFolder("hotfix"));
 		const main = session("s-main", repo.root);
@@ -371,7 +430,7 @@ describe("/realm switch and resume", () => {
 			.mockResolvedValueOnce({ id: main.id, path: main.file })
 			.mockResolvedValueOnce({ id: hotfix.id, path: main.file });
 		const { ctx, switchSession } = contextAt(repo.root, { hasUI: true, pickSession });
-		const command = realmCommand(deps([hotfix, main]));
+		const command = placesOf(deps([hotfix, main]));
 		await command.handler("hotfix resume", ctx);
 		expect(switchSession).not.toHaveBeenCalled();
 		expect(notices.at(-1)?.level).toBe("warning");
@@ -379,11 +438,11 @@ describe("/realm switch and resume", () => {
 		expect(switchSession).toHaveBeenCalledExactlyOnceWith(hotfix.file);
 	});
 
-	it("resume without a UI lists the realm's session ids as text", async () => {
+	it("resume without a UI lists the place's session ids as text", async () => {
 		addWorktree("hotfix");
 		const sessions = [session("s-hot-1", worktreeFolder("hotfix"), { live: true, name: "fix" })];
 		const { ctx, switchSession } = contextAt(repo.root);
-		await realmCommand(deps(sessions)).handler("hotfix resume", ctx);
+		await placesOf(deps(sessions)).handler("hotfix resume", ctx);
 		expect(switchSession).not.toHaveBeenCalled();
 		// Before: "Sessions started in hotfix (open one with /resume all <id>):" then "  live fix · s-hot-1".
 		expect(stderr).toContain("Sessions started in hotfix:\n  live  fix · s-hot-1\n→ open one with /resume all <id>");
@@ -391,13 +450,13 @@ describe("/realm switch and resume", () => {
 
 	it("rejects an unknown action", async () => {
 		const { ctx } = contextAt(repo.root);
-		await realmCommand(deps()).handler("main destroy", ctx);
-		expect(output()).toBe("Usage: /realm [<name> [switch|resume]]");
+		await placesOf(deps()).handler("main destroy", ctx);
+		expect(output()).toBe("Usage: /realm places [<name> [switch|resume]]");
 	});
 });
 
 describe("each live session's activity light in /realm", () => {
-	const deps = (sessions: RealmSession[]) => ({ members: () => [], sessions: async () => sessions, now: () => NOW });
+	const deps = (sessions: PlaceSession[]) => ({ members: () => [], sessions: async () => sessions, now: () => NOW });
 	const extra = (fields: Partial<SessionExtra>): SessionExtra => ({
 		id: "s",
 		workspace_id: null,
@@ -417,21 +476,21 @@ describe("each live session's activity light in /realm", () => {
 
 	it("reads the light another live process wrote, never this session's own or a gone process's", () => {
 		const live = extra({ pid: process.pid, activity: "waiting" });
-		expect(realmSession(info, live, "cur", "/w")).toMatchObject({ live: true, activity: "waiting", cwd: "/w" });
-		expect(realmSession({ ...info, id: "cur" }, live, "cur", "/w")).not.toHaveProperty("activity");
-		const gone = realmSession(info, extra({ pid: 2147483646, activity: "waiting" }), "cur", "/w");
+		expect(placeSession(info, live, "cur", "/w")).toMatchObject({ live: true, activity: "waiting", cwd: "/w" });
+		expect(placeSession({ ...info, id: "cur" }, live, "cur", "/w")).not.toHaveProperty("activity");
+		const gone = placeSession(info, extra({ pid: 2147483646, activity: "waiting" }), "cur", "/w");
 		expect(gone).toMatchObject({ live: false });
 		expect(gone).not.toHaveProperty("activity");
 	});
 
-	it("shows it beside the live mark in the realm page and in the resume list", async () => {
+	it("shows it beside the live mark in the place page and in the resume list", async () => {
 		addWorktree("hotfix");
 		const sessions = [session("s-hot-1", worktreeFolder("hotfix"), { live: true, name: "fix", activity: "waiting" })];
 		const page = contextAt(repo.root);
-		await realmCommand(deps(sessions)).handler("hotfix", page.ctx);
+		await placesOf(deps(sessions)).handler("hotfix", page.ctx);
 		expect(output()).toContain("live (needs you) fix · 5m ago");
 		const { ctx } = contextAt(repo.root);
-		await realmCommand(deps(sessions)).handler("hotfix resume", ctx);
+		await placesOf(deps(sessions)).handler("hotfix resume", ctx);
 		expect(stderr).toContain("  live (needs you)  fix · s-hot-1");
 	});
 });

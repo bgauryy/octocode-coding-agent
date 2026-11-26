@@ -79,3 +79,34 @@ describe("OpenRouter Claude cache marker layout", () => {
 		expect((o.tools ?? []).map((tool) => "cache_control" in tool)).toEqual([true, false, false]);
 	});
 });
+
+describe("OpenRouter Claude parity for a managed-effort Anthropic model", () => {
+	const opus = getBuiltinModel("anthropic", "claude-opus-5-5");
+	const text = (value: string) => [{ type: "text" as const, text: value }];
+
+	// The trailing empty effort-update system message is not a turn: it must not take a history slot from the workspace block.
+	it.each([
+		["assistant-final", (m: typeof opus) => [user("task"), assistant(m, text("done"))]],
+		[
+			"assistant-final after a tool turn",
+			(m: typeof opus) => [user("task"), assistant(m, [toolCall("c1")]), toolResult("c1"), assistant(m, text("done"))],
+		],
+	] as const)("marks the same tools and system blocks as OpenRouter for %s", async (_name, build) => {
+		const messages = build(opus);
+		const a = await capture(opus, context(messages), { cacheRetention: "short", ...boundaries });
+		const o = await captureCompletionsParams(openrouter, context(messages), { cacheRetention: "short", ...boundaries });
+		const orSystem = o.messages.filter((m) => m.role === "system").flatMap((m) => flags(m.content) ?? []);
+		expect((a.system ?? []).map((block) => block.cache_control !== undefined)).toEqual(orSystem);
+		const tools = (o.tools ?? []).map((tool) => "cache_control" in tool);
+		expect(tools).toEqual((a.tools ?? []).slice(0, tools.length).map((tool) => tool.cache_control !== undefined));
+	});
+
+	it("spends the same markers as OpenRouter for a user-final conversation", async () => {
+		const messages = [user("task"), assistant(opus, text("done")), user("more")];
+		const a = await capture(opus, context(messages), { cacheRetention: "short", ...boundaries });
+		const o = await captureCompletionsParams(openrouter, context(messages), { cacheRetention: "short", ...boundaries });
+		expect(JSON.stringify(a).split('"cache_control"').length - 1).toBe(
+			JSON.stringify(o).split('"cache_control"').length - 1,
+		);
+	});
+});

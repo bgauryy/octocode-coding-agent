@@ -1,6 +1,7 @@
 import type { Api, Model, ProviderHeaders } from "@octocodeai/octocode-ai";
 import { getBuiltinProviders } from "@octocodeai/octocode-ai/providers/all";
-import { isOpenRouterModel, matchesHost } from "@octocodeai/octocode-ai/utils/provider-host";
+import { matchesHost } from "@octocodeai/octocode-ai/utils/provider-host";
+import { isOpenRouterModel } from "@octocodeai/octocode-ai/utils/provider-profile";
 import { VERSION } from "../config.ts";
 import { AGENT_ID_ENV, AGENT_ROLE_ENV, PARENT_ID_ENV } from "@octocodeai/octocode-common/env";
 import { getOctocodeUserAgent } from "../utils/user-agent.ts";

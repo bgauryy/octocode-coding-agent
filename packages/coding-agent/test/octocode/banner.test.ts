@@ -26,6 +26,33 @@ describe("banner reveal", () => {
 		expect(bannerLines(plain, 120, undefined, 0)[0].trim()).toBe("");
 		expect(bannerLines(plain, 120, undefined, 1)).toEqual(full);
 	});
+
+	it("shows a typing cursor and leading-edge glow during reveal, then sweeps a shimmer wave", () => {
+		const glows: number[] = [];
+		let cursors = 0;
+		const animated: BannerPaint = {
+			fg: (_c, text) => text,
+			ramp: (_t, text, glow = 0) => {
+				if (glow > 0) glows.push(glow);
+				return text;
+			},
+			cursor: (glyph) => {
+				cursors++;
+				return glyph;
+			},
+		};
+		const typing = bannerLines(animated, 120, undefined, 0.5);
+		expect(cursors).toBe(2);
+		expect(typing[0]).toContain("▌");
+		expect(glows.some((g) => g > 0)).toBe(true);
+
+		glows.length = 0;
+		cursors = 0;
+		const sweeping = bannerLines(animated, 120, undefined, 1, 0.5);
+		expect(cursors).toBe(0);
+		expect(sweeping[0]).not.toContain("▌");
+		expect(glows.some((g) => g > 0)).toBe(true);
+	});
 });
 
 describe('banner "OCTOCODE AGENT"', () => {

@@ -48,6 +48,7 @@ describe("max thinking level", () => {
 		};
 
 		expect(getSupportedThinkingLevels(model)).toEqual(["off", "minimal", "low", "medium", "high", "max"]);
-		expect(clampThinkingLevel(model, "xhigh")).toBe("max");
+		// An unsupported level clamps to the nearest lower supported one, never up.
+		expect(clampThinkingLevel(model, "xhigh")).toBe("high");
 	});
 });

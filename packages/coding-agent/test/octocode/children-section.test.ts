@@ -1,5 +1,10 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { getNativeDir } from "../../src/config.ts";
 import { buildSystemPromptSections, diffSystemPromptSections } from "../../src/core/system-prompt.ts";
+import { SkillCatalog } from "../../src/octocode/skill/catalog.ts";
+import { SUBAGENTS_SKILL } from "../../src/octocode/skill/first-use.ts";
 import { registerTurnSetup } from "../../src/octocode/turn.ts";
 import { fakeHost } from "./fake-host.ts";
 import { allSections } from "./helpers.ts";
@@ -13,9 +18,26 @@ const options = (selectedTools: string[]) => ({
 	systemPromptOptions: { sections: {} as Sections, baseSections: {} as Sections, selectedTools },
 });
 
-function session(isSubagent = false) {
+/** A catalog holding only the subagents skill, loadable by the model or reserved for the user. */
+const catalogWith = (disableModelInvocation: boolean) =>
+	new SkillCatalog(
+		() =>
+			({
+				version: 1,
+				explicitSkills: [],
+				resources: [
+					{
+						skill: { name: SUBAGENTS_SKILL, description: "d", filePath: "/s/SKILL.md", disableModelInvocation },
+						canonicalPath: "/s/SKILL.md",
+						visible: true,
+					},
+				],
+			}) as never,
+	);
+
+function session(isSubagent = false, skillCatalog?: SkillCatalog) {
 	const fake = fakeHost();
-	const turn = registerTurnSetup(fake.api, { isSubagent, profiles: () => new Map() });
+	const turn = registerTurnSetup(fake.api, { isSubagent, profiles: () => new Map(), skillCatalog });
 	let run = options(["bash", "file", "agent"]);
 	return {
 		turn,
@@ -92,6 +114,16 @@ describe("the children section", () => {
 		expect((await s.start(resumed([assistantCall({ type: "task", goal: "g", task: "t" })]))).children).toBe(
 			first.children,
 		);
+	});
+
+	it("leaves the report rules to the subagents skill only when the model can load it", async () => {
+		const rule = "Answer child questions at once.";
+		const loadable = await session(false, catalogWith(false)).start();
+		expect(loadable.children).toBeTruthy();
+		expect(loadable.children).not.toContain(rule);
+		expect(fs.readFileSync(path.join(getNativeDir(), "skills", SUBAGENTS_SKILL, "SKILL.md"), "utf8")).toContain(rule);
+		for (const catalog of [catalogWith(true), new SkillCatalog(() => ({ version: 1, explicitSkills: [], resources: [] }) as never), undefined])
+			expect((await session(false, catalog).start()).children).toContain(rule);
 	});
 
 	it("is never sent where the rules do not apply: a subagent, or a session without the agent tool", async () => {

@@ -110,7 +110,8 @@ describe("reservation gate: a computed program name", () => {
 			});
 			expect(refused?.reason).toContain("computed");
 		}
-		for (const command of ["npm run $SCRIPT", 'cat "$FILE"', "ls $DIR/src"])
-			expect(await peer.gate(command), command).toBeUndefined();
+		for (const command of ['cat "$FILE"', "ls $DIR/src"]) expect(await peer.gate(command), command).toBeUndefined();
+		// A package script's writes are never in the line, so it asks while a peer holds a reservation, whatever its arguments.
+		expect(await peer.gate("npm run $SCRIPT")).toMatchObject({ ask: expect.any(String) });
 	});
 });

@@ -5,7 +5,6 @@ import { type BacklogOptions, openBacklog } from "./context.ts";
 import { priorityName } from "./item.ts";
 import type { BacklogStore } from "./store.ts";
 import { backlog as backlogQueries } from "../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../storage/database.ts";
 import { activeDetail, activeItem, backlogIndex } from "./task-source.ts";
 
 /** The customType of the digest message. */
@@ -22,7 +21,7 @@ const SCAN = 30;
  * ended), how many items are to do and proposed, and the most urgent open titles, ready ones first. Undefined when the board has
  * nothing open.
  */
-function backlogDigest(store: BacklogStore, session: string, options: BacklogOptions): string | undefined {
+function backlogDigest(store: BacklogStore, session: string): string | undefined {
 	store.releaseEnded({ id: session });
 	const { todo, backlog: proposed, ongoing: running } = store.counts().items;
 	if (todo + proposed + running === 0) return undefined;
@@ -52,7 +51,7 @@ function backlogDigest(store: BacklogStore, session: string, options: BacklogOpt
 				`${item.ref} ${priorityName(item.priority)} "${clip(item.title, TITLE_CHARS)}"${waiting(item) ? " (blocked)" : ""}`,
 		);
 	// The item this session works on, with the version a write passes and its next step.
-	const agent = sharedAgentDb(options.env ?? process.env);
+	const agent = store.agent;
 	const active = activeItem(backlogQueries.snapshot(agent.db, store.repo), session);
 	const detail = active ? `. Active: B${active.seq} v${active.version}${activeDetail(agent, store.repo, active)}` : "";
 	return renderPrompt("notices/backlog-digest.md", {
@@ -78,8 +77,8 @@ export function registerBacklogDigest(api: FeatureSetup, options: BacklogOptions
 			const backlog = openBacklog(ctx, options);
 			pending =
 				event.reason === "resume"
-					? backlogIndex(sharedAgentDb(options.env ?? process.env), backlog.store.repo, backlog.session)
-					: backlogDigest(backlog.store, backlog.session, options);
+					? backlogIndex(backlog.store.agent, backlog.store.repo, backlog.session)
+					: backlogDigest(backlog.store, backlog.session);
 		} catch {
 			// An unreadable database gives no digest; the backlog tool reports the cause when asked.
 		}

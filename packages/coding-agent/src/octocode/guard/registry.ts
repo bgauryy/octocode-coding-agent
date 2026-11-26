@@ -1,7 +1,7 @@
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
 import { KIND_WORDS } from "./report.ts";
 import type { GateResult } from "./store.ts";
-import type { Review, ReviewKind } from "./types.ts";
+import { REVIEW_KINDS, type Review, type ReviewKind } from "./types.ts";
 import { visible } from "./visible.ts";
 
 /**
@@ -9,15 +9,18 @@ import { visible } from "./visible.ts";
  * again, and the one start-up line. A loader replaces its kind's entry each time it runs (a reload, a new session).
  */
 
-const SETTING: Record<ReviewKind, string> = { hook: "hooks", mcp: "mcp", skill: "skills" };
+/** The `security.enforce` word of each kind; a kind without one (`agent`) is always enforced. */
+const SETTING: Partial<Record<ReviewKind, string>> = { hook: "hooks", mcp: "mcp", skill: "skills" };
 
 /** Whether `security.enforce` keeps unapproved items of `kind` off (the global setting; a project cannot change it). */
 export function enforces(
 	settings: { security?: { enforce?: readonly string[] } } | undefined,
 	kind: ReviewKind,
 ): boolean {
+	const word = SETTING[kind];
+	if (word === undefined) return true;
 	const enforce: readonly string[] = settings?.security?.enforce ?? SETTINGS_DEFAULTS.security.enforce;
-	return enforce.includes(SETTING[kind]);
+	return enforce.includes(word);
 }
 
 interface KindState {
@@ -34,7 +37,7 @@ export function recordGate(kind: ReviewKind, result: GateResult, enforced: boole
 
 /** Every review the loaders produced, by kind order. */
 export function knownReviews(): Review[] {
-	return (["hook", "mcp", "skill"] as const).flatMap((kind) => found.get(kind)?.result.reviews ?? []);
+	return REVIEW_KINDS.flatMap((kind) => found.get(kind)?.result.reviews ?? []);
 }
 
 /** Whether a review's item is off because of the guard (enforced and not approved). */

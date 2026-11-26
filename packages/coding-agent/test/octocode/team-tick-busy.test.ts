@@ -1,12 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { isBusy } from "../../../db/src/api.ts";
 import { DatabaseFollower } from "../../src/octocode/shared/database-follower.ts";
 import { Activity } from "../../src/octocode/team/session/activity.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
+import { openWorkspaceDb } from "../../src/storage/workspace-database.ts";
 import { tmp } from "./helpers.ts";
 
 const member = (id: string): Member => ({
@@ -32,7 +33,9 @@ describe("a timer tick that meets another process's write lock", () => {
 		fs.mkdirSync(path.join(cwd, ".git"));
 		const file = path.join(tmp(), "team.sqlite");
 		const store = TeamStore.open(cwd, file);
-		const other = new DatabaseSync(file);
+		const machine = openAgentDb(file);
+		const rows = openWorkspaceDb(machine, cwd).agent;
+		const other = rows.db;
 		const me = member("inky");
 		store.save(me);
 		const activity = new Activity({
@@ -57,7 +60,8 @@ describe("a timer tick that meets another process's write lock", () => {
 			expect(store.list().find((row) => row.id === "inky")?.status).toBe("working");
 		} finally {
 			store.close();
-			other.close();
+			if (rows !== machine) rows.close();
+			machine.close();
 		}
 	});
 

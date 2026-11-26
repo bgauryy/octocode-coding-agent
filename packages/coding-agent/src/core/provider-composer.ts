@@ -16,7 +16,12 @@ import { withCacheCapabilities } from "@octocodeai/octocode-ai/utils/cache-capab
 import { classifierErrorResult, imageErrorResult } from "@octocodeai/octocode-ai/utils/model-operations";
 import type { ModelConfig, ModelsJsonProvider } from "./model-config.ts";
 import { composeApiKeyAuth, composeOAuthAuth, configuredHeaders } from "./provider-composer/auth.ts";
-import { applyFeature, applyModelOverride, applyModelsJson, getAllProviderModels } from "./provider-composer/models.ts";
+import {
+	applyFeature,
+	applyModelDefaultsAndOverride,
+	applyModelsJson,
+	getAllProviderModels,
+} from "./provider-composer/models.ts";
 import type { KnownModelLookup } from "./provider-composer/known-models.ts";
 import { countingPublications, publishedModelLists } from "./provider-composer/model-lists.ts";
 import type { ProviderConfigInput } from "./provider-composer/types.ts";
@@ -81,9 +86,7 @@ export function composeModelProvider(
 		return models.map((model) => {
 			if (!isModelType(model, "chat")) return model;
 			// Custom models never passed through the catalog's stamping: declare their cache compat here (explicit values win).
-			const stamped = withCacheCapabilities(model);
-			const override = config?.modelOverrides?.[model.id];
-			return override ? applyModelOverride(stamped, override) : stamped;
+			return applyModelDefaultsAndOverride(withCacheCapabilities(model), config);
 		});
 	};
 	// The base, the built-in models custom entries name and the refreshed feature models change only when a provider

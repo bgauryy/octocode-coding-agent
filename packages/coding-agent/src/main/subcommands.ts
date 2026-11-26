@@ -26,6 +26,7 @@ export const SUBCOMMANDS: Readonly<Record<string, Subcommand>> = {
 	trust: async (args, { cwd }) => (await import("../cli/trust-command.ts")).runTrustCommand(args, { cwd }),
 	security: async (args, { cwd, agentDir }) =>
 		(await import("../cli/security-command.ts")).runSecurityCommand(args, { cwd, agentDir }),
+	providers: async (args, { cwd }) => (await import("../cli/providers-command.ts")).runProvidersCommand(args, { cwd }),
 	backlog: async (args, { cwd }) => (await import("../cli/backlog-command.ts")).runBacklogCommand(args, { cwd }),
 	profile: async (args, { cwd }) => (await import("../cli/profile-command.ts")).runProfileCommand(args, { cwd }),
 	marketplace: async (args, { cwd }) =>

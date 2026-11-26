@@ -143,14 +143,14 @@ describe("StdinBuffer", () => {
 			assert.deepStrictEqual(emittedSequences, ["\x1b[<35;20;5m"]);
 		});
 
-		it("should flush incomplete sequence after timeout", async () => {
+		it("should drop a partial mouse report after timeout", async () => {
 			processInput("\x1b[<35");
 			assert.deepStrictEqual(emittedSequences, []);
 
 			// Wait for timeout
 			await wait(15);
 
-			assert.deepStrictEqual(emittedSequences, ["\x1b[<35"]);
+			assert.deepStrictEqual(emittedSequences, []);
 		});
 
 		it("should flush a lone ESC as Escape when CR arrives after the timeout", async () => {

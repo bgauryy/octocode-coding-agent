@@ -1,6 +1,6 @@
 import type { Model, SimpleStreamOptions, StreamFunction } from "../types.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
-import { clampThinkingLevel } from "../models/model-helpers.ts";
+import { clampThinkingLevel, effortLevel, effortValue } from "../models/model-helpers.ts";
 import { getCurrentTools, resolveTranscript } from "../utils/transcript.ts";
 import { failStreamTask } from "./lazy.ts";
 import { streamSdk } from "./ai-sdk/stream.ts";
@@ -66,10 +66,12 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (m
 function mapThinkingLevelToEffort(
 	model: Model<"anthropic-messages">,
 	level: SimpleStreamOptions["reasoning"],
-): AnthropicEffort {
-	const mapped = level ? model.thinkingLevelMap?.[level] : undefined;
-	if (typeof mapped === "string") return mapped as AnthropicEffort;
-	switch (level) {
+): AnthropicEffort | undefined {
+	const effective = level ? effortLevel(model, level) : undefined;
+	if (level && effective === undefined) return undefined;
+	const mapped = level ? effortValue(model, level) : undefined;
+	if (mapped !== undefined) return mapped as AnthropicEffort;
+	switch (effective) {
 		case "minimal":
 		case "low":
 			return "low";
@@ -79,6 +81,8 @@ function mapThinkingLevelToEffort(
 			return "high";
 	}
 }
+
+const withEffort = (effort: AnthropicEffort | undefined) => (effort ? { effort } : {});
 
 export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOptions> = (model, context, options) => {
 	if (!getAnthropicFederation(model, options?.apiKey, options?.headers, options?.env))
@@ -97,7 +101,7 @@ export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOpti
 		return stream(model, context, {
 			...base,
 			thinkingEnabled: true,
-			effort: mapThinkingLevelToEffort(model, options.reasoning),
+			...withEffort(mapThinkingLevelToEffort(model, options.reasoning)),
 		});
 	const adjusted = adjustMaxTokensForThinking(
 		base.maxTokens,

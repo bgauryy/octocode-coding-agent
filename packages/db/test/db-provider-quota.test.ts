@@ -80,8 +80,8 @@ describe("providerQuota", () => {
 		expect(providerQuota.listByProvider(agent.db, "openai").map((row) => row.window)).toEqual(["primary", "secondary"]);
 	});
 
-	it("creates its table in a file made without it", () => {
-		agent.db.exec("DROP TABLE provider_quota");
+	it("creates its table when a version-10 file made without it is upgraded", () => {
+		agent.db.exec("DROP TABLE provider_quota; PRAGMA user_version=10");
 		agent.close();
 		agent = openDatabase(locations);
 		providerQuota.upsert(agent.db, reading());

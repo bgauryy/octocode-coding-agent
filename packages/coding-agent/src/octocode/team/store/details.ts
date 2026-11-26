@@ -38,12 +38,17 @@ function shellLogsOf(member: Member): string | undefined {
 	return fs.existsSync(folder) ? folder : undefined;
 }
 
-/** The details of each of `members`, by id; a member with none has no entry. */
-export function memberDetails(db: Db, workspaceId: string, members: readonly Member[]): Map<string, MemberDetails> {
+/** The details of each of `members`, by id; a member with none has no entry. `machine` holds the session rows. */
+export function memberDetails(
+	db: Db,
+	machine: Db,
+	workspaceId: string,
+	members: readonly Member[],
+): Map<string, MemberDetails> {
 	const details = new Map<string, MemberDetails>();
 	for (const member of members) {
 		const item = itemOf(db, workspaceId, member);
-		const transcripts = member.sessionId ? (sessions.byId(db, member.sessionId)?.dir ?? undefined) : undefined;
+		const transcripts = member.sessionId ? (sessions.byId(machine, member.sessionId)?.dir ?? undefined) : undefined;
 		const shellLogs = shellLogsOf(member);
 		const jobs = shellLogs ? liveItemJobs(shellLogs) : [];
 		const found: MemberDetails = {

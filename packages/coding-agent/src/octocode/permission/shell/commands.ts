@@ -201,7 +201,10 @@ function add(
 		entry.opaqueBecause ??= because;
 	};
 	// A variable set in front (`PATH=/tmp/x cat`, `GIT_SSH_COMMAND=… git fetch`, `env GIT_PAGER=… make`) that swaps the program run.
-	for (let at = 0; at < (real ?? literals.length); at++) runsProgram(settingRisk(literals[at] ?? words[at] ?? ""));
+	const runs = real === undefined ? undefined : literals[real];
+	const runsName = runs === undefined ? undefined : base(runs);
+	for (let at = 0; at < (real ?? literals.length); at++)
+		runsProgram(settingRisk(literals[at] ?? words[at] ?? "", undefined, undefined, runsName));
 	const nest = (script: string | undefined): void => {
 		if (script === undefined || depth >= MAX_NESTING) {
 			entry.opaque = true;
@@ -321,6 +324,7 @@ function walk(root: Node, depth: number): Collected | undefined {
 			program: 0,
 			redirects: [],
 			opaque: true,
+			hiddenArithmetic: true,
 			opaqueBecause: `the arithmetic \`${arithmetic.trim()}\` names a variable whose value the line does not show, and bash evaluates that value as an expression that can run a command; give the variable a number in the line (\`S=0\`, \`S=$(date +%s)\`)`,
 		});
 	// A bare `exec` with input redirections changes standard input for the rest of the script.

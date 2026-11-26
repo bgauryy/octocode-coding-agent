@@ -8,7 +8,7 @@ For editor validation and completion, point `$schema` at `schemas/models.schema.
 
 ## Providers
 
-Each key under `providers` is a provider ID. `models.json` defines custom providers: each ID adds a provider, which needs `baseUrl` and an `api` at provider or model level. An official provider ID (such as `anthropic` or `amazon-bedrock`) is refused with a message and the other providers in the file still load; rename the entry for a custom endpoint, and set an official provider's host or key in `/providers`. The one entry an official ID keeps is `modelOverrides` limited to `compat`, `contextWindow`, `maxTokens`, `inputLimits` and `cost` (a negotiated or enterprise price, with `tiers`, `until` and `after` as below; `/model` details mark it "(your price)"); host, API, key and headers stay refused.
+Each key under `providers` is a provider ID. `models.json` defines custom providers: each ID adds a provider, which needs `baseUrl` and an `api` at provider or model level. An official provider ID (such as `anthropic` or `amazon-bedrock`) is refused with a message and the other providers in the file still load; rename the entry for a custom endpoint, and set an official provider's host or key in `/providers`. What an official ID may carry is tuning and throttling: `modelOverrides` and `defaults` limited to `compat`, `contextWindow`, `maxTokens`, `inputLimits` and `cost` (a negotiated or enterprise price, with `tiers`, `until` and `after` as below; `/model` details mark it "(your price)"), and `requestsPerMinute` and `tokensPerMinute` at provider level and in `modelOverrides`. Host, API, key, headers, `auth`, `env` and `models` stay refused.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -16,10 +16,20 @@ Each key under `providers` is a provider ID. `models.json` defines custom provid
 | `instructionCacheRetention` | `"none" \| "short" \| "long"` |  | Instruction cache retention, limited by endpoint capabilities; long by default. Long writes can cost more. |
 | `name` | string |  | Display name. |
 | `baseUrl` | string |  | API base URL. Also applies to the provider's built-in models. |
-| `apiKey` | string |  | Literal key, "$NAME" environment interpolation, or "!command" output (the command runs on first use, not at startup). |
+| `apiKey` | string |  | Literal key, "$NAME" environment interpolation, "!command" output (the command runs on first use, not at startup), or "keychain:&lt;name>" (the system keychain entry of service octocode, account &lt;name>). |
+| `auth` | object |  | Key command, used before env and apiKey. Its stdout, trimmed, is the key. |
+| `auth.command` | string |  | Required. Program that prints the key on stdout; runs without a shell, on first use. |
+| `auth.args` | `string[]` |  | Arguments, passed as they are. |
+| `auth.timeoutMs` | integer | `10000` | Milliseconds before the command is stopped and the request fails. |
+| `auth.ttlMs` | integer | `300000` | Milliseconds the printed key is reused; 0 runs the command for every request. A request the provider refuses (401) runs it again. |
+| `env` | `string[]` |  | Environment variables that may hold the key; the first one set is used, else apiKey. |
 | `api` | string |  | API for the provider's models, such as "openai-completions", "openai-responses", "anthropic-messages", or "google-generative-ai". |
 | `headers` | object |  | Request headers. Values resolve like apiKey. |
 | `compat` | [object](#compatibility) |  | Provider and model compatibility overrides. |
+| `requestsPerMinute` | integer |  | Most requests a session sends to this provider per minute (sliding 60 s window). 0 turns the limit off. A model's value wins over its provider's, which wins over the requestsPerMinute setting. |
+| `tokensPerMinute` | integer |  | Most tokens a model may use per minute across all sessions on this machine: uncached input plus output (cache reads are not counted; a Bedrock model that burns output down counts it at that rate). A request over the budget waits for room. A model's value wins over its provider's; for Bedrock Kimi the OCTOCODE_BEDROCK_KIMI_TPM environment variable wins over both. |
+| `profile` | `"anthropic" \| "openai" \| "bedrock" \| "openrouter" \| "vercel" \| "opencode" \| "groq" \| "xiaomi" \| "zai" \| "together" \| "moonshot" \| "cloudflare-workers-ai" \| "cloudflare-ai-gateway" \| "nvidia" \| "ant-ling" \| "cerebras" \| "deepseek" \| "xai" \| "chutes"` |  | The provider family whose cache markers, cache lifetimes and request quirks this provider's models follow: use it for a gateway that serves another provider's models (a Claude gateway takes "anthropic"). Unset: detected from the provider id and host. An explicit compat value still wins. |
+| `defaults` | [object](#provider-defaults-and-profiles) |  | Fields applied to every model of this provider, built-in and custom. A model's own field wins, then its modelOverrides entry, then these defaults, then built-in model data. |
 | `authHeader` | boolean | `false` | Whether to send the resolved API key as Authorization: Bearer. |
 | `models` | [`object[]`](#models) |  |  |
 | `modelOverrides` | [object](#model-overrides) |  |  |
@@ -70,6 +80,8 @@ Each `models` entry adds a model to the provider. An entry whose `id` names a kn
 | `samplingParamsByThinkingLevel` | object |  | samplingParams per thinking level, merged over samplingParams. |
 | `headers` | object |  | Request headers. Values resolve like apiKey. |
 | `compat` | [object](#compatibility) |  | Provider and model compatibility overrides. |
+| `requestsPerMinute` | integer |  | Most requests a session sends to this provider per minute (sliding 60 s window). 0 turns the limit off. A model's value wins over its provider's, which wins over the requestsPerMinute setting. |
+| `tokensPerMinute` | integer |  | Most tokens a model may use per minute across all sessions on this machine: uncached input plus output (cache reads are not counted; a Bedrock model that burns output down counts it at that rate). A request over the budget waits for room. A model's value wins over its provider's; for Bedrock Kimi the OCTOCODE_BEDROCK_KIMI_TPM environment variable wins over both. |
 
 ## Model overrides
 
@@ -113,6 +125,58 @@ Each `modelOverrides` key is the ID of a built-in model. Unknown IDs are ignored
 | `samplingParams` | object |  | Fields merged into every request body. Applies only to OpenAI-compatible APIs. |
 | `samplingParamsByThinkingLevel` | object |  | samplingParams per thinking level, merged over samplingParams. |
 | `headers` | object |  | Request headers. Values resolve like apiKey. |
+| `compat` | [object](#compatibility) |  | Provider and model compatibility overrides. |
+| `requestsPerMinute` | integer |  | Most requests a session sends to this provider per minute (sliding 60 s window). 0 turns the limit off. A model's value wins over its provider's, which wins over the requestsPerMinute setting. |
+| `tokensPerMinute` | integer |  | Most tokens a model may use per minute across all sessions on this machine: uncached input plus output (cache reads are not counted; a Bedrock model that burns output down counts it at that rate). A request over the budget waits for room. A model's value wins over its provider's; for Bedrock Kimi the OCTOCODE_BEDROCK_KIMI_TPM environment variable wins over both. |
+
+## Provider defaults and profiles
+
+`defaults` on a provider sets model fields once for every model of that provider, built-in and custom: `contextWindow`, `maxTokens`, `input`, `cost`, `thinkingLevelMap`, `promptCache`, `inputLimits`, `samplingParams`, `compat` and `reasoning`. For one field the order is: the model's own entry, its `modelOverrides` entry, the provider's `defaults`, then built-in model data. Object fields merge key by key; other fields replace.
+
+A provider may sit in several files. They merge field by field, the narrower one winning each field it names: Octocode's project file, Pi's project file, Octocode's global files, then Pi's global files. Pi's own `models.json` loads unchanged. A project file may add models and tune defaults, but it may not change `baseUrl`, `api`, `headers`, `apiKey`, `auth` or `env` of a provider a global file also defines (nor a model's `baseUrl`, `api` or `headers`): those fields are ignored with a warning naming the file, so a project cannot send a stored key to another host. A provider only the project defines sets its own.
+
+`tokensPerMinute` caps the tokens a model uses per minute across all sessions on the machine (uncached input plus output; cache reads are not counted). A request over the budget waits. A model's value wins over its provider's; for Bedrock Kimi, which has a built-in budget, `OCTOCODE_BEDROCK_KIMI_TPM` still overrides both.
+
+`profile` names the provider family whose cache markers, cache lifetimes and request quirks a provider's models follow: `anthropic`, `openai`, `bedrock`, `openrouter`, `vercel`, `opencode`, `groq`, `xiaomi`, `zai`, `together`, `moonshot`, `cloudflare-workers-ai`, `cloudflare-ai-gateway`, `nvidia`, `ant-ling`, `cerebras`, `deepseek`, `xai` or `chutes`. Use it for a gateway that serves another provider's models (a Claude gateway takes `anthropic` and gets Anthropic cache markers and the 1h tier). Without it the profile is detected from the provider id and host, as before. An explicit `compat` value always wins over the profile, and the order for a model field is: model entry, `modelOverrides`, `defaults`, the profile, built-in model data. An official provider may set `profile` (it moves no key or host); a project file may set it on a provider a global file defines.
+
+`thinkingLevelMap` in `defaults` maps thinking levels to provider values for every model of the provider. A request for a level the map marks `null` is sent as the nearest lower supported level, or as the lowest supported one when none is lower.
+
+When an endpoint answers 400 that it does not accept `cache_control` markers, strict tool schemas or an effort setting, Octocode resends that request once without the field (it failed before any reply), remembers the rejection for the endpoint and model until the process ends, and leaves the field out of later requests.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `reasoning` | boolean |  | Whether the model supports thinking. |
+| `thinkingLevelMap` | object |  | Provider value sent for each thinking level. null marks a level unsupported. Levels the model does not map use the provider's default value through high; xhigh and max are unsupported. |
+| `input` | `("text" \| "image")[]` |  | Accepted input modalities. Include "image" only when this model and endpoint accept image attachments. |
+| `inputLimits` | [object](#input-limits) |  |  |
+| `cost` | object |  |  |
+| `cost.input` | number |  | Required. Input cost in USD per million tokens. |
+| `cost.output` | number |  | Required. Output cost in USD per million tokens. |
+| `cost.cacheRead` | number |  | Required. Cache-read cost in USD per million tokens. |
+| `cost.cacheWrite` | number |  | Required. Cache-write cost in USD per million tokens. |
+| `cost.tiers` | `object[]` |  | Request-wide pricing tiers. The highest matching input threshold applies to the full request. |
+| `cost.tiers[].inputTokensAbove` | number |  | Required. Use this tier when total request input exceeds this token count. |
+| `cost.tiers[].input` | number |  | Required. Input cost in USD per million tokens. |
+| `cost.tiers[].output` | number |  | Required. Output cost in USD per million tokens. |
+| `cost.tiers[].cacheRead` | number |  | Required. Cache-read cost in USD per million tokens. |
+| `cost.tiers[].cacheWrite` | number |  | Required. Cache-write cost in USD per million tokens. |
+| `cost.until` | string |  | Last UTC day (YYYY-MM-DD, inclusive) these rates apply, for a time-limited price. Ignored without `after`. |
+| `cost.after` | object |  | Rates (and tiers) charged from the day after `until`. |
+| `cost.after.input` | number |  | Required. Input cost in USD per million tokens. |
+| `cost.after.output` | number |  | Required. Output cost in USD per million tokens. |
+| `cost.after.cacheRead` | number |  | Required. Cache-read cost in USD per million tokens. |
+| `cost.after.cacheWrite` | number |  | Required. Cache-write cost in USD per million tokens. |
+| `cost.after.tiers` | `object[]` |  | Request-wide pricing tiers. The highest matching input threshold applies to the full request. |
+| `cost.after.tiers[].inputTokensAbove` | number |  | Required. Use this tier when total request input exceeds this token count. |
+| `cost.after.tiers[].input` | number |  | Required. Input cost in USD per million tokens. |
+| `cost.after.tiers[].output` | number |  | Required. Output cost in USD per million tokens. |
+| `cost.after.tiers[].cacheRead` | number |  | Required. Cache-read cost in USD per million tokens. |
+| `cost.after.tiers[].cacheWrite` | number |  | Required. Cache-write cost in USD per million tokens. |
+| `promptCache` | object |  | Best-effort prompt cache lifetime in seconds for the short and long retention tiers. Octocode warms only tiers with a known lifetime. |
+| `contextWindow` | number |  | Context window in tokens. |
+| `maxTokens` | number |  | Maximum output tokens. |
+| `samplingParams` | object |  | Fields merged into every request body. Applies only to OpenAI-compatible APIs. |
+| `samplingParamsByThinkingLevel` | object |  | samplingParams per thinking level, merged over samplingParams. |
 | `compat` | [object](#compatibility) |  | Provider and model compatibility overrides. |
 
 ## Input limits

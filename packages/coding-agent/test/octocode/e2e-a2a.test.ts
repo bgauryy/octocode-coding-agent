@@ -224,7 +224,7 @@ describe("a linked worktree finishes", () => {
 		await close(main, worktree);
 	});
 
-	it("no coordinator: told plainly, nothing is sent and the worktree stays; two coordinators: neither is picked, both are named, and the user's choice goes through by name", async () => {
+	it("no coordinator: told plainly, nothing is sent and the worktree stays; two main-checkout sessions: the oldest is the fallback orchestrator when no creator is recorded", async () => {
 		const box = sandbox(endpoint);
 		const folder = linkedWorktree(box, "several");
 		const worktree = await session(box, folder);
@@ -240,27 +240,16 @@ describe("a linked worktree finishes", () => {
 
 		const first = await session(box);
 		const second = await session(box);
-		const chosen = script([{ text: "chosen coordinator read it" }]);
-		const steps = script([
-			message("coordinator", "Merge request: branch several."),
-			message(second.name, `Merge request, the user chose you. ${chosen}`),
-			{ text: "done" },
-		]);
+		const chosen = script([{ text: "oldest main session read it" }]);
+		const steps = script([message("coordinator", `Merge request: branch several. ${chosen}`), { text: "done" }]);
 		prompt(worktree.run, "finish", steps);
-		await reachedStep(endpoint, steps, 1, "the refusal");
-		const refusal =
-			requestsOf(endpoint, steps)
-				.find((request) => request.step === 1)
-				?.toolResults.join("\n") ?? "";
-		expect(refusal).toContain("Several Octocode sessions run in the main checkout");
-		expect(refusal).toContain(first.name);
-		expect(refusal).toContain(second.name);
-		expect(refusal).toContain("Nothing was sent");
-		await until(() => requestsOf(endpoint, chosen).length > 0, "the chosen session");
-		// Nothing reached the other: it has made no model request at all.
-		expect(endpoint.requests.some((request) => request.lastUserText.includes("Merge request: branch several."))).toBe(
-			false,
-		);
+		await reachedStep(endpoint, steps, 1, "the send");
+		await until(() => requestsOf(endpoint, chosen).length > 0, "the oldest main-checkout session");
+		expect(
+			endpoint.requests.some(
+				(request) => request.lastUserText.includes("Merge request: branch several.") && request.lastUserText.length > 0,
+			),
+		).toBe(true);
 		await close(first, second, worktree);
 	});
 });

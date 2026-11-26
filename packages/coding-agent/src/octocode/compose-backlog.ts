@@ -37,7 +37,7 @@ export function holdingsOf(
 	api: FeatureSetup,
 	team: Team,
 	isSubagent: boolean,
-	serving: () => Map<string, string>,
+	serving: () => Iterable<readonly [string, string]>,
 ): Holdings {
 	const parentReserved = isSubagent && process.env[PARENT_HOLDS_LEASES_ENV] === "1";
 	return {
@@ -58,8 +58,8 @@ export function composeBacklog(
 		/** Stops a team member on the user's behalf; returns why it cannot. */
 		stop: (to: string) => string | undefined;
 		completing: CompletionGate;
-		/** The backlog item each running child works on, by child name. */
-		serving: () => Map<string, string>;
+		/** The backlog items each running child works on. */
+		serving: () => Iterable<readonly [string, string]>;
 		/** The QA reviewer of `done` (`backlog.qa`); read at each call because the agent tool registers later. */
 		review: QaReviewer;
 	},

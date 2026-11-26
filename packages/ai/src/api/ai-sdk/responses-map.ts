@@ -12,7 +12,7 @@ import { getCompat, getConfigurationUpdateEffort, isChatGPTSignIn } from "../ope
 import type { OpenAIResponsesOptions } from "../openai-responses/types.ts";
 import type { SdkMapping } from "./stream.ts";
 import { applySdkUsage } from "./events.ts";
-import { calculateCost } from "../../models/model-helpers.ts";
+import { calculateCost, effortLevel, effortValue } from "../../models/model-helpers.ts";
 import { parseTextSignature } from "../openai-responses-shared/text-signature.ts";
 import { applyServiceTierPricing } from "../openai-responses-shared/service-tier.ts";
 
@@ -27,7 +27,7 @@ export function responsesMapping(
 	const cache = resolveOpenAIResponsesCacheFields(compat, options, signIn, model.api !== "azure-openai-responses");
 	const requested = options.reasoningEffort ?? (options.reasoningSummary ? "medium" : undefined);
 	const update = getConfigurationUpdateEffort(model, options, compat);
-	const mapped = requested ? (model.thinkingLevelMap?.[requested] ?? requested) : undefined;
+	const mapped = requested ? (effortValue(model, requested) ?? effortLevel(model, requested)) : undefined;
 	const bedrockEffort = bedrockRequestEffort(model, requested);
 	const reasoning =
 		bedrockEffort !== undefined

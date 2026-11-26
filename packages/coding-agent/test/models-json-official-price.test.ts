@@ -105,6 +105,6 @@ describe("cost in an official provider's modelOverrides", () => {
 		const refused = await ModelConfig.loadFile(modelsPath);
 		expect(refused.getProviderIds()).toEqual([]);
 		expect(refused.getError()).toContain(`modelOverrides.${ID}.headers`);
-		expect(refused.getError()).toContain("never host, api, key or headers");
+		expect(refused.getError()).toContain("never host, api, key, headers, auth, env or models");
 	});
 });

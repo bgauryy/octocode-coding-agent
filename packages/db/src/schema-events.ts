@@ -11,25 +11,26 @@ CREATE INDEX IF NOT EXISTS event_log_topic ON event_log(workspace_id, topic, seq
 CREATE INDEX IF NOT EXISTS event_log_key ON event_log(workspace_id, key, seq);
 CREATE INDEX IF NOT EXISTS event_log_at ON event_log(at);`;
 
-/** Upgrade the version-10 table whose UNIQUE(dedupe_key) constraint crossed workspace boundaries. */
-export function ensureWorkspaceEventKeys(db: DatabaseSync, transaction: (work: () => void) => void): void {
-	const legacy = db.prepare(`SELECT 1 FROM pragma_index_list('event_log') AS idx
+/**
+ * Rebuilds an early version-10 `event_log` whose UNIQUE(dedupe_key) constraint crossed workspace boundaries; a table
+ * that already has the per-workspace key is left as it is. Runs inside the caller's upgrade transaction.
+ */
+export function upgradeWorkspaceEventKeys(db: DatabaseSync): void {
+	const global = db
+		.prepare(`SELECT 1 FROM pragma_index_list('event_log') AS idx
 		JOIN pragma_index_info(idx.name) AS col ON col.seqno = 0
-		WHERE idx.origin = 'u' AND col.name = 'dedupe_key'`);
-	if (!legacy.get()) return;
-	transaction(() => {
-		// Another opening process can complete the upgrade while we wait for the write lock.
-		if (!legacy.get()) return;
-		db.exec(`ALTER TABLE event_log RENAME TO event_log_global_dedupe;
-			${EVENT_LOG_TABLE}
-			INSERT INTO event_log SELECT * FROM event_log_global_dedupe;
-			-- Retention may have deleted every row at or below a subscription's last delivered seq.
-			UPDATE sqlite_sequence SET seq = max(seq, coalesce(
-				(SELECT seq FROM sqlite_sequence WHERE name = 'event_log_global_dedupe'), 0))
-				WHERE name = 'event_log';
-			DROP TABLE event_log_global_dedupe;
-			${EVENT_LOG_INDEXES}`);
-	});
+		WHERE idx.origin = 'u' AND col.name = 'dedupe_key'`)
+		.get();
+	if (!global) return;
+	db.exec(`ALTER TABLE event_log RENAME TO event_log_global_dedupe;
+		${EVENT_LOG_TABLE}
+		INSERT INTO event_log SELECT * FROM event_log_global_dedupe;
+		-- Retention may have deleted every row at or below a subscription's last delivered seq.
+		UPDATE sqlite_sequence SET seq = max(seq, coalesce(
+			(SELECT seq FROM sqlite_sequence WHERE name = 'event_log_global_dedupe'), 0))
+			WHERE name = 'event_log';
+		DROP TABLE event_log_global_dedupe;
+		${EVENT_LOG_INDEXES}`);
 }
 
 /**
@@ -39,8 +40,8 @@ export function ensureWorkspaceEventKeys(db: DatabaseSync, transaction: (work: (
  * `event_log` is the
  * ordered record of what happened to the agent runtime (`seq` is the order and the replay cursor); `event_subscriptions`
  * holds who reads it, from which `offset_seq`. Both are separate from `agent_events`, the presence audit: that table has
- * its own id, version and keep-the-newest retention, and never carries topics, dedupe or consumer offsets. Created with IF NOT EXISTS: an existing
- * file of this version gains both when it is opened (`COORDINATION_FILE.ensure`). `source`, `payload`, `ref`, `filter`
+ * its own id, version and keep-the-newest retention, and never carries topics, dedupe or consumer offsets. Created with IF NOT EXISTS: a
+ * version-10 file gains them in its upgrade (`schema-migrations.ts`). `source`, `payload`, `ref`, `filter`
  * and `action` are JSON text the caller serialized; the database never reads inside them.
  */
 export const EVENTS_SCHEMA = `

@@ -447,7 +447,9 @@ describe("registerHooks", () => {
 			{
 				message: {
 					customType: "octocode-hook-context",
-					content: "Context from PreToolUse hooks:\ncheck generated files",
+					content: expect.stringMatching(
+						/^\[src hook:PreToolUse ✓proven via in-process\] t\d\nContext from PreToolUse hooks:\n<<<untrusted-[0-9a-f]{16} .*\ncheck generated files\nuntrusted-[0-9a-f]{16}>>>$/,
+					),
 					display: false,
 				},
 				options: { triggerTurn: false },

@@ -8,12 +8,29 @@ import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { getFileStamp, isUnderPath } from "@octocodeai/octocode-common/paths";
 import { AGENT_DIR, AGENT_FOLDERS, AGENT_GITIGNORE, OCTOCODE_DIR } from "./agent-layout.ts";
 
+/** The canonical home directory, stable for a process; a home does not move under a running process. */
+let homeCanonical: string | undefined;
+/** Canonical forms of the cwds asked about, so a repeated lookup skips the symlink walk; bounded by cwd count. */
+const rootCanonical = new Map<string, string>();
+const ROOT_CANONICAL_MAX = 256;
+
 const ID = /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/;
 
 /** Workspace data follows the nearest declaration. A checkout boundary starts a new workspace. */
 export function workspaceDataRoot(cwd: string): string {
-	const start = canonicalPath(cwd);
-	const home = canonicalPath(os.homedir());
+	// The canonical forms are stable per raw input (a created subdirectory does not change an ancestor's realpath), so
+	// only the walk above re-checks for a new marker or checkout; the symlink walk is skipped on repeat lookups. The
+	// walk still runs and answers a marker created after the memo.
+	const start =
+		rootCanonical.get(cwd) ??
+		(() => {
+			const value = canonicalPath(cwd);
+			if (rootCanonical.size >= ROOT_CANONICAL_MAX) rootCanonical.delete(rootCanonical.keys().next().value!);
+			rootCanonical.set(cwd, value);
+			return value;
+		})();
+	homeCanonical ??= canonicalPath(os.homedir());
+	const home = homeCanonical;
 	for (let dir = start; ; dir = path.dirname(dir)) {
 		// A dotfiles checkout or a declaration in home must never absorb all unrelated projects below it.
 		if (path.dirname(dir) === dir || isUnderPath(home, dir)) return start;

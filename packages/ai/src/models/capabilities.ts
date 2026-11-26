@@ -18,7 +18,7 @@ import type { PromptCacheKeyRule } from "../utils/cache-profiles.ts";
 import { getCompat as getCompletionsCompat } from "../api/openai-completions/compat.ts";
 import { getCompat as getResponsesCompat } from "../api/openai-responses/compat.ts";
 import type { Api, Model, ModelThinkingLevel, ProviderEnv } from "../types.ts";
-import { matchesHost } from "../utils/provider-host.ts";
+import { profileCacheFacts } from "../utils/provider-profile.ts";
 import { resolveModelThinking, thinkingControl, type ThinkingControl } from "./thinking.ts";
 
 export type { ThinkingControl } from "./thinking.ts";
@@ -149,12 +149,13 @@ export function replaysWithReasoningUnchanged(model: Model<Api>): boolean {
 }
 
 /**
- * Vercel AI Gateway serves every upstream on its Anthropic-compatible endpoint, but only Anthropic's models have
- * Anthropic's cache entries: an OpenAI, Google or other upstream caches on its own terms.
+ * A gateway that serves every upstream on its Anthropic-compatible endpoint (Vercel AI Gateway) has Anthropic's cache
+ * entries only for Anthropic's ids: an OpenAI, Google or other upstream caches on its own terms. The profile's
+ * `anthropicIdPrefix` names those ids; a model declaring the `anthropic` profile has none and always takes markers.
  */
 function servesNonAnthropicUpstream(model: Model<Api>): boolean {
-	const gateway = model.provider === "vercel-ai-gateway" || matchesHost(model.baseUrl, "ai-gateway.vercel.sh");
-	return gateway && !model.id.toLowerCase().startsWith("anthropic/");
+	const prefix = profileCacheFacts(model, "any").anthropicIdPrefix;
+	return prefix !== undefined && !model.id.toLowerCase().startsWith(prefix);
 }
 
 function cacheMechanism(model: Model<Api>, env?: ProviderEnv): CacheMechanism {

@@ -19,6 +19,8 @@ const MACOS_SECURITY = "/usr/bin/security";
 const SECRET_TOOL = "secret-tool";
 const MACOS_ITEM_NOT_FOUND = 44;
 const COMMAND_TIMEOUT_MS = 15_000;
+/** A keychain read may wait for the user to approve an access prompt, so it outlasts a credential command's 10 s default. */
+const READ_TIMEOUT_MS = 60_000;
 const PROVIDER_ID = /^[a-z0-9][a-z0-9._-]*$/;
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 
@@ -88,9 +90,12 @@ function failure(action: string, backend: string, result: KeychainRunResult): Er
 interface BackendSpec {
 	name: string;
 	file: string;
+	/** What a read runs when the host resolved the program to a path; writes keep `file`. */
+	readFile?: string;
 	store(provider: string, secret: string): { args: string[]; input: string };
 	remove(provider: string): string[];
 	reference(provider: string): string;
+	read(provider: string): string[];
 	isNotFound(result: KeychainRunResult): boolean;
 	/** The longest write input the channel takes whole; a longer one is refused before anything runs. */
 	maxInputBytes?: number;
@@ -113,21 +118,24 @@ function macSpec(file: string): BackendSpec {
 		}),
 		remove: (provider) => ["delete-generic-password", "-s", SERVICE, "-a", provider],
 		reference: (provider) => `!${file} find-generic-password -s ${SERVICE} -a ${provider} -w`,
+		read: (provider) => ["find-generic-password", "-s", SERVICE, "-a", provider, "-w"],
 		isNotFound: (result) => result.code === MACOS_ITEM_NOT_FOUND,
 		maxInputBytes: MACOS_INTERACTIVE_LINE_BYTES,
 	};
 }
 
-function linuxSpec(): BackendSpec {
+function linuxSpec(readFile: string): BackendSpec {
 	return {
 		name: "Secret Service",
 		file: SECRET_TOOL,
+		readFile,
 		store: (provider, secret) => ({
 			args: ["store", `--label=${SERVICE} ${provider}`, "service", SERVICE, "account", provider],
 			input: secret,
 		}),
 		remove: (provider) => ["clear", "service", SERVICE, "account", provider],
 		reference: (provider) => `!${SECRET_TOOL} lookup service ${SERVICE} account ${provider}`,
+		read: (provider) => ["lookup", "service", SERVICE, "account", provider],
 		isNotFound: (result) => result.code === 1 && result.stderr.trim() === "",
 	};
 }
@@ -195,24 +203,63 @@ const runKeychainCommand: KeychainRunner = (file, args, input) =>
 		child.stdin.end(input);
 	});
 
+interface KeychainHost {
+	platform: NodeJS.Platform;
+	which: KeychainWhich;
+}
+
+let hostOverride: KeychainHost | undefined;
+
+/** Makes `keychainReadCommand` see another platform and command lookup (tests); `undefined` restores this host. */
+export function overrideKeychainHost(host: KeychainHost | undefined): void {
+	hostOverride = host;
+}
+
+/**
+ * How to read the `keychain:<name>` entry (service `octocode`, account `name`) on this host. Throws when the name is not a
+ * valid entry name or the host has no supported keychain.
+ */
+export function keychainReadCommand(
+	name: string,
+	platform: NodeJS.Platform = hostOverride?.platform ?? process.platform,
+	which: KeychainWhich = hostOverride?.which ?? whichCommand,
+): { command: string; args: string[]; timeoutMs: number } {
+	if (!isValidKeychainProviderId(name))
+		throw new Error(
+			`Invalid keychain entry name ${JSON.stringify(name)}: use lowercase letters, digits, ".", "_" or "-".`,
+		);
+	const spec = detectSpec(platform, which);
+	if (!spec)
+		throw new Error(
+			`keychain:${name} needs the macOS Keychain, Secret Service (secret-tool) or Windows Credential Manager; none is available on this host.`,
+		);
+	return { command: spec.readFile ?? spec.file, args: spec.read(name), timeoutMs: READ_TIMEOUT_MS };
+}
+
+function detectSpec(platform: NodeJS.Platform, which: KeychainWhich): BackendSpec | undefined {
+	if (platform === "darwin") {
+		const file = which(MACOS_SECURITY);
+		return file ? macSpec(file) : undefined;
+	}
+	if (platform === "linux") {
+		const file = which(SECRET_TOOL);
+		return file ? linuxSpec(file) : undefined;
+	}
+	if (platform === "win32") {
+		for (const command of ["powershell.exe", "pwsh.exe"]) {
+			const file = which(command);
+			if (file) return windowsSpec(file, command, SERVICE);
+		}
+	}
+	return undefined;
+}
+
 /** The keychain for `platform`, or undefined when there is none (other platforms or a missing tool). */
 export function detectKeychain(
 	platform: NodeJS.Platform,
 	which: KeychainWhich = whichCommand,
 	run: KeychainRunner = runKeychainCommand,
 ): KeychainBackend | undefined {
-	if (platform === "darwin") {
-		const security = which(MACOS_SECURITY);
-		return security ? createBackend(macSpec(MACOS_SECURITY), run) : undefined;
-	}
-	if (platform === "linux") {
-		return which(SECRET_TOOL) ? createBackend(linuxSpec(), run) : undefined;
-	}
-	if (platform === "win32") {
-		for (const command of ["powershell.exe", "pwsh.exe"]) {
-			const file = which(command);
-			if (file) return createBackend(windowsSpec(file, command, SERVICE), run);
-		}
-	}
-	return undefined;
+	const spec = detectSpec(platform, which);
+	return spec ? createBackend(spec, run) : undefined;
 }

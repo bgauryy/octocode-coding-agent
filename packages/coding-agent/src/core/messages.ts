@@ -87,6 +87,22 @@ declare module "@octocodeai/octocode-agent-core" {
 }
 
 /**
+ * The header of a command the user ran with `!`: their own terminal, proven. `core/` may not import the `octocode/` source
+ * module, so this fills the same template with the values `userSource("terminal")` renders (a test holds them equal).
+ */
+export const userBashHeader = (): string =>
+	renderPrompt("notices/source/header.md", {
+		kind: "terminal",
+		id: "terminal",
+		mark: "✓",
+		verified: "proven",
+		channel: "terminal",
+		pid: "",
+		relay: "",
+		trust: 4,
+	});
+
+/**
  * Convert a BashExecutionMessage to user message text for LLM context.
  */
 function bashExecutionToText(msg: BashExecutionMessage): string {
@@ -175,7 +191,7 @@ export function convertToLlm(messages: readonly AgentMessage[]): Message[] {
 					}
 					return {
 						role: "user",
-						content: [{ type: "text", text: bashExecutionToText(m) }],
+						content: [{ type: "text", text: `${userBashHeader()}\n${bashExecutionToText(m)}` }],
 						timestamp: m.timestamp,
 					};
 				case "custom": {

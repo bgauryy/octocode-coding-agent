@@ -14,16 +14,26 @@ export const THRASH_TURNS = 3;
 /** ...and this many refills in a row stop automatic compaction: a single refill can be one big read, a streak is a loop. */
 export const THRASH_STREAK = 3;
 
+/** A compaction should leave the context at or below this share of the trigger, or the next one would follow at once. */
+export const RECOVERY_BAND = 0.8;
+
+/** Whether a compaction left `tokensAfter` within the recovery band of `trigger`; an unknown size counts as recovered. */
+export function recoveredBelowBand(tokensAfter: number | undefined, trigger: number): boolean {
+	return tokensAfter === undefined || tokensAfter <= RECOVERY_BAND * trigger;
+}
+
 /** Counts compactions that came right after the previous one. */
 export class ThrashBreaker {
 	#turnsSince: number | undefined;
 	#streak = 0;
 	#turnInRun = false;
+	#poorRecovery = false;
 
 	reset(): void {
 		this.#turnsSince = undefined;
 		this.#streak = 0;
 		this.#turnInRun = false;
+		this.#poorRecovery = false;
 	}
 
 	turnEnded(): void {
@@ -41,15 +51,33 @@ export class ThrashBreaker {
 		return this.#turnsSince;
 	}
 
-	/** Records a finished compaction; a manual one starts the count over. */
-	compacted(manual: boolean): void {
+	/**
+	 * Records a finished compaction; a manual one starts the count over. One at a finished item (`item`) is the
+	 * harness's choice, not a refill: it restarts the turn count (the cooldown) and leaves the streak as it was.
+	 * An automatic one that did not `recovered` (the context stayed above the recovery band) refuses the next within the
+	 * refill window at once: a second summary of what is left would free little.
+	 */
+	compacted(manual: boolean, item = false, recovered = true): void {
+		this.#poorRecovery = !manual && !item && !recovered;
+		if (item) {
+			this.#turnsSince = 0;
+			return;
+		}
 		this.#streak = !manual && this.#turnsSince !== undefined && this.#turnsSince <= THRASH_TURNS ? this.#streak + 1 : 0;
 		this.#turnsSince = 0;
 	}
 
-	/** Whether an automatic compaction now should be refused: the context refilled right away too many times. */
-	tripped(): boolean {
-		return this.#streak >= THRASH_STREAK && this.#turnsSince !== undefined && this.#turnsSince <= THRASH_TURNS;
+	/**
+	 * Whether an automatic compaction now should be refused: the context refilled right away too many times, or (unless
+	 * `ignoreBand`) the previous compaction left it above the recovery band. An overflow compaction is the only way to
+	 * continue, so the band never refuses it; the compact tool has its own cooldown and floor.
+	 */
+	tripped(ignoreBand = false): boolean {
+		return (
+			((this.#poorRecovery && !ignoreBand) || this.#streak >= THRASH_STREAK) &&
+			this.#turnsSince !== undefined &&
+			this.#turnsSince <= THRASH_TURNS
+		);
 	}
 }
 

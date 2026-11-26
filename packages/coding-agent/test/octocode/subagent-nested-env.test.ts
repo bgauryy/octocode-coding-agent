@@ -88,7 +88,7 @@ describe("an Octocode that a subagent's command starts", () => {
 });
 
 describe("the nesting counter", () => {
-	it("counts each task, and survives the clearing that makes a nested session top-level", () => {
+	it("counts the task, refuses a second level, and survives the clearing that makes a nested session top-level", () => {
 		const child = subagentProcessEnv(undefined, { PATH: "/bin" }, { id: "first" });
 		expect(child[NESTING_ENV]).toBe("1");
 		expect(CHILD_OWNED_ENV).not.toContain(NESTING_ENV);
@@ -96,13 +96,9 @@ describe("the nesting counter", () => {
 		expect(dropForeignChildEnv(shell, 555, () => true)).toBe(true);
 		expect(shell.OCTOCODE_SUBAGENT).toBeUndefined();
 		expect(nestingOf(shell)).toBe(1);
-		// The nested session may start one more; what it starts cannot, through its own nested session.
-		expect(nestingRefusal(shell)).toBeUndefined();
-		const grandchild = subagentProcessEnv(undefined, shell, { id: "second" });
-		expect(grandchild[NESTING_ENV]).toBe("2");
-		const deepest: NodeJS.ProcessEnv = { ...grandchild, OCTOCODE_PARENT_PID: "100 1793000000" };
-		dropForeignChildEnv(deepest, 555, () => true);
-		expect(nestingRefusal(deepest)).toMatch(/2 agent tasks deep/);
+		// Depth is one: neither a child nor a session its shell started may start another task.
+		expect(nestingRefusal(shell)).toMatch(/1 agent tasks deep/);
+		expect(nestingRefusal({})).toBeUndefined();
 	});
 
 	it("reads no counter, or a bad one, as a top-level session", () => {

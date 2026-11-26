@@ -1,11 +1,17 @@
 import type { ScrollView } from "../components/scroll-view.ts";
 import { animationClock } from "../tokens/clock.ts";
 
-/** How often a drag held past the edge of its scroll view scrolls it. */
-const AUTO_SCROLL_INTERVAL_MS = 50;
-/** Ticks at one speed before a held drag speeds up by a line per tick. */
-const AUTO_SCROLL_RAMP_TICKS = 10;
-/** The most lines one tick scrolls: the wheel's per-frame cap. */
+/**
+ * How often a drag held past the edge of its scroll view scrolls it: the streaming frame floor (25 fps). Each tick
+ * scrolls the whole lines its speed has earned, so the view moves in small even steps; a faster cadence would put
+ * synchronized-output frames closer than xterm.js paints them.
+ */
+export const AUTO_SCROLL_INTERVAL_MS = 40;
+/** The time a speed is given in: `step` lines per this many milliseconds. */
+const SPEED_UNIT_MS = 50;
+/** Time at one speed before a held drag speeds up by a step. */
+const AUTO_SCROLL_RAMP_MS = 500;
+/** The fastest speed in lines per `SPEED_UNIT_MS`: the wheel's per-frame cap. */
 export const AUTO_SCROLL_MAX_LINES = 24;
 
 /** What auto-scroll reads from the selection: the anchored view's visible rows, and how to extend to the pointer. */
@@ -27,7 +33,9 @@ export class SelectionAutoScroll {
 	private pointer?: { x: number; y: number };
 	private direction: -1 | 0 | 1 = 0;
 	private distance = 0;
-	private ticks = 0;
+	private heldMs = 0;
+	/** Earned scroll not yet taken, in line-milliseconds; it starts at one line so the first tick moves at once. */
+	private carry = SPEED_UNIT_MS;
 	/** The animation clock subscription while a drag scrolls. */
 	private timer?: () => void;
 
@@ -39,9 +47,9 @@ export class SelectionAutoScroll {
 		return this.timer !== undefined;
 	}
 
-	/** Lines the next tick scrolls. */
+	/** The speed now, in lines per 50 ms. */
 	get step(): number {
-		return Math.min(AUTO_SCROLL_MAX_LINES, this.distance + Math.floor(this.ticks / AUTO_SCROLL_RAMP_TICKS));
+		return Math.min(AUTO_SCROLL_MAX_LINES, this.distance + Math.floor(this.heldMs / AUTO_SCROLL_RAMP_MS));
 	}
 
 	/** Follow a drag motion: start, retarget or stop scrolling by where the pointer is. */
@@ -57,7 +65,7 @@ export class SelectionAutoScroll {
 			this.stop();
 			return;
 		}
-		if (direction !== this.direction) this.ticks = 0;
+		if (direction !== this.direction) this.restartSpeed();
 		this.pointer = { x: pointer.x, y: pointer.y };
 		this.direction = direction;
 		this.distance = direction < 0 ? visibleTop - pointer.y + 1 : pointer.y - visibleBottom + 1;
@@ -66,7 +74,12 @@ export class SelectionAutoScroll {
 		this.timer = animationClock.subscribe(() => this.tick(), { everyMs: AUTO_SCROLL_INTERVAL_MS, kind: "info" });
 	}
 
-	/** Scroll one step; stop at the end of the content. */
+	private restartSpeed(): void {
+		this.heldMs = 0;
+		this.carry = SPEED_UNIT_MS;
+	}
+
+	/** Scroll the whole lines earned since the last tick; stop at the end of the content. */
 	tick(): void {
 		const visible = this.host.visibleRows();
 		const pointer = this.pointer;
@@ -74,8 +87,12 @@ export class SelectionAutoScroll {
 			this.stop();
 			return;
 		}
-		const lines = this.direction * this.step;
-		this.ticks += 1;
+		this.carry += this.step * AUTO_SCROLL_INTERVAL_MS;
+		this.heldMs += AUTO_SCROLL_INTERVAL_MS;
+		const whole = Math.floor(this.carry / SPEED_UNIT_MS);
+		if (whole === 0) return;
+		this.carry -= whole * SPEED_UNIT_MS;
+		const lines = this.direction * whole;
 		if (visible.scrollView.scrollBy(lines) === lines) {
 			this.stop();
 			return;
@@ -90,6 +107,6 @@ export class SelectionAutoScroll {
 		this.pointer = undefined;
 		this.direction = 0;
 		this.distance = 0;
-		this.ticks = 0;
+		this.restartSpeed();
 	}
 }

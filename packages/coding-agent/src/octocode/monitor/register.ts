@@ -11,7 +11,6 @@ import type { FeatureContext, FeatureSetup } from "../../core/features/index.ts"
 import { renderPrompt } from "../../core/prompt-template.ts";
 import { MONITOR_DEFAULTS } from "../../core/settings-schema/monitor.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
-import { MONITOR_SOURCE } from "../events/source.ts";
 import { processStartTime } from "../shared/process.ts";
 import { STATUS } from "../shared/status.ts";
 import { isStaleSessionError } from "../shared/util.ts";
@@ -143,18 +142,16 @@ export function registerMonitor(api: FeatureSetup, options: MonitorOptions): voi
 			}
 		};
 		const ledger = monitorLedgerOf(api);
-		/** Sends one alert (a wake when this session owns the cause, else a note) and records it in the ledger once settled. */
-		const send = (content: string, attention: Required<Pick<Attention, "at">> & Attention, wake: boolean) => {
-			const message = { customType: MONITOR_NOTICE_TYPE, content, display: wake };
+		/** Wakes this session with one alert whose cause it owns and records it in the ledger once settled. */
+		const send = (content: string, attention: Required<Pick<Attention, "at">> & Attention) => {
+			const message = { customType: MONITOR_NOTICE_TYPE, content, display: true };
 			const { rule, value, threshold, at, subject } = attention;
 			try {
-				const sending = wake
-					? wakeGateOf(api).emit(
-							{ kind: "monitor.alert", rule, value, threshold, at, ...(subject === undefined ? {} : { subject }) },
-							message,
-							{ triggerTurn: true, deliverAs: "followUp" },
-						)
-					: wakeGateOf(api).emit([], message, { triggerTurn: false }, false, [MONITOR_SOURCE]);
+				const sending = wakeGateOf(api).emit(
+					{ kind: "monitor.alert", rule, value, threshold, at, ...(subject === undefined ? {} : { subject }) },
+					message,
+					{ triggerTurn: true, deliverAs: "followUp" },
+				);
 				Promise.resolve(sending).then(
 					() => ledger.record(attention, true),
 					(error: unknown) => {
@@ -182,18 +179,20 @@ export function registerMonitor(api: FeatureSetup, options: MonitorOptions): voi
 				);
 			}
 		};
-		/** Delivers what the publisher filed since the last read: a wake to the owner, a note to a root session, nothing to others. */
+		/**
+		 * Delivers what the publisher filed since the last read: a wake to the session whose processes cause it; another root
+		 * session only records it in the ledger (its footer mark comes from the rules), as the model can do nothing about
+		 * load it does not own; a subagent that does not own it, nothing.
+		 */
 		const deliver = (rows: readonly MachineAlertRow[]) => {
 			for (const row of rows) {
 				cursor = row.seq;
 				const own = row.owner === title();
 				if (!own && options.isSubagent) continue;
 				const rule = row.rule as MachineRule;
-				send(
-					alertText(row, own),
-					{ rule: machineRuleId(rule), value: row.value, threshold: row.threshold, at: row.at },
-					own,
-				);
+				const attention = { rule: machineRuleId(rule), value: row.value, threshold: row.threshold, at: row.at };
+				if (own) send(alertText(row, own), attention);
+				else ledger.record(attention, true);
 			}
 		};
 		const onSample = (sample: MachineSample, holds: boolean) => {
@@ -214,11 +213,13 @@ export function registerMonitor(api: FeatureSetup, options: MonitorOptions): voi
 			watch.check(options.jobs(), now(), minutes).then((stuck) => {
 				if (current !== generation) return;
 				for (const job of stuck)
-					send(
-						stuckJobText(job),
-						{ rule: "job", value: Math.round(job.silentMs / 60_000), threshold: minutes, at: now(), subject: job.id },
-						true,
-					);
+					send(stuckJobText(job), {
+						rule: "job",
+						value: Math.round(job.silentMs / 60_000),
+						threshold: minutes,
+						at: now(),
+						subject: job.id,
+					});
 			}, onError);
 		};
 		try {

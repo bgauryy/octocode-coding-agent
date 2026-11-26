@@ -1,5 +1,4 @@
 import "../mcp-host.ts";
-import { recommendedPresets } from "../../../mcp/src/recommended/index.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { createFauxCore, fauxAssistantMessage, getCurrentTools } from "@octocodeai/octocode-ai";
@@ -11,7 +10,6 @@ import { createTestSession } from "../helpers/session.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createMcpFeature } from "../../../mcp/src/index.ts";
-import { researchServerLaunch } from "./research-server-launch.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
 import { loadProfiles } from "../../src/octocode/subagents/profiles.ts";
 import { tmp } from "./helpers.ts";
@@ -20,7 +18,10 @@ import { nativeFeatureSet } from "../helpers/native-features.ts";
 
 afterEach(() => vi.unstubAllEnvs());
 
-/** The tools a session declares to the model (and whether codemode is among them) when the user's mcp.json runs `octocode`. */
+/** The namespace a session gives the fixture server's tools. */
+const PREFIX = "mcp__fixture__";
+
+/** The tools a session declares to the model (and whether codemode is among them) when the user's mcp.json runs the `fixture` server. */
 async function declaredTools(
 	role: "main" | "researcher",
 	server: Record<string, unknown> | undefined,
@@ -39,7 +40,7 @@ async function declaredTools(
 	vi.stubEnv("OCTOCODE_MCP", "1");
 	vi.stubEnv("OCTOCODE_OFFLINE", "1");
 	vi.stubEnv("OCTOCODE_SUBAGENT", role === "main" ? "0" : "1");
-	if (server) fs.writeFileSync(path.join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { octocode: server } }));
+	if (server) fs.writeFileSync(path.join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { fixture: server } }));
 	const faux = createFauxCore({
 		provider: "faux",
 		models: [{ id: "faux-1", contextWindow, maxTokens: 4096 }],
@@ -64,7 +65,7 @@ async function declaredTools(
 			{ name: "faux", factory: provider },
 			{
 				name: "builtin:mcp",
-				factory: createMcpFeature({ presets: recommendedPresets(), logPath: path.join(root, "mcp.log") }),
+				factory: createMcpFeature({ presets: [], logPath: path.join(root, "mcp.log") }),
 			},
 		]),
 		disabledFeatures: ["mcp"],
@@ -105,7 +106,7 @@ async function declaredTools(
 				},
 			]);
 			await session.prompt("Which tools do you have?");
-			if (!expectConnected || declared.some((name) => name.startsWith("mcp__octocode__"))) break;
+			if (!expectConnected || declared.some((name) => name.startsWith(PREFIX))) break;
 		}
 		return declared;
 	} finally {
@@ -114,76 +115,56 @@ async function declaredTools(
 	}
 }
 
-const real = () => {
-	const { command, args, env } = researchServerLaunch(process.cwd());
-	return { command, args, env: { ...env, ALLOWED_PATHS: process.cwd() } };
-};
-const RESEARCH = ["localFetch", "localSearch", "structureSearch", "astSearch", "lspSearch"].map(
-	(name) => `mcp__octocode__${name}`,
-);
+/** A fixture server the test controls: its tool set is its own, never a shipped server's. */
+const fixture = () => ({
+	command: process.execPath,
+	args: [path.join(import.meta.dirname, "fixtures", "echo-mcp.mjs")],
+});
+const FIXTURE_TOOLS = ["shout", "pick", "fail", "roots", "grow", "shrink"].map((name) => `${PREFIX}${name}`);
+const ownTools = (declared: string[]) => declared.filter((name) => name.startsWith(PREFIX));
 
-const GITHUB_DIRECT = ["ghSearchCode", "ghGetFileContent", "ghStructure"].map((name) => `mcp__octocode__${name}`);
-const HISTORY_AND_REGISTRY = ["ghSearchHistory", "ghGetHistoryItem", "artifactSearch", "ghSearchRepo"].map(
-	(name) => `mcp__octocode__${name}`,
-);
-
-describe("Octocode research tools declared for a user-owned server", () => {
+describe("MCP tools declared for a user-owned server", () => {
 	it.each(["main", "researcher"] as const)(
-		"declares local, GitHub, and package tools directly by default in the %s session",
+		"declares every tool the server lists directly in the %s session, with no tool_search",
 		async (role) => {
-			const declared = await declaredTools(role, real());
+			const declared = await declaredTools(role, fixture());
 			expect(declared).not.toContain("codemode");
-			const octocode = declared.filter((name) => name.startsWith("mcp__octocode__"));
-			expect(octocode).toEqual(expect.arrayContaining(RESEARCH));
-			expect(octocode).toContain("mcp__octocode__ghSearchCode");
-		},
-		60_000,
-	);
-
-	it.each(["main", "researcher"] as const)(
-		"declares the GitHub history and registry tools directly too in the %s session, with no tool_search",
-		async (role) => {
-			const declared = await declaredTools(role, undefined);
-			const octocode = declared.filter((name) => name.startsWith("mcp__octocode__"));
-			expect(octocode).toEqual(expect.arrayContaining([...RESEARCH, ...GITHUB_DIRECT, ...HISTORY_AND_REGISTRY]));
 			expect(declared).not.toContain("tool_search");
+			expect(ownTools(declared)).toEqual(expect.arrayContaining(FIXTURE_TOOLS));
 		},
 		60_000,
 	);
 
 	it("lets mcp.json hide single tools", async () => {
-		const one = await declaredTools("main", { ...real(), toolExposure: { ghSearchRepo: "hidden" } });
-		expect(one).not.toContain("mcp__octocode__ghSearchRepo");
-		expect(one).toContain("mcp__octocode__ghSearchHistory");
+		const one = await declaredTools("main", { ...fixture(), toolExposure: { fail: "hidden" } });
+		expect(one).not.toContain(`${PREFIX}fail`);
+		expect(one).toContain(`${PREFIX}shout`);
 	}, 60_000);
 
 	it.each(["main", "researcher"] as const)(
 		"keeps the default catalog direct in the %s session even with a small context window",
 		async (role) => {
-			const declared = await declaredTools(role, real(), true, 8_000);
-			expect(declared).toEqual(expect.arrayContaining(RESEARCH));
-			expect(declared).toContain("mcp__octocode__ghSearchCode");
+			const declared = await declaredTools(role, fixture(), true, 8_000);
+			expect(ownTools(declared)).toEqual(expect.arrayContaining(FIXTURE_TOOLS));
 		},
 		60_000,
 	);
 
 	it("lets an explicit server exposure or tool exposure in mcp.json win over the default", async () => {
-		const hidden = await declaredTools("main", { ...real(), exposure: "hidden" }, false);
-		expect(hidden.filter((name) => name.startsWith("mcp__octocode__"))).toEqual([]);
-		const oneTool = await declaredTools("main", { ...real(), toolExposure: { localFetch: "hidden" } });
-		expect(oneTool.filter((name) => name.startsWith("mcp__octocode__")).sort()).toEqual(
-			expect.arrayContaining(RESEARCH.filter((name) => !name.endsWith("localFetch"))),
-		);
-		expect(oneTool).not.toContain("mcp__octocode__localFetch");
-		const all = await declaredTools("main", { ...real(), exposure: "direct" });
-		expect(all.filter((name) => name.startsWith("mcp__octocode__")).length).toBeGreaterThan(RESEARCH.length);
+		const hidden = await declaredTools("main", { ...fixture(), exposure: "hidden" }, false);
+		expect(ownTools(hidden)).toEqual([]);
+		const oneTool = await declaredTools("main", { ...fixture(), toolExposure: { shout: "hidden" } });
+		expect(ownTools(oneTool)).toEqual(expect.arrayContaining(FIXTURE_TOOLS.filter((name) => !name.endsWith("shout"))));
+		expect(oneTool).not.toContain(`${PREFIX}shout`);
+		const all = await declaredTools("main", { ...fixture(), exposure: "direct" });
+		expect(ownTools(all)).toEqual(expect.arrayContaining(FIXTURE_TOOLS));
 	}, 120_000);
 
-	it("uses the same direct default for Octocode and other servers", async () => {
+	it("uses the same direct default for every server and tool name", async () => {
 		const { getMcpToolExposure } = await import("../../../mcp/src/servers.ts");
-		for (const tool of ["localFetch", "ghSearchCode", "ghSearchHistory"])
+		for (const tool of ["alpha", "beta_one", "local_gamma"])
 			expect(getMcpToolExposure({ command: "x" }, tool)).toBe("direct");
-		expect(getMcpToolExposure({ command: "x", exposure: "hidden" }, "localFetch")).toBe("hidden");
-		expect(getMcpToolExposure({ command: "x", toolExposure: { "local*": "hidden" } }, "localFetch")).toBe("hidden");
+		expect(getMcpToolExposure({ command: "x", exposure: "hidden" }, "alpha")).toBe("hidden");
+		expect(getMcpToolExposure({ command: "x", toolExposure: { "local*": "hidden" } }, "local_gamma")).toBe("hidden");
 	});
 });

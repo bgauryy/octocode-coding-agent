@@ -1,63 +1,50 @@
 # Groom the backlog
 
-Bring every open item on this repository's board up to date with the code, the sessions working on it and the user's decisions. Read and write the board only through the `backlog` and `backlogPlan` tools. Item ids such as `B12` are numbered per repository, and the shared database holds other repositories' items under the same numbers, so never query the database directly.
+Only the orchestrator (main session) runs this pass and applies its writes. Children may check delegated batches read-only and report verdicts; they never groom or write the board themselves.
 
-```mermaid
-flowchart LR
-  S[Snapshot board and live sessions] --> C[Check each item: state, timing, relevance]
-  C --> V{Verdict}
-  V -- done, obsolete, duplicate --> X[Spot-check evidence, then close]
-  V -- keep --> K[Fix state, priority, links, note]
-  V -- needs the user --> Q[Batch the questions]
-  X --> R[Report before and after]
-  K --> R
-  Q --> R
-```
+Bring the requested scope up to date with the code, live sessions and the user's decisions: every `backlog` item for proposed-item triage, every open item for a full groom. Use only `backlog` and `backlogPlan` for board reads and writes. Ids are per repository; never query the shared database directly.
 
 ## 1. Snapshot
 
-1. Run `octocode backlog groom` with `bash` first. It does every check that needs no judgment in code: claims whose holder ended, epics with every item finished, items whose paths are gone, likely duplicate titles, blocked and idle items. Judge its flagged rows before anything else, and do not redo its checks by hand.
-2. Take the "before" counts from the footer's backlog line or `backlogPlan` `list` (its header counts states); list the board with `states` `["backlog","todo","ongoing"]`, `sort` `board`, `limit` 200 only to judge items the groom report did not flag.
-3. Run `agent` `coordinate` `list` to see live sessions, their claimed items and the paths they hold. An item that a live session or its child holds is theirs: you may only add a `note`, or `message` the holder with a finding.
-4. Read items in batches with `backlog` `get` and several ids. Each read shows the goal ("Done when"), where, why, evidence, plan, notes, open steps, prerequisites and the created, updated and claimed ages.
-5. For more than about 40 items, split them into batches and delegate the checks; see [delegation](delegation.md). You apply every change yourself.
+1. Run `octocode backlog groom` with `bash` first. Judge its flagged stale claims, finished epics, gone paths, likely duplicates, and blocked or idle items before anything else; do not redo its mechanical checks.
+2. Take before-counts from `backlogPlan` `stat` or `list`; list the requested scope with `sort` `board`, `limit` 200 to judge rows the report did not flag.
+3. Run `agent` `coordinate` `list`. An item a live session or child holds is theirs: only `note` it or `message` the holder with a finding.
+4. Read items in batches with `backlog` `get`: goal, why, paths, evidence, plan, notes, steps, prerequisites, and created, updated and claimed ages.
+5. For more than about 40 items, delegate read-only batches per [delegation](delegation.md); you apply every change.
 
 ## 2. Check each item
 
-Take the goal literally. An item is done only when every clause of "Done when" holds, including the named test, platform or approval. Read [states](states.md) for what each state and mark means and which changes the store allows.
+Take the goal literally: every "Done when" clause, named test, platform and approval must hold. Read [states](states.md) for columns, marks and allowed changes.
 
-| Check     | How                                                                                                                                                                                                   | Signal                                                                                                                                   |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| State     | Its column, the marks (`stale: holder ended`, `blocked by`, `review`, `worked on by`) and its open steps                                                                                              | Wrong column, stale claim, blocked item still in todo, done parent with open children                                                    |
-| Timing    | Created, updated and claimed ages from `get`. For changes since then, run `git log --since="<updated ISO>" --oneline -- <paths>`. For one path's last change, run `git log -1 --format=%cr -- <path>` | Code under its paths changed after its last update, so recheck it first. Ongoing with no update for days. Backlog that was never triaged |
-| Relevance | Do its paths exist? Does the cited line or symbol still show the problem? Does the failing test still fail? Run focused tests only                                                                    | Problem fixed, file or feature gone, or the goal still unmet                                                                             |
-| Overlap   | Search the board for the same paths, goal or origin: `backlogPlan` `list` with `touchingPaths`, `query` or `underEpic`                                                                                | Duplicate, a child folded into its parent, or a follow-up already covered                                                                |
-| Research  | Read its saved findings: `.octocode/agent/<topic>/`, links, notes, the completion                                                                                                                     | Question answered, so record the conclusion and mark it done. Decision pending, so ask the user                                          |
-| RFC       | Open the linked RFC file and its status, decision and slices                                                                                                                                          | Accepted, so split it into todo slices. Pending, so ask the user. Rejected or superseded, so close it                                    |
-| Owner     | Holder alive? Who can do it: you, a child profile, another session, or the user                                                                                                                       | Assign it, or note what is missing                                                                                                       |
+| Check     | How                                                                     | Signal                                                                                    |
+| --------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| State     | Column, marks, open steps                                               | Wrong column, stale claim, blocked item in todo, done parent with open children           |
+| Timing    | Ages from `get`; `git log --since="<updated ISO>" --oneline -- <paths>` | Code changed after the last update; idle ongoing work; untriaged proposals                |
+| Relevance | Read current paths/symbols; rerun the cited focused test when needed    | Fixed or gone problem, or an unmet goal                                                   |
+| Overlap   | Search `touchingPaths`, `query`, `underEpic`, origin and verification   | Duplicate, redundant items to merge, a child folded into its parent, or covered follow-up |
+| Value     | Impact, urgency, risk, unblocked work and stated user priorities        | Priority and importance ranking; not ease or age alone                                    |
+| Research  | Read saved findings, links, notes and completion                        | Answered question to finish, or a decision for the user                                   |
+| RFC       | Read the linked RFC's status, decision and slices                       | Accept and slice, ask when pending, close when rejected or superseded                     |
+| Owner     | Live holder and capable owner: you, child, session or user              | Assign, or note the missing decision, prerequisite or platform                            |
 
-Give each item one verdict, with a path:line, command result or report id as evidence. For the verdict and its tool call, see [verdicts](verdicts.md).
+Give each item one verdict with path:line, command output or report evidence; see [verdicts](verdicts.md). Similar titles or shared files alone do not prove redundancy.
 
 ## 3. Apply
 
-1. Spot-check every verdict other than keep yourself before writing: read the cited code, or rerun the test. A child's verdict is a claim. Keep the item when the evidence is partial; for example, a test passes but does not cover the case the goal names.
-2. Write each change through the tools, one item per `backlog` call and priority or state batches through `backlogPlan` `edit`. Every close, done or reopen states its evidence. Never weaken a goal to make an item done; split the remainder into a new item with `from`.
-3. For research items, put the conclusion in the completion summary and link the saved findings as `output`. For RFC items, link the RFC file as `evidence` and add its slices as children of an epic.
-4. Add a `note` when a check found something but changed no state: what you checked, what holds, and what is left. A note is the comment channel. It is allowed on any item, including items held by others.
-5. Batch questions only the user can answer (won't-do, priority conflicts, RFC acceptance, paid runs) into one `askUser` call of at most 4. Leave those items unchanged until the user answers.
+1. Spot-check every non-keep verdict yourself. A child's verdict is a claim; partial evidence means keep and note the gap.
+2. Apply supported changes in the same pass, including user answers; do not leave evidence-backed merges, closures, promotions or notes as recommendations.
+3. Write through the tools: one item per `backlog` call, field/state batches through `backlogPlan` `edit`. Every close, done or reopen states its evidence. Never weaken a goal; split an unmet remainder with `from`.
+4. Merge redundant items per [verdicts](verdicts.md#merging-redundant-items): update the survivor first, preserve every distinct requirement and useful link, then close absorbed items as duplicates of it.
+5. For research, record the conclusion and saved findings. For an accepted RFC, link the RFC and add slices under its epic.
+6. `note` what changed, what holds, and what remains when a check informs later work but changes no state, and whenever an item stays blocked or held. Notes are allowed on items held by others.
+7. Batch only user-owned decisions (won't-do, priority conflicts, scope-changing merges, RFC acceptance, paid runs) into one `askUser` call of at most 4; leave those items unchanged until answered.
 
 ## 4. Assign
 
-There is no assignee field: an item is assigned by claiming it.
-
-- **You:** `backlog` `claim` it when you will do it in this session.
-- **A child:** `agent` `task` with `item` claims an unheld todo or backlog item for the child (goal and why set). Pick the profile by the work: researcher for research, implementer for a scoped fix, reviewer for a check.
-- **Another live session:** `message` it with the item id and the reason; never edit its claimed item.
-- **A stale claim**, whose holder ended: `claim` it to take it over, or move it to todo with a note naming the ended holder. The store also returns such claims to todo on its own after a day idle.
-- **Nobody yet:** leave it in todo with a note saying what it waits for, such as a decision, a prerequisite (`dependsOn`) or a platform. Use `notify` `on` `item.state` `ready` to be notified when its prerequisites finish.
+Claim work you will do now; delegate with `agent` `task` `item`; message live holders rather than editing their claims; take over or release stale claims with a note. Promote ready, unowned items to todo. If one waits, note the decision, prerequisite or platform and use `notify` `on` `item.state` when another item unblocks it.
 
 ## 5. Report
 
-Return the sprint report described in [output](../output.md): board counts before and after, every change with its evidence, items waiting on the user, blocked and stale items, the next sprint's ready items, and what was not checked.
+Use [output](../output.md): before/after counts, applied changes and evidence, the most important items, user decisions, blocked/held work, ready next work and unchecked scope.
 
-Done when every open item you could change has a verdict backed by evidence, every non-keep verdict was spot-checked and written through the tools, the after-counts come from a fresh `list`, and the report names items skipped because others hold them.
+Done when every item in scope has an evidence-backed verdict, every non-keep verdict was spot-checked and written, the after-counts come from a fresh `stat` or `list`, and the report names held or unchecked items.

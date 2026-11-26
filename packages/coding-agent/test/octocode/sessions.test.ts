@@ -19,7 +19,7 @@ import { sessionDir, sessionsRoot, setCurrentSession } from "../../src/octocode/
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -373,11 +373,12 @@ describe("running work after compaction", () => {
 			customType: "octocode-bash-job",
 			details: { id: "bash-1", log: "/tmp/bash-1-1.log" },
 		});
-		sharedAgentDb()
-			.db.prepare(
+		const { agent: workspaceAgent, workspace } = workspaceDb(cwd);
+		workspaceAgent.db
+			.prepare(
 				"INSERT INTO backlog (workspace_id, seq, title, state, assignee, created_by, created_at, updated_at) VALUES (?, 6, 'Finish lane B', 'ongoing', 'sess-k', 'user', 0, 0)",
 			)
-			.run(registeredWorkspace(cwd).id);
+			.run(workspace.id);
 		await host.fire("session_compact", { type: "session_compact" }, host.ctx);
 		expect(host.sent).toHaveLength(1);
 		const { message, options } = host.sent[0];
@@ -395,13 +396,13 @@ describe("running work after compaction", () => {
 		const host = setup({ id: "sess-t", entries: [] });
 		await host.start();
 		const user = { id: "user", kind: "human" as const };
-		const { tasks } = new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
+		const { tasks } = new BacklogStore(() => workspaceDb(cwd).agent, workspaceDb(cwd).workspace.id);
 		tasks.add({ goal: "check the footer counts", session: "sess-t" }, user);
 		const finished = tasks.add({ goal: "already finished", session: "sess-t" }, user);
 		tasks.update(finished.ref, { state: "done" }, user);
 		await host.fire("session_compact", { type: "session_compact" }, host.ctx);
 		expect(host.sent).toHaveLength(1);
-		const { content } = host.sent[0].message;
+		const content = host.sent[0].message.content.replace(/^\[src [^\n]*\n/, "");
 		expect(content).toMatch(
 			/^\[After compaction\] Open session steps: 1 of the session \([^\n]*`backlog get`[^\n]*`backlog step`[^\n]*\n- [^\n]*check the footer counts/,
 		);
@@ -423,7 +424,7 @@ describe("running work after compaction", () => {
 		expect(host.sent).toHaveLength(1);
 		const { message, options } = host.sent[0];
 		expect(options).toEqual({ triggerTurn: false });
-		expect(message.content).toBe(
+		expect(message.content.replace(/^\[src [^\n]*\n/, "")).toBe(
 			`[After compaction] Your last reply before the compaction: "On it"\nLatest user request: "${long}"`,
 		);
 	});
@@ -438,9 +439,9 @@ describe("resume brief", () => {
 	it("tells the model once, on resume, how long it was away, the branch move and this session's backlog", async () => {
 		const host = setup({ id: "sess-r", entries: lastActive(3 * HOUR) });
 		await host.start();
-		const agent = sharedAgentDb();
-		const key = registeredWorkspace(cwd).id;
-		agent.db.prepare("UPDATE sessions SET branch = ? WHERE id = ?").run("feature/old", "sess-r");
+		sharedAgentDb().db.prepare("UPDATE sessions SET branch = ? WHERE id = ?").run("feature/old", "sess-r");
+		const { agent, workspace } = workspaceDb(cwd);
+		const key = workspace.id;
 		const add = agent.db.prepare(
 			"INSERT INTO backlog (workspace_id, seq, title, state, assignee, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'user', 0, 0)",
 		);
@@ -476,8 +477,8 @@ describe("resume brief", () => {
 	it("lists each ongoing item on one line with its goal clipped, and names the rest by number", async () => {
 		const host = setup({ id: "sess-n", entries: lastActive(3 * HOUR) });
 		await host.start();
-		const agent = sharedAgentDb();
-		const key = registeredWorkspace(cwd).id;
+		const { agent, workspace } = workspaceDb(cwd);
+		const key = workspace.id;
 		const add = agent.db.prepare(
 			"INSERT INTO backlog (workspace_id, seq, title, goal, why, paths, state, assignee, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, 'Because.', 'src/a.ts', 'ongoing', 'sess-n', 'user', 0, ?)",
 		);
@@ -505,8 +506,8 @@ describe("resume brief", () => {
 	it("counts proposed items with to-do items in the backlog line", async () => {
 		const host = setup({ id: "sess-p", entries: lastActive(3 * HOUR) });
 		await host.start();
-		const agent = sharedAgentDb();
-		const key = registeredWorkspace(cwd).id;
+		const { agent, workspace } = workspaceDb(cwd);
+		const key = workspace.id;
 		const add = agent.db.prepare(
 			"INSERT INTO backlog (workspace_id, seq, title, state, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, 'user', 0, 0)",
 		);
@@ -606,9 +607,10 @@ describe("resume brief", () => {
 		const host = setup({ id: "sess-d", entries: lastActive(20 * 60_000) });
 		await host.start();
 		await vi.waitFor(() => expect(row("sess-d")?.head).toBeTruthy());
-		const { id: key } = registeredWorkspace(cwd);
-		sharedAgentDb()
-			.db.prepare(
+		const { agent, workspace } = workspaceDb(cwd);
+		const key = workspace.id;
+		agent.db
+			.prepare(
 				"INSERT INTO backlog (workspace_id, seq, title, body, state, priority, tags, created_by, created_at, updated_at) VALUES (?, 1, 't', '', 'todo', 2, '', 'user', 0, 0)",
 			)
 			.run(key);
@@ -903,7 +905,7 @@ describe("/resume", () => {
 
 	/** Items B1 (done by "other") and B2 (ongoing for "other"), and the team agent "inky-kraken" running "other". */
 	function linkOther() {
-		const store = new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
+		const store = new BacklogStore(() => workspaceDb(cwd).agent, workspaceDb(cwd).workspace.id);
 		const item = { why: "Users need this", goal: "Result can be checked", createdBy: "user" };
 		const actor = { id: "other", kind: "agent" as const };
 		const finished = store.add({ title: "finished", ...item });
@@ -922,7 +924,8 @@ describe("/resume", () => {
 			actor,
 		);
 		store.update(store.add({ title: "held", ...item }).ref, { state: "ongoing" }, actor);
-		agents.insert(sharedAgentDb().db, "team", registeredWorkspace(cwd, sharedAgentDb()), {
+		const { agent, workspace } = workspaceDb(cwd);
+		agents.insert(agent.db, "team", workspace, {
 			id: "inky-kraken",
 			role: "main",
 			pid: process.pid,

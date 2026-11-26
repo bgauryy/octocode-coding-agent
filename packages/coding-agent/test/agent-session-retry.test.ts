@@ -194,7 +194,12 @@ describe("AgentSession retry", () => {
 
 		await created.session.prompt("Test");
 
-		expect(delays).toEqual([1, 2, 4, 5]);
+		// Exponential 1, 2, 4, 8 with up to half again of jitter, never past the cap.
+		expect(delays).toHaveLength(4);
+		delays.forEach((delay, index) => {
+			expect(delay).toBeGreaterThanOrEqual(Math.min(2 ** index, 5));
+			expect(delay).toBeLessThanOrEqual(5);
+		});
 	});
 
 	it("spreads rate-limit retries so concurrent sessions sharing a quota do not retry in lockstep", async () => {
@@ -314,7 +319,12 @@ describe("AgentSession retry", () => {
 			});
 			await created.session.prompt("Test");
 			expect(created.getCallCount()).toBe(3);
-			expect(delays).toEqual([4, 8]);
+			// 4 ms and 8 ms backoff, each spread by up to half again.
+			expect(delays).toHaveLength(2);
+			expect(delays[0]).toBeGreaterThanOrEqual(4);
+			expect(delays[0]).toBeLessThanOrEqual(6);
+			expect(delays[1]).toBeGreaterThanOrEqual(8);
+			expect(delays[1]).toBeLessThanOrEqual(12);
 		});
 
 		it("leaves retries off when maxRetries is 0, and fails terminal quota text fast", async () => {

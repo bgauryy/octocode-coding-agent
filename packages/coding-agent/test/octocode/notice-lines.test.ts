@@ -113,7 +113,7 @@ describe("lean prompt note", () => {
 				data: {
 					kind: "lean_prompt",
 					model: "local/tiny",
-					text: 'Lean prompt on for local/tiny: its 32k-token window is under 64k (leanPrompt "auto"; no delegation or skill list)',
+					text: 'Lean prompt on for local/tiny: its 32k-token window is at most 65.5k (leanPrompt "auto"; no delegation or skill list)',
 				},
 			},
 		]);

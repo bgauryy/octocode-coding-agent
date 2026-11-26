@@ -211,7 +211,7 @@ export function createLiveSettingsSelector(host: SettingsSelectorHost, done: () 
 			},
 			onOutputPadChange: (padding) => {
 				host.settingsManager.setOutputPad(padding);
-				// The view binder pads the live rows; `bindRender` asks for the frame.
+				// The view binder pads the live rows and asks for the frame.
 				host.uiStore.getState().setOutputPad(padding);
 			},
 			onAutocompleteMaxVisibleChange: (maxVisible) => {

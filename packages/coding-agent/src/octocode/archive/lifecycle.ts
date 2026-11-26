@@ -4,7 +4,7 @@ import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts"
 import { agentEvents } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { activate, activationId } from "../shared/activation.ts";
-import { registeredWorkspace } from "../../storage/workspace-database.ts";
+import { workspaceDb } from "../../storage/workspace-database.ts";
 import { notify } from "../shared/commands.ts";
 import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
 import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
@@ -73,8 +73,9 @@ export function registerArchiveLifecycle(
 		const file = ctx.sessionManager.getSessionFile();
 		if (!file) return;
 		try {
+			// Transcript repair reads session rows and the mirror (machine file); agent events live in the workspace's file.
 			const agent = sharedAgentDb();
-			const workspace = registeredWorkspace(ctx.cwd, agent);
+			const { agent: events, workspace } = workspaceDb(ctx.cwd);
 			let busy = 0;
 			/** The view file as it was when it proved unusable: no projection until it changes. */
 			let foreign: ForeignViewError | undefined;
@@ -87,9 +88,9 @@ export function registerArchiveLifecycle(
 					try {
 						if (foreign && (await viewSignature(foreign.file)) === foreign.signature) return;
 						foreign = undefined;
-						const sequence = agentEvents.latestSequence(agent.db, workspace.id);
+						const sequence = agentEvents.latestSequence(events.db, workspace.id);
 						if (sequence === projectedSequence) return;
-						await projectAgents(agent, workspace.root, workspace);
+						await projectAgents(events, workspace.root, workspace);
 						projectedSequence = sequence;
 						reported.clear();
 						busy = 0;
@@ -134,7 +135,7 @@ export function registerArchiveLifecycle(
 			const session = ++generation;
 			// The view is derived: a commit only asks for it. However many commits land in one turn of the event loop, one
 			// projection runs after it, off the committing caller's path, and skips when the newest event is already shown.
-			unsubscribe = agent.onCommit(() => {
+			unsubscribe = events.onCommit(() => {
 				queued ??= {
 					timer: setImmediate(() => {
 						queued = undefined;
@@ -143,8 +144,8 @@ export function registerArchiveLifecycle(
 					project,
 				};
 			});
-			agent.transaction(() =>
-				agentEvents.append(agent.db, workspace.id, {
+			events.transaction(() =>
+				agentEvents.append(events.db, workspace.id, {
 					id,
 					time: new Date().toISOString(),
 					name: null,

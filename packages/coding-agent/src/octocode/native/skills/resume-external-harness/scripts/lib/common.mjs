@@ -283,6 +283,7 @@ export function digest(events) {
 	const turns = [];
 	const summaries = [];
 	const files = new Set();
+	const errors = [];
 	let current;
 	for (const event of events) {
 		if (event.kind === "user") {
@@ -290,6 +291,8 @@ export function digest(events) {
 			turns.push(current);
 		} else if (event.kind === "summary") {
 			summaries.push(event.text);
+		} else if (event.kind === "error") {
+			errors.push(event.text);
 		} else if (event.kind === "file") {
 			files.add(event.path);
 		} else {
@@ -301,5 +304,5 @@ export function digest(events) {
 			else if (event.kind === "tool") current.tools.push(event.arg ? `${event.name} ${event.arg}` : event.name);
 		}
 	}
-	return { turns, summaries, files: [...files] };
+	return { turns, summaries, files: [...files], errors };
 }

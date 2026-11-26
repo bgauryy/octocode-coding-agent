@@ -3,7 +3,7 @@ import { resolveConfigValueOrThrow } from "@octocodeai/octocode-ai/utils/resolve
 import { hostPaths, installMcpHost, type McpPathsPort } from "../src/host.ts";
 import type { McpServerEntry } from "../src/config.ts";
 import { expandLaunchTemplates } from "../src/launch-templates.ts";
-import { recommendedPresets } from "../src/recommended/index.ts";
+import { builtinPreset } from "../src/presets/index.ts";
 import { takeLaunchWarnings } from "../src/warnings.ts";
 
 const original = hostPaths();
@@ -93,7 +93,7 @@ describe("launch templates", () => {
 	});
 
 	it("the research server leaves project LSP trust to the user's own setting in trusted projects", () => {
-		const { name, config } = recommendedPresets({}).find((preset) => preset.name === "octocode")!;
+		const { name, config } = builtinPreset("octocode", {});
 		const recommended: McpServerEntry = { name, config: config!, source: "default", scope: "default" };
 		const trustOf = (projectTrusted: boolean) =>
 			envOf(expandLaunchTemplates(recommended, { cwd: "/w", projectTrusted })).OCTOCODE_TRUST_PROJECT_LSP_CONFIG;

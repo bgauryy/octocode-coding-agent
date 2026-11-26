@@ -1,7 +1,7 @@
 import { BYTES_PER_TOKEN, RESULT_DEFAULT_LINES } from "../../../utils/output-budget.ts";
 import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
 
-/** What one foreground bash result may put into the model's context: the shared default (20 KB, 500 lines; see `output-budget.ts`). */
+/** What one foreground bash result may put into the model's context: the bash default (12 KB, 500 lines; see `output-budget.ts`). */
 export const BASH_MAX_BYTES = SETTINGS_DEFAULTS.bashOutputMaxBytes;
 export const BASH_MAX_LINES = RESULT_DEFAULT_LINES;
 
@@ -16,7 +16,7 @@ export interface BashBudget {
 
 /**
  * The limits of one call. `maxBytes` is the `bashOutputMaxBytes` setting; the line limit scales with it (500 lines
- * per 20 KB). `maxOutputTokens` can only lower the budget for the call, at about 4 bytes per token and down to
+ * per default-sized result). `maxOutputTokens` can only lower the budget for the call, at about 4 bytes per token and down to
  * `MIN_OUTPUT_TOKENS`: the user's setting is the ceiling, so a call cannot grow its own result in the context. The full
  * output is saved either way and the result header names its file. A value that is not a number is ignored.
  */

@@ -3,6 +3,7 @@ import { stripBom } from "@octocodeai/octocode-common/text";
 import type { Settings } from "../settings-schema.ts";
 import { ModelAvailabilitySettingsProperties } from "../settings-schema/model-availability.ts";
 import { isMergeableObject } from "./merge.ts";
+import { migrateSettings } from "./migrations.ts";
 import type { SettingsScope, SettingsStorage } from "./storage.ts";
 
 function loadSettingsFromStorage(storage: SettingsStorage, scope: SettingsScope, projectTrusted = false): Settings {
@@ -31,7 +32,20 @@ function loadSettingsFromStorage(storage: SettingsStorage, scope: SettingsScope,
 	) {
 		throw new Error("Invalid disabledProviders setting: expected an array of provider IDs");
 	}
+	if (migrateSettings(settings, scope)) rewriteMigrated(storage, scope);
 	return settings;
+}
+
+/**
+ * Rewrites the scope's file with its earlier keys converted, under the writer lock and from the file's current content,
+ * so a concurrent change is kept; nothing is written when another process converted it first.
+ */
+function rewriteMigrated(storage: SettingsStorage, scope: SettingsScope): void {
+	storage.withLock(scope, (current) => {
+		if (current === undefined) return undefined;
+		const settings = settingsObject(JSON.parse(stripBom(current)));
+		return migrateSettings(settings, scope) ? JSON.stringify(settings, null, 2) : undefined;
+	});
 }
 
 export function tryLoadSettingsFromStorage(
@@ -46,7 +60,7 @@ export function tryLoadSettingsFromStorage(
 	}
 }
 
-/** `settings` as a settings object; anything else (an array, a string) is refused. Keys are never renamed or converted. */
+/** `settings` as a settings object; anything else (an array, a string) is refused. Earlier keys convert in `migrations.ts`. */
 export function settingsObject(settings: Record<string, unknown>): Settings {
 	if (!isMergeableObject(settings)) throw new Error("Invalid settings object: expected a JSON object");
 	return settings;

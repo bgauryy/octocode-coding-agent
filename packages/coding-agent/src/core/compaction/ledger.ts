@@ -7,6 +7,7 @@ import {
 	STOPPED_HEADING,
 	TLDR_HEADING,
 } from "./summary-format.ts";
+import { splitSummary } from "./summary-view.ts";
 
 /**
  * The ledger code carries from summary to summary: the bullets of a checkpoint's standing constraints and key decisions,
@@ -38,7 +39,8 @@ interface LedgerBullet {
 	text: string;
 }
 
-type Ledger = Record<LedgerSection["key"], LedgerBullet[]>;
+/** What a checkpoint hands the next one: the bullets of its ledger sections, and its Goal section's lines verbatim. */
+type Ledger = Record<LedgerSection["key"], LedgerBullet[]> & { goal: string[] };
 
 /** A bullet the model lifted this time, kept in the compaction entry's `details` so its leaving can be audited. */
 export interface LiftedBullet extends LedgerBullet {
@@ -54,13 +56,24 @@ const LEDGER_DETAILS = "ledger";
 export const LEDGER_SOFT_CAP = 25;
 
 const EMPTY = /^\(?none\)?\.?$/i;
-const ID = /^\[([CD]\d+)\]\s*/;
+const ID = /^[*_`]*\[([CD]\d+)\][*_`]*[:.]?\s*/i;
 /**
- * `Lifted [C3]: why`, `Superseded [D2] - why`, `**Lifted [C3]**: why`, or `[C3] lifted: why` with the separator,
- * case-insensitive. A carried bullet restated with its id whose own text starts with one of these words is not a lift.
+ * `Lifted [C3]: why`, `Lifted [C1], [C2]: why`, `Superseded [D2] - why`, `**Lifted [C3]**: why`, or `[C3] lifted: why`.
  */
-const LIFT =
-	/^\**(?:(?:lifted|superseded|withdrawn)\s*:?\s*\[([CD]\d+)\]\**|\[([CD]\d+)\]\s*(?:lifted|superseded|withdrawn)(?=\s*[:—–-]))\s*[:—–-]?\s*(.*)$/i;
+const MULTI_LIFT =
+	/^\**(?:lifted|superseded|withdrawn)\s*:?\s*((?:[*_`]*\[[CD]\d+\][*_`]*(?:\s*(?:,|and|&)\s*)?)+)\**\s*[:—–-]?\s*(.*)$/i;
+const POST_LIFT = /^\**\[([CD]\d+)\]\**\s*(?:lifted|superseded|withdrawn)(?=\s*[:—–-])\s*[:—–-]?\s*(.*)$/i;
+
+function parseLift(bullet: string): { ids: string[]; reason: string } | undefined {
+	const multi = MULTI_LIFT.exec(bullet);
+	if (multi) {
+		const ids = [...multi[1].matchAll(/\[([CD]\d+)\]/gi)].map((m) => m[1].toUpperCase());
+		if (ids.length > 0) return { ids, reason: multi[2].trim() };
+	}
+	const post = POST_LIFT.exec(bullet);
+	if (post) return { ids: [post[1].toUpperCase()], reason: post[2].trim() };
+	return undefined;
+}
 
 const normalize = (text: string): string =>
 	text
@@ -96,24 +109,36 @@ function sectionBullets(text: string, heading: string): string[] {
 	return range ? bulletsOf(lines.slice(range.start + 1, range.end)) : [];
 }
 
+/** The lines of a Goal section that says something: none for a missing section, an empty one or `(none)`. */
+function goalLines(text: string): string[] {
+	const lines = text.split("\n");
+	const range = sectionRange(lines, GOAL_HEADING);
+	const body = range ? lines.slice(range.start + 1, range.end) : [];
+	const said = body.some((line) => line.trim() && !EMPTY.test(line.trim()));
+	return said ? body : [];
+}
+
 const idNumber = (id: string): number => Number(id.slice(1));
 
-/** The carried bullets of a checkpoint body (the model's part, `splitSummary`); a bullet without an id gets the next one. */
+/** The carried bullets of a checkpoint body (excluding `## User Messages`); a bullet without an id gets the next one. */
 export function ledgerOf(body: string | undefined): Ledger {
-	const ledger: Ledger = { constraints: [], decisions: [] };
+	const ledger: Ledger = { constraints: [], decisions: [], goal: [] };
 	if (!body) return ledger;
+	const clean = splitSummary(body).body;
+	ledger.goal = goalLines(clean);
 	for (const section of SECTIONS) {
 		const seen = new Set<string>();
-		const raw = sectionBullets(body, section.heading).filter((bullet) => !EMPTY.test(bullet));
+		const raw = sectionBullets(clean, section.heading).filter((bullet) => !EMPTY.test(bullet));
 		let next = Math.max(
 			0,
 			...raw
-				.map((bullet) => ID.exec(bullet)?.[1])
+				.map((bullet) => ID.exec(bullet)?.[1]?.toUpperCase())
 				.flatMap((id) => (id?.startsWith(section.prefix) ? [idNumber(id)] : [])),
 		);
 		for (const bullet of raw) {
 			const match = ID.exec(bullet);
-			const given = match?.[1].startsWith(section.prefix) && !seen.has(match[1]) ? match[1] : undefined;
+			const upper = match?.[1].toUpperCase();
+			const given = upper?.startsWith(section.prefix) && !seen.has(upper) ? upper : undefined;
 			const id = given ?? `${section.prefix}${++next}`;
 			seen.add(id);
 			ledger[section.key].push({ id, text: given ? bullet.slice(match![0].length) : bullet });
@@ -176,9 +201,10 @@ function liftsOf(lines: readonly string[]): Map<string, string> {
 		const range = sectionRange(lines, section.heading);
 		if (!range) continue;
 		for (const bullet of bulletsOf(lines.slice(range.start + 1, range.end))) {
-			const lift = LIFT.exec(bullet);
-			const id = (lift?.[1] ?? lift?.[2])?.toUpperCase();
-			if (lift && id) lifts.set(id, lift[3].trim());
+			const parsed = parseLift(bullet);
+			if (parsed) {
+				for (const id of parsed.ids) lifts.set(id, parsed.reason);
+			}
 		}
 	}
 	return lifts;
@@ -190,9 +216,17 @@ function liftsOf(lines: readonly string[]): Map<string, string> {
  * its id, the same words, or other words for the same rule: `ledger-match.ts`) is not added again, neither is a
  * restatement of a bullet added just before it, and a lift line is never kept as a bullet. A restatement of a lifted
  * bullet is its replacement and is added. A section the model left out is put back when it has bullets to carry.
+ * The Goal section rides along: a new summary with no goal, or an empty one, gets the previous goal word for word; a
+ * goal the model wrote replaces it.
  */
 export function applyLedger(text: string, carried: Ledger): { text: string; lifted: LiftedBullet[] } {
 	let lines = text.split("\n");
+	// A goal the model wrote wins; without one the previous checkpoint's stays, so the open goal is never lost.
+	if (goalLines(text).length === 0 && carried.goal.length > 0) {
+		const range = sectionRange(lines, GOAL_HEADING);
+		const block = [GOAL_HEADING, ...carried.goal];
+		lines = range ? [...lines.slice(0, range.start), ...block, ...lines.slice(range.end)] : [...block, ...lines];
+	}
 	const lifts = liftsOf(lines);
 	const lifted: LiftedBullet[] = [];
 	for (const section of SECTIONS) {
@@ -206,9 +240,10 @@ export function applyLedger(text: string, carried: Ledger): { text: string; lift
 		const seen = new Set(staying.map((bullet) => normalize(bullet.text)));
 		const standing: Words[] = staying.map((bullet) => wordsOf(bullet.text));
 		for (const bullet of written) {
-			if (EMPTY.test(bullet) || LIFT.test(bullet)) continue;
+			if (EMPTY.test(bullet) || parseLift(bullet)) continue;
 			const id = ID.exec(bullet);
-			if (id && known.has(id[1])) continue;
+			const normalizedId = id?.[1].toUpperCase();
+			if (normalizedId && known.has(normalizedId)) continue;
 			const body = id ? bullet.slice(id[0].length) : bullet;
 			if (!body.trim() || seen.has(normalize(body))) continue;
 			const words = wordsOf(body);

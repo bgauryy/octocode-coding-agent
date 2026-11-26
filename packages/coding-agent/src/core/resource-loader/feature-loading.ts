@@ -3,7 +3,7 @@ import { join, relative, resolve, sep } from "node:path";
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 import { readJsonFile } from "@octocodeai/octocode-common/json";
 import { canonicalizePath } from "@octocodeai/octocode-common/paths";
-import { CONFIG_DIR_NAME, getLegacyConfigDirs } from "../../config.ts";
+import { CONFIG_DIR_NAME, getPiConfigDirs } from "../../config.ts";
 import { configDiscovery, discoveryInput } from "../discovery/service.ts";
 import { vendorOn } from "../discovery/vendors/switch.ts";
 import type { DiscoverInput } from "../discovery/types.ts";
@@ -90,7 +90,7 @@ export class FeatureSetLoader {
 				)
 				.map((item) => canonicalizePath(item.provenance.path)),
 		);
-		const legacyDirs = getLegacyConfigDirs(this.config.agentDir);
+		const legacyDirs = getPiConfigDirs(this.config.agentDir);
 		const roots = [join(this.config.cwd, CONFIG_DIR_NAME), this.config.agentDir, ...legacyDirs];
 		const packageNames = new Map<string, string | undefined>();
 		const packageName = (item: ResolvedResource): string | undefined => {

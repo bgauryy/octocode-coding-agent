@@ -1,6 +1,6 @@
 import type { Model } from "../../types.ts";
 import type { JsonObject } from "../../types/json.ts";
-import { isOpenRouterModel } from "../../utils/provider-host.ts";
+import { isOpenRouterModel } from "../../utils/provider-profile.ts";
 import type { AssistantMessageDiagnostic } from "../../utils/diagnostics.ts";
 
 /** OpenRouter's Auto Router and its variants (`openrouter/auto`, `openrouter/auto-beta`). */

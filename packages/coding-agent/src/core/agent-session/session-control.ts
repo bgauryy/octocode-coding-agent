@@ -27,14 +27,17 @@ export abstract class AgentSessionControl extends AgentSessionState {
 	// Prompting and input queues
 
 	async prompt(text: string, options?: PromptOptions): Promise<void> {
-		await trackSessionDispatch(
-			this,
-			() => prompt(this._c.prompting, text, options),
-			(active, dispatchId) => this._listeners.emit({ type: "session_dispatch", active, dispatchId }),
-		);
-		// Input queued while this submission was under way waited for its run; when it started none, or the input came
-		// after that run's end, nothing else delivers it.
-		releaseQueuedInput(this._c.prompting);
+		try {
+			await trackSessionDispatch(
+				this,
+				() => prompt(this._c.prompting, text, options),
+				(active, dispatchId) => this._listeners.emit({ type: "session_dispatch", active, dispatchId }),
+			);
+		} finally {
+			// Input queued while this submission was under way waited for its run; when it started none, failed, or the input
+			// came after that run's end, nothing else delivers it.
+			if (!this._c.runLoop.retiring) releaseQueuedInput(this._c.prompting);
+		}
 	}
 	async steer(text: string, images?: ImageContent[], options?: QueuedInputOptions): Promise<QueuedInputDisposition> {
 		return queueUserInput(this._c.prompting, text, images, "steer", options);
@@ -48,10 +51,13 @@ export abstract class AgentSessionControl extends AgentSessionState {
 	): Promise<void> {
 		const send = () => sendCustomMessage(this._c.prompting, message, options);
 		if (options?.triggerTurn) {
-			await trackSessionDispatch(this, send, (active, dispatchId) =>
-				this._listeners.emit({ type: "session_dispatch", active, dispatchId }),
-			);
-			releaseQueuedInput(this._c.prompting);
+			try {
+				await trackSessionDispatch(this, send, (active, dispatchId) =>
+					this._listeners.emit({ type: "session_dispatch", active, dispatchId }),
+				);
+			} finally {
+				if (!this._c.runLoop.retiring) releaseQueuedInput(this._c.prompting);
+			}
 		} else await send();
 	}
 	async sendUserMessage(

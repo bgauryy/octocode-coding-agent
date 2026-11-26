@@ -56,7 +56,7 @@ describe("application port", () => {
 		await live.next();
 		f.emit({
 			type: "message_update",
-			message: { role: "assistant", timestamp: 101 },
+			message: { role: "assistant", timestamp: 101, content: [{ type: "text", text: "First" }] },
 			assistantMessageEvent: { type: "text_delta", delta: "First", contentIndex: 0 },
 		});
 		expect((await live.next()).value.event).toMatchObject({

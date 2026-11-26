@@ -3,8 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { evidenceIndicator } from "../../src/octocode/backlog/receipts.ts";
 import type { QaRequest, QaReview } from "../../src/octocode/backlog/qa-gate.ts";
@@ -75,7 +74,7 @@ function setup(qa = false) {
 				content: Array<{ text: string }>;
 			}
 		).content[0].text;
-	const store = () => new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
+	const store = () => new BacklogStore(() => workspaceDb(cwd).agent, workspaceDb(cwd).workspace.id);
 	const open = async () => {
 		await call({ op: "add", items: [{ title: "Work", ...READY, state: "todo", priority: "p1", type: "feature" }] });
 		await call({ op: "claim", id: "B1" });

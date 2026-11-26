@@ -31,6 +31,7 @@ function location(root, session) {
 	const scope = session.scope;
 	const at = where(root, session.cwd);
 	const copy = session.importedFrom ? `, imported from ${session.importedFrom}` : "";
+	if (session.outside) return `workspace ${session.cwd ?? "unknown"} (outside this repository)`;
 	if (!scope || scope.kind === "root") return `repo ${at}${copy}`;
 	const state = scope.missing ? ", folder deleted" : scope.kind === "unregistered" ? ", not registered with git" : "";
 	return `${scope.kind === "unregistered" ? "stray worktree" : "worktree"} ${at}${scope.branch ? ` [${scope.branch}]` : ""}${state}${copy}`;
@@ -99,6 +100,7 @@ export function printShow(ctx, result) {
 		}
 	}
 	if (result.lastAssistantMessage) console.log(`\n## Last assistant message\n\n${result.lastAssistantMessage}`);
+	if (result.lastError) console.log(`\n## Run ended with an error\n\n${result.lastError}`);
 }
 
 export function printWorktrees(ctx, trees, base) {

@@ -1,5 +1,6 @@
 type CacheTTL = "1h";
 import type { CacheRetention, Model, SimpleStreamOptions } from "../../types.ts";
+import { effortLevel, effortValue } from "../../models/model-helpers.ts";
 import { CACHE_PROFILES } from "../../utils/cache-profiles.ts";
 import { bedrockSupportsLongCacheRetention, getModelMatchCandidates, isAnthropicClaudeModel } from "./model-match.ts";
 
@@ -36,13 +37,15 @@ export function supportsThinkingBlockBinding(model: Model<"bedrock-converse-stre
 export function mapThinkingLevelToEffort(
 	model: Model<"bedrock-converse-stream">,
 	level: SimpleStreamOptions["reasoning"],
-): "low" | "medium" | "high" | "xhigh" | "max" {
+): "low" | "medium" | "high" | "xhigh" | "max" | undefined {
 	if (level === "xhigh" && supportsNativeXhighEffort(model)) return "xhigh";
 
-	const mapped = level ? model.thinkingLevelMap?.[level] : undefined;
-	if (typeof mapped === "string") return mapped as "low" | "medium" | "high" | "xhigh" | "max";
+	const effective = level ? effortLevel(model, level) : undefined;
+	if (level && effective === undefined) return undefined;
+	const mapped = level ? effortValue(model, level) : undefined;
+	if (mapped !== undefined) return mapped as "low" | "medium" | "high" | "xhigh" | "max";
 
-	switch (level) {
+	switch (effective) {
 		case "minimal":
 		case "low":
 			return "low";

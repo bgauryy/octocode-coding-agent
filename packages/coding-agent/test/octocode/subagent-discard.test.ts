@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { Permission } from "../../src/octocode/permission/ask.ts";
-import { discardChild, mergeChild } from "../../src/octocode/subagents/merge-child.ts";
+import { discardByAgent, discardChild, mergeChild } from "../../src/octocode/subagents/merge-child.ts";
 import { fakeCtx } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -72,6 +72,26 @@ describe("the merge prompt", () => {
 	});
 });
 
+describe("the agent discarding its own child's change", () => {
+	it("asks first and keeps the ref when refused", async () => {
+		const dir = repository();
+		const check = vi.fn(async () => ({ allowed: false as const, message: "denied" }));
+		const result = await discardByAgent(team, { check } as unknown as Permission, ID, fakeCtx({ cwd: dir }));
+		expect(result.ok).toBe(false);
+		expect(check).toHaveBeenCalledTimes(1);
+		expect(refExists(dir)).toBe(true);
+	});
+
+	it("deletes the ref once allowed", async () => {
+		const dir = repository();
+		const check = vi.fn(async () => ({ allowed: true as const }));
+		const result = await discardByAgent(team, { check } as unknown as Permission, ID, fakeCtx({ cwd: dir }));
+		expect(result.ok).toBe(true);
+		expect(refExists(dir)).toBe(false);
+		expect(fs.existsSync(path.join(dir, "child.txt"))).toBe(false);
+	});
+});
+
 describe("merging into a checkout with uncommitted work", () => {
 	const allow = { check: vi.fn(async () => ({ allowed: true as const })) } as unknown as Permission;
 
@@ -85,6 +105,19 @@ describe("merging into a checkout with uncommitted work", () => {
 		expect(refExists(dir)).toBe(true);
 		expect(git(dir, "rev-parse", "HEAD")).toBe(head);
 		expect(fs.readFileSync(path.join(dir, "child.txt"), "utf8")).toBe("my own work\n");
+	});
+
+	it("drops the ref when its change is already in the tree, keeping the other uncommitted work", async () => {
+		const dir = repository();
+		fs.writeFileSync(path.join(dir, "child.txt"), "from the child\n");
+		fs.writeFileSync(path.join(dir, "a.txt"), "edited\n");
+		const check = vi.fn(async () => ({ allowed: true as const }));
+		const result = await mergeChild(team, { check } as unknown as Permission, ID, fakeCtx({ cwd: dir }));
+		expect(result.ok).toBe(true);
+		expect(result.text).toContain("already in this tree");
+		expect(check).not.toHaveBeenCalled();
+		expect(refExists(dir)).toBe(false);
+		expect(fs.readFileSync(path.join(dir, "a.txt"), "utf8")).toBe("edited\n");
 	});
 
 	it("merges when only unrelated files are dirty", async () => {

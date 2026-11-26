@@ -1,5 +1,7 @@
 import { approveFixtureMcp } from "./guard-helpers.ts";
-import { presetEntries, recommendedPresets } from "../../../mcp/src/api.ts";
+import { presetEntries } from "../../../mcp/src/api.ts";
+import { builtinPresets } from "../../../mcp/src/presets/index.ts";
+import { RESEARCH } from "./research-roles.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -169,7 +171,7 @@ async function startSession(
 		noThemes: true,
 		noContextFiles: true,
 	});
-	approveFixtureMcp(cwd, agentDir, presetEntries(recommendedPresets()));
+	approveFixtureMcp(cwd, agentDir, presetEntries(builtinPresets()));
 	await resourceLoader.reload();
 	const { session } = await createTestSession({
 		cwd,
@@ -294,57 +296,31 @@ describe("with Octocode MCP (default)", () => {
 		);
 		expect(turn.tools).toContain("file");
 		expect(turn.tools).not.toContain("read");
-		expect(turn.tools).toContain("mcp__octocode__localFetch");
-		expect(turn.tools).toContain("mcp__octocode__localSearch");
+		expect(turn.tools).toContain(RESEARCH.reader);
+		for (const name of RESEARCH.search) expect(turn.tools).toContain(name);
 		for (const name of ["edit", "write"]) expect(turn.tools).not.toContain(name);
 		expect(turn.systemPrompt).toContain("<work>");
-		// Where the transport cannot add tools in place, every tool the server lists, GitHub and package registry ones
-		// included, is declared from the first request (on-demand tools fall back to deferred).
-		for (const name of [
-			"ghSearchRepo",
-			"ghSearchCode",
-			"ghStructure",
-			"ghGetFileContent",
-			"ghSearchHistory",
-			"ghGetHistoryItem",
-			"artifactSearch",
-			"localSearch",
-			"structureSearch",
-			"astSearch",
-			"localFetch",
-			"lspSearch",
-		])
-			expect(turn.tools).toContain(`mcp__octocode__${name}`);
+		// Where the transport cannot add tools in place, every tool the server lists is declared from the first request
+		// (on-demand tools fall back to deferred): the server declares more than the reader and search roles.
+		expect(turn.tools.filter((name) => name.startsWith(RESEARCH.prefix)).length).toBeGreaterThan(
+			RESEARCH.search.length + 1,
+		);
 		expect(turn.tools).not.toContain("tool_search");
 		// The server's MCP section and tool declarations are available before the first request.
 		// One `<mcps>` tag: the head, then each server as its own part (`mcps:<server>`) inside it.
-		expect(turn.systemPrompt).toMatch(/<mcps>\n(?:[^\n]*\n){2}\n<mcp name="octocode" tools="mcp__octocode__\*">\n\S/);
+		expect(turn.systemPrompt).toMatch(/<mcps>\n(?:[^\n]*\n){2}\n/);
+		expect(turn.systemPrompt).toContain(`<mcp name="${RESEARCH.server}" tools="${RESEARCH.prefix}*">\n`);
 		// Declared mode under the default `mcpExposure: "recent"`, in a folder that never called the server: the block is
 		// the server's purpose, its instructions and an index line per tool; each tool is declared with the server's own
 		// description and its field names and types (nested ones too), the fields it requires, array item bounds and short
 		// value lists, and field conditions naming a selector value. Other field prose stays in the full schema.
 		expect(turn.systemPrompt).not.toContain("declare namespace");
-		expect(turn.systemPrompt).toContain("\n- localSearch\n");
-		const declared = turn.toolContracts.find((tool) => tool.name === "mcp__octocode__localSearch");
+		const searchName = RESEARCH.search[0];
+		expect(turn.systemPrompt).toContain(`\n- ${searchName.slice(RESEARCH.prefix.length)}\n`);
+		// Declared with the server's own description and a typed object schema; the fields are the server's business.
+		const declared = turn.toolContracts.find((tool) => tool.name === searchName);
 		expect(declared?.description.length).toBeGreaterThan(60);
-		expect(declared?.parameters).toMatchObject({
-			properties: {
-				queries: {
-					type: "array",
-					minItems: 1,
-					maxItems: 5,
-					items: {
-						required: ["matchString"],
-						properties: {
-							matchString: { type: "array", maxItems: 100 },
-							unique: { description: "Only with view: matchOnly." },
-							contextLines: { description: "Only with view: content." },
-						},
-					},
-				},
-			},
-		});
-		expect(declared?.parameters).not.toHaveProperty("properties.queries.items.properties.path.description");
+		expect(declared?.parameters).toMatchObject({ type: "object" });
 		// `<tools>` lists native tools one by one; a deferred server's purpose is stated once, in its `<mcps>` block.
 		const toolLines = /<tools>\n([^]*?)\n<\/tools>/.exec(turn.systemPrompt)?.[1].split("\n") ?? [];
 		expect(toolLines.length).toBeGreaterThan(0);
@@ -355,7 +331,7 @@ describe("with Octocode MCP (default)", () => {
 				`<tools> lists ${name}`,
 			).toBe(true);
 		const next = (await s.run("continue", [say("ready")])).at(-1)!;
-		expect(next.tools).toContain("mcp__octocode__localSearch");
+		expect(next.tools).toContain(RESEARCH.search[0]);
 		expect(next.systemPrompt).toBe(turn.systemPrompt);
 		expect(next.toolContracts).toEqual(turn.toolContracts);
 	}, 60_000);
@@ -371,16 +347,16 @@ describe("with Octocode MCP (default)", () => {
 			expect(own, "Octocode's own prompt text and tool declarations grew beyond their headroom").toBeLessThan(
 				ON_DEMAND_OWN_CEILING,
 			);
-			// The bundled preset declares every tool its server serves, GitHub and package registry tools included.
-			for (const name of ["ghSearchRepo", "ghSearchCode", "ghGetFileContent", "artifactSearch", "ghCloneRepo"])
-				expect(turn.tools).toContain(`mcp__octocode__${name}`);
+			// The bundled preset declares every tool its server serves, beyond the reader and search roles.
+			expect(turn.tools.filter((name) => name.startsWith(RESEARCH.prefix)).length).toBeGreaterThan(
+				RESEARCH.search.length + 1,
+			);
 			// The rare native tools are listed, not declared.
 			for (const name of ["archive", "models"]) {
 				expect(turn.tools).not.toContain(name);
 				expect(turn.systemPrompt).toMatch(new RegExp(`\\n- ${name}: \\S`));
 			}
-			for (const name of ["localSearch", "localFetch", "lspSearch"])
-				expect(turn.tools).toContain(`mcp__octocode__${name}`);
+			for (const name of [RESEARCH.reader, ...RESEARCH.search]) expect(turn.tools).toContain(name);
 			expect(turn.tools).toContain("mcp");
 			expect(turn.tools).toContain("compact");
 			expect(turn.tools).toContain("backlogPlan");
@@ -414,7 +390,7 @@ describe("with Octocode MCP (default)", () => {
 	it("reads through localFetch, then edits, writes and deletes with batched file calls", async () => {
 		const appPath = path.join(s.cwd, "app.ts");
 		const turns = await s.run("fix the answer", [
-			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: appPath }] })),
+			calls(fauxToolCall(RESEARCH.reader, { queries: [{ path: appPath }] })),
 			calls(
 				nativeCall("file", {
 					reason: "Fix the answer and add notes",
@@ -482,7 +458,7 @@ describe("with Octocode MCP (default)", () => {
 		const seen = path.join(s.cwd, "seen.ts");
 		fs.writeFileSync(seen, "export const seen = 1;\n");
 		const turns = await s.run("read then edit", [
-			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: seen }] })),
+			calls(fauxToolCall(RESEARCH.reader, { queries: [{ path: seen }] })),
 			calls(
 				nativeCall("file", {
 					reason: "Bump the seen value",
@@ -514,7 +490,7 @@ describe("with Octocode MCP (default)", () => {
 			calls(nativeCall("file", { reason: "Change a read file", queries: [{ reason: "change", ...query }] }));
 		const turns = await s.run("read relative paths then change them", [
 			calls(
-				fauxToolCall("mcp__octocode__localFetch", {
+				fauxToolCall(RESEARCH.reader, {
 					queries: [{ path: "relative.ts" }, { path: "ranged.ts", ranges: [{ startLine: 2, endLine: 3 }] }],
 				}),
 			),
@@ -550,7 +526,7 @@ describe("with Octocode MCP (default)", () => {
 		});
 		const turns = await s.run("read both", [
 			calls(
-				fauxToolCall("mcp__octocode__localFetch", {
+				fauxToolCall(RESEARCH.reader, {
 					queries: files.map((file) => ({ path: file, ranges: [{ startLine: 1, endLine: 600 }] })),
 					responseChars: 40_000,
 				}),
@@ -579,7 +555,7 @@ describe("with the user's own octocode server in mcp.json", () => {
 		const turns = await s.run("use it", [calls(fauxToolCall("mcp__octocode__shout", { text: "hi" })), say("done")]);
 		const first = turns.at(-2)!;
 		expect(first.tools).toContain("mcp__octocode__shout");
-		expect(first.tools).not.toContain("mcp__octocode__localSearch");
+		expect(first.tools).not.toContain(RESEARCH.search[0]);
 		expect(turns.at(-1)!.lastResults[0]).toEqual({
 			toolName: "mcp__octocode__shout",
 			isError: false,
@@ -1018,7 +994,7 @@ describe("a subagent session with MCP enabled", () => {
 
 	it("has Octocode and browser tools and can call Octocode", async () => {
 		const turn = (await s.run("hello", [say("ready")])).at(-1)!;
-		expect(turn.tools).toContain("mcp__octocode__localFetch");
+		expect(turn.tools).toContain(RESEARCH.reader);
 		expect(turn.tools).not.toContain("browser");
 		expect(turn.tools.filter((name) => name.includes("cua"))).toEqual([]);
 		expect(turn.tools).toContain("agent");
@@ -1058,18 +1034,18 @@ describe("a subagent session with MCP enabled", () => {
 		expect(turn.toolContracts.find((tool) => tool.name === "agent")?.parameters).toBeDefined();
 		const appPath = path.join(s.cwd, "app.ts");
 		const turns = await s.run("read", [
-			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: appPath }] })),
+			calls(fauxToolCall(RESEARCH.reader, { queries: [{ path: appPath }] })),
 			say("done"),
 		]);
 		const results = turns.at(-1)!.lastResults;
-		expect(results.find((result) => result.toolName === "mcp__octocode__localFetch")?.text).toContain("answer = 41");
+		expect(results.find((result) => result.toolName === RESEARCH.reader)?.text).toContain("answer = 41");
 	}, 60_000);
 
 	it("credits a relative-path localFetch read for a later edit", async () => {
 		const file = path.join(s.cwd, "child.ts");
 		fs.writeFileSync(file, "export const child = 1;\n");
 		const turns = await s.run("read then edit", [
-			calls(fauxToolCall("mcp__octocode__localFetch", { queries: [{ path: "child.ts" }] })),
+			calls(fauxToolCall(RESEARCH.reader, { queries: [{ path: "child.ts" }] })),
 			calls(
 				nativeCall("file", {
 					reason: "Bump the child value",

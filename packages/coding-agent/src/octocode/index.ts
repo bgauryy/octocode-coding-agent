@@ -30,6 +30,7 @@ import { registerArchiveTool } from "./native/tools/archive/tool.ts";
 import { registerCompaction, registerCompactTool } from "./compaction/register.ts";
 import { awaitsAnswer } from "./awaits-answer.ts";
 import { registerClaudeCode } from "./claude-code/register.ts";
+import { registerCliModels } from "./cli-models/register.ts";
 import type { ExternalAgents } from "./external/manager.ts";
 import { connectedRunners, runnerRows } from "./external/connected.ts";
 import { externalListing } from "./external/describe.ts";
@@ -61,6 +62,7 @@ import { registerMonitor } from "./monitor/register.ts";
 import { registerMonitorRoom } from "./monitor-room/command.ts";
 import { registerUsage } from "./usage/command.ts";
 import { registerWorktrees } from "./worktrees/register.ts";
+import { checkoutSharers } from "./worktrees/sharing.ts";
 import { Subcommands } from "./shared/commands.ts";
 import { envFlag, LEAN_ENV, READ_ONLY_ENV, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { setCurrentSession } from "./shared/home.ts";
@@ -139,11 +141,11 @@ export default function octocode(host: FeatureSetup): void {
 	// One permission state per session: the mode, its grants, and the provenance tripwire's index.
 	const permission = new Permission({ api, isSubagent, agent: () => team.id });
 	const provenance = createProvenance();
-	// Vendor CLIs using their own sign-in run `agent` tasks over ACP (`external/connected.ts`).
+	// Vendor CLIs on their own sign-in run `agent` tasks over ACP and, as models (`cli-models/`), this session's turns.
 	const externalAccess = externalAgentSelection();
 	const runners = connectedRunners(externalAccess.enabled, externalPermission(permission), externalAccess.runners);
-	// With Claude Code connected on its plan, its models run this session's turns with Octocode's tools over MCP.
 	registerClaudeCode(api, runners.states);
+	registerCliModels(api, runners.states);
 	api.bus.on("session_start", async (event, ctx) => {
 		// Before anything writes output: spilled results, bash logs and checkpoints go to this session's folder.
 		setCurrentSession(ctx.sessionManager.getSessionId(), ctx.cwd, ctx.sessionManager);
@@ -183,7 +185,7 @@ export default function octocode(host: FeatureSetup): void {
 	planning.readOnlyShell = planReadOnly;
 	registerLeaveConfirmation(api, { isSubagent, jobs, agents: () => agents, external: () => external });
 	registerCheckpoints(api, checkpoints, (file) => guard.forget(file), commands);
-	registerTeamSessions(api, team, checkpoints, { commands, isSubagent });
+	registerTeamSessions(api, team, checkpoints, { commands, isSubagent, serving: () => agents?.serving() ?? [] });
 	composeBacklog(api, {
 		commands,
 		isSubagent,
@@ -380,8 +382,7 @@ export default function octocode(host: FeatureSetup): void {
 		activity,
 		localReads,
 		planning,
-		peerSessions: () =>
-			team.members().some((member) => member.role === "main" && member.id !== team.id && !member.worktree),
+		peerSessions: checkoutSharers(team),
 	});
 	registerNativeSessionLifecycle(api, {
 		isSubagent,

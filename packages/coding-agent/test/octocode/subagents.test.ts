@@ -226,16 +226,11 @@ describe("subagents", () => {
 		).toBe("all");
 		expect(parseProfile("x", "---\nhooks: true\n---\nbody").hooks).toBe("all");
 		// Switches take YAML booleans only; a quoted string is refused rather than read as a guess.
-		expect(() => parseProfile("x", "---\nmcp: false\n---\nbody")).toThrow(
-			/every specialist needs Octocode local research/,
-		);
 		expect(parseProfile("x", "---\nvisibleBrowser: false\n---\nbody")).toMatchObject({ headless: true });
 		for (const value of ['"true"', '"false"', "1", "yes"])
 			expect(() => parseProfile("x", `---\nheadless: ${value}\n---\nbody`), value).toThrow(
 				/headless must be true or false/,
 			);
-		for (const value of ['"true"', '"false"', "1", "yes"])
-			expect(() => parseProfile("x", `---\nmcp: ${value}\n---\nbody`), value).toThrow(/mcp must be true or false/);
 	});
 
 	it("parses profile frontmatter and builds child Octocode arguments", () => {
@@ -295,12 +290,6 @@ describe("subagents", () => {
 		expect(parsed.model).toBe("faux/model");
 		expect(parsed.appendSystemPrompt).toBeUndefined();
 		expect(parsed.diagnostics).toEqual([]);
-	});
-
-	it("rejects programmatic profiles that disable the required local research", () => {
-		expect(() =>
-			buildAgentArgs({ name: "plain", description: "", prompt: "", mcp: false }, undefined, SESSION),
-		).toThrow(/disables MCP/);
 	});
 
 	it("maps excludeTools frontmatter to --exclude-tools", () => {

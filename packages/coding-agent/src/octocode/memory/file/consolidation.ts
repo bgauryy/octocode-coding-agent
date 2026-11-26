@@ -3,6 +3,7 @@ import path from "node:path";
 import type { FeatureContext, FeatureSetup } from "../../../core/features/index.ts";
 import { renderPrompt } from "../../../core/prompt-template.ts";
 import { sharedAgentDb } from "../../../storage/database.ts";
+import { registeredWorkspaceAgent } from "../../../storage/workspace-database.ts";
 import { clipText } from "../../shared/util.ts";
 import { normalizeTitle } from "../query.ts";
 import type { Memory } from "../record.ts";
@@ -10,6 +11,8 @@ import type { MemoryStore } from "../store.ts";
 import { dropCandidates, listCandidates, pendingCandidates, queueCandidates } from "./candidates.ts";
 import { isQuarantined } from "./candidate-tags.ts";
 import type { MemoryOp } from "./consolidate.ts";
+import { fixItemOf } from "./defects.ts";
+import { acceptedToolField } from "./stale.ts";
 import { MEMORY_LINE_MAX_CHARS, memoryLineKey } from "./format.ts";
 import { claimConsolidation, type ConsolidationClaim } from "./lease.ts";
 import {
@@ -29,9 +32,10 @@ import { savedKeys, splitCandidates } from "./prefilter.ts";
 import { quarantineReason, type Taint } from "./quarantine.ts";
 
 /**
- * The consolidation pass: at most once a day per MEMORY.md (`lease.ts`), when lesson candidates are pending. Code first
- * evicts what repeats AGENTS.md or shipped policy (a line you wrote is marked `recheck` instead), marks a line that names
- * a repository path that is gone, and confirms a line a candidate restates. Then, with a `small` model and
+ * The consolidation pass: at most once a day per MEMORY.md (`lease.ts`). Code first evicts what repeats AGENTS.md or
+ * shipped policy (a line you wrote is marked `recheck` instead) and a workaround whose fix item is done (`defects.ts`),
+ * marks a line that names a repository path that is gone or a tool field the tool now takes (`stale.ts`), and confirms a
+ * line a candidate restates. Then, when candidates are pending, with a `small` model and
  * `memory.reflection` on, the model merges duplicates and paraphrases, marks both sides of a contradiction, and adds the
  * candidates that are durable rules; the candidates it saw are dropped. Without a model only the code's part runs. The
  * writer evicts by rank when a file is over its cap either way.
@@ -52,6 +56,10 @@ interface ConsolidationDeps {
 	timeoutMs: number;
 	signal?: AbortSignal;
 	now?: () => number;
+	/** Whether the backlog item a `(fix B12)` line waits on is done (`fixChecker`). */
+	fixed?: (ref: string) => boolean;
+	/** Each registered tool's field names, read when a line needs them (`toolFieldMap`). */
+	toolFields?: () => ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 /** A repository path a line names, as `packages/db/src/db.ts`: a relative path of two parts or more, no glob or placeholder. */
@@ -72,11 +80,19 @@ function brokenAnchor(text: string, root: string): string | undefined {
 function codeOps(
 	file: PassFile,
 	candidates: readonly Memory[],
-	repeats: ((text: string) => string | undefined) | undefined,
+	sensors: Pick<ConsolidationDeps, "repeats" | "fixed" | "toolFields">,
 ): MemoryOp[] {
+	const { repeats } = sensors;
 	const ops: MemoryOp[] = [];
 	const restated = new Set(candidates.map((memory) => normalizeTitle(memory.title)));
+	const tools = sensors.toolFields?.();
 	for (const line of file.lines) {
+		// A workaround waiting on a fix leaves with it (`defects.ts`), whoever wrote it: its reason is gone.
+		const fix = fixItemOf(line.text);
+		if (fix && sensors.fixed?.(fix)) {
+			ops.push({ op: "evict", target: line.text, reason: `${fix} is done` });
+			continue;
+		}
 		const repeat = repeats?.(line.text);
 		if (repeat && line.source !== "user") {
 			ops.push({ op: "evict", target: line.text, reason: `repeats ${repeat}` });
@@ -85,6 +101,8 @@ function codeOps(
 		if (repeat) ops.push({ op: "flag", target: line.text, reason: `repeats ${repeat}` });
 		const gone = file.ref.scope === "workspace" ? brokenAnchor(line.text, file.ref.root) : undefined;
 		if (gone) ops.push({ op: "flag", target: line.text, reason: `names ${gone}, which no longer exists` });
+		const accepted = acceptedToolField(line.text, tools);
+		if (accepted) ops.push({ op: "flag", target: line.text, reason: `${accepted} now` });
 		// A candidate that says the same as a line confirms it: the date moves on, the higher source stays.
 		if (restated.has(memoryLineKey(line.text)))
 			ops.push({ op: "add", section: line.section, text: line.text, source: "agent" });
@@ -114,16 +132,17 @@ function claimDue(
 ): Array<{ ref: MemoryFileRef; claim: ConsolidationClaim & { ok: true } }> {
 	const workspaceId = deps.store.workspaceId;
 	if (!workspaceId) return [];
-	const agentDb = sharedAgentDb(deps.env);
 	const now = deps.now?.() ?? Date.now();
 	return refs.flatMap((ref) => {
+		// The global file is one for the machine: its pass is claimed there; a workspace file's in its workspace's file.
+		const agentDb = ref.scope === "global" ? sharedAgentDb(deps.env) : registeredWorkspaceAgent(workspaceId, deps.env);
 		const claim = claimConsolidation(agentDb, workspaceId, ref, now);
 		return claim.ok ? [{ ref, claim }] : [];
 	});
 }
 
 /**
- * Runs the pass for the files of `ctx`'s session that are due, when candidates are pending; whether any file was due.
+ * Runs the pass for the files of `ctx`'s session that are due; whether any file was due.
  * A model call that fails, or a reply that is not the JSON asked for, leaves the files and the candidates as they were;
  * only a failed call (nothing spent) leaves the pass unrecorded, so the next trigger tries again.
  */
@@ -134,7 +153,6 @@ export async function consolidateDue(
 ): Promise<boolean> {
 	const all = listCandidates(deps.store);
 	const pending = pendingCandidates(all);
-	if (pending.length === 0) return false;
 	const claims = claimDue(deps, [globalMemoryFile(deps.env), workspaceMemoryFile(ctx.cwd)]);
 	if (claims.length === 0) return false;
 	let finished = false;
@@ -178,7 +196,7 @@ export async function consolidateDue(
 		const quarantined = all.filter(isQuarantined).map((memory) => memory.title);
 		const outcomes: PassFileOutcome[] = [];
 		for (const file of files) {
-			const ops = [...codeOps(file, pending, deps.repeats), ...(modelOps.get(file.ref.scope) ?? [])];
+			const ops = [...codeOps(file, pending, deps), ...(modelOps.get(file.ref.scope) ?? [])];
 			if (ops.length === 0) continue;
 			const { outcome, held } = await applyPassOps(
 				{ store: deps.store, repeats: deps.repeats, env: deps.env, now },
@@ -205,13 +223,15 @@ export async function consolidateDue(
 			deps.store,
 			used.map((memory) => memory.id),
 		);
-		recordPass(deps.api, ctx, {
-			pass: "consolidation",
-			trigger,
-			...(model ? { model } : {}),
-			files: outcomes,
-			...(unreadable.length > 0 ? { unreadable } : {}),
-		});
+		// A day's check that found nothing to do and spent nothing leaves no entry.
+		if (model || outcomes.length > 0 || unreadable.length > 0)
+			recordPass(deps.api, ctx, {
+				pass: "consolidation",
+				trigger,
+				...(model ? { model } : {}),
+				files: outcomes,
+				...(unreadable.length > 0 ? { unreadable } : {}),
+			});
 		finished = true;
 		return true;
 	} finally {

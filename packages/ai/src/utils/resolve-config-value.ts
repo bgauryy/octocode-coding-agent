@@ -3,9 +3,15 @@
  * Used by auth-storage.ts and model-registry.ts.
  */
 
-import { executeCommand, executeCommandAsync, executeCommandUncached } from "./resolve-config-command.ts";
+import {
+	executeCommand,
+	executeCommandAsync,
+	executeCommandUncached,
+	runCommandUncached,
+} from "./resolve-config-command.ts";
 
 export { clearConfigValueCache, setConfigValueShell } from "./resolve-config-command.ts";
+export { type CredentialCommand, forgetCredentialCommand, runCredentialCommand } from "./credential-command.ts";
 
 const ENV_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const ENV_VAR_NAME_PREFIX_RE = /^[A-Za-z_][A-Za-z0-9_]*/;
@@ -163,15 +169,17 @@ export function resolveConfigValueUncached(config: string, env?: Record<string, 
 }
 
 export function resolveConfigValueOrThrow(config: string, description: string, env?: Record<string, string>): string {
-	const resolvedValue = resolveConfigValueUncached(config, env);
-	if (resolvedValue !== undefined) {
-		return resolvedValue;
-	}
-
 	const reference = parseConfigValueReference(config);
 	if (reference.type === "command") {
-		throw new Error(`Failed to resolve ${description} from shell command: ${reference.config.slice(1)}`);
+		// The cause names the exit status or timeout, never the command (it may hold a secret) or its output.
+		const run = runCommandUncached(reference.config);
+		if (run.value !== undefined) return run.value;
+		throw new Error(
+			`Failed to resolve ${description}: its secret command ${run.failure ?? "printed nothing or failed"}`,
+		);
 	}
+	const resolvedValue = resolveTemplate(reference.parts, env);
+	if (resolvedValue !== undefined) return resolvedValue;
 
 	if (reference.type === "template") {
 		const missingEnvVars = getMissingConfigValueEnvVarNames(config, env);

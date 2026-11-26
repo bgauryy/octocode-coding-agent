@@ -13,8 +13,16 @@ const gitStateRefusal = (what: string): string =>
 /** The mutations that drop uncommitted changes in the tree, as `gitStateMutation` names them. */
 const DISCARDS_WORK = /^git (?:stash|restore|checkout -- <path>)/;
 
-const peerAsk = (what: string): string =>
-	`\`${what}\` can discard uncommitted changes in this checkout, and another session works in it: it may lose that session's work.`;
+/** `who` is what `peers` found: true for another Octocode session, else a description such as `a Codex session (pid 7)`. */
+const peerAsk = (what: string, who: string | true): string =>
+	`\`${what}\` can discard uncommitted changes in this checkout, and ${who === true ? "another session" : who} works in it: it may lose that session's work.`;
+
+const WORKTREE_ADD = "git worktree add";
+
+/** Why a session that is not its repository's main orchestrator may not run `git worktree add`. */
+const worktreeRefusal = (who: string): string =>
+	`Refused: \`${WORKTREE_ADD}\` creates a worktree, and ${who} may not: only the main orchestrator of this repository does. ` +
+	"Work in this tree and report what you need to your coordinator.";
 
 /**
  * The invariant gate that keeps a subagent working in the shared tree off git state: a shell call whose command stages,
@@ -26,24 +34,29 @@ const peerAsk = (what: string): string =>
 export function gitStateGate(scope: {
 	subagent: boolean;
 	isolated: boolean;
-	/** Whether another live session works in this checkout; the main session's gate exists only when this is given. */
-	peers?: () => boolean;
+	/**
+	 * Whether another live session works in this checkout, given its folder: true for an Octocode session, a description
+	 * for another vendor's CLI; the main session's gate exists only when this is given.
+	 */
+	peers?: (cwd: string) => boolean | string | undefined | Promise<boolean | string | undefined>;
+	/** Describes this session, a proxy of its orchestrator, when the folder is a linked worktree; else undefined. */
+	orchestrator?: (cwd: string) => string | undefined;
 }): ((event: ToolCallEvent, ctx: FeatureContext) => Promise<GateVerdict | undefined>) | undefined {
-	if (!scope.subagent) {
-		const { peers } = scope;
-		if (!peers) return undefined;
-		return async (event) => {
-			if (!SHELL_TOOLS.has(event.toolName)) return undefined;
-			const command = optionalString((event.input as Record<string, unknown>).command);
-			const found = command === undefined ? undefined : gitStateMutation(command);
-			return found && DISCARDS_WORK.test(found) && peers() ? { ask: peerAsk(found) } : undefined;
-		};
-	}
-	if (scope.isolated) return undefined;
-	return async (event) => {
+	const { peers, orchestrator } = scope;
+	if (!scope.subagent && !peers && !orchestrator) return undefined;
+	return async (event, ctx) => {
 		if (!SHELL_TOOLS.has(event.toolName)) return undefined;
 		const command = optionalString((event.input as Record<string, unknown>).command);
 		const found = command === undefined ? undefined : gitStateMutation(command);
-		return found ? { block: true, reason: gitStateRefusal(found) } : undefined;
+		if (!found) return undefined;
+		if (found === WORKTREE_ADD) {
+			// A child, isolated or not, and a linked worktree's session are proxies: only the main orchestrator creates worktrees.
+			const who = scope.subagent ? "a subagent" : orchestrator?.(ctx.cwd);
+			return who ? { block: true, reason: worktreeRefusal(who) } : undefined;
+		}
+		if (scope.subagent) return scope.isolated ? undefined : { block: true, reason: gitStateRefusal(found) };
+		if (!peers || !DISCARDS_WORK.test(found)) return undefined;
+		const who = await peers(ctx.cwd);
+		return who ? { ask: peerAsk(found, who) } : undefined;
 	};
 }

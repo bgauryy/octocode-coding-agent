@@ -77,10 +77,9 @@ function askedDelayMs(failure: Pick<AssistantMessage, "retryAfterMs">): number {
 /**
  * Delay before retry number `attempt`; never less than the provider's `retry-after`, since a retry sent sooner is
  * refused again. A failure that clears by waiting waits up to half again the backoff, so parallel subagents hit by one
- * outage or quota spread their retries, plus up to 1 s over a provider's wait. `maxAgentDelayMs` caps the backoff and the
+ * outage or quota spread their retries (any other error spreads the same way within the cap), plus up to 1 s over a provider's wait. `maxAgentDelayMs` caps the backoff and the
  * spread, never the provider's wait: a wait past the cap is no retry at all ({@link retryAfterBeyondCap}). An attempt past
- * the configured ones is pulled into what is left of the window, but not below the provider's wait. Any other error
- * keeps the exact exponential backoff.
+ * the configured ones is pulled into what is left of the window, but not below the provider's wait.
  */
 export function retryDelayFor(
 	policy: Pick<RetryPolicy, "baseDelayMs" | "maxAgentDelayMs" | "maxRetries">,
@@ -96,9 +95,9 @@ export function retryDelayFor(
 		return Math.min(spread, OFFLINE_MAX_GAP_MS, Math.max(0, OFFLINE_WINDOW_MS - elapsedMs));
 	}
 	const asked = askedDelayMs(failure);
-	if (!clearsWithWaiting(failure.errorMessage ?? "")) return Math.max(backoffMs, asked);
 	const cap = policy.maxAgentDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS;
 	const spread = Math.round(backoffMs + (backoffMs / 2) * random());
+	if (!clearsWithWaiting(failure.errorMessage ?? "")) return Math.max(Math.min(spread, cap), asked);
 	const providerDelay = asked > 0 ? asked + Math.round(RETRY_AFTER_SPREAD_MS * random()) : 0;
 	const delayMs = Math.max(Math.min(Math.max(spread, providerDelay), cap), asked);
 	if (attempt <= policy.maxRetries) return delayMs;

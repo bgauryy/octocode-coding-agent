@@ -19,7 +19,8 @@ const seq = (count: number) => Array.from({ length: count }, (_, i) => `${i + 1}
 const textOf = (message: BashExecutionMessage): string => {
 	const [converted] = convertToLlm([message]);
 	const part = (converted?.content as { type: string; text: string }[] | undefined)?.[0];
-	return part?.text ?? "";
+	// The shape under test follows the source header line.
+	return (part?.text ?? "").replace(/^\[src [^\n]*\n/, "");
 };
 
 it("gives a short result a header and leaves its output whole", async () => {

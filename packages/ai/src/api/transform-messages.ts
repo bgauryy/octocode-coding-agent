@@ -132,12 +132,18 @@ export function transformMessages<TApi extends Api>(
 			const isSameModel =
 				assistantMsg.provider === model.provider && assistantMsg.api === model.api && assistantMsg.model === model.id;
 
+			const replaysSignedThinkingAcrossModels =
+				assistantMsg.provider === model.provider &&
+				assistantMsg.api === model.api &&
+				model.api === "anthropic-messages";
+
 			const transformedContent = assistantMsg.content.flatMap((block) => {
 				if (block.type === "thinking") {
-					// Thinking from another model is dropped. Signatures and encrypted reasoning are
-					// only valid for the model that produced them, and sending readable thinking as
-					// plain text makes the new model treat it as part of the visible reply.
-					if (!isSameModel) return [];
+					// Thinking from another model is dropped, because signatures and encrypted reasoning are
+					// usually valid for the producing model only, and readable thinking sent as text reads as
+					// visible reply. Anthropic Messages accepts signed blocks across Claude models on one
+					// provider (measured live, both directions), so those replay.
+					if (!isSameModel && !replaysSignedThinkingAcrossModels) return [];
 					// Keep redacted and signed blocks even if the thinking text is empty
 					// (OpenAI encrypted reasoning); they are needed for replay.
 					if (block.redacted || block.thinkingSignature) return block;

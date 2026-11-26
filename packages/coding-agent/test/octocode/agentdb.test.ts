@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb, workspaces } from "../../../db/src/api.ts";
 import { openAgentDb, sharedAgentDb } from "../../src/storage/database.ts";
-import { AGENT_APPLICATION_ID, AgentDbError } from "../../../db/src/schema.ts";
+import { AGENT_APPLICATION_ID, AgentDbError, COORDINATION_FILE } from "../../../db/src/schema.ts";
 import { agentDbPath, sessionDir, sessionOutputDir, setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { redactSecrets, secretProblem } from "@octocodeai/octocode-common/sanitize";
 import { loadSqlite } from "../../../db/src/sqlite.ts";
@@ -155,7 +155,7 @@ describe("openAgentDb", () => {
 		return { file, bytes: fs.readFileSync(file) };
 	};
 
-	it.each([12, 99])("refuses newer version %i before changing the file", (version) => {
+	it.each([COORDINATION_FILE.version + 1, 99])("refuses newer version %i before changing the file", (version) => {
 		const { file, bytes } = versioned(version);
 		expect(() => openAgentDb(file)).toThrow(
 			new RegExp(`schema version ${version}, newer than this Octocode's .*Nothing in the file changed`),

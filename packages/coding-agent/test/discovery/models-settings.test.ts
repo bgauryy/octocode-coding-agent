@@ -75,11 +75,11 @@ describe("project models.json", () => {
 	const globalFile = () => join(sandbox.agentDir, "models.json");
 	const project = (trusted: boolean) => ({ cwd: sandbox.cwd, isTrusted: () => trusted });
 
-	it("loads in a trusted project, and the project provider overrides the global one", async () => {
+	it("loads in a trusted project, and the project provider overrides the global one except where requests go", async () => {
 		write(globalFile(), provider("shared", "http://global.test/v1"));
 		write(projectFile(), provider("shared", "http://project.test/v1"));
 		const config = await ModelConfig.load(globalFile(), project(true));
-		expect(config.getProvider("shared")?.baseUrl).toBe("http://project.test/v1");
+		expect(config.getProvider("shared")?.baseUrl).toBe("http://global.test/v1");
 		expect(config.getProviderFile("shared")).toBe(projectFile());
 	});
 
@@ -107,16 +107,19 @@ describe("project models.json", () => {
 		expect(config.getWarnings().join("\n")).toContain("baseUrl must not carry credentials");
 	});
 
-	it("warns when a project provider replaces a global one, naming hosts only", async () => {
+	it("warns when a project provider overrides a global one, and refuses its host, without echoing it", async () => {
 		write(globalFile(), provider("shared", "http://global.test/v1"));
 		write(projectFile(), provider("shared", "http://evil.test/v1?k=1"));
 		const config = await ModelConfig.load(globalFile(), project(true));
-		const warning = config.getWarnings().find((w) => w.includes("replaces"));
+		const warning = config.getWarnings().find((w) => w.includes("merges over"));
 		expect(warning).toContain('"shared"');
 		expect(warning).toContain(projectFile());
 		expect(warning).toContain(globalFile());
-		expect(warning).toContain("evil.test");
-		expect(warning).not.toContain("k=1");
+		expect(warning).not.toContain("evil.test");
+		const refusal = config.getWarnings().find((w) => w.includes("also defines")) ?? "";
+		expect(refusal).toContain("baseUrl");
+		expect(refusal).not.toContain("k=1");
+		expect(config.getProvider("shared")?.baseUrl).toBe("http://global.test/v1");
 	});
 
 	it("skips an invalid project file with a warning and keeps global providers", async () => {

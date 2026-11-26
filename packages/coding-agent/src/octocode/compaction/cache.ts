@@ -312,6 +312,15 @@ export function cacheUnusable(
 	return useAt === undefined || now - useAt > UNDECLARED_LIFETIME_MS;
 }
 
+/** Whether the provider holds this session's prefix in a cache a request now would read: a declared lifetime, not expired or unused. */
+export function prefixCached(
+	session: BranchSource,
+	promptCache: PromptCache | undefined,
+	env?: NodeJS.ProcessEnv,
+): boolean {
+	return promptCache !== undefined && !cacheUnusable(session, promptCache, env);
+}
+
 /** Whether the entry a request would read has expired: it was last used longer ago than `ttlMs`. False when either is unknown. */
 export function cacheCold(session: BranchSource, ttlMs: number | undefined, now = Date.now()): boolean {
 	if (ttlMs === undefined) return false;

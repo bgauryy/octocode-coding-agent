@@ -236,7 +236,9 @@ export function sandbox(endpoint: Endpoint): Sandbox {
 			},
 		}),
 	);
-	writeSettings({ home }, { sessionApiTurnPermission: "session" });
+	// The scripted model answers many requests from one process: the product's per-session request window is off here
+	// (`request-rate.test.ts` covers it).
+	writeSettings({ home }, { sessionApiTurnPermission: "session", requestsPerMinute: 0 });
 	const git = (...args: string[]) => execFileSync("git", args, { cwd: project, stdio: "ignore" });
 	git("init", "-q");
 	git("config", "user.email", "test@example.invalid");

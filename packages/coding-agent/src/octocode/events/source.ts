@@ -51,6 +51,7 @@ const ORIGIN: { [K in Topic]: (event: PayloadEvent<K>) => Source } = {
 	"job.exit": (e) => makeSource("job", e.job, "in-process", "proven"),
 	"item.ready": () => makeSource("system", "backlog", "db", "proven"),
 	"item.peer": () => makeSource("system", "backlog", "db", "proven"),
+	"qa.unavailable": () => makeSource("system", "backlog", "in-process", "proven"),
 	"machine.load": () => makeSource("system", "machine", "db", "proven"),
 	"monitor.alert": () => makeSource("system", "monitor", "in-process", "proven"),
 	"check.result": (e) => makeSource("timer", String(e.timerId), "in-process", "proven"),
@@ -107,6 +108,14 @@ function distinct(sources: readonly Source[]): Source[] {
 		return !seen.has(key) && seen.add(key);
 	});
 }
+
+/** `text` under the header of `source`, its own header-like lines defanged: the content a producer sends as a bare string. */
+export function sourcedText(text: string, source: Source): string {
+	return `${renderSourceHeader(source)}\n${escapeHeaderLike(text, { fences: false })}`;
+}
+
+/** The source of a notice Octocode itself writes (`id` names the part: backlog, permissions, plan). */
+export const harnessSource = (id: string): Source => makeSource("system", id, "in-process", "proven");
 
 /** A message's content, string or blocks. */
 type Content = string | readonly { type: string; text?: string }[];

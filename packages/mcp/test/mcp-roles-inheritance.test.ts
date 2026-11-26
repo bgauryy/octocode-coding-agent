@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadMcpConfig } from "../src/config.ts";
 import { presetEntries } from "../src/preset.ts";
-import { recommendedPresets } from "../src/recommended/index.ts";
+import { builtinPreset } from "../src/presets/index.ts";
 import { resolveToolRoles } from "../src/roles.ts";
 
 const roots: string[] = [];
@@ -22,7 +22,7 @@ function setup() {
 		mkdirSync(dirname(file), { recursive: true });
 		writeFileSync(file, JSON.stringify({ mcpServers: servers }));
 	};
-	const defaults = presetEntries(recommendedPresets({}));
+	const defaults = presetEntries(["octocode", "freellama"].map((name) => builtinPreset(name, {})));
 	const defaultRoles = defaults.find((entry) => entry.name === "octocode")?.config.roles;
 	return { options, write, defaults, defaultRoles, global: join(options.agentDir, "mcp.json") };
 }
@@ -95,6 +95,7 @@ describe("launch env of a replaced default entry", () => {
 			WORKSPACE_ROOT: "/w",
 			ALLOWED_PATHS: "${researchRoots}",
 			OCTOCODE_TRUST_PROJECT_LSP_CONFIG: "${untrusted:false}",
+			OCTOCODE_ENABLE_LOCAL: "true",
 			OCTOCODE_ENABLE_CLONE: "true",
 			EXTRA: "1",
 		});

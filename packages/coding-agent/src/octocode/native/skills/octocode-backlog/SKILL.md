@@ -20,4 +20,6 @@ Read and write the board only with `backlog` and `backlogPlan`; ids such as `B12
 
 ## Groom the board
 
-For a sprint review of every open item (state, age, relevance, overlap, owner, verdicts, a before/after report), follow [grooming](references/grooming.md) and report in the [sprint report format](output.md).
+Only the orchestrator (main session) grooms or applies grooming writes. A child may check a delegated batch read-only and report verdicts; it never grooms the board itself.
+
+For a proposed-item triage or a sprint review (state, age, relevance, overlap, value, owner, verdicts, a before/after report), follow [grooming](references/grooming.md) and report in the [sprint report format](output.md). Apply evidence-backed merges, closures, promotions and notes in the same pass rather than leaving them as recommendations.

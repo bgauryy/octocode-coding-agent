@@ -3,6 +3,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { USER_SENDER } from "../../src/octocode/shared/messages.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -26,12 +27,17 @@ function setup() {
 		teams.push(team);
 		return { team, ctx, ...fake };
 	};
-	return { cwd, file, agent };
+	return {
+		cwd,
+		file,
+		workspaceFile: () => workspaceDb(cwd, { ...process.env, OCTOCODE_AGENT_DB: file }).agent.file,
+		agent,
+	};
 }
 
 describe("team communication identity and lifecycle", () => {
 	it("drops child signing credentials when the parent session restarts", async () => {
-		const { file, agent } = setup();
+		const { workspaceFile, agent } = setup();
 		const sender = agent();
 		const receiver = agent();
 		sender.team.vouch(receiver.team.id!, "previous-session-secret");
@@ -39,7 +45,7 @@ describe("team communication identity and lifecycle", () => {
 		sender.team.join();
 		const result = await sender.team.send(receiver.team.id, "message from new session", { from: USER_SENDER });
 		if (!("id" in result)) throw new Error(result.error);
-		const raw = new DatabaseSync(file);
+		const raw = new DatabaseSync(workspaceFile());
 		try {
 			const delivery = raw
 				.prepare("SELECT proof FROM deliveries WHERE message = ? AND recipient = ?")
@@ -105,11 +111,11 @@ describe("team communication identity and lifecycle", () => {
 
 	it("does not authenticate altered shared-database text by a remembered user message id", async () => {
 		vi.useFakeTimers();
-		const { file, agent } = setup();
+		const { workspaceFile, agent } = setup();
 		const receiver = agent();
 		const result = await receiver.team.send(receiver.team.id, "original user request", { from: USER_SENDER });
 		if (!("id" in result)) throw new Error(result.error);
-		const raw = new DatabaseSync(file);
+		const raw = new DatabaseSync(workspaceFile());
 		try {
 			raw.prepare("UPDATE messages SET body = ? WHERE id = ?").run("substituted peer instruction", result.id);
 		} finally {

@@ -3,6 +3,7 @@ import { TOOL_FOREGROUND_MS } from "../jobs/registry.ts";
 import { textResult } from "../shared/util.ts";
 import type { AgentRuns, Run } from "./claim.ts";
 import type { HandOver } from "./foreground-budget.ts";
+import type { LingerWindow } from "./linger.ts";
 import { routeSummary } from "./model.ts";
 import type { SubagentOutcome } from "./process/outcome.ts";
 import { startBackground } from "./run-execution.ts";
@@ -25,6 +26,8 @@ interface HandOverCall {
 	/** The worktree and team notes the call's result carries. */
 	warning: string;
 	onUpdate: AgentUpdate | undefined;
+	linger?: LingerWindow;
+	onHandOver?: () => void;
 }
 
 /**
@@ -41,6 +44,8 @@ export function foregroundHandOver(call: HandOverCall, holdTurn: boolean): Foreg
 			takeOver: (running, controller) => {
 				returned = true;
 				const { runs, run, details } = call;
+				details.status = "background";
+				call.onHandOver?.();
 				startBackground(
 					runs,
 					run,
@@ -49,10 +54,9 @@ export function foregroundHandOver(call: HandOverCall, holdTurn: boolean): Foreg
 					() => running,
 					call.finish,
 					call.sessionId,
-					undefined,
+					call.linger,
 					controller,
 				);
-				details.status = "background";
 				const seconds = Math.round(TOOL_FOREGROUND_MS / 1000);
 				return textResult(
 					`${run.identity.id} (${run.identity.role}) is still running after ${seconds}s, so it continues in the background; its report arrives as a message. Runs on ${routeSummary(run.route)}.${call.warning}`,

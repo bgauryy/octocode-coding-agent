@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { WheelScrollAccelerator } from "../src/wheel-scroll.ts";
+import { terminalWheelModel, WheelScrollAccelerator } from "../src/wheel-scroll.ts";
 
 function scroll(accelerator: WheelScrollAccelerator, times: number[], direction: -1 | 1 = 1): number[] {
 	return times.map((time) => accelerator.next(direction, time));
@@ -210,4 +210,55 @@ describe("WheelScrollAccelerator", () => {
 		await new Promise((resolve) => setTimeout(resolve, 60));
 		assert.strictEqual(drained.length, before);
 	});
+});
+
+describe("wheel model from the terminal family", () => {
+	const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
+	const saved = { TERM_PROGRAM: process.env.TERM_PROGRAM };
+
+	function setEnv(platform: NodeJS.Platform, termProgram: string | undefined) {
+		Object.defineProperty(process, "platform", { configurable: true, value: platform });
+		if (termProgram === undefined) delete process.env.TERM_PROGRAM;
+		else process.env.TERM_PROGRAM = termProgram;
+	}
+
+	it("classifies xterm.js hosts as per-notch on macOS", () => {
+		try {
+			setEnv("darwin", "vscode");
+			assert.strictEqual(terminalWheelModel(), "per-notch");
+			// 20 reports 16 ms apart on an xterm.js host move with the hand (per-notch acceleration), not one line each.
+			const accelerated = new WheelScrollAccelerator("auto");
+			const moved = scroll(
+				accelerated,
+				Array.from({ length: 20 }, (_, index) => index * 16),
+			).reduce((total, count) => total + count, 0);
+			assert.ok(moved >= 60, `20 reports at 16 ms apart moved ${moved} lines`);
+		} finally {
+			restore();
+		}
+	});
+
+	it("keeps native macOS terminals per-line", () => {
+		try {
+			setEnv("darwin", "apple_terminal");
+			assert.strictEqual(terminalWheelModel(), "per-line");
+		} finally {
+			restore();
+		}
+	});
+
+	it("classifies Linux and SSH as per-notch", () => {
+		try {
+			setEnv("linux", undefined);
+			assert.strictEqual(terminalWheelModel(), "per-notch");
+		} finally {
+			restore();
+		}
+	});
+
+	function restore() {
+		if (saved.TERM_PROGRAM === undefined) delete process.env.TERM_PROGRAM;
+		else process.env.TERM_PROGRAM = saved.TERM_PROGRAM;
+		if (platformDescriptor) Object.defineProperty(process, "platform", platformDescriptor);
+	}
 });

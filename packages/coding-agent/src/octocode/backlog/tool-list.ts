@@ -75,7 +75,7 @@ export const filterFor = (field: string): string | undefined => (field === "id" 
 /** A `list` call as the model writes it. */
 export type ListArguments = Pick<
 	ListParams,
-	"states" | "query" | "ids" | "since" | "sort" | "limit" | "offset" | "assignee" | "blocked" | "createdSince"
+	"states" | "query" | "ids" | "since" | "sort" | "limit" | "offset" | "assignee" | "blocked"
 > & {
 	inTitle?: string;
 	ofType?: ItemType;
@@ -95,13 +95,9 @@ export function listParams(args: ListArguments): ListParams {
 	return out;
 }
 
-/**
- * List filters the declaration does not show, still accepted: `createdSince` is `since` with sort created, and
- * `assignee` has no declared form.
- */
-export const legacyListFields = {
+/** A list filter the declaration does not show, still accepted: `assignee` ("me" or a session id). */
+export const undeclaredListFields = {
 	assignee: Type.Optional(Type.String()),
-	createdSince: Type.Optional(Type.String()),
 };
 
 /** A list call under the item's field names (`listParams` maps the tool's filters onto it). */
@@ -122,7 +118,6 @@ interface ListParams {
 	blocked?: boolean;
 	assignee?: string;
 	since?: string;
-	createdSince?: string;
 	sort?: queries.ItemSort;
 	limit?: number;
 	offset?: number;
@@ -131,13 +126,13 @@ interface ListParams {
 const AGE = /^(\d+)\s*([mhdw])$/;
 const UNIT_MS: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 };
 
-/** `since` (or `createdSince`, named by `field`) as an ISO time: an age before `now` (`2h`) or a time `Date.parse` reads. */
-function sinceTime(since: string | undefined, now: number, field = "since"): string | undefined {
+/** `since` as an ISO time: an age before `now` (`2h`) or a time `Date.parse` reads. */
+function sinceTime(since: string | undefined, now: number): string | undefined {
 	if (since === undefined) return undefined;
 	const age = AGE.exec(since.trim());
 	const at = age ? now - Number(age[1]) * UNIT_MS[age[2]] : Date.parse(since);
 	if (Number.isNaN(at))
-		throw new Error(`${field} needs an ISO time or an age like 2h or 7d, not ${visibleControls(since)}.`);
+		throw new Error(`since needs an ISO time or an age like 2h or 7d, not ${visibleControls(since)}.`);
 	return new Date(at).toISOString();
 }
 
@@ -166,7 +161,6 @@ function givenFilters(params: ListParams, now: number): Partial<ListParams> {
 		blocked: params.blocked,
 		assignee: params.assignee?.trim() || undefined,
 		since: sinceTime(params.since, now),
-		createdSince: sinceTime(params.createdSince, now, "createdSince"),
 		sort: params.sort,
 	};
 	return Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== undefined));
@@ -177,8 +171,8 @@ function listQuery({ actor, session, repoRoot }: Backlog, params: ListParams, no
 	const filters = givenFilters(params, now);
 	const ids = filters.id?.split(",");
 	const states = params.states?.length ? params.states : ids ? [...LIST_STATES] : DEFAULT_LIST_STATES;
-	// `since` follows the order: with sort created it bounds creation time, as the older `createdSince` did.
-	const createdSince = filters.createdSince ?? (filters.sort === "created" ? filters.since : undefined);
+	// `since` follows the order: with sort created it bounds creation time.
+	const createdSince = filters.sort === "created" ? filters.since : undefined;
 	const updatedSince = filters.sort === "created" ? undefined : filters.since;
 	const defaultLimit = params.states?.length || ids ? DEFAULT_LIST_LIMIT : DEFAULT_OPEN_LIMIT;
 	const limit = Math.min(MAX_LIST_LIMIT, Math.max(1, Math.floor(params.limit ?? defaultLimit)));

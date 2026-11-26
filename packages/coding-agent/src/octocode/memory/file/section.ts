@@ -6,6 +6,8 @@ import { renderPrompt } from "../../../core/prompt-template.ts";
 import { notify } from "../../shared/commands.ts";
 import { isFolderTrusted } from "../../trust/port.ts";
 import { repoKey, workspaceGit } from "../../../utils/git-repository.ts";
+import type { MemoryStore } from "../store.ts";
+import { adoptFileLines } from "./sync.ts";
 import { loadableLines, type MemoryLine, memoryLineKey, parseMemoryFile, serializeMemoryFile } from "./format.ts";
 import { trackedByGit } from "./paths.ts";
 import {
@@ -104,7 +106,7 @@ interface Snapshot {
  */
 export function registerMemorySection(
 	api: Pick<FeatureSetup, "bus" | "settings">,
-	options: { isSubagent: boolean; env?: NodeJS.ProcessEnv },
+	options: { isSubagent: boolean; env?: NodeJS.ProcessEnv; store?: (ctx: Pick<FeatureContext, "cwd">) => MemoryStore },
 ): { lineKeys: () => ReadonlySet<string> } {
 	const env = options.env ?? process.env;
 	const lean = options.isSubagent && envFlag(env, LEAN_ENV);
@@ -118,6 +120,12 @@ export function registerMemorySection(
 		const files = await Promise.all(
 			refs.filter((ref) => !untrustedWorkspaceFile(ref, ctx.cwd)).map((ref) => loadMemoryFile(ref, env)),
 		);
+		// A main session gives every loaded line without a note one, so `memory` reaches what the prompt carries.
+		const orphans = files.filter((file) => file.lines.length > 0);
+		if (!options.isSubagent && options.store && orphans.length > 0) {
+			const store = options.store(ctx);
+			for (const file of orphans) adoptFileLines(store, file.ref, file.lines);
+		}
 		return { session: ctx.sessionManager.getSessionId(), text: renderMemorySection(files), files };
 	};
 	const adopt = (next: Snapshot, ctx: FeatureContext) => {

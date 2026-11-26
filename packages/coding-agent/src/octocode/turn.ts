@@ -14,6 +14,7 @@ import { readRolePrompt } from "./native/prompts/role.ts";
 import { getMcpSessionStatus, currentToolRoles, mcpServerMayRun } from "../../../mcp/src/api.ts";
 import { envFlag, LEAN_ENV, READ_ONLY_ENV } from "@octocodeai/octocode-common/env";
 import type { SkillCatalog } from "./skill/catalog.ts";
+import { SUBAGENTS_SKILL } from "./skill/first-use.ts";
 import { promptRootsFromEnv, rebasePath } from "./worktree-paths/prompt-root.ts";
 import { AGENT_ROLE_ENV } from "./team/store/env.ts";
 import { BROWSER_SERVER, DESKTOP_SERVER, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
@@ -21,6 +22,7 @@ import { browserMcpTool } from "@octocodeai/octocode-common/browser-mcp";
 import { type AgentProfile, profileSelectsBrowser, profileSelectsServer } from "./subagents/profiles.ts";
 import { currentRouting, ROUTING_NOTICE_ID, RoutingWatch } from "./subagents/routing-watch.ts";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { harnessSource, sourcedText } from "./events/source.ts";
 
 /**
  * Where this session's replies go, for the `environment` section. Read at every prompt: `/settings` can turn Mermaid
@@ -135,8 +137,18 @@ export function registerTurnSetup(
 					? profiles.filter((profile) => profileSelectsServer(profile, DESKTOP_SERVER)).map(({ name }) => name)
 					: [],
 			canDelegate: !options.isSubagent,
+			// A top-level session in a linked worktree is a proxy of its orchestrator (`policy/linked.md`).
+			linked:
+				!options.isSubagent &&
+				!promptRoots &&
+				event.systemPromptOptions.cwd !== undefined &&
+				linkedWorktreeFact(event.systemPromptOptions.cwd) !== undefined,
 			canUseAgent: selected.includes("agent"),
 			canStartRunner: declaresRunner(api, selected),
+			// Loadable by the model, so the first child task delivers it (`skill/first-use.ts`).
+			subagentsSkill:
+				!options.isSubagent &&
+				options.skillCatalog?.invocable().some(({ skill }) => skill.name === SUBAGENTS_SKILL) === true,
 			readOnly,
 			// A read-only role keeps `file` for its reports; its profile, not its tools, says it leaves source unchanged.
 			canSave: selected.includes(FILE_TOOL),
@@ -207,7 +219,7 @@ export function registerTurnSetup(
 		// It starts no turn, so it settles at once; a failure reaches the bus's error report.
 		if (notice)
 			await api.session.sendMessage(
-				{ customType: ROUTING_NOTICE_ID, content: notice, display: false },
+				{ customType: ROUTING_NOTICE_ID, content: sourcedText(notice, harnessSource("routing")), display: false },
 				{ triggerTurn: false },
 			);
 	});

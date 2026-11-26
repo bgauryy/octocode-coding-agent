@@ -7,7 +7,7 @@ export const DESKTOP_SERVER = "desktop";
 /** The Cua Driver executable, started as `cua-driver mcp`; Octocode never installs it. */
 export const DESKTOP_BIN = "cua-driver";
 
-/** The MCP server name of the recommended local-model server (`mcp/src/recommended/freellama.json`): the main session's, not a child's. */
+/** The MCP server name of the default local-model server (`mcp/src/default_mcp_config.json`): the main session's, not a child's. */
 export const FREELLAMA_SERVER = "freellama";
 
 /** The base prompt section that describes every enabled MCP server, one block per server (`mcp/src/section.ts`). */

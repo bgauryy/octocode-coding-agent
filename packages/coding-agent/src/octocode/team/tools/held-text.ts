@@ -13,13 +13,19 @@ export const INTERPRETER_HELD = ({ name, cause }: { name: string; cause: string 
 export const NOT_CHECKED_HELD = ({ name, cause }: { name: string; cause: string }): string =>
 	`This command was not run: what it writes cannot be checked against reservations, so while another agent holds one it is refused${/^[\w.+-]+$/.test(name) ? ` (\`${name}\`)` : ""}. Why: ${cause}. Instead: write the command to a script file under .octocode/agent/temp/ and run that file, or use the file tool for edits.`;
 
-/** A package-manager script run (`yarn run x`, `npm test`, `pnpm run x`): what it writes is not in the command line. */
-export const PACKAGE_SCRIPT =
-	/(?:^|[;&|(]\s*)(?:(?:npm|pnpm|bun)\s+(?:run(?:-script)?|test|start)\b|yarn\s+(?:workspaces?\s+\S+\s+)?(?:run|test|start)\b)/;
-export const PACKAGE_SCRIPT_REPEAT =
-	"[A reservation is held: this script may have changed a reserved file. Check `coordinate` `changes`.]";
-export const PACKAGE_SCRIPT_NOTE =
-	"[Another agent holds a reservation and this command ran a package script: reservations cannot check what a script writes, so it may have changed a reserved file. Check `coordinate` `changes` before relying on those files.]";
+/**
+ * A run whose writes are not in the command line: a package script (`yarn <script>`, `yarn workspace <ws> run <script>`,
+ * `npm run`, `pnpm`, `bun`), `make`, a shell script file (`bash x.sh`) or a program path (`./x`). Yarn, pnpm and bun
+ * subcommands that only report (`--version`, `help`, `info`, `why`, `list`, `bin`) are not. Each may follow a wrapper
+ * (`VAR=x`, `env`, `time`, `nohup`, `sudo`, `command`, `exec`, with their options: `sudo -u x`) or open a quoted
+ * `bash -c` string; `npx` counts too. Not opaque: `npx` of an interpreter the inline-code parse reads (`tsx`, `ts-node`,
+ * `node`), and formatter runs, which the repository-wide format gate owns (`yarn oxfmt <files>` names its writes).
+ */
+export const OPAQUE_RUNNER =
+	/(?:^|[;&|("']\s*)(?:(?:[A-Za-z_]\w*=\S*|(?:env|time|nohup|sudo|command|exec)(?:\s+-\S+(?:\s+[^\s-]\S*)?)*)\s+)*(?:npx\s+(?!(?:tsx|ts-node|node|oxfmt|prettier)\b)\S|npm\s+(?:run(?:-script)?|test|start|exec)\b|(?:yarn|pnpm|bun)(?:\s+(?!(?:-v|--version|help|info|why|list|bin|oxfmt|prettier)\b)[\w@./:-]+|(?=\s*(?:$|[;&|)])))|make\b|(?:bash|sh|zsh)(?:\s+-(?!c\b)\S+)*\s+[^\s-]\S*|\.{1,2}\/\S+)/;
+/** The question asked before an opaque runner starts while another agent holds a reservation (`held` names the holder and path). */
+export const OPAQUE_RUNNER_ASK = (held: string): string =>
+	`This command runs a script or program whose writes cannot be checked against reservations, and another agent holds one: it may change a reserved file. ${held}`;
 
 /** A formatter run over the whole repository while reservations are held: it rewrites files outside them. */
 export const REPO_WIDE_FORMAT_HELD =

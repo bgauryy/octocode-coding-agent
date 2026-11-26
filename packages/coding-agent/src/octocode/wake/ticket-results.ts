@@ -1,8 +1,7 @@
 import { sharedClock } from "@octocodeai/octocode-common/clock";
 import type { FeatureSetup } from "../../core/features/index.ts";
 import { recordProblem } from "../../core/diagnostics-log.ts";
-import { sharedAgentDb } from "../../storage/database.ts";
-import { registeredWorkspaceWhenReady } from "../../storage/workspace-database.ts";
+import { workspaceDbWhenReady } from "../../storage/workspace-database.ts";
 import { type AgentDb, isBusy, withoutWaiting } from "../../../../db/src/api.ts";
 import { EventSubscribers } from "../events/subscribers.ts";
 import { Tickets } from "../events/tickets.ts";
@@ -137,9 +136,9 @@ export function installTicketResults(api: FeatureSetup, gate: WakeGate): void {
 	let running: TicketResults | undefined;
 	api.bus.on("session_start", async (_event, ctx) => {
 		await running?.close();
-		const agent = sharedAgentDb();
+		const { agent, workspace } = await workspaceDbWhenReady(ctx.cwd);
 		running = new TicketResults(agent, {
-			workspaceId: (await registeredWorkspaceWhenReady(ctx.cwd, agent)).id,
+			workspaceId: workspace.id,
 			sessionId: ctx.sessionManager.getSessionId(),
 		});
 		try {

@@ -1,6 +1,6 @@
 /**
  * Notices slice of the interactive UI store: the notices the interface says at most once in a host's lifetime, and the
- * changelog the startup notice shows. Nothing draws it, so `bindRender` asks for no frame when it changes.
+ * changelog the startup notice shows. Nothing draws it, so no binder asks for a frame when it changes.
  */
 
 import type { StoreApi } from "zustand/vanilla";

@@ -142,9 +142,12 @@ export class TeamDatabase {
 		}
 	}
 
-	/** The file the ticker watches: only once the session started and the database is open or exists. */
+	/**
+	 * The file the ticker watches: only once the session started and the database is open or exists. The team's rows
+	 * live in its workspace file once open; before that the machine file, which the first read then opens through.
+	 */
 	watchedFile(): string | undefined {
-		const file = agentDbPath(this.host.env());
+		const file = this.db?.file ?? agentDbPath(this.host.env());
 		return this.host.ctx() && (this.db || fs.existsSync(file)) ? file : undefined;
 	}
 

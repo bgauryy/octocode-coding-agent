@@ -3,6 +3,7 @@ import { agentEvents } from "../../../../../db/src/api.ts";
 import { openAgentDb } from "../../../storage/database.ts";
 import { agentDbPath } from "../../../storage/state-paths.ts";
 import { readWorkspaceIdentity } from "../../../storage/workspace.ts";
+import { openWorkspaceDb } from "../../../storage/workspace-database.ts";
 
 export const EVENTS_LIMIT = { min: 1, max: 1000, default: 200 } as const;
 
@@ -96,10 +97,15 @@ export function eventsReport(
 	if (!fs.existsSync(file)) return empty(`No agent database at ${file}.`);
 	const workspace = readWorkspaceIdentity(options.cwd);
 	if (!workspace) return empty(`No Octocode workspace in ${options.cwd}.`);
-	const agent = openAgentDb(file, env);
+	const machine = openAgentDb(file, env);
 	try {
-		return report(agentEvents.since(agent.db, options.since, options.limit, workspace.id));
+		const { agent } = openWorkspaceDb(machine, workspace, env);
+		try {
+			return report(agentEvents.since(agent.db, options.since, { workspaces: [workspace.id] }, options.limit));
+		} finally {
+			if (agent !== machine) agent.close();
+		}
 	} finally {
-		agent.close();
+		machine.close();
 	}
 }

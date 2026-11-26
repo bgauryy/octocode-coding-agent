@@ -19,8 +19,8 @@ import { contextTokens, type ThrashBreaker, toolDefinitionChars } from "../../..
  * a child's run settling is its report.
  */
 export const COMPACT_TOOL = "compact";
-/** Below this share of the room before automatic compaction, a summary frees too little to pay for itself. */
-const COMPACT_MIN_SHARE = 0.5;
+/** Below this share of the room before automatic compaction the agent may not compact: only the user's `/compact` runs then. */
+export const COMPACT_MIN_SHARE = 0.9;
 /** A request this few turns after the previous compaction is refused (an automatic one may still refill). */
 const COMPACT_COOLDOWN_TURNS = 2;
 export const COMPACT_RESUME_TYPE = "octocode-compact-resume";
@@ -52,6 +52,10 @@ interface Pending {
 	focus?: string;
 	/** Compactions counted when the request was made: a later one already did the job. */
 	compactions: number;
+	/** false: no work waits, so no resume turn follows the compaction. */
+	resume?: boolean;
+	/** The harness asked (a finished item), not the agent: a failure is the user's to see, not the model's. */
+	byHarness?: boolean;
 }
 
 export class CompactRequests {
@@ -90,9 +94,11 @@ export class CompactRequests {
 			SetupPick<"models", "getThinkingLevel"> &
 			SetupPick<"settings", "get">,
 		ctx: Pick<FeatureContext, "model" | "getContextUsage" | "getSystemPrompt" | "sessionManager">,
+		floor = COMPACT_MIN_SHARE,
 	): string | undefined {
 		const thrash = this.#thrash;
-		if (thrash.tripped()) return refusalText("thrash");
+		// The cooldown and floor below already space a request after a compaction, so the recovery band does not refuse it.
+		if (thrash.tripped(true)) return refusalText("thrash");
 		const since = thrash.turnsSinceCompaction;
 		if (since !== undefined && since < COMPACT_COOLDOWN_TURNS)
 			return refusalText("cooldown", { thisTurn: since === 0 }, true);
@@ -100,16 +106,16 @@ export class CompactRequests {
 		const tokens = contextTokens(ctx, toolDefinitionChars(api));
 		if (!model || model.contextWindow <= 0 || tokens === undefined) return refusalText("unknown");
 		const limit = autoCompactAt(model, compactionThinking(api), limitsFor(api, model).compaction);
-		if (tokens < COMPACT_MIN_SHARE * limit) {
-			// Rounded down: 49.6% must not read as the 50% floor it is refused under.
+		if (tokens < floor * limit) {
+			// Rounded down: 89.6% must not read as the 90% floor it is refused under.
 			const percent = Math.floor((tokens / Math.max(1, limit)) * 100);
-			return refusalText("small", { percent, floor: COMPACT_MIN_SHARE * 100 }, true);
+			return refusalText("small", { percent, floor: floor * 100 }, true);
 		}
 		return undefined;
 	}
 
-	request(focus: string | undefined): void {
-		this.#pending = { focus, compactions: this.#compactions };
+	request(focus: string | undefined, resume = true, byHarness = false): void {
+		this.#pending = { focus, compactions: this.#compactions, resume, byHarness };
 	}
 
 	/**
@@ -143,14 +149,16 @@ export class CompactRequests {
 		};
 		ctx.compact({
 			customInstructions: pending.focus,
-			// The agent's own request: its focus is labelled as its own, and it may reuse the early summary.
-			requestedBy: "agent",
+			// The agent's own request: its focus is labelled as its own, and it may reuse the early summary. A finished
+			// item's focus is the harness's, and follows the summary.
+			requestedBy: pending.byHarness ? "item" : "agent",
 			onComplete: (result) => {
-				send(compactResumeText(result, pending.focus), true);
+				send(compactResumeText(result, pending.focus), pending.resume !== false);
 			},
 			// The session reports the failure to the user; the model learns of it on its next turn, without a new one. A
 			// headless run has no next turn: its last reply was the status line it was told to end with, so it goes on from here.
 			onError: (error) => {
+				if (pending.byHarness) return;
 				send(renderPrompt("notices/compaction/compact-failed.md", { error: errorMessage(error) }), !ctx.hasUI);
 			},
 		});

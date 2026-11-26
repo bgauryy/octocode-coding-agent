@@ -53,7 +53,7 @@ class MemoryStore implements ThroughputStore {
 	reserve(input: ThroughputReserveInput): ThroughputReserveResult {
 		const scale = this.state(input.key).scale * (input.utilization ?? 1);
 		const effectiveTokenLimit = Math.max(1, Math.floor(input.tokenLimit * scale));
-		const effectiveRequestLimit = Math.max(1, Math.floor(input.requestLimit * scale));
+		const effectiveRequestLimit = Math.max(1, Math.floor((input.requestLimit ?? Number.POSITIVE_INFINITY) * scale));
 		const usage = this.usage(input);
 		const id = `${input.key}/${input.windowStart}/${input.reservationId}`;
 		const held = this.rows.has(id);

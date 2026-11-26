@@ -25,12 +25,17 @@ export function agentBase(member: Member): ProfilerMember {
  * The transcript of a team member. The session row the team database records for its session id is the authority (its
  * `file`, else the session folder holding `<timestamp>_<id>.jsonl`); a child saves under its scratch folder, which
  * the row points at. Undefined when nothing was recorded or the file is gone, as for an agent that is not an Octocode process.
+ * `db` holds the team's agent rows, `machine` the session rows.
  */
-export function memberTranscript(db: Db, member: { id: string; sessionId?: string }): string | undefined {
-	const resolved = resolveAgent(db, member.id);
+export function memberTranscript(
+	db: Db,
+	member: { id: string; sessionId?: string },
+	machine: Db = db,
+): string | undefined {
+	const resolved = resolveAgent(db, member.id, undefined, machine);
 	if (resolved?.sessionFile && fs.existsSync(resolved.sessionFile)) return resolved.sessionFile;
 	const id = member.sessionId ?? resolved?.sessionId;
-	return id ? sessionTranscript(db, id) : undefined;
+	return id ? sessionTranscript(machine, id) : undefined;
 }
 
 /** The transcript of session `id` by the folder its session row records (`<timestamp>_<id>.jsonl`); undefined when the row or the file is missing. */

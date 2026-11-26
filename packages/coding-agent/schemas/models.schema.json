@@ -63,7 +63,51 @@
             "apiKey": {
               "type": "string",
               "minLength": 1,
-              "description": "Literal key, \"$NAME\" environment interpolation, or \"!command\" output (the command runs on first use, not at startup)."
+              "description": "Literal key, \"$NAME\" environment interpolation, \"!command\" output (the command runs on first use, not at startup), or \"keychain:<name>\" (the system keychain entry of service octocode, account <name>)."
+            },
+            "auth": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Program that prints the key on stdout; runs without a shell, on first use."
+                },
+                "args": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Arguments, passed as they are."
+                },
+                "timeoutMs": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 120000,
+                  "default": 10000,
+                  "description": "Milliseconds before the command is stopped and the request fails."
+                },
+                "ttlMs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "default": 300000,
+                  "description": "Milliseconds the printed key is reused; 0 runs the command for every request. A request the provider refuses (401) runs it again."
+                }
+              },
+              "additionalProperties": false,
+              "description": "Key command, used before env and apiKey. Its stdout, trimmed, is the key."
+            },
+            "env": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "minItems": 1,
+              "description": "Environment variables that may hold the key; the first one set is used, else apiKey."
             },
             "api": {
               "type": "string",
@@ -82,6 +126,143 @@
             "compat": {
               "$ref": "#/$defs/ProviderCompat",
               "description": "Provider and model compatibility overrides."
+            },
+            "requestsPerMinute": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Most requests a session sends to this provider per minute (sliding 60 s window). 0 turns the limit off. A model's value wins over its provider's, which wins over the requestsPerMinute setting."
+            },
+            "tokensPerMinute": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Most tokens a model may use per minute across all sessions on this machine: uncached input plus output (cache reads are not counted; a Bedrock model that burns output down counts it at that rate). A request over the budget waits for room. A model's value wins over its provider's; for Bedrock Kimi the OCTOCODE_BEDROCK_KIMI_TPM environment variable wins over both."
+            },
+            "profile": {
+              "enum": [
+                "anthropic",
+                "openai",
+                "bedrock",
+                "openrouter",
+                "vercel",
+                "opencode",
+                "groq",
+                "xiaomi",
+                "zai",
+                "together",
+                "moonshot",
+                "cloudflare-workers-ai",
+                "cloudflare-ai-gateway",
+                "nvidia",
+                "ant-ling",
+                "cerebras",
+                "deepseek",
+                "xai",
+                "chutes"
+              ],
+              "description": "The provider family whose cache markers, cache lifetimes and request quirks this provider's models follow: use it for a gateway that serves another provider's models (a Claude gateway takes \"anthropic\"). Unset: detected from the provider id and host. An explicit compat value still wins."
+            },
+            "defaults": {
+              "type": "object",
+              "properties": {
+                "reasoning": {
+                  "type": "boolean",
+                  "description": "Whether the model supports thinking."
+                },
+                "thinkingLevelMap": {
+                  "$ref": "#/$defs/ThinkingLevelMap",
+                  "description": "Provider value sent for each thinking level. null marks a level unsupported. Levels the model does not map use the provider's default value through high; xhigh and max are unsupported."
+                },
+                "input": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "text",
+                      "image"
+                    ]
+                  },
+                  "description": "Accepted input modalities. Include \"image\" only when this model and endpoint accept image attachments."
+                },
+                "inputLimits": {
+                  "$ref": "#/$defs/ModelInputLimits"
+                },
+                "cost": {
+                  "$ref": "#/$defs/ModelCost"
+                },
+                "promptCache": {
+                  "$ref": "#/$defs/ModelPromptCache",
+                  "description": "Best-effort prompt cache lifetime in seconds for the short and long retention tiers. Octocode warms only tiers with a known lifetime."
+                },
+                "contextWindow": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "Context window in tokens."
+                },
+                "maxTokens": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "Maximum output tokens."
+                },
+                "samplingParams": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^.*$": {}
+                  },
+                  "description": "Fields merged into every request body. Applies only to OpenAI-compatible APIs."
+                },
+                "samplingParamsByThinkingLevel": {
+                  "type": "object",
+                  "properties": {
+                    "off": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^.*$": {}
+                      }
+                    },
+                    "minimal": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^.*$": {}
+                      }
+                    },
+                    "low": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^.*$": {}
+                      }
+                    },
+                    "medium": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^.*$": {}
+                      }
+                    },
+                    "high": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^.*$": {}
+                      }
+                    },
+                    "xhigh": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^.*$": {}
+                      }
+                    },
+                    "max": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^.*$": {}
+                      }
+                    }
+                  },
+                  "description": "samplingParams per thinking level, merged over samplingParams."
+                },
+                "compat": {
+                  "$ref": "#/$defs/ProviderCompat",
+                  "description": "Provider and model compatibility overrides."
+                }
+              },
+              "description": "Fields applied to every model of this provider, built-in and custom. A model's own field wins, then its modelOverrides entry, then these defaults, then built-in model data."
             },
             "authHeader": {
               "type": "boolean",
@@ -261,6 +442,16 @@
                   "compat": {
                     "$ref": "#/$defs/ProviderCompat",
                     "description": "Provider and model compatibility overrides."
+                  },
+                  "requestsPerMinute": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Most requests a session sends to this provider per minute (sliding 60 s window). 0 turns the limit off. A model's value wins over its provider's, which wins over the requestsPerMinute setting."
+                  },
+                  "tokensPerMinute": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Most tokens a model may use per minute across all sessions on this machine: uncached input plus output (cache reads are not counted; a Bedrock model that burns output down counts it at that rate). A request over the budget waits for room. A model's value wins over its provider's; for Bedrock Kimi the OCTOCODE_BEDROCK_KIMI_TPM environment variable wins over both."
                   }
                 }
               }
@@ -538,6 +729,16 @@
                     "compat": {
                       "$ref": "#/$defs/ProviderCompat",
                       "description": "Provider and model compatibility overrides."
+                    },
+                    "requestsPerMinute": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Most requests a session sends to this provider per minute (sliding 60 s window). 0 turns the limit off. A model's value wins over its provider's, which wins over the requestsPerMinute setting."
+                    },
+                    "tokensPerMinute": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "description": "Most tokens a model may use per minute across all sessions on this machine: uncached input plus output (cache reads are not counted; a Bedrock model that burns output down counts it at that rate). A request over the budget waits for room. A model's value wins over its provider's; for Bedrock Kimi the OCTOCODE_BEDROCK_KIMI_TPM environment variable wins over both."
                     }
                   }
                 }

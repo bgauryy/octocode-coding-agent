@@ -13,33 +13,34 @@ flowchart LR
 
 ## Use it
 
-| Page                                  | Read it to                                                          |
-| ------------------------------------- | ------------------------------------------------------------------- |
-| [How to](how-to.md)                   | Do a common task in a few steps                                     |
-| [Commands](commands.md)               | Look up every slash command and `octocode` subcommand               |
-| [CLI modes](cli.md)                   | Run text, JSON, RPC or ACP mode and pass flags                      |
-| [Native features](native-features.md) | Learn the tools, subagents, teams, worktrees, planning and recovery |
-| [Glossary](GLOSSARY.md)               | Look up coordinator, subagent, team, worktree agent and other terms |
-| [Memory](memory.md)                   | Keep notes that later sessions reuse                                |
+| Page                                  | Read it to                                                            |
+| ------------------------------------- | --------------------------------------------------------------------- |
+| [How to](how-to.md)                   | Do a common task in a few steps                                       |
+| [Commands](commands.md)               | Look up every slash command and `octocode` subcommand                 |
+| [CLI modes](cli.md)                   | Run text, JSON, RPC or ACP mode and pass flags                        |
+| [Native features](native-features.md) | Learn the tools, subagents, teams, worktrees, planning and recovery   |
+| [Glossary](GLOSSARY.md)               | Look up coordinator, subagent, team, worktree agent and other terms   |
+| [Memory](memory.md)                   | Keep notes that later sessions reuse                                  |
+| [Troubleshooting](troubleshooting.md) | Fix install, sign-in, trust, rate-limit, VS Code and Windows problems |
 
 ## Configure
 
-| Page                                                      | Read it to                                                                      |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Page                                                      | Read it to                                                                 |
+| --------------------------------------------------------- | -------------------------------------------------------------------------- |
 | [Configuration](configuration.md)                         | Find each file, its precedence and trust; switch anything with `/settings` |
-| [Settings reference](settings.md)                         | Look up every setting and its default                                           |
-| [Environment variables](environment-variables.md)         | Set behaviour from the environment                                              |
-| [Providers](providers.md)                                 | Connect an AI provider                                                          |
-| [Models](models.md)                                       | Pick, route, discover and add models                                            |
-| [Smart routing](smart-routing.md)                         | Route requests safely across configured physical models                         |
-| [Models configuration reference](models-configuration.md) | Look up every `models.json` field                                               |
-| [Permissions](permissions.md)                             | Choose a permission mode and write rules                                        |
-| [Sandbox](sandbox.md)                                     | Confine the agent's shell commands with an operating-system sandbox             |
-| [Prompts](prompts.md)                                     | Change what agents are told                                                     |
-| [What an agent reads](agent-context.md)                   | See each context source, its switch and how to measure it                       |
-| [Prompt caching](prompt-caching.md)                       | Keep requests cheap and find cache misses                                       |
-| [Request flows](harness-flows.md)                         | Follow how a request is built and what keeps it small and cached                |
-| [Keybindings](keybindings.md), [Themes](themes.md)        | Change keys and colours                                                         |
+| [Settings reference](settings.md)                         | Look up every setting and its default                                      |
+| [Environment variables](environment-variables.md)         | Set behaviour from the environment                                         |
+| [Providers](providers.md)                                 | Connect an AI provider                                                     |
+| [Models](models.md)                                       | Pick, route, discover and add models                                       |
+| [Smart routing](smart-routing.md)                         | Route requests safely across configured physical models                    |
+| [Models configuration reference](models-configuration.md) | Look up every `models.json` field                                          |
+| [Permissions](permissions.md)                             | Choose a permission mode and write rules                                   |
+| [Sandbox](sandbox.md)                                     | Confine the agent's shell commands with an operating-system sandbox        |
+| [Prompts](prompts.md)                                     | Change what agents are told                                                |
+| [What an agent reads](agent-context.md)                   | See each context source, its switch and how to measure it                  |
+| [Prompt caching](prompt-caching.md)                       | Keep requests cheap and find cache misses                                  |
+| [Request flows](harness-flows.md)                         | Follow how a request is built and what keeps it small and cached           |
+| [Keybindings](keybindings.md), [Themes](themes.md)        | Change keys and colours                                                    |
 
 ## Extend
 

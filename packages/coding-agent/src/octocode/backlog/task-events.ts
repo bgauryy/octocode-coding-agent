@@ -8,6 +8,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { clip } from "../shared/text.ts";
 import { type Backlog, type BacklogOptions, openBacklog } from "./context.ts";
 import { taskLine } from "./task-source.ts";
+import { harnessSource, sourcedText } from "../events/source.ts";
 
 /** The customType of the hidden message that carries foreign backlog changes and the task line. */
 export const BACKLOG_EVENTS_TYPE = "backlog-events";
@@ -68,10 +69,6 @@ class TaskEvents {
 		this.options = options;
 	}
 
-	private db() {
-		return sharedAgentDb(this.options.env ?? process.env).db;
-	}
-
 	/** A new span: the snapshot's cursor and task line become the baseline; nothing before them is reported. */
 	start(ctx: FeatureContext): void {
 		this.cursor = undefined;
@@ -83,7 +80,7 @@ class TaskEvents {
 		const b = this.open(ctx);
 		if (!b) return;
 		this.lastStamp = b.store.revision;
-		const snap = backlogQueries.snapshot(this.db(), b.store.repo);
+		const snap = backlogQueries.snapshot(b.store.agent.db, b.store.repo);
 		this.cursor = snap.cursor;
 		this.lastLine = taskLine(snap, b.session, [], b.actor.item);
 	}
@@ -95,7 +92,10 @@ class TaskEvents {
 		const urgent = [...this.pending].filter(([, change]) => isUrgent(change, b));
 		if (urgent.length === 0) return;
 		for (const [ref] of urgent) this.pending.delete(ref);
-		const content = eventsNotice(urgent.map(([ref, change]) => describe(ref, change, b)).join("; "));
+		const content = sourcedText(
+			eventsNotice(urgent.map(([ref, change]) => describe(ref, change, b)).join("; ")),
+			harnessSource("backlog"),
+		);
 		// Steered into the run (or appended when idle): it starts no turn, so it settles at once.
 		await this.api.session.sendMessage(
 			{ customType: BACKLOG_EVENTS_TYPE, content, display: false },
@@ -113,7 +113,7 @@ class TaskEvents {
 			lines.push(eventsNotice([...this.pending].map(([ref, change]) => describe(ref, change, b)).join("; ")));
 		this.resync = false;
 		this.pending.clear();
-		const snap = backlogQueries.snapshot(this.db(), b.store.repo);
+		const snap = backlogQueries.snapshot(b.store.agent.db, b.store.repo);
 		const changed = [...this.changed];
 		const shown = changed.slice(0, MAX_CHANGED);
 		if (changed.length > MAX_CHANGED) shown.push(`${changed.length - MAX_CHANGED} more`);
@@ -155,7 +155,7 @@ class TaskEvents {
 		if (stamp === this.lastStamp) return b;
 		this.lastStamp = stamp;
 		for (;;) {
-			const page = backlogQueries.auditAfter(this.db(), b.store.repo, this.cursor, PAGE);
+			const page = backlogQueries.auditAfter(b.store.agent.db, b.store.repo, this.cursor, PAGE);
 			this.cursor = page.cursor;
 			if (page.resync) {
 				// Rows were pruned before they were read: one note to re-read replaces whatever was collected.
@@ -227,7 +227,15 @@ export function registerTaskEvents(
 		// A turn the agent starts itself (a custom message) keeps the events for the next user turn.
 		if (!active() || event.messageType === "custom") return undefined;
 		const content = [events.turn(ctx), extra?.()].filter(Boolean).join("\n");
-		return content ? { message: { customType: BACKLOG_EVENTS_TYPE, content, display: false } } : undefined;
+		return content
+			? {
+					message: {
+						customType: BACKLOG_EVENTS_TYPE,
+						content: sourcedText(content, harnessSource("backlog")),
+						display: false,
+					},
+				}
+			: undefined;
 	});
 	return {
 		poke: (ctx) => {

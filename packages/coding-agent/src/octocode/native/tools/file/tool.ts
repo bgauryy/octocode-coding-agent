@@ -38,7 +38,7 @@ import {
 	batchText,
 	Params,
 	type PreparedChange,
-	renameReasoning,
+	prepareChangeArguments,
 } from "../../../files/tool/queries.ts";
 import { runQuery } from "../../../files/tool/run.ts";
 export { projectEditHunk } from "../../../files/tool/patch-projection.ts";
@@ -90,7 +90,7 @@ export function registerFileTool(
 						"Send queries or one Codex patch. Group a file's replacements in edits: [{oldText,newText}], matched against the original. Write creates or replaces a whole file. Read existing files before write or delete. Queries continue after execution errors. A patch checks all changes first and stops on failure. /rewind restores changes.",
 					promptGuidelines: renderPrompt("tools/file/guidelines.md").split("\n"),
 					parameters: Params,
-					prepareArguments: renameReasoning,
+					prepareArguments: prepareChangeArguments,
 					// Exclusive in its batch: a `file` call starts after every earlier call of the message ended and every later one
 					// waits for it, so a read or a check batched after an edit sees the edit. Calls on either side still overlap.
 					executionMode: "sequential",
@@ -111,7 +111,7 @@ export function registerFileTool(
 							throw new Error("Remote patch environment routing is not available in this local file tool");
 						let queries: FileQuery[] = canonical
 							? patchChanges(params.patch!, params.reason ?? "Apply patch")
-							: // `renameReasoning` gave every query a reason (its own, else the call's).
+							: // `prepareChangeArguments` gave every query a reason (its own, else the call's).
 								(params.queries as FileQuery[]);
 						if (!queries.length)
 							throw new Error(

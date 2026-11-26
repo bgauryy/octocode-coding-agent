@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Tickets } from "../../../src/octocode/events/tickets.ts";
 import { makeSource } from "../../../src/octocode/events/source.ts";
-import { sharedAgentDb } from "../../../src/storage/database.ts";
-import { registeredWorkspace } from "../../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../../src/storage/workspace-database.ts";
 import { branchLines, count, createRig, type Rig } from "./rig.ts";
 
 const rigs: Rig[] = [];
@@ -15,9 +14,9 @@ const peer = makeSource("peer", "worker", "db", "self-reported");
 async function asker() {
 	const rig = await createRig();
 	rigs.push(rig);
-	const agent = sharedAgentDb();
+	const { agent, workspace } = workspaceDb(rig.ctx.cwd);
 	const tickets = new Tickets(agent, {
-		workspaceId: registeredWorkspace(rig.ctx.cwd, agent).id,
+		workspaceId: workspace.id,
 		sessionId: rig.ctx.sessionManager.getSessionId(),
 	});
 	return { rig, tickets };

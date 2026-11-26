@@ -3,7 +3,7 @@ import { sharedAgentDb } from "../../storage/database.ts";
 import { currentSessionId } from "../shared/home.ts";
 import { createProfiler } from "../profiler/index.ts";
 import { agentsTable, insightsTable, requestsTable } from "../profiler/format.ts";
-import { findSession, ProfileSessionError, storedProfilerSource } from "../profiler/stored-source.ts";
+import { findSession, ProfileSessionError, storedSessionSource } from "../profiler/stored-source.ts";
 
 /** What a profile read asks: `source: "profile"` of the archive tool. */
 export interface ProfileQuery {
@@ -62,7 +62,7 @@ export function readProfile(cwd: string, query: ProfileQuery): ProfileText {
 		if (!(error instanceof ProfileSessionError) || given) throw error;
 		session = findSession(db, cwd);
 	}
-	const profiler = createProfiler(storedProfilerSource({ db, session }));
+	const profiler = createProfiler(storedSessionSource(session));
 	try {
 		const page = Math.max(1, Math.floor(query.page ?? 1));
 		const limit = Math.min(50, Math.max(1, Math.floor(query.limit ?? DEFAULT_LIMIT)));

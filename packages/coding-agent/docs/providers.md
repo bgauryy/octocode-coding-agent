@@ -52,6 +52,8 @@ On Bedrock, Kimi K3 and K3.1 accept off, low, medium, high, xhigh and max. GLM 5
 
 A subscription pays for requests by plan; everything else is billed per token. `/providers`, the footer (`(sub)`) and the `models` tool show the same answer. A plan's cost is shown as an estimate.
 
+Octocode has no direct sign-in for Claude Pro/Max or Google AI Pro/Ultra (Gemini) plans: their vendors allow plan credentials only in their own tools. Use the plan through the vendor's CLI as a model source: Claude Code as the session's model (`claude-code/*`) or as an external agent, and Gemini CLI as an external agent for tasks. For direct requests, add an API key.
+
 Without a saved or explicit model choice, startup prefers an available subscription model before a model billed per token, including subscription providers without a catalog default. Restrictions on unattended use still apply.
 
 | Provider                                                                  | Billed by   | Used                                                                                                                                                                                                                                                                     |
@@ -132,7 +134,7 @@ For instruction and conversation retention, see [Prompt caching](prompt-caching.
 - **Off**: providers you turned off, hidden from `/model`.
 - **External agents**: vendor CLIs that run tasks in their own harness, with their own sign-in and tools ([harness or external agent](#octocodes-harness-or-an-external-agent)). Open a CLI, sign in if needed, choose **Enable this CLI for agent tasks**, then `/reload`. Installed CLIs are off until selected; signing in alone changes no task or model defaults.
 - **Test**: **Test all** ([below](#test-and-test-all)).
-- **Advanced**: first the `models.json` files Octocode reads (Octocode's and Pi's, global and project, each with its path and the providers it defines; a project file also lists the global providers it replaces). A project file of a folder you have not trusted is shown as not read; run `octocode trust add <folder>` and start a new session to use it ([project models.json](configuration.md#project-modelsjson)). Then **Sources and custom models**: Octocode, Pi and environment sources, detected tools and their setup actions, and model definition files with paths and provider IDs. Missing files are marked `not found`. See [Sources](#sources).
+- **Advanced**: first the `models.json` files Octocode reads (Octocode's and Pi's, global and project, each with its path and the providers it defines; a project file also lists the global providers it merges over). A project file of a folder you have not trusted is shown as not read; run `octocode trust add <folder>` and start a new session to use it ([project models.json](configuration.md#project-modelsjson)). Then **Sources and custom models**: Octocode, Pi and environment sources, detected tools and their setup actions, and model definition files with paths and provider IDs. Missing files are marked `not found`. See [Sources](#sources).
 
 An interactive start with no usable model opens this page by itself, titled `AI providers · no usable model yet — add a provider to start`, with the cursor on **+ Provider**. Typing `/` there closes it and starts a command in the editor, so `/status` or `/help` typed at start runs. Print and JSON runs exit with command-line guidance instead, and RPC reports no model.
 
@@ -320,6 +322,33 @@ To use a secret manager without writing the resolved key to disk, set a provider
 
 Octocode runs the command when the key is first needed and caches its standard output for the process lifetime. Empty output, a timeout, or a nonzero exit leaves the key unresolved until Octocode restarts.
 
+### A key command, variable names or a keychain entry in models.json
+
+A `models.json` provider can take its key from a program run without a shell, from the first of several environment variables, or from the system keychain, beside Pi's `apiKey` forms (a literal, `$VAR`, `!command`), which work unchanged:
+
+```jsonc
+{
+	"providers": {
+		"my-gateway": {
+			"baseUrl": "https://gateway.example.com/v1",
+			"api": "openai-completions",
+			"auth": { "command": "vault", "args": ["read", "-field=key", "secret/gw"], "timeoutMs": 10000, "ttlMs": 300000 },
+			"models": [{ "id": "gw-large" }],
+		},
+		"team-proxy": { "baseUrl": "https://proxy.example.com/v1", "env": ["TEAM_PROXY_KEY", "PROXY_KEY"] },
+		"lab": { "baseUrl": "https://lab.example.com/v1", "apiKey": "keychain:lab-key" },
+	},
+}
+```
+
+| Field                       | Key                                                                                                                                                                                                                                                                               | Failure                                                                                                                                                                                        |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth`                      | The program's standard output, trimmed; `args` are passed as they are, with no shell expansion. Reused for `ttlMs` (default 5 minutes, `0` runs it for every request); a request the provider refuses (401, an invalid key) runs it again once                                    | The request fails with the exit status, a timeout after `timeoutMs` (default 10 seconds) or a missing program, and the first line the program wrote to standard error with credentials and token-like words (20 or more letters and digits) replaced by `[redacted]` |
+| `env`                       | The first listed variable that is set, else `apiKey`                                                                                                                                                                                                                              | The provider counts as not configured; a request names the variables                                                                                                                           |
+| `apiKey: "keychain:<name>"` | The entry with service `octocode` and account `<name>`: macOS Keychain (`security add-generic-password -s octocode -a <name> -w`), Secret Service (`secret-tool store --label=octocode service octocode account <name>`) or Windows Credential Manager (target `octocode/<name>`) | The request fails with the keychain's message, or says this host has no supported keychain                                                                                                     |
+
+When several are set, `auth` wins over `env`, and `env` over `apiKey`. A command or keychain entry runs on first use, never at startup. A keychain entry is read once and reused for 5 minutes (so each request does not trigger a keychain prompt); a keychain read may wait up to 60 seconds, since the system can ask you to approve access first; a key the provider refuses before any output is dropped and read again once. Pi's own `models.json` files cannot use `auth` or `keychain:`: such a provider is skipped with a warning, as for `!command` keys.
+
 ## Provider Specific Config
 
 The providers below have additional setup, need additional settings, or can use credentials supplied by their platform.
@@ -463,7 +492,7 @@ A 429 halves the key's capacity, down to 10%. Five consecutive successful admitt
 
 A compaction summary takes the class of the agent it summarizes: if it were shed, Octocode's default summary would go out next at that class anyway, without the prompt cache.
 
-`models.json` is for custom providers only. An entry whose id is an official provider (for example `amazon-bedrock`) loads only when it holds nothing but per-model tuning in `modelOverrides`, such as `compat.supportsLongCacheRetention: false` on a Bedrock model or a negotiated `cost` ([fields it may set](models-configuration.md#providers)). Any other field refuses the whole entry, its `modelOverrides` included, with a message naming the file, id and fields, and the rest of the file still loads: rename the entry (for example `bedrock-mantle`) for a custom endpoint, or set the host and key here in `/providers`. Pi's `models.json` entries with an official id are skipped with a warning; Pi's files are never modified.
+`models.json` is for custom providers only. An entry whose id is an official provider (for example `amazon-bedrock`) loads only when it holds nothing but per-model tuning in `modelOverrides` or `defaults`, or a throttle (`requestsPerMinute`, `tokensPerMinute`), such as `compat.supportsLongCacheRetention: false` on a Bedrock model or a negotiated `cost` ([fields it may set](models-configuration.md#providers)). Any other field (host, `api`, key, `headers`, `auth`, `env`, `models`) refuses the whole entry, its tuning included, with a message naming the file, id and fields, and the rest of the file still loads: rename the entry (for example `bedrock-mantle`) for a custom endpoint, or set the host and key here in `/providers`. Pi's `models.json` entries with an official id are skipped with a warning; Pi's files are never modified.
 
 ### Cloudflare AI Gateway
 

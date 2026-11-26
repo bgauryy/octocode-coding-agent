@@ -95,4 +95,26 @@ describe("thinking from other models", () => {
 			[{ type: "text", text: "d" }],
 		]);
 	});
+
+	it("keeps signed thinking across models of one provider on anthropic-messages only", () => {
+		const claude = (id: string, provider = "anthropic-custom") =>
+			({ ...kimi, id, provider, api: "anthropic-messages" }) as unknown as Model<"anthropic-messages">;
+		const signed = { type: "thinking" as const, thinking: "pondering", thinkingSignature: "SIG" };
+		const from: AssistantMessage = {
+			...assistant("claude-haiku", [signed, { type: "text", text: "a" }]),
+			api: "anthropic-messages",
+			provider: "anthropic-custom",
+			stopReason: "stop",
+		};
+		const messages: Message[] = [
+			{ role: "user", content: "1", timestamp: Date.now() },
+			from,
+			{ role: "user", content: "2", timestamp: Date.now() },
+		];
+		const contentFor = (target: Model<"anthropic-messages">) =>
+			(transformMessages(messages, target).find((m) => m.role === "assistant") as AssistantMessage).content;
+
+		expect(contentFor(claude("claude-sonnet"))).toEqual([signed, { type: "text", text: "a" }]);
+		expect(contentFor(claude("claude-sonnet", "other-provider"))).toEqual([{ type: "text", text: "a" }]);
+	});
 });

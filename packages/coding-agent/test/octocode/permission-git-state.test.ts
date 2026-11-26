@@ -92,7 +92,14 @@ describe("the subagent git-state invariant", () => {
 
 	it("does not apply to the main session or an isolated subagent", () => {
 		expect(gitStateGate({ subagent: false, isolated: false })).toBeUndefined();
-		expect(gitStateGate({ subagent: true, isolated: true })).toBeUndefined();
+	});
+
+	it("leaves an isolated subagent's own git state alone, but no child creates worktrees", async () => {
+		const gate = gitStateGate({ subagent: true, isolated: true })!;
+		const ctx = fakeCtx({ cwd: tmp() });
+		expect(await gate(call("git commit -am x"), ctx)).toBeUndefined();
+		expect(await gate(call("git worktree add ../x"), ctx)).toMatchObject({ block: true });
+		expect(await gate(call("git worktree list"), ctx)).toBeUndefined();
 	});
 
 	it("blocks in the tool_call pipeline even in full mode, before the hooks run", async () => {

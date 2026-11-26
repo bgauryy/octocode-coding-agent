@@ -1,4 +1,3 @@
-import { renderPrompt } from "../../../core/prompt-template.ts";
 import { rewriteClaudeBash } from "../../tool-input/claude-bash.ts";
 import { parsePatch } from "../../tool-input/codex-patch/patch.ts";
 import { validateFileInput } from "../../tool-input/file-input.ts";
@@ -12,7 +11,7 @@ import { commandsFor, hookCalls } from "../config/calls.ts";
 import { ifFilter } from "../config/if-filter.ts";
 import { CODEX_PATCH_NAMES, type EditProjector, projectCodexPatch, rewriteCodexPatch } from "../patch.ts";
 import type { HookProtocol } from "../catalog.ts";
-import { capContext } from "../runner.ts";
+import { hookContext } from "../context-message.ts";
 import { combineVerdicts, firstRewrite } from "../verdicts.ts";
 import { gatePolicy } from "./event-policy.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookSession, type HooksView } from "./types.ts";
@@ -187,7 +186,7 @@ export const preToolUseGate =
 			await api.session.sendMessage(
 				{
 					customType: CONTEXT_TYPE,
-					content: capContext(renderPrompt("hooks/context.md", { source: "PreToolUse", text: context })),
+					content: hookContext("PreToolUse", context),
 					display: false,
 				},
 				{ triggerTurn: false },

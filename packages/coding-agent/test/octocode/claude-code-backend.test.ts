@@ -12,9 +12,9 @@ import {
 import { CLAUDE_CODE_MODELS } from "../../src/octocode/claude-code/models.ts";
 import { createClaudeCodeBackend } from "../../src/octocode/claude-code/provider.ts";
 import { registerClaudeCode } from "../../src/octocode/claude-code/register.ts";
-import { appendedPrompt, CALL_PREFIX, promptText, unseen } from "../../src/octocode/claude-code/transcript.ts";
+import { appendedPrompt, CALL_PREFIX, promptText, unseen } from "../../src/octocode/cli-models/transcript.ts";
 import type { RunnerState } from "../../src/octocode/external/runner-status.ts";
-import { fakeHost, asSetup } from "./fake-host.ts";
+import { fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 const PEER = fileURLToPath(new URL("./fixtures/claude-code-peer.mjs", import.meta.url));
@@ -64,12 +64,11 @@ describe("when the claude-code models are offered", () => {
 	it("registers the provider, billed by plan through the CLI, only for a connected runner", () => {
 		vi.stubEnv("PATH", binaries());
 		const host = fakeHost();
-		const registered: unknown[] = [];
-		const api = asSetup({ ...host.api, registerProvider: (provider: unknown) => registered.push(provider) }) as never;
+		const api = host.api as never;
 		registerClaudeCode(api, []);
-		expect(registered).toEqual([]);
+		expect([...host.providers.values()]).toEqual([]);
 		registerClaudeCode(api, [state(PLAN)]);
-		expect(registered).toEqual([
+		expect([...host.providers.values()]).toEqual([
 			expect.objectContaining({
 				id: "claude-code",
 				auth: expect.objectContaining({ plan: expect.objectContaining({ billing: "plan", transport: "cli" }) }),
@@ -136,13 +135,21 @@ describe("Claude Code's process and session", () => {
 			{ optionId: "yes", name: "Allow", kind: "allow_once" as const },
 			{ optionId: "no", name: "Deny", kind: "reject_once" as const },
 		];
-		const ask = (title: string) =>
+		const ask = (title: string, toolName?: string) =>
 			claudeCodePermission(
-				{ sessionId: "s", toolCall: { toolCallId: "t", title }, options },
+				{
+					sessionId: "s",
+					toolCall: { toolCallId: "t", title, ...(toolName ? { _meta: { claudeCode: { toolName } } } : {}) },
+					options,
+				},
 				new AbortController().signal,
 			);
-		expect(await ask("mcp__octocode__bash")).toEqual({ outcome: { outcome: "selected", optionId: "yes" } });
-		expect(await ask("Bash")).toEqual({ outcome: { outcome: "selected", optionId: "no" } });
+		const allow = { outcome: { outcome: "selected", optionId: "yes" } };
+		const refuse = { outcome: { outcome: "selected", optionId: "no" } };
+		expect(await ask("octocode - bash", "mcp__octocode__bash")).toEqual(allow);
+		expect(await ask("Bash", "Bash")).toEqual(refuse);
+		// A title is free text: it never names the tool.
+		expect(await ask("mcp__octocode__bash")).toEqual(refuse);
 	});
 });
 
@@ -185,7 +192,7 @@ describe("what Claude Code is sent", () => {
 			},
 			user("and then?"),
 		];
-		expect(promptText(unseen(messages, "acp-1"))).toBe("and then?");
+		expect(promptText(unseen(messages, "acp-1", "claude-code"))).toBe("and then?");
 	});
 
 	it("gives a new session the turns it never saw, nothing cut, before the new message", () => {
@@ -194,7 +201,7 @@ describe("what Claude Code is sent", () => {
 			turn("x", [{ type: "text", text: "Fixed in app.ts" }], "anthropic"),
 			user("Now add a test"),
 		];
-		const text = promptText(unseen(messages, undefined));
+		const text = promptText(unseen(messages, undefined, "claude-code"));
 		expect(text).toContain("<octocode_history>");
 		expect(text).toContain("[user]\nFix the bug");
 		expect(text).toContain("[assistant]\nFixed in app.ts");

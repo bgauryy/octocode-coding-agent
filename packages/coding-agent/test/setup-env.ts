@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { testCompileCacheDir } from "./helpers/compile-cache.ts";
 import { keepWorkerTitle } from "./helpers/worker-title.ts";
 
+import "./helpers/no-request-rate.ts";
+
 keepWorkerTitle();
 
 // A suite started from inside Octocode (or one of its subagents) inherits that session's OCTOCODE_* identity and

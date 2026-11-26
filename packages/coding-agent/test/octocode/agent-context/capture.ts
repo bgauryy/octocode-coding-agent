@@ -20,7 +20,7 @@ import {
 	serializeMcpSessionServers,
 } from "../../../../mcp/src/api.ts";
 import { registerMcpAddedServers } from "../../../../mcp/src/session-servers.ts";
-import { recommendedPresets } from "../../../../mcp/src/recommended/index.ts";
+import { builtinPresets } from "../../../../mcp/src/presets/index.ts";
 import { publishToolRoles, resolveToolRoles } from "../../../../mcp/src/roles.ts";
 import { parseArgs } from "../../../src/cli/args.ts";
 import { getOctocodeSkillsDir } from "../../../src/config.ts";
@@ -224,7 +224,7 @@ export interface SessionShape {
 	skillResourceSnapshot?: SkillResourceSnapshot;
 	/** Settings over the defaults, e.g. `{ mcpExposure: "direct" }` to capture every tool declared in full. */
 	settings?: Record<string, unknown>;
-	/** The scripted model's context window; default 200,000 tokens. A window under 64k picks the lean main policy. */
+	/** The scripted model's context window; default 200,000 tokens. A window of 65,536 or less picks the lean main policy. */
 	contextWindow?: number;
 }
 
@@ -524,7 +524,7 @@ export async function captureChild(
 		// The servers `spawn.ts` plans for the child (`task-servers.ts`), handed over in its server file.
 		// The parent publishes its research roles when its servers load, before any child starts.
 		publishToolRoles(
-			resolveToolRoles(recommendedPresets().flatMap(({ name, config }) => (config ? [{ name, config }] : []))),
+			resolveToolRoles(builtinPresets().flatMap(({ name, config }) => (config ? [{ name, config }] : []))),
 		);
 		const parentServers = createEventBus();
 		registerMcpAddedServers(parentServers, () => ({ servers: {}, stopped: [], available: PARENT_SERVERS }));

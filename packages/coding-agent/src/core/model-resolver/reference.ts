@@ -1,6 +1,6 @@
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { Api, KnownProvider, Model } from "@octocodeai/octocode-ai";
-import { isValidThinkingLevel } from "../thinking-level.ts";
+import { splitThinkingSuffix } from "../model-reference.ts";
 import { defaultModelPerProvider } from "./default-models.ts";
 
 /*
@@ -52,13 +52,6 @@ interface ModelReferenceTarget {
 }
 
 type ResolvedOrAmbiguous = Exclude<ModelReferenceResult, { status: "not-found" }>;
-
-export function splitThinkingSuffix(text: string): { base: string; thinkingLevel: ThinkingLevel } | undefined {
-	const colonIndex = text.lastIndexOf(":");
-	const suffix = text.substring(colonIndex + 1);
-	if (colonIndex === -1 || !isValidThinkingLevel(suffix)) return undefined;
-	return { base: text.substring(0, colonIndex), thinkingLevel: suffix };
-}
 
 function splitProviderPrefix(
 	text: string,

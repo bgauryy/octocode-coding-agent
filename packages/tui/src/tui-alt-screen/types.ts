@@ -98,8 +98,12 @@ export interface TuiAltScreenOptions {
 	 * spins on terminals that send one event per notch. Alt+wheel moves five times as far.
 	 */
 	wheelScrollLines?: WheelScrollLines;
-	/** Capture mouse events for viewport scrolling and application-owned text selection. */
+	/** Capture mouse events for viewport scrolling and component clicks. */
 	mouse?: boolean;
+	/** Enable application-owned drag text selection and auto-scroll (default: true). */
+	selection?: boolean;
+	/** Enable `?1003h` bare pointer-motion hover tracking (default: true). */
+	hoverTracking?: boolean;
 	searchMatchStyle?: (text: string) => string;
 	searchCurrentMatchStyle?: (text: string) => string;
 	searchNavigationButtonStyle?: (text: string, hovered: boolean) => string;

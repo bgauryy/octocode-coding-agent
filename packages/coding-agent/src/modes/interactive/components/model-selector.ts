@@ -1,4 +1,4 @@
-import { type Model, modelsAreEqual } from "@octocodeai/octocode-ai";
+import { type AssistantMessage, type Model, modelsAreEqual } from "@octocodeai/octocode-ai";
 import {
 	Container,
 	type Focusable,
@@ -12,6 +12,7 @@ import {
 } from "@octocodeai/octocode-tui";
 import type { ModelRuntime } from "../../../core/model-runtime.ts";
 import { providerAccessLabel } from "../../../core/provider-label.ts";
+import { switchCacheNotice } from "../../../core/switch-cache-cost.ts";
 import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
 import { getModelSelectorSearchText } from "../model-search.ts";
 import { theme } from "../../../theme/theme.ts";
@@ -85,6 +86,11 @@ export class ModelSelectorComponent extends Container implements Focusable {
 	private details = false;
 	private readonly panel: ModelDetailPanel;
 	private readonly hints = new HintBar([]);
+	private lastReply?: () => Pick<AssistantMessage, "usage"> | undefined;
+
+	private switchNoticeFor(item: ModelItem | undefined): string | undefined {
+		return item ? switchCacheNotice(this.lastReply?.(), this.currentModel, item.model) : undefined;
+	}
 
 	constructor(
 		tui: TUI,
@@ -97,6 +103,7 @@ export class ModelSelectorComponent extends Container implements Focusable {
 		onSelectAsDefault?: (model: Model<any>, save: ModelSave) => void,
 		defaultModel?: DefaultModelReference,
 		defaultContext?: DefaultModelContext,
+		lastReply?: () => Pick<AssistantMessage, "usage"> | undefined,
 	) {
 		super();
 
@@ -130,11 +137,13 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			this.dispose();
 			this.onCancelCallback();
 		};
+		this.lastReply = lastReply;
 		this.panel = new ModelDetailPanel(() => ({
 			selected: this.list.getSelectedItem(),
 			runtime: this.modelRuntime,
 			details: this.details,
 			canPrefer: this.onSelectAsDefaultCallback !== undefined,
+			switchNotice: this.switchNoticeFor(this.list.getSelectedItem()),
 			error: this.errorMessage,
 			refresh: this.refreshStatusMessage,
 			refreshed: this.refreshStatusSuccess,

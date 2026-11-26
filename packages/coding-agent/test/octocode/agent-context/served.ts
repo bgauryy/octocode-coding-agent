@@ -2,11 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { mcpInstallDir } from "../../../../mcp/src/install.ts";
-import freellamaPreset from "../../../../mcp/src/recommended/freellama.json" with { type: "json" };
+import { RESEARCH } from "../research-roles.ts";
+import { builtinPreset } from "../../../../mcp/src/presets/index.ts";
 
 /**
  * The first request as a warm user's home serves it, for the size guard (`served-first-request.test.ts`): the
- * recommended FreeLlama preset on (a user who opted in), the octocode-mcp research tools and the native tools a main
+ * recommended FreeLlama preset on (a user who opted in), the research server's reader, search and judge tools and the native tools a main
  * session calls most named by the promotion snapshot (`mcpExposure: "usage"`, the default) and the folder's record,
  * and a model whose transport cannot add tools mid-conversation, so every on-demand tool is declared deferred.
  */
@@ -25,13 +26,13 @@ export const readFreellamaRecording = (): FreellamaRecording =>
 	JSON.parse(fs.readFileSync(RECORDING, "utf8")) as FreellamaRecording;
 
 /**
- * The tools a warm user's sessions use often: the octocode-mcp research tools and the native tools this repository's
+ * The tools a warm user's sessions use often: the research server's reader, search and judge tools and the native tools this repository's
  * own promotion snapshot names for main sessions, as the snapshot (`usage`) and the folder's record of the last day
  * (`recent`) hold them; a child takes the set less the role-dependent native tools (`childInUseTools`).
  */
 export const SERVED_RECENT_TOOLS = [
-	...["localSearch", "localFetch", "structureSearch", "astSearch", "lspSearch", "clasify"].map(
-		(tool) => `octocode/${tool}`,
+	...[RESEARCH.reader, ...RESEARCH.search, ...(RESEARCH.judge ? [RESEARCH.judge] : [])].map(
+		(tool) => `${RESEARCH.server}/${tool.slice(RESEARCH.prefix.length)}`,
 	),
 	...["web", "wait", "memory", "archive", "models", "backlogPlan"].map((tool) => `native/${tool}`),
 ];
@@ -68,7 +69,12 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
  * package: the folder holds a manifest of the preset's version and a bin that replays the recording.
  */
 export function installFreellamaReplay(agentDir: string): void {
-	const { npm, version, bin } = freellamaPreset.install;
+	const freellamaPreset = builtinPreset("freellama");
+	const install =
+		freellamaPreset.config && "install" in freellamaPreset.config ? freellamaPreset.config.install : undefined;
+	if (!install || !("npm" in install) || !install.bin)
+		throw new Error("the freellama default declares no npm install with a bin");
+	const { npm, version, bin } = install;
 	const recording = readFreellamaRecording();
 	if (recording.version !== version)
 		throw new Error(

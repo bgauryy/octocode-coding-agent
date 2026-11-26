@@ -1,6 +1,6 @@
 ---
 name: octocode-visual-browsing
-description: "Use before any task that operates a browser, a web page or a desktop app: which lane (browser MCP, Cua desktop agent, no UI), the see-solve-act-verify loop. Cua is for native apps, never page content. Captchas and bot checks: report blocked, never solve."
+description: "Use before any task that operates a browser, a web page or a desktop app: which lane (browser MCP, dual Chrome+desktop agent, no UI), the see-solve-act-verify loop. Pure pages use browser; mixed native/page work can use desktop. Captchas and bot checks: report blocked, never solve."
 ---
 
 # Operate a browser or the desktop
@@ -9,13 +9,13 @@ Take the cheapest lane that can do the job, solve in code instead of in conversa
 
 ## Choose the lane (first match wins)
 
-| The work is                                                                                                                                                        | Lane                                                                              |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| Doable without a screen: code, files, a CLI or API, a public page `web` can fetch                                                                                  | `bash`, `file`, `web`                                                             |
-| A web page: read, fill, click, log in, upload, download, screenshots, console, network, a game or puzzle                                                           | The `browser` specialist (Chrome DevTools MCP): DOM, refs and saved evidence      |
-| A native app or OS surface: a desktop app the user names (even when its service has a website), System Settings, a simulator, a native dialog blocking the browser | The `desktop` agent (Cua Driver): one app in `apps`, the user approves each start |
+| The work is                                                                                                                                                                                   | Lane                                                                                           |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Doable without a screen: code, files, a CLI or API, a public page `web` can fetch                                                                                                             | `bash`, `file`, `web`                                                                          |
+| A web page: read, fill, click, log in, upload, download, screenshots, console, network, a game or puzzle                                                                                      | The `browser` specialist (Chrome DevTools MCP): DOM, refs and saved evidence                   |
+| A native app or OS surface, or mixed native/page work: a desktop app the user names (even when its service has a website), System Settings, a simulator, a native dialog blocking the browser | The `desktop` agent (Cua Driver + Chrome MCP): one app in `apps`, the user approves each start |
 
-Give a page task to the specialist whole, solving included: reading the page yourself first costs your model's requests for nothing. Never send page content to the desktop agent: it has no DOM and costs more.
+Give a page task to the specialist whole, solving included: reading the page yourself first costs your model's requests for nothing. Pure page work goes to the browser specialist; a mixed native/page task goes to the desktop agent, which has both Chrome DOM tools and native desktop tools.
 
 ## On behalf of the user
 
@@ -33,9 +33,9 @@ Give a page task to the specialist whole, solving included: reading the page you
 
 Pixels only when no text or data holds the answer, cheapest step first:
 
-1. **OCR for text in a picture** (a win message, a score, a label on a canvas or a native window): if an OCR tool is listed (the `freellama` MCP: `run_task` with `job: "ocr"` and the saved screenshot path in `files`), read the screenshot with it. It runs locally, well under a second once loaded, and spends none of your tokens. Check the text with a pattern, or with one `clasify` call whose source is the saved text file, which costs a fraction of judging the image. OCR can misread symbols (× as x): treat it as a candidate.
+1. **OCR for text in a picture** (a win message, a score, a label on a canvas or a native window): if an OCR tool is listed (the `freellama` MCP: `run_task` with `job: "ocr"` and the saved screenshot path in `files`), read the screenshot with it. It runs locally, well under a second once loaded, and spends none of your tokens. Check the text with a pattern, or with one classification call (`clasify`, if listed) whose source is the saved text file, which costs a fraction of judging the image. OCR can misread symbols (× as x): treat it as a candidate.
 2. **One small value:** attach one small screenshot and read it.
-3. **A judgment or a location in a picture** (is it solved, which tile, where is it): save the screenshot under `.octocode/agent/tmp/` and make one `clasify` call over the file (below). Ask for `view: "details"` once to see `inputTokens` and `outputTokens`; the default summary hides them.
+3. **A judgment or a location in a picture** (is it solved, which tile, where is it): save the screenshot under `.octocode/agent/tmp/` and make one classification call over the file (below; skip it if no such tool is listed and attach one small screenshot instead). Ask for `view: "details"` once to see `inputTokens` and `outputTokens`; the default summary hides them.
 
 ## Ask `clasify` about an image
 

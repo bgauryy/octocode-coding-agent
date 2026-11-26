@@ -27,19 +27,19 @@ import { checkGoal } from "../../../team/identity.ts";
 import { describeMembers } from "../../../team/member-list.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { toolEffect } from "../../../permission/tool-effects.ts";
+import { outsideAgents } from "../../../team/unattributed.ts";
 import { describeChanges, describeConflicts, memberGoals } from "../../../team/routing.ts";
 import type { Team } from "../../../team/session.ts";
 import { type ChildBudgets, childStanding, grantRequests } from "../../../team/tools/grant.ts";
 import {
 	INTERPRETER_HELD,
 	NOT_CHECKED_HELD,
-	PACKAGE_SCRIPT,
-	PACKAGE_SCRIPT_NOTE,
-	PACKAGE_SCRIPT_REPEAT,
+	OPAQUE_RUNNER,
+	OPAQUE_RUNNER_ASK,
 	POWERSHELL_HELD,
 } from "../../../team/tools/held-text.ts";
 import { namedReservation } from "../../../team/tools/named-reservation.ts";
-import { onlyAllowedReaders } from "../../../team/reservation-readers.ts";
+import { onlyAllowedReaders, refusedStage } from "../../../team/reservation-readers.ts";
 import { registerTeamEvents } from "../../../team/tools/events.ts";
 import { type PeerRoute, registerMessageRenderer, registerSendMessageTool } from "../../../team/tools/messages.ts";
 import { registerRecordedSpend } from "../../../team/tools/spend.ts";
@@ -53,7 +53,12 @@ type DescribeWorktrees = (
 	deps: { members: () => Member[]; self?: string | undefined },
 ) => Promise<string | undefined>;
 type StopAgent = (id: string, by: string) => string | undefined;
-type MergeAgent = (id: string, ctx: FeatureContext, signal?: AbortSignal) => Promise<{ ok: boolean; text: string }>;
+type MergeAgent = (
+	id: string,
+	ctx: FeatureContext,
+	signal?: AbortSignal,
+	discard?: boolean,
+) => Promise<{ ok: boolean; text: string }>;
 type MergeBranch = (
 	branch: string,
 	ctx: FeatureContext,
@@ -92,7 +97,12 @@ export function registerCollab(
 		/** The simple commands of a bash command line wherever they run (wired by `index.ts` from the permission layer's parser); unset: a tokenizer reads the line, and a parse that fails refuses any command naming an interpreter. */
 		shellCommands?: ShellParse;
 	} = {},
-): { reservationGate: (event: ToolCallEvent, ctx: FeatureContext) => Promise<ToolCallEventResult | undefined> } {
+): {
+	reservationGate: (
+		event: ToolCallEvent,
+		ctx: FeatureContext,
+	) => Promise<(ToolCallEventResult & { ask?: string }) | undefined>;
+} {
 	registerMessageRenderer(api, team);
 	registerCoordinateTool(api, team, options);
 	registerSendMessageTool(api, team, options.registerTool, options.peers, options.budgets?.hand);
@@ -109,7 +119,7 @@ export function registerCollab(
 	const reservationGate = async (
 		event: ToolCallEvent,
 		ctx: FeatureContext,
-	): Promise<ToolCallEventResult | undefined> => {
+	): Promise<(ToolCallEventResult & { ask?: string }) | undefined> => {
 		if (event.toolName === "file") return undefined;
 		const input: Record<string, unknown> = isRecord(event.input) ? { ...event.input } : {};
 		// No parse names the paths a PowerShell command writes: while another agent holds a reservation, only one that reads runs.
@@ -135,8 +145,9 @@ export function registerCollab(
 			if (verdict && "refusal" in verdict && !verdict.refusal.interpreter) {
 				// A line of readers with no write form runs even with a computed word (`rg foo "$dir"`), but still meets the
 				// write check below: a redirection on a group or loop (`{ cat "$f"; } > held`) is not part of the reader parse.
-				if (!onlyAllowedReaders(parse ? await parse(command) : undefined))
-					return { block: true, reason: `${NOT_CHECKED_HELD(verdict.refusal)} ${held}` };
+				const parsed = parse ? await parse(command) : undefined;
+				if (!onlyAllowedReaders(parsed))
+					return { block: true, reason: `${NOT_CHECKED_HELD(refusedStage(parsed) ?? verdict.refusal)} ${held}` };
 			}
 			const named =
 				verdict && !("refusal" in verdict && !verdict.refusal.interpreter)
@@ -150,8 +161,8 @@ export function registerCollab(
 				markConfined(event.toolCallId);
 			}
 		}
-		if (command !== undefined && held && PACKAGE_SCRIPT.test(command) && !options.shellReadOnly?.(command))
-			markConfined(event.toolCallId, PACKAGE_SCRIPT_NOTE, PACKAGE_SCRIPT_REPEAT);
+		if (command !== undefined && held && OPAQUE_RUNNER.test(command) && !options.shellReadOnly?.(command))
+			return { ask: OPAQUE_RUNNER_ASK(held) };
 		// Any other tool: the files its declared effect names (Pi's `write` and `edit` from an extension, a native writer).
 		const files =
 			command !== undefined
@@ -191,7 +202,7 @@ function registerCoordinateTool(
 	// subagent joins when it starts and leaves when its run ends (`Team.start`, `onAgentSettled`), and would only be refused `stop`.
 	const canStop = stopAgent !== undefined;
 	const actions = canStop
-		? (["list", "join", "leave", "lock", "unlock", "stop", "merge", "grant", "changes"] as const)
+		? (["list", "join", "leave", "lock", "unlock", "stop", "merge", "discard", "grant", "changes"] as const)
 		: (["list", "lock", "unlock", "changes"] as const);
 	registerTool(
 		timedTool({
@@ -207,13 +218,13 @@ function registerCoordinateTool(
 						(canStop ? "join: set your goal; leave: unregister; " : "") +
 						"lock: reserve paths; unlock: release (none: all); " +
 						(canStop
-							? "stop: kill your background child; merge: land an isolated child's or a linked worktree's branch (asks user); grant: more requests for your child; "
+							? "stop: kill your background child; merge: land an isolated child's or a linked worktree's branch (asks user); discard: delete an isolated child's unmerged change (asks user); grant: more requests for your child; "
 							: "") +
 						"changes: recent file changes",
 				}),
 				...(canStop
 					? {
-							id: Type.Optional(Type.String({ description: "stop, merge, grant: its id" })),
+							id: Type.Optional(Type.String({ description: "stop, merge, discard, grant: its id" })),
 							branch: Type.Optional(Type.String({ description: "merge: a linked worktree's branch" })),
 							requests: Type.Optional(Type.Integer({ description: "grant: requests to add (positive)" })),
 						}
@@ -278,6 +289,13 @@ function registerCoordinateTool(
 					const result = await mergeAgent(id, ctx, signal);
 					if (!result.ok) throw new Error(result.text);
 					return textResult(result.text);
+				} else if (params.action === "discard") {
+					if (!mergeAgent) throw new Error("Only the agent that started a subagent can discard its work.");
+					const id = params.id?.trim();
+					if (!id) throw new Error("discard needs the id of an isolated subagent.");
+					const result = await mergeAgent(id, ctx, signal, true);
+					if (!result.ok) throw new Error(result.text);
+					return textResult(result.text);
 				} else if (params.action === "grant") {
 					return grantRequests(team, budgets, params.id, params.requests, signal);
 				} else if (params.action === "changes") {
@@ -293,9 +311,11 @@ function registerCoordinateTool(
 					const outside = params.paths?.filter((_entry, at) => prefixes?.[at]?.startsWith(".."));
 					if (outside?.length) throw new Error(`changes covers this workspace only; outside it: ${outside.join(", ")}`);
 					const changes = log?.changes({ withinMs: minutes * 60_000, ...(prefixes?.length ? { prefixes } : {}) }) ?? [];
+					const unattributed = log && (await outsideAgents(log, minutes, prefixes, now));
 					const text = describeChanges(
 						changes,
 						{
+							unattributed,
 							self: team.id,
 							minutes,
 							requested,

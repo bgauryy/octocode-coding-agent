@@ -414,6 +414,10 @@
       "successes INTEGER NOT NULL",
       "updated_at INTEGER NOT NULL"
     ],
+    "schema_meta": [
+      "id INTEGER PK1",
+      "min_reader INTEGER NOT NULL"
+    ],
     "session_forks": [
       "child_id TEXT PK1",
       "parent_id TEXT NOT NULL",
@@ -547,7 +551,8 @@
       "root TEXT NOT NULL",
       "binding TEXT NOT NULL",
       "git_common_dir TEXT",
-      "linked_worktree INTEGER"
+      "linked_worktree INTEGER",
+      "db_key TEXT"
     ],
     "worktree_openings": [
       "kind TEXT NOT NULL PK1",

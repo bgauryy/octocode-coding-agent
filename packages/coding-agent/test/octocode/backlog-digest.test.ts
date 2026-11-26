@@ -2,8 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { registeredWorkspace, workspaceDb } from "../../src/storage/workspace-database.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BACKLOG_DIGEST_TYPE } from "../../src/octocode/backlog/digest.ts";
@@ -48,8 +47,8 @@ function setup(isSubagent = false) {
 		>;
 	/** An ongoing item whose holder session does not exist (it ended), touched just now: inside the window before its claim is returned. */
 	const abandoned = (seq: number, title: string) =>
-		sharedAgentDb()
-			.db.prepare(
+		workspaceDb(cwd)
+			.agent.db.prepare(
 				"INSERT INTO backlog (workspace_id, seq, title, state, assignee, created_by, created_at, updated_at) VALUES (?, ?, ?, 'ongoing', 'ended-session', 'user', 0, ?)",
 			)
 			.run(registeredWorkspace(cwd).id, seq, title, Date.now());

@@ -5,6 +5,7 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentDb, sessions } from "../../../db/src/api.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
+import { openWorkspaceDb } from "../../src/storage/workspace-database.ts";
 import { WorkspaceRuntime } from "../../src/octocode/workspace/runtime.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { fixtureBacklog } from "./backlog-fixture.ts";
@@ -13,6 +14,7 @@ import { fakeCtx, fakeHost } from "./fake-host.ts";
 const T = Date.UTC(2026, 10, 8, 10, 0, 0);
 let dir: string;
 let db: AgentDb;
+let rows: AgentDb;
 let store: TeamStore;
 
 const reply = (ms: number) =>
@@ -50,10 +52,12 @@ const member = (id: string, extra: Partial<Member> = {}): Member => ({
 beforeEach(() => {
 	dir = fs.mkdtempSync(path.join(os.tmpdir(), "profiler-ended-live-"));
 	db = openAgentDb(path.join(dir, "db"));
+	rows = openWorkspaceDb(db, dir).agent;
 	store = TeamStore.open(dir, db.file);
 });
 afterEach(() => {
 	store.close();
+	if (rows !== db) rows.close();
 	db.close();
 	fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -62,7 +66,8 @@ describe("the live profiler after a subagent finished", () => {
 	it("keeps the ended child, its requests and its outcome, after the live members", () => {
 		const kidFile = path.join(dir, "kid.jsonl");
 		fs.writeFileSync(kidFile, `${reply(3000)}\n`);
-		sessions.saveCatalog(db.db, "sess-kid", {
+		// The runtime reads session rows from the database it is given, so the catalog row goes where the runs are.
+		sessions.saveCatalog(rows.db, "sess-kid", {
 			title: null,
 			titleSource: null,
 			cwd: dir,
@@ -84,7 +89,7 @@ describe("the live profiler after a subagent finished", () => {
 		const live = member("busy-owl", { role: "general", parentId: "steady-main" });
 		const fake = fakeHost();
 		const runtime = new WorkspaceRuntime(fake.api, {
-			database: () => db,
+			database: () => rows,
 			members: () => [live],
 			traffic: () => [],
 			self: () => member("steady-main"),
@@ -92,7 +97,7 @@ describe("the live profiler after a subagent finished", () => {
 			stop: () => undefined,
 		});
 		const backlog = {
-			store: fixtureBacklog(() => db, "repo"),
+			store: fixtureBacklog(() => rows, "repo"),
 			actor: { id: "session-test" },
 			session: "session-test",
 			repoName: "repo",

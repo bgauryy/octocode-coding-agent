@@ -5,7 +5,7 @@ export const ModelAvailabilitySettingsProperties = {
 	enabledExternalAgents: Type.Optional(
 		Type.Array(Type.String({ minLength: 1 }), {
 			description:
-				"Vendor CLI ids allowed for external agent tasks when externalAgents is on. An empty list allows none; omitted preserves all runners for an existing explicit externalAgents: true. Global only; manage individual agents in /providers.",
+				"Vendor CLI ids allowed for external agent tasks when externalAgents is on. Empty or omitted allows none. Global only; manage individual agents in /providers.",
 		}),
 	),
 	enabledModels: Type.Optional(

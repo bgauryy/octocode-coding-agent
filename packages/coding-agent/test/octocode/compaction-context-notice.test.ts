@@ -9,6 +9,8 @@ import {
 import { asSetup } from "./fake-host.ts";
 
 const model = { provider: "anthropic", id: "claude-x", contextWindow: 200_000 };
+/** Several bands, for the mechanics of crossing more than one; the default is one band near automatic compaction. */
+const BANDS = [0.5, 0.75, 0.9];
 
 describe("context usage notice", () => {
 	it.each([{ band: 0.9, compactionId: null }, { band: 0.9 }])(
@@ -23,16 +25,19 @@ describe("context usage notice", () => {
 				},
 			});
 			const ctx = { model, getContextUsage: () => ({ tokens: 100_000, contextWindow: 200_000, percent: 50 }) };
-			noticeContextUsage(api, ctx as never, entries, undefined, false, "new-checkpoint");
+			noticeContextUsage(api, ctx as never, entries, undefined, false, "new-checkpoint", BANDS);
 			expect(sent).toHaveLength(1);
 			expect(sent[0]).toMatchObject({ details: { band: 0.5, compactionId: "new-checkpoint" } });
 		},
 	);
 
 	it("bands usage of the room before automatic compaction", () => {
-		expect(noticeBand(10_000, 184_000)).toBeUndefined();
-		expect(noticeBand(92_000, 184_000)).toBe(0.5);
-		expect(noticeBand(140_000, 184_000)).toBe(0.75);
+		expect(noticeBand(10_000, 184_000, BANDS)).toBeUndefined();
+		expect(noticeBand(92_000, 184_000, BANDS)).toBe(0.5);
+		expect(noticeBand(140_000, 184_000, BANDS)).toBe(0.75);
+		expect(noticeBand(170_000, 184_000, BANDS)).toBe(0.9);
+		// By default only the last: the notice comes once automatic compaction is near.
+		expect(noticeBand(140_000, 184_000)).toBeUndefined();
 		expect(noticeBand(170_000, 184_000)).toBe(0.9);
 	});
 
@@ -64,13 +69,13 @@ describe("context usage notice", () => {
 		});
 		let tokens = 100_000;
 		const ctx = { model, getContextUsage: () => ({ tokens, contextWindow: 200_000, percent: 50 }) };
-		noticeContextUsage(api, ctx as never, entries);
-		noticeContextUsage(api, ctx as never, entries);
+		noticeContextUsage(api, ctx as never, entries, undefined, false, undefined, BANDS);
+		noticeContextUsage(api, ctx as never, entries, undefined, false, undefined, BANDS);
 		expect(sent).toHaveLength(1);
 		expect(sent[0].message).toMatchObject({ customType: CONTEXT_NOTICE_TYPE, display: false, details: { band: 0.5 } });
 		expect(sent[0].options).toEqual({ triggerTurn: false });
 		tokens = 175_000;
-		noticeContextUsage(api, ctx as never, entries);
+		noticeContextUsage(api, ctx as never, entries, undefined, false, undefined, BANDS);
 		expect(sent.map((entry) => (entry.message.details as { band: number }).band)).toEqual([0.5, 0.9]);
 	});
 
@@ -96,6 +101,8 @@ describe("compact hint", () => {
 			[],
 			undefined,
 			true,
+			undefined,
+			BANDS,
 		);
 		expect(half).toHaveLength(1);
 		expect(half[0].content).not.toContain("`compact`");

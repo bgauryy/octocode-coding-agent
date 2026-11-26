@@ -12,7 +12,7 @@ import { diffStats, querySize } from "../../src/octocode/files/outcome.ts";
 import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { validateFileInput } from "../../src/octocode/tool-input/file-input.ts";
 import { BASH_READER, FileGuard, mcpReader, returnedContent } from "../../src/octocode/files/tool/guard.ts";
-import { formatOutcomes, renameReasoning } from "../../src/octocode/files/tool/queries.ts";
+import { formatOutcomes, prepareChangeArguments } from "../../src/octocode/files/tool/queries.ts";
 import { catastrophicCommand } from "../../src/octocode/permission/shell/destructive.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
@@ -44,7 +44,7 @@ describe("file input shape", () => {
 		};
 		const viaHook = refusal(() => validateFileInput(both));
 		expect(viaHook).toMatch(/Corrected call:/);
-		expect(viaHook).toBe(refusal(() => renameReasoning(both)));
+		expect(viaHook).toBe(refusal(() => prepareChangeArguments(both)));
 		expect(() =>
 			validateFileInput({ queries: [{ type: "write", path: "a.txt", content: "x", reason: "r" }] }),
 		).not.toThrow();

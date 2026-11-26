@@ -2,6 +2,7 @@ import fs from "node:fs";
 import type { DaemonRepo } from "@octocodeai/octocode-contracts/daemon";
 import { workspaces } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
+import { registeredWorkspaceAgent } from "../../storage/workspace-database.ts";
 import { isCurrentWorkspace } from "../../storage/workspace.ts";
 import { BacklogStore } from "../backlog/store.ts";
 import { workspaceAgentDir } from "../shared/home.ts";
@@ -69,7 +70,8 @@ export class RepoCatalog {
 		return [...entries.values()].sort((a, b) => b.sessions - a.sessions || a.name.localeCompare(b.name));
 	}
 
+	/** The board of registered workspace `id`, in its workspace's file. */
 	store(id: string): BacklogStore {
-		return new BacklogStore(() => sharedAgentDb(this.env), id);
+		return new BacklogStore(() => registeredWorkspaceAgent(id, this.env), id);
 	}
 }

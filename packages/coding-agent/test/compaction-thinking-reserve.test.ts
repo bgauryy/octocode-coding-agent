@@ -37,7 +37,9 @@ describe("thinking-sized compaction reserve", () => {
 		[32_000, "high", 5_333],
 	] as const)("window %i at %s reserves %i", (window, level, expected) => {
 		expect(reserve(window, level)).toBe(expected);
-		expect(autoCompactAt({ provider: "p", id: "m", contextWindow: window }, { level })).toBe(window - expected);
+		expect(autoCompactAt({ provider: "p", id: "m", contextWindow: window }, { level })).toBe(
+			Math.min(window - expected, Math.ceil(0.9 * window)),
+		);
 	});
 
 	it("keeps today's policy when no thinking setup is given or the window is unknown", () => {

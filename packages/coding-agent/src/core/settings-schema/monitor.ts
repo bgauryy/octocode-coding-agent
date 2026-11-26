@@ -11,7 +11,7 @@ export const MONITOR_DEFAULTS = {
 	swapPercent: 90,
 	gpuPercent: 95,
 	stuckJobMinutes: 15,
-	contextBands: [0.5, 0.75, 0.9] as readonly number[],
+	contextBands: [0.9] as readonly number[],
 	checkInSeconds: 300,
 	idleAgentMinutes: 5,
 } as const;

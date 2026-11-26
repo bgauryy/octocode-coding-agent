@@ -1,4 +1,7 @@
-/** Conservative Bedrock/Kimi capacity and request-priority policy for the shared throughput gate. */
+/**
+ * Capacity and request-priority policy for the shared throughput gate: a conservative Bedrock/Kimi default, and a
+ * token budget for any model whose models.json sets `tokensPerMinute`.
+ */
 
 import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
@@ -17,7 +20,8 @@ export interface ThroughputPolicy {
 	key: string;
 	region?: string;
 	tokensPerMinute: number;
-	requestsPerMinute: number;
+	/** Absent: no request cap in the gate (a configured token budget alone). */
+	requestsPerMinute?: number;
 	outputBurndown: number;
 }
 
@@ -39,28 +43,44 @@ export function bedrockRegion(model: Model<Api>, env: NodeJS.ProcessEnv): string
 	return env.AWS_REGION || env.AWS_DEFAULT_REGION || undefined;
 }
 
-/** Only Kimi K3.1 is gated initially; other providers/models retain their existing behavior and still get telemetry. */
+/**
+ * The shared gate's policy for a model, or undefined when it is not gated. Two kinds are: Bedrock models whose output
+ * tokens burn down faster than they count (Kimi K3.1), with built-in limits and environment overrides, and any model
+ * with a models.json `tokensPerMinute`, which gets a token budget only (the session request window owns requests per
+ * minute, `request-rate.ts`).
+ */
 export function throughputPolicy(
 	model: Model<Api>,
 	env: NodeJS.ProcessEnv = process.env,
+	configuredTokensPerMinute?: number,
 ): ThroughputPolicy | undefined {
 	const outputBurndown = bedrockOutputBurndown(model);
-	if (outputBurndown === 1 || (model.api !== "bedrock-converse-stream" && !isBedrockInferenceHost(model.baseUrl)))
-		return undefined;
-	const region = bedrockRegion(model, env);
+	const bedrock = model.api === "bedrock-converse-stream" || isBedrockInferenceHost(model.baseUrl);
+	if (bedrock && outputBurndown !== 1) {
+		const region = bedrockRegion(model, env);
+		return {
+			key: `${model.provider}/${model.id}@${region ?? "default"}`,
+			region,
+			// The environment variable overrides the models.json budget, which overrides the built-in default.
+			tokensPerMinute: positiveLimit(
+				"OCTOCODE_BEDROCK_KIMI_TPM",
+				env.OCTOCODE_BEDROCK_KIMI_TPM,
+				configuredTokensPerMinute ?? DEFAULT_KIMI_TOKENS_PER_MINUTE,
+			),
+			requestsPerMinute: positiveLimit(
+				"OCTOCODE_BEDROCK_KIMI_RPM",
+				env.OCTOCODE_BEDROCK_KIMI_RPM,
+				DEFAULT_KIMI_REQUESTS_PER_MINUTE,
+			),
+			outputBurndown,
+		};
+	}
+	if (configuredTokensPerMinute === undefined) return undefined;
+	const region = bedrock ? bedrockRegion(model, env) : undefined;
 	return {
-		key: `${model.provider}/${model.id}@${region ?? "default"}`,
+		key: bedrock ? `${model.provider}/${model.id}@${region ?? "default"}` : `${model.provider}/${model.id}`,
 		region,
-		tokensPerMinute: positiveLimit(
-			"OCTOCODE_BEDROCK_KIMI_TPM",
-			env.OCTOCODE_BEDROCK_KIMI_TPM,
-			DEFAULT_KIMI_TOKENS_PER_MINUTE,
-		),
-		requestsPerMinute: positiveLimit(
-			"OCTOCODE_BEDROCK_KIMI_RPM",
-			env.OCTOCODE_BEDROCK_KIMI_RPM,
-			DEFAULT_KIMI_REQUESTS_PER_MINUTE,
-		),
+		tokensPerMinute: configuredTokensPerMinute,
 		outputBurndown,
 	};
 }

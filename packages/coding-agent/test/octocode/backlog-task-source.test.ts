@@ -2,8 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BACKLOG_DIGEST_TYPE } from "../../src/octocode/backlog/digest.ts";
@@ -57,7 +56,7 @@ function setup() {
 		)) as Message[];
 		return new Map(results.flatMap((result) => (result ? [[result.message.customType, result.message.content]] : [])));
 	};
-	const store = () => new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
+	const store = () => new BacklogStore(() => workspaceDb(cwd).agent, workspaceDb(cwd).workspace.id);
 	return { fake, ctx, call, start, prompt, store, cwd };
 }
 
@@ -111,11 +110,11 @@ describe("backlog index per span", () => {
 		const t = setup();
 		await t.call({ op: "add", items: [{ ...READY, title: "Mine", state: "ongoing" }] });
 		for (let i = 0; i < 12; i++) await t.call({ op: "add", items: [{ ...READY, title: `Idea ${i}` }] });
-		const text = backlogIndex(sharedAgentDb(), registeredWorkspace(t.cwd).id, "session-test")!;
+		const text = backlogIndex(workspaceDb(t.cwd).agent, workspaceDb(t.cwd).workspace.id, "session-test")!;
 		expect(text).toContain("0 to do, 12 proposed");
 		expect(text.match(/B\d+ v\d+/g)).toHaveLength(10);
 		expect(text).toContain("3 more");
-		expect(backlogIndex(sharedAgentDb(), "no-such-workspace", "session-test")).toBeUndefined();
+		expect(backlogIndex(workspaceDb(t.cwd).agent, "no-such-workspace", "session-test")).toBeUndefined();
 	});
 });
 
@@ -148,7 +147,7 @@ describe("backlog task line", () => {
 		await t.call({ op: "add", items: [{ ...READY, title: "Later" }] });
 		expect((await t.prompt()).get(BACKLOG_EVENTS_TYPE)).toMatch(/^active B2 v\d+ ongoing \(\+B1\) · open 3$/m);
 		// The index counts the open items in the same word as the task line.
-		const index = backlogIndex(sharedAgentDb(), registeredWorkspace(t.cwd).id, "session-test");
+		const index = backlogIndex(workspaceDb(t.cwd).agent, workspaceDb(t.cwd).workspace.id, "session-test");
 		expect(index).toContain("3 open (2 ongoing, 0 to do, 1 proposed)");
 	});
 });

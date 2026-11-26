@@ -280,7 +280,7 @@ export function setBusyTimeout(db: DatabaseSync, ms: number): void {
 	db.exec(`PRAGMA busy_timeout=${ms}`);
 }
 
-/** Live presence of this checkout only; legacy/nonpersistent registrations keep their existing names. */
+/** Live presence of this checkout only. */
 export function inWorkspace(db: DatabaseSync, workspace: string): Row[] {
 	return db
 		.prepare(`SELECT a.*, w.root AS checkout FROM agents a ${CHECKOUT} WHERE a.workspace_id = ? ORDER BY a.id`)

@@ -3,6 +3,7 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { Db } from "../../../../db/src/api.ts";
 import type { CommandContext } from "../../core/features/index.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
+import { workspaceDb } from "../../storage/workspace-database.ts";
 import type { FeedNotice } from "../team/feed.ts";
 import { teamFeedSource } from "../team/feed-read.ts";
 import type { Team } from "../team/session.ts";
@@ -17,6 +18,8 @@ import { memberTranscript } from "./transcripts.ts";
 export interface MessagesSources {
 	db: Db;
 	/** The team id (`teamScope`). */
+	/** The file holding session rows; `db` when they share one. */
+	machine?: Db;
 	team: string;
 	members: () => readonly Member[];
 	/** The viewer's checkout, so its folder is `main`. */
@@ -48,7 +51,7 @@ export function messagesPorts(sources: MessagesSources): MessagesData {
 	const cache = new TranscriptCache();
 	const fileOf = (id: string, sessionId?: string): string | undefined =>
 		(id === sources.ownId ? sources.ownFile?.() : undefined) ??
-		memberTranscript(sources.db, { id, ...(sessionId ? { sessionId } : {}) });
+		memberTranscript(sources.db, { id, ...(sessionId ? { sessionId } : {}) }, sources.machine);
 	const notices = (): FeedNotice[] => {
 		const files = new Map<string, string>();
 		for (const member of sources.members()) {
@@ -79,7 +82,7 @@ export function messagesPorts(sources: MessagesSources): MessagesData {
 	};
 }
 
-/** The ports of `/messages` for this session: the shared database, the team its folder belongs to, the live members and its own session file. */
+/** The ports of `/messages` for this session: its workspace's file, the team its folder belongs to, the live members and its own session file. */
 export function liveMessagesData(
 	ctx: Pick<CommandContext, "cwd" | "sessionManager">,
 	team: Pick<Team, "id" | "members">,
@@ -88,7 +91,8 @@ export function liveMessagesData(
 	const members = () => team.members();
 	const root = members().find((member) => member.id === team.id)?.checkout;
 	return messagesPorts({
-		db: sharedAgentDb(env).db,
+		db: workspaceDb(ctx.cwd, env).agent.db,
+		machine: sharedAgentDb(env).db,
 		team: teamScope(ctx.cwd, env),
 		members,
 		...(root ? { root } : {}),

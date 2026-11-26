@@ -11,7 +11,7 @@ import {
 	resetMcpInstallFailures,
 	resolveInstalledLaunch,
 } from "../src/install.ts";
-import { recommendedPresets } from "../src/recommended/index.ts";
+import { builtinPreset } from "../src/presets/index.ts";
 import { validateMcpServerConfig } from "../src/servers.ts";
 import { takeLaunchWarnings } from "../src/warnings.ts";
 
@@ -208,7 +208,7 @@ describe("install.hostDependency", () => {
 	});
 
 	it("launches the default octocode entry from the octocode-mcp this checkout's coding-agent depends on", async () => {
-		const octocode = recommendedPresets({}).find((preset) => preset.name === "octocode")!;
+		const octocode = builtinPreset("octocode", {});
 		const packageDir = path.resolve(import.meta.dirname, "../../coding-agent");
 		const launched = await resolveInstalledLaunch(
 			{ name: "octocode", config: octocode.config!, source: "built-in octocode" },

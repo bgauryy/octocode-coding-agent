@@ -1,6 +1,7 @@
 import { type Db, sessions } from "../../../../db/src/api.ts";
 import { readSessionHeaderForDiscovery } from "../../core/session-manager/storage.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
+import { sessionRowsOf } from "../../storage/workspace-database.ts";
 import { liveProcess, sameProcess, sameProcessAsync } from "./process.ts";
 
 /**
@@ -16,7 +17,8 @@ export function runningPid(pid: number | null | undefined, started?: string | nu
 
 /** `runningPid` of session `id`; `timer` uses the shared process cache without synchronous `ps`. */
 export function sessionRunningPid(db: Db, id: string, timer = false): number | undefined {
-	const row = sessions.pidOf(db, id);
+	// A board's workspace file holds no session rows: read them where that file was opened from.
+	const row = sessions.pidOf(sessionRowsOf(db), id);
 	if (timer) return row?.pid != null && liveProcess(row.pid, row.pid_started) ? row.pid : undefined;
 	return runningPid(row?.pid, row?.pid_started);
 }

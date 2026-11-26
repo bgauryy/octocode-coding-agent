@@ -3,8 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { holdingsOf } from "../../src/octocode/compose-backlog.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { type Holdings, overlapping } from "../../src/octocode/backlog/done-guard.ts";
@@ -64,7 +63,7 @@ function setup() {
 				content: Array<{ text: string }>;
 			}
 		).content[0].text;
-	const store = () => new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
+	const store = () => new BacklogStore(() => workspaceDb(cwd).agent, workspaceDb(cwd).workspace.id);
 	const open = async (items: Array<Record<string, unknown>> = [{ title: "Work", paths: ["src/a/"] }]) => {
 		await call({ op: "add", items: items.map((item) => ({ ...READY, state: "todo", ...item })) });
 		await call({ op: "claim", id: "B1" });
@@ -187,7 +186,7 @@ describe("a child checks its own resources only", () => {
 
 	it("reads the running work of its own api and the children it was given", () => {
 		const holdings = holdingsOf(api, team([]), true, () => new Map([["kid", "B9"]]));
-		expect(holdings.children().get("kid")).toBe("B9");
+		expect([...holdings.children()]).toEqual([["kid", "B9"]]);
 		expect(holdings.work()).toEqual([]);
 	});
 });
@@ -232,5 +231,15 @@ describe("what the guard reads", () => {
 		record("gone", { item: "B1", owners: [{ pid: process.pid }] });
 		expect(worktreesMadeFor(repo, "B1", process.pid, home)).toEqual(["mine"]);
 		expect(worktreesMadeFor(repo, "B2", process.pid, home)).toEqual([]);
+	});
+});
+
+describe("finishing an epic", () => {
+	it("is refused while an item of it is not done", async () => {
+		const t = setup();
+		await t.open([{ title: "Epic", type: "epic" }]);
+		t.store().add({ title: "Part", ...READY, state: "todo", parentId: "B1", createdBy: "user" });
+		await expect(t.call({ op: "done", id: "B1", completion: DONE })).rejects.toThrow(/items that are not done/);
+		expect(t.store().get("B1")?.state).not.toBe("done");
 	});
 });

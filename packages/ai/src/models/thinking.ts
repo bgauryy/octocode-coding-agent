@@ -1,4 +1,4 @@
-import type { Api, Model, ModelThinkingLevel } from "../types.ts";
+import type { Api, Model, ModelThinkingLevel, ThinkingLevel } from "../types.ts";
 import { getCompat as getCompletionsCompat } from "../api/openai-completions/compat.ts";
 import { isAnthropicClaudeModel, supportsAdaptiveThinking } from "../api/bedrock-converse-stream/model-match.ts";
 import { usesGoogleThinkingLevel } from "../api/ai-sdk/google-thinking-format.ts";
@@ -84,6 +84,12 @@ export function getSupportedThinkingLevels<TApi extends Api>(model: Model<TApi>)
 	return supportedLevels(model, thinkingControl(model));
 }
 
+/**
+ * The one rule that turns a requested thinking level into a level the model supports, for every adapter: the level
+ * itself when supported (a `thinkingLevelMap` entry, or its absence for a plain level, is the alias), else the nearest
+ * lower supported level, else the lowest supported one (never `off` for a request to think, unless nothing else is
+ * supported).
+ */
 export function clampThinkingLevel<TApi extends Api>(
 	model: Model<TApi>,
 	level: ModelThinkingLevel,
@@ -94,13 +100,28 @@ export function clampThinkingLevel<TApi extends Api>(
 	const requestedIndex = EXTENDED_THINKING_LEVELS.indexOf(level);
 	if (requestedIndex === -1) return availableLevels[0] ?? "off";
 
-	for (let i = requestedIndex; i < EXTENDED_THINKING_LEVELS.length; i++) {
+	for (let i = requestedIndex - 1; i >= (level === "off" ? 0 : 1); i--) {
 		const candidate = EXTENDED_THINKING_LEVELS[i];
 		if (availableLevels.includes(candidate)) return candidate;
 	}
-	for (let i = requestedIndex - 1; i >= 0; i--) {
-		const candidate = EXTENDED_THINKING_LEVELS[i];
-		if (availableLevels.includes(candidate)) return candidate;
-	}
-	return availableLevels[0] ?? "off";
+	return availableLevels.find((candidate) => candidate !== "off") ?? availableLevels[0] ?? "off";
+}
+
+/**
+ * The level a request to think at `level` is sent as. A level the model's `thinkingLevelMap` marks unsupported (`null`)
+ * goes through {@link clampThinkingLevel}; any other level is sent as asked, because an adapter knows natively which
+ * `xhigh` and `max` values its provider takes when the map is silent. A model whose map leaves no level to think at
+ * (every level `null`) has no effort to send: the result is undefined and the adapter sends no effort field.
+ */
+export function effortLevel<TApi extends Api>(model: Model<TApi>, level: ThinkingLevel): ThinkingLevel | undefined {
+	if (model.thinkingLevelMap?.[level] !== null) return level;
+	const clamped = clampThinkingLevel(model, level);
+	return clamped === "off" ? undefined : clamped;
+}
+
+/** The provider value the model's `thinkingLevelMap` gives the clamped level; undefined where the map is silent. */
+export function effortValue<TApi extends Api>(model: Model<TApi>, level: ThinkingLevel): string | undefined {
+	const effective = effortLevel(model, level);
+	const mapped = effective ? model.thinkingLevelMap?.[effective] : undefined;
+	return typeof mapped === "string" ? mapped : undefined;
 }

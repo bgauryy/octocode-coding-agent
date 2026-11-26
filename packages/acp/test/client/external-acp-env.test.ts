@@ -72,7 +72,11 @@ describe("the environment an external ACP agent starts with", () => {
 describe("the sign-in check of an ACP agent", () => {
 	it("is signed in when a session opens, and closes it", async () => {
 		const { input, journal } = peerInput({});
-		expect(await probeAcpSignIn(acpClientHost, input)).toEqual({ signedIn: true });
+		expect(await probeAcpSignIn(acpClientHost, input)).toEqual({
+			signedIn: true,
+			models: [],
+			capabilities: { image: false, mcpHttp: false },
+		});
 		expect(journalOf(journal).map((entry) => entry.event)).toEqual(["new"]);
 	});
 

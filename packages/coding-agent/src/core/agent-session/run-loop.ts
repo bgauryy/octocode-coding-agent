@@ -287,7 +287,7 @@ export class SessionRunLoop {
 		}
 		if (!message) return session.agent.hasQueuedMessages();
 
-		if (retry.isRetryableError(message)) {
+		if (retry.mayReplay(message)) {
 			const decision = await retry.prepare(message);
 			// A cancelled wait stops the run: no fallback model, compaction resume or queued continuation follows it.
 			if (decision === "cancelled") run.agentRunAbortRequested = true;
@@ -319,6 +319,7 @@ export class SessionRunLoop {
 		const { session, run } = this.host;
 		this.host.cacheWarmer?.onAgentSettled();
 		run.active = false;
+		run.boundaryCompaction = undefined;
 		run.isEmittingAgentSettled = true;
 		try {
 			const aborted = run.agentRunAbortRequested;
@@ -385,9 +386,8 @@ export class SessionRunLoop {
 		const { session, run } = this.host;
 		if (reason === "replacement" || reason === "shutdown") this._retiring = true;
 		this.recordAbortReason(reason);
-		if (run.active) {
-			run.agentRunAbortRequested = true;
-		}
+		run.boundaryCompaction = undefined;
+		if (run.active) run.agentRunAbortRequested = true;
 		session.abortRetry();
 		// Only the user's Stop cancels a running compaction: a peer's interrupt waits behind it.
 		if (reason !== "peer") session.abortCompaction();

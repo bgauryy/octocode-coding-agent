@@ -8,7 +8,6 @@ import type { State } from "@octocodeai/octocode-contracts/snapshot";
 import { type Db, backlog } from "../../../../db/src/api.ts";
 import { refText, type toItem } from "./row.ts";
 import type { Item } from "./item.ts";
-import { mergeLinks, splitEvidence } from "./evidence-links.ts";
 
 /** Fields owned by the item store rather than the shared entity contract. Unknown keys remain for validation. */
 const ITEM_FIELDS = new Set([
@@ -47,22 +46,16 @@ export function enrichItems(db: Db, repo: string, bases: ReturnType<typeof toIte
 		if (!row) throw new Error(`Backlog item ${base.ref} disappeared while reading its entities.`);
 		const links = JSON.parse(row.links) as { relation: string; target: string }[];
 		const completions = JSON.parse(row.completions) as { id: number; payload: string }[];
-		// Rows written before evidence links keep paths and URLs in their evidence text; they read as links.
-		const evidence = splitEvidence(base.evidence, repo);
 		return {
 			...base,
-			evidence: evidence.text,
 			type: row.type,
 			...(row.parent_seq === null ? {} : { parentId: refText(row.parent_seq) }),
 			dependsOn: links
 				.filter((link) => link.relation === "depends_on")
 				.map((link) => JSON.parse(link.target) as BacklogRef),
-			links: mergeLinks(
-				links
-					.filter((link) => link.relation !== "depends_on")
-					.map((link) => ({ relation: link.relation, target: JSON.parse(link.target) }) as WorkLink),
-				evidence.links,
-			),
+			links: links
+				.filter((link) => link.relation !== "depends_on")
+				.map((link) => ({ relation: link.relation, target: JSON.parse(link.target) }) as WorkLink),
 			completions: completions.map((entry) => ({ ...JSON.parse(entry.payload), id: entry.id }) as Completion),
 		};
 	});

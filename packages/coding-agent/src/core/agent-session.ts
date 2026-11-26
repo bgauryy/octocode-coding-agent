@@ -1,3 +1,4 @@
+import type { SessionCompaction } from "./agent-session/compaction-control.ts";
 import { readPlan, planConstraintActive, clearPlanConstraint, type PlanOptions } from "./plan-state.ts";
 import { contextReport } from "./agent-session/context-report.ts";
 import { sideQuestionsFor, clearSideQuestions } from "./agent-session/side-questions.ts";
@@ -23,7 +24,7 @@ import { readRepositoryDiff, readUntrackedDiff } from "../utils/repository-diff.
  * constructor, lifecycle, session management, export and the feature system.
  */
 
-import type { AgentEvent, AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
+import type { AgentEvent, AgentMessage } from "@octocodeai/octocode-agent-core";
 import {
 	type AssistantMessage,
 	cleanupSessionResources,
@@ -200,14 +201,8 @@ export class AgentSession extends AgentSessionControl implements AgentSessionApi
 	}
 
 	/** Execute threshold or overflow compaction (see `SessionCompaction.runAuto`). */
-	private async _runAutoCompaction(
-		reason: "overflow" | "threshold",
-		willRetry: boolean,
-		targetModel?: Model<any>,
-		targetThinking?: ThinkingLevel,
-		incomingTokens?: number,
-	): Promise<boolean> {
-		return this._c.compaction.runAuto(reason, willRetry, targetModel, targetThinking, incomingTokens);
+	private _runAutoCompaction(...args: Parameters<SessionCompaction["runAuto"]>): Promise<boolean> {
+		return this._c.compaction.runAuto(...args);
 	}
 
 	// Lifecycle (documented on `AgentSessionApi`)

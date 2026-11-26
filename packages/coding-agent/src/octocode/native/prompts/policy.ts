@@ -1,5 +1,6 @@
 import { resolveRetention } from "../../../storage/retention.ts";
 import { renderPrompt } from "../../../core/prompt-template.ts";
+import { childReportRules } from "./child-reports.ts";
 import { renderPolicySection, renderSectionChunks, SYSTEM_PROMPT_SECTIONS } from "../../../core/system-prompt-spec.ts";
 import type { ResolvedRoles } from "../../../../../mcp/src/api.ts";
 
@@ -32,6 +33,8 @@ interface PromptInputs {
 	desktopProfiles?: string[];
 	/** False inside a subagent: no delegation, report back to the parent. */
 	canDelegate: boolean;
+	/** Whether this top-level session runs in a linked worktree: a proxy of the orchestrator that created it. */
+	linked?: boolean;
 	/** Whether the current request exposes the agent tool. */
 	canUseAgent?: boolean;
 	/** Whether the agent tool declares `runner`: an installed vendor CLI can take a task. */
@@ -56,6 +59,11 @@ interface PromptInputs {
 	browserControl?: boolean;
 	/** Whether this agent controls the desktop: its profile declares `desktop.control`. */
 	desktopControl?: boolean;
+	/**
+	 * Whether the main session can load the `octocode-subagents` skill, which its first child task delivers: the children
+	 * section then leaves the report rules to it.
+	 */
+	subagentsSkill?: boolean;
 	/** Days an untouched scratch folder is kept (`retention.days`; 0 keeps it); default from `resolveRetention`. */
 	scratchDays?: number;
 }
@@ -90,8 +98,12 @@ function policyFlags(input: PromptInputs) {
 		browserControl: input.browserControl === true,
 		desktopControl: input.desktopControl === true,
 		canSave: input.canSave !== false,
+		linked: input.linked === true,
 		agentTool: input.canUseAgent !== false,
 		runner: input.canStartRunner === true,
+		subagentsSkill: main && input.subagentsSkill === true,
+		// Rendered only when that skill cannot be loaded; its text is the skill's own section.
+		childReports: main && input.subagentsSkill !== true ? childReportRules() : "",
 		// Combinations a template reads by name.
 		gitState: !main && shell,
 		// A browser or desktop specialist: code and dependency research routes do not apply to it.

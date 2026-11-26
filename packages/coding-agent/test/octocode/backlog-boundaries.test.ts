@@ -3,10 +3,10 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Value } from "typebox/value";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { openAgentDb, sharedAgentDb } from "../../src/storage/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { registerBacklogTool } from "../../src/octocode/native/tools/backlog/tool.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { registerBacklogPlanTool } from "../../src/octocode/native/tools/backlog-plan/tool.ts";
@@ -25,7 +25,7 @@ function setup() {
 	registerBacklogPlanTool(fake.api, { isSubagent: false, env, changed });
 	const tool = fake.tools.get("backlog");
 	const ctx = fakeCtx({ cwd });
-	const store = new BacklogStore(() => sharedAgentDb(env), registeredWorkspace(cwd, sharedAgentDb(env)).id);
+	const store = new BacklogStore(() => workspaceDb(cwd, env).agent, workspaceDb(cwd, env).workspace.id);
 	const call = (params: Record<string, unknown>) =>
 		fake.tools.get(backlogToolName(params.op)).execute("call", params, undefined, undefined, ctx);
 	return { tool, plan: fake.tools.get("backlogPlan"), store, call, changed };

@@ -26,7 +26,8 @@ afterEach(() => {
 
 /**
  * The composed extension, a session that holds one ongoing item nothing works on, and a background job that keeps the
- * session waiting: the state in which a settling run names the idle item to its coordinator.
+ * session waiting for another item: the state in which a settling run names the idle item to its coordinator. The job
+ * names its item, since one without `item` would serve the session's only ongoing item.
  */
 async function settlingWithAnIdleItem() {
 	const cwd = tmp();
@@ -40,10 +41,17 @@ async function settlingWithAnIdleItem() {
 	const backlog = openBacklog(ctx, { isSubagent: false });
 	const item = backlog.store.add({ goal: "g", why: "w", title: "held", state: "todo", createdBy: "user" });
 	backlog.store.update(item.ref, { state: "ongoing" }, backlog.actor);
+	const other = backlog.store.add({ goal: "g", why: "w", title: "other", state: "todo", createdBy: "user" });
 	await fake.emit("agent_start", {}, ctx);
 	await fake.tools
 		.get("bash")
-		.execute("call-1", { reason: "Keep waiting.", command: "sleep 30", background: true }, undefined, undefined, ctx);
+		.execute(
+			"call-1",
+			{ reason: "Keep waiting.", command: "sleep 30", background: true, item: other.ref },
+			undefined,
+			undefined,
+			ctx,
+		);
 	const nudges = () => fake.sent.filter((entry) => entry.message.customType === IDLE_ITEM_TYPE);
 	return { fake, ctx, ref: item.ref, nudges };
 }

@@ -20,6 +20,7 @@ export const CLI_FLAGS = [
 const commands: Record<string, readonly string[]> = {
 	models: ["discover"],
 	auth: ["check", "print-api-key", "print-bearer-token"],
+	providers: ["list"],
 	mcp: MCP_COMMANDS.map(([name]) => name),
 	context: ["list", "check", "apply"],
 	trust: ["list", "add", "remove"],

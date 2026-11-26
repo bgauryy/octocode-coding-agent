@@ -20,9 +20,13 @@ class Rows {
 
 const PROMPT = "LAST-SUBMITTED-PROMPT";
 
-async function withChat(run: (ctx: { terminal: VirtualTerminal; editor: Editor; tui: TuiAltScreen }) => Promise<void>) {
+async function withChat(
+	run: (ctx: { terminal: VirtualTerminal; editor: Editor; tui: TuiAltScreen }) => Promise<void>,
+	options: { mouseCaptured?: boolean } = {},
+) {
 	const terminal = new VirtualTerminal(40, 12);
-	const tui = new TuiAltScreen(terminal);
+	// Without mouse tracking the terminal's alternate scroll turns the wheel into arrows; tracked, it reports the wheel.
+	const tui = new TuiAltScreen(terminal, undefined, undefined, { mouse: options.mouseCaptured ?? false });
 	const document = new Container();
 	for (let i = 0; i < 40; i++) document.addChild(new Rows([`row ${i}`]));
 	const editor = new Editor(tui, defaultEditorTheme);
@@ -47,6 +51,19 @@ async function withChat(run: (ctx: { terminal: VirtualTerminal; editor: Editor; 
 
 const top = (terminal: VirtualTerminal) => terminal.getViewport()[0]?.trim();
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+describe("queued arrow keys while the mouse is captured", () => {
+	it("recall history, since the wheel then arrives as mouse reports", async () => {
+		await withChat(async ({ terminal, editor }) => {
+			editor.addToHistory("NEWER-PROMPT");
+			const before = top(terminal);
+			for (let i = 0; i < 3; i++) terminal.sendInput("\x1b[A");
+			await delay(20);
+			assert.equal(editor.getText(), PROMPT);
+			assert.equal(top(terminal), before);
+		}, { mouseCaptured: true });
+	});
+});
 
 describe("arrow keys sent for the wheel", () => {
 	for (const [name, up] of [

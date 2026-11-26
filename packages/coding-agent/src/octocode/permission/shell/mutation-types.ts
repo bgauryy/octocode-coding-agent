@@ -2,8 +2,9 @@
  * What a shell command changes, as far as its parse shows: a policy for read-only roles and team reservations, not a
  * sandbox. It sees redirections, `tee`, in-place editors, file-moving programs, git and package-manager commands that
  * change the tree, destinations named by options (`dd of=`, `curl -o`, `tar -C`, `git -C`, `git config`), commands
- * `find -exec` runs, and scripts passed to `sh -c` or `eval`. It does not see what an interpreter (`node script.js`,
- * `make`) does. A program name that is computed (`$X a b`, `$(…) a b`) is `uncertain`. `~` and `$HOME` spellings are
+ * `find -exec` runs, and scripts passed to `sh -c` or `eval`. An interpreter given code inline (`python3 -c`, a heredoc,
+ * `node -e`, `perl -e`) is `inlineCode` that runs in a directory (kept in `areas`): a read-only role allows it, checking its redirections, while workspace write checks, receipts and command ordering treat it as an unnamed change there. It does not see what an interpreter that runs
+ * a file (`node script.js`, `make`) does. A program name that is computed (`$X a b`, `$(…) a b`) is `uncertain`. `~` and `$HOME` spellings are
  * kept as `~` paths.
  */
 export interface ShellMutation {
@@ -15,6 +16,8 @@ export interface ShellMutation {
 	areas: string[];
 	/** Changes with no path to name (`git commit`, `sed -i`, `npm install`), one short description each. */
 	opaque: string[];
+	/** Interpreters given code inline (`python3 -c`, a heredoc), one short description each; the directory is in `areas`. Not `opaque`: the code often only reads, so the read-only role runs it, but callers that must see every change (receipts, ordering, write checks) count it. */
+	inlineCode: string[];
 	/** Git calls that are not a read a read-only role may run (`gitUnread`, `gitRoleGlobal`): the closed list only that role answers to, since most of them only read too (`git merge-base`) or stay in the repository (`git fetch`). */
 	unread: string[];
 	/** Where those calls run, for a guard about one directory. */

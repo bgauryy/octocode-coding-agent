@@ -24,7 +24,7 @@ describe("built-in compaction policy", () => {
 			);
 			expect(policy.reserveTokens + policy.keepRecentTokens).toBeLessThan(contextWindow);
 			expect(reserveTokensFor(model)).toBe(policy.reserveTokens);
-			expect(autoCompactAt(model)).toBe(contextWindow - policy.reserveTokens);
+			expect(autoCompactAt(model)).toBe(Math.min(contextWindow - policy.reserveTokens, Math.ceil(0.9 * contextWindow)));
 		}
 	});
 

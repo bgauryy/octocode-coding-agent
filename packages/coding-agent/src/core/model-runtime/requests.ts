@@ -43,6 +43,7 @@ import {
 } from "@octocodeai/octocode-ai";
 import { withCacheEndpoint } from "@octocodeai/octocode-ai/utils/cache-capabilities";
 import { mergeHeaders } from "@octocodeai/octocode-ai/utils/headers";
+import { withCredentialRenewal } from "@octocodeai/octocode-ai/models/credential-renewal";
 import { assertImageRequestContext } from "@octocodeai/octocode-ai/utils/image-input";
 import {
 	assertChatModel,
@@ -60,6 +61,7 @@ import { type CooldownRequestOptions, cooldownStep } from "./cooldown-request.ts
 import { instructionCacheBoundaryOption } from "./instruction-boundary.ts";
 import type { ProviderLayers } from "./provider-layers.ts";
 import { quotaStep } from "./quota-request.ts";
+import { requestRateStep } from "./request-rate.ts";
 import { throughputStep } from "./throughput-request.ts";
 import type { ModelRuntimeAuthOverrides } from "./types.ts";
 
@@ -128,6 +130,10 @@ export interface ModelRequestHost {
 	getProvider(providerId: string): Provider | undefined;
 	getAuth(model: AnyModel, overrides?: ModelRuntimeAuthOverrides): Promise<AuthResult | undefined>;
 	getCachePolicy(model: Model<Api>, options?: StreamOptions): ReturnType<typeof resolveConfiguredCache>;
+	/** Sends per minute allowed to the model's provider (models.json, else the settings default); 0 or undefined: no limit. */
+	requestsPerMinute?(model: Model<Api>): number | undefined;
+	/** The models.json tokens per minute for the shared throughput gate; undefined: the gate's default. */
+	tokensPerMinute?(model: Model<Api>): number | undefined;
 	resolveModel(
 		model: Model<Api>,
 		messages: readonly Message[],
@@ -153,6 +159,8 @@ async function prepareModelRequest<
 	provider: Provider;
 	model: TModel;
 	options: Omit<TOptions, "transformHeaders"> & ProviderRequestOptions<TModel>;
+	/** Drops a cached command or keychain key; absent for a caller's own `apiKey` and for other credentials. */
+	renew?: () => void;
 }> {
 	const provider = host.getProvider(model.provider);
 	if (!provider) throw new ModelsError("provider", `Unknown provider: ${model.provider}`);
@@ -187,6 +195,7 @@ async function prepareModelRequest<
 			headers,
 			env,
 		},
+		renew: options?.apiKey === undefined ? resolution.renew : undefined,
 	};
 }
 
@@ -206,32 +215,52 @@ export function streamChatModel<TApi extends Api>(
 	model: Model<TApi>,
 	context: Context,
 	options?: ModelsApiStreamOptions<TApi>,
-	hints?: Pick<RuntimeSimpleStreamOptions, "resolveCache" | "roleVariantTools" | "requestPriority">,
+	hints?: Pick<RuntimeSimpleStreamOptions, "resolveCache" | "roleVariantTools" | "requestPriority" | "onCooldownWait">,
 ): AssistantMessageEventStream {
 	const transcript = normalizeContext(context);
 	const cooldown = cooldownStep(model, options);
-	const throughput = throughputStep(model, transcript, { ...options, requestPriority: hints?.requestPriority });
+	const throughput = throughputStep(model, transcript, {
+		...options,
+		requestPriority: hints?.requestPriority,
+		tokensPerMinute: host.tokensPerMinute?.bind(host),
+	});
+	const rate = requestRateStep(
+		model,
+		{
+			signal: options?.signal,
+			sessionId: options?.sessionId,
+			requestPriority: hints?.requestPriority,
+			onCooldownWait: hints?.onCooldownWait,
+		},
+		host.requestsPerMinute?.(model),
+	);
 	const onResponse = quotaStep(model, options);
 	return lazyStream(
 		model,
 		async () => {
 			assertChatModel(model);
 			assertImageRequestContext(model, transcript.messages);
-			const prepared = await prepareModelRequest(host, model, {
-				...options,
-				...cooldown.hooks,
-				...chatCacheOptions(host, model, transcript.messages, options, hints?.resolveCache, hints?.roleVariantTools),
-				onResponse,
+			// A refused cached key is dropped and the request goes out once more with a freshly resolved one.
+			return withCredentialRenewal(async () => {
+				const prepared = await prepareModelRequest(host, model, {
+					...options,
+					...cooldown.hooks,
+					...chatCacheOptions(host, model, transcript.messages, options, hints?.resolveCache, hints?.roleVariantTools),
+					onResponse,
+				});
+				const refused = await cooldown.ready(prepared.model);
+				if (refused) return { events: refused };
+				const hooks = rate.wrap(
+					throughput.hooks(prepared.options, prepared.model, prepared.options.env ?? process.env),
+				);
+				const events = prepared.provider.stream(prepared.model, transcript, {
+					...prepared.options,
+					...hooks,
+				} as ApiStreamOptions<TApi>);
+				return { events, renew: prepared.renew };
 			});
-			const refused = await cooldown.ready(prepared.model);
-			if (refused) return refused;
-			const hooks = throughput.hooks(prepared.options, prepared.model, prepared.options.env ?? process.env);
-			return prepared.provider.stream(prepared.model, transcript, {
-				...prepared.options,
-				...hooks,
-			} as ApiStreamOptions<TApi>);
 		},
-		requestObserver(cooldown.observer, throughput.observer),
+		requestObserver(cooldown.observer, throughput.observer, rate.observer),
 	);
 }
 
@@ -272,25 +301,34 @@ export function streamSimpleChatModel(
 		...requestOptions
 	} = options ?? {};
 	const cooldown = cooldownStep(model, options);
-	const throughput = throughputStep(model, transcript, options);
+	const throughput = throughputStep(model, transcript, {
+		...options,
+		tokensPerMinute: host.tokensPerMinute?.bind(host),
+	});
+	const rate = requestRateStep(model, options, host.requestsPerMinute?.(model));
 	const onResponse = quotaStep(model, requestOptions);
 	return lazyStream(
 		model,
 		async () => {
 			assertChatModel(model);
 			assertImageRequestContext(model, transcript.messages);
-			const prepared = await prepareModelRequest(host, model, {
-				...requestOptions,
-				...cooldown.hooks,
-				...chatCacheOptions(host, model, transcript.messages, requestOptions, resolveCache, roleVariantTools),
-				onResponse,
+			return withCredentialRenewal(async () => {
+				const prepared = await prepareModelRequest(host, model, {
+					...requestOptions,
+					...cooldown.hooks,
+					...chatCacheOptions(host, model, transcript.messages, requestOptions, resolveCache, roleVariantTools),
+					onResponse,
+				});
+				const refused = await cooldown.ready(prepared.model);
+				if (refused) return { events: refused };
+				const hooks = rate.wrap(
+					throughput.hooks(prepared.options, prepared.model, prepared.options.env ?? process.env),
+				);
+				const events = prepared.provider.streamSimple(prepared.model, transcript, { ...prepared.options, ...hooks });
+				return { events, renew: prepared.renew };
 			});
-			const refused = await cooldown.ready(prepared.model);
-			if (refused) return refused;
-			const hooks = throughput.hooks(prepared.options, prepared.model, prepared.options.env ?? process.env);
-			return prepared.provider.streamSimple(prepared.model, transcript, { ...prepared.options, ...hooks });
 		},
-		requestObserver(cooldown.observer, throughput.observer),
+		requestObserver(cooldown.observer, throughput.observer, rate.observer),
 	);
 }
 

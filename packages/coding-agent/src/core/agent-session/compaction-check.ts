@@ -25,6 +25,9 @@ import type {
 import { ancestors } from "../session-manager/ancestors.ts";
 import type { SessionInternals, SessionRunState } from "./host.ts";
 
+/** How many times the provider's count the local estimate must be to override it. */
+const LOCAL_ESTIMATE_OVERRIDE = 2;
+
 export interface CompactionCheckHost extends Pick<SessionInternals, "session" | "run" | "emit"> {
 	modelForMessage(message: AssistantMessage): Model<any> | undefined;
 	findPersistedMessageEntryId(message: AgentMessage): string | undefined;
@@ -229,6 +232,12 @@ export async function checkCompaction(
 		contextTokens = directContextTokens;
 		if (!skipAbortedCheck)
 			contextTokens += estimateTrailingTokens(session.agent.state.messages, assistantMessage, limitsModel);
+		// A provider count can be stale or missing part of the context (cache accounting, a gateway). The stored messages up
+		// to the response are a ratio estimate, so they override it only when they are more than twice the count.
+		const stored = session.agent.state.messages;
+		const upTo = stored.lastIndexOf(assistantMessage);
+		const local = estimateMessagesTokens(upTo < 0 ? stored : stored.slice(0, upTo + 1), limitsModel);
+		if (local > directContextTokens * LOCAL_ESTIMATE_OVERRIDE) contextTokens = Math.max(contextTokens, local);
 	}
 	contextTokens += incomingTokens;
 	return shouldCompact(contextTokens, contextWindow, settings) ? compactForThreshold() : false;
@@ -282,6 +291,13 @@ export function compactionCancelledForRequest(
 	return false;
 }
 
+/** Local estimate of the whole stored conversation, ignoring provider usage. */
+function estimateMessagesTokens(messages: readonly AgentMessage[], model: Model<any> | undefined): number {
+	let tokens = 0;
+	for (const message of messages) tokens += estimateTokens(message, model);
+	return tokens;
+}
+
 /** Estimated tokens of the messages after `assistantMessage`, whose provider usage does not include them. */
 function estimateTrailingTokens(
 	messages: readonly AgentMessage[],
@@ -299,7 +315,7 @@ function estimateTrailingTokens(
  * Whether the context at a length stop is close enough to `model`'s window to explain the cut-off as overflow: past the
  * threshold, or too close to the window for the model's desired output.
  */
-function lengthStopNearWindow(
+export function lengthStopNearWindow(
 	message: AssistantMessage,
 	projection: ReadonlySessionProjection,
 	sessionManager: Parameters<typeof estimateLeafContextTokens>[1],

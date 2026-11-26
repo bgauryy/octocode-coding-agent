@@ -61,7 +61,7 @@ describe("retry.fallbackCooldownMs", () => {
 				const stream = createAssistantMessageEventStream();
 				queueMicrotask(() => {
 					const failed = calls.length <= 2;
-					const msg = failed ? reply(model.id, { stopReason: "error", errorMessage: LIMIT }) : reply(model.id);
+					const msg = failed ? reply(model.id, { content: [], stopReason: "error", errorMessage: LIMIT }) : reply(model.id);
 					stream.push({ type: "start", partial: msg });
 					if (failed) stream.push({ type: "error", reason: "error", error: msg });
 					else stream.push({ type: "done", reason: "stop", message: msg });

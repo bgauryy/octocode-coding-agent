@@ -1,7 +1,7 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { type AgentDb, openDatabase } from "../db.ts";
 import { isBusy } from "../sqlite.ts";
-import { type DbWriterMessage, type DbWriterRequest, isDbWriterWorkerData } from "./protocol.ts";
+import { type DbWriterMessage, type DbWriterRequest, isDbWriterWorkerData, writerLocations } from "./protocol.ts";
 import { CheckpointDuty } from "./checkpoint.ts";
 import { runWriterCommandWithin } from "./derived.ts";
 import { readArchivedAudits } from "../history-reader.ts";
@@ -35,7 +35,8 @@ export function runDbWriterWorker(): void {
 	let agent: AgentDb | undefined;
 	// Opened again before each command until it succeeds: a busy or transient failure at open must not fail every later
 	// command, and a file that is not a database keeps failing with the same error, reported per write.
-	const open = (): AgentDb => (agent ??= openDatabase(locations));
+	// Only the fields a writer owns: without the host's `split` this thread never runs the split (`schema-split.ts`).
+	const open = (): AgentDb => (agent ??= openDatabase(writerLocations(locations)));
 	try {
 		open();
 	} catch {

@@ -8,7 +8,7 @@ import { Worker } from "node:worker_threads";
 import { codingAgentName, smokeTestCodingAgent } from "./coding-agent-smoke.mjs";
 import { execNpmSync } from "../lib/npm-command.mjs";
 
-/** The research tools this version is built around (the `roles` of `packages/mcp/src/recommended/octocode.json`, `subagents/core-tools.ts`). */
+/** The research tools this version is built around (the `roles` of `octocode` in `packages/mcp/src/default_mcp_config.json`, `subagents/core-tools.ts`). */
 const REQUIRED_RESEARCH_TOOLS = ["localFetch", "localSearch", "structureSearch", "astSearch", "lspSearch"];
 const TOOL_PREFIX = "mcp__octocode__";
 const FINAL_TEXT = "PREFLIGHT-FINAL";

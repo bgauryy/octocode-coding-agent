@@ -11,7 +11,6 @@ import {
 	type RequestPermissionRequest,
 	type RequestPermissionResponse,
 	type SessionNotification,
-	type SetSessionConfigOptionResponse,
 } from "@agentclientprotocol/sdk";
 import type { AcpClientHost } from "../host.ts";
 import type { ExternalBackend, ExternalReply } from "@octocodeai/octocode-contracts/external";
@@ -19,7 +18,16 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { withAuthentication } from "./auth.ts";
 import { AcpError, AcpRefusal, timeoutSignal } from "./errors.ts";
 import { AcpDiagnostics, AcpOutput } from "./output.ts";
-import { type AcpModels, acpModels, modelRefusal } from "./session-config.ts";
+import {
+	type AcpCapabilities,
+	type AcpImage,
+	type AcpModels,
+	acpCapabilities,
+	acpModels,
+	modelRefusal,
+	promptBlocks,
+	selectModel,
+} from "./session-config.ts";
 import { untilAborted } from "@octocodeai/octocode-common/abort";
 import type { AcpTurnUpdate, Turn } from "./turn.ts";
 export type { AcpTurnUpdate } from "./turn.ts";
@@ -60,6 +68,7 @@ export class AcpBackend implements ExternalBackend {
 	readonly cwd: string;
 	private currentSessionId: string;
 	private currentModels?: AcpModels;
+	private currentCapabilities: AcpCapabilities = { image: false, mcpHttp: false };
 	/** The peer advertised `session/close` and a session is open on it. */
 	private closeOnShutdown = false;
 	private readonly permission: AcpPermission;
@@ -101,6 +110,11 @@ export class AcpBackend implements ExternalBackend {
 
 	get models(): AcpModels | undefined {
 		return this.currentModels;
+	}
+
+	/** What the agent accepts, from its `initialize` answer. */
+	get capabilities(): AcpCapabilities {
+		return this.currentCapabilities;
 	}
 
 	get isClosed(): boolean {
@@ -170,6 +184,7 @@ export class AcpBackend implements ExternalBackend {
 			const mcpServers = input.mcpServers ?? [];
 			const meta = input.sessionMeta ? { _meta: input.sessionMeta } : {};
 			const capabilities = initialization.agentCapabilities;
+			backend.currentCapabilities = acpCapabilities(capabilities);
 			const authenticated = <T>(request: () => Promise<T>) =>
 				withAuthentication(connection, initialization.authMethods, startup, request, input.authenticate !== false);
 			if (input.sessionId) {
@@ -205,20 +220,8 @@ export class AcpBackend implements ExternalBackend {
 				phase = backend.currentModels?.configId ? "session/set_config_option" : "session/set_model";
 				const refusal = modelRefusal(backend.currentModels, input.model);
 				if (refusal) throw new Error(refusal);
-				const selected = await untilAborted<SetSessionConfigOptionResponse | Record<string, never>>(
-					backend.currentModels!.configId
-						? connection.agent.request(methods.agent.session.setConfigOption, {
-								sessionId: backend.currentSessionId,
-								configId: backend.currentModels!.configId,
-								value: input.model,
-							})
-						: connection.agent.request<Record<string, never>>("session/set_model", {
-								sessionId: backend.currentSessionId,
-								modelId: input.model,
-							}),
-					startup,
-				);
-				backend.currentModels = acpModels(selected) ?? { ...backend.currentModels!, current: input.model };
+				const { currentSessionId: id, currentModels: models } = backend;
+				backend.currentModels = await selectModel(connection, id, models!, input.model, startup);
 			}
 			startup.throwIfAborted();
 			backend.lifetime.signal.throwIfAborted();
@@ -231,7 +234,7 @@ export class AcpBackend implements ExternalBackend {
 
 	async prompt(
 		text: string,
-		options: { timeoutMs: number; signal?: AbortSignal; key?: string; onUpdate?: AcpTurnUpdate },
+		options: { timeoutMs: number; signal?: AbortSignal; key?: string; onUpdate?: AcpTurnUpdate; images?: AcpImage[] },
 	): Promise<ExternalReply> {
 		if (this.active) throw new AcpRefusal("ACP session already has an active prompt.");
 		if (!this.connection || this.closing)
@@ -262,7 +265,7 @@ export class AcpBackend implements ExternalBackend {
 		const pending = this.connection.agent
 			.request(
 				methods.agent.session.prompt,
-				{ sessionId: this.sessionId, prompt: [{ type: "text", text }] },
+				{ sessionId: this.sessionId, prompt: promptBlocks(text, options.images) },
 				// Local cancellation invalidates the turn immediately; protocol cancellation waits for owned-tree capture.
 				{ cancellationSignal: turn.protocolCancel.signal },
 			)

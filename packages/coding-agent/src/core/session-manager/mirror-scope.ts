@@ -23,7 +23,13 @@ export function mirrorsSessionFile(
 	if (!agentTmp && !temporaryRoots().some((root) => isUnderPath(file, root))) return true;
 	if (state.sessionDir && !state.sessionDirFromFile && isUnderPath(file, canonicalPath(state.sessionDir))) return true;
 	if (agentTmp) return false;
-	return [workspaceStateDir(state.cwd), getAgentDir()].some((dir) => isUnderPath(file, canonicalPath(dir)));
+	return [workspaceStateDir(state.cwd), agentDirCanonical()].some((dir) => isUnderPath(file, canonicalPath(dir)));
+}
+
+/** The Octocode home canonical, stable for a process; a home does not move under a running process. */
+let agentDir: string | undefined;
+function agentDirCanonical(): string {
+	return (agentDir ??= canonicalPath(getAgentDir()));
 }
 
 const [OCTOCODE_FOLDER, AGENT_FOLDER] = AGENT_DIR.split(path.sep);

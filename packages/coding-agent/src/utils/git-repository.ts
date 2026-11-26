@@ -59,10 +59,22 @@ function checkoutPaths(cwd: string): string[] {
 	);
 }
 
+/** The canonical home directory, resolved again only when `os.homedir()` names another folder. */
+let homeSeen: { raw: string; canonical: string } | undefined;
+
+function canonicalHome(): string {
+	const raw = os.homedir();
+	if (homeSeen?.raw !== raw) homeSeen = { raw, canonical: canonicalPath(raw) };
+	return homeSeen.canonical;
+}
+
 function discover(cwd: string): Discovery {
-	const start = canonicalPath(cwd);
+	const home = canonicalHome();
+	// A cwd stored as a canonical key skips the per-segment symlink resolution (a real folder does not turn into a link
+	// in place); every lookup still walks up for the nearest `.git`, since a repository created above or inside a cached
+	// folder changes the answer.
+	const start = cache.has(cwd) ? cwd : canonicalPath(cwd);
 	const marker = gitMarkerDir(start);
-	const home = canonicalPath(os.homedir());
 	const stamp = revision(marker);
 	const cached = cache.get(start);
 	if (

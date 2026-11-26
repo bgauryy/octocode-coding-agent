@@ -3,8 +3,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { renderPrompt } from "../../core/prompt-template.ts";
 import type { SessionBeforeCompactEvent } from "../../core/features/index.ts";
 import { edits, workspaces } from "../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../storage/database.ts";
-import { registeredWorkspace } from "../../storage/workspace-database.ts";
+import { workspaceDb } from "../../storage/workspace-database.ts";
 import { shellMutation, shellParserReady } from "../permission/shell/mutation.ts";
 import { resolveToolPath } from "../shared/home.ts";
 import { sessionWorkspace } from "../shared/home/workspace.ts";
@@ -52,12 +51,11 @@ function loggedChanges(cwd: string): AgentChanges {
 	let checkout: { id: string; root: string } | undefined;
 	return (agent, since) => {
 		try {
-			const db = sharedAgentDb();
+			const { agent: db, workspace } = workspaceDb(sessionWorkspace(cwd));
 			if (!checkout) {
-				const id = registeredWorkspace(sessionWorkspace(cwd), db).id;
-				const root = workspaces.byId(db.db, id)?.root;
+				const root = workspaces.byId(db.db, workspace.id)?.root;
 				if (!root) return [];
-				checkout = { id, root };
+				checkout = { id: workspace.id, root };
 			}
 			const { id, root } = checkout;
 			return edits

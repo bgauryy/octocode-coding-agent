@@ -150,6 +150,7 @@ export function showModelSelector(host: ModelPickerHost, initialSearchInput?: st
 			(model, save) => void selectModel(model, save),
 			defaultProvider && startupModel ? { provider: defaultProvider, id: startupModel } : undefined,
 			{ source, providerOnly: defaultProvider },
+			() => session.messages.findLast((message) => message.role === "assistant"),
 		);
 		return {
 			component: selector,

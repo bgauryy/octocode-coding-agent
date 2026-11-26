@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadMcpConfig } from "../src/config.ts";
 import { type McpServerPreset, presetEntries } from "../src/preset.ts";
-import { recommendedPresets } from "../src/recommended/index.ts";
+import { builtinPreset } from "../src/presets/index.ts";
 import { defaultPreset } from "./mcp-default-preset.ts";
 import { saveConfig } from "../src/persistence.ts";
 import { reconnect } from "../src/connections.ts";
@@ -126,11 +126,13 @@ describe("default MCP in the shared host", () => {
 	it("allows the default local reader in planning, and a same-named replacement only while it keeps the default's roles", async () => {
 		// The default entry as runtime registers it (`default.ts`): its `roles` declare localFetch read-only. `prepareLaunch`
 		// runs the echo fixture instead, so its npm `install` is left out (installing is `mcp-install.test.ts`'s subject).
-		const presets: McpServerPreset[] = recommendedPresets({}).map((preset) => {
-			if (!preset.config || !("command" in preset.config)) return preset;
-			const { install: _install, ...config } = preset.config;
-			return { ...preset, config };
-		});
+		const presets: McpServerPreset[] = ["octocode", "freellama"]
+			.map((name) => builtinPreset(name, {}))
+			.map((preset) => {
+				if (!preset.config || !("command" in preset.config)) return preset;
+				const { install: _install, ...config } = preset.config;
+				return { ...preset, config };
+			});
 		const h = host({ presets });
 		await h.start();
 		await h.prompt();

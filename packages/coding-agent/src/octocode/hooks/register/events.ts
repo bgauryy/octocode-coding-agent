@@ -1,11 +1,10 @@
-import { renderPrompt } from "../../../core/prompt-template.ts";
 import type { FeatureSetup } from "../../../core/features/index.ts";
 import { notify } from "../../shared/commands.ts";
 import { compactionOutcome } from "../../../core/compaction/outcome-read.ts";
 import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { commandsFor, hookCalls } from "../config/calls.ts";
 import { claudeSessionEndOverride } from "../profiles.ts";
-import { capContext } from "../runner.ts";
+import { hookContext } from "../context-message.ts";
 import { type HookClock, REAL_HOOK_CLOCK } from "./clock.ts";
 import { blockOnFailure, type EventPolicy, warnFailure } from "./event-policy.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookHostMetadata, type HookSession } from "./types.ts";
@@ -139,7 +138,7 @@ export function registerPostCompactHook(api: FeatureSetup, dispatch: Dispatch): 
 			await api.session.sendMessage(
 				{
 					customType: CONTEXT_TYPE,
-					content: capContext(renderPrompt("hooks/context.md", { source: "PostCompact", text: verdict.context })),
+					content: hookContext("PostCompact", verdict.context),
 					display: false,
 				},
 				{ triggerTurn: false },
@@ -180,7 +179,7 @@ export function registerPostToolBatchHook(api: FeatureSetup, dispatch: Dispatch)
 				{
 					type: "custom_message" as const,
 					customType: CONTEXT_TYPE,
-					content: capContext(`PostToolBatch hook feedback:\n${feedback}`),
+					content: hookContext("PostToolBatch", feedback),
 					display: Boolean(verdict.block),
 				},
 			],
@@ -194,9 +193,7 @@ export function registerPromptHook(api: FeatureSetup, dispatch: Dispatch): void 
 		if (verdict.block && ctx.hasUI) notify(ctx.ui, `Blocked by a UserPromptSubmit hook: ${verdict.block}`, "warning");
 		return {
 			block: !!verdict.block,
-			additionalContext: verdict.context
-				? [capContext(renderPrompt("hooks/context.md", { source: "UserPromptSubmit", text: verdict.context }))]
-				: [],
+			additionalContext: verdict.context ? [hookContext("UserPromptSubmit", verdict.context)] : [],
 		};
 	});
 	api.bus.on("input", async (event, ctx) => {
@@ -213,7 +210,7 @@ export function registerPromptHook(api: FeatureSetup, dispatch: Dispatch): void 
 			await api.session.sendMessage(
 				{
 					customType: CONTEXT_TYPE,
-					content: capContext(renderPrompt("hooks/context.md", { source: "UserPromptSubmit", text: verdict.context })),
+					content: hookContext("UserPromptSubmit", verdict.context),
 					display: false,
 				},
 				{ triggerTurn: false },

@@ -44,7 +44,7 @@ export async function projectAgents(
 	if (wanted !== undefined && (await currentView(file)) === wanted) return;
 	await withFileLock(file, async (assertHeld) => {
 		await checkPath(expected, directory, file);
-		const previous = await readView(file, storeKey, formerStoreKey(agent.file));
+		const previous = await readView(file, storeKey, formerStoreKeys(agent));
 		// Read again under the lock: commits made while waiting for the disk are in this write.
 		const content = viewContent(agent, expected.id, storeKey);
 		if (content === undefined || content === previous) return; // An empty file cannot carry a database binding.
@@ -98,8 +98,19 @@ function formerStoreKey(file: string, env: NodeJS.ProcessEnv = process.env): str
 	return former === own ? undefined : shortHash(former);
 }
 
-/** The existing view, checked to be one this database wrote (or may rebind, `formerKey`); undefined when there is none. */
-async function readView(file: string, storeKey: string, formerKey?: string): Promise<string | undefined> {
+/**
+ * The keys of the files whose views `agent` may rebind: the machine file a workspace file was split from (it wrote the
+ * views of its repository's workspaces before the split) and that file's own former location.
+ */
+function formerStoreKeys(agent: AgentDb): string[] {
+	const machine = agent.historySource;
+	const keys = machine === agent.file ? [] : [shortHash(canonicalPath(machine))];
+	const former = formerStoreKey(machine);
+	return former === undefined ? keys : [...keys, former];
+}
+
+/** The existing view, checked to be one this database wrote (or may rebind, `formerKeys`); undefined when there is none. */
+async function readView(file: string, storeKey: string, formerKeys: readonly string[]): Promise<string | undefined> {
 	const stat = await fs.promises.stat(file).catch((error: NodeJS.ErrnoException) => {
 		if (error.code === "ENOENT") return undefined;
 		throw error;
@@ -129,7 +140,10 @@ async function readView(file: string, storeKey: string, formerKey?: string): Pro
 			typeof row.type !== "string" ||
 			!(agentEvents.EVENT_TYPES as readonly string[]).includes(row.type) ||
 			!isRecord(row.data) ||
-			!(row.data.storeKey === storeKey || (formerKey !== undefined && row.data.storeKey === formerKey))
+			!(
+				row.data.storeKey === storeKey ||
+				(typeof row.data.storeKey === "string" && formerKeys.includes(row.data.storeKey))
+			)
 		)
 			throw new ForeignViewError(
 				`agents.txt belongs to another database or format; remove ${file} to rebind it.`,

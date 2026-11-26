@@ -94,6 +94,11 @@ export function changesOnlyWorkspace(file: string, root: string): boolean {
 /** What Octocode reads from each fallback folder (the older Octocode folders' and Pi's): keys, OAuth tokens, models, settings. */
 const FALLBACK_STORE_FILES = ["auth.json", "mcp-auth.json", "models.json", "settings.json"];
 
+/** The global agent state folders (for this process's variables and for a session started without them), whose scratch folders are data. */
+const agentStates = (none: NodeJS.ProcessEnv): string[] => [
+	...new Set([globalPaths().agentState, globalPaths(none).agentState]),
+];
+
 /**
  * Where Octocode keeps its state or reads credentials outside a workspace, for a session started with this process's
  * variables and for one started without them (which reads the default places, so a file planted there reaches it): the
@@ -101,7 +106,7 @@ const FALLBACK_STORE_FILES = ["auth.json", "mcp-auth.json", "models.json", "sett
  * (`homes`, listed first); the global agent state and the agents-communication database; and the credential, model and
  * settings files of the fallback folders (`providerFallbackDirs`: `~/.octocode`, `~/.octocode/agent`, Pi's).
  */
-function spelledStores(): { paths: string[]; homes: number } {
+function spelledStores(): { paths: string[]; homes: number; always: number } {
 	const none: NodeJS.ProcessEnv = {};
 	const homes = [...new Set([getOctocodeHome(), getAgentDir(), getOctocodeHome(none)])];
 	const always = [
@@ -113,26 +118,28 @@ function spelledStores(): { paths: string[]; homes: number } {
 			FALLBACK_STORE_FILES.map((name) => path.join(dir, name)),
 		),
 	];
-	return { paths: [...homes, ...new Set(always)], homes: homes.length };
+	const stores = [...new Set(always)];
+	return { paths: [...homes, ...stores, ...agentStates(none)], homes: homes.length, always: stores.length };
 }
 
 /** The stores by the variables that place them; their folded canonical paths by the canonical list they come from. */
 let spelled: { key: string; stores: ReturnType<typeof spelledStores> } | undefined;
-let folded: { from: string[]; homes: string[]; always: string[] } | undefined;
+let folded: { from: string[]; homes: string[]; always: string[]; scratch: string[] } | undefined;
 
 /**
  * `spelledStores`, folded and canonical. A check runs on every file change and shell write target, so the list is
  * built once per set of variables, and canonicalized together and remembered while the folders it resolves through are
  * unchanged (`canonicalPaths`: one `stat` per folder).
  */
-function stateStores(): { homes: string[]; always: string[] } {
+function stateStores(): { homes: string[]; always: string[]; scratch: string[] } {
 	const key = [process.env.OCTOCODE_HOME, process.env[ENV_AGENT_DIR], os.homedir()].join("\0");
 	if (spelled?.key !== key) spelled = { key, stores: spelledStores() };
 	const canonical = canonicalPaths(spelled.stores.paths);
 	if (folded?.from !== canonical) {
 		const all = canonical.map((entry) => foldName(entry));
 		const cut = spelled.stores.homes;
-		folded = { from: canonical, homes: all.slice(0, cut), always: all.slice(cut) };
+		const end = cut + spelled.stores.always;
+		folded = { from: canonical, homes: all.slice(0, cut), always: all.slice(cut, end), scratch: all.slice(end) };
 	}
 	return folded;
 }
@@ -151,6 +158,16 @@ function workspaceState(parts: string[]): boolean {
 	);
 }
 
+const SCRATCH_FOLDERS = new Set([AGENT_FOLDERS.tmp, AGENT_FOLDERS.temp].map((name) => foldName(name)));
+
+/** Whether `folded` is in the `tmp/` or `temp/` (not `temp/sessions/`) scratch of a global agent state folder, as in a workspace. */
+function globalScratch(folded: string, scratch: string[]): boolean {
+	const store = scratch.find((root) => isWithin(folded, root));
+	if (store === undefined) return false;
+	const [folder, next] = folded.slice(store.length).split(path.sep).filter(Boolean);
+	return folder !== undefined && SCRATCH_FOLDERS.has(folder) && !(folder === TEMP_FOLDER && next === "sessions");
+}
+
 /**
  * The refusal for a change to Octocode's state or a credential store it reads (`stateStores`; a workspace's
  * `.octocode/agent/` state), in every mode. Compared folded (`foldName`), so no spelling the file system folds onto one
@@ -167,13 +184,16 @@ export function stateFolderRefusal(
 ): string | undefined {
 	const real = canonicalPath(file);
 	const folded = foldName(real);
-	const { homes, always } = stateStores();
-	if (!workspaceState(folded.split(path.sep)) && !always.some((store) => isWithin(folded, store))) {
+	const { homes, always, scratch } = stateStores();
+	const parts = folded.split(path.sep);
+	if (!workspaceState(parts) && globalScratch(folded, scratch)) return undefined;
+	if (!workspaceState(parts) && !always.some((store) => isWithin(folded, store))) {
 		if (!homes.some((home) => isWithin(folded, home))) return undefined;
 		const own = cwd === undefined ? undefined : ownWorktreeRoot(cwd, env);
 		if (own !== undefined && isWithin(real, own)) return undefined;
 	}
-	return `${shown} is in Octocode's state folder; ${tool} does not change it. Ask the user to change it themselves.`;
+	const resolved = real === shown ? "" : ` (${shown} → ${real})`;
+	return `${shown} is in Octocode's state folder${resolved}; ${tool} does not change it. Ask the user to change it themselves.`;
 }
 
 /**

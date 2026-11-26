@@ -81,7 +81,7 @@ export interface DiscoverInput {
 	/** The folder a trust grant is on; project instructions load from it down to `cwd`. */
 	contextRoot?: string;
 	/**
-	 * Pi's read-only roots (`getLegacyConfigDirs`). Empty when an explicit home is set: Pi compatibility is off, and so is
+	 * Pi's read-only roots (`getPiConfigDirs`). Empty when an explicit home is set: Pi compatibility is off, and so is
 	 * Pi's project folder.
 	 */
 	piRoots: readonly string[];

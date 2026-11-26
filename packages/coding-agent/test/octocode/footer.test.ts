@@ -129,14 +129,28 @@ describe("footer", () => {
 		// Colour and fill follow the rounded percent the label shows.
 		expect(contextBar(49.6)).toEqual({ bar: "▰▰▰▰▱▱▱▱", color: "warning" });
 		expect(contextBar(49.4).color).toBe("success");
-		expect(contextBar(80.4).color).toBe("warning");
-		expect(contextBar(80.6).color).toBe("error");
+		expect(contextBar(81.4).color).toBe("warning");
+		expect(contextBar(81.6).color).toBe("error");
 		// The alarm point moves with the auto-compact point (a percent of the window).
 		expect(contextBar(70, 68).color).toBe("error");
 		expect(contextBar(60, 68).color).toBe("warning");
 		painted.length = 0;
 		footerLines({ ...state, context: { percent: 91, window: 200_000 } }, "main", statuses, recording, 160);
 		expect(painted.some(([color, text]) => color === "error" && text.includes("91%"))).toBe(true);
+		// With a compaction point, red starts where the context notice does: 90% of that point (81% of a 300k window).
+		const near = (percent: number) => {
+			painted.length = 0;
+			footerLines(
+				{ ...state, context: { percent, window: 300_000, compactAt: 270_000 } },
+				"main",
+				statuses,
+				recording,
+				160,
+			);
+			return painted.find(([, text]) => text.includes(`${percent}%`))?.[0];
+		};
+		expect(near(79)).toBe("warning");
+		expect(near(82)).toBe("error");
 	});
 
 	it("shows the last run's speed only between runs", () => {

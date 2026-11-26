@@ -140,8 +140,8 @@ export const CompletionSchema = Type.Object(
 		replaces: Type.Optional(Type.Number()),
 		/** The shell receipt the completion cites, as it stood when the completion was written. */
 		receipt: Type.Optional(CompletionReceiptSchema),
-		/** Set when the QA review the item called for did not run. */
-		qa: Type.Optional(StringEnum(["skipped"] as const)),
+		/** Set when the QA review the item called for did not run: `skipped` (QA not configured) or `owed` (no reviewer could start; it reruns later). */
+		qa: Type.Optional(StringEnum(["skipped", "owed"] as const)),
 	},
 	{ additionalProperties: false },
 );

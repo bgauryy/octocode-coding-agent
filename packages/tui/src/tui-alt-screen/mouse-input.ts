@@ -43,11 +43,14 @@ export function parseWheelEvent(data: string): WheelEvent | undefined {
 	return undefined;
 }
 
+/** A button press, release or drag; wheel codes (bit 64, horizontal ones too) are not buttons and give undefined. */
 export function parseSgrMouseEvent(data: string): SgrMouseEvent | undefined {
 	const match = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/.exec(data);
 	if (!match) return undefined;
+	const button = Number.parseInt(match[1], 10);
+	if ((button & 64) !== 0) return undefined;
 	return {
-		button: Number.parseInt(match[1], 10),
+		button,
 		x: Number.parseInt(match[2], 10) - 1,
 		y: Number.parseInt(match[3], 10) - 1,
 		release: match[4] === "m",

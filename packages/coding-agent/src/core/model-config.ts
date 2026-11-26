@@ -8,6 +8,7 @@ import {
 	ModelInputLimitsSchema,
 	ModelInputModalitySchema,
 	ModelPromptCacheSchema,
+	ProviderProfileSchema,
 	ThinkingLevelMapSchema,
 } from "@octocodeai/octocode-ai/providers/model-schema";
 import { type Static, Type } from "typebox";
@@ -19,43 +20,23 @@ import { providerSourceGate } from "./provider-sources/gate.ts";
 import { jsonErrorLocation, stripJsonComments } from "@octocodeai/octocode-common/json";
 import { normalizePath } from "@octocodeai/octocode-common/paths";
 import { stripBom } from "@octocodeai/octocode-common/text";
-import { urlCredentialProblem } from "@octocodeai/octocode-common/url-credentials";
 import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { modelsJsonWarnings, type ModelsJsonFieldNames } from "./model-config/warnings.ts";
-import { isCommandConfigValue } from "@octocodeai/octocode-ai/utils/resolve-config-value";
+import { ProviderCredentialProperties } from "./model-config/credentials.ts";
+import { baseUrlCredentialErrors, deepFreeze, usesSecretCommand } from "./model-config/provider-checks.ts";
 import { officialEntryProblem } from "./model-config/builtin-guard.ts";
-import { type ModelsProject, projectShadowWarning, untrustedProjectModelsWarning } from "./model-config/project.ts";
+import { ModelsDiagnostics, type ModelsProject, untrustedProjectModelsWarning } from "./model-config/project.ts";
 
-const SamplingParamsSchema = Type.Record(Type.String(), Type.Unknown());
-const SamplingParamsByThinkingLevelSchema = Type.Object(
-	{
-		off: Type.Optional(SamplingParamsSchema),
-		minimal: Type.Optional(SamplingParamsSchema),
-		low: Type.Optional(SamplingParamsSchema),
-		medium: Type.Optional(SamplingParamsSchema),
-		high: Type.Optional(SamplingParamsSchema),
-		xhigh: Type.Optional(SamplingParamsSchema),
-		max: Type.Optional(SamplingParamsSchema),
-	},
-	{ description: "samplingParams per thinking level, merged over samplingParams." },
-);
-
-const SamplingParamsFieldSchema = Type.Record(Type.String(), Type.Unknown(), {
-	description: "Fields merged into every request body. Applies only to OpenAI-compatible APIs.",
-});
-const HeadersSchema = Type.Record(Type.String(), Type.String(), {
-	description: "Request headers. Values resolve like apiKey.",
-});
-
-/** Model fields shared by models entries and modelOverrides entries. Defaults apply only to models entries. */
-const ModelFieldDescriptions = {
-	name: "Display name, also matched by --model patterns.",
-	reasoning: "Whether the model supports thinking.",
-	contextWindow: "Context window in tokens.",
-	maxTokens: "Maximum output tokens.",
-	input: 'Accepted input modalities. Include "image" only when this model and endpoint accept image attachments.',
-} as const;
+import {
+	HeadersSchema,
+	ModelFieldDescriptions,
+	RequestsPerMinuteSchema,
+	SamplingParamsByThinkingLevelSchema,
+	SamplingParamsFieldSchema,
+	TokensPerMinuteSchema,
+} from "./model-config/schema-parts.ts";
+import { mergeProviderScopes, type ScopedDefinition } from "./model-config/scope-merge.ts";
 
 const ModelDefinitionSchema = Type.Object({
 	...CachePreferenceProperties,
@@ -81,6 +62,8 @@ const ModelDefinitionSchema = Type.Object({
 	samplingParamsByThinkingLevel: Type.Optional(SamplingParamsByThinkingLevelSchema),
 	headers: Type.Optional(HeadersSchema),
 	compat: Type.Optional(ProviderCompatSchema),
+	requestsPerMinute: Type.Optional(RequestsPerMinuteSchema),
+	tokensPerMinute: Type.Optional(TokensPerMinuteSchema),
 });
 
 const ModelOverrideSchema = Type.Object({
@@ -98,7 +81,32 @@ const ModelOverrideSchema = Type.Object({
 	samplingParamsByThinkingLevel: Type.Optional(SamplingParamsByThinkingLevelSchema),
 	headers: Type.Optional(HeadersSchema),
 	compat: Type.Optional(ProviderCompatSchema),
+	requestsPerMinute: Type.Optional(RequestsPerMinuteSchema),
+	tokensPerMinute: Type.Optional(TokensPerMinuteSchema),
 });
+
+/** Model fields a provider sets once for all its models; a model's own entry or override wins. */
+const ProviderDefaultsSchema = Type.Object(
+	{
+		reasoning: Type.Optional(Type.Boolean({ description: ModelFieldDescriptions.reasoning })),
+		thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
+		input: Type.Optional(Type.Array(ModelInputModalitySchema, { description: ModelFieldDescriptions.input })),
+		inputLimits: Type.Optional(ModelInputLimitsSchema),
+		cost: Type.Optional(ModelCostSchema),
+		promptCache: Type.Optional(ModelPromptCacheSchema),
+		contextWindow: Type.Optional(
+			Type.Number({ exclusiveMinimum: 0, description: ModelFieldDescriptions.contextWindow }),
+		),
+		maxTokens: Type.Optional(Type.Number({ exclusiveMinimum: 0, description: ModelFieldDescriptions.maxTokens })),
+		samplingParams: Type.Optional(SamplingParamsFieldSchema),
+		samplingParamsByThinkingLevel: Type.Optional(SamplingParamsByThinkingLevelSchema),
+		compat: Type.Optional(ProviderCompatSchema),
+	},
+	{
+		description:
+			"Fields applied to every model of this provider, built-in and custom. A model's own field wins, then its modelOverrides entry, then these defaults, then built-in model data.",
+	},
+);
 
 const ProviderConfigSchema = Type.Object({
 	...CachePreferenceProperties,
@@ -110,9 +118,10 @@ const ProviderConfigSchema = Type.Object({
 		Type.String({
 			minLength: 1,
 			description:
-				'Literal key, "$NAME" environment interpolation, or "!command" output (the command runs on first use, not at startup).',
+				'Literal key, "$NAME" environment interpolation, "!command" output (the command runs on first use, not at startup), or "keychain:<name>" (the system keychain entry of service octocode, account <name>).',
 		}),
 	),
+	...ProviderCredentialProperties,
 	api: Type.Optional(
 		Type.String({
 			minLength: 1,
@@ -122,6 +131,10 @@ const ProviderConfigSchema = Type.Object({
 	),
 	headers: Type.Optional(HeadersSchema),
 	compat: Type.Optional(ProviderCompatSchema),
+	requestsPerMinute: Type.Optional(RequestsPerMinuteSchema),
+	tokensPerMinute: Type.Optional(TokensPerMinuteSchema),
+	profile: Type.Optional(ProviderProfileSchema),
+	defaults: Type.Optional(ProviderDefaultsSchema),
 	authHeader: Type.Optional(
 		Type.Boolean({ default: false, description: "Whether to send the resolved API key as Authorization: Bearer." }),
 	),
@@ -143,6 +156,7 @@ export const ModelsJsonSchemas = {
 	provider: ProviderConfigSchema,
 	model: ModelDefinitionSchema,
 	modelOverride: ModelOverrideSchema,
+	defaults: ProviderDefaultsSchema,
 };
 
 /** The models.json validator, shared with the `/providers` editor (`provider-templates/models-file.ts`). */
@@ -158,43 +172,7 @@ const FIELD_NAMES: ModelsJsonFieldNames = {
 export type ModelsJsonModel = Static<typeof ModelDefinitionSchema>;
 export type ModelsJsonModelOverride = Static<typeof ModelOverrideSchema>;
 export type ModelsJsonProvider = Static<typeof ProviderConfigSchema>;
-
-function usesSecretCommand(provider: ModelsJsonProvider): boolean {
-	const commandHeader = (headers?: Record<string, string>) => Object.values(headers ?? {}).some(isCommandConfigValue);
-	return (
-		(!!provider.apiKey && isCommandConfigValue(provider.apiKey)) ||
-		commandHeader(provider.headers) ||
-		(provider.models ?? []).some((model) => commandHeader(model.headers)) ||
-		Object.values(provider.modelOverrides ?? {}).some((model) => commandHeader(model.headers))
-	);
-}
-
-/** Every baseUrl that carries a credential, as `providers.<id>.baseUrl` paths and what is wrong; never the URL itself. */
-function baseUrlCredentialErrors(providers: Record<string, ModelsJsonProvider>): string[] {
-	const errors: string[] = [];
-	for (const [providerId, provider] of Object.entries(providers)) {
-		const fields: [string, string | undefined][] = [
-			[`providers.${providerId}.baseUrl`, provider.baseUrl],
-			...(provider.models ?? []).map((model): [string, string | undefined] => [
-				`providers.${providerId}.models[${model.id}].baseUrl`,
-				model.baseUrl,
-			]),
-		];
-		for (const [field, value] of fields) {
-			const problem = value === undefined ? undefined : urlCredentialProblem(value);
-			if (problem) {
-				errors.push(`  - ${field}: ${problem}; put the key in apiKey or headers instead`);
-			}
-		}
-	}
-	return errors;
-}
-
-function deepFreeze<T>(value: T): T {
-	if (typeof value !== "object" || value === null || Object.isFrozen(value)) return value;
-	for (const child of Object.values(value)) deepFreeze(child);
-	return Object.freeze(value);
-}
+export type ModelsJsonProviderDefaults = Static<typeof ProviderDefaultsSchema>;
 
 /** One immutable load of models.json. */
 export class ModelConfig {
@@ -203,6 +181,8 @@ export class ModelConfig {
 	private readonly warnings: readonly string[];
 	private readonly files: ReadonlyMap<string, string>;
 	private readonly refusals: readonly string[];
+	/** Overrides, untrusted project files not read, and where each file sits. */
+	readonly diagnostics: ModelsDiagnostics;
 
 	private constructor(
 		providers: ReadonlyMap<string, ModelsJsonProvider>,
@@ -210,7 +190,9 @@ export class ModelConfig {
 		warnings: readonly string[] = [],
 		files: ReadonlyMap<string, string> = new Map(),
 		refusals: readonly string[] = [],
+		diagnostics = new ModelsDiagnostics(process.cwd()),
 	) {
+		this.diagnostics = diagnostics;
 		this.providers = providers;
 		this.error = error;
 		this.warnings = warnings;
@@ -219,10 +201,11 @@ export class ModelConfig {
 	}
 
 	/**
-	 * Octocode's own models.json merged with the project's and Pi's. The first definition of a provider wins, in the
-	 * order discovery ranks the files: Octocode's project file, Pi's project file, Octocode's global file, Pi's global
-	 * files. So a trusted project overrides the global files for the same provider id (its `baseUrl` and `models`
-	 * included) and Octocode's file outranks Pi's at each scope. A project file of a folder that is not trusted is not read;
+	 * Octocode's own models.json merged with the project's and Pi's, field by field (`scope-merge.ts`): the narrower
+	 * definition of a provider wins each field it names, in the order discovery ranks the files: Octocode's project
+	 * file, Pi's project file, Octocode's global file, Pi's global files. A project file may add models and tune
+	 * defaults but not change `baseUrl`, `api`, `headers` or `apiKey` of a provider a global file defines, and
+	 * Octocode's file outranks Pi's at each scope. A project file of a folder that is not trusted is not read;
 	 * a warning says so.
 	 */
 	static async load(modelsJsonPath: string | undefined, project?: ModelsProject): Promise<ModelConfig> {
@@ -232,6 +215,7 @@ export class ModelConfig {
 		const fallbackFiles = new Set<string>();
 		const projectFiles = new Set<string>();
 		const notices: string[] = [];
+		const diagnostics = new ModelsDiagnostics(project?.cwd ?? process.cwd());
 		if (resolve(normalizePath(modelsJsonPath)) === resolve(getModelsPath())) {
 			const input = discoveryInput({
 				cwd: project?.cwd ?? process.cwd(),
@@ -244,8 +228,10 @@ export class ModelConfig {
 			const ranked: string[] = [];
 			for (const { loaded, provenance } of configDiscovery.discover("model", input)) {
 				if (!loaded) {
-					if (provenance.notLoaded === "untrusted")
+					if (provenance.notLoaded === "untrusted") {
 						notices.push(untrustedProjectModelsWarning(provenance.path, input.cwd));
+						diagnostics.noteUntrusted(provenance.path, input.cwd);
+					}
 					continue;
 				}
 				ranked.push(provenance.path);
@@ -255,13 +241,12 @@ export class ModelConfig {
 			// Octocode's global file is always read, even when it does not exist yet; it keeps its rank among the others.
 			paths = ranked.some((file) => resolve(file) === own) ? ranked : [...ranked, modelsJsonPath];
 		}
-		const providers = new Map<string, ModelsJsonProvider>();
-		const files = new Map<string, string>();
+		const definitions = new Map<string, ScopedDefinition<ModelsJsonProvider>[]>();
 		const errors: string[] = [];
 		const warnings: string[] = [...notices];
 		const refusals: string[] = [];
-		// Files load concurrently; merging walks them in precedence order, so the first definition still wins and
-		// errors and warnings keep file order. Pi's files are never ours to fix: an official id there is a warning.
+		// Files load concurrently; their definitions are collected in precedence order, so errors and warnings keep file
+		// order. Pi's files are never ours to fix: an official id there is a warning.
 		const configs = await Promise.all(
 			paths.map((file) => ModelConfig.loadFile(file, { fallback: fallbackFiles.has(file) })),
 		);
@@ -275,19 +260,36 @@ export class ModelConfig {
 			warnings.push(...config.warnings);
 			refusals.push(...config.refusals);
 			for (const [id, provider] of config.providers) {
-				const file = config.files.get(id);
-				const winner = providers.get(id);
-				if (winner) {
-					const winnerFile = files.get(id);
-					if (!isProject && winnerFile && projectFiles.has(winnerFile))
-						warnings.push(projectShadowWarning(id, winnerFile, file ?? paths[index], winner.baseUrl, provider.baseUrl));
-					continue;
-				}
-				providers.set(id, provider);
-				if (file) files.set(id, file);
+				const file = config.files.get(id) ?? paths[index];
+				definitions.set(id, [...(definitions.get(id) ?? []), { file, provider, project: isProject }]);
 			}
 		}
-		return new ModelConfig(providers, errors.length ? errors.join("\n\n") : undefined, warnings, files, refusals);
+		const providers = new Map<string, ModelsJsonProvider>();
+		const files = new Map<string, string>();
+		for (const [id, scoped] of definitions) {
+			const merged = mergeProviderScopes(id, scoped);
+			warnings.push(...merged.warnings);
+			providers.set(id, merged.provider);
+			files.set(id, scoped[0].file);
+			// Every override is told, once per load; the host named is the one requests now go to.
+			for (const loser of scoped.slice(1)) {
+				warnings.push(
+					diagnostics.noteShadow(
+						id,
+						{ file: scoped[0].file, baseUrl: merged.provider.baseUrl, project: scoped[0].project },
+						{ file: loser.file, baseUrl: loser.provider.baseUrl, project: loser.project },
+					),
+				);
+			}
+		}
+		return new ModelConfig(
+			providers,
+			errors.length ? errors.join("\n\n") : undefined,
+			warnings,
+			files,
+			refusals,
+			diagnostics,
+		);
 	}
 
 	/**

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveConfigValueOrThrow } from "@octocodeai/octocode-ai/utils/resolve-config-value";
 import { expandLaunchTemplates } from "../../../mcp/src/launch-templates.ts";
 import { presetEntries } from "../../../mcp/src/preset.ts";
-import { recommendedPresets } from "../../../mcp/src/recommended/index.ts";
+import { builtinPresets } from "../../../mcp/src/presets/index.ts";
 import { takeLaunchWarnings } from "../../../mcp/src/warnings.ts";
 import { SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
 import { hostPaths } from "../../../mcp/src/host.ts";
@@ -184,7 +184,7 @@ describe("launch environment with user roots", () => {
 	];
 	/** The default server's `ALLOWED_PATHS`, as the host expands its launch templates for a session. */
 	const launchRoots = (skills: string[] = [], projectTrusted = true): string[] => {
-		const [preset] = recommendedPresets(process.env);
+		const preset = builtinPresets(process.env).find((each) => each.config?.roles)!;
 		const prepared = expandLaunchTemplates(presetEntries([preset])[0], {
 			cwd,
 			projectTrusted,

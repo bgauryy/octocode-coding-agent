@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import type { CommandContext } from "../../src/core/features/index.ts";
+import { ensureWorktree } from "../../src/octocode/worktrees/create.ts";
 import { worktreeCommand } from "../../src/octocode/worktrees/command.ts";
 import type { TmuxRunner } from "../../src/octocode/terminal-launch/tmux.ts";
 import { GIT_TEST_ENV, makeRepo, sh, type TestRepo } from "./worktree-fixture.ts";
@@ -31,6 +32,20 @@ beforeEach(() => {
 afterEach(() => {
 	process.env = { ...saved };
 	repo.cleanup();
+});
+
+describe("/worktree new in a linked worktree", () => {
+	it("is refused with the orchestrator named, and creates nothing", async () => {
+		const first = await ensureWorktree(repo.root, "auth");
+		const runner = vi.fn<TmuxRunner>();
+		await worktreeCommand({ env: { ...process.env }, tmux: { runner }, invocation }).handler(
+			"new billing",
+			contextAt(first.path),
+		);
+		expect(text()).toMatch(/linked worktree.*proxy of its orchestrator/s);
+		expect(existsSync(path.join(repo.root, ".octocode", "agent", "worktrees", "billing"))).toBe(false);
+		expect(runner).not.toHaveBeenCalled();
+	});
 });
 
 describe("/worktree new", () => {

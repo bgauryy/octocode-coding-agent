@@ -49,9 +49,12 @@ export interface ArchiveAuditQuery {
 	windows: HistoryWindows;
 }
 
-/** The archive name of a database: a digest of its canonical path. */
-export const archiveSource = (agentDb: Pick<AgentDb, "file">): string =>
-	sha256(canonicalPath(agentDb.file)).slice(0, 16);
+/**
+ * The archive name of a database: a digest of the canonical path of its history source (`AgentDb.historySource`: the
+ * file itself, or for a workspace file the machine file its rows came from, so one repository's history stays one stream).
+ */
+export const archiveSource = (agentDb: Pick<AgentDb, "historySource">): string =>
+	sha256(canonicalPath(agentDb.historySource)).slice(0, 16);
 
 /** `<dir>/<family>-YYYY-MM.jsonl.gz` for the UTC month of `at`. */
 const monthFile = (dir: string, family: Family, at: number) =>
@@ -100,7 +103,7 @@ export function trimArchive(dir: string, now: number, keepMs: number, assertActi
  * set, ids below `before` when set; the newest `limit`, newest first. `windows` is the keep window housekeeping used.
  */
 export function archivedAudits(
-	agentDb: Pick<AgentDb, "file" | "archiveDir">,
+	agentDb: Pick<AgentDb, "historySource" | "archiveDir">,
 	now: number,
 	repo: string,
 	ref: string | undefined,

@@ -9,7 +9,7 @@ import { badge, RATINGS, type Review, type ReviewWord } from "./types.ts";
  */
 
 /** What each kind is called in user text. */
-export const KIND_WORDS = { hook: "hook", mcp: "MCP server", skill: "skill" } as const;
+export const KIND_WORDS = { hook: "hook", mcp: "MCP server", skill: "skill", agent: "external model" } as const;
 
 /** The report of one item: what it is, its state and rating, the findings worst first, and what approval grants. */
 export function renderReport(review: Review): string {
@@ -53,7 +53,7 @@ export function sortReviews(reviews: readonly Review[]): Review[] {
 
 /** The list as a table, one row per item with its id. */
 export function renderList(reviews: readonly Review[], enforced: (review: Review) => boolean): string {
-	if (reviews.length === 0) return "No hooks, MCP servers or skills from outside Octocode were found.";
+	if (reviews.length === 0) return "No hooks, MCP servers, skills or external models from outside Octocode were found.";
 	const lines: string[] = [];
 	for (const word of ["not checked", "approved", "denied"] as const) {
 		const rows = sortReviews(reviews).filter((review) => review.word === word);

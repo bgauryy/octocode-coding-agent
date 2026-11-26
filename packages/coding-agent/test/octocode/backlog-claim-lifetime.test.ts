@@ -2,8 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -45,11 +44,13 @@ function setup(session = "session-a", isSubagent = false) {
 	};
 	const start = (reason: string) => fake.fire("session_start", { type: "session_start", reason }, ctx);
 	const shutdown = (reason: string) => fake.fire("session_shutdown", { type: "session_shutdown", reason }, ctx);
-	return { backlog, start, shutdown, workspace: () => registeredWorkspace(cwd).id };
+	return { backlog, start, shutdown, workspace: () => workspaceDb(cwd).workspace.id };
 }
 
 const row = (seq: number) =>
-	sharedAgentDb().db.prepare("SELECT state, assignee, updated_at FROM backlog WHERE seq = ?").get(seq) as {
+	workspaceDb(path.join(tmp, "repo"))
+		.agent.db.prepare("SELECT state, assignee, updated_at FROM backlog WHERE seq = ?")
+		.get(seq) as {
 		state: string;
 		assignee: string | null;
 		updated_at: number;
@@ -57,8 +58,10 @@ const row = (seq: number) =>
 
 const notesOf = (seq: number) =>
 	(
-		sharedAgentDb()
-			.db.prepare("SELECT n.text FROM backlog_notes n JOIN backlog b ON b.id = n.item WHERE b.seq = ? ORDER BY n.id")
+		workspaceDb(path.join(tmp, "repo"))
+			.agent.db.prepare(
+				"SELECT n.text FROM backlog_notes n JOIN backlog b ON b.id = n.item WHERE b.seq = ? ORDER BY n.id",
+			)
 			.all(seq) as Array<{ text: string }>
 	).map((note) => note.text);
 
@@ -78,7 +81,7 @@ describe("claims follow the session that holds them", () => {
 		const t = setup();
 		await t.backlog({ op: "add", items: [{ ...READY, title: "Reloaded", state: "ongoing" }] });
 		await t.backlog({ op: "add", items: [{ ...READY, title: "Delegated", state: "ongoing" }] });
-		const db = sharedAgentDb().db;
+		const db = workspaceDb(path.join(tmp, "repo")).agent.db;
 		db.prepare(
 			"INSERT INTO agents (id, team, workspace_id, role, pid, status, joined_at, seen_at) VALUES ('kid-1', 't', ?, 'child', 1, 'idle', 0, 0)",
 		).run(t.workspace());
@@ -129,8 +132,8 @@ describe("claims follow the session that holds them", () => {
 	it("V3: a killed holder's claim idle 25 hours is returned at session start; 23 hours is not", async () => {
 		const t = setup("session-new");
 		const held = (seq: number, hours: number) =>
-			sharedAgentDb()
-				.db.prepare(
+			workspaceDb(path.join(tmp, "repo"))
+				.agent.db.prepare(
 					"INSERT INTO backlog (workspace_id, seq, title, state, assignee, created_by, created_at, updated_at) VALUES (?, ?, ?, 'ongoing', 'killed-session', 'user', 0, ?)",
 				)
 				.run(t.workspace(), seq, `Idle ${hours}h`, Date.now() - hours * HOUR);
@@ -146,8 +149,8 @@ describe("claims follow the session that holds them", () => {
 
 	it("V4: listing changes nothing, and still marks a claim whose holder ended", async () => {
 		const t = setup();
-		sharedAgentDb()
-			.db.prepare(
+		workspaceDb(path.join(tmp, "repo"))
+			.agent.db.prepare(
 				"INSERT INTO backlog (workspace_id, seq, title, state, assignee, created_by, created_at, updated_at) VALUES (?, 5, 'Old claim', 'ongoing', 'killed-session', 'user', 0, ?)",
 			)
 			.run(t.workspace(), Date.now() - 30 * 24 * HOUR);

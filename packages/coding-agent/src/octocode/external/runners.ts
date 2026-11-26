@@ -165,6 +165,21 @@ export const RUNNERS: readonly RunnerSpec[] = [
 		keep: ["GEMINI_CLI_CUSTOM_HEADERS"],
 	},
 	{
+		id: "agy",
+		name: "Antigravity CLI",
+		cli: "agy",
+		adapter: { command: "agy", args: ["acp"], install: "curl -fsSL https://antigravity.google/cli/install.sh | bash" },
+		// `agy --help` and `agy acp --help` checked with 1.5.17: no status command, so an ACP session check decides.
+		tested: "1.5.17",
+		login: [],
+		// Checked with 1.5.17 on macOS: its token is a Keychain item (account `antigravity`), and the CLI reads it through
+		// `security find-generic-password`. `~/Library/Application Support/antigravity/credential-user-scope` (17 bytes,
+		// written once at first sign-in) is a scope name, not the credential, and ~/.gemini/antigravity-cli/ holds no
+		// credential file: a sign-out shows at the next run.
+		signInFiles: () => [],
+		keep: [],
+	},
+	{
 		id: "cursor",
 		name: "Cursor CLI",
 		cli: "cursor-agent",

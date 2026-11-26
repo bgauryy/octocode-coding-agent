@@ -16,9 +16,11 @@ import {
 	itemHandoffs,
 	dbStamp,
 	archivedAudits,
+	events,
+	type NewEvent,
 	transactionWhenReady,
-	sharedDbWriter,
 } from "../../../../db/src/api.ts";
+import { agentDbWriter } from "../../storage/database.ts";
 import { historyWindows } from "../../storage/retention.ts";
 import { TaskStore } from "./tasks/store.ts";
 import { type Actor, BacklogError, type Item, PRIORITIES, parseRef, priorityName } from "./item.ts";
@@ -97,6 +99,11 @@ export class BacklogStore {
 		return dbStamp(this.agentDb().file);
 	}
 
+	/** The database holding this board: its workspace's file. */
+	get agent(): AgentDb {
+		return this.agentDb();
+	}
+
 	/** Item titles for transcript reference rendering, without bodies, links, comments or completion history. */
 	titles(): ReadonlyMap<string, string> {
 		return new Map(backlog.itemTitles(this.db, this.repo).map(({ seq, title }) => [`B${seq}`, title]));
@@ -104,6 +111,11 @@ export class BacklogStore {
 
 	private get db() {
 		return this.agentDb().db;
+	}
+
+	/** Appends an event of this workspace to the durable event log (hooks and the web view read it); a repeated dedupe key is not appended twice. */
+	recordEvent(event: Omit<NewEvent, "workspaceId">, signal?: AbortSignal): Promise<void> {
+		return this.transactionWhenReady(() => void events.append(this.db, { ...event, workspaceId: this.repo }), signal);
 	}
 
 	get(ref: string | number): Item | undefined {
@@ -190,12 +202,14 @@ export class BacklogStore {
 		const agent = this.agentDb();
 		const size = Math.max(1, Math.min(500, Math.floor(limit)));
 		const current = backlog.auditRows(agent.db, this.repo, ref, before, size);
-		const request = sharedDbWriter({
-			file: agent.file,
-			mirrorFile: agent.mirrorFile,
-			archiveDir: agent.archiveDir,
-			privateParent: false,
-		}).archivedAudits({ now: this.now(), repo: this.repo, ref, before, limit: size, windows: historyWindows() });
+		const request = agentDbWriter(agent).archivedAudits({
+			now: this.now(),
+			repo: this.repo,
+			ref,
+			before,
+			limit: size,
+			windows: historyWindows(),
+		});
 		const archived = await untilAborted(request, signal);
 		return auditTrail(agent.db, this.repo, ref, size, before, archived, current);
 	}

@@ -9,6 +9,7 @@ import { STALE_MS } from "../../src/octocode/team/store/limits.ts";
 import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 
 const started: Array<{
 	team: Team;
@@ -35,7 +36,7 @@ function setup() {
 		return entry;
 	};
 	const sql = (statement: string, ...args: Array<string | number>) => {
-		const raw = new DatabaseSync(file);
+		const raw = new DatabaseSync(workspaceDb(cwd, { ...process.env, OCTOCODE_AGENT_DB: file }).agent.file);
 		try {
 			return raw.prepare(statement).all(...args) as Array<Record<string, unknown>>;
 		} finally {

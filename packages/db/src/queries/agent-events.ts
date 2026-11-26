@@ -3,7 +3,6 @@ import type { DatabaseSync } from "node:sqlite";
 import type { Row } from "../rows.ts";
 import { type AgentRun, opened } from "./agent-runs.ts";
 import { itemRef } from "./agent-resolve.ts";
-import { locate } from "./sessions.ts";
 
 export const EVENT_TYPES = ["init", "create", "update", "delete", "compaction"] as const;
 /** Why an agent row was retired: a `delete` event's `data.reason`. */
@@ -35,7 +34,10 @@ export interface EventRow extends AgentEvent {
 export interface LifecycleContext {
 	activationId: string;
 	sessionId: string;
-	/** The session's working directory and session folder: recorded on its `sessions` row so an agent id reaches its transcript. */
+	/**
+	 * The session's working directory and session folder: the host records them on its `sessions` row (in the file holding
+	 * session rows, `sessions.locate`) so an agent id reaches its transcript.
+	 */
 	cwd?: string;
 	dir?: string;
 }
@@ -106,17 +108,41 @@ export function list(
 }
 
 /**
- * The newest `limit` silence episodes (`update` events with `detail: silent`, written by `agents.noteState`) of the agents
- * named `names`, at or after `since` (epoch ms), newest first, in any workspace.
+ * Which workspaces' events a read covers: the listed ones, or those of team `team` (`teamScope`: a repository's common
+ * dir, or a folder outside Git), meaning the ones registered under it and any hosting one of its agents.
  */
-export function silences(db: DatabaseSync, names: readonly string[], since = 0, limit = 500): EventRow[] {
-	if (names.length === 0) return [];
+export type EventScope = { workspaces: readonly string[] } | { team: string };
+
+function scoped(scope: EventScope): { sql: string; values: string[] } {
+	if ("team" in scope)
+		return {
+			sql: `workspace_id IN (SELECT id FROM workspaces WHERE COALESCE(git_common_dir, root) = ?
+				UNION SELECT COALESCE(lease_workspace_id, workspace_id) FROM agents WHERE team = ?)`,
+			values: [scope.team, scope.team],
+		};
+	return { sql: `workspace_id IN (${scope.workspaces.map(() => "?").join(", ")})`, values: [...scope.workspaces] };
+}
+
+/**
+ * The newest `limit` silence episodes (`update` events with `detail: silent`, written by `agents.noteState`) of the agents
+ * named `names` in `scope`, at or after `since` (epoch ms), newest first. Agent names repeat across workspaces, so the
+ * scope keeps another workspace's namesake out.
+ */
+export function silences(
+	db: DatabaseSync,
+	names: readonly string[],
+	scope: EventScope,
+	since = 0,
+	limit = 500,
+): EventRow[] {
+	if (names.length === 0 || ("workspaces" in scope && scope.workspaces.length === 0)) return [];
+	const where = scoped(scope);
 	return (
 		db
 			.prepare(
-				`SELECT * FROM agent_events WHERE type = 'update' AND name IN (${names.map(() => "?").join(", ")}) AND time >= ? AND json_extract(data, '$.detail') = 'silent' ORDER BY seq DESC LIMIT ?`,
+				`SELECT * FROM agent_events WHERE type = 'update' AND name IN (${names.map(() => "?").join(", ")}) AND ${where.sql} AND time >= ? AND json_extract(data, '$.detail') = 'silent' ORDER BY seq DESC LIMIT ?`,
 			)
-			.all(...names, new Date(since).toISOString(), limit) as Row[]
+			.all(...names, ...where.values, new Date(since).toISOString(), limit) as Row[]
 	).map(decode);
 }
 
@@ -131,18 +157,17 @@ export function head(db: DatabaseSync): number {
 }
 
 /**
- * Presence events (`create`, `update`, `delete`) after sequence `after`, oldest first, at most `limit`: the lifecycle
- * bus's cursor read. Every workspace's, or only `workspace`'s when given. `seq` is the primary key, so this is one
- * range scan.
+ * Presence events (`create`, `update`, `delete`) of `scope` after sequence `after`, oldest first, at most `limit`: the
+ * lifecycle bus's cursor read. `seq` is the primary key, so this is one range scan.
  */
-export function since(db: DatabaseSync, after: number, limit = 200, workspace?: string): EventRow[] {
-	const scope = workspace === undefined ? "" : " AND workspace_id = ?";
+export function since(db: DatabaseSync, after: number, scope: EventScope, limit = 200): EventRow[] {
+	const where = scoped(scope);
 	return (
 		db
 			.prepare(
-				`SELECT * FROM agent_events WHERE seq > ? AND type IN ('create','update','delete')${scope} ORDER BY seq LIMIT ?`,
+				`SELECT * FROM agent_events WHERE seq > ? AND type IN ('create','update','delete') AND ${where.sql} ORDER BY seq LIMIT ?`,
 			)
-			.all(after, ...(workspace === undefined ? [] : [workspace]), limit) as Row[]
+			.all(after, ...where.values, limit) as Row[]
 	).map(decode);
 }
 
@@ -246,7 +271,7 @@ function runData(db: DatabaseSync, row: Row, run: AgentRun | undefined): Record<
 	};
 }
 
-/** Called in the presence mutation's transaction. A null registration marks nonpersistent/legacy presence. */
+/** Called in the presence mutation's transaction. A null registration marks nonpersistent presence. */
 export function recordMember(
 	db: DatabaseSync,
 	row: Row,
@@ -285,7 +310,6 @@ export function recordMember(
 
 export function registerMember(db: DatabaseSync, id: string, context: LifecycleContext | undefined, now: number): void {
 	if (!context) return;
-	if (context.cwd || context.dir) locate(db, context.sessionId, context.cwd ?? null, context.dir ?? null);
 	const row = member(db, id);
 	const parent = typeof row?.parent_id === "string" ? member(db, row.parent_id) : undefined;
 	const changed = db

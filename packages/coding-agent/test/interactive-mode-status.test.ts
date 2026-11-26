@@ -720,6 +720,7 @@ describe("InteractiveMode.createBaseAutocompleteProvider", () => {
 			"runner:codex",
 			"runner:opencode",
 			"runner:gemini",
+			"runner:agy",
 			"runner:cursor",
 		]);
 		expect(runnerSuggestions?.items.every((item) => item.description?.includes("external agent"))).toBe(true);

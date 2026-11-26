@@ -3,8 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { registeredWorkspace, workspaceDb } from "../../src/storage/workspace-database.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import type { CompletionInfo } from "../../src/octocode/backlog/completion-gate.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
@@ -45,7 +44,7 @@ describe("TaskCompleted gates the done write in the writing process (S4)", () =>
 					content: Array<{ text: string }>;
 				}
 			).content[0].text;
-		const store = () => new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
+		const store = () => new BacklogStore(() => workspaceDb(cwd).agent, registeredWorkspace(cwd).id);
 		return { call, store };
 	};
 	const READY = { goal: "Result can be checked", why: "Users need it" };

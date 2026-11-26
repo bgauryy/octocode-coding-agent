@@ -145,6 +145,8 @@ describe("createInteractiveTui", () => {
 				getFullscreenCopyOnSelect: () => boolean;
 				getFullscreenWheelScrollLines: () => WheelScrollLines;
 				getReplayRows: () => number;
+				isLatencyFenceActive: () => boolean;
+				getFullscreenFrameQueueLimitBytes: () => number;
 			};
 			renderer: ReturnType<typeof createInteractiveTui>;
 			ui: TUI;
@@ -165,6 +167,8 @@ describe("createInteractiveTui", () => {
 				getFullscreenCopyOnSelect: () => true,
 				getFullscreenWheelScrollLines: () => "auto",
 				getReplayRows: () => 5000,
+				isLatencyFenceActive: () => false,
+				getFullscreenFrameQueueLimitBytes: () => 1 << 20,
 			},
 			renderer,
 			ui: undefined as unknown as TUI,
@@ -213,6 +217,8 @@ describe("createInteractiveTui", () => {
 				getFullscreenCopyOnSelect: () => false,
 				getFullscreenWheelScrollLines: (): WheelScrollLines => "auto",
 				getReplayRows: () => 5000,
+				isLatencyFenceActive: () => false,
+				getFullscreenFrameQueueLimitBytes: () => 1 << 20,
 			},
 			renderer: renderer as ReturnType<typeof createInteractiveTui>,
 			ui: undefined as unknown as TUI,

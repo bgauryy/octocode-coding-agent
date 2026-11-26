@@ -213,10 +213,6 @@ describe("backlog list filters", () => {
 		expect(await t.backlog({ ...created, since: "2999-01-01T00:00:00Z", ofType: "bug" })).toContain(
 			"(filters: ofType, since)",
 		);
-		// The undeclared `createdSince` still bounds creation time in any order.
-		expect(refs(await t.backlog({ op: "list", createdSince: "1h" })).sort()).toEqual(["B1", "B2", "B3", "B4", "B5"]);
-		expect(refs(await t.backlog({ op: "list", createdSince: cut }))).toEqual([]);
-		await expect(t.backlog({ op: "list", createdSince: "soon" })).rejects.toThrow(/createdSince needs an ISO time/);
 	});
 
 	it("pages a filtered list with a Next call that repeats the filters", async () => {
@@ -265,7 +261,7 @@ describe("backlog list filters", () => {
 		// A filter is named for what it matches; only the ones a name cannot explain carry a description.
 		for (const field of ["states", "query", "since", "limit"])
 			expect(properties[field].description, field).toBeTruthy();
-		for (const field of ["assignee", "createdSince"]) expect(properties).not.toHaveProperty(field);
+		for (const field of ["assignee"]) expect(properties).not.toHaveProperty(field);
 		// Every other field is one `add` and `edit` write, inside an `items` entry, and none of them is also a filter.
 		expect(Object.keys(properties).filter((field) => !filters.includes(field))).toEqual(["op", "items"]);
 		const written = planEntryFields(tool);
@@ -279,7 +275,7 @@ describe("backlog list filters", () => {
 		expect(Object.keys(fake.tools.get("backlog").parameters.properties)).toEqual(
 			expect.not.arrayContaining(["states", "query", "ids", "since", "sort", "limit", "offset"]),
 		);
-		const undeclared = { reason: "r", op: "list", ids: ["B1"], assignee: "me", createdSince: "1d" };
+		const undeclared = { reason: "r", op: "list", ids: ["B1"], assignee: "me" };
 		expect(
 			validateToolArguments(tool, { type: "toolCall", id: "c1", name: "backlogPlan", arguments: undeclared } as never),
 		).toMatchObject(undeclared);

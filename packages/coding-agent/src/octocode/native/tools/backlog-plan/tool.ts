@@ -18,7 +18,7 @@ import { parseJsonStrings } from "../../../backlog/tool-arguments.ts";
 import { batchAdd, batchUpdate, refuseUnknown } from "../../../backlog/tool-batch.ts";
 import {
 	filterFor,
-	legacyListFields,
+	undeclaredListFields,
 	type ListArguments,
 	listFields,
 	listParams,
@@ -38,7 +38,7 @@ type Entry = Omit<RunParams, "op" | "links" | "limit" | "offset" | "changes"> & 
 type Params = ListArguments & { op: (typeof PLAN_OPS)[number]; items?: Array<Record<string, unknown>> };
 
 const LIST_FILTERS = Object.keys(listFields);
-const ALL_FILTERS = [...LIST_FILTERS, ...Object.keys(legacyListFields)];
+const ALL_FILTERS = [...LIST_FILTERS, ...Object.keys(undeclaredListFields)];
 /** A work field in an entry reaches `write`, which names the `backlog` operation that takes it. */
 const WORK = Object.keys(WORK_FIELDS);
 const ENTRY_FIELDS: Record<Write, readonly string[]> = {

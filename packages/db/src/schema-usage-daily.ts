@@ -3,7 +3,7 @@
  * request (`reply`, `compaction_attempt`, `cache_warm`…) and billing (`plan`: a subscription paid, so `cost` is an
  * estimate at list price; `metered`: `cost` is money). One upsert per recorded request, so `/usage` reads a few hundred
  * rows for any range; history starts when this table was created. Created with IF NOT EXISTS like the other ensured
- * objects (`COORDINATION_FILE.ensure`). WITHOUT ROWID: every write and every range read goes through the primary key,
+ * objects (added by the version-10 upgrade, `schema-migrations.ts`). WITHOUT ROWID: every write and every range read goes through the primary key,
  * whose first column is the day.
  */
 export const USAGE_DAILY_SCHEMA = `

@@ -1,7 +1,7 @@
 /**
  * The one policy for how much tool output reaches the model. Tools stay within these numbers and trim through
  * `octocode/shared/spill.ts` (`capResultText`, `spillOutput`); bash trims while it streams (`core/tools/bash/budget.ts`)
- * to the same default. The numbers are bytes for byte-budgeted tools (bash, MCP text) and characters for page tools
+ * to its own, lower default. The numbers are bytes for byte-budgeted tools (bash, MCP text) and characters for page tools
  * (web); they agree for ASCII text.
  *
  * Evidence for the values (88 recorded sessions): the 99th percentile of 3,600 bash results is 11.5 KB and of 885
@@ -13,6 +13,13 @@ export const BYTES_PER_TOKEN = 4;
 
 /** What one tool result keeps whole when the call asks for no size: 5,000 tokens. */
 export const RESULT_DEFAULT_BYTES = 5_000 * BYTES_PER_TOKEN;
+/**
+ * What one foreground bash result keeps whole by default: 3,000 tokens. Lower than the shared default because bash is
+ * most of all result tokens and its output (test runs, diffs) is cheap to read again from the saved file by range.
+ */
+export const BASH_RESULT_DEFAULT_BYTES = 3_000 * BYTES_PER_TOKEN;
+/** What one `web` page fetch returns when the call sets no `maxChars`: 2,000 tokens; the rest is in the saved file. */
+export const WEB_FETCH_DEFAULT_CHARS = 2_000 * BYTES_PER_TOKEN;
 /** Lines of a default-sized result, for tools that also bound lines (bash). */
 export const RESULT_DEFAULT_LINES = 500;
 

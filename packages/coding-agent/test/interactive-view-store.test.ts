@@ -5,7 +5,6 @@ import { ToolExecutionComponent } from "../src/modes/interactive/components/tool
 import { addMessageToChat } from "../src/modes/interactive/interactive-mode/chat-messages.ts";
 import { applicationRenderer } from "../src/modes/interactive/interactive-mode/application-events.ts";
 import { toggleThinkingBlockVisibility } from "../src/modes/interactive/interactive-mode/view-state.ts";
-import { bindRender } from "../src/modes/interactive/state/bind-render.ts";
 import { bindViewState } from "../src/modes/interactive/state/bind-view.ts";
 import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { initTheme } from "../src/theme/theme.ts";
@@ -43,12 +42,7 @@ function setup() {
 		getMarkdownTransformers: () => [],
 	};
 	const host = createFakeHost(fake);
-	const unbindView = bindViewState(host);
-	const unbindRender = bindRender(uiStore, ui);
-	const unbind = () => {
-		unbindView();
-		unbindRender();
-	};
+	const unbind = bindViewState(host);
 	return { host, uiStore, requestRender, chatContainer, footerDataProvider, ui, unbind };
 }
 

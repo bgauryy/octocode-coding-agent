@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ToolContext } from "../../coding-agent/src/core/features/types.ts";
 import { createMcpManageTool, type McpManageOperations } from "../src/manage-tool.ts";
 import { residentBlock } from "../src/presentation/deferred.ts";
-import { recommendedPresets } from "../src/recommended/index.ts";
+import { builtinPresets } from "../src/presets/index.ts";
 
 /**
  * A preset with `instructionsOnDemand` (FreeLlama) keeps its server's instructions out of a block that declares none of
@@ -26,9 +26,13 @@ describe("instructions on demand", () => {
 		expect(block(true, ["models"])).toContain("Pick a model");
 	});
 
-	it("is set for FreeLlama, whose tools are all on demand, and for no other recommended server", () => {
-		const presets = recommendedPresets({ OCTOCODE_MCP_FREELLAMA: "1" });
-		expect(presets.filter((preset) => preset.instructionsOnDemand).map(({ name }) => name)).toEqual(["freellama"]);
+	it("is set for FreeLlama, the browser and the desktop, and not for the research server", () => {
+		const presets = builtinPresets({ OCTOCODE_MCP_FREELLAMA: "1" });
+		expect(presets.filter((preset) => preset.instructionsOnDemand).map(({ name }) => name)).toEqual([
+			"freellama",
+			"browser",
+			"desktop",
+		]);
 		expect(presets.find(({ name }) => name === "freellama")?.config?.exposure).toBe("onDemand");
 	});
 

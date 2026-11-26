@@ -48,9 +48,9 @@ async function plannedSession() {
 			},
 		],
 	});
-	// Inside the prewarm lead (threshold 199,000 tokens, lead 20,000), below the threshold.
+	// Inside the prewarm lead (the loop stops at 180,000 tokens, 90% of the window; lead 20,000), below that stop.
 	for (let i = 0; i < 6; i++) {
-		manager.appendMessage({ role: "user", content: filler(30_000, `more ${i}`), timestamp: 0 });
+		manager.appendMessage({ role: "user", content: filler(28_000, `more ${i}`), timestamp: 0 });
 		manager.appendMessage(fauxAssistantMessage(`answer more ${i}`));
 	}
 	harness.session.refreshContext();

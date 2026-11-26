@@ -10,7 +10,6 @@ import { cliStyle } from "../utils/cli-style.ts";
 import {
 	ACP_WORKER_ENV,
 	envFlag,
-	MCP_DESKTOP_ENV,
 	PERMISSION_ENV,
 	SKILL_SNAPSHOT_FILE_ENV,
 	SUBAGENT_ENV,
@@ -23,7 +22,7 @@ import { ENV_SESSION_DIR, VERSION } from "../config.ts";
 import { prepareAgentDb } from "../storage/database.ts";
 import { createAgentSessionRuntime } from "../core/agent-session-runtime.ts";
 import { isCommandLine } from "../core/agent-session/prompt-expansion.ts";
-import { formatNoModelsAvailableMessage, setAuthGuidanceSurface } from "../core/auth-guidance.ts";
+import { formatNoModelsAvailableMessage } from "../core/auth-guidance.ts";
 import { exportFromFile } from "../core/export-html/index.ts";
 import { applyHttpProxySettings, configureHttpDispatcher } from "../core/http-dispatcher.ts";
 import { restoreStdout, takeOverStdout } from "../core/output-guard.ts";
@@ -39,12 +38,16 @@ import { folderTrustResolver } from "../octocode/trust/port.ts";
 import { initTheme, stopThemeWatcher } from "../theme/theme.ts";
 import { isTruthyEnvFlag } from "../utils/env-flag.ts";
 import { drainStdio } from "./drain-stdio.ts";
+import {
+	guideSignInFromShell,
+	onceInstalledCrashHandlers,
+	withoutDesktopWhenNobodyCanAnswer,
+} from "./headless-guards.ts";
 import { applyRunConfigurationOrExit } from "./run-configuration.ts";
 import type { NativeFeatureSet } from "../core/resource-loader/types.ts";
 import { createCliRuntimeFactory } from "./runtime-factory.ts";
 import { createSessionManager, validateForkFlags, validateSessionIdFlags } from "./session-manager.ts";
 import {
-	type AppMode,
 	isPlainRuntimeMetadataCommand,
 	prepareInitialMessage,
 	promptForMissingSessionCwd,
@@ -69,23 +72,6 @@ interface SessionRunContext {
 	nativeFeatures: NativeFeatureSet;
 }
 
-/**
- * Desktop control asks the user before every start. A print or JSON run has nobody to ask, so it has no desktop server
- * and no desktop specialist, and the subagents it starts inherit that (RPC and ACP runs have a person or a client that
- * answers, and keep both).
- */
-function withoutDesktopWhenNobodyCanAnswer(mode: AppMode): void {
-	if (mode === "print" || mode === "json") process.env[MCP_DESKTOP_ENV] = "0";
-}
-
-/**
- * A headless run's sign-in errors reach a shell or a client program, where /providers cannot be typed, so they say how
- * to reach it; a subagent's reach its coordinator's terminal, where it can.
- */
-function guideSignInFromShell(mode: AppMode): void {
-	if (mode !== "interactive" && !envFlag(process.env, SUBAGENT_ENV)) setAuthGuidanceSurface("cli");
-}
-
 export function runSession(args: string[], context: SessionRunContext): Promise<void> {
 	return exitOnNoInput(() => runSessionUnguarded(args, context));
 }
@@ -94,6 +80,7 @@ async function runSessionUnguarded(
 	args: string[],
 	{ cwd, agentDir, offlineMode, nativeFeatures }: SessionRunContext,
 ): Promise<void> {
+	const crashHandlers = onceInstalledCrashHandlers();
 	const parsed = parseArgs(args);
 	const skillSnapshotFile = process.env[SKILL_SNAPSHOT_FILE_ENV];
 	const skillResourceSnapshot =
@@ -122,6 +109,7 @@ async function runSessionUnguarded(
 			printHelp();
 			return;
 		}
+		crashHandlers.install();
 		prepareAcpTrust(parsed);
 		await prepareAgentDb();
 		await (await import("./acp-host.ts")).runAcpMain(args, parsed);
@@ -143,6 +131,8 @@ async function runSessionUnguarded(
 	}
 
 	let appMode = resolveAppMode(parsed, process.stdin.isTTY, process.stdout.isTTY);
+	// Before the database, settings and runtime are set up, so a crash in any of them is one line and exit 1.
+	if (appMode !== "interactive") crashHandlers.install();
 	withoutDesktopWhenNobodyCanAnswer(appMode);
 	guideSignInFromShell(appMode);
 	const shouldTakeOverStdout = appMode !== "interactive" && !isPlainRuntimeMetadataCommand(parsed);
@@ -287,6 +277,8 @@ async function runSessionUnguarded(
 		}
 	}
 	time("readPipedStdin");
+	// Piped input turns an interactive start into print mode.
+	if (appMode !== "interactive") crashHandlers.install();
 
 	const { initialMessage, initialImages } = await prepareInitialMessage(parsed, stdinContent);
 	time("prepareInitialMessage");

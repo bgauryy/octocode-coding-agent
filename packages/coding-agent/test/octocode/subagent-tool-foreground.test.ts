@@ -141,6 +141,11 @@ describe("agent tool with a scripted child", () => {
 		expect(empty.skillResources.resources).toEqual(inherited.skillResources.resources);
 		expect(fs.existsSync(empty.skillSnapshotFile)).toBe(false);
 		await expect(s.run({ task: "report back", skills: ["missing"] })).rejects.toThrow(/Unknown or ambiguous/);
+		// The listing shows `name/SKILL.md`; that form selects the same skill.
+		const listed = reportOf((await s.run({ task: "report back", skills: ["release/SKILL.md"] })).content[0].text);
+		expect(listed.skillResources.resources).toEqual([
+			expect.objectContaining({ skill: expect.objectContaining({ name: "release" }) }),
+		]);
 	});
 
 	it("runs a foreground subagent, streams progress and returns its final answer", async () => {

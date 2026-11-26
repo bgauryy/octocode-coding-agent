@@ -18,10 +18,7 @@ export function connectedRunners(
 ) {
 	const states = enabled
 		? listRunners().filter(
-				(state) =>
-					(selected === undefined || selected.includes(state.id)) &&
-					state.cli &&
-					(state.adapter || headlessAvailable(state)),
+				(state) => selected?.includes(state.id) && state.cli && (state.adapter || headlessAvailable(state)),
 			)
 		: [];
 	const ids = states.map((state) => state.id);

@@ -9,13 +9,9 @@ import {
 	type ProviderHeaders,
 } from "@octocodeai/octocode-ai";
 import type { ModelsJsonProvider } from "../model-config.ts";
-import {
-	getConfigValueEnvVarNames,
-	isCommandConfigValue,
-	isConfigValueConfigured,
-	resolveConfigValueOrThrow,
-	resolveHeadersOrThrow,
-} from "../config-value.ts";
+import { getConfigValueEnvVarNames, resolveConfigValueOrThrow, resolveHeadersOrThrow } from "../config-value.ts";
+import { configuredKey, configuredKeyAvailable, configuredKeyStatus, resolveConfiguredKey } from "./configured-key.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { registerAuthSecrets } from "../secret-redaction.ts";
 import { type AuthStatus, credentialSourceLabel, type FeatureOAuthConfig, type ProviderConfigInput } from "./types.ts";
 
@@ -54,28 +50,12 @@ function withConfiguredAuth(
 	return { ...auth, headers: mergedHeaders };
 }
 
-function configuredApiKey(
-	config: ModelsJsonProvider | undefined,
-	feature: ProviderConfigInput | undefined,
-): string | undefined {
-	return feature?.apiKey ?? config?.apiKey;
-}
-
 /** How the provider's own configuration supplies a key: a secret command, variables, or the key itself; undefined for none. */
 export function configuredRequestAuthStatus(
 	config: ModelsJsonProvider | undefined,
 	feature: ProviderConfigInput | undefined,
 ): AuthStatus | undefined {
-	const value = configuredApiKey(config, feature);
-	if (value === undefined) return undefined;
-	if (isCommandConfigValue(value)) return { configured: true, source: "models_json_command" };
-	const names = getConfigValueEnvVarNames(value);
-	if (names.length > 0) {
-		return isConfigValueConfigured(value)
-			? { configured: true, source: "environment", label: names.join(", ") }
-			: { configured: false };
-	}
-	return { configured: true, source: feature?.apiKey !== undefined ? "fallback" : "models_json_key" };
+	return configuredKeyStatus(configuredKey(config, feature));
 }
 
 export function configuredHeaders(
@@ -107,13 +87,13 @@ export function composeApiKeyAuth(
 	feature: ProviderConfigInput | undefined,
 ): ApiKeyAuth | undefined {
 	const inherited = base?.auth.apiKey;
-	const rawKey = configuredApiKey(config, feature);
-	// Where a configured key comes from, in the words a provider's page uses (`models.json`, a variable name); set with `rawKey`.
-	const configuredStatus = configuredRequestAuthStatus(config, feature);
+	const key = configuredKey(config, feature);
+	// Where a configured key comes from, in the words a provider's page uses (`models.json`, a variable name); set with `key`.
+	const configuredStatus = configuredKeyStatus(key);
 	const configuredSource = configuredStatus && credentialSourceLabel(configuredStatus);
 	const oauth = feature?.oauth ?? base?.auth.oauth;
 	// OAuth-only providers get no fabricated API-key login method.
-	if (!inherited && rawKey === undefined && oauth) return undefined;
+	if (!inherited && key === undefined && oauth) return undefined;
 	const rawHeaders = configuredHeaders(config, feature);
 	const authHeader = feature?.authHeader ?? config?.authHeader ?? false;
 	return {
@@ -131,13 +111,10 @@ export function composeApiKeyAuth(
 				const resolved = await inherited?.resolve(input);
 				return resolved ? { type: "api_key", source: resolved.source } : undefined;
 			}
-			if (rawKey !== undefined) {
-				if (isCommandConfigValue(rawKey)) return { type: "api_key", source: configuredSource };
-				const envNames = getConfigValueEnvVarNames(rawKey);
-				for (const name of envNames) {
-					if ((await input.ctx.env(name)) === undefined) return undefined;
-				}
-				return { type: "api_key", source: configuredSource };
+			if (key !== undefined) {
+				return (await configuredKeyAvailable(key, input.ctx))
+					? { type: "api_key", source: configuredSource }
+					: undefined;
 			}
 			if (inherited?.check) return inherited.check(input);
 			const resolved = await inherited?.resolve(input);
@@ -151,12 +128,29 @@ export function composeApiKeyAuth(
 					: input.credential.key
 						? { auth: { apiKey: input.credential.key }, env: input.credential.env, source: "stored credential" }
 						: undefined;
-			} else if (rawKey !== undefined) {
-				const env = await configContextEnv([rawKey], input.ctx);
-				const key = resolveConfigValueOrThrow(rawKey, `API key for provider "${providerId}"`, env);
+			} else if (key !== undefined) {
+				const description = `API key for provider "${providerId}"`;
+				let configured: Awaited<ReturnType<typeof resolveConfiguredKey>>;
+				try {
+					configured = await resolveConfiguredKey(key, input.ctx, input.signal);
+				} catch (error) {
+					throw new Error(`Failed to resolve ${description}: ${errorMessage(error)}`, { cause: error });
+				}
+				const resolved: { key: string; source?: string; renew?: () => void } =
+					"value" in configured
+						? {
+								key: resolveConfigValueOrThrow(
+									configured.value,
+									description,
+									await configContextEnv([configured.value], input.ctx),
+								),
+							}
+						: configured;
+				const source = resolved.source ?? configuredSource;
 				result = inherited
-					? await inherited.resolve({ ...input, credential: { type: "api_key", key } })
-					: { auth: { apiKey: key }, source: configuredSource };
+					? await inherited.resolve({ ...input, credential: { type: "api_key", key: resolved.key } })
+					: { auth: { apiKey: resolved.key }, source };
+				if (resolved.renew) result = result && { ...result, renew: resolved.renew };
 			} else {
 				result = await inherited?.resolve(input);
 			}

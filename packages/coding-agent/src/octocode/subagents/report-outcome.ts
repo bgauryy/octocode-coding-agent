@@ -8,14 +8,21 @@ const statusWord = (token: string): ReportStatus | undefined => {
 	return REPORT_STATUSES.find((status) => status === word);
 };
 
+/** Leading markdown heading, bullet, or blockquote markers (never numbered lists like `1. done`). */
+const MARKDOWN_LEAD = /^(?:(?:#{1,6}|>|[-*+•])[ \t]+)+/u;
+/** Clause break or contrast conjunction introducing a conflicting non-done outcome on a prose `Done ...` line. */
+const CLAUSE_CONFLICT =
+	/(?:[,;:]|--|\u2013|\u2014|\b(?:but|however|though|although|yet|except|still|while|whereas))\s+(?:[^\p{L}\n]*\s+)*?(?:partial|blocked|failed)\b/iu;
+
 /**
  * `Done with the audit, but blocked by X`: an outcome word that is plain prose (no punctuation after it) and whose line
- * names another outcome. Neither reading is safe, so the report names none (unknown, never a failure).
+ * introduces a conflicting outcome in another clause. Describing what was fixed (`Done fixing failed login`) is not a conflict.
  */
 function contradicted(token: string, rest: string): boolean {
-	if (/[^\p{L}]$/u.test(token) || !/^[ \t]*[\p{L}\p{N}]/u.test(rest)) return false;
+	const withoutTrailingMarkup = token.replace(/[*_`~]+$/u, "");
+	if (/[^\p{L}]$/u.test(withoutTrailingMarkup) || !/^[ \t]*[\p{L}\p{N}]/u.test(rest)) return false;
 	const line = rest.split("\n", 1)[0] ?? "";
-	return line.split(/[^\p{L}]+/u).some((word) => statusWord(word) !== undefined);
+	return CLAUSE_CONFLICT.test(line);
 }
 
 /** What may follow a delimited outcome word: the end of the line, punctuation, `(`, or a spaced dash. */
@@ -50,11 +57,11 @@ export function reportOutcome(
 	text: string | undefined,
 ): { status: ReportStatus; source: "first" | "last" } | undefined {
 	const body = (text ?? "").trim();
-	const lead = body.replace(OUTCOME_LABEL, "");
+	const lead = body.replace(MARKDOWN_LEAD, "").replace(OUTCOME_LABEL, "");
 	const token = lead.split(/\s/, 1)[0] ?? "";
 	const first = statusWord(token);
 	if (first && leadsOutcome(first, token, lead.slice(token.length))) return { status: first, source: "first" };
-	const last = body.split("\n").at(-1)?.trim() ?? "";
+	const last = (body.split("\n").at(-1)?.trim() ?? "").replace(MARKDOWN_LEAD, "");
 	if (!OUTCOME_LABEL.test(last)) return undefined;
 	const rest = last.replace(OUTCOME_LABEL, "").trim();
 	const status = /\s/.test(rest) ? undefined : statusWord(rest);

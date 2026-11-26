@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { DEFAULT_ITEM_TYPE } from "@octocodeai/octocode-contracts/backlogs";
 import { STATES, type NoteKind } from "@octocodeai/octocode-contracts/snapshot";
-import { type AgentDb, type Db, USER_AUTHOR, backlog, meta } from "../../../../db/src/api.ts";
+import { type AgentDb, type Db, USER_AUTHOR, backlog, meta, splitEvidence } from "../../../../db/src/api.ts";
 import { storedText, visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { refText } from "./row.ts";
 import {
@@ -20,7 +20,7 @@ import {
 import type { AddInput, UpdateInput } from "./inputs.ts";
 import { applyEntities, entityColumns, validateEntityInput } from "./entity-write.ts";
 import { checkEpicState } from "./hierarchy.ts";
-import { evidenceLink, mergeLinks, splitEvidence } from "./evidence-links.ts";
+import { mergeLinks } from "./evidence-links.ts";
 import { getItem, handedTo, liveHolder, origin } from "./reads.ts";
 import { closeRecord } from "./close.ts";
 
@@ -313,15 +313,10 @@ export function updateItem(
 			// A claim (or a takeover) starts the clock; releasing the item clears it; done keeps it, so the cycle time stays.
 			const claimed = state === "ongoing" && (item.state !== "ongoing" || assignee !== item.assignee);
 			const startedAt = claimed ? at : state === "backlog" || state === "todo" ? null : (item.startedAt ?? null);
-			// Path and URL evidence become links. A row stored before that keeps them in its evidence text (reads show them
-			// as links), so any update writes them out as links before the text is saved without them.
+			// Path and URL evidence become links, added to the item's current ones.
 			const evidence = input.evidence === undefined ? undefined : splitEvidence(cleanList(input.evidence), repo);
-			const legacy = backlog
-				.itemBySeq(agentDb.db, repo, item.seq)!
-				.evidence.split("\n")
-				.some((entry) => entry && evidenceLink(entry, repo));
 			const added = evidence?.links ?? [];
-			if (input.links !== undefined || legacy || added.length)
+			if (input.links !== undefined || added.length)
 				input = { ...input, links: mergeLinks(input.links ?? item.links, added) };
 			const fromItem =
 				input.from === undefined

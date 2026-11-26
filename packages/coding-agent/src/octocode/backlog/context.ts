@@ -2,7 +2,7 @@ import type { FeatureContext } from "../../core/features/index.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
 import { historyWindows } from "../../storage/retention.ts";
-import { registeredWorkspace, registeredWorkspaceWhenReady } from "../../storage/workspace-database.ts";
+import { workspaceDb, workspaceDbWhenReady } from "../../storage/workspace-database.ts";
 import { sessionWorkspace } from "../shared/home/workspace.ts";
 import { type ReceiptLookup, receiptLookup } from "./receipts.ts";
 import { type Actor, BacklogStore } from "./store.ts";
@@ -30,9 +30,8 @@ export interface Backlog {
 /** A workspace owns its board. A child delegated an item works on the board that issued it. */
 export function openBacklog(ctx: Pick<FeatureContext, "cwd" | "sessionManager">, options: BacklogOptions): Backlog {
 	const env = options.env ?? process.env;
-	const agent = sharedAgentDb(env);
 	const cwd = options.isSubagent && env[BACKLOG_ITEM_ENV] ? sessionWorkspace(ctx.cwd, env) : ctx.cwd;
-	const workspace = registeredWorkspace(cwd, agent);
+	const { agent, workspace } = workspaceDb(cwd, env);
 	return backlogContext(ctx, options, agent, workspace);
 }
 
@@ -43,9 +42,8 @@ export async function openBacklogWhenReady(
 	signal?: AbortSignal,
 ): Promise<Backlog> {
 	const env = options.env ?? process.env;
-	const agent = sharedAgentDb(env);
 	const cwd = options.isSubagent && env[BACKLOG_ITEM_ENV] ? sessionWorkspace(ctx.cwd, env) : ctx.cwd;
-	const workspace = await registeredWorkspaceWhenReady(cwd, agent, signal);
+	const { agent, workspace } = await workspaceDbWhenReady(cwd, signal, env);
 	return backlogContext(ctx, options, agent, workspace);
 }
 
@@ -56,15 +54,26 @@ function backlogContext(
 	workspace: WorkspaceIdentity,
 ): Backlog {
 	const env = options.env ?? process.env;
-	const store = new BacklogStore(() => agent, workspace.id);
+	let file = agent;
+	// A closed connection (closed shared ones, the web daemon's idle close) is opened again on its next use.
+	const store = new BacklogStore(
+		() => (file.db.isOpen ? file : (file = workspaceDb(workspace, env).agent)),
+		workspace.id,
+	);
 	const session = ctx.sessionManager.getSessionId();
 	const receipts = receiptLookup(() => ctx.sessionManager.getBranch());
 	if (!options.isSubagent) {
-		// Daily history housekeeping (the parent session runs it; its subagents share the database).
+		// Daily history housekeeping of the board's file and the machine file (the parent session runs it; its subagents
+		// share both).
 		scheduleHistoryArchive(
-			() => agent,
+			() => store.agent,
 			() => historyWindows(env),
 		);
+		if (agent !== sharedAgentDb(env))
+			scheduleHistoryArchive(
+				() => sharedAgentDb(env),
+				() => historyWindows(env),
+			);
 		return {
 			store,
 			actor: { id: session, surface: "tool" },

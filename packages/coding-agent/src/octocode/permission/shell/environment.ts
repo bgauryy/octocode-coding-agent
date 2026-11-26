@@ -55,6 +55,13 @@ const PROGRAM_FACING =
 	/PATH$|HOME$|DIR$|OPTIONS$|OPTS?$|LIB$|CONFIG|STARTUP|^(?:LD|DYLD|XDG|NODE|NPM|YARN|PYTHON|PERL5?|RUBY|JAVA|BUN|DENO|CARGO|RUST|GO|BASH|ZSH|SSH|GPG)_/;
 /** Names whose value is a place to load from or a separator even when it is a number. */
 const LOCATION = /PATH$|DIR$|^(?:HOME|BASH_ENV|ENV|PWD|OLDPWD|IFS)$|^(?:LD|DYLD|XDG)_/;
+/**
+ * Variables that only name a directory the program keeps its files in, set in front of a command (`HOME=/tmp/x node a.js`,
+ * `env HOME=… rg x`): for a program that loads no code, aliases or hooks from there (`HOME_SAFE_PROGRAMS`) they cannot swap
+ * what runs. Not for `git`, package managers, shells, `ssh`: they read configuration from `HOME` that can run commands.
+ */
+const HOME_VARIABLES = new Set(["HOME", "TMPDIR"]);
+const HOME_SAFE_PROGRAMS = new Set(["node", "nodejs", "rg", "grep", "fd", "ls", "cat", "wc", "head", "tail", "jq"]);
 const ASSIGNMENT = /^([A-Za-z_]\w*)(?:\[[^\]]*\])?\+?=/;
 const DIGITS = /^[^=]*=\d+$/;
 /** Declaration options that export a variable (`-x`) or alias another one (`-n r=PATH`). */
@@ -78,10 +85,12 @@ export function settingRisk(
 	text: string,
 	numeric = DIGITS.test(text),
 	env: NodeJS.ProcessEnv = process.env,
+	program?: string,
 ): string | undefined {
 	const name = ASSIGNMENT.exec(text)?.[1];
 	if (name === undefined) return undefined;
 	if (gitVariable(name)) return programSetting(text);
+	if (program !== undefined && HOME_VARIABLES.has(name) && HOME_SAFE_PROGRAMS.has(program)) return undefined;
 	if (!programFacing(name, env) || (numeric && !LOCATION.test(name))) return undefined;
 	return reaches(name);
 }

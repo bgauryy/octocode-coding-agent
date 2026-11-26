@@ -2,7 +2,7 @@ import type { OpenAIResponsesCompat } from "../../types.ts";
 import type { ResponsesModel } from "../ai-sdk/responses-model.ts";
 import { azureSupportsLongCacheRetention } from "../azure-openai-config.ts";
 import { isChatGPTSignIn } from "../../utils/chatgpt-sign-in.ts";
-import { isOpenRouterModel } from "../../utils/provider-host.ts";
+import { hasProviderProfile, isOpenRouterModel } from "../../utils/provider-profile.ts";
 import type { OpenAIResponsesOptions } from "./types.ts";
 
 export { isChatGPTSignIn };
@@ -11,14 +11,18 @@ function detectSessionAffinityFormat(model: Pick<ResponsesModel, "provider" | "b
 	return isOpenRouterModel(model) ? "openrouter" : "openai";
 }
 
-function baseUrlHostname(model: Pick<ResponsesModel, "id" | "provider" | "baseUrl">): string {
-	try {
-		return new URL(model.baseUrl).hostname;
-	} catch {
+/** A malformed baseUrl fails here with the model named, not later inside a client. */
+function assertAbsoluteBaseUrl(model: Pick<ResponsesModel, "id" | "provider" | "baseUrl">): void {
+	if (!URL.canParse(model.baseUrl))
 		throw new Error(
 			`Invalid baseUrl for model "${model.provider}/${model.id}": ${JSON.stringify(model.baseUrl)} is not an absolute URL`,
 		);
-	}
+}
+
+/** OpenAI itself, by profile, provider id or host; a malformed baseUrl fails here, naming the model. */
+function isOpenAIEndpoint(model: ResponsesModel): boolean {
+	if (model.provider !== "openai") assertAbsoluteBaseUrl(model);
+	return hasProviderProfile(model, "openai");
 }
 
 export function getCompat(model: ResponsesModel): Required<OpenAIResponsesCompat> {
@@ -31,8 +35,7 @@ export function getCompat(model: ResponsesModel): Required<OpenAIResponsesCompat
 		supportsLongCacheRetention:
 			(model.api === "azure-openai-responses" ? azureSupportsLongCacheRetention(model) : undefined) ??
 			model.compat?.supportsLongCacheRetention ??
-			((model.provider === "openai" || baseUrlHostname(model) === "api.openai.com") &&
-				model.compat?.supportsExplicitPromptCacheMode === true),
+			(isOpenAIEndpoint(model) && model.compat?.supportsExplicitPromptCacheMode === true),
 		supportsTemperature: model.compat?.supportsTemperature ?? true,
 		supportsStrictMode: model.compat?.supportsStrictMode ?? model.api === "azure-openai-responses",
 		supportsOpenAIGrammarTools: model.compat?.supportsOpenAIGrammarTools ?? false,

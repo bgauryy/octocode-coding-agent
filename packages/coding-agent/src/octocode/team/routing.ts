@@ -6,6 +6,7 @@ import { resolveToolPath } from "../shared/home.ts";
 import { EXTERNAL_SENDER, USER_SENDER } from "../shared/messages.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { Change } from "./edits.ts";
+import type { Unattributed } from "./unattributed.ts";
 import { keysOverlap } from "./lease-key.ts";
 import type { DeadLetter, Lease, LeaseConflict, Message, RecipientKind } from "./model.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
@@ -202,19 +203,22 @@ export function resolveTarget(
 	stalled: readonly Member[] = [],
 	answering?: string,
 ): Member[] | string {
-	const wanted = to === "parent" ? parentId : to;
 	const everyone = [...members, ...stalled];
+	const raw = to.trim();
+	const exactId = everyone.some((member) => member.id !== from && member.id === raw);
+	const normalized = !exactId && /^(?:parent|all)$/i.test(raw) ? raw.toLowerCase() : raw;
+	const wanted = normalized === "parent" ? parentId : normalized;
 	const confined = parentId !== undefined && !outside(from);
 	// Built from stalled members too, so a silent parent still links its children to the tree.
 	const team = confined ? sessionTree(everyone, scope) : undefined;
 	const inTeam = (member: Member) => !team || team.has(member.id) || member.id === parentId || member.id === answering;
 	const named = everyone.find((member) => member.id !== from && member.id === wanted);
-	if (named && to !== "all") return inTeam(named) ? [named] : outsideTeam(named.id, parentId);
+	if (named && normalized !== "all") return inTeam(named) ? [named] : outsideTeam(named.id, parentId);
 	// `parent` is the coordinator's id, never a role: once it left, the child is told so, and how to end its run.
-	if (to === "parent" && parentId !== undefined && !outside(from))
+	if (normalized === "parent" && parentId !== undefined && !outside(from))
 		return renderPrompt("notices/mail/coordinator-left.md", { parent: parentId });
 	const others = members.filter((member) => member.id !== from);
-	if (to === "all") {
+	if (normalized === "all") {
 		// A stalled member is still in the session: its mail waits for it, like a named message does.
 		const tree = sessionTree(everyone, scope);
 		const reached = everyone.filter((member) => member.id !== from && tree.has(member.id));
@@ -225,15 +229,15 @@ export function resolveTarget(
 	const roleHolders = others.filter((member) => member.role === wanted);
 	const byRole = roleHolders.filter(inTeam);
 	if (byRole.length === 1) return byRole;
-	if (byRole.length === 0 && roleHolders.length > 0) return outsideTeam(`Every "${to}"`, parentId);
+	if (byRole.length === 0 && roleHolders.length > 0) return outsideTeam(`Every "${raw}"`, parentId);
 	const known =
 		others
 			.filter(inTeam)
 			.map((member) => member.id)
 			.join(", ") || "none";
 	return byRole.length > 1
-		? `"${to}" matches several agents (${known}); use one id.`
-		: `No live agent "${to}". Live agents: ${known}.`;
+		? `"${raw}" matches several agents (${byRole.map((member) => member.id).join(", ")}); use one id.`
+		: `No live agent "${raw}". Live agents: ${known}.`;
 }
 
 /** How long a lease has been held, for refusals: `locked 12m ago`. */
@@ -299,6 +303,8 @@ export function describeChanges(
 		requested?: number;
 		limit: number;
 		paths?: string[] | undefined;
+		/** Paths git reports changed that no agent recorded in the window, or why git could not be asked. */
+		unattributed?: Unattributed[] | string | undefined;
 	},
 	now = Date.now(),
 ): string {
@@ -310,11 +316,20 @@ export function describeChanges(
 					`(You asked for ${options.requested}m; changes are kept only ${formatDuration(options.minutes * 60_000)}, so that is all that was searched.)`,
 				]
 			: [];
+	const listed = typeof options.unattributed === "string" ? [] : (options.unattributed ?? []);
+	const outside = listed.map(
+		(entry) =>
+			`- ${entry.status} ${entry.path}${entry.mtime === undefined ? "" : ` · ${formatAgo(now - entry.mtime)}`}`,
+	);
+	const unattributed = outside.length
+		? ["", "unattributed (outside agents): git reports these changed and no agent recorded them:", ...outside]
+		: typeof options.unattributed === "string"
+			? [`(Changes outside agents could not be listed: ${options.unattributed})`]
+			: [];
 	if (changes.length === 0)
-		return [
-			`No agent changed files${scope} in the last ${options.minutes}m. Files changed outside agents (you, git, scripts, bash commands whose writes cannot be named) are not tracked: search files by modification time for those.`,
-			...kept,
-		].join("\n");
+		return visibleControls(
+			[`No agent changed files${scope} in the last ${options.minutes}m.`, ...unattributed, ...kept].join("\n"),
+		);
 	const shown = changes.slice(0, options.limit);
 	const lines = shown.map(
 		(change) =>
@@ -327,6 +342,7 @@ export function describeChanges(
 			`Files changed by agents in the last ${options.minutes}m${scope} (newest first):`,
 			...lines,
 			...more,
+			...unattributed,
 			...kept,
 		].join("\n"),
 	);

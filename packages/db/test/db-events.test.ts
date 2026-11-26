@@ -108,7 +108,8 @@ describe("event log", () => {
 					seq INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES workspaces(id), session_id TEXT,
 					at INTEGER NOT NULL, topic TEXT NOT NULL, key TEXT NOT NULL, source TEXT NOT NULL, payload TEXT NOT NULL,
 					digest TEXT NOT NULL, ref TEXT, dedupe_key TEXT UNIQUE
-				);`);
+				);
+				PRAGMA user_version=10;`);
 		}
 		// A subscriber may have advanced beyond the newest remaining row before the file was closed.
 		agent.db.exec(`INSERT INTO event_log(seq, workspace_id, at, topic, key, source, payload, digest, dedupe_key)
@@ -203,11 +204,11 @@ describe("event log", () => {
 		expect(eventSubscriptions.forSubscriber(agent.db, "w1", "main", 0)).toEqual([]);
 	});
 
-	it("adds both tables to an older file of the same version without losing its rows", () => {
+	it("adds both tables to a version-10 file that lacks them without losing its rows", () => {
 		events.append(agent.db, event("a"));
 		agent.close();
 		const raw = new DatabaseSync(file);
-		raw.exec("DROP TABLE event_subscriptions; DROP TABLE event_log");
+		raw.exec("DROP TABLE event_subscriptions; DROP TABLE event_log; PRAGMA user_version=10");
 		raw.close();
 		agent = openDatabase(locations(file));
 		expect(events.lastSeq(agent.db, "w1")).toBe(0);

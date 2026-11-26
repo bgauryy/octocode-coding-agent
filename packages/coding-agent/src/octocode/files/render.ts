@@ -3,7 +3,7 @@ import { Box, type Component, Text } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { renderDiff } from "../../theme/diff.ts";
 import type { Theme } from "../../theme/theme.ts";
-import { SHOW_ALL_LINES, resultBlock, resultText, toolHeader } from "../render/tool.ts";
+import { resultBlock, resultText, SHOW_ALL_LINES, toolHeader } from "../render/tool.ts";
 import { contentText } from "../shared/util.ts";
 import { clip, expandHint, linkPath, plural } from "../shared/text.ts";
 import { isInformativeReason } from "../shared/reason.ts";
@@ -168,20 +168,6 @@ export function renderJobMessage(
 	return box;
 }
 
-/** Diff lines rendered for a collapsed change: enough for a diff short enough to show whole. */
-const DIFF_HEAD_LINES = SHOW_ALL_LINES + 1;
-/** A change block is rendered whole, so its lines pair up for word emphasis as they do expanded; up to this many more. */
-const DIFF_HEAD_BLOCK_LINES = 200;
-
-/** The start of `diff`, cut after a whole change block. */
-function diffHead(diff: string): string {
-	const lines = diff.split("\n");
-	if (lines.length <= DIFF_HEAD_LINES) return diff;
-	let end = DIFF_HEAD_LINES;
-	while (end < lines.length && end < DIFF_HEAD_LINES + DIFF_HEAD_BLOCK_LINES && /^[+-]/.test(lines[end])) end++;
-	return lines.slice(0, end).join("\n");
-}
-
 type FileArgs = {
 	patch?: string;
 	reason?: string;
@@ -253,20 +239,19 @@ export function renderFileResult(
 		return resultBlock(theme, context, { summary, body: rest.join("\n"), ...timing });
 	}
 	if (outcomes.length === 1) {
-		// One change: the header names it, so `⎿` says only what changed (`+4 -1`), then the diff.
+		// One change: collapsed shows only the file diff counts (`+4 -1 · ctrl+o to expand`), skipping `renderDiff` until clicked/expanded.
 		const [outcome] = outcomes;
 		if (!outcome.ok)
 			return resultBlock(theme, context, { summary: clip(outcome.message, 300), error: true, expanded, ...timing });
 		const counts = diffCounts(theme, outcome.diff);
 		const source = outcome.diff ? sanitizeTerminalText(outcome.diff) : "";
-		const lines = source
-			? renderDiff(expanded ? source : diffHead(source), { filePath: outcome.path }).split("\n")
-			: [];
+		const lines = expanded && source ? renderDiff(source, { filePath: outcome.path }).split("\n") : [];
 		return resultBlock(theme, context, {
 			summary: counts.plain || outcome.message || outcome.type,
 			...(counts.styled ? { styledSummary: counts.styled } : {}),
 			lines,
 			totalLines: source ? source.split("\n").length : 0,
+			max: 0,
 			error: false,
 			expanded,
 			...timing,

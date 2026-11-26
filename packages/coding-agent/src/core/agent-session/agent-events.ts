@@ -15,6 +15,7 @@ import type {
 	TurnStartEvent,
 } from "../features/index.ts";
 import { releaseSavedOutput } from "../tools/bash/stored-result.ts";
+import { observeAttempt } from "./replay-safety.ts";
 import type { SessionBoundaries } from "./boundaries.ts";
 import { explainCredentialError } from "./credential-error-context.ts";
 import type { SessionInternals } from "./host.ts";
@@ -51,6 +52,7 @@ export async function handleAgentEvent(host: AgentEventsHost, event: AgentEvent,
 	// Record the calls a tool made through ctx.executeTool() and their usage on its result message.
 	host.toolCalls.recordNestedCalls(event);
 	host.modelWait.observe(event);
+	observeAttempt(run.attempt, event, session.settingsManager.getToolExecutionEarlyStart());
 	// When a user message starts, check if it's from either queue and remove it BEFORE emitting
 	// This ensures the UI sees the updated queue state
 	if (event.type === "message_start" && event.message.role === "user") {

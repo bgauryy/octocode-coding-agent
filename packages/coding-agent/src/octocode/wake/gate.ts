@@ -119,6 +119,11 @@ export class WakeGate {
 		this.interrupts.clear();
 	}
 
+	/** Whether a wake is currently held by the event loop or awaiting its turn start. */
+	hasPendingWake(): boolean {
+		return this.routed.firstLabel() !== undefined || this.sent.size > 0;
+	}
+
 	/**
 	 * Sends `message` like `api.session.sendMessage`. A message that wakes the session (`wakes`: its own turn trigger by default, or
 	 * the batch's when only the batch's last send triggers) is also listed in the next woken batch's row; an event whose key
@@ -132,6 +137,7 @@ export class WakeGate {
 		options: SendOptions = {},
 		wakes = options.triggerTurn === true,
 		sources?: readonly Source[],
+		onDropped?: (error: unknown) => void,
 	): void | Promise<void> {
 		const eventList = Array.isArray(events) ? events : [events];
 		const sourceList = sources ?? eventList.map(sourceOfEvent);
@@ -153,9 +159,9 @@ export class WakeGate {
 					this.interrupts.hold(send, running);
 				});
 			}
-			return this.deliver(eventList, sourceList, message, options, wakes, running);
+			return this.deliver(eventList, sourceList, message, options, wakes, running, onDropped);
 		}
-		return this.deliver(eventList, sourceList, message, options, wakes, false);
+		return this.deliver(eventList, sourceList, message, options, wakes, false, onDropped);
 	}
 
 	/** The send itself: to the loop when one is attached and the message wakes, else straight to the session. */
@@ -166,10 +172,11 @@ export class WakeGate {
 		options: SendOptions,
 		wakes: boolean,
 		stopped: boolean,
+		onDropped?: (error: unknown) => void,
 	): void | Promise<void> {
 		const sourced = withSource(typeof message === "function" ? message(stopped) : message, sourceList);
 		if (this.routed.active && wakes && eventList.length > 0)
-			return this.routeToLoop(eventList, sourceList, sourced, options);
+			return this.routeToLoop(eventList, sourceList, sourced, options, onDropped);
 		// No loop is attached (before the session starts, after it ends, or after the loop failed), or the message asks for
 		// no turn: it goes straight to the session. A message that joins the run in progress starts no new run, so no row.
 		const listed = wakes && !this.busy ? eventList.map((event) => this.rows.record(event)) : [];
@@ -187,23 +194,23 @@ export class WakeGate {
 	}
 
 	/**
-	 * A wake: the loop decides when and with what it is sent (`sendRouted`), from the priority of its events. The row line and the phase's
-	 * wake are the gate's, as for a held send. The receipt settles once the loop has the event (as a send settles once the
-	 * session queues it, mid-run or behind a compaction); a later failed send is recorded as a problem, since no one awaits it.
+	 * A wake: the loop decides when and with what it is sent (`sendRouted`), from the priority of its events.
 	 */
 	private async routeToLoop(
 		events: readonly AgentEvent[],
 		sources: readonly Source[],
 		message: Message,
 		options: SendOptions,
+		onDropped?: (error: unknown) => void,
 	): Promise<void> {
-		const { held, listed } = this.heldFor(events, message, options);
+		const { held, listed } = this.heldFor(events, message, options, onDropped);
 		try {
 			const taken = this.routed.take(held, events, sources, priorityOfEvents(events));
 			this.publish();
 			if (!(await taken)) {
 				this.rows.unlist(listed);
 				this.publish();
+				onDropped?.(new Error("Wake event was not accepted by the event loop"));
 			}
 		} catch (error) {
 			this.publish();
@@ -217,10 +224,12 @@ export class WakeGate {
 		events: readonly AgentEvent[],
 		message: Message,
 		options: SendOptions,
+		onDropped?: (error: unknown) => void,
 	): { held: Held; listed: Pending[] } {
 		const listed = events.map((event) => this.rows.record(event));
 		const lost = (error: unknown) => {
 			this.rows.unlist(listed);
+			onDropped?.(error);
 			recordProblem("event-loop", `a ${events[0].kind} was not delivered: ${errorMessage(error)}`);
 		};
 		return {
@@ -245,7 +254,21 @@ export class WakeGate {
 	/** Hands one batch to the transcript (`send-routed.ts`). */
 	sendRouted(batch: Batch<Held>, host: RoutedHost): void | Promise<void> {
 		return sendRouted(batch, host, {
-			send: (message, options) => this.api.session.sendMessage(message, options),
+			send: (message, options) => {
+				let sending: void | Promise<void>;
+				try {
+					sending = this.api.session.sendMessage(message, options);
+				} catch (error) {
+					this.setRoute(undefined);
+					throw error;
+				}
+				if (isPromise(sending))
+					return sending.catch((error: unknown) => {
+						this.setRoute(undefined);
+						throw error;
+					});
+				return sending;
+			},
 			release: (held) => this.routed.release(held),
 			track: (labels, sending) => this.track(labels, sending),
 			publish: () => this.publish(),

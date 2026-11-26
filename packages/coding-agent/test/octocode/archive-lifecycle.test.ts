@@ -1,4 +1,4 @@
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { openWorkspaceDb, registeredWorkspace, workspaceDb } from "../../src/storage/workspace-database.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +14,8 @@ import { fakeCtx, fakeHost } from "./fake-host.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 
 let root: string;
+let machine: AgentDb;
+/** The workspace file of `root` (the machine file while workspace files are off). */
 let db: AgentDb;
 const member = (id = "amber-otter"): Member => ({
 	id,
@@ -34,10 +36,12 @@ beforeEach(() => {
 	root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "archive-lifecycle-")));
 	vi.stubEnv("OCTOCODE_HOME", path.join(root, "home"));
 	vi.stubEnv("OCTOCODE_AGENT_DB", path.join(root, "agent.db"));
-	db = openAgentDb();
+	machine = openAgentDb();
+	db = openWorkspaceDb(machine, root).agent;
 });
 afterEach(() => {
-	db.close();
+	if (db !== machine) db.close();
+	machine.close();
 	closeSharedAgentDb();
 	vi.unstubAllEnvs();
 	fs.rmSync(root, { recursive: true, force: true });
@@ -74,7 +78,7 @@ function appendInit(agent: AgentDb, cwd: string, id: string): void {
 
 describe("durable agent lifecycle", () => {
 	it("commits identity and events together, separates name reuse and excludes heartbeats", () => {
-		const store = TeamStore.open(root, db.file);
+		const store = TeamStore.open(root, machine.file);
 		store.lifecycle = { activationId: "start-a", sessionId: "session-a" };
 		const me = member();
 		expect(store.join(me)).toBe(true);
@@ -213,10 +217,11 @@ describe("durable agent lifecycle", () => {
 	});
 	it("does not export a live listener's old events into a replacement checkout", async () => {
 		const project = path.join(root, "checkout");
-		fs.mkdirSync(project);
+		// Its own checkout boundary: the workspace of `root` does not absorb it.
+		fs.mkdirSync(path.join(project, ".git"), { recursive: true });
 		const original = registeredWorkspace(project, db);
 		fs.renameSync(project, path.join(root, "retired"));
-		fs.mkdirSync(project);
+		fs.mkdirSync(path.join(project, ".git"), { recursive: true });
 		const replacement = registeredWorkspace(project, db);
 		expect(replacement.id).not.toBe(original.id);
 		await expect(projectAgents(db, project, original)).rejects.toThrow(/path changed/);
@@ -293,8 +298,8 @@ describe("durable agent lifecycle", () => {
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		await new Promise((resolve) => setImmediate(resolve));
 		const settled = projections;
-		const shared = sharedAgentDb();
-		const workspace = registeredWorkspace(root, shared).id;
+		const { agent: shared, workspace: identity } = workspaceDb(root);
+		const workspace = identity.id;
 		for (let n = 0; n < 5; n++)
 			shared.transaction(() =>
 				agentEvents.append(shared.db, workspace, {
@@ -346,8 +351,8 @@ describe("durable agent lifecycle", () => {
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		const file = path.join(root, ".octocode/agent/agents.txt");
 		const syncWrites = [vi.spyOn(fs, "renameSync"), vi.spyOn(fs, "writeFileSync"), vi.spyOn(fs, "mkdirSync")];
-		const shared = sharedAgentDb();
-		const workspace = registeredWorkspace(root, shared).id;
+		const { agent: shared, workspace: identity } = workspaceDb(root);
+		const workspace = identity.id;
 		// Commits in successive turns: the second and third arrive while the first projection is writing.
 		for (const id of ["one", "two", "three"]) {
 			shared.transaction(() =>
@@ -399,7 +404,7 @@ describe("durable agent lifecycle", () => {
 		try {
 			await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 			await until(() => ctx.ui.notes.some((note) => note.message.includes("Invalid agents.txt")), "the warning");
-			appendInit(sharedAgentDb(), root, "after-removal");
+			appendInit(workspaceDb(root).agent, root, "after-removal");
 			await until(
 				() =>
 					fs.existsSync(view) &&
@@ -440,7 +445,7 @@ describe("durable agent lifecycle", () => {
 			getSessionFile: () => path.join(root, "not-created.jsonl"),
 			getSessionId: () => "session",
 		});
-		const shared = sharedAgentDb();
+		const shared = workspaceDb(root).agent;
 		const commit = (id: string) => appendInit(shared, root, id);
 		const warnings = (pattern: RegExp) =>
 			ctx.ui.notes.filter((note) => pattern.test(note.message) && note.type === "warning").length;
@@ -614,7 +619,8 @@ describe("archive warnings in a print run", () => {
 
 	it("prints none in a new workspace or over a view the home's database wrote before it moved, and one for another database's view", async () => {
 		const project = path.join(root, "project");
-		fs.mkdirSync(project);
+		// Its own checkout boundary: the workspace of `root` does not absorb it.
+		fs.mkdirSync(path.join(project, ".git"), { recursive: true });
 		// A normal home: without OCTOCODE_HOME or OCTOCODE_AGENT_DB the database is `~/.octocode/agent/workspaces.db`.
 		const home = path.join(root, "user");
 		vi.stubEnv("HOME", home);
@@ -661,7 +667,7 @@ describe("archive warnings in a print run", () => {
 			const warned = await printRun(project, "foreign", async () => {
 				for (const id of ["one", "two"]) {
 					const checks = viewChecks();
-					appendInit(sharedAgentDb(), project, id);
+					appendInit(workspaceDb(project).agent, project, id);
 					await until(() => viewChecks() > checks, `the projection after commit ${id}`);
 				}
 			});

@@ -18,6 +18,7 @@ import {
 	printAuthCommandHelp,
 	validateAuthCommandArgs,
 } from "../cli/auth-command.ts";
+import { credentialErrorCause } from "../core/credential-cause.ts";
 import { resolveCredentialForPrint } from "../cli/credential-print.ts";
 import { APP_NAME, getAgentDir } from "../config.ts";
 import { ModelRuntime } from "../core/model-runtime.ts";
@@ -62,7 +63,8 @@ export async function runAuthCommand(args: string[]): Promise<boolean> {
 		if (parsed.diagnostics.length > 0) {
 			throw new AuthCommandError(parsed.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
 		}
-		providerSourceGate.set(SettingsManager.create(process.cwd(), getAgentDir()).getProviderSources());
+		const settings = SettingsManager.create(process.cwd(), getAgentDir());
+		providerSourceGate.set(settings.getProviderSources());
 		const signal = AbortSignal.timeout(15_000);
 		if (command.kind !== "check") {
 			modelRuntime = await ModelRuntime.create({ allowModelNetwork: false, signal });
@@ -82,7 +84,11 @@ export async function runAuthCommand(args: string[]): Promise<boolean> {
 		let credential: string | undefined;
 		try {
 			const credentials = createDefaultCredentialStore({ readOnlyCredentials: command.noRefresh });
-			modelRuntime = await createAuthCheckModelRuntime(credentials, signal);
+			// The workspace's models.json counts as in a session: read when the folder is trusted, named when it is not.
+			modelRuntime = await createAuthCheckModelRuntime(credentials, signal, {
+				cwd: process.cwd(),
+				isTrusted: () => settings.isProjectTrusted(),
+			});
 			// `--model` resolves as a session's does, which prefers a matching provider with credentials: that needs the
 			// availability pass a session start runs (local reads and credential checks only, no refresh or download).
 			if (parsed.model) await modelRuntime.refresh({ allowNetwork: false, signal });
@@ -110,6 +116,7 @@ export async function runAuthCommand(args: string[]): Promise<boolean> {
 				status: "invalid",
 				provider: requestedAuth.provider ?? requestedAuth.model!,
 				reason: "invalid_state",
+				detail: credentialErrorCause(error),
 				verified: false,
 			};
 		}

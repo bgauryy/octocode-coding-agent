@@ -21,6 +21,7 @@ import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { asRecord } from "@octocodeai/octocode-contracts/guards";
 import type { CompactionPreparation, CompactionResult } from "../../core/compaction/index.ts";
 import { ATTEMPT_IDS_DETAILS, compactionAttemptIds } from "../../core/compaction/outcome.ts";
+import { focusBlock } from "../../core/compaction/summary-focus.ts";
 import { computeFileLists, formatFileOperations } from "../../core/compaction/utils.ts";
 import type {
 	FeatureContext,
@@ -66,7 +67,7 @@ function skipReason(
 ): string {
 	if (paidAlready) return "a summary of the same input was already paid for";
 	if (downshift) return "the compaction summarizes on the model before a downshift";
-	if (event.reason === "manual" && event.requestedBy !== "agent")
+	if (event.reason === "manual" && event.requestedBy !== "agent" && event.requestedBy !== "item")
 		return event.customInstructions ? "the user's compaction has its own focus" : "the user asked for this compaction";
 	if (event.customInstructions) return "the compaction has its own instructions";
 	return `the compaction is ${event.reason}, not at the threshold`;
@@ -205,6 +206,8 @@ export async function takeEarlySummary(
 	signal: AbortSignal,
 	forcedSystemPrompt?: string,
 	note?: DiscardNote,
+	/** Text placed after the summary's body and before its file lists (an item focus the early request did not see). */
+	appended = "",
 ): Promise<{ result: CompactionResult; early: { requestedAt: string; waitedMs: number } } | undefined> {
 	const entry = early.get(sessionManager);
 	if (!entry) return undefined;
@@ -246,7 +249,7 @@ export async function takeEarlySummary(
 	return {
 		result: {
 			...written.result,
-			summary: `${text}${now.text}`,
+			summary: `${text}${appended}${now.text}`,
 			tokensBefore: preparation.tokensBefore,
 			details: { ...asRecord(written.result.details), ...now.lists },
 		},
@@ -255,8 +258,9 @@ export async function takeEarlySummary(
 }
 
 /**
- * The early summary a compaction can take: the threshold's without a focus of its own, or the agent's own request
- * (`compact`), never one written on another model or one already paid for. Otherwise the early summary is discarded,
+ * The early summary a compaction can take: the threshold's without a focus of its own, the agent's own request
+ * (`compact`), or a threshold compaction focused on finished items (its focus is appended to the summary), never one
+ * written on another model or one already paid for. Otherwise the early summary is discarded,
  * with a note saying why. A taken summary names the usage entries that paid for it before this compaction started.
  */
 export async function earlySummaryFor(
@@ -270,9 +274,12 @@ export async function earlySummaryFor(
 	options: { paidAlready: boolean; downshift: boolean; forced?: string },
 ): Promise<{ result: CompactionResult; early: { requestedAt: string; waitedMs: number } } | undefined> {
 	const note = (text: string) => recordCompactionNote(api, "early-summary", text);
-	const agent = event.reason === "manual" && event.requestedBy === "agent";
+	const items = event.requestedBy === "item" && !!event.customInstructions?.trim();
+	const agent = event.reason === "manual" && (event.requestedBy === "agent" || items);
 	const eligible =
-		!options.paidAlready && !options.downshift && (event.reason === "threshold" ? !event.customInstructions : agent);
+		!options.paidAlready &&
+		!options.downshift &&
+		(event.reason === "threshold" ? !event.customInstructions || items : agent);
 	if (!eligible) {
 		discardEarlySummary(ctx.sessionManager, skipReason(options.paidAlready, options.downshift, event), note);
 		return undefined;
@@ -286,6 +293,7 @@ export async function earlySummaryFor(
 		event.signal,
 		options.forced,
 		note,
+		items ? `\n\n${focusBlock({ text: event.customInstructions ?? "", source: "item" }).trim()}\n` : "",
 	);
 	if (!taken) return undefined;
 	const attemptIds = compactionAttemptIds(event.branchEntries, taken.early.requestedAt);

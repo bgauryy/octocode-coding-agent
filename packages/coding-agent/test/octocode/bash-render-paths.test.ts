@@ -82,7 +82,8 @@ describe("bash result rows", () => {
 				expect(flat, at).toContain("line 2999 some padding text here");
 			}
 		}
-		expect(text(coreRow(result, false))).toContain("… +495 earlier lines (ctrl+o to expand)");
+		// The count follows the bash output budget (`bashOutputMaxBytes`); the marker is the contract.
+		expect(text(coreRow(result, false))).toMatch(/… \+\d+ earlier lines \(ctrl\+o to expand\)/);
 		expect(text(coreRow(result, true))).toContain("1501: error: boom in the middle");
 		expect(text(coreRow(result, true))).not.toContain("Full output:");
 		expect(text(coreRow(result, true), 400)).toContain("saved: ");

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, expire, leases, openDatabase, sessions, timers } from "../../../../db/src/api.ts";
-import { registeredWorkspace } from "../../../src/storage/workspace-database.ts";
+import { openWorkspaceDb, registeredWorkspace } from "../../../src/storage/workspace-database.ts";
 import { TIMER_TYPE } from "../../../src/octocode/shared/messages.ts";
 import { runningWorkOf } from "../../../src/octocode/shared/running-work.ts";
 import { conditionChecker } from "../../../src/octocode/timer/condition.ts";
@@ -502,7 +502,9 @@ describe("the timer tool in a session", () => {
 			expect.stringContaining(`It repeats: off id ${everyId} to stop it.`),
 		]);
 
-		const foreign = timers.forSession(agent.db, "s2")[0].id;
+		// The tool keeps its timers in the workspace file.
+		const rows = openWorkspaceDb(agent, root).agent;
+		const foreign = timers.forSession(rows.db, "s2")[0].id;
 		await expect(run({ op: "off", id: foreign })).rejects.toThrow(
 			new RegExp(`^No notification ${foreign} in this session\\. Active: \\d+, ${everyId}\\.$`),
 		);
@@ -518,7 +520,8 @@ describe("the timer tool in a session", () => {
 		expect(text(await run({ op: "list" }))).toBe("No active notifications.");
 		expect(text(await run({ op: "off", all: true }))).toBe("No active notifications to turn off.");
 		// Another session's timer is untouched.
-		expect(timers.get(agent.db, foreign)?.status).toBe("active");
+		expect(timers.get(rows.db, foreign)?.status).toBe("active");
+		if (rows !== agent) rows.close();
 		await vi.advanceTimersByTimeAsync(120_000);
 		expect(host.sent).toHaveLength(1);
 		await host.fire("session_shutdown", {}, ctx);

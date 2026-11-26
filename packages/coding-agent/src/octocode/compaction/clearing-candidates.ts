@@ -14,6 +14,8 @@ export const KEEP_RECENT_RESULTS = 5;
 
 /** A `file` call's payload (written content, edit texts, a patch) is cleared only from this many characters: a shorter one is not worth its placeholder. */
 const FILE_INPUT_MIN_CHARS = 1_000;
+/** A tool result shorter than this is smaller than or comparable to its saved-copy placeholder, so clearing it wastes context. */
+const RESULT_MIN_CHARS = 500;
 
 /**
  * `web` and every MCP tool result (`isMcpToolName`): its whole text is saved to a file before it is cleared, and the
@@ -33,6 +35,8 @@ export interface Candidate {
 	text: string;
 	/** The message's position in the context's messages: the result, or for an input the assistant message. */
 	index: number;
+	/** A newer read shows the same lines: cleared whatever its age, and exempt from the newest-kept rule. */
+	superseded?: true;
 	/** A `bash` result's spill file, when Octocode saved its whole output; otherwise the text is saved when cleared. */
 	spilled?: string;
 }
@@ -62,8 +66,11 @@ function readOnlyBash(args: Record<string, unknown> | undefined): boolean {
 	return judged;
 }
 
-/** Successful results of clearable tools that show only text and are not placeholders or repeated-read notes, oldest first. */
-export function clearableResults(messages: readonly MessageRef[]): Candidate[] {
+/**
+ * Successful results of clearable tools that show only text and are not placeholders or repeated-read notes, oldest
+ * first. `superseded`: the ids of reads a newer read replaces.
+ */
+export function clearableResults(messages: readonly MessageRef[], superseded: ReadonlySet<string> = new Set()): Candidate[] {
 	const calls = toolCallArguments(messages);
 	return messages.flatMap(({ message }, index): Candidate[] => {
 		if (
@@ -77,7 +84,7 @@ export function clearableResults(messages: readonly MessageRef[]): Candidate[] {
 		const tool = String(message.toolName);
 		const bash = tool === "bash" && readOnlyBash(calls.get(message.toolCallId));
 		const text = CLEARABLE_TOOLS.has(tool) || isMcpToolName(tool) || bash ? plainText(message.content) : undefined;
-		if (text === undefined || text.startsWith(PLACEHOLDER_START)) return [];
+		if (text === undefined || text.length < RESULT_MIN_CHARS || text.startsWith(PLACEHOLDER_START)) return [];
 		const spilled = bash && isRecord(message.details) ? message.details.fullOutputPath : undefined;
 		return [
 			{
@@ -86,6 +93,7 @@ export function clearableResults(messages: readonly MessageRef[]): Candidate[] {
 				kind: "result",
 				text,
 				index,
+				...(superseded.has(message.toolCallId) ? { superseded: true as const } : {}),
 				...(typeof spilled === "string" ? { spilled } : {}),
 			},
 		];
@@ -118,17 +126,23 @@ export function fileInputs(messages: readonly MessageRef[]): Candidate[] {
 	});
 }
 
-/** All but the newest `KEEP_RECENT_RESULTS` of each kind not yet cleared (`cleared`: results; `inputs`: file calls). */
+/**
+ * All but the newest `KEEP_RECENT_RESULTS` of each kind not yet cleared (`cleared`: results; `inputs`: file calls), and
+ * every superseded one, which no recency keeps.
+ */
 export function olderCandidates(
 	candidates: readonly Candidate[],
 	cleared: ReadonlyMap<string, string>,
 	inputs: ReadonlySet<string>,
 ): Candidate[] {
 	const older = (kind: Candidate["kind"], done: (id: string) => boolean) => {
-		const open = candidates.filter((candidate) => candidate.kind === kind && !done(candidate.id));
+		const open = candidates.filter(
+			(candidate) => candidate.kind === kind && !candidate.superseded && !done(candidate.id),
+		);
 		return open.slice(0, Math.max(open.length - KEEP_RECENT_RESULTS, 0));
 	};
-	return [...older("result", (id) => cleared.has(id)), ...older("input", (id) => inputs.has(id))].sort(
+	const marked = candidates.filter((candidate) => candidate.superseded && !cleared.has(candidate.id));
+	return [...marked, ...older("result", (id) => cleared.has(id)), ...older("input", (id) => inputs.has(id))].sort(
 		(a, b) => a.index - b.index,
 	);
 }

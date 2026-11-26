@@ -135,8 +135,8 @@ export function handlePaste(editor: EditorModel, pastedText: string): void {
 	// Clean the pasted text: normalize line endings, expand tabs
 	const cleanText = editor.normalizeText(decodedText);
 
-	// Filter out non-printable characters except newlines
-	let filteredText = cleanText.replace(/[\x00-\x09\x0b-\x1f]/g, "");
+	// Filter out control characters except newlines: C0, DEL and C1 (U+009B is an 8-bit CSI to some terminals)
+	let filteredText = cleanText.replace(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/g, "");
 
 	// If pasting a file path (starts with /, ~, or .) and the character before
 	// the cursor is a word character, prepend a space for better readability

@@ -16,8 +16,8 @@ import { publishUserNotice } from "../shared/user-notice.ts";
 function leanLine(model: NonNullable<FeatureContext["model"]>): string {
 	const key = `${model.provider}/${model.id}`;
 	const why =
-		model.contextWindow > 0 && model.contextWindow < LEAN_MAIN_WINDOW
-			? `its ${formatTokens(model.contextWindow)}-token window is under ${formatTokens(LEAN_MAIN_WINDOW)}`
+		model.contextWindow > 0 && model.contextWindow <= LEAN_MAIN_WINDOW
+			? `its ${formatTokens(model.contextWindow)}-token window is at most ${formatTokens(LEAN_MAIN_WINDOW)}`
 			: "it is the subagents.models.small model";
 	return `Lean prompt on for ${key}: ${why} (leanPrompt "auto"; no delegation or skill list)`;
 }

@@ -158,6 +158,7 @@ describe("the archive tool", () => {
 			"agents",
 			"events",
 			"profile",
+			"terminal",
 		]);
 		expect(archive.parameters.properties.op.enum).toEqual(["list", "search", "get"]);
 		for (const field of ["title", "body", "kind", "pinned", "scope"])

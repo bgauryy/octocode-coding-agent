@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DESKTOP_BIN, DESKTOP_SERVER } from "../../common/src/mcp-names.ts";
@@ -7,7 +7,7 @@ import { presetEntries } from "../src/preset.ts";
 import { withStructuredText } from "../src/presets/structured-text.ts";
 import { builtinPresets } from "../src/presets/index.ts";
 import { desktopAvailable, desktopPreset } from "../src/presets/desktop/index.ts";
-import { boundedWindowRead } from "../src/presets/desktop/tools.ts";
+import { boundedWindowRead, ensureScreenshotFolder } from "../src/presets/desktop/tools.ts";
 
 /** A PATH folder holding an executable `cua-driver`. */
 function pathWithDriver(): NodeJS.ProcessEnv {
@@ -149,6 +149,23 @@ describe("desktop MCP preset", () => {
 		expect(boundedWindowRead("get_window_state", saved)).toBe(saved);
 		const click = { pid: 1, element_token: "s1:2" };
 		expect(boundedWindowRead("click", click)).toBe(click);
+	});
+
+	it("creates the folder of a screenshot_out_file, so Driver never fails on a missing one", async () => {
+		const root = realpathSync(tmp());
+		const file = join(root, ".octocode", "agent", "temp", "shots", "a.png");
+		await ensureScreenshotFolder({ screenshot_out_file: file }, root);
+		expect(existsSync(join(root, ".octocode", "agent", "temp", "shots"))).toBe(true);
+		expect(existsSync(file)).toBe(false);
+		// Driver runs in its own folder: a relative path reaches it resolved against the session's, as the permission check saw it.
+		expect(await ensureScreenshotFolder({ screenshot_out_file: "rel/b.png", pid: 1 }, root)).toEqual({
+			screenshot_out_file: join(root, "rel", "b.png"),
+			pid: 1,
+		});
+		expect(existsSync(join(root, "rel"))).toBe(true);
+		const plain = { pid: 1 };
+		expect(await ensureScreenshotFolder(plain, root)).toBe(plain);
+		await ensureScreenshotFolder({ screenshot_out_file: "" }, root);
 	});
 
 	it("hands the model the data Driver keeps only in structuredContent, such as window ids and element tokens", () => {

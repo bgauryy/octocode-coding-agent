@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { type AgentDb, openDatabase } from "../src/db.ts";
-import { AgentDbError, COORDINATION_FILE } from "../src/schema.ts";
+import { AgentDbError, baseVersion, COORDINATION_FILE } from "../src/schema.ts";
 import { loadSqlite } from "../src/sqlite.ts";
 import { tmp } from "./helpers.ts";
 
@@ -39,25 +39,26 @@ function current(): string {
 describe("opening an agent database", () => {
 	it("creates the schema in an empty file and uses a current file as it is", () => {
 		const file = current();
-		expect(versionOf(file)).toBe(COORDINATION_FILE.version);
+		expect(versionOf(file)).toBe(baseVersion(COORDINATION_FILE));
 		open(file).close();
 		expect(kept(file)).toBe("me");
 	});
 
-	it("refuses a file at an older version and changes nothing in it", () => {
+	it("refuses a file at an older version no upgrade step starts from, and changes nothing in it", () => {
 		const file = current();
 		const raw = new DatabaseSync(file);
-		raw.exec(`PRAGMA user_version=${COORDINATION_FILE.version - 1}`);
+		raw.exec("PRAGMA user_version=9");
 		raw.close();
 		const before = fs.readFileSync(file);
-		expect(() => open(file)).toThrow(/older than this Octocode's/);
+		expect(() => open(file)).toThrow(/older than this Octocode's .*cannot upgrade it/);
 		expect(fs.readFileSync(file)).toEqual(before);
+		expect(fs.existsSync(`${file}.v9.bak`)).toBe(false);
 	});
 
 	it("refuses a file at a newer version and changes nothing in it", () => {
 		const file = current();
 		const raw = new DatabaseSync(file);
-		raw.exec(`PRAGMA user_version=${COORDINATION_FILE.version + 1}`);
+		raw.exec(`DROP TABLE schema_meta; PRAGMA user_version=${COORDINATION_FILE.version + 1}`);
 		raw.close();
 		const before = fs.readFileSync(file);
 		expect(() => open(file)).toThrow(AgentDbError);
@@ -79,7 +80,7 @@ describe("the coordination schema", () => {
 		fs.readFileSync(path.join(import.meta.dirname, "fixtures", "coordination-shape.json"), "utf8"),
 	) as { tables: Record<string, string[]>; indexes: string[] };
 
-	it("creates exactly the tables, columns and indexes of the version-10 file", () => {
+	it("creates exactly the tables, columns and indexes of the current file", () => {
 		const agent = open(path.join(tmp(), "workspaces.db"));
 		try {
 			const tables = agent.db
@@ -107,10 +108,10 @@ describe("the coordination schema", () => {
 		}
 	});
 
-	it("gives a current file the objects it lacks when it is opened", () => {
+	it("gives a version-10 file the objects it lacks when it is upgraded", () => {
 		const file = current();
 		const raw = new DatabaseSync(file);
-		raw.exec("DROP TABLE item_handoffs; DROP INDEX agent_runs_parent_session");
+		raw.exec("DROP TABLE item_handoffs; DROP INDEX agent_runs_parent_session; PRAGMA user_version=10");
 		raw.close();
 		open(file).close();
 		const names = read<{ n: number }>(

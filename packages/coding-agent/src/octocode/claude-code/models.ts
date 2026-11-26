@@ -4,8 +4,6 @@ import type { Model, ProviderPlan } from "@octocodeai/octocode-ai";
 export const CLAUDE_CODE_PROVIDER = "claude-code";
 /** The API its models declare: no HTTP request of Octocode's; the turn runs over ACP in Claude Code. */
 export const CLAUDE_CODE_API = "claude-code-acp";
-/** The MCP server name Claude Code sees Octocode's tools under (`mcp__octocode__<tool>`). */
-export const TOOL_SERVER = "octocode";
 /** The ACP vendor and runner id of Claude Code (`external/runners.ts`). */
 export const CLAUDE_CODE_RUNNER = "claude-code";
 

@@ -1,4 +1,4 @@
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { registeredWorkspace, workspaceDb } from "../../src/storage/workspace-database.ts";
 import { HistoryRepair } from "../../src/octocode/archive/repair.ts";
 import fs from "node:fs";
 import os from "node:os";
@@ -117,7 +117,9 @@ it("retains searchable complete summaries after expiry and does not resurrect de
 	saveCompaction(db, root, "session-a", entry, { recovered: true });
 	expect(compactions.get(db.mirror.db, "session-a", entry.id)?.detailState).toBe("expired");
 	expect(
-		agentEvents.list(db.db, registeredWorkspace(root, db).id).filter((row) => row.type === "compaction"),
+		agentEvents
+			.list(workspaceDb(root).agent.db, workspaceDb(root).workspace.id)
+			.filter((row) => row.type === "compaction"),
 	).toHaveLength(1);
 	expect(await mayRemoveArchive(db, folder, process.env, Date.parse("2026-01-01"))).toBe(false);
 	const fake = fakeHost();
@@ -150,7 +152,7 @@ it("indexes inherited compactions at their origin without duplicate fork events"
 	await new HistoryRepair(db).transcript(fork);
 	expect(compactions.forSession(db.mirror.db, "parent")).toHaveLength(1);
 	expect(compactions.forSession(db.mirror.db, "fork")).toHaveLength(0);
-	expect(agentEvents.list(db.db, registeredWorkspace(root, db).id)).toHaveLength(1);
+	expect(agentEvents.list(workspaceDb(root).agent.db, workspaceDb(root).workspace.id)).toHaveLength(1);
 });
 
 it("does not create a workspace in the directory named by an imported transcript", async () => {
@@ -198,10 +200,9 @@ it("refuses foreign transcript pointers in an archive record and fork header", a
 });
 
 it("finds an old lifecycle event beyond 50 in one search, since a query tests every record", async () => {
-	const db = sharedAgentDb();
 	for (let i = 0; i < 65; i++)
-		db.transaction(() =>
-			agentEvents.append(db.db, registeredWorkspace(root, db).id, {
+		workspaceDb(root).agent.transaction(() =>
+			agentEvents.append(workspaceDb(root).agent.db, workspaceDb(root).workspace.id, {
 				id: `event-${i}`,
 				time: entry.timestamp,
 				name: "agent",
@@ -333,7 +334,6 @@ it("uses the configured memory store for both memory writes and reads", async ()
 });
 
 it("compares event time filters as instants, with inclusive timezone boundaries", async () => {
-	const db = sharedAgentDb();
 	for (const [id, time] of [
 		["before", "2025-12-31T22:59:59.999Z"],
 		["start", "2025-12-31T23:00:00.000Z"],
@@ -341,7 +341,7 @@ it("compares event time filters as instants, with inclusive timezone boundaries"
 		["end", "2026-01-01T00:00:00.000Z"],
 		["after", "2026-01-01T00:00:00.001Z"],
 	])
-		agentEvents.append(db.db, registeredWorkspace(root, db).id, {
+		agentEvents.append(workspaceDb(root).agent.db, workspaceDb(root).workspace.id, {
 			id,
 			time,
 			name: "agent",

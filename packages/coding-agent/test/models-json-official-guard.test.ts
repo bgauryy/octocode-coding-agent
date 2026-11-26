@@ -77,8 +77,8 @@ describe("models.json is for custom providers only", () => {
 		expect(config.getProviderIds()).toEqual([]);
 		const error = config.getError() ?? "";
 		expect(error).toContain("blocked: apiKey, modelOverrides.m.input");
-		expect(error).toContain("its modelOverrides included");
-		expect(error).toMatch(/keep only "modelOverrides" in this entry/);
+		expect(error).toContain("its tuning included");
+		expect(error).toMatch(/keep only "modelOverrides" and "defaults"/);
 	});
 
 	test("Pi's models.json: the entry is skipped with a warning, there is no error and Pi's file is not changed", async () => {

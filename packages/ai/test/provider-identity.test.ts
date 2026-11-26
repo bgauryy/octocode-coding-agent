@@ -9,7 +9,8 @@ import { findEnvKeys } from "../src/env-api-keys.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, Model, ToolResultMessage } from "../src/types.ts";
 import { getProviderCapabilities } from "../src/utils/provider-capabilities.ts";
-import { isOpenRouterModel, matchesDomain, matchesHost } from "../src/utils/provider-host.ts";
+import { matchesDomain, matchesHost } from "../src/utils/provider-host.ts";
+import { isOpenRouterModel } from "../src/utils/provider-profile.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
 describe("sanitizeToolCallId", () => {

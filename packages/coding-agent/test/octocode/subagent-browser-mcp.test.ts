@@ -102,7 +102,7 @@ describe("browser MCP server in a subagent", () => {
 	// A main-session opt-in (`defaultTools` entries, `defaultActive: true`, `/mcp assign browser all`) is read by every
 	// child from the same settings; the exclusion keeps it in the main session and the profiles that name the server.
 	// A child runs only the servers its tools or task name: browser and desktop belong to the roles that name them.
-	it("gives the browser server only to the browser role and the desktop server only to the desktop role or a task listing it", () => {
+	it("gives the browser server only to the browser and desktop roles, and the desktop server only to the desktop role or a task listing it", () => {
 		const roles = profiles();
 		const events = createEventBus();
 		registerMcpAddedServers(events, () => ({
@@ -116,14 +116,14 @@ describe("browser MCP server in a subagent", () => {
 			expect(runs(name), name).not.toContain("desktop");
 		}
 		expect(runs("browser")).toEqual(["browser", "octocode"]);
-		expect(runs("desktop")).toEqual(["desktop", "octocode"]);
+		expect(runs("desktop")).toEqual(["browser", "desktop", "octocode"]);
 		expect(runs("implementer", ["desktop"])).toContain("desktop");
 		expect(runs("lean")).toEqual([]);
 	});
 
 	it("ships the desktop profile read-only with its permission declared", () => {
 		const desktop = profiles().get("desktop");
-		expect(desktop?.permissions).toEqual(["desktop.control"]);
+		expect(desktop?.permissions).toEqual(["desktop.control", "browser.control"]);
 		expect(desktop?.readOnly).toBe(true);
 		// No shell: untrusted screen text must never reach a command line.
 		expect(desktop?.excludeTools).toBe("bash");

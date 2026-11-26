@@ -1,5 +1,6 @@
 import { renderPrompt } from "../../core/prompt-template.ts";
 import { USER_AUTHOR } from "../../../../db/src/api.ts";
+import { harnessSource, sourcedText } from "../events/source.ts";
 import { clipText, contentText } from "../shared/util.ts";
 import { isCandidate } from "./file/candidate-tags.ts";
 import { NOTE_CHARS, pinnedBudget, totalBudget } from "./limits.ts";
@@ -19,6 +20,12 @@ export const MEMORY_MESSAGE_TYPE = "octocode-memory";
 /** The `memory` tool's name, whose save results count as shown memories (`savedResult`). */
 export const MEMORY_TOOL_NAME = "memory";
 export const MEMORY_HEADER = renderPrompt("notices/memory-header.md", { again: false });
+/** The message text an injection is sent as: under the memory source's header. */
+export const memoryMessageText = (content: string): string => sourcedText(content, harnessSource("memory"));
+
+/** Whether an injection's message text opens with the whole caveat (after its source header). */
+const opensWhole = (text: string): boolean => text.startsWith(MEMORY_HEADER) || text.startsWith(memoryMessageText(MEMORY_HEADER));
+
 /** The header of a later injection, while one with the whole caveat is still in context (`headerInContext`). */
 export const MEMORY_HEADER_AGAIN = renderPrompt("notices/memory-header.md", { again: true });
 
@@ -101,7 +108,7 @@ function foldInjection(fold: InjectionFold, entry: unknown): void {
 			const replacement = asRecord(entry.replacement).content;
 			const text = contentText(replacement);
 			injection.intact = entry.replacement !== null && text === injection.content;
-			injection.whole = text.startsWith(MEMORY_HEADER);
+			injection.whole = opensWhole(text);
 		}
 		return;
 	}
@@ -116,7 +123,7 @@ function foldInjection(fold: InjectionFold, entry: unknown): void {
 		id: typeof entry.id === "string" ? entry.id : undefined,
 		content,
 		intact: true,
-		whole: !saved && content.startsWith(MEMORY_HEADER),
+		whole: !saved && opensWhole(content),
 		ids: list.flatMap((id, index): Array<[number, number | undefined]> =>
 			typeof id === "number" ? [[id, typeof updated[index] === "number" ? updated[index] : undefined]] : [],
 		),

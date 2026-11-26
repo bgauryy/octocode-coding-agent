@@ -48,7 +48,9 @@ export function backgroundJoins(
 	closing: () => boolean,
 	warn: (text: string) => void,
 ): BackgroundJoins {
-	const ledger = new JobLedger(() => sharedAgentDb(), session);
+	const ledger = new JobLedger(session);
+	/** The file of the joined rows: the session's workspace's. */
+	let followed: string | undefined;
 	const watch = new JoinWatch(
 		ledger,
 		(row, how) => {
@@ -82,7 +84,7 @@ export function backgroundJoins(
 				.finally(() => finish?.());
 		},
 		(error) => warn(`Watching joined jobs stopped: ${errorMessage(error)}`),
-		(poke) => followerFor(sharedAgentDb().file).subscribe(poke),
+		(poke) => followerFor(followed ?? sharedAgentDb().file).subscribe(poke),
 	);
 	return {
 		join(request) {
@@ -91,6 +93,7 @@ export function backgroundJoins(
 			if (!row) return undefined;
 			// A job of this session reports to it already; another session's is watched until its row ends.
 			if (!(ledger.isOwn(row) && jobs.jobs.has(row.job))) {
+				followed ??= ledger.fileOf(row)?.file;
 				watch.watch(row);
 				const key = joinedKey(row);
 				if (!jobs.joined.has(key)) {

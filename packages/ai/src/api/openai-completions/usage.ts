@@ -1,6 +1,6 @@
 import { calculateCost } from "../../models/model-helpers.ts";
 import type { AssistantMessage, Model } from "../../types.ts";
-import { isOpenRouterModel } from "../../utils/provider-host.ts";
+import { isOpenRouterModel } from "../../utils/provider-profile.ts";
 import { createUsage } from "../../utils/assistant-message.ts";
 import { applyReportedCost, reportedCostUsd, type OpenRouterUsageCost } from "./openrouter-cost.ts";
 

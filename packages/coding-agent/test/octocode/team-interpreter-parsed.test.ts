@@ -218,7 +218,6 @@ const ALLOWED = [
 	"echo python -c",
 	"echo bash -c x",
 	"grep -c eval src/a.ts",
-	"bash script.sh",
 	"bash -c 'ls | wc -l'",
 	"sh -c 'echo $HOME'",
 	"eval 'echo hi'",

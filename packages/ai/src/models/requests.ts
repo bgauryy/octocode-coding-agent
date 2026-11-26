@@ -31,6 +31,7 @@ import {
 } from "../utils/model-operations.ts";
 import { mergeHeaders } from "../utils/headers.ts";
 import { normalizeContext } from "../utils/transcript.ts";
+import { withCredentialRenewal } from "./credential-renewal.ts";
 import type {
 	ModelsApiStreamOptions,
 	ModelsClassifierOptions,
@@ -78,6 +79,7 @@ export class ModelRequests {
 	): Promise<{
 		requestModel: TModel;
 		requestOptions: Omit<TOptions, "transformHeaders"> & ProviderRequestOptions<TModel>;
+		renew?: () => void;
 	}> {
 		this.requireProvider(model);
 		const resolution = await this.host.getAuth(model, {
@@ -100,7 +102,8 @@ export class ModelRequests {
 		const requestOptions = { ...providerOptions, apiKey, headers, env } as Omit<TOptions, "transformHeaders"> &
 			ProviderRequestOptions<TModel>;
 
-		return { requestModel, requestOptions };
+		// An explicit key is the caller's own: nothing cached to renew.
+		return { requestModel, requestOptions, renew: options?.apiKey === undefined ? resolution.renew : undefined };
 	}
 
 	stream<TApi extends Api>(
@@ -114,8 +117,11 @@ export class ModelRequests {
 			async () => {
 				const provider = this.requireChatProvider(model);
 				assertImageRequestContext(model, transcript.messages);
-				const { requestModel, requestOptions } = await this.applyAuth(model, options);
-				return provider.stream(requestModel, transcript, requestOptions as ApiStreamOptions<TApi>);
+				return withCredentialRenewal(async () => {
+					const { requestModel, requestOptions, renew } = await this.applyAuth(model, options);
+					const events = provider.stream(requestModel, transcript, requestOptions as ApiStreamOptions<TApi>);
+					return { events, renew };
+				});
 			},
 			observeModelRequest(model, options, false),
 			options?.signal,
@@ -129,8 +135,10 @@ export class ModelRequests {
 			async () => {
 				const provider = this.requireChatProvider(model);
 				assertImageRequestContext(model, transcript.messages);
-				const { requestModel, requestOptions } = await this.applyAuth(model, options);
-				return provider.streamSimple(requestModel, transcript, requestOptions);
+				return withCredentialRenewal(async () => {
+					const { requestModel, requestOptions, renew } = await this.applyAuth(model, options);
+					return { events: provider.streamSimple(requestModel, transcript, requestOptions), renew };
+				});
 			},
 			observeModelRequest(model, options, false),
 			options?.signal,

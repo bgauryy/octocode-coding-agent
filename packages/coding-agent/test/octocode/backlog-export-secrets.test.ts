@@ -1,10 +1,9 @@
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { registeredWorkspace, workspaceDb } from "../../src/storage/workspace-database.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
 import { exportMarkdown } from "../../src/octocode/backlog/format.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
@@ -37,7 +36,7 @@ function setup() {
 	const cwd = path.join(tmp, "repo");
 	fs.mkdirSync(cwd, { recursive: true });
 	const repo = registeredWorkspace(cwd).id;
-	const store = new BacklogStore(() => sharedAgentDb(), repo);
+	const store = new BacklogStore(() => workspaceDb(cwd).agent, repo);
 	for (const title of ["one", "two", "three"])
 		store.add({ title, goal: "g", why: "Required work", state: "todo", createdBy: "agent" });
 	return {
@@ -47,7 +46,9 @@ function setup() {
 		command: commands.get("backlog")!,
 		file: path.join(cwd, ".octocode", "agent", "backlog.md"),
 		body: (seq: number, text: string) =>
-			sharedAgentDb().db.prepare("UPDATE backlog SET body = ? WHERE seq = ? AND workspace_id = ?").run(text, seq, repo),
+			workspaceDb(cwd)
+				.agent.db.prepare("UPDATE backlog SET body = ? WHERE seq = ? AND workspace_id = ?")
+				.run(text, seq, repo),
 	};
 }
 
@@ -71,8 +72,8 @@ describe("/backlog export refuses stored secrets like /backlog html", () => {
 		const t = setup();
 		await t.command.handler("export", fakeCtx({ cwd: t.cwd }));
 		const before = fs.readFileSync(t.file, "utf8");
-		sharedAgentDb()
-			.db.prepare("INSERT INTO backlog_notes (item, at, author, kind, text) VALUES (?, 1, 'agent', 'note', ?)")
+		workspaceDb(t.cwd)
+			.agent.db.prepare("INSERT INTO backlog_notes (item, at, author, kind, text) VALUES (?, 1, 'agent', 'note', ?)")
 			.run(t.store.get("B2")!.rowId, `see ${SECRET}`);
 		const ctx = fakeCtx({ cwd: t.cwd });
 		await t.command.handler("export", ctx);
@@ -89,8 +90,8 @@ describe("/backlog export refuses stored secrets like /backlog html", () => {
 
 	it("does not refuse on text the markdown does not carry (an audit row)", async () => {
 		const t = setup();
-		sharedAgentDb()
-			.db.prepare(
+		workspaceDb(t.cwd)
+			.agent.db.prepare(
 				"INSERT INTO backlog_audits (workspace_id, backlog_id, at, actor, action, entity, after_value) VALUES (?, 'B1', 1, 'x', 'insert', 'backlog', ?)",
 			)
 			.run(t.repo, JSON.stringify({ body: SECRET }));

@@ -47,7 +47,7 @@ export const readOnlyRole = (env: NodeJS.ProcessEnv = process.env): boolean =>
  * throwaway folder `.octocode/agent/tmp/` (`agentTmpDir`, which retention expires), a topic's `.octocode/agent/<topic>/tmp/`,
  * or a Markdown doc under `.octocode/agent/` outside its state, checkouts and `MEMORY.md`.
  */
-function mayWrite(target: string, cwd: string, env: NodeJS.ProcessEnv): boolean {
+export function mayWrite(target: string, cwd: string, env: NodeJS.ProcessEnv): boolean {
 	const scratch = env[AGENT_SCRATCH_ENV];
 	if (scratch && canonicalPath(scratch) === scratch && isWithin(target, scratch)) return true;
 	const { agent, temp } = workspacePaths(cwd);

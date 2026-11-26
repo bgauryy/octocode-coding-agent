@@ -14,6 +14,8 @@ import type {
 	SessionUI,
 	ShutdownHandler,
 } from "../features/index.ts";
+import { validateCompactionInstructions } from "../compaction/manual-options.ts";
+import { sameItems } from "../features/runner/registrations.ts";
 import { getPromptCommands } from "../prompt-templates.ts";
 import type { ResourceFeaturePaths } from "../resource-loader/types.ts";
 import { captureSkillResourceSnapshot } from "../skill-resource-snapshot.ts";
@@ -157,7 +159,20 @@ export class ModeBindings {
 
 	bindCore(runner: FeatureHost): void {
 		const { session, run, tools, models } = this.host;
+		// Read on every editor render (skill-word highlight): rebuilt only when a command, prompt or skill list changes.
+		let built: { inputs: unknown[]; commands: SlashCommandInfo[] } | undefined;
 		const getCommands = (): SlashCommandInfo[] => {
+			const inputs = [
+				runner.getRegisteredCommands(),
+				session.promptTemplates,
+				...session.promptTemplates,
+				session.resourceLoader.getSkills().skills,
+				...session.resourceLoader.getSkills().skills,
+			];
+			if (!built || !sameItems(built.inputs, inputs)) built = { inputs, commands: buildCommands() };
+			return [...built.commands];
+		};
+		const buildCommands = (): SlashCommandInfo[] => {
 			const featureCommands: SlashCommandInfo[] = runner.getRegisteredCommands().map((command) => ({
 				name: command.invocationName,
 				description: command.description,
@@ -269,7 +284,7 @@ export class ModeBindings {
 				abort: (reason = "interrupted") => {
 					this.host.recordAbortReason(reason);
 					if (run.active) run.featureRunAbortRequested = true;
-					if (this._abortHandler) {
+					if (this._abortHandler && reason === "interrupted") {
 						this._abortHandler();
 						return;
 					}
@@ -300,6 +315,11 @@ export class ModeBindings {
 						}
 					})().finally(() => run.settledWork.delete(work));
 					run.settledWork.add(work);
+				},
+				requestBoundaryCompaction: (options) => {
+					const text = validateCompactionInstructions(options?.customInstructions);
+					if (run.active)
+						run.boundaryCompaction = { focus: text ? { text, source: options?.requestedBy ?? "agent" } : undefined };
 				},
 				getSystemPrompt: () => session.systemPrompt,
 				getSystemPromptOptions: () => tools.baseSystemPromptOptions,

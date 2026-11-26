@@ -89,6 +89,8 @@ describe("permanent stop from fullscreen writes the transcript and then stops li
 				getFullscreenCopyOnSelect: () => false,
 				getFullscreenWheelScrollLines: () => "auto",
 				getReplayRows: () => 5000,
+				isLatencyFenceActive: () => false,
+				getFullscreenFrameQueueLimitBytes: () => 1 << 20,
 			},
 			themeController: { disableAutoSync: vi.fn(), rebindTui: vi.fn() },
 			forEachAssistantMessage: vi.fn(),

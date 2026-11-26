@@ -34,7 +34,28 @@ Fullscreen-only settings (see [settings](settings.md)):
 
 With `fullscreenWheelScrollLines` at `auto`, a single wheel notch moves three lines (as in vim), steady scrolling moves at least as fast as separate notches, and a fast spin or flick moves more, more the longer it lasts. Frames sum every wheel event that arrives before they paint, up to 24 lines a frame, at the display's 60 Hz. A number fixes the lines per event. Alt+wheel scrolls five times as far. While you scroll, spinners and shimmer hold still. The scrollbar shows while you scroll and highlights under the pointer; bare pointer movement is reported only while it shows.
 
-Dragging copies what you see as text: a line the terminal width wrapped comes back as one line, and the left padding the copied rows share is dropped, so indentation inside code stays. The confirmation says how much was copied (`Copied 3 lines · 1,204 chars`). To use your terminal's own selection instead, hold Shift while dragging (most terminals), or press `alt+m` to hand the mouse to the terminal and press it again to take it back; the first copy of a screen names both. These notices show at the top right of the screen for a few seconds; a transcript row they would cut is blank while they show. A drag held on or past the top or bottom edge of the transcript keeps scrolling it, faster the further past the edge the pointer is and the longer you hold, up to 24 lines a step.
+Dragging copies what you see as text: a line the terminal width wrapped comes back as one line, and the left padding the copied rows share is dropped, so indentation inside code stays. The confirmation says how much was copied (`Copied 3 lines · 1,204 chars`). These notices show at the top right of the screen for a few seconds; a transcript row they would cut is blank while they show. A drag held on or past the top or bottom edge of the transcript keeps scrolling it in small, even steps (25 a second), faster the further past the edge the pointer is and the longer you hold, up to about 480 lines a second.
+
+In fullscreen, Octocode does the selecting; in regular mode your terminal does, with its own gestures.
+
+| Gesture                              | Selects                                                                                                               |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| Drag                                 | From the press to the pointer, by character; wide characters and emoji keep their whole cells                         |
+| Double-click                         | A word; a path or `kebab-case` token stays whole, and a word the width cut across two rows is one word                |
+| Triple-click                         | The whole line, including the rows the width wrapped it onto                                                          |
+| Drag after a double- or triple-click | Extends by whole words or whole lines                                                                                 |
+| Shift-click                          | Extends the selection to the clicked cell, by the unit it was made with (only where Shift reaches the app; see below) |
+| Hold the button and use the wheel    | Extends the selection beyond the visible rows                                                                         |
+| Click, or `esc`                      | Clears the selection; the first `esc` only clears it, the next one does what `esc` does                               |
+
+To use your terminal's own selection instead, hold its modifier while dragging, or press `alt+m` to hand the mouse to the terminal and press it again to take it back. The first copy of a screen names both.
+
+| Terminal                                                  | Modifier for the terminal's own selection                                                                  |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Ghostty, kitty, VS Code on Linux and Windows, most others | Shift. Shift-click then reaches the terminal, not Octocode                                                 |
+| iTerm2                                                    | Option                                                                                                     |
+| VS Code on macOS                                          | Option, after you set `terminal.integrated.macOptionClickForcesSelection` to `true`; otherwise use `alt+m` |
+| Terminal.app                                              | Fn                                                                                                         |
 
 Scroll, jump between prompts and search the transcript with the [fullscreen keys](keybindings.md#fullscreen). `/find` opens transcript search too, for terminals where `ctrl+shift+f` arrives as `ctrl+f`.
 
@@ -148,7 +169,7 @@ All variables: [environment variables](environment-variables.md).
 
 ## When the screen misbehaves
 
-Run `/debug terminal` to see the selected mode, colors, links, images, keyboard protocol, explicit overrides, motion, clipboard limitations, output queue, the latency fence (supported, behind, last round trip, floor, held frames) and terminal stalls. It enables aggregate rendering counters until exit; run it again after reproducing the problem. A zero counter can mean that no sample has been collected. It does not read the conversation or probe the clipboard. `/debug` retains the redacted diagnostics-file workflow.
+Run `/debug terminal` (or ask the agent: it reads the same lines through `archive` with `source: "terminal"`) to see the selected mode, colors, links, images, keyboard protocol, explicit overrides, motion, clipboard limitations, output queue, the latency fence (supported, behind, last round trip, floor, held frames), terminal stalls, how wheel reports are read (`per-line` for native macOS terminals, `per-notch` for VS Code, Cursor and other xterm.js terminals, Linux, Windows and SSH), whether pointer motion is tracked (only at a shown scrollbar and while search is open) and frames over 64 KiB by cause. It enables aggregate rendering counters until exit; run it again after reproducing the problem. A zero counter can mean that no sample has been collected. It does not read the conversation or probe the clipboard. `/debug` retains the redacted diagnostics-file workflow.
 
 | Symptom                                                         | Try                                                                                                                   |
 | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |

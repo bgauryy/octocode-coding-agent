@@ -15,6 +15,8 @@ export interface ModelPanelView {
 	details: boolean;
 	/** The open details offer the key that saves the highlighted model as its provider's preferred model. */
 	canPrefer: boolean;
+	/** What switching to the highlighted model rewrites in the cache; absent when nothing is rewritten. */
+	switchNotice?: string;
 	error?: string;
 	refresh: string;
 	refreshed: boolean;
@@ -77,6 +79,7 @@ export class ModelDetailPanel implements Component {
 				lines.push(theme.fg("muted", truncateToWidth(` ${prefer}`, width, "…")));
 			}
 		}
+		if (view.switchNotice) lines.push(theme.fg("warning", truncateToWidth(` ${view.switchNotice}`, width, "…")));
 		if (view.error) lines.push(theme.fg("warning", truncateToWidth(` ${view.error}`, width, "…")));
 		else if (view.refresh)
 			lines.push(theme.fg(view.refreshed ? "success" : "muted", truncateToWidth(` ${view.refresh}`, width, "…")));

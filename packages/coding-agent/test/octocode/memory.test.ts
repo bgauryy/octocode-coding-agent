@@ -9,6 +9,7 @@ import {
 	injectedIds,
 	lastInjection,
 	MEMORY_HEADER,
+	memoryMessageText,
 	MEMORY_MESSAGE_TYPE,
 	PINNED_BUDGET,
 	selectInjection,
@@ -650,7 +651,7 @@ describe("memory auto-injection", () => {
 		expect(result.message.details.ids.sort((x: number, y: number) => x - y)).toEqual(
 			[project.id, global.id].sort((x, y) => x - y),
 		);
-		expect(result.message.content.startsWith(MEMORY_HEADER)).toBe(true);
+		expect(result.message.content.startsWith(memoryMessageText(MEMORY_HEADER))).toBe(true);
 		// Offered, not yet committed: not used.
 		expect(store.get(project.id)?.useCount).toBe(0);
 		await fake.fire("message_end", { message: { role: "custom", ...result.message } }, ctx);

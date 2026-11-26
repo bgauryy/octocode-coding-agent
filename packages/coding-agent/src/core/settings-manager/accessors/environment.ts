@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { normalizePath } from "@octocodeai/octocode-common/paths";
 import { SETTINGS_DEFAULTS, type SandboxMode } from "../../settings-defaults.ts";
 import type { QuietStartup } from "../../settings-schema.ts";
+import type { ExternalModelEntry } from "../../settings-schema/external-models.ts";
 import type { EnvironmentSettingsApi } from "../api/environment.ts";
 import { RuntimeSettingsAccessors } from "./runtime.ts";
 
@@ -86,6 +87,19 @@ export abstract class EnvironmentSettingsAccessors extends RuntimeSettingsAccess
 	setExternalAgents(enabled: boolean): void {
 		this.globalSettings.externalAgents = enabled;
 		this.markModified("externalAgents");
+		this.save();
+	}
+
+	getExternalModels(): ExternalModelEntry[] {
+		return [...(this.globalSettings.externalModels ?? [])];
+	}
+
+	addExternalModel(entry: ExternalModelEntry): void {
+		this.globalSettings.externalModels = [
+			...this.getExternalModels().filter((existing) => existing.id !== entry.id),
+			entry,
+		];
+		this.markModified("externalModels");
 		this.save();
 	}
 

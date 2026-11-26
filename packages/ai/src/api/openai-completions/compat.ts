@@ -1,5 +1,5 @@
 import type { Model } from "../../types.ts";
-import { isOpenRouterModel, matchesDomain, matchesHost } from "../../utils/provider-host.ts";
+import { isOpenRouterModel, markersApplyTo, profileCacheFacts, profileQuirks } from "../../utils/provider-profile.ts";
 import type { ResolvedOpenAICompletionsCompat } from "./types.ts";
 
 /**
@@ -19,86 +19,35 @@ function isMoonshotModelId(modelId: string): boolean {
  */
 function detectCompat(model: Model<"openai-completions">): ResolvedOpenAICompletionsCompat {
 	const provider = model.provider;
-	const baseUrl = model.baseUrl;
 
-	// Hosts match by domain (host or subdomain), never by substring: a proxy URL that only names a provider in its path
-	// keeps the generic request format.
-	const isZai =
-		provider === "zai" || provider === "zai-coding-cn" || matchesDomain(baseUrl, "api.z.ai", "open.bigmodel.cn");
-	const isTogether = provider === "together" || matchesDomain(baseUrl, "api.together.ai", "api.together.xyz");
-	const isMoonshot =
-		provider === "moonshotai" ||
-		provider === "moonshotai-cn" ||
-		provider === "kimi-coding" ||
-		matchesDomain(baseUrl, "api.moonshot.ai", "api.moonshot.cn", "api.kimi.com");
+	// The profile table decides by declared profile, else by provider id or host (domain match, never substring: a proxy
+	// URL that only names a provider in its path keeps the generic request format).
+	const quirks = profileQuirks(model);
+	const cache = profileCacheFacts(model, "host");
 	const isOpenRouter = isOpenRouterModel(model);
-	const isCloudflareWorkersAI = provider === "cloudflare-workers-ai" || matchesDomain(baseUrl, "api.cloudflare.com");
-	const isCloudflareAiGateway =
-		provider === "cloudflare-ai-gateway" || matchesDomain(baseUrl, "gateway.ai.cloudflare.com");
-	const isNvidia = provider === "nvidia" || matchesDomain(baseUrl, "integrate.api.nvidia.com");
-	const isAntLing = provider === "ant-ling" || matchesDomain(baseUrl, "api.ant-ling.com");
-	const isCerebras = provider === "cerebras" || matchesDomain(baseUrl, "cerebras.ai");
-	const isDeepSeek = provider === "deepseek" || matchesDomain(baseUrl, "deepseek.com");
-	const isGrok = provider === "xai" || matchesDomain(baseUrl, "api.x.ai");
-	const isChutes = matchesDomain(baseUrl, "chutes.ai");
-	const isOpencode = provider === "opencode" || matchesDomain(baseUrl, "opencode.ai");
-
-	const isNonStandard =
-		isNvidia ||
-		isCerebras ||
-		isGrok ||
-		isTogether ||
-		isChutes ||
-		isDeepSeek ||
-		isZai ||
-		isMoonshot ||
-		isOpencode ||
-		isCloudflareWorkersAI ||
-		isCloudflareAiGateway ||
-		isAntLing;
-
-	const useMaxTokens =
-		isChutes || isDeepSeek || isMoonshot || isCloudflareAiGateway || isTogether || isNvidia || isAntLing || isZai;
+	const isNonStandard = quirks.nonStandard === true;
 
 	const isOpenRouterDeveloperRoleModel =
-		isOpenRouter && (model.id.startsWith("anthropic/") || model.id.startsWith("openai/"));
+		quirks.developerRoleModelPrefixes?.some((prefix) => model.id.startsWith(prefix)) ?? false;
 	// The `developer` role is opt-in: a host that does not know it can drop the instructions without an error, so an
-	// unlisted host (a proxy, a local server) gets `system`. Listed here are the hosts whose built-in models carry no
-	// `supportsDeveloperRole` flag and accept the role; any model can still set the flag in its compat.
-	const isDeveloperRoleHost =
-		provider === "openai" ||
-		matchesHost(baseUrl, "api.openai.com") ||
-		provider === "groq" ||
-		matchesHost(baseUrl, "api.groq.com") ||
-		provider.startsWith("xiaomi") ||
-		matchesDomain(baseUrl, "xiaomimimo.com");
-	const isOpenRouterAnthropic = provider === "openrouter" && /^~?anthropic\//.test(model.id);
+	// unlisted host (a proxy, a local server) gets `system`. The profiles that list it are those whose built-in models
+	// carry no `supportsDeveloperRole` flag and accept the role; any model can still set the flag in its compat.
+	const isDeveloperRoleHost = quirks.developerRole === true;
 	// Other explicit-marker models (OpenRouter's Alibaba ids) declare `cacheControlFormat` in their catalog compat.
-	const cacheControlFormat = isOpenRouterAnthropic ? "anthropic" : undefined;
+	const cacheControlFormat = markersApplyTo(cache, model.id) ? "anthropic" : undefined;
 
 	return {
 		supportsStore: !isNonStandard,
 		supportsDeveloperRole: isOpenRouterDeveloperRoleModel || (isDeveloperRoleHost && !isNonStandard && !isOpenRouter),
-		supportsReasoningEffort:
-			!isGrok && !isZai && !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia && !isAntLing,
+		supportsReasoningEffort: quirks.noReasoningEffort !== true,
 		supportsUsageInStreaming: true,
 		supportsFinishReason: true,
-		maxTokensField: useMaxTokens ? "max_tokens" : "max_completion_tokens",
+		maxTokensField: quirks.maxTokens ? "max_tokens" : "max_completion_tokens",
 		requiresToolResultName: false,
 		requiresAssistantAfterToolResult: false,
 		requiresThinkingAsText: false,
-		requiresReasoningContentOnAssistantMessages: isDeepSeek,
-		thinkingFormat: isDeepSeek
-			? "deepseek"
-			: isZai
-				? "zai"
-				: isTogether
-					? "together"
-					: isAntLing
-						? "ant-ling"
-						: isOpenRouter
-							? "openrouter"
-							: "openai",
+		requiresReasoningContentOnAssistantMessages: quirks.reasoningContentOnAssistant === true,
+		thinkingFormat: quirks.thinkingFormat ?? "openai",
 		openRouterRouting: {},
 		vercelGatewayRouting: {},
 		chatTemplateKwargs: {},
@@ -111,18 +60,19 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		supportsMidConvoSystemMessages: false,
 		supportsMidConvoToolAdditions: false,
 		cacheControlFormat,
-		sendSessionAffinityHeaders: isOpenRouter,
-		sessionAffinityFormat: isOpenRouter ? "openrouter" : "openai",
+		sendSessionAffinityHeaders: cache.sessionAffinity !== undefined,
+		sessionAffinityFormat: cache.sessionAffinity ?? "openai",
 		// OpenCode Go streams `reasoning` but expects it back as `reasoning_content`.
 		reasoningReplayField: provider === "opencode-go" ? "reasoning_content" : undefined,
-		toolCallIdMaxLength: provider === "openai" ? 40 : undefined,
+		toolCallIdMaxLength: quirks.toolCallIdMaxLength,
 		// Without markers the long tier is `prompt_cache_retention: "24h"`, which api.openai.com takes only for the models
 		// OpenAI lists (the catalog sets the flag for them); Chat Completions has no 12h tier for GPT-5.6 and later.
 		supportsLongCacheRetention:
-			cacheControlFormat !== "anthropic" && matchesHost(baseUrl, "api.openai.com")
+			cache.noLongRetention === "always" ||
+			(cache.noLongRetention === "unlessMarkers" && cacheControlFormat !== "anthropic")
 				? false
-				: !(isTogether || isCloudflareWorkersAI || isCloudflareAiGateway || isNvidia || isAntLing),
-		toolSchemaFlavor: isMoonshot || isMoonshotModelId(model.id) ? "moonshot" : undefined,
+				: true,
+		toolSchemaFlavor: quirks.moonshotToolSchema || isMoonshotModelId(model.id) ? "moonshot" : undefined,
 	};
 }
 

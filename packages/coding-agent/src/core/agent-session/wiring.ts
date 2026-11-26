@@ -22,6 +22,7 @@ import {
 import { SessionBash } from "./bash.ts";
 import { SessionBoundaries } from "./boundaries.ts";
 import type { CompactionCheckHost } from "./compaction-check.ts";
+import type { SummaryFocus } from "../compaction/summary-focus.ts";
 import { SessionCompaction } from "./compaction-control.ts";
 import { ModeBindings } from "./mode-bindings.ts";
 import type { FeatureRuntimeHost } from "./feature-host.ts";
@@ -65,6 +66,7 @@ export interface SessionSeams {
 		targetModel?: Model<any>,
 		targetThinking?: ThinkingLevel,
 		incomingTokens?: number,
+		focus?: SummaryFocus,
 	): Promise<boolean>;
 	emitFeatureEvent: AgentEventsHost["emitFeatureEvent"];
 	waitForIdle(): Promise<void>;

@@ -1,16 +1,12 @@
 import { compactionThresholdTokens } from "./settings.ts";
 import type { CompactionSettings } from "./compaction.ts";
 
-/** In the new event loop, compact at a step boundary shortly before the usual compaction limit.
- * Context-usage notices are configured separately by monitor.contextBands. */
-const COMPACTION_STOP_AT = 0.95;
-
-/** First token count at which the new loop stops at a step boundary. */
+/** First token count at which the loop stops at a step boundary: `compactionThresholdTokens`, the one first point. */
 export function compactionStopTokens(contextWindow: number, settings: CompactionSettings): number {
-	return Math.ceil(COMPACTION_STOP_AT * compactionThresholdTokens(contextWindow, settings));
+	return compactionThresholdTokens(contextWindow, settings);
 }
 
-/** Whether `contextTokens` reached the hard stop: `STOP_AT` of the limit. A window of 0 or less is unknown. */
+/** Whether `contextTokens` reached the stop of `compactionStopTokens`. A window of 0 or less is unknown. */
 export function shouldStopForCompaction(
 	contextTokens: number,
 	contextWindow: number,

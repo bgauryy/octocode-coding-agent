@@ -102,6 +102,29 @@ describe("the browser tools of the desktop server reach beyond the desktop", () 
 		expect(await desktopRefusal("mcp__browser__open", { url: "http://169.254.169.254/" })).toBeUndefined();
 	});
 
+	it("asks file.outside for a screenshot_out_file outside the workspace or the read-only role's folders, on any tool", async () => {
+		const cwd = fs.realpathSync(tmp());
+		fs.mkdirSync(path.join(cwd, ".git"));
+		const request = (tool: string, file: string) =>
+			desktopMcpRequest(`mcp__desktop__${tool}`, { pid: 1, screenshot_out_file: file }, cwd, lookup);
+		const scratch = path.join(cwd, ".octocode", "agent", "temp", "shots", "a.png");
+		expect((await request("get_window_state", scratch))?.also).toBeUndefined();
+		const inRepo = path.join(cwd, "src", "a.png");
+		const repo = await request("screenshot", inRepo);
+		expect(repo).toMatchObject({ action: "file.outside" });
+		expect(repo?.what[1]).toMatch(
+			new RegExp(`^Saves a screenshot in ${inRepo.replace(/\W/g, "\\$&")}, in the repository`),
+		);
+		const outside = path.join(fs.realpathSync(tmp()), "a.png");
+		const away = await request("get_window_state", outside);
+		expect(away?.also).toEqual(["file.outside"]);
+		expect(away?.what[1]).toBe(`Saves a screenshot in ${outside}, outside the workspace.`);
+		const escape = await request("get_window_state", "../escape.png");
+		expect(escape?.what[1]).toBe(
+			`Saves a screenshot in ${path.join(path.dirname(cwd), "escape.png")}, outside the workspace.`,
+		);
+	});
+
 	it("asks upload.outside for a file from outside the workspace, file.outside for a download saved outside it", async () => {
 		const cwd = tmp();
 		fs.mkdirSync(path.join(cwd, ".git"));

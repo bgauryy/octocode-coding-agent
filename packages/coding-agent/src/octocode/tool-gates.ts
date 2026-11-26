@@ -9,6 +9,7 @@ import { classify } from "./permission/gate/classify.ts";
 import { decide } from "./permission/mode.ts";
 import { type Gate, type GateStepBodies, type GateVerdict, judge } from "./permission/judge.ts";
 import { gitStateGate } from "./permission/git-state.ts";
+import { linkedSession } from "./worktrees/proxy.ts";
 import type { createProvenance } from "./permission/provenance.ts";
 import type { registerSourcePolicy } from "./permission/source-policy-loader.ts";
 import { registerHookMcpGate } from "./hooks/mcp-gate.ts";
@@ -41,8 +42,8 @@ export interface ToolGatesOptions {
 	localReads: Map<string, Awaited<ReturnType<typeof snapshotLocalReads>>>;
 	/** Says whether this process is a subagent in the shared tree (`permission/git-state.ts`); `process.env` by default. */
 	env?: NodeJS.ProcessEnv;
-	/** Whether another live session works in this checkout (`permission/git-state.ts` asks before the main session discards uncommitted work). */
-	peerSessions?: () => boolean;
+	/** Who else works in a folder's checkout (`permission/git-state.ts` asks before the main session discards uncommitted work). */
+	peerSessions?: NonNullable<Parameters<typeof gitStateGate>[0]["peers"]>;
 	/** A tool's annotations (an MCP server's `destructiveHint`); the registered tool's own by default. */
 	annotations?: (toolName: string) => ToolAnnotations | undefined;
 }
@@ -118,6 +119,7 @@ export function registerToolGates(
 		subagent: envFlag(scope, SUBAGENT_ENV),
 		isolated: Boolean(scope[TEAM_WORKSPACE_ENV]?.trim()),
 		peers: peerSessions,
+		orchestrator: linkedSession,
 	});
 	// The invariants and hooks see a wait's command as the bash call it is.
 	const gitState = sharedTree && asBash(sharedTree);
@@ -135,7 +137,7 @@ export function registerToolGates(
 	const invariants: Gate = async (event, ctx) =>
 		planning?.gate(event) ??
 		blocking(await gitState?.(event, ctx)) ??
-		(await reservation(event, ctx)) ??
+		blocking(await reservation(event, ctx)) ??
 		metadata(event, ctx);
 	// An early call's audit entries, by call id: written when it ends, dropped when it is discarded.
 	const parked = new Map<string, Array<() => void>>();

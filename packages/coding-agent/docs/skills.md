@@ -99,9 +99,9 @@ In `/harness`, open **Skills** and choose **+ Add skill from a folder**. Enter t
 | -------------------------------------------------- | ----------------------------------------------------------- |
 | `/harness`                                         | Pick list; Skills is one section                            |
 | `/harness list skills`                             | Print skill rows (state, source, file) with their ids       |
-| `/settings disable skill:<name> [--local]`    | Exclude a skill in user (or trusted project) settings       |
-| `/settings enable skill:<name> [--local]`     | Include it again                                            |
-| `/settings disable harness:pi`                | Switch off every Pi skill (Pi's own list is read-only here) |
+| `/settings disable skill:<name> [--local]`         | Exclude a skill in user (or trusted project) settings       |
+| `/settings enable skill:<name> [--local]`          | Include it again                                            |
+| `/settings disable harness:pi`                     | Switch off every Pi skill (Pi's own list is read-only here) |
 | `--disable skill:<name>` / `--enable skill:<name>` | The same, for one run                                       |
 
 A switch applies after `/reload`. It changes Octocode settings only. Rows exist only for harnesses that are on. Two skills of one name get the id `skill:<path>` (see `/settings list skill`), except when one is a core skill: the copy that loads keeps `skill:<name>`, so `disable skill:<name>` switches it, and a switched-on copy that does not load is listed as `shadowed` under its path id. Where the Octocode collection ships a skill of a core skill's name, only the core skill is offered: it replaces the collection's copy, so that copy is neither listed nor reported as a duplicate. Core skills switch globally only; Octocode-collection skills can also switch with `--local`. A session-only skill (`--skill`) has no row.
@@ -125,7 +125,7 @@ Two skills load themselves on first use, once per session, when the model has no
 | `octocode-subagents` *          | Decide whether to delegate, pick the child kind and model, plan waves of children, brief, integrate, recover, relay and merge; run multi-step workflows; design, debug and evaluate agent systems                                            |
 | `octocode-memory` *             | Decide whether a fact belongs in memory, a session note, AGENTS.md, a backlog item or nowhere, and word it as a rule                                                                                                                         |
 | `octocode-output`               | Shape a reply by its data: tables for comparisons and numbers, trees, diagrams, status marks, findings and recommendations                                                                                                                   |
-| `resume-external-harness`       | Find, read and resume Claude Code, Codex and Cursor sessions of this repository ([details](native-features.md#resuming-other-tools-sessions))                                                                                                |
+| `resume-external-harness`       | Find, read and resume Claude Code, Codex, Cursor, Antigravity and Octocode sessions of this repository ([details](native-features.md#resuming-other-tools-sessions))                                                                         |
 
 ## Invoke a skill
 

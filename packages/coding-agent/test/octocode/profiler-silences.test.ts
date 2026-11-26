@@ -57,6 +57,8 @@ describe("profiler silence episodes", () => {
 		silent(db.db, workspace, "kid-one", { activity: "Running bash: x", model: "anthropic/claude", minutes: 9 });
 		silent(db.db, workspace, "stranger", { ...bash, minutes: 9 });
 		silent(db.db, workspace, "kid-two", { ...bash, minutes: 9 }, "2026-11-19T10:00:00.000Z");
+		// A namesake of a session agent in another workspace.
+		silent(db.db, registerFixtureWorkspace(db, "other"), "kid-one", { ...bash, minutes: 30 });
 
 		const since = Date.parse("2026-11-20T00:00:00.000Z");
 		const profiler = createProfiler({
@@ -69,7 +71,7 @@ describe("profiler silence episodes", () => {
 			],
 			traffic: () => [],
 			transcript: () => undefined,
-			silences: (ids) => storedSilences(db.db, ids, since),
+			silences: (ids) => storedSilences(db.db, ids, { workspaces: [workspace] }, since),
 		});
 		cleanup.push(() => profiler.close());
 		const found = profiler.insights().findings.filter((finding) => finding.kind === "silence");

@@ -4,6 +4,8 @@
  * terminal width, each piece behind the component's padding.
  */
 
+import { TRAILING_GUTTER } from "../utils/row-frame.ts";
+
 /** One copied line and what dedenting needs to know about the row it starts on. */
 export interface SelectedLine {
 	text: string;
@@ -13,8 +15,6 @@ export interface SelectedLine {
 	readonly startCol: number;
 }
 
-/** A box border at the end of a row is frame: it must not land between the two halves of a joined line. */
-const TRAILING_GUTTER = /\s*[│┃]$/u;
 const LEADING_SPACES = /^ */;
 
 /** `text` with a soft-wrapped row's `piece` joined on: a cut word directly, a break at a space with one space. */

@@ -11,10 +11,11 @@ import { formatNoApiKeyFoundMessage, formatNoModelsAvailableMessage } from "../c
 import { APP_NAME } from "../config.ts";
 import type { ModelRuntime } from "../core/model-runtime.ts";
 import { formatTokens } from "../octocode/shared/format.ts";
+import { providerSource, providerSourceLabel } from "./provider-source.ts";
 
 /** Why `--provider <id>` lists nothing: no such provider, or one with no usable credentials; undefined when it has models. */
 function unusableProvider(
-	runtime: Pick<ModelRuntime, "getProviders" | "getDefinedProviderIds">,
+	runtime: Pick<ModelRuntime, "getProviders" | "getDefinedProviderIds" | "getModelsDiagnostics">,
 	available: readonly Model<Api>[],
 	provider: string,
 ): string | undefined {
@@ -23,6 +24,9 @@ function unusableProvider(
 	const known =
 		runtime.getProviders().some((entry) => entry.id === provider) || runtime.getDefinedProviderIds().includes(provider);
 	if (known) return formatNoApiKeyFoundMessage(provider, "cli");
+	// Defined only in a workspace models.json this folder does not trust: name the command that loads it.
+	const untrusted = runtime.getModelsDiagnostics().untrustedHint(provider);
+	if (untrusted) return untrusted;
 	return `Unknown provider "${provider}". Connected: ${connected.join(", ")}. ${APP_NAME} --list-models lists their models.`;
 }
 
@@ -104,7 +108,13 @@ export async function listModels(
 	});
 
 	const access = options.checkAccess ? await bedrockModelAccess(modelRuntime, filteredModels, signal) : undefined;
+	const sources = new Map<string, string>();
+	const sourceOf = (id: string) => {
+		if (!sources.has(id)) sources.set(id, providerSourceLabel(providerSource(modelRuntime, id)));
+		return sources.get(id) ?? "";
+	};
 	const rows = filteredModels.map((m) => ({
+		source: sourceOf(m.provider),
 		provider: m.provider,
 		model: m.id,
 		size: modelSizeClass(m),
@@ -123,6 +133,7 @@ export async function listModels(
 		maxOut: "max-out",
 		thinking: "thinking",
 		images: "images",
+		source: "source",
 	};
 
 	const widths = {
@@ -133,6 +144,7 @@ export async function listModels(
 		maxOut: Math.max(headers.maxOut.length, ...rows.map((r) => r.maxOut.length)),
 		thinking: Math.max(headers.thinking.length, ...rows.map((r) => r.thinking.length)),
 		images: Math.max(headers.images.length, ...rows.map((r) => r.images.length)),
+		source: Math.max(headers.source.length, ...rows.map((r) => r.source.length)),
 	};
 
 	const headerLine = [
@@ -143,6 +155,7 @@ export async function listModels(
 		headers.maxOut.padEnd(widths.maxOut),
 		headers.thinking.padEnd(widths.thinking),
 		headers.images.padEnd(widths.images),
+		headers.source.padEnd(access ? widths.source : 0),
 		...(access ? ["account access"] : []),
 	].join("  ");
 	console.log(headerLine);
@@ -156,6 +169,7 @@ export async function listModels(
 			row.maxOut.padEnd(widths.maxOut),
 			row.thinking.padEnd(widths.thinking),
 			row.images.padEnd(widths.images),
+			row.source.padEnd(access ? widths.source : 0),
 			...(access ? [row.access] : []),
 		].join("  ");
 		console.log(line);

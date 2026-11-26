@@ -1,8 +1,8 @@
 # Puzzles for browser-agent practice
 
-Public, login-free web puzzles used to exercise the browser lane end to end: read a page, extract its state, solve in code, act, and prove the result. Each entry names the address to open and the surface the puzzle is drawn on, because the surface decides where the state can be read.
+Public, login-free puzzles for exercising the browser lane: read a page, extract state, solve in code, act, prove the result. Each entry gives its address and drawing surface, which decides where state can be read.
 
-Do not use a puzzle that sits behind a CAPTCHA, login, paywall or consent wall: report it `blocked`.
+A puzzle behind a CAPTCHA, login, paywall or consent wall: report `blocked`.
 
 ## How to solve one
 
@@ -31,28 +31,28 @@ flowchart TD
     N -->|no, twice| Q[Stop and report partial]
 ```
 
-The thinking model is five questions, answered in order. Skip none; each one is cheap, and a wrong answer to an early one wastes every later step.
+Answer five questions in order; a wrong early answer wastes every later step.
 
-| Step    | Question                              | Rule                                                                                                                                                    |
-| ------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Surface | Where does the puzzle keep its state? | Open the play address directly. Take the first that holds the answer: DOM, then script state, then pixels.                                              |
-| State   | What is the state, as data?           | One JSON value: the grid, the tile order, the target coordinates. Extraction is where solvers fail, so check it once against the screen before solving. |
-| Solver  | Which known algorithm fits?           | Pick from the table below and write it as a short script. Do not reason move by move.                                                                   |
-| Act     | What is the whole move list?          | Replay the solution on the extracted state first, then send every step in one plan, by ref or by a computed position.                                   |
-| Verify  | What does the page say now?           | The page's own state or message. A reply to a click proves nothing; text drawn on a canvas needs OCR.                                                   |
+| Step    | Question                     | Rule                                                                                                                            |
+| ------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Surface | Where is the state?          | Open the play address directly; take the first that holds the answer: DOM, script state, pixels                                 |
+| State   | What is it as data?          | One JSON value (grid, tile order, target coordinates); check it once against the screen, since extraction is where solvers fail |
+| Solver  | Which known algorithm?       | Pick from the table below; write a short script, not move-by-move reasoning                                                     |
+| Act     | What is the whole move list? | Replay it on the extracted state, then send every step in one plan, by ref or computed position                                 |
+| Verify  | What does the page say now?  | Its own state or message; a click reply proves nothing; canvas text needs OCR                                                   |
 
 ### Reading pixels, cheapest first
 
-| Need                                            | Tool                                             | Notes                                                                                                                                                             |
-| ----------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Text in a picture (win message, score, digits)  | Local OCR on the saved screenshot                | Runs locally and spends no model tokens. Symbols can be misread: treat the text as a candidate and check it with a pattern.                                       |
-| Meaning of that text                            | `clasify` with the saved text file as its source | A fraction of the cost of judging the image.                                                                                                                      |
-| Difference between two pictures                 | Pixel diff in a script                           | Exact and free. A vision model is the wrong tool for a comparison code can do.                                                                                    |
-| A judgment or a location only the picture holds | `clasify` over the image file                    | Put every question about one image in one row: they share one read of it. Pair a `box` question with a presence question, and zoom and ask again before clicking. |
+| Need                                        | Tool                              | Notes                                                                                                          |
+| ------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Text in a picture                           | Local OCR on the saved screenshot | No model tokens; symbols can be misread, so check the text with a pattern                                      |
+| Meaning of that text                        | `clasify` on the saved text file  | Far cheaper than judging the image                                                                             |
+| Difference of two pictures                  | Pixel diff in a script            | Exact and free                                                                                                 |
+| Judgment or location only the picture holds | `clasify` on the image file       | One row for all questions about an image; pair `box` with a presence question; zoom and re-ask before clicking |
 
-Word each `clasify` question as one standalone fact that says what counts and names the near miss: "the screen shows a message that the round was completed, not only a Start, Next or Try again button". Act on clear answers, re-ask or crop on middling ones, and confirm any result that matters from text or the page's own state.
+Word each `clasify` question as one standalone fact that names the near miss: "the screen shows a message that the round was completed, not only a Start, Next or Try again button". Act on clear answers, re-ask or crop on middling ones, and confirm important results from text or page state.
 
-Saved captures are files. Search them with `localSearch` and read one span with `localFetch`; when too many captures remain to read, ask `clasify` which ones hold the answer and read only those.
+Saved captures are files: `localSearch` them, read a span with `localFetch`, or ask `clasify` which hold the answer.
 
 ### Solvers by puzzle kind
 
@@ -76,42 +76,38 @@ Timed puzzles: extract and solve before the timer starts where the page allows, 
 
 ## Catalogue
 
-Surface key: **DOM** (tiles and inputs are elements), **Canvas + script** (drawn on a canvas, state held in readable script variables), **Canvas runtime** (a packaged game engine; state is hard to reach, expect pixels).
+Surface: **DOM** (tiles and inputs are elements), **Canvas + script** (canvas drawing, state in readable script variables), **Canvas runtime** (packaged engine; expect pixels).
 
 ### IQ Test Labs: puzzles
 
-| Puzzle                    | Play address                                                                                          | Surface         | Notes                                              |
-| ------------------------- | ----------------------------------------------------------------------------------------------------- | --------------- | -------------------------------------------------- |
-| Find the Pug              | https://www.intelligencetest.com/puzzles/picture-puzzles/find-the-pug/find-the-pug.html               | Canvas + script | Tried. Result text is on the canvas: verify by OCR |
-| Spot the Difference       | https://www.intelligencetest.com/puzzles/picture-puzzles/spot-the-difference/spot-the-difference.html | Canvas + script | Tried. Level data is a separate script file        |
-| Twirl (pictures)          | https://www.intelligencetest.com/puzzles/picture-puzzles/twirl/twirl-pictures.html                    | DOM             | Tried. Tile order is in the elements               |
-| Twirl (numbers)           | https://www.intelligencetest.com/puzzles/math-puzzles/twirl/twirl.html                                | DOM             | Same engine as the picture version                 |
-| Sliding puzzle (pictures) | https://www.intelligencetest.com/puzzles/picture-puzzles/sliding-puzzle/game-of-fifteen.html          | DOM             |                                                    |
-| Sliding puzzle (numbers)  | https://www.intelligencetest.com/puzzles/math-puzzles/sliding-puzzle/shuffle_puzzle_classic.html      | DOM             |                                                    |
-| PIN cracker               | https://www.intelligencetest.com/puzzles/logic-puzzles/pin-cracker/pin-cracker.html                   | Canvas + script | Timed; feedback after each guess                   |
-| Sudoku                    | https://www.intelligencetest.com/puzzles/logic-puzzles/sudoku/sudoku.html                             | Canvas runtime  | Givens must be read from pixels                    |
-| Calcudoku                 | https://www.intelligencetest.com/puzzles/math-puzzles/calcudoku/calcudoku.html                        | DOM             | Grid is a table                                    |
-| Solve Math                | https://www.intelligencetest.com/puzzles/math-puzzles/solvemath/solvemath.html                        | Canvas + script | Timed arithmetic                                   |
-| Word find                 | https://www.intelligencetest.com/puzzles/word-puzzles/word-find/wordfind.html                         | DOM             | Letters are draggable elements                     |
-| Word scramble             | https://www.intelligencetest.com/puzzles/word-puzzles/word-scramble/wordscramble.html                 | DOM             | Letters are draggable elements                     |
-| Word search               | https://www.intelligencetest.com/puzzles/word-puzzles/word-search/index.html                          | Canvas + script | Played on the page itself, no inner frame          |
-| Wordoku                   | https://www.intelligencetest.com/puzzles/word-puzzles/wordoku/index.html                              | Canvas + script | Played on the page itself, no inner frame          |
+Play address: `https://www.intelligencetest.com/puzzles/` + path.
+
+| Puzzle              | Path                                                           | Surface         | Notes                                       |
+| ------------------- | -------------------------------------------------------------- | --------------- | ------------------------------------------- |
+| Find the Pug        | `picture-puzzles/find-the-pug/find-the-pug.html`               | Canvas + script | Tried; result text on canvas, verify by OCR |
+| Spot the Difference | `picture-puzzles/spot-the-difference/spot-the-difference.html` | Canvas + script | Tried; level data in a separate script file |
+| Twirl (pictures)    | `picture-puzzles/twirl/twirl-pictures.html`                    | DOM             | Tried; tile order in elements               |
+| Twirl (numbers)     | `math-puzzles/twirl/twirl.html`                                | DOM             | Same engine as pictures                     |
+| Sliding (pictures)  | `picture-puzzles/sliding-puzzle/game-of-fifteen.html`          | DOM             |                                             |
+| Sliding (numbers)   | `math-puzzles/sliding-puzzle/shuffle_puzzle_classic.html`      | DOM             |                                             |
+| PIN cracker         | `logic-puzzles/pin-cracker/pin-cracker.html`                   | Canvas + script | Timed; feedback per guess                   |
+| Sudoku              | `logic-puzzles/sudoku/sudoku.html`                             | Canvas runtime  | Givens from pixels                          |
+| Calcudoku           | `math-puzzles/calcudoku/calcudoku.html`                        | DOM             | Grid is a table                             |
+| Solve Math          | `math-puzzles/solvemath/solvemath.html`                        | Canvas + script | Timed arithmetic                            |
+| Word find           | `word-puzzles/word-find/wordfind.html`                         | DOM             | Draggable letters                           |
+| Word scramble       | `word-puzzles/word-scramble/wordscramble.html`                 | DOM             | Draggable letters                           |
+| Word search         | `word-puzzles/word-search/index.html`                          | Canvas + script | No inner frame                              |
+| Wordoku             | `word-puzzles/wordoku/index.html`                              | Canvas + script | No inner frame                              |
 
 ### IQ Test Labs: mind games
 
-| Puzzle                       | Play address                                                     | Surface |
-| ---------------------------- | ---------------------------------------------------------------- | ------- |
-| Concentration (memory pairs) | https://www.intelligencetest.com/mind-games/concentration.html   | DOM     |
-| Word Mastermind              | https://www.intelligencetest.com/mind-games/mastermind.html      | DOM     |
-| Minesweeper                  | https://www.intelligencetest.com/mind-games/minesweeper.html     | DOM     |
-| Simon says                   | https://www.intelligencetest.com/mind-games/simon-says.html      | DOM     |
-| Towers of Hanoi              | https://www.intelligencetest.com/mind-games/towers-of-hanoi.html | DOM     |
+All DOM. Play address: `https://www.intelligencetest.com/mind-games/` + `concentration.html` (memory pairs), `mastermind.html` (Word Mastermind), `minesweeper.html`, `simon-says.html`, `towers-of-hanoi.html`.
 
-Text and picture brainteasers with a revealed answer (no interaction, good for reading and judging): https://www.intelligencetest.com/brainteasers/index.html. Reaction-time tests (completeness only): https://www.intelligencetest.com/reaction-time/index.html.
+Revealed-answer brainteasers (read and judge only): https://www.intelligencetest.com/brainteasers/index.html. Reaction-time tests (completeness only): https://www.intelligencetest.com/reaction-time/index.html.
 
 ### Simon Tatham's Portable Puzzle Collection
 
-Every puzzle draws on one canvas and takes keyboard input, and each page can load a game from an ID in its address, which makes runs repeatable. Address pattern: `https://www.chiark.greenend.org.uk/~sgtatham/puzzles/js/<name>.html`.
+One canvas and keyboard input per puzzle; a game ID in the address makes runs repeatable. Address pattern: `https://www.chiark.greenend.org.uk/~sgtatham/puzzles/js/<name>.html`.
 
 | Kind                    | Names                                                                                                                      |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------- |
@@ -125,22 +121,13 @@ Index: https://www.chiark.greenend.org.uk/~sgtatham/puzzles/
 
 ### More sources (not yet tried)
 
-| Source               | Address                                            | Why                                                                |
-| -------------------- | -------------------------------------------------- | ------------------------------------------------------------------ |
-| 2048                 | https://play2048.co/                               | Simple grid state, long move sequences                             |
-| Puzzle Sudoku        | https://www.puzzle-sudoku.com/                     | Sudoku with selectable sizes                                       |
-| Puzzle Light Up      | https://www.puzzle-light-up.com/                   | Same family, a different deduction puzzle per site                 |
-| Puzzle Nonograms     | https://www.puzzle-nonograms.com/                  | Clues as text, grid as cells                                       |
-| Sudoku solver board  | https://www.sudokuwiki.org/sudoku.htm              | Input cells are form fields                                        |
-| Tower of Hanoi       | https://www.mathsisfun.com/games/towerofhanoi.html | Drag interaction                                                   |
-| Maths Is Fun puzzles | https://www.mathsisfun.com/puzzles/                | Text puzzles with revealed answers                                 |
-| WebGames             | https://webgames.convergence.ai/                   | A published suite of small browser challenges built to test agents |
+[2048](https://play2048.co/), [Puzzle Sudoku](https://www.puzzle-sudoku.com/), [Puzzle Light Up](https://www.puzzle-light-up.com/), [Puzzle Nonograms](https://www.puzzle-nonograms.com/), [Sudoku solver board](https://www.sudokuwiki.org/sudoku.htm), [Tower of Hanoi](https://www.mathsisfun.com/games/towerofhanoi.html), [Maths Is Fun puzzles](https://www.mathsisfun.com/puzzles/), and [WebGames](https://webgames.convergence.ai/), a published suite of small browser challenges built to test agents.
 
 Before adding an entry: open it once, confirm it needs no login or bot check, and record its play address and surface.
 
 ## Why this order
 
-- Turning the picture into an executable state and then running a program on it is the approach with the strongest published results for visual puzzles ([Vis2State](https://arxiv.org/pdf/2611.07397)).
-- The usual failure is extracting the constraints, not reasoning over them ([TopoBench](https://arxiv.org/pdf/2603.12133), [VisReason](https://arxiv.org/pdf/2605.25364)); hence the single check of state against the screen.
-- Generated solvers are not automatically right ([PuzzlePlex](https://arxiv.org/html/2510.06475v1)); hence replaying the solution on the state before acting.
-- Browser agents finish turn-based puzzles well and fail games that need timing ([Atlas in web games](https://arxiv.org/html/2510.26298v1)); hence reaction tests are out of scope.
+- State as an executable program is the strongest published approach for visual puzzles ([Vis2State](https://arxiv.org/pdf/2611.07397)).
+- Failures come from extracting constraints, not reasoning ([TopoBench](https://arxiv.org/pdf/2603.12133), [VisReason](https://arxiv.org/pdf/2605.25364)): check state against the screen once.
+- Generated solvers can be wrong ([PuzzlePlex](https://arxiv.org/html/2510.06475v1)): replay before acting.
+- Browser agents solve turn-based puzzles but fail timing games ([Atlas](https://arxiv.org/html/2510.26298v1)): reaction tests are out of scope.

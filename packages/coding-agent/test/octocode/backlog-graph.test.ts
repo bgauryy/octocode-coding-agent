@@ -8,8 +8,7 @@ import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { workGraph } from "../../src/octocode/graph/model.ts";
 import { linkRows } from "../../src/octocode/graph/running.ts";
 import { RunningWork } from "../../src/octocode/shared/running-work.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 
 const READY = { goal: "Observable result", why: "Needed", createdBy: "agent" as const };
 const AGENT = { id: "sly-mantle", kind: "agent" as const };
@@ -36,8 +35,8 @@ afterEach(() => {
 });
 
 function board() {
-	const db = sharedAgentDb(env);
-	return new BacklogStore(() => db, registeredWorkspace(repo, db).id);
+	const { agent, workspace } = workspaceDb(repo, env);
+	return new BacklogStore(() => agent, workspace.id);
 }
 
 async function graph(

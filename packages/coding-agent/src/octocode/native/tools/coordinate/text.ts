@@ -4,7 +4,7 @@ import { plural } from "../../../shared/text.ts";
 
 /** Every field the `coordinate` schema accepts: a subagent's schema has no `id` or `goal` (`stop` and `join` are refused there before they are read). */
 export interface CoordinateParams {
-	action: "list" | "join" | "leave" | "lock" | "unlock" | "stop" | "merge" | "grant" | "changes";
+	action: "list" | "join" | "leave" | "lock" | "unlock" | "stop" | "merge" | "discard" | "grant" | "changes";
 	id?: string;
 	branch?: string;
 	goal?: string;

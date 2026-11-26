@@ -27,6 +27,7 @@ import {
 } from "./clearing-cost.ts";
 import { clearedPlaceholder, resultDigest, sessionClearedView } from "./clearing-view.ts";
 import { inRecentUse, type KeepInUse } from "./clearing-recent.ts";
+import { supersededReads } from "./clearing-superseded.ts";
 import { historyReplaced } from "./history-cache.ts";
 import { untrustedResult } from "./untrusted-results.ts";
 
@@ -215,18 +216,23 @@ export function clearStaleResults(
 	const floor = rewriteAnyway ? CLEAR_AT_FREE_POINT_TOKENS : CLEAR_AT_LEAST_TOKENS;
 	const messages = contextMessages(ctx);
 	const view = sessionClearedView(ctx.sessionManager);
+	const alreadyCleared = sessionCleared(ctx.sessionManager);
+	const calls = toolCallArguments(messages);
 	const counted = olderCandidates(
-		[...clearableResults(messages), ...fileInputs(messages)],
-		sessionCleared(ctx.sessionManager),
+		[
+			...clearableResults(messages, supersededReads(messages, calls, ctx.cwd, alreadyCleared)),
+			...fileInputs(messages),
+		],
+		alreadyCleared,
 		new Set(view.inputs.keys()),
 	);
 	const tokensOf = (list: readonly Candidate[]) =>
 		list.reduce((chars, candidate) => chars + candidate.text.length, 0) / CHARS_PER_TOKEN;
 	// Most requests stop here: the old results are too few to be worth a changed prefix and the saved copies.
 	if (tokensOf(counted) < floor) return;
-	const calls = toolCallArguments(messages);
 	const inUse = inRecentUse(counted, messages, calls, occasion.keep);
-	const older = inUse.size === 0 ? counted : counted.filter(({ id }) => !inUse.has(id));
+	// A superseded read is never in use: the newer read serves the next step.
+	const older = inUse.size === 0 ? counted : counted.filter(({ id, superseded }) => superseded || !inUse.has(id));
 	if (tokensOf(older) < floor) return;
 	const tokens = messages.map(({ message }) => estimateTokens(message as never));
 	// Tokens from each message to the end, so the recorded cost of a run from any start is one lookup.

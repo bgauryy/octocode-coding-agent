@@ -50,7 +50,7 @@ async function cleanup(
 ) {
 	try {
 		await backend?.close();
-		const table = await readProcessTable();
+		const table = await readProcessTable({ fresh: true });
 		for (const [pid, started] of identities)
 			if (started && table?.rows.get(pid)?.started === started) {
 				try {
@@ -74,7 +74,7 @@ it.skipIf(process.platform === "win32").each(["exit", "reject"])(
 		try {
 			backend = await AcpBackend.connect(acpClientHost, fixture.input, deny);
 			const ready = fixture.events().find((event) => event.event === "ready")!;
-			const before = await readProcessTable();
+			const before = await readProcessTable({ fresh: true });
 			for (const pid of [ready.root!, ready.helper!]) identities.set(pid, before?.rows.get(pid)?.started);
 			expect(before?.rows.get(ready.helper!)?.ppid).toBe(ready.root);
 			await backend.close();
@@ -117,7 +117,7 @@ it.skipIf(process.platform === "win32")(
 		try {
 			backend = await AcpBackend.connect(host, fixture.input, deny);
 			const ready = fixture.events().find((event) => event.event === "ready")!,
-				before = await readProcessTable();
+				before = await readProcessTable({ fresh: true });
 			for (const pid of [ready.root!, ready.helper!]) identities.set(pid, before?.rows.get(pid)?.started);
 			const controller = new AbortController();
 			work = backend.prompt("wait", { signal: controller.signal, timeoutMs: 5_000 }).catch((error) => error);

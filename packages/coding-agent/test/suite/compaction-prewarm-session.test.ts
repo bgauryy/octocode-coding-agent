@@ -8,8 +8,8 @@ import { createHarness } from "./harness.ts";
 
 /** About `tokens` of context, at the estimator's characters per token. */
 const filler = (tokens: number, label: string) => `${label} ${"x".repeat(Math.round(tokens * CHARS_PER_TOKEN))}`;
-/** The threshold of a 200k window with a 1,000-token reserve, and the prewarm lead before it. */
-const THRESHOLD = 199_000;
+/** Where the loop stops for compaction in a 200k window with a 1,000-token reserve (90% of the window), and the prewarm lead before it. */
+const THRESHOLD = 180_000;
 const LEAD = 20_000;
 /**
  * Tokens for each of `count` messages that bring the context from `current` to `target`. The faux provider reports

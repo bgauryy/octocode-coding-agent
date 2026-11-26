@@ -58,7 +58,8 @@ describe("how a run ended", () => {
 		harness.session.subscribe((event) => {
 			if (event.type === "agent_settled") settled.push(event.outcome);
 		});
-		harness.setResponses([fauxAssistantMessage("cut", { stopReason: "length" })]);
+		// Far from the window a cut-off reply is continued, up to the run's continuations; the last cut-off ends the run.
+		harness.setResponses(Array.from({ length: 3 }, () => fauxAssistantMessage("cut", { stopReason: "length" })));
 		await harness.session.prompt("go");
 		expect(harness.session.lastRunOutcome?.status).toBe("truncated");
 		expect(settled).toEqual([harness.session.lastRunOutcome]);

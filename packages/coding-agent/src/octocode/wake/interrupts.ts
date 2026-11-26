@@ -93,7 +93,9 @@ export class Interrupts {
 
 	/** Forgets what is held (the session left): it was never sent. */
 	clear(): void {
-		this.held = [];
+		for (const send of this.held.splice(0)) {
+			send.done.reject(new Error("Session ended before held interrupt was delivered"));
+		}
 		this.ranStep = false;
 		if (this.waiting.signal.aborted) this.waiting = new AbortController();
 	}

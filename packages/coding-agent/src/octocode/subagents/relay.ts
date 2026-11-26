@@ -73,7 +73,7 @@ export interface RelayHost {
 	/** Tells this session's model something about a child (`graph.tell`): a wake when it is idle, read after its turn when busy. */
 	tell?: ((notice: string) => void) | undefined;
 	/** The budgets of running children, so this session can show and raise them (`coordinate`). */
-	budgets?: Pick<RunningBudgets, "add" | "remove"> | undefined;
+	budgets?: Pick<RunningBudgets, "add" | "remove" | "enableAsk"> | undefined;
 }
 
 /** The child as the parent knows it: from its own spawn, not from anything the child says. */

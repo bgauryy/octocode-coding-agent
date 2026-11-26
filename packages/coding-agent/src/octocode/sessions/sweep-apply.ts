@@ -126,6 +126,10 @@ export async function applySweep(
 				index.agent.mirror.db,
 				plan.orphans.filter((id) => !failedSessions.has(id) && !active(id)),
 				plan.at - plan.retention.days * DAY_MS,
+				index
+					.files()
+					.slice(1)
+					.map((file) => file.db),
 			);
 		} catch (error) {
 			result.failed.push({ path: "agent database", error: errorMessage(error) });
@@ -137,7 +141,7 @@ export async function applySweep(
 	// connection's reader or writer leaves the rest for a later checkpoint (`busy`), instead of holding this thread.
 	if (changed) {
 		try {
-			maintenance.checkpoint(index.agent.db, 0);
+			for (const file of index.files()) maintenance.checkpoint(file.db, 0);
 			maintenance.checkpoint(index.agent.mirror.db, 0);
 		} catch (error) {
 			result.failed.push({ path: "agent database", error: errorMessage(error) });

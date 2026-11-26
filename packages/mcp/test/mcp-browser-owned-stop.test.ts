@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { browserStateDir, stopOwnedBrowsers } from "../src/presets/browser/owned.ts";
+import { browserStateDir, recordBrowser, stopOwnedBrowsers } from "../src/presets/browser/owned.ts";
 
 const alive = (pid: number): boolean => {
 	try {
@@ -83,5 +83,22 @@ describe("stopOwnedBrowsers", () => {
 			real.chmodSync(cwd, 0o700);
 		}
 		expect(reported.join("\n")).toContain(profileDir);
+	}, 20_000);
+
+	it("leaves a Chrome a running peer session also uses, and stops it once the peer is gone", async () => {
+		const { cwd, pid } = await fakeChrome("39873");
+		const peer = spawn("sleep", ["60"], { stdio: "ignore" });
+		const peerPid = peer.pid as number;
+		const record = join(browserStateDir(cwd), "octocode-proxy-39873.json");
+		writeFileSync(record, JSON.stringify({ proxyPort: 1, owners: [peerPid] }));
+		recordBrowser(cwd, "39873", 1); // this session reuses the peer's Chrome
+		await stopOwnedBrowsers(cwd, () => undefined);
+		expect(alive(pid)).toBe(true);
+		expect(JSON.parse(readFileSync(record, "utf8")).owners).toEqual([peerPid]);
+		peer.kill("SIGKILL");
+		await until(() => !alive(peerPid));
+		writeFileSync(record, JSON.stringify({ proxyPort: 1, owners: [peerPid, process.pid] }));
+		await stopOwnedBrowsers(cwd, () => undefined);
+		expect(alive(pid)).toBe(false);
 	}, 20_000);
 });

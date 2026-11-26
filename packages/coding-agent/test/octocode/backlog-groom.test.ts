@@ -6,8 +6,7 @@ import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { runBacklogCommand } from "../../src/cli/backlog-command.ts";
 import { groomReport, groomText } from "../../src/octocode/backlog/groom.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 
 const DAY = 86_400_000;
 const HUMAN = { id: "human", surface: "command" as const };
@@ -37,7 +36,7 @@ afterEach(() => {
 });
 
 const board = (clock = () => now) =>
-	new BacklogStore(() => sharedAgentDb(env), registeredWorkspace(repo, sharedAgentDb(env)).id, clock);
+	new BacklogStore(() => workspaceDb(repo, env).agent, workspaceDb(repo, env).workspace.id, clock);
 
 describe("backlog groom: grooming's mechanical checks run as code", () => {
 	it("flags finished epics, gone paths, duplicates, blocked and idle items, and leaves sound items out", async () => {

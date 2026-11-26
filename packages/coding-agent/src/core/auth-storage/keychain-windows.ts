@@ -76,6 +76,7 @@ export interface WindowsSpec {
 	store(provider: string, secret: string): { args: string[]; input: string };
 	remove(provider: string): string[];
 	reference(provider: string): string;
+	read(provider: string): string[];
 	isNotFound(result: { code: number | null; stderr: string }): boolean;
 	maxInputBytes: number;
 }
@@ -97,6 +98,7 @@ export function windowsSpec(file: string, command: string, service: string): Win
 		store: (provider, secret) => ({ args: args(store(provider)), input: secret }),
 		remove: (provider) => args(remove(provider)),
 		reference: (provider) => `!${command} ${args(read(provider)).join(" ")}`,
+		read: (provider) => args(read(provider)),
 		isNotFound: (result) => result.code === WINDOWS_NOT_FOUND_EXIT,
 		maxInputBytes: WINDOWS_MAX_SECRET_BYTES,
 	};

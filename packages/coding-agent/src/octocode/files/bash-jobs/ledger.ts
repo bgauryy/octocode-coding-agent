@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { type AgentDb, type JobRow, jobs } from "../../../../../db/src/api.ts";
-import { registeredWorkspace } from "../../../storage/workspace-database.ts";
+import { registeredWorkspaceDb, workspaceDb } from "../../../storage/workspace-database.ts";
 import { ownerAlive } from "../../shared/job-standing.ts";
 import type { BashJob, JobExit } from "./types.ts";
 
@@ -36,21 +36,24 @@ const joinKey = (workspaceId: string, cwd: string, command: string): string =>
 
 /**
  * The background jobs of every session of this host as rows (`jobs` table), written when a job starts and ended. A row
- * finds and describes a job; it grants nothing over it: only the job's own owner record signals its process.
+ * finds and describes a job; it grants nothing over it: only the job's own owner record signals its process. Each row
+ * lives in the file of its job's workspace (`workspaceDb`).
  */
 export class JobLedger {
-	private readonly agentDb: () => AgentDb;
 	private readonly sessionId: () => string;
+	private readonly env: NodeJS.ProcessEnv;
+	/** The file each running job of this session was recorded in, until it ends: its folder may be gone by then. */
+	private readonly recorded = new Map<string, AgentDb>();
 
-	constructor(agentDb: () => AgentDb, sessionId: () => string) {
-		this.agentDb = agentDb;
+	constructor(sessionId: () => string, env: NodeJS.ProcessEnv = process.env) {
 		this.sessionId = sessionId;
+		this.env = env;
 	}
 
 	/** Records a job that just started. */
 	record(job: BashJob, agent: string | undefined): void {
-		const db = this.agentDb();
-		const workspace = registeredWorkspace(job.cwd, db);
+		const { agent: db, workspace } = workspaceDb(job.cwd, this.env);
+		this.recorded.set(job.id, db);
 		jobs.insert(db.db, {
 			workspaceId: workspace.id,
 			sessionId: this.sessionId(),
@@ -69,19 +72,26 @@ export class JobLedger {
 
 	/** Marks the job ended: stopped when the feature stopped it, else finished. */
 	end(job: BashJob, exit: JobExit, at = Date.now()): void {
-		jobs.end(this.agentDb().db, this.sessionId(), job.id, job.stopped ? "stopped" : "finished", exit.code, at);
+		const db = this.recorded.get(job.id) ?? workspaceDb(job.cwd, this.env).agent;
+		this.recorded.delete(job.id);
+		jobs.end(db.db, this.sessionId(), job.id, job.stopped ? "stopped" : "finished", exit.code, at);
 	}
 
 	/** The oldest running job with this workspace, folder and command whose owner is alive, if any. */
 	joinable(cwd: string, command: string): JobRow | undefined {
-		const db = this.agentDb();
-		const workspace = registeredWorkspace(cwd, db);
+		const { agent: db, workspace } = workspaceDb(cwd, this.env);
 		return jobs.runningByKey(db.db, workspace.id, joinKey(workspace.id, cwd, command)).find((row) => ownerAlive(row));
 	}
 
+	/** The file holding `row`; undefined when its workspace is no longer registered. */
+	fileOf(row: Pick<JobRow, "workspace_id">): AgentDb | undefined {
+		return registeredWorkspaceDb(row.workspace_id, this.env)?.agent;
+	}
+
 	/** A job's row now, to see whether it ended. */
-	current(row: Pick<JobRow, "session_id" | "job">): JobRow | undefined {
-		return jobs.bySessionJob(this.agentDb().db, row.session_id, row.job);
+	current(row: Pick<JobRow, "session_id" | "job" | "workspace_id">): JobRow | undefined {
+		const db = this.fileOf(row);
+		return db && jobs.bySessionJob(db.db, row.session_id, row.job);
 	}
 
 	/** Whether the row is a job of this session. */

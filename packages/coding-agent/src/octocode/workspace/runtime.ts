@@ -218,14 +218,10 @@ export class WorkspaceRuntime {
 	bind(ctx: FeatureContext, backlog: Backlog): RevisedWorkspace {
 		const sessionId = ctx.sessionManager.getSessionId();
 		const application = this.application(ctx);
-		application?.setReceiptStore(
-			new ApplicationCommands((this.operations.database ?? sharedAgentDb)(), backlog.store.repo),
-		);
-		const commands = new WorkspaceCommands(
-			(this.operations.database ?? sharedAgentDb)(),
-			backlog.store.repo,
-			sessionId,
-		);
+		// The workspace's file: its receipts, commands, runs, mail and events; session rows stay in the machine file.
+		const database = () => this.operations.database?.() ?? backlog.store.agent;
+		application?.setReceiptStore(new ApplicationCommands(database(), backlog.store.repo));
+		const commands = new WorkspaceCommands(database(), backlog.store.repo, sessionId);
 		if (!this.sessionId) this.state.setState({ sessionId });
 		let closed = false;
 		const signal = this.sessionController.signal;
@@ -239,9 +235,9 @@ export class WorkspaceRuntime {
 			)
 				throw new Error("This session changed. Reopen /octocode.");
 		};
-		const database = () => (this.operations.database ?? sharedAgentDb)();
+		const machine = () => (this.operations.database ?? sharedAgentDb)();
 		// Agents that finished leave the team but stay in the profiler, read from their stored runs.
-		const ended = endedRuns(database, sessionId);
+		const ended = endedRuns(database, sessionId, machine);
 		let departed: ReturnType<typeof departedLookup> | undefined;
 		const profiler = createProfiler({
 			sessionId,
@@ -258,8 +254,8 @@ export class WorkspaceRuntime {
 				return [...live.map(agentBase), ...ended.members(skip)];
 			},
 			traffic: () => this.operations.traffic(),
-			silences: (ids) => storedSilences(database().db, ids),
-			sessionTranscript: (id) => sessionTranscript(database().db, id),
+			silences: (ids) => storedSilences(database().db, ids, { team: teamScope(ctx.cwd, process.env) }),
+			sessionTranscript: (id) => sessionTranscript(machine().db, id),
 			history: (limit, before) => {
 				const involves = this.operations.involves?.();
 				if (!involves) throw new Error("This session cannot tell which messages involve it.");
@@ -277,7 +273,7 @@ export class WorkspaceRuntime {
 			},
 			transcript: (id) => {
 				const member = this.operations.members().find((each) => each.id === id);
-				return member ? memberTranscript(database().db, member) : ended.transcript(id);
+				return member ? memberTranscript(database().db, member, machine().db) : ended.transcript(id);
 			},
 			// Agents compact against their working budget, not the catalog capacity (core/agent-session/model-control.ts).
 			contextWindowOf: (provider, model) => {
@@ -291,14 +287,14 @@ export class WorkspaceRuntime {
 			application,
 			profiler,
 			/**
-			 * Stamps every input of `snapshot`: the events (counted here), receipts, members and traffic (the shared
+			 * Stamps every input of `snapshot`: the events (counted here), receipts, members and traffic (the workspace's
 			 * database file; every writer moves it), and expiry by time. Undefined when `operations.expiry` is missing.
 			 */
 			revision: () => {
 				active();
 				const expiry = this.operations.expiry?.();
 				if (expiry === undefined) return undefined;
-				return `${this.eventsVersion}|${dbStamp((this.operations.database ?? sharedAgentDb)().file)}|${expiry}`;
+				return `${this.eventsVersion}|${dbStamp(database().file)}|${expiry}`;
 			},
 			snapshot: () => {
 				active();

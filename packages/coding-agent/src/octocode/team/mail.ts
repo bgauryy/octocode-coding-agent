@@ -155,16 +155,18 @@ export class Mail {
 					}),
 				)
 				.join("\n\n");
+		const sourceOf = (message: Message) =>
+			mailSource(message, parentId, { fromUser: this.verified(message), parentSigned: this.parentSigned(message) });
+		const waking = batch.filter((message) => message.wake);
+		const quiet = batch.filter((message) => !message.wake);
 		return this.inject(
 			content,
 			{ messages: batch },
-			{ triggerTurn: batch.some((message) => message.wake), deliverAs: "steer" },
+			{ triggerTurn: waking.length > 0, deliverAs: "steer" },
 			onRejected,
 			undefined,
-			batch.filter((message) => message.wake).map(mailEvent),
-			batch.map((message) =>
-				mailSource(message, parentId, { fromUser: this.verified(message), parentSigned: this.parentSigned(message) }),
-			),
+			waking.map(mailEvent),
+			[...waking.map(sourceOf), ...quiet.map(sourceOf)],
 		);
 	}
 
@@ -258,7 +260,7 @@ export class Mail {
 				display: true,
 				details,
 			});
-			sending = wakeGateOf(this.api).emit(wakes, message, options, undefined, sources);
+			sending = wakeGateOf(this.api).emit(wakes, message, options, undefined, sources, () => onRejected?.());
 		} catch {
 			return false; // The session ended or is not ready.
 		}

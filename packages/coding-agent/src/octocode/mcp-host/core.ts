@@ -10,7 +10,7 @@ import {
 	getAgentDir,
 	getContextOptimizationDir,
 	getDocsPath,
-	getLegacyConfigDirs,
+	getPiConfigDirs,
 	getOctocodeHome,
 	getPackageDir,
 	isBunBinary,
@@ -49,7 +49,7 @@ const identity: McpHostPorts["identity"] = {
 const paths: McpHostPorts["paths"] = {
 	agentDir: () => getAgentDir(),
 	octocodeHome: (env) => getOctocodeHome(env),
-	legacyConfigDirs: (agentDir) => getLegacyConfigDirs(agentDir),
+	legacyConfigDirs: (agentDir) => getPiConfigDirs(agentDir),
 	contextOptimizationDir: (agentDir) => getContextOptimizationDir(agentDir),
 	contextOptimizationDirs: (cwd, agentDir) => contextOptimizationDirs(cwd, agentDir),
 	sessionRoots: (cwd, env) => [sessionsRoot(env, cwd), sessionTempRoot(env, cwd)],

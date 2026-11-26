@@ -13,6 +13,7 @@ const COMMANDS: ReadonlyArray<readonly [string, string]> = [
 	["list", "List installed packages from settings"],
 	["configuration [verb]", "List, enable, disable, set or add configuration (--local, --json)"],
 	["auth <command>", "Print credentials or check provider readiness"],
+	["providers list [--json]", "List providers with the models.json that defines each, without any provider request"],
 	["models discover", "Compare vendor model IDs with the local catalog"],
 	["mcp <command>", "Configure MCP servers, check status, or sign in"],
 	["trust <list|add|remove>", "Show, grant or revoke folder trust"],

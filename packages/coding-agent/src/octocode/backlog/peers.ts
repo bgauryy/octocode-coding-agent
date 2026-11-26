@@ -1,7 +1,6 @@
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { FeatureContext, FeatureSetup } from "../../core/features/index.ts";
 import { SETTINGS_DEFAULTS } from "../../core/settings-defaults.ts";
-import { sharedAgentDb } from "../../storage/database.ts";
 import { backlog as backlogQueries } from "../../../../db/src/api.ts";
 import type { DatabaseFollower } from "../shared/database-follower.ts";
 import { BACKLOG_CHANGE_CHANNEL } from "../shared/backlog-change.ts";
@@ -58,9 +57,8 @@ export function startBacklogFeed(
 	reservations?: Reservations,
 	wakes?: PeerWakes,
 ): BacklogFeed {
-	const env = options.env ?? process.env;
 	const backlog = openBacklog(ctx, options);
-	const db = () => sharedAgentDb(env).db;
+	const db = () => backlog.store.agent.db;
 	const me = { session: backlog.session, agent: options.agentId?.() };
 	const failed = (error: unknown) => {
 		const text = `Backlog change feed: ${errorMessage(error)}`;

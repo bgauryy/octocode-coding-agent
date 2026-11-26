@@ -1,2 +1,1 @@
-Context from {{source}} hooks:
-{{text}}
+Context from {{source}} hooks

@@ -54,7 +54,7 @@ export async function checkMerged(
 	if (!pending.length) return refs;
 	const ids = pending.map((ref) => ref.slice(REF_PREFIX.length));
 	throw new BacklogError(
-		`${item.ref} is not done while its isolated change is unmerged (${pending.join(", ")}). Check live sessions with \`agent\` type \`coordinate\` action \`list\` and tell any that touch these files, then merge with action \`merge\` subagent \`${ids[0]}\` and verify; or ask the user to discard it (\`/agents discard ${ids[0]}\`), or close the item if the work is abandoned.`,
+		`${item.ref} is not done while its isolated change is unmerged (${pending.join(", ")}). Check live sessions with \`agent\` type \`coordinate\` action \`list\` and tell any that touch these files, then merge with action \`merge\` subagent \`${ids[0]}\` (a change already applied by hand only drops the ref) and verify; or discard work you replaced with action \`discard\` (asks the user), or close the item if the work is abandoned.`,
 	);
 }
 

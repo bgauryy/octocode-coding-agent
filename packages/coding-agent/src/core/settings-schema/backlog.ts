@@ -11,6 +11,15 @@ export const BacklogSettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.backlog.qa,
 			}),
 		),
+		compactOnDone: Type.Optional(
+			Type.Number({
+				minimum: 0,
+				maximum: 1,
+				description:
+					"Floor on the share of the room before automatic compaction that the history (the context less the system prompt and tool declarations) must have reached before `backlog done` may compact the main session's context; it limits how often this runs, and a cost check limits losses: the compaction runs only when the requests the session still expects for its own open items repay the summary. The summary keeps the finished items in focus. `0` turns it off. Subagents never compact this way.",
+				default: SETTINGS_DEFAULTS.backlog.compactOnDone,
+			}),
+		),
 	},
 	{ additionalProperties: false },
 );

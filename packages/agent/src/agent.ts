@@ -108,6 +108,7 @@ export class Agent {
 		this.beforeToolCall = runtimeOptions.beforeToolCall;
 		this.afterToolCall = runtimeOptions.afterToolCall;
 		this.unknownToolMessage = runtimeOptions.unknownToolMessage;
+		this.resolveUndeclaredTool = runtimeOptions.resolveUndeclaredTool;
 		this.pendingToolNames = runtimeOptions.pendingToolNames;
 		this.finishTurn = runtimeOptions.finishTurn;
 		this.prepareRequest = runtimeOptions.prepareRequest;
@@ -277,13 +278,13 @@ export class Agent {
 		if (lastMessage.role === "assistant") {
 			const queuedSteering = this.steeringQueue.drain();
 			if (queuedSteering.length > 0) {
-				await this.runPromptMessages(queuedSteering, { skipInitialSteeringPoll: true });
+				await this.runPromptMessages(queuedSteering, { skipInitialSteeringPoll: true, initialKind: "steer" });
 				return;
 			}
 
 			const queuedFollowUps = this.followUpQueue.drain();
 			if (queuedFollowUps.length > 0) {
-				await this.runPromptMessages(queuedFollowUps);
+				await this.runPromptMessages(queuedFollowUps, { initialKind: "followUp" });
 				return;
 			}
 
@@ -295,7 +296,7 @@ export class Agent {
 
 	private async runPromptMessages(
 		messages: AgentMessage[],
-		options: { skipInitialSteeringPoll?: boolean } = {},
+		options: { skipInitialSteeringPoll?: boolean; initialKind?: InputBatch["kind"] } = {},
 	): Promise<void> {
 		await this.runWithLifecycle(async (signal, emit) => {
 			await runAgentLoop(
@@ -305,6 +306,7 @@ export class Agent {
 				emit,
 				signal,
 				this.streamFunction,
+				options.initialKind ? { initialKind: options.initialKind } : undefined,
 			);
 		});
 	}

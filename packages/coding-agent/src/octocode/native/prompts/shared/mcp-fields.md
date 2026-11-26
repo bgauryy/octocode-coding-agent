@@ -1,2 +1,2 @@
 - Native tools: `reason` is one sentence of why.
-- After validation fails, compare the sent arguments with the rejected paths. Change only the invalid input. If the same contract fails again, stop retrying and diagnose it.
+- After validation fails, change only the rejected input; if the same contract fails again, stop and diagnose it.

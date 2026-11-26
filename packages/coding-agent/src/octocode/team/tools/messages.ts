@@ -123,16 +123,25 @@ export function registerSendMessageTool(
 		const to = params.to;
 		if (params.attach && params.forward !== undefined)
 			throw new Error("attach goes with a new message, not a forward. Nothing was sent.");
+		const members = team.members();
+		const trimmedTo = to?.trim();
+		const crossProcessTopPeer =
+			trimmedTo !== undefined &&
+			members.some((each) => each.id === trimmedTo && each.parentId === undefined && each.pid !== process.pid);
+		const coordinatorPeer =
+			trimmedTo === "coordinator" && !members.some((each) => each.id === "coordinator" && each.pid === process.pid);
 		if (
-			to !== undefined &&
-			peers?.addresses(to) &&
-			!team.members().some((each) => each.id === to || each.role === to)
+			trimmedTo !== undefined &&
+			peers?.addresses(trimmedTo) &&
+			(crossProcessTopPeer ||
+				coordinatorPeer ||
+				!members.some((each) => each.id === trimmedTo || each.role === trimmedTo))
 		) {
 			if (params.attach)
 				throw new Error(
-					`${to} is another process: attach reaches teammates only. Nothing was sent; send the message without it.`,
+					`${trimmedTo} is another process: attach reaches teammates only. Nothing was sent; send the message without it.`,
 				);
-			return sendToPeer(peers, { ...params, to }, ctx, signal);
+			return sendToPeer(peers, { ...params, to: trimmedTo }, ctx, signal);
 		}
 		const me = await team.patiently(() => team.join(), signal);
 		if (params.forward !== undefined) return forwardResult(team, me.id, params, signal);

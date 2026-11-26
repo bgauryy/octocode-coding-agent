@@ -23,7 +23,8 @@ export function labelHttpVerdict(hook: HookHandler, verdict: HookVerdict): HookV
 	const header = renderPrompt("notices/hooks/http-origin.md", { host: headerText(hostOf(hook.url), 80) });
 	return {
 		...verdict,
-		...(verdict.context ? { context: fenceUntrusted(header, verdict.context) } : {}),
+		// `context` reaches the model through `hookContext`, which fences it: only the origin line goes in front.
+		...(verdict.context ? { context: `${header}:\n${verdict.context}` } : {}),
 		...(verdict.continueReason ? { continueReason: fenceUntrusted(header, verdict.continueReason) } : {}),
 	};
 }

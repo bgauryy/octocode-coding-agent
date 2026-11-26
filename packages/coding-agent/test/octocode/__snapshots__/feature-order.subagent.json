@@ -169,6 +169,7 @@
 			"withNativePermissionOwners@octocode/permission/native-tools.ts",
 			"Delivery.install@octocode/ui/delivery.ts",
 			"registerReaderRole@octocode/session-guards.ts",
+			"registerCliModels@octocode/cli-models/register.ts",
 			"octocode@octocode/index.ts",
 			"registerBashTool@octocode/native/tools/bash/tool.ts",
 			"registerProcesses@octocode/processes/register.ts",

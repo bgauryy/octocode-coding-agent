@@ -1,3 +1,5 @@
+import { execFile, spawn } from "node:child_process";
+import { promisify } from "node:util";
 import { gitQuiet } from "../../utils/git-run.ts";
 import { heldChanges, mergeRef } from "../worktrees/merge.ts";
 import { ID_PATTERN, REF_PREFIX, repoRoot } from "./worktree-base.ts";
@@ -38,6 +40,33 @@ export async function savedChanges(
 	if (!ref) return undefined;
 	const changed = (await gitQuiet(repo, ["diff", "--name-only", "--no-renames", `HEAD...${ref}`])) ?? "";
 	return { ref, files: changed.split("\n").filter(Boolean) };
+}
+
+/** Reverse-applies `patch` with `--check`: whether the working tree of `repo` already holds every change it makes. */
+function reverseApplies(repo: string, patch: string): Promise<boolean> {
+	return new Promise((resolve, reject) => {
+		const child = spawn("git", ["-C", repo, "apply", "--reverse", "--check", "-"], {
+			stdio: ["pipe", "ignore", "ignore"],
+		});
+		child.once("error", reject);
+		child.once("close", (code) => resolve(code === 0));
+		child.stdin.end(patch);
+	});
+}
+
+/**
+ * Whether every change of `agentId`'s saved ref since its merge base with HEAD is already in the working tree (applied
+ * by hand while the tree had other edits): that diff reverse-applies cleanly. False when nothing is saved or it changes nothing.
+ */
+export async function changesInTree(cwd: string, agentId: string): Promise<boolean> {
+	if (!ID_PATTERN.test(agentId)) return false;
+	const repo = repoRoot(cwd);
+	const ref = await savedRef(repo, agentId);
+	if (!ref) return false;
+	const { stdout } = await promisify(execFile)("git", ["-C", repo, "diff", "--binary", `HEAD...${ref}`], {
+		maxBuffer: 256 * 1024 * 1024,
+	});
+	return stdout.length > 0 && reverseApplies(repo, stdout);
 }
 
 /** Deletes the saved ref of `agentId` without merging it; the ref it deleted, or why there was none. */

@@ -43,12 +43,7 @@ export function runFailureMessage(
 	};
 }
 
-/** End a stream whose loop threw the way a failed run ends: an error message, then `agent_end`. */
-/**
- * Ends the stream with a failure message when the loop throws. It does not abort `signal`: the caller owns the signal and
- * its controller, and also uses it to decide whether the failure was a user abort, so the loop only reads it. A caller that
- * wants other work stopped after a failure aborts its own controller when it sees the failure message.
- */
+/** End a stream whose loop threw with a failure message and `agent_end`, leaving the caller's signal untouched. */
 function endWithFailure(
 	stream: EventStream<AgentEvent, AgentMessage[]>,
 	config: AgentLoopConfig,
@@ -139,21 +134,31 @@ export async function runAgentLoop(
 	emit: AgentEventSink,
 	signal: AbortSignal | undefined,
 	streamFn: StreamFn,
+	options?: { initialKind?: "initial" | "steer" | "followUp" },
 ): Promise<AgentMessage[]> {
 	const newMessages: AgentMessage[] = [];
 	const currentContext: AgentContext = { ...context, messages: [...context.messages] };
+	const initialKind = options?.initialKind ?? "initial";
 	await emit({ type: "agent_start" });
-	if (prompts.length) config.onInputSelected?.({ kind: "initial", messages: prompts });
+	if (prompts.length) config.onInputSelected?.({ kind: initialKind, messages: prompts });
 	await emit({ type: "turn_start" });
 	const commit = inputCommitter(currentContext, newMessages, emit);
-	const input = await config.prepareInput?.({ kind: "initial", messages: prompts }, signal, commit);
+	const input = await config.prepareInput?.({ kind: initialKind, messages: prompts }, signal, commit);
 	await commit(input?.messages ?? prompts, input?.stop ? signal : undefined);
 
 	if (input?.stop) {
 		await emit({ type: "agent_end", messages: newMessages });
 		return newMessages;
 	}
-	await runLoop(currentContext, newMessages, config, signal, emit, streamFn ?? getDefaultStreamFn());
+	await runLoop(
+		currentContext,
+		newMessages,
+		config,
+		signal,
+		emit,
+		streamFn ?? getDefaultStreamFn(),
+		initialKind !== "initial" && prompts.length > 0,
+	);
 	return newMessages;
 }
 
@@ -199,11 +204,13 @@ async function runLoop(
 	signal: AbortSignal | undefined,
 	emit: AgentEventSink,
 	streamFunction: StreamFn,
+	initialDrained = false,
 ): Promise<void> {
 	let currentContext = initialContext;
 	let config = initialConfig;
 	let lastCompletedTurn: PrepareNextTurnContext | undefined;
 	let explicitContinuation = false;
+	let firstTurnDrained = initialDrained;
 	// Messages a turn boundary asked to add before the next request.
 	let boundaryMessages: AgentMessage[] = [];
 	// Check for steering messages at start (user may have typed while waiting)
@@ -242,7 +249,8 @@ async function runLoop(
 
 			if (!selected && pendingMessages.length)
 				config.onInputSelected?.({ kind: pendingKind, messages: pendingMessages });
-			const inputSelected = pendingMessages.length > 0;
+			const inputSelected = pendingMessages.length > 0 || firstTurnDrained;
+			firstTurnDrained = false;
 			const commit = inputCommitter(currentContext, newMessages, emit);
 			if (config.prepareInput && pendingMessages.length > 0) {
 				await commit(preparedMessages);
@@ -310,11 +318,10 @@ async function runLoop(
 
 			const toolResults: ToolResultMessage[] = [];
 			hasMoreToolCalls = false;
+			let batchHalted = false;
 			if (toolCalls.length === 0) early?.dispose();
 			if (toolCalls.length > 0) {
-				// A "length" stop means the output was cut off by the token limit, so
-				// every tool call in the message may carry truncated arguments. Fail
-				// them all instead of executing potentially borked calls.
+				// Truncated messages may hold incomplete salvaged tool-call arguments: fail them all without executing.
 				const executedToolBatch =
 					message.stopReason === "length"
 						? await failToolCallsFromTruncatedMessage(toolCalls, message, emit)
@@ -327,6 +334,7 @@ async function runLoop(
 				early?.dispose();
 				toolResults.push(...executedToolBatch.messages);
 				hasMoreToolCalls = !executedToolBatch.terminate;
+				batchHalted = executedToolBatch.halted === true;
 
 				for (const result of toolResults) {
 					currentContext.messages.push(result);
@@ -347,7 +355,7 @@ async function runLoop(
 			// A boundary can veto continuation after a completed tool batch. A run aborted earlier, during its tools,
 			// deliberately goes on: queued steering is committed, and the turn ends with an aborted assistant message that
 			// marks the interruption in the transcript, made without preparing or sending a request.
-			if ((!abortedBeforeBoundary && signal?.aborted) || decision?.action === "end") {
+			if ((!abortedBeforeBoundary && signal?.aborted) || decision?.action === "end" || batchHalted) {
 				await emit({ type: "agent_end", messages: newMessages });
 				return;
 			}
@@ -363,8 +371,8 @@ async function runLoop(
 			}
 		}
 
-		// Agent would stop here. Check for follow-up messages.
-		const followUpMessages = (await config.getFollowUpMessages?.()) ?? [];
+		// Agent would stop here. Check for follow-up messages unless the run already aborted.
+		const followUpMessages = signal?.aborted ? [] : ((await config.getFollowUpMessages?.()) ?? []);
 		if (followUpMessages.length > 0) {
 			// Set as pending so inner loop processes them
 			explicitContinuation = false;

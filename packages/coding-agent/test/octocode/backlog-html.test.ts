@@ -1,4 +1,4 @@
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { registeredWorkspace, workspaceDb } from "../../src/storage/workspace-database.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { fixtureBacklog } from "./backlog-fixture.ts";
 import { webCommand } from "../../src/octocode/workspace/command.ts";
@@ -39,7 +39,9 @@ afterEach(() => {
 	fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-const storeFor = (repo: string) => fixtureBacklog(() => sharedAgentDb(), repo);
+/** The workspace file holding the board rows of these tests' stores (the machine file while workspace files are off). */
+const boardDb = () => workspaceDb(tmp).agent;
+const storeFor = (repo: string) => fixtureBacklog(boardDb, repo);
 
 /** The JSON block of a page, parsed back, and the page script. */
 function parts(html: string): { data: Snapshot; script: string } {
@@ -160,7 +162,7 @@ describe("backlog snapshot", () => {
 	it("refuses to snapshot text that looks like a secret, naming the item and the field", () => {
 		const store = storeFor("secret");
 		populate(store);
-		const raw = sharedAgentDb().db;
+		const raw = boardDb().db;
 		// Text stored before the write-time check, or by another build, bypasses `refuseSecrets`: plant it directly.
 		raw.prepare("UPDATE backlog SET body = ? WHERE seq = 3 AND workspace_id = 'secret'").run(`token at ${SECRET}`);
 		expect(() => backlogSnapshot(store, "r", NOW)).toThrow(
@@ -190,7 +192,7 @@ describe("backlog html page", () => {
 			createdBy: "agent",
 			tags: ["t"],
 		});
-		const raw = sharedAgentDb().db;
+		const raw = boardDb().db;
 		raw
 			.prepare("UPDATE backlog SET title = ?, body = ? WHERE seq = 1 AND workspace_id = 'xss'")
 			.run(title, `${title}\n${note}`);
@@ -270,15 +272,24 @@ describe("/backlog html", () => {
 			commands,
 			cwd,
 			command: commands.get("backlog")!,
-			store: new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id),
+			store: new BacklogStore(() => workspaceDb(cwd).agent, registeredWorkspace(cwd).id),
 		};
 	}
 
-	it("opens the live board by default and closes its server with the session", async () => {
+	it("shows the board in the terminal for a bare /backlog, even with a UI, and opens no browser", async () => {
 		const open = vi.fn(async (_url: string) => undefined);
 		const t = setup(open);
 		const ctx = fakeCtx({ cwd: t.cwd });
 		await t.command.handler("", ctx);
+		expect(open).not.toHaveBeenCalled();
+		expect(ctx.ui.notes.at(-1)?.message).toMatch(/empty|Ongoing|Todo|Backlog/);
+	});
+
+	it("opens the live board with /backlog web and closes its server with the session", async () => {
+		const open = vi.fn(async (_url: string) => undefined);
+		const t = setup(open);
+		const ctx = fakeCtx({ cwd: t.cwd });
+		await t.command.handler("web", ctx);
 		const url = new URL(open.mock.calls[0][0]);
 		expect(url.hostname).toBe("127.0.0.1");
 		expect(url.hash).toMatch(/^#access=/);
@@ -302,7 +313,7 @@ describe("/backlog html", () => {
 		const t = setup(open);
 		const ctx = fakeCtx({ cwd: t.cwd });
 		try {
-			await Promise.all([t.commands.get("web")!.handler("", ctx), t.command.handler("", ctx)]);
+			await Promise.all([t.commands.get("web")!.handler("", ctx), t.command.handler("web", ctx)]);
 			const urls = open.mock.calls.map(([url]) => new URL(url));
 			expect(urls[0].origin).toBe(urls[1].origin);
 			expect(urls.map((url) => new URLSearchParams(url.hash.slice(1)).get("view"))).toEqual(["activity", "board"]);
@@ -373,7 +384,7 @@ describe("/backlog html", () => {
 		const file = path.join(fs.realpathSync(t.cwd), ".octocode", "agent", "backlog.html");
 		await t.command.handler("html", fakeCtx({ cwd: t.cwd }));
 		const before = fs.readFileSync(file, "utf8");
-		sharedAgentDb().db.prepare("UPDATE backlog SET why = ? WHERE seq = 1").run(`key ${SECRET}`);
+		workspaceDb(t.cwd).agent.db.prepare("UPDATE backlog SET why = ? WHERE seq = 1").run(`key ${SECRET}`);
 		const ctx = fakeCtx({ cwd: t.cwd });
 		await t.command.handler("html", ctx);
 		expect(ctx.ui.notes.at(-1)).toMatchObject({

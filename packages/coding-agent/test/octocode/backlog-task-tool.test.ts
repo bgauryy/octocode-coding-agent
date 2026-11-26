@@ -3,10 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { backlogToolName } from "./backlog-fixture.ts";
@@ -73,7 +72,7 @@ function setup(options: { subagent?: { id: string; env: Record<string, string> }
 function storeOfRepo(): BacklogStore {
 	const cwd = path.join(tmp, "repo");
 	fs.mkdirSync(cwd, { recursive: true });
-	return new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
+	return new BacklogStore(() => workspaceDb(cwd).agent, workspaceDb(cwd).workspace.id);
 }
 
 describe("backlog tools over stored steps", () => {

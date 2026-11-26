@@ -4,6 +4,7 @@ import { type AgentDb, type MachineSample } from "../../../../db/src/api.ts";
 import { openAgentDb } from "../../../src/storage/database.ts";
 import { tmp } from "../helpers.ts";
 import type { MachineSamplerOptions } from "../../../src/octocode/monitor/sampler.ts";
+import { monitorLedgerOf } from "../../../src/octocode/monitor/ledger.ts";
 import { registerMonitor, statusText } from "../../../src/octocode/monitor/register.ts";
 import { StuckJobWatch } from "../../../src/octocode/monitor/stuck-jobs.ts";
 
@@ -59,7 +60,7 @@ function setup(title: string, isSubagent = false, settings: Record<string, unkno
 		},
 	});
 	handlers.get("session_start")?.({}, ctx);
-	return { sent, status, notices, sampler: () => sampler };
+	return { api, sent, status, notices, sampler: () => sampler };
 }
 
 describe("monitor delivery", () => {
@@ -74,17 +75,17 @@ describe("monitor delivery", () => {
 		expect(mine.notices).toEqual(["Octocode: Load 4 per CPU"]);
 	});
 
-	it("leaves another root session the publisher's note and a footer mark, without waking or notifying", () => {
+	it("gives another root session a footer mark and a ledger entry, nothing in its context", () => {
 		const publisher = setup("octocode-agent-main-mine");
 		const other = setup("octocode-agent-main-other");
+		const recorded: Array<{ rule: string; delivered: boolean }> = [];
+		monitorLedgerOf(other.api).subscribe((alert) => recorded.push({ rule: alert.rule, delivered: alert.delivered }));
 		publisher.sampler()?.onSample(hot(60_000), true);
 		other.sampler()?.onSample(hot(60_000), false);
-		expect(other.sent).toHaveLength(1);
-		expect(other.sent[0].options.triggerTurn).toBe(false);
-		expect(other.sent[0].message.display).toBe(false);
-		expect(other.sent[0].message.content).toContain("Another process causes it (octocode-agent-main-mine)");
+		expect(other.sent).toEqual([]);
 		expect(other.status).toEqual(["load 4"]);
 		expect(other.notices).toEqual([]);
+		expect(recorded).toEqual([{ rule: "load", delivered: true }]);
 	});
 
 	it("gives a child no note unless it owns a culprit, and never runs the rules in it", () => {
@@ -99,18 +100,21 @@ describe("monitor delivery", () => {
 		expect(bystander.status).toEqual([]);
 		expect(owner.sent).toHaveLength(1);
 		expect(owner.sent[0].options.triggerTurn).toBe(true);
-		expect(publisher.sent[0].options.triggerTurn).toBe(false);
+		expect(publisher.sent).toEqual([]);
 	});
 
 	it("publishes a tripped threshold once, whichever session reads it", () => {
 		const publisher = setup("octocode-agent-main-mine");
 		const other = setup("octocode-agent-main-other");
+		const recorded: string[] = [];
+		monitorLedgerOf(other.api).subscribe((alert) => recorded.push(alert.rule));
 		for (const at of [60_000, 120_000]) {
 			publisher.sampler()?.onSample(hot(at), true);
 			other.sampler()?.onSample(hot(at), false);
 		}
 		expect(publisher.sent).toHaveLength(1);
-		expect(other.sent).toHaveLength(1);
+		expect(other.sent).toEqual([]);
+		expect(recorded).toEqual(["load"]);
 		expect(agent.db.prepare("SELECT COUNT(*) AS n FROM machine_alerts").get()).toEqual({ n: 1 });
 	});
 

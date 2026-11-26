@@ -18,8 +18,8 @@ import { type ColorToken, type Phase, type RenderContext, STOPPED_COLOR } from "
  *   ◉ Name(summary) · 1.2s
  *     ⎿  one-line summary (ctrl+o to expand)
  *
- * A finished row closes to its summary line. While it runs, or when it failed, it shows the whole body up to 12 lines,
- * else a 5-line preview and `… +K lines (ctrl+o to expand)`; a renderer may pass its own preview size.
+ * Running and finished rows close to their summary line. A failure shows the whole body up to 12 lines, else a 5-line
+ * preview and `… +K lines (ctrl+o to expand)`; a renderer may pass its own preview size.
  *
  * The mark is the row's still state light (`rowMark`): `○` before execution, `◐` once Octocode started the call but its
  * checks or approval still run, grey `⏺` while running (the row also has a live 1s clock), green `◉` when done, red
@@ -251,9 +251,9 @@ export function resultBlock(theme: Theme, context: RenderContext, options: Resul
 	} else {
 		// Blank lines waste preview rows; they still count as hidden and show when expanded.
 		const filled = body.filter((line) => (raw ? line : stripTerminalSequences(line)).trim() !== "");
-		// A finished row closes; without a summary its one line stays, since a hint would take the same row.
+		// Collapsed tools show goal/reason + 1-line summary only; errors still show failure detail.
 		const closed = summary || filled.length > 1 || preface.length > 0 ? 0 : 1;
-		const max = Math.max(0, options.max ?? (context.isPartial || failed ? TOOL_PREVIEW_LINES : closed));
+		const max = Math.max(0, options.max ?? (failed ? TOOL_PREVIEW_LINES : closed));
 		const short =
 			max > 0 && preface.length === 0 && filled.length <= SHOW_ALL_LINES && (options.totalLines ?? 0) <= body.length;
 		const limit = short ? filled.length : max;

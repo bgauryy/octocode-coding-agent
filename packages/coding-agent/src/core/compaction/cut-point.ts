@@ -143,7 +143,11 @@ export function findProjectedCutPoint(
 		suffix.every(
 			(entry) => entry.sourceEntry.type !== "compaction" && (!isIntrinsicallyVisible(entry) || isOmitted(entry)),
 		);
-	if (isRecoveryOmissionSuffix) cutIndex++;
+	// The unanswered prompt stays kept while older entries remain to summarize; with nothing before it, the cut
+	// must advance past it or the compaction would have nothing to remove.
+	const keepsUnansweredPrompt =
+		cutIndex > cutPoints[0] && entries[cutIndex].messages.some((message) => message.role === "user");
+	if (isRecoveryOmissionSuffix && !keepsUnansweredPrompt) cutIndex++;
 
 	while (cutIndex > startIndex) {
 		const previous = entries[cutIndex - 1];

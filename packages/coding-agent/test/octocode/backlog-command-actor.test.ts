@@ -2,11 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -18,7 +17,7 @@ function setup() {
 	const fake = fakeHost();
 	const commands = new Subcommands();
 	registerBacklog(fake.api, { commands, isSubagent: false, env });
-	const store = new BacklogStore(() => sharedAgentDb(env), registeredWorkspace(cwd, sharedAgentDb(env)).id);
+	const store = new BacklogStore(() => workspaceDb(cwd, env).agent, workspaceDb(cwd, env).workspace.id);
 	const rpc = (selects: Array<string | undefined>, inputs: Array<string | undefined> = []) =>
 		fakeCtx({ cwd, mode: "rpc", ui: { selects, inputs } });
 	return { store, rpc, command: commands.get("backlog")! };

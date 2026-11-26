@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { parseTemplate } from "../../src/octocode/memory/command.ts";
-import { MEMORY_HEADER, PINNED_BUDGET, selectInjection, TOTAL_BUDGET } from "../../src/octocode/memory/inject.ts";
+import { MEMORY_HEADER, memoryMessageText, PINNED_BUDGET, selectInjection, TOTAL_BUDGET } from "../../src/octocode/memory/inject.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import { memoryStore } from "../../src/octocode/memory/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -97,7 +97,7 @@ describe("memory age labels", () => {
 			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: "rewind checkpoints" },
 			ctxFor(),
 		)) as any;
-		expect(result.message.content.split("\n")[1]).toMatch(/^M1 \(workspace, decision, 12d\) \(agent-written\) "Rewind/);
+		expect(result.message.content.split("\n")[2]).toMatch(/^M1 \(workspace, decision, 12d\) \(agent-written\) "Rewind/);
 	});
 });
 
@@ -111,7 +111,7 @@ describe("memory notices (UI only)", () => {
 			{ systemPromptOptions: { sections: {}, contextFiles: [] }, prompt: "rewind checkpoints" },
 			ctx,
 		)) as any;
-		expect(result.message.content.startsWith(MEMORY_HEADER)).toBe(true);
+		expect(result.message.content.startsWith(memoryMessageText(MEMORY_HEADER))).toBe(true);
 		expect(ctx.ui.notes).toEqual([]);
 		await fire("message_end", { message: { role: "custom", ...result.message } }, ctx);
 		expect(ctx.ui.notes).toEqual([{ message: "Recalled M1 (/memory last shows them)", type: "info" }]);

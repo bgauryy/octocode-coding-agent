@@ -148,6 +148,11 @@ export function pidOf(db: DatabaseSync, id: string): { pid: number | null; pid_s
 		| undefined;
 }
 
+/** Every session with a recorded process: its id, pid and the process start time recorded with it. */
+export function processes(db: DatabaseSync): Array<{ id: string; pid: number; pid_started: string | null }> {
+	return allRows(db.prepare("SELECT id, pid, pid_started FROM sessions WHERE pid IS NOT NULL ORDER BY id"));
+}
+
 /**
  * This process has the session open now, from session dir `dir` when known. Keeps what earlier runs recorded, except the
  * light: a session that just started runs nothing (`idle`), whatever an earlier process last wrote.

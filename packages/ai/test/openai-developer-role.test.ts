@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { getCompat as getCompletionsCompat } from "../src/api/openai-completions/compat.ts";
 import { captureCompletionsMessages } from "./capture-completions-payload.ts";
 import { captureResponsesPayload } from "./capture-responses-payload.ts";
-import { convertResponsesMessages } from "../src/api/openai-responses-shared/messages.ts";
 import { normalizeContext } from "../src/compat.ts";
 import type { Model, OpenAICompletionsCompat, OpenAIResponsesCompat } from "../src/types.ts";
 
@@ -116,30 +115,7 @@ function leadingResponsesRole(input: readonly unknown[]): unknown {
 	return (input[0] as { role?: unknown }).role;
 }
 
-describe("developer role in the Responses converter", () => {
-	it("takes the role from the resolved option, not from model.compat", () => {
-		const optedOutInCompat = responsesModel({ supportsDeveloperRole: false });
-		const providers = new Set(["openai"]);
-
-		expect(
-			leadingResponsesRole(
-				convertResponsesMessages(optedOutInCompat, context, providers, { supportsDeveloperRole: true }),
-			),
-		).toBe("developer");
-		expect(
-			leadingResponsesRole(
-				convertResponsesMessages(responsesModel(), context, providers, { supportsDeveloperRole: false }),
-			),
-		).toBe("system");
-		// No resolved value: the Responses default, as the compat schema documents it.
-		expect(leadingResponsesRole(convertResponsesMessages(responsesModel(), context, providers))).toBe("developer");
-		expect(
-			leadingResponsesRole(
-				convertResponsesMessages(responsesModel(undefined, false), context, providers, { supportsDeveloperRole: true }),
-			),
-		).toBe("system");
-	});
-
+describe("developer role in the Responses request", () => {
 	it("passes the adapter's resolved compat to the converter", async () => {
 		const build = async (model: Model<"openai-responses">) =>
 			(await captureResponsesPayload<{ input: unknown[] }>(model, context, { apiKey: "sk-test" })).input;

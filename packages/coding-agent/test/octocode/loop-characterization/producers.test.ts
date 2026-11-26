@@ -172,13 +172,13 @@ describe("a monitor alert (monitor/register.ts:131)", () => {
 		expect(count(r.requests[0], "tsc 900% CPU")).toBe(1);
 	});
 
-	it("leaves a session that does not own the cause a hidden note and starts no turn", async () => {
+	it("puts nothing in the context of a session that does not own the cause, and starts no turn", async () => {
 		const { r, sampler } = await monitored("someone-else");
 		r.harness.setResponses([r.reply("must not be consumed")]);
 		sampler.onSample(hot(60_000), true);
 		await r.harness.session.waitForIdle();
 		expect(r.requests).toHaveLength(0);
 		await r.harness.session.prompt("status?");
-		expect(count(r.requests[0], "tsc 900% CPU")).toBe(1);
+		expect(count(r.requests[0], "tsc 900% CPU")).toBe(0);
 	});
 });

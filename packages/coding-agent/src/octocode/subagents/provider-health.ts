@@ -19,6 +19,7 @@ import { currentPrice, type ModelRef } from "./model.ts";
 import { deadline } from "@octocodeai/octocode-common/deadline";
 import { onCredentialChange } from "../../core/model-runtime/credential-operations.ts";
 import { defaultRefusalStore, type RefusalStore } from "./provider-refusals.ts";
+import { referenceProvider } from "../../core/model-reference.ts";
 
 /**
  * A provider refused the credential or the account: a credential error, or a usage limit, no funds included (the
@@ -128,7 +129,7 @@ export class ProviderHealth {
 	 * the model, other failures say nothing.
 	 */
 	noteRun(model: string | undefined, error?: string, nothingSpent = false): void {
-		const provider = model?.includes("/") ? model.slice(0, model.indexOf("/")) : undefined;
+		const provider = referenceProvider(model);
 		if (!model || !provider) return;
 		const ref = withoutThinking(model);
 		if (!error) {

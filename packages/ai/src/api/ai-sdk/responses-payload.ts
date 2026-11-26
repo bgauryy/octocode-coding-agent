@@ -66,7 +66,7 @@ export function responsesPayload(model: ResponsesModel, context: TranscriptConte
 		// Restore the stable message envelope used by cached transcript prefixes.
 		if (Array.isArray(body.input)) {
 			const texts: { id: string }[] = [];
-			const calls: { id?: string }[] = [];
+			const calls: { id?: string; namespace?: string }[] = [];
 			const replay = responsesReplayMessages(model, context);
 			for (const [index, message] of replay.entries()) {
 				if (message.role !== "assistant") continue;
@@ -83,9 +83,8 @@ export function responsesPayload(model: ResponsesModel, context: TranscriptConte
 						const itemId = block.id.split("|")[1];
 						const differentModel =
 							message.provider === model.provider && message.api === model.api && message.model !== model.id;
-						calls.push({
-							id: !differentModel && (itemId?.startsWith("fc_") || itemId?.startsWith("ctc_")) ? itemId : undefined,
-						});
+						const sameModel = !differentModel && message.provider === model.provider && message.api === model.api;
+						calls.push({ id: !differentModel ? itemId : undefined, namespace: sameModel ? block.namespace : undefined });
 					}
 				}
 			}
@@ -100,7 +99,11 @@ export function responsesPayload(model: ResponsesModel, context: TranscriptConte
 					item.content = [{ type: "output_text", text: item.content, annotations: [] }];
 				} else if (item.type === "function_call" || item.type === "custom_tool_call") {
 					const metadata = calls[callIndex++];
-					if (metadata?.id !== undefined) item.id = metadata.id;
+					// function_call ids must be fc_* and custom_tool_call ids ctc_*; any other id is not replayed.
+					const prefix = item.type === "function_call" ? "fc_" : "ctc_";
+					if (metadata?.id?.startsWith(prefix)) item.id = metadata.id;
+					// The SDK writes a namespace on function calls only.
+					if (item.type === "custom_tool_call" && metadata?.namespace !== undefined) item.namespace = metadata.namespace;
 				}
 			}
 		}

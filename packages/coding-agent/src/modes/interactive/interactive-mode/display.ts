@@ -101,6 +101,9 @@ const NOTICE_MARK: Record<NoticeKind, { label: string; color: ThemeColor }> = {
 	error: { label: `${GLYPH.failed} ${TONE.problem}`, color: STATE_COLOR.failed },
 };
 
+/** Notices (like `/status` or `/usage`) stay readable up to 60 lines before folding. */
+const NOTICE_FOLD_THRESHOLD = 60;
+
 /** A notice at the transcript's left pad, with a textual or symbolic label that remains visible without color. */
 export function noticeLine(kind: NoticeKind, message: string, pad: number, expanded = false): LongResponse {
 	const { label: glyph, color } = NOTICE_MARK[kind];
@@ -113,7 +116,7 @@ export function noticeLine(kind: NoticeKind, message: string, pad: number, expan
 	// readable at any width, and a marked first line hangs under its text.
 	const body = new ThemedText(paint, pad, 0);
 	body.setHangingIndent(true);
-	return new LongResponse(body, expanded);
+	return new LongResponse(body, expanded, undefined, false, undefined, NOTICE_FOLD_THRESHOLD);
 }
 
 /**

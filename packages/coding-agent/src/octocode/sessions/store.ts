@@ -12,6 +12,7 @@ import {
 	sessions,
 } from "../../../../db/src/api.ts";
 import { agentDbWriter } from "../../storage/database.ts";
+import { everyWorkspaceFile } from "../../storage/workspace-database.ts";
 import { EXCLUDE_WORKSPACE_STATE, git } from "../../utils/git-run.ts";
 import { processStartTime } from "../shared/process.ts";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
@@ -83,9 +84,17 @@ export class SessionIndex {
 	readonly agent: AgentDb;
 	/** The writer of the same database file: the per-turn bookkeeping (`…Later`) goes there, off this thread. */
 	private readonly writer: () => DbWriter;
-	constructor(agent: AgentDb, writer?: () => DbWriter) {
+	private readonly workspaceFiles: () => readonly AgentDb[];
+	/** `workspaceFiles`: the files holding workspace rows apart from `agent` (default: every one beside it). */
+	constructor(agent: AgentDb, writer?: () => DbWriter, workspaceFiles?: () => readonly AgentDb[]) {
 		this.agent = agent;
 		this.writer = writer ?? (() => agentDbWriter(agent));
+		this.workspaceFiles = workspaceFiles ?? (() => everyWorkspaceFile(agent));
+	}
+
+	/** The files holding workspace rows (backlog, agents, runs, events): the machine file and every workspace file. */
+	files(): AgentDb[] {
+		return [this.agent, ...this.workspaceFiles()];
 	}
 
 	/*
@@ -145,12 +154,22 @@ export class SessionIndex {
 
 	/** What the database links to each of the given sessions: the `ongoing` backlog items it holds and the team agent it runs as. */
 	links(ids: readonly string[]): Map<string, SessionLinks> {
-		return sessionLinks.linksOf(this.agent.db, ids);
+		const links = new Map<string, SessionLinks>();
+		for (const file of this.files())
+			for (const [id, found] of sessionLinks.linksOf(file.db, ids)) {
+				const known = links.get(id);
+				if (!known) links.set(id, found);
+				else {
+					known.items = [...known.items, ...found.items].slice(0, sessionLinks.MAX_SESSION_ITEMS);
+					known.agent = found.agent ?? known.agent;
+				}
+			}
+		return links;
 	}
 
 	/** Ids of the sessions that held or hold item `B<seq>` (of repository `repo`, or of any without it). */
 	heldItem(seq: number, repo?: string): Set<string> {
-		return new Set(sessionLinks.heldItem(this.agent.db, seq, repo));
+		return new Set(this.files().flatMap((file) => sessionLinks.heldItem(file.db, seq, repo)));
 	}
 
 	/** This process has the session open now, from session dir `dir` when known. Keeps what earlier runs recorded. */
@@ -184,6 +203,7 @@ export class SessionIndex {
 	/** Removes everything the database holds for the given sessions, mirror included (`sessions.erase`). */
 	erase(ids: readonly string[]): void {
 		sessions.erase(this.agent.db, this.agent.mirror.db, ids);
+		for (const file of this.workspaceFiles()) sessions.eraseRows(file.db, ids);
 	}
 
 	/** Session dirs other than Octocode's default that a session ran from (meta `session_dirs`): the sweep lists their sessions too. */

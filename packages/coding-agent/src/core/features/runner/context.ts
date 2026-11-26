@@ -133,6 +133,10 @@ export function createFeatureContext(host: RunnerHost): FeatureContext {
 			host.assertActive();
 			host.bindings.compactFn(options);
 		},
+		requestBoundaryCompaction: (options) => {
+			host.assertActive();
+			host.bindings.requestBoundaryCompactionFn(options);
+		},
 		getSystemPrompt: () => {
 			host.assertActive();
 			return host.bindings.getSystemPromptFn();

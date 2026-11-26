@@ -13,11 +13,15 @@ export interface AltScreenScrollbarHost {
 	resetTextSelection(): void;
 }
 
+/** Columns left of a scrollbar where the pointer counts as approaching it. */
+const NEAR_COLUMNS = 3;
+
 /** Scrollbar hover highlighting and thumb or track dragging. */
 export class AltScreenScrollbar {
 	scrollbarDrag?: ScrollbarDrag;
 	private scrollbarHover?: ScrollView;
 	private readonly host: AltScreenScrollbarHost;
+	private near = false;
 
 	constructor(host: AltScreenScrollbarHost) {
 		this.host = host;
@@ -45,10 +49,23 @@ export class AltScreenScrollbar {
 
 	updateScrollbarHover(x: number, y: number): void {
 		this.setScrollbarHover(this.getScrollbarTargetAt(x, y, true)?.scrollView);
+		this.near = false;
+		for (let dx = 0; dx <= NEAR_COLUMNS && !this.near; dx++)
+			this.near = this.getScrollbarTargetAt(x + dx, y, true) !== undefined;
+	}
+
+	/**
+	 * Whether bare pointer motion is worth tracking for the scrollbar: while it is hovered, or while it shows and the
+	 * pointer was last seen beside it. A visible scrollbar alone does not ask for it: every cell the pointer crosses would
+	 * become a report (xterm.js encodes them on the editor's UI thread). Wheel, click and drag reports still place it.
+	 */
+	wantsHover(primary: { readonly isScrollbarVisible: boolean } | undefined): boolean {
+		return this.hovering || (this.near && primary?.isScrollbarVisible === true);
 	}
 
 	stopScrollbarHover(): void {
 		this.setScrollbarHover(undefined);
+		this.near = false;
 	}
 
 	/** Whether the pointer was last seen over a scrollbar. */

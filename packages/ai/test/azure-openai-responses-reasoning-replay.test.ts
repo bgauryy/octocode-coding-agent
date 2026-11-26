@@ -1,6 +1,6 @@
 import type { ResponseReasoningItem, ResponseStreamEvent } from "../src/api/ai-sdk/openai-wire-types.ts";
 import { describe, expect, it } from "vitest";
-import { convertResponsesMessages } from "../src/api/openai-responses-shared/messages.ts";
+import { responsesMessages } from "../src/api/ai-sdk/responses-messages.ts";
 import { processResponsesStream } from "../src/api/openai-responses-shared/stream-processing.ts";
 import type { AssistantMessage, Model } from "../src/types.ts";
 import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
@@ -68,6 +68,7 @@ async function* createEvents(
 	};
 }
 
+/** The replayed reasoning part: its item id and encrypted content, as the request builder hands them to the SDK. */
 function getReplayedReasoning(model: Model<"azure-openai-responses">, assistant: AssistantMessage) {
 	const context = normalizeContext({
 		messages: [
@@ -76,8 +77,12 @@ function getReplayedReasoning(model: Model<"azure-openai-responses">, assistant:
 			{ role: "user", content: "follow-up", timestamp: Date.now() },
 		],
 	});
-	const input = convertResponsesMessages(model, context, new Set(["azure"]));
-	return input.find((item) => item.type === "reasoning");
+	const { messages } = responsesMessages(model, context, {});
+	const parts = messages.flatMap((message) =>
+		message.role === "assistant" && Array.isArray(message.content) ? message.content : [],
+	);
+	const part = parts.find((item) => item.type === "reasoning");
+	return part?.providerOptions?.openai;
 }
 
 describe("Azure OpenAI Responses reasoning replay", () => {
@@ -103,9 +108,8 @@ describe("Azure OpenAI Responses reasoning replay", () => {
 		);
 
 		expect(getReplayedReasoning(model, output)).toMatchObject({
-			type: "reasoning",
-			id: "rs_done",
-			encrypted_content: "from-output-item-done",
+			itemId: "rs_done",
+			reasoningEncryptedContent: "from-output-item-done",
 		});
 	});
 
@@ -130,9 +134,8 @@ describe("Azure OpenAI Responses reasoning replay", () => {
 		);
 
 		expect(getReplayedReasoning(model, output)).toMatchObject({
-			type: "reasoning",
-			id: "rs_missing",
-			encrypted_content: "from-response-completed",
+			itemId: "rs_missing",
+			reasoningEncryptedContent: "from-response-completed",
 		});
 	});
 });

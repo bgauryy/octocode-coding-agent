@@ -91,9 +91,14 @@ const referenceArtifacts: readonly ReferenceArtifact[] = [
 			{
 				heading: "Providers",
 				intro:
-					'Each key under `providers` is a provider ID. `models.json` defines custom providers: each ID adds a provider, which needs `baseUrl` and an `api` at provider or model level. An official provider ID (such as `anthropic` or `amazon-bedrock`) is refused with a message and the other providers in the file still load; rename the entry for a custom endpoint, and set an official provider\'s host or key in `/providers`. The one entry an official ID keeps is `modelOverrides` limited to `compat`, `contextWindow`, `maxTokens`, `inputLimits` and `cost` (a negotiated or enterprise price, with `tiers`, `until` and `after` as below; `/model` details mark it "(your price)"); host, API, key and headers stay refused.',
+					'Each key under `providers` is a provider ID. `models.json` defines custom providers: each ID adds a provider, which needs `baseUrl` and an `api` at provider or model level. An official provider ID (such as `anthropic` or `amazon-bedrock`) is refused with a message and the other providers in the file still load; rename the entry for a custom endpoint, and set an official provider\'s host or key in `/providers`. What an official ID may carry is tuning and throttling: `modelOverrides` and `defaults` limited to `compat`, `contextWindow`, `maxTokens`, `inputLimits` and `cost` (a negotiated or enterprise price, with `tiers`, `until` and `after` as below; `/model` details mark it "(your price)"), and `requestsPerMinute` and `tokensPerMinute` at provider level and in `modelOverrides`. Host, API, key, headers, `auth`, `env` and `models` stay refused.',
 				schema: ModelsJsonSchemas.provider,
-				links: { models: "#models", modelOverrides: "#model-overrides", compat: "#compatibility" },
+				links: {
+					models: "#models",
+					modelOverrides: "#model-overrides",
+					defaults: "#provider-defaults-and-profiles",
+					compat: "#compatibility",
+				},
 			},
 			{
 				heading: "Models",
@@ -107,6 +112,19 @@ const referenceArtifacts: readonly ReferenceArtifact[] = [
 				intro:
 					"Each `modelOverrides` key is the ID of a built-in model. Unknown IDs are ignored. Object fields, such as `cost`, merge with the model's value field by field; other fields replace it. A `cost` override that sets any rate or `tiers` also drops the model's built-in `until`/`after` price window, so your rates stay in force after the built-in date; set `until` and `after` in the override to give it a window of its own.",
 				schema: ModelsJsonSchemas.modelOverride,
+				links: { inputLimits: "#input-limits", compat: "#compatibility" },
+			},
+			{
+				heading: "Provider defaults and profiles",
+				intro: [
+					"`defaults` on a provider sets model fields once for every model of that provider, built-in and custom: `contextWindow`, `maxTokens`, `input`, `cost`, `thinkingLevelMap`, `promptCache`, `inputLimits`, `samplingParams`, `compat` and `reasoning`. For one field the order is: the model's own entry, its `modelOverrides` entry, the provider's `defaults`, then built-in model data. Object fields merge key by key; other fields replace.",
+					"A provider may sit in several files. They merge field by field, the narrower one winning each field it names: Octocode's project file, Pi's project file, Octocode's global files, then Pi's global files. Pi's own `models.json` loads unchanged. A project file may add models and tune defaults, but it may not change `baseUrl`, `api`, `headers`, `apiKey`, `auth` or `env` of a provider a global file also defines (nor a model's `baseUrl`, `api` or `headers`): those fields are ignored with a warning naming the file, so a project cannot send a stored key to another host. A provider only the project defines sets its own.",
+					"`tokensPerMinute` caps the tokens a model uses per minute across all sessions on the machine (uncached input plus output; cache reads are not counted). A request over the budget waits. A model's value wins over its provider's; for Bedrock Kimi, which has a built-in budget, `OCTOCODE_BEDROCK_KIMI_TPM` still overrides both.",
+					"`profile` names the provider family whose cache markers, cache lifetimes and request quirks a provider's models follow: `anthropic`, `openai`, `bedrock`, `openrouter`, `vercel`, `opencode`, `groq`, `xiaomi`, `zai`, `together`, `moonshot`, `cloudflare-workers-ai`, `cloudflare-ai-gateway`, `nvidia`, `ant-ling`, `cerebras`, `deepseek`, `xai` or `chutes`. Use it for a gateway that serves another provider's models (a Claude gateway takes `anthropic` and gets Anthropic cache markers and the 1h tier). Without it the profile is detected from the provider id and host, as before. An explicit `compat` value always wins over the profile, and the order for a model field is: model entry, `modelOverrides`, `defaults`, the profile, built-in model data. An official provider may set `profile` (it moves no key or host); a project file may set it on a provider a global file defines.",
+					"`thinkingLevelMap` in `defaults` maps thinking levels to provider values for every model of the provider. A request for a level the map marks `null` is sent as the nearest lower supported level, or as the lowest supported one when none is lower.",
+					"When an endpoint answers 400 that it does not accept `cache_control` markers, strict tool schemas or an effort setting, Octocode resends that request once without the field (it failed before any reply), remembers the rejection for the endpoint and model until the process ends, and leaves the field out of later requests.",
+				].join("\n\n"),
+				schema: ModelsJsonSchemas.defaults,
 				links: { inputLimits: "#input-limits", compat: "#compatibility" },
 			},
 			{

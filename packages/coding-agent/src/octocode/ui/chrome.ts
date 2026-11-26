@@ -1,7 +1,7 @@
 import { registerToolDisplays } from "./tool-display.ts";
 import fs from "node:fs";
 import path from "node:path";
-import { animationClock, type Color, MOTION, mixColors, SPINNER } from "@octocodeai/octocode-tui";
+import { animationClock, type Color, mixColors, rgbColor, SPINNER } from "@octocodeai/octocode-tui";
 import type { FeatureSetup, FeatureContext, SessionStartEvent } from "../../core/features/index.ts";
 import type { Theme } from "../../theme/theme.ts";
 import { getPackageDir } from "../../config.ts";
@@ -40,9 +40,18 @@ function along(stops: Color[], t: number): Color {
 	return mixColors(stops[index], stops[index + 1], scaled - index);
 }
 
+/** Purple gradient accents blended with the active theme's accent so the banner stays lush purple yet reacts to theme switches. */
+const PURPLE_MID: Color = rgbColor(139, 92, 246);
+const PURPLE_BRIGHT: Color = rgbColor(168, 85, 247);
+const PURPLE_ORCHID: Color = rgbColor(216, 180, 254);
+/** Luminous lavender-white highlight mixed into the purple gradient at the typing edge and shimmer crest. */
+const PURPLE_GLOW: Color = rgbColor(250, 245, 255);
+/** Bright orchid-white colour for the typing cursor glyph (`▌`). */
+const PURPLE_CURSOR: Color = rgbColor(245, 208, 254);
+
 /**
- * The banner's gradient, from the theme: accent → borderAccent → mdLink → syntaxOperator (purple to teal in the
- * Octocode themes), in bold. Undefined when the theme has no concrete colours, so the banner uses tokens instead.
+ * The banner's purple gradient anchored on the active theme's `accent` colour (in bold), with optional `glow` (0..1)
+ * highlighting for the typing frontier and shimmer wave. Undefined when the theme has no concrete colours.
  */
 export function themeRamp(theme: Theme): BannerPaint["ramp"] {
 	let colors: Theme["colors"] | undefined;
@@ -51,17 +60,24 @@ export function themeRamp(theme: Theme): BannerPaint["ramp"] {
 	} catch {
 		return undefined;
 	}
-	if (!colors) return undefined;
-	const stops = [colors.accent, colors.borderAccent, colors.mdLink, colors.syntaxOperator].filter(
-		(color): color is Color => color !== undefined,
-	);
-	if (stops.length === 0 || typeof theme.style !== "function") return undefined;
-	const cache = new Map<number, Color>();
-	return (t, text) => {
-		let color = cache.get(t);
+	if (!colors || typeof theme.style !== "function") return undefined;
+	const base = colors.accent ?? colors.borderAccent ?? colors.mdLink;
+	if (!base) return undefined;
+	const mid = colors.borderAccent ?? base;
+	const stops: Color[] = [
+		base,
+		mixColors(base, PURPLE_MID, 0.55),
+		mixColors(mid, PURPLE_BRIGHT, 0.65),
+		mixColors(base, PURPLE_ORCHID, 0.72),
+	];
+	const cache = new Map<string, Color>();
+	return (t, text, glow = 0) => {
+		const key = glow > 0 ? `${t}:${glow}` : `${t}`;
+		let color = cache.get(key);
 		if (!color) {
-			color = along(stops, t);
-			cache.set(t, color);
+			const c = along(stops, t);
+			color = glow > 0 ? mixColors(c, PURPLE_GLOW, glow * 0.78) : c;
+			cache.set(key, color);
 		}
 		return theme.style(text, { fg: color, bold: true });
 	};
@@ -90,19 +106,24 @@ export interface BannerReveal {
 	durationMs?: number;
 }
 
-/** The one-time wipe at a fresh start takes this long: long enough to notice, short enough never to delay the prompt. */
-const BANNER_REVEAL_MS = 500;
+/** One-time startup animation duration: typing reveal (first 72%) + luminous purple shimmer sweep (last 28%). */
+const BANNER_REVEAL_MS = 900;
+/** Fraction of the animation spent typing columns in; the remainder sweeps a purple shimmer across the settled art. */
+const TYPE_PHASE_RATIO = 0.72;
+/** Smooth ~30 fps frame cadence for the startup typing and shimmer animation. */
+const BANNER_FRAME_MS = 32;
 
 export function bannerHeader(theme: Theme, onInvalidate?: () => void, backlog?: BacklogCounts, reveal?: BannerReveal) {
 	const status = backlog ? (paint: BannerPaint) => backlogStatusLine(paint, backlog) : undefined;
 	// Read from the theme again on invalidate: Octocode invalidates components when the theme changes.
 	const painted = (): BannerPaint => {
 		const ramp = themeRamp(theme);
-		return { fg: (color, text) => theme.fg(color as never, text), ...(ramp ? { ramp } : {}) };
+		const cursor = ramp ? (glyph: string) => theme.style(glyph, { fg: PURPLE_CURSOR, bold: true }) : undefined;
+		return { fg: (color, text) => theme.fg(color as never, text), ...(ramp ? { ramp, cursor } : {}) };
 	};
 	let paint = painted();
 	let cached: { width: number; lines: string[] } | undefined;
-	// The wipe repaints every frame until it ends, then the header is static again.
+	// The typing + shimmer animation repaints at ~30 fps until it settles, then the header is static again.
 	const startedAt = Date.now();
 	const durationMs = reveal ? (reveal.durationMs ?? BANNER_REVEAL_MS) : 0;
 	let unsubscribe: (() => void) | undefined;
@@ -117,13 +138,19 @@ export function bannerHeader(theme: Theme, onInvalidate?: () => void, backlog?: 
 				}
 				reveal.requestRender();
 			},
-			{ everyMs: MOTION.spinnerMs, kind: "decor" },
+			{ everyMs: BANNER_FRAME_MS, kind: "decor" },
 		);
 	}
 	return {
 		render(width: number): string[] {
-			const shown = progress();
-			if (shown < 1) return bannerLines(paint, width, status, shown);
+			const p = progress();
+			if (p < 1) {
+				if (p < TYPE_PHASE_RATIO) {
+					return bannerLines(paint, width, status, p / TYPE_PHASE_RATIO);
+				}
+				const shimmer = (p - TYPE_PHASE_RATIO) / (1 - TYPE_PHASE_RATIO);
+				return bannerLines(paint, width, status, 1, shimmer);
+			}
 			if (cached?.width !== width) cached = { width, lines: bannerLines(paint, width, status) };
 			return cached.lines;
 		},

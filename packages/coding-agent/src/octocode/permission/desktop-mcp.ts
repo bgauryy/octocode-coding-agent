@@ -14,6 +14,7 @@ import { workspaceRoot } from "../../utils/git-repository.ts";
 import type { ActionClass } from "./action-classes.ts";
 import { deniedAppRefusal, outsideAppsRefusal, psApp } from "./desktop-apps.ts";
 import { mcpCallChange } from "./mcp-reads.ts";
+import { mayWrite } from "./read-only-role.ts";
 import type { PermissionRequest } from "./request.ts";
 
 const PREFIX = `${mcpNamespace(DESKTOP_SERVER)}__`;
@@ -99,11 +100,28 @@ function outsideWorkspace(paths: readonly string[], cwd: string): string[] {
 }
 
 /**
+ * What a `screenshot_out_file` asks for, or undefined when it is allowed: a file outside the workspace, or inside it but
+ * where a read-only child may not write (`mayWrite`: its scratch, `.octocode/agent/temp/` and `tmp/`; never `MEMORY.md` or state), is
+ * `file.outside`, like any write such a child must not make to the repository.
+ */
+function screenshotPathAsk(file: string, cwd: string): string | undefined {
+	// The desktop child, which holds these tools, is read-only; every session applies its write rule (`mayWrite`).
+	if (file === "") return undefined; // As the preset does, an empty path is no path.
+	const target = canonicalPath(path.resolve(cwd, file));
+	const workspace = workspaceRoot(cwd);
+	if (workspace === undefined)
+		return `Saves a screenshot in ${target}, and ${cwd} has no workspace folder to place it in.`;
+	if (!isWithin(target, canonicalPath(workspace))) return `Saves a screenshot in ${target}, outside the workspace.`;
+	if (mayWrite(target, cwd, process.env)) return undefined;
+	return `Saves a screenshot in ${target}, in the repository outside the folders a read-only role may write (its scratch folder, .octocode/agent/temp/ and tmp/).`;
+}
+
+/**
  * The ask for a call to the `desktop` MCP server (Cua Driver), or undefined for any other call. Every tool asks
  * `desktop.control`, in every mode but `bypass`, unless the trusted server entry declares it read-only (`roles`): that
  * call stays an `mcp.read`. The typed browser tools reach beyond the desktop, so a call that is also one of these asks
  * once, naming them all: a page at a private or local address (`net.private`), a file from outside the workspace sent
- * to a page (`upload.outside`), a download saved outside it (`file.outside`), and attaching to the user's own signed-in
+ * to a page (`upload.outside`), a download or screenshot saved outside it, or a screenshot where a read-only role may not write (`file.outside`), and attaching to the user's own signed-in
  * profile (`browser.cookies`, which no spawn grant answers: a child asks through its parent each time). The clipboard,
  * `kill_app`, recording, replay, session escalation and the two browser tools that leave the page also ask
  * `desktop.sensitive`, the same kind of class, so they ask on every call even in an approved child.
@@ -115,7 +133,19 @@ export async function desktopMcpRequest(
 	lookup?: HostLookup,
 ): Promise<PermissionRequest | undefined> {
 	const tool = desktopTool(toolName);
-	if (tool === undefined || mcpCallChange(toolName) === undefined) return undefined;
+	if (tool === undefined) return undefined;
+	// A tool the server entry declares read-only (`screenshot`) still writes its `screenshot_out_file`: that write alone asks.
+	if (mcpCallChange(toolName) === undefined) {
+		const ask =
+			typeof input.screenshot_out_file === "string" ? screenshotPathAsk(input.screenshot_out_file, cwd) : undefined;
+		return ask === undefined
+			? undefined
+			: {
+					action: "file.outside",
+					title: "Save a screenshot here?",
+					what: [`${toolName} ${JSON.stringify(input)}`, ask],
+				};
+	}
 	const what = [`${toolName} ${JSON.stringify(input)}`];
 	const also: ActionClass[] = [];
 	const addresses: string[] = [];
@@ -145,6 +175,13 @@ export async function desktopMcpRequest(
 		if (outside.length > 0) {
 			also.push("file.outside");
 			what.push(`Saves a download in ${outside[0]}, outside the workspace.`);
+		}
+	}
+	if (typeof input.screenshot_out_file === "string") {
+		const ask = screenshotPathAsk(input.screenshot_out_file, cwd);
+		if (ask !== undefined) {
+			also.push("file.outside");
+			what.push(ask);
 		}
 	}
 	if (SENSITIVE_TOOLS.has(tool)) {

@@ -424,7 +424,7 @@ describe("web tool", () => {
 		expect(await call([RESEARCH.search, RESEARCH.reader])).not.toContain("classify");
 	});
 
-	it("returns 20 KB of a page by default, more with maxChars, and says how to get the rest", async () => {
+	it("returns 8 KB of a page by default, more with maxChars, and says how to get the rest", async () => {
 		vi.stubEnv("OCTOCODE_HOME", tmp());
 		const page = "x".repeat(80_000);
 		const base = await serve((_req, res) => {
@@ -435,7 +435,7 @@ describe("web tool", () => {
 		const first = text(await tool.execute("id", { url: `${base}/` }));
 		// A longer page is saved whole: the rest is read from the file, not refetched.
 		expect(first).toMatch(
-			/^x{20000}\n\[… 60000 more characters cut; the whole page \(1 lines, links included\) is in \S+: search it or read it by line range\]$/,
+			/^x{8000}\n\[… 72000 more characters cut; the whole page \(1 lines, links included\) is in \S+: search it or read it by line range\]$/,
 		);
 		const saved = /is in (\S+):/.exec(first)![1];
 		expect(fs.readFileSync(saved, "utf8")).toBe("x".repeat(80_000));
@@ -450,7 +450,7 @@ describe("web tool", () => {
 			/^x{50000}\n\[\u2026 30000 more characters cut; the whole page could not be saved to a file; the last 30000 characters are beyond web's 50000-character limit: download the page with bash \(curl -o\) to read them\]$/,
 		);
 		expect(text(await tool.execute("id", { url: `${base}/` }))).toMatch(
-			/60000 more characters cut; the whole page could not be saved to a file; maxChars 50000 shows up to 50000; the last 30000 characters are beyond/,
+			/72000 more characters cut; the whole page could not be saved to a file; maxChars 50000 shows up to 50000; the last 30000 characters are beyond/,
 		);
 	});
 

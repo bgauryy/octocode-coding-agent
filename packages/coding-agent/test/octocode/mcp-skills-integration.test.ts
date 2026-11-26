@@ -1,5 +1,4 @@
 import "../mcp-host.ts";
-import { recommendedPresets } from "../../../mcp/src/recommended/index.ts";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -20,6 +19,8 @@ import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createMcpFeature } from "../../../mcp/src/index.ts";
 import { publishToolRoles, resolveToolRoles } from "../../../mcp/src/roles.ts";
+import { builtinPresets } from "../../../mcp/src/presets/index.ts";
+import { RESEARCH, builtinRoles } from "./research-roles.ts";
 import { getMcpSessionStatus } from "../../../mcp/src/status.ts";
 import { researchServerLaunch } from "./research-server-launch.ts";
 import { buildAgentArgs } from "../../src/octocode/subagents/process/session.ts";
@@ -33,6 +34,14 @@ afterEach(() => {
 	vi.unstubAllEnvs();
 	publishToolRoles(resolveToolRoles([]));
 });
+
+/** One file read in the shape the reader's own declared schema accepts (line ranges, or start and end lines). */
+function readArguments(schema: unknown, file: string, end: number): JsonObject {
+	const entry = JSON.stringify(schema);
+	if (entry.includes('"ranges"')) return { path: file, ranges: [{ startLine: 1, endLine: end }] };
+	if (entry.includes('"startLine"')) return { path: file, startLine: 1, endLine: end };
+	return { path: file };
+}
 
 describe("installed MCP and skills through the native SDK", () => {
 	it.each([
@@ -83,7 +92,7 @@ describe("installed MCP and skills through the native SDK", () => {
 					path.join(agentDir, "mcp.json"),
 					JSON.stringify({
 						mcpServers: {
-							octocode: {
+							[RESEARCH.server]: {
 								command,
 								args,
 								// A user entry owns its launch env: the default entry's `${researchRoots}` (workspace, sessions,
@@ -134,7 +143,7 @@ describe("installed MCP and skills through the native SDK", () => {
 										createMcpFeature({
 											// The default entry as runtime registers it (`default.ts`): its `roles` make localFetch the
 											// reader whose reads the file guard credits, and a same-named user entry inherits them.
-											presets: recommendedPresets(),
+											presets: builtinPresets(),
 											logPath: path.join(root, "mcp.log"),
 										})(api),
 								},
@@ -150,11 +159,7 @@ describe("installed MCP and skills through the native SDK", () => {
 			await resourceLoader.reload();
 			// A parent builds its child's selection with its MCP roles already published (the registry does so once its
 			// servers load); the roles of the default entry stand in for that, as `local research` follows them.
-			publishToolRoles(
-				resolveToolRoles(
-					recommendedPresets().flatMap(({ name, config }) => (config ? [{ name, config, scope: "default" }] : [])),
-				),
-			);
+			publishToolRoles(builtinRoles());
 			const selection =
 				role === "browser"
 					? parseArgs(
@@ -188,12 +193,16 @@ describe("installed MCP and skills through the native SDK", () => {
 						expect(names).not.toContain("browser");
 						// Every child keeps `bash` (SHELL_TOOLS); a read-only role's permission layer refuses its mutations.
 						if (role === "browser") expect(names).toContain("bash");
-						const reader = names.find((name) => /^mcp__octocode__(localFetch|localGetFileContent)$/.test(name));
+						const reader = names.find((name) => name === RESEARCH.reader);
 						expect(reader).toBeDefined();
+						const readerTool = getCurrentTools(context.messages).find((tool) => tool.name === reader)!;
 						const read = (file: string, end: number): JsonObject =>
-							reader!.endsWith("localFetch")
-								? { path: file, ranges: [{ startLine: 1, endLine: end }] }
-								: { path: file, startLine: 1, endLine: end, minify: "none" };
+							readArguments(
+								(readerTool as { parameters?: unknown }).parameters ??
+									(readerTool as { inputSchema?: unknown }).inputSchema,
+								file,
+								end,
+							);
 						const system = getCurrentSystemPrompt(context.messages);
 						// Skills are listed in the `skill` tool's description, never in the system prompt.
 						expect(system).not.toContain('<skill name="integration-skill"');
@@ -239,16 +248,18 @@ describe("installed MCP and skills through the native SDK", () => {
 				]);
 				await session.prompt("Load the debugging skill and its references.");
 				const servers = getMcpSessionStatus(resourceLoader.getEventBus());
-				const octocode = servers.find((server) => server.name === "octocode")!;
+				const octocode = servers.find((server) => server.name === RESEARCH.server)!;
 				expect(octocode).toEqual(expect.objectContaining({ state: "connected", enabled: true }));
 				expect(octocode.toolCount).toBeGreaterThan(0);
-				expect(octocode.source).toBe(owner === "native" ? "built-in octocode" : path.join(agentDir, "mcp.json"));
+				expect(octocode.source).toBe(
+					owner === "native" ? `built-in ${RESEARCH.server}` : path.join(agentDir, "mcp.json"),
+				);
 				const infoOutput = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 				try {
 					await session.prompt("/status");
 					const info = infoOutput.mock.calls.map(([value]) => String(value)).join("");
 					expect(info).toContain("integration-skill");
-					expect(info).toContain("octocode: connected");
+					expect(info).toContain(`${RESEARCH.server}: connected`);
 					expect(info.indexOf("Skills (")).toBeLessThan(info.indexOf("MCPs ("));
 				} finally {
 					infoOutput.mockRestore();
@@ -264,9 +275,7 @@ describe("installed MCP and skills through the native SDK", () => {
 					fs.readFileSync(evidence, "utf8"),
 					JSON.stringify(turns[2].messages.filter((message) => message.role === "toolResult").at(-1)),
 				).toBe("after\n");
-				const reader = session
-					.getActiveToolNames()
-					.find((name) => /^mcp__octocode__(localFetch|localGetFileContent)$/.test(name))!;
+				const reader = session.getActiveToolNames().find((name) => name === RESEARCH.reader)!;
 				let blocked = "";
 				faux.setResponses([
 					() =>

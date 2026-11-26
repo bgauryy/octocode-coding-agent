@@ -139,8 +139,8 @@ const CASES: Record<string, Case> = {
 	// Without a scope word `/purge` only prints its usage; deleting needs a preview and a typed confirmation.
 	purge: { check: says(/Usage: \/purge workspace\|all/) },
 	worktree: { check: says(/worktree/i) },
-	// An unknown name lists the realms by name; the main checkout is always one.
-	realm: { args: "zz-none", check: says(/No realm named zz-none\. Realms: main/) },
+	// An unknown name lists the places by name; the main checkout is always one.
+	realm: { args: "places zz-none", check: says(/No place named zz-none\. Places: main/) },
 	// `/loop` sets a cron wait through the same path as the tool, and `/cron` then lists the session's scheduled tasks.
 	loop: { args: "10m run the tests", check: says(/Every 10m: Scheduled task #\d+ sends "run the tests"/) },
 	cron: { check: says(/cron \*\/10 \* \* \* \* · run 1 of 20 · next in/) },
@@ -167,13 +167,8 @@ const CASES: Record<string, Case> = {
 			);
 		},
 	},
-	// Bare `/backlog` runs `/web backlogs`.
-	backlog: {
-		check: (run) =>
-			expect(run.opened).toEqual([
-				expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/open\/[^?#]+\?s=[^&]+&view=board$/),
-			]),
-	},
+	// Bare `/backlog` prints the board in the transcript and names how to open it in the terminal.
+	backlog: { check: says(/The backlog is empty\. Add an item: \/backlog add <title>[\s\S]*\/backlog tui/) },
 	// Terminal commands that open a picker or menu.
 	help: { check: asks(/\/btw\s+Ask a side question without tools/) },
 	// The panel lists the live-applying interface page first, then each configurable setting with its value.

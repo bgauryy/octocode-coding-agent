@@ -1,7 +1,6 @@
 import type { FeatureContext } from "../../../core/features/index.ts";
 import { recordProblem } from "../../../core/diagnostics-log.ts";
-import { sharedAgentDb } from "../../../storage/database.ts";
-import { registeredWorkspaceWhenReady } from "../../../storage/workspace-database.ts";
+import { workspaceDbWhenReady } from "../../../storage/workspace-database.ts";
 import { EventSubscribers } from "../../events/subscribers.ts";
 
 /** How long a hook's offset outlives its last start; a resume within it handles what was published and not yet handled. */
@@ -26,12 +25,11 @@ export function hookSubscribersOf(
 	const sessionId = ctx.sessionManager.getSessionId();
 	const current = held.get(api);
 	if (current?.sessionId === sessionId && current.cwd === ctx.cwd) return current.subscribers;
-	const agent = sharedAgentDb();
-	const subscribers = registeredWorkspaceWhenReady(ctx.cwd, agent)
+	const subscribers = workspaceDbWhenReady(ctx.cwd)
 		.then(
-			({ id }) =>
+			({ agent, workspace }) =>
 				new EventSubscribers(agent, {
-					workspaceId: id,
+					workspaceId: workspace.id,
 					// A lane of its own: the loop replays the events of the session id, and these are not ones it can send.
 					sessionId: `hooks:${sessionId}`,
 					pid: process.pid,

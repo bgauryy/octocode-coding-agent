@@ -1,7 +1,7 @@
 import type { Api, Model, OpenAIResponsesCompat } from "../types.ts";
 import type { CacheFlagTable, ModelCacheFlags } from "./cache-capability-data.ts";
 import { CACHE_CAPABILITY_FLAGS } from "./cache-capability-flags.generated.ts";
-import { matchesHost } from "./provider-host.ts";
+import { hasProviderProfile } from "./provider-profile.ts";
 
 /** Base id without a trailing date suffix (`-2026-11-08` or `-20261108`), so a dated snapshot resolves like its base. */
 export function baseModelId(id: string): string {
@@ -19,18 +19,18 @@ function declaredCacheCompat(model: Model<Api>, table: CacheFlagTable): Record<s
 	const { id } = model;
 	switch (model.api) {
 		case "openai-responses": {
-			if (new URL(model.baseUrl).origin !== "https://api.openai.com") return {};
+			if (!hasProviderProfile(model, "openai", "host")) return {};
 			const flags = flagsFor(table.openai, id);
 			if (flags.explicitMode) return { supportsExplicitPromptCacheMode: true, supportsLongCacheRetention: true };
 			return flags.longRetention ? { supportsLongCacheRetention: true } : {};
 		}
 		case "openai-completions": {
-			if (model.provider === "openrouter")
+			if (hasProviderProfile(model, "openrouter"))
 				// OpenRouter excludes snapshot endpoints, so its ids match exactly.
 				return Object.hasOwn(table.openrouter, id) && table.openrouter[id].explicitMarkers
 					? { cacheControlFormat: "anthropic", supportsLongCacheRetention: false }
 					: {};
-			if (!matchesHost(model.baseUrl, "api.openai.com")) return {};
+			if (!hasProviderProfile(model, "openai", "host")) return {};
 			const flags = flagsFor(table.openai, id);
 			// Chat Completions takes GPT-5.6 and later only with the default 30m TTL: no long-retention field.
 			if (flags.explicitMode) return { supportsExplicitPromptCacheMode: true };
@@ -53,12 +53,7 @@ function declaredCacheCompat(model: Model<Api>, table: CacheFlagTable): Record<s
  * Explicit `model.compat` values win. The model generator applies it to the catalog with the table it just built.
  */
 export function withCacheFlags<T extends Model<Api>>(model: T, table: CacheFlagTable): T {
-	let declared: Record<string, unknown>;
-	try {
-		declared = declaredCacheCompat(model, table);
-	} catch {
-		return model;
-	}
+	const declared = declaredCacheCompat(model, table);
 	if (Object.keys(declared).length === 0) return model;
 	return { ...model, compat: { ...declared, ...model.compat } };
 }

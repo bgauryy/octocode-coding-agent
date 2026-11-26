@@ -15,7 +15,9 @@ const valid = {
 	usage: { cost: 0.02 },
 };
 
-beforeEach(() => spawnAgent.mockReset());
+beforeEach(() => {
+	spawnAgent.mockReset();
+});
 
 describe("the QA reviewer's answer off the schema", () => {
 	it("is retried exactly once and the valid verdict of the retry is used, both costs counted", async () => {
@@ -31,13 +33,34 @@ describe("the QA reviewer's answer off the schema", () => {
 		expect(spawnAgent).toHaveBeenCalledTimes(1);
 	});
 
-	it("skips after two invalid answers, and the skip is recorded as unverified", async () => {
+	it("owes the review after two invalid answers, with the reason in the note", async () => {
 		spawnAgent.mockResolvedValue(invalid);
 		const review = await qaReviewer({} as never)(request, fakeCtx({ cwd: "/tmp" }));
 		expect(spawnAgent).toHaveBeenCalledTimes(2);
-		expect(review).toHaveProperty("skipped");
+		expect(review).toHaveProperty("unavailable");
 		const note = await applyReview({} as never, review, async () => undefined);
-		expect(note).toMatch(/^QA skipped: UNVERIFIED/);
+		expect(note).toMatch(/^QA owed: .*no valid verdict twice/);
+	});
+});
+
+describe("a reviewer that cannot run", () => {
+	it("is unavailable, not skipped, when the start throws; the gate marks the review owed", async () => {
+		spawnAgent.mockRejectedValue(new Error("spawn ENOENT"));
+		const review = await qaReviewer({} as never)(request, fakeCtx({ cwd: "/tmp" }));
+		expect(review).toEqual({ unavailable: "the reviewer could not start: spawn ENOENT" });
+		const note = await applyReview({} as never, review, async () => undefined);
+		expect(note).toMatch(/^QA owed: .*spawn ENOENT.*it reruns when a reviewer can start/);
+	});
+
+	it("is unavailable when the review times out", async () => {
+		spawnAgent.mockImplementation(
+			(...args: unknown[]) =>
+				new Promise((_resolve, reject) =>
+					(args[3] as AbortSignal).addEventListener("abort", () => reject(new Error("aborted"))),
+				),
+		);
+		const review = await qaReviewer({} as never, { timeoutMs: 20 })(request, fakeCtx({ cwd: "/tmp" }));
+		expect(review).toHaveProperty("unavailable", expect.stringMatching(/timed out/));
 	});
 });
 

@@ -5,7 +5,7 @@ description: "Use to trace code across this checkout with LSP: every caller or u
 
 # Local research
 
-The research server's `<mcps>` block routes each question to its tool and says how to page and cite; this skill adds the checks for tracing code with `lspSearch` and proving a claim about it. Name the question and the evidence that settles it, then take the cheapest call that can change the answer.
+Tool names here are the research server's at writing; use the equivalent it lists, and skip a step whose tool it does not offer. Its `<mcps>` block routes each question to its tool and says how to page and cite; this skill adds the checks for tracing code with `lspSearch` and proving a claim about it. Name the question and the evidence that settles it, then take the cheapest call that can change the answer.
 
 ## Read reliably
 

@@ -9,6 +9,12 @@ metadata:
 
 You own the user's outcome, communication, approvals and integration. A child rebuilds context from your brief; its report is a claim you verify.
 
+## Run children and use reports
+
+- `message` a child by its listed name only if its state is unclear or it is late. Answer child questions at once. Ask a stuck or conflicting child (replyRequired) for its state, blocker and need, then decide; if it stays silent or fails twice for the same cause, stop it and give a fresh child the rest, with its findings. Send new facts only to affected children.
+- Read a report's `Noticed` first, and ask the user its `Ask user:` questions. Verify what your next step depends on against the diff, tests or state.
+- `blocked`: answer within the user's authorization, else ask the user, then `message` it. You grant no permissions (a denied action needs the user's grant or mode). `partial`: accept, or follow up. `failed`: read the cause, then retry with a changed task or route. Follow up within a child's scope.
+
 ## Decide
 
 ```text

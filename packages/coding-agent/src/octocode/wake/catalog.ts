@@ -89,6 +89,12 @@ export const CATALOG: { [K in AgentEventKind]: Entry<K> } = {
 		label: (p) => `${p.ref} ${p.change} by ${clipText(p.by, 24)} (${p.relation})`,
 		key: (p) => `peer:${p.ref}:${p.id}`,
 	},
+	"qa.unavailable": {
+		listener: "explicit",
+		wakes: "sometimes",
+		label: (p) => `QA owed on ${p.item}: ${clipText(p.cause, 80)}`,
+		key: (p) => `qa-unavailable:${p.item}`,
+	},
 	"machine.load": {
 		listener: "explicit",
 		wakes: "yes",

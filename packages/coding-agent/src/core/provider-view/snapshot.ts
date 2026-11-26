@@ -115,6 +115,8 @@ interface Facts {
 	credential: CredentialState | undefined;
 	stored: boolean;
 	models: number;
+	/** The variable a configured `$NAME` key waits for, when it is not set. */
+	unsetVariable?: string;
 }
 
 const modelsFile = () => homeTilde(getModelsPath());
@@ -144,6 +146,13 @@ function judge(facts: Facts, where: string, access: string): Pick<ProviderEntry,
 	}
 	if (facts.credential === "signed out") {
 		return { state: "needs-key", statusText: "signed out", nextStep: { label: "sign in", action: "sign-in" } };
+	}
+	if (!facts.configured && facts.unsetVariable && !facts.stored) {
+		return {
+			state: "needs-key",
+			statusText: `needs key · environment variable ${facts.unsetVariable} is not set`,
+			nextStep: { label: `set ${facts.unsetVariable}, or add a key`, action: "add-key" },
+		};
 	}
 	if (!facts.configured) {
 		return facts.stored
@@ -199,6 +208,7 @@ function describe(
 			credential,
 			stored: stored !== undefined,
 			models,
+			unsetVariable: !status.configured && status.source === "environment" ? status.label : undefined,
 		},
 		where,
 		provider ? providerAccessLabel(runtime, id) : "",

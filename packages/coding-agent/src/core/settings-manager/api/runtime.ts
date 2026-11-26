@@ -2,6 +2,7 @@ import type { Model, ModelThinkingLevel } from "@octocodeai/octocode-ai";
 import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
 import type { builtInCompactionSettings, CompactionModel } from "../../compaction/settings.ts";
 import type { ResolvedLimits } from "../../limits.ts";
+import type { FallbackOnClass } from "../../settings-defaults.ts";
 import type { SmartRouterOptions } from "../../smart-router/index.ts";
 import type { CacheWarmingMode, Settings } from "../../settings-schema.ts";
 
@@ -37,6 +38,10 @@ export interface RuntimeSettingsApi {
 	/** `offlineMaxMs` is unset unless configured, so a host may pick its own bound (print mode does). */
 	getRetrySettings(): RetrySettings;
 	getRetryFallbackModels(): string[];
+	/** `retry.fallbackChains`: ordered fallback selectors per failing model (`provider/id`, globs allowed). */
+	getRetryFallbackChains(): Record<string, string[]>;
+	/** `retry.fallbackOn`: the failure classes that switch to a fallback model. */
+	getRetryFallbackOn(): readonly FallbackOnClass[];
 	/** `retry.fallbackCooldownMs`: how long a model that failed on a usage limit or refused credential is skipped. */
 	getRetryFallbackCooldownMs(): number;
 	/** Appends a `provider/id[:thinking]` selector to the global `retry.fallbackModels` (a usage-limit switch saved). */
@@ -55,6 +60,8 @@ export interface RuntimeSettingsApi {
 	setCacheWarmingMode(mode: CacheWarmingMode): void;
 	/** Turn the rewrite of each submitted prompt on or off, in the global settings. */
 	setOptimizePrompts(enabled: boolean): void;
+	/** Sends per minute to one provider (0: no limit); models.json limits win over it. */
+	getRequestsPerMinute(): number;
 	getProviderRetrySettings(): { timeoutMs?: number; maxRetries?: number; maxRetryDelayMs: number };
 	/** Native auto-code policy. Paid escalation comes from global settings only. */
 	getSmartRouterSettings(): SmartRouterOptions;

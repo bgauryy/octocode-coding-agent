@@ -42,7 +42,7 @@ const APPLIERS: Readonly<Record<string, Applier>> = {
 		return true;
 	},
 	outputPad: (host) => {
-		// The view binder pads the live rows; `bindRender` asks for the frame.
+		// The view binder pads the live rows and asks for the frame.
 		host.uiStore.getState().setOutputPad(host.settingsManager.getOutputPad());
 		return true;
 	},

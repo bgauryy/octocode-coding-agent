@@ -9,7 +9,34 @@ export interface DbWriterLocations {
 	mirrorFile: string;
 	archiveDir: string;
 	privateParent: boolean;
+	/** Set for a workspace file: its key and history source (`DatabaseLocations`). */
+	workspace?: string;
+	historySource?: string;
+	/** Set by a host with workspace files on, so the writer opens a split machine file (`DatabaseLocations`). */
+	workspaceDir?: string;
 }
+
+/**
+ * The fields of `locations` a writer thread receives: the cloneable ones it owns. A host's `split` stays behind, so the
+ * thread never runs the split (`schema-split.ts`) and its data can be cloned.
+ */
+export const writerLocations = ({
+	file,
+	mirrorFile,
+	archiveDir,
+	privateParent,
+	workspace,
+	historySource,
+	workspaceDir,
+}: DbWriterLocations): DbWriterLocations => ({
+	file,
+	mirrorFile,
+	archiveDir,
+	privateParent,
+	...(workspace === undefined ? {} : { workspace }),
+	...(historySource === undefined ? {} : { historySource }),
+	...(workspaceDir === undefined ? {} : { workspaceDir }),
+});
 
 /**
  * Which file a writer owns: `coordination` (the bookkeeping commands, `derived.ts`) or `mirror` (the transcript mirror's
@@ -24,6 +51,13 @@ export interface DbWriterWorkerData {
 	/** 0 idle, 1 in an archive pass, 2 stopping; shared so synchronous compression can observe close. */
 	stopping: SharedArrayBuffer;
 }
+
+/** The data a writer thread starts with: only the locations it owns (`writerLocations`). */
+export const writerWorkerData = (
+	locations: DbWriterLocations,
+	role: DbWriterRole,
+	stopping: SharedArrayBuffer,
+): DbWriterWorkerData => ({ worker: DB_WRITER_WORKER, locations: writerLocations(locations), role, stopping });
 
 /** One operation: `id` names it in the reply. */
 export interface DbWriterRequest {

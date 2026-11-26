@@ -29,6 +29,10 @@ export interface RunnerState {
 	/** Undefined while unknown; `error` then says why. */
 	auth?: RunnerAuth;
 	error?: string;
+	/** What the ACP session check learned: the models the agent advertises, and what it accepts. */
+	models?: string[];
+	acceptsImages?: boolean;
+	acceptsMcpHttp?: boolean;
 	checkedAt?: number;
 }
 
@@ -133,7 +137,7 @@ async function sessionCheck(
 	adapter: string,
 	env: NodeJS.ProcessEnv,
 	signal?: AbortSignal,
-): Promise<Pick<RunnerState, "auth" | "error">> {
+): Promise<Pick<RunnerState, "auth" | "error" | "models" | "acceptsImages" | "acceptsMcpHttp">> {
 	const cwd = mkdtempSync(path.join(os.tmpdir(), "octocode-runner-check-"));
 	try {
 		const found = await probeAcpSignIn(
@@ -142,7 +146,13 @@ async function sessionCheck(
 			signal,
 		);
 		if ("error" in found) return { error: found.error };
-		return { auth: found.signedIn ? { signedIn: true } : { signedIn: false } };
+		if (!found.signedIn) return { auth: { signedIn: false } };
+		return {
+			auth: { signedIn: true },
+			models: found.models,
+			acceptsImages: found.capabilities.image,
+			acceptsMcpHttp: found.capabilities.mcpHttp,
+		};
 	} finally {
 		rmSync(cwd, { recursive: true, force: true });
 	}

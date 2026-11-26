@@ -5,7 +5,7 @@ import { type CompactionEntry } from "../../core/session-manager.ts";
 import { type AgentDb, agentEvents, compactions, sessions } from "../../../../db/src/api.ts";
 import { archiveFolder, segmentFiles } from "../history/archive.ts";
 import { atomicWriteFile } from "@octocodeai/octocode-common/atomic-file";
-import { registeredWorkspace } from "../../storage/workspace-database.ts";
+import { workspaceDb } from "../../storage/workspace-database.ts";
 
 export function saveCompaction(
 	agent: AgentDb,
@@ -22,7 +22,10 @@ export function saveCompaction(
 		detail?: { n: number; name: string } | null;
 	} = {},
 ): void {
-	const workspace = registeredWorkspace(cwd, agent).id;
+	// `agent` is the machine file (the mirror, the session row); the compaction event goes to the workspace's file.
+	const bound = workspaceDb(cwd, options.env);
+	const events = bound.agent;
+	const workspace = bound.workspace.id;
 	const known = compactions.get(agent.mirror.db, sessionId, entry.id);
 	if (known && known.workspace !== workspace) throw new Error("Compaction belongs to another workspace");
 	const segment =
@@ -38,9 +41,8 @@ export function saveCompaction(
 	const timestamp = Date.parse(entry.timestamp);
 	const committedAt = Number.isFinite(timestamp) ? timestamp : null;
 	const verified = options.verified ?? true;
-	// The summary lives in the transcript mirror, the session's binding and its event in the coordination file: one
-	// transaction of each, the coordination one inside the mirror's (whose lock comes first), so a failed event rolls
-	// the summary back too.
+	// The summary lives in the transcript mirror, the session's binding in the machine file and its event in the
+	// workspace's file: one transaction of each, nested in that lock order, so a failed event rolls the others back too.
 	agent.mirror.transaction(() => {
 		compactions.save(agent.mirror.db, {
 			workspace,
@@ -61,29 +63,31 @@ export function saveCompaction(
 		});
 		agent.transaction(() => {
 			sessions.bind(agent.db, sessionId, workspace);
-			const member = options.agentId ? agentEvents.member(agent.db, options.agentId) : undefined;
+			const member = options.agentId ? agentEvents.member(events.db, options.agentId) : undefined;
 			if (verified && committedAt !== null)
-				agentEvents.append(
-					agent.db,
-					workspace,
-					{
-						id: randomUUID(),
-						time: new Date(committedAt).toISOString(),
-						name: options.agentId ?? null,
-						parentId: (member?.parent_id as string | null) ?? null,
-						sessionId,
-						type: "compaction",
-						version: 1,
-						data: {
-							agentId: options.agentId ?? null,
-							registrationId: member?.registration_id ?? null,
-							parentRegistrationId: member?.parent_registration_id ?? null,
-							activationId: options.activationId ?? null,
-							compactionId: `compaction:${sessionId}:${entry.id}`,
-							recovered: options.recovered ?? false,
+				events.transaction(() =>
+					agentEvents.append(
+						events.db,
+						workspace,
+						{
+							id: randomUUID(),
+							time: new Date(committedAt).toISOString(),
+							name: options.agentId ?? null,
+							parentId: (member?.parent_id as string | null) ?? null,
+							sessionId,
+							type: "compaction",
+							version: 1,
+							data: {
+								agentId: options.agentId ?? null,
+								registrationId: member?.registration_id ?? null,
+								parentRegistrationId: member?.parent_registration_id ?? null,
+								activationId: options.activationId ?? null,
+								compactionId: `compaction:${sessionId}:${entry.id}`,
+								recovered: options.recovered ?? false,
+							},
 						},
-					},
-					`compaction:${sessionId}:${entry.id}`,
+						`compaction:${sessionId}:${entry.id}`,
+					),
 				);
 		});
 	});

@@ -76,6 +76,16 @@ export function transcriptDbPath(agentDb: string): string {
 }
 
 /**
+ * The folder of workspace files beside a machine file: `workspaces/` beside `workspaces.db`, else `<name>.workspaces/`
+ * beside `<name>.db`, so two databases in one folder never share one. It holds `<key>.db` per repository
+ * (`storage/workspace-database.ts`). Nothing is created.
+ */
+export function workspaceDbDir(agentDb: string): string {
+	const name = path.basename(agentDb, path.extname(agentDb));
+	return path.join(path.dirname(agentDb), name === "workspaces" ? "workspaces" : `${name}.workspaces`);
+}
+
+/**
  * Test-only markers a test run sets before its first worker starts (`vitest.tmp.global.ts`, the TUI's node:test setup).
  * Every process a test starts inherits them, including a detached web daemon, whose environment keeps `OCTOCODE_*`
  * settings but not `VITEST`. The guard file records each refusal; the homes list names the run's real homes besides the

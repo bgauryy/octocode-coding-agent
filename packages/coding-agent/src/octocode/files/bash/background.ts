@@ -6,10 +6,16 @@ import { joinedText } from "../bash-jobs/joins.ts";
 import { jobLines } from "./results.ts";
 import { verificationJson, verificationText } from "./verification.ts";
 
-export function backgroundStarted(job: BashJob, cwd: string, verification: VerificationReceipt | undefined) {
+export function backgroundStarted(
+	job: BashJob,
+	cwd: string,
+	verification: VerificationReceipt | undefined,
+	inferredItem?: string,
+) {
 	const timeout = job.timeout;
 	const text = [
 		`Started ${job.id} in the background (pid ${job.pid}${timeout ? `, will be stopped if still running after ${formatDuration(timeout * 1000)}` : ""}). Keep working: its exit status and output tail arrive as a message.`,
+		...(inferredItem ? [`Linked to ${inferredItem}, the only item you hold ongoing; pass item to name another.`] : []),
 		...jobLines(job, cwd),
 		...(verification ? [verificationText(verification)].filter(Boolean) : []),
 	].join("\n");
@@ -19,12 +25,14 @@ export function backgroundStarted(job: BashJob, cwd: string, verification: Verif
 			job: job.id,
 			pid: job.pid,
 			log: job.log,
+			...(inferredItem ? { item: inferredItem } : {}),
 			...(verification ? { verification: verificationJson(verification) } : {}),
 		},
 		details: {
 			job: job.id,
 			pid: job.pid,
 			log: job.log,
+			...(inferredItem ? { item: inferredItem } : {}),
 			...(verification ? { verification, notices: [verificationText(verification)].filter(Boolean) } : {}),
 		},
 	};

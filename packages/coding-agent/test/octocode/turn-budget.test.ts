@@ -6,6 +6,7 @@ import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { SETTINGS_DEFAULTS } from "../../src/core/settings-defaults.ts";
 import {
 	REQUEST_MAX_CHARS,
+	BASH_RESULT_DEFAULT_BYTES,
 	RESULT_DEFAULT_BYTES,
 	TEXT_MAX_CHARS,
 	TURN_MAX_CHARS,
@@ -51,8 +52,9 @@ const records = (file: string) =>
 		.map((line) => JSON.parse(line) as { tool: string; text: string });
 
 describe("output budget policy", () => {
-	it("keeps one default for bash and the other tools, and a requested page whole", () => {
-		expect(SETTINGS_DEFAULTS.bashOutputMaxBytes).toBe(RESULT_DEFAULT_BYTES);
+	it("keeps a smaller default for bash than for the other tools, and a requested page whole", () => {
+		expect(SETTINGS_DEFAULTS.bashOutputMaxBytes).toBe(BASH_RESULT_DEFAULT_BYTES);
+		expect(BASH_RESULT_DEFAULT_BYTES).toBeLessThan(RESULT_DEFAULT_BYTES);
 		expect(TEXT_MAX_CHARS).toBeGreaterThan(REQUEST_MAX_CHARS);
 		expect(TURN_MAX_CHARS).toBeGreaterThanOrEqual(2 * REQUEST_MAX_CHARS);
 	});

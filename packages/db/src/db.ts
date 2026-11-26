@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
 import type { DatabaseSync } from "node:sqlite";
 import { privateDir } from "../../common/src/file-mode.ts";
-import { beginImmediate, isBusy, loadSqlite, RETRY_MS } from "./sqlite.ts";
-import { canonicalPath } from "../../common/src/canonical-path.ts";
+import { beginImmediate, loadSqlite } from "./sqlite.ts";
 import * as agentEvents from "./queries/agent-events.ts";
-import { AgentDbError, COORDINATION_FILE, type FileKind, prepareSchema } from "./schema.ts";
+import { AgentDbError, COORDINATION_FILE, type FileKind, prepareSchema, WORKSPACE_FILE } from "./schema.ts";
+import * as meta from "./queries/meta.ts";
+import { needsSplit, SplitBusyError, splitWorkspaces, WORKSPACE_KEY } from "./schema-split.ts";
 import * as archiveIndex from "./queries/archive-index.ts";
 import { createMirrorSchema, MIRROR_APPLICATION_ID } from "./schema-mirror.ts";
 
@@ -38,6 +38,15 @@ export interface AgentDb {
 	 * under the home even when `OCTOCODE_AGENT_DB` names a file elsewhere. Nothing is created at open.
 	 */
 	readonly archiveDir: string;
+	/** The key of the workspace file this is (`DatabaseLocations.workspace`); undefined for the machine file. */
+	readonly workspace: string | undefined;
+	/** The machine file's folder of workspace files (`DatabaseLocations.workspaceDir`): a writer of it needs it too. */
+	readonly workspaceDir: string | undefined;
+	/**
+	 * The file whose name tags the history rows this database archives (`history-archive.ts` `archiveSource`): the file
+	 * itself, and for a workspace file the machine file, which archived the same repository's rows before the split.
+	 */
+	readonly historySource: string;
 	readonly db: Db;
 	/** The transcript mirror, opened at first use; throws `AgentDbError` (every time) when that file cannot be used. */
 	readonly mirror: MirrorDb;
@@ -53,12 +62,34 @@ export interface AgentDb {
 	close(): void;
 }
 
-interface DatabaseLocations {
+export interface DatabaseLocations {
 	file: string;
-	/** The transcript mirror's file: the host's path helper puts it beside `file`. */
+	/** The transcript mirror's file: the host's path helper puts it beside the machine file. */
 	mirrorFile: string;
 	archiveDir: string;
 	privateParent: boolean;
+	/** Opens `file` as the workspace file of this key (`WORKSPACE_FILE`); a file stamped with another key is refused. */
+	workspace?: string;
+	/** `AgentDb.historySource`; `file` when unset. */
+	historySource?: string;
+	/**
+	 * The machine file's folder of workspace files, named by a host with workspace files on: with it a split machine file
+	 * (`schema-split.ts`) opens; without it one is refused, since this host would write workspace rows into it.
+	 */
+	workspaceDir?: string;
+	/**
+	 * Given with `workspaceDir`: an open that finds the split pending runs it first, refused while a session row names
+	 * another process `running` says still runs (its pid and recorded start time). Without it a pending split is left
+	 * for another opener (a writer thread). Not passed to a writer thread: it cannot be cloned.
+	 */
+	split?: {
+		running(pid: number, started: string | null): boolean;
+		/**
+		 * Given: a split refused because another session's process runs is put off instead. The open keeps the un-split
+		 * layout (its `workspaceDir` is unset) and this hears why; without it the refusal is thrown.
+		 */
+		deferred?(reason: string): void;
+	};
 }
 
 /** The transcript mirror file: its own header id and schema. */
@@ -66,6 +97,7 @@ const MIRROR_FILE: FileKind = {
 	applicationId: MIRROR_APPLICATION_ID,
 	name: "Octocode transcript mirror",
 	version: 1,
+	minReader: 1,
 	create: createMirrorSchema,
 };
 
@@ -74,6 +106,7 @@ const ARCHIVE_INDEX_FILE: FileKind = {
 	applicationId: archiveIndex.APPLICATION_ID,
 	name: "Octocode archive index",
 	version: 1,
+	minReader: 1,
 	create: archiveIndex.create,
 };
 
@@ -102,9 +135,66 @@ export function openDatabase(locations: DatabaseLocations, kind: FileKind = COOR
 
 const mirrorOpeners = new WeakMap<AgentDb, (waitMs: number) => MirrorDb>();
 
-function openWithTimeout(locations: DatabaseLocations, kind: FileKind, waitMs: number): AgentDb {
-	const { file, mirrorFile, archiveDir, privateParent } = locations;
-	const coordination = connect(file, privateParent, kind, waitMs);
+/** The mirror of `agent`, opened within `waitMs` (`prepareSharedDatabase`). */
+export const openMirror = (agent: AgentDb, waitMs: number): MirrorDb => mirrorOpeners.get(agent)!(waitMs);
+
+/** A connection on the workspace file of `key`: created and stamped when empty, refused when stamped for another key. */
+function connectWorkspace(file: string, privateParent: boolean, key: string, waitMs: number): Connection {
+	const opened = connect(file, privateParent, WORKSPACE_FILE, waitMs);
+	try {
+		// Read without a lock: a stamped file (every open after the first) must open while another process writes.
+		const stamped =
+			meta.read(opened.db, WORKSPACE_KEY) ??
+			opened.transaction(() => {
+				const found = meta.read(opened.db, WORKSPACE_KEY);
+				if (found === undefined) meta.write(opened.db, WORKSPACE_KEY, key);
+				return found ?? key;
+			});
+		if (stamped !== key)
+			throw new AgentDbError(`${file} is the workspace database of ${stamped}, not of ${key}; nothing in it changed.`);
+		return opened;
+	} catch (error) {
+		opened.close();
+		throw error;
+	}
+}
+
+export function openWithTimeout(locations: DatabaseLocations, kind: FileKind, waitMs: number): AgentDb {
+	const {
+		file,
+		mirrorFile,
+		archiveDir,
+		privateParent,
+		workspace,
+		workspaceDir,
+		split,
+		historySource = file,
+	} = locations;
+	const coordination =
+		workspace === undefined
+			? connect(file, privateParent, kind, waitMs, workspaceDir !== undefined)
+			: connectWorkspace(file, privateParent, workspace, waitMs);
+	let layoutDir = workspaceDir;
+	if (workspaceDir !== undefined && split && workspace === undefined && needsSplit(coordination.db)) {
+		try {
+			splitWorkspaces(coordination.db, {
+				file,
+				workspaceDir,
+				transaction: coordination.transaction,
+				open: (target, key) => connectWorkspace(target, privateParent, key, waitMs),
+				running: split.running,
+			});
+		} catch (error) {
+			// While others run, the process keeps the un-split layout: its rows stay in the machine file, and a later
+			// split moves them.
+			if (!(error instanceof SplitBusyError && split.deferred)) {
+				coordination.close();
+				throw error;
+			}
+			split.deferred(error.message);
+			layoutDir = undefined;
+		}
+	}
 	let mirror: Connection | undefined;
 	let refused: AgentDbError | undefined;
 	const mirrorDb = (mirrorWaitMs = 5000): MirrorDb => {
@@ -136,6 +226,9 @@ function openWithTimeout(locations: DatabaseLocations, kind: FileKind, waitMs: n
 		file,
 		mirrorFile,
 		archiveDir,
+		workspace,
+		workspaceDir: layoutDir,
+		historySource,
 		get mirror() {
 			return mirrorDb();
 		},
@@ -158,7 +251,14 @@ interface Connection {
 	close(): void;
 }
 
-function connect(target: string, privateParent: boolean, kind: FileKind, waitMs: number): Connection {
+/** `takesStep`: the opener reads a file at `kind.optionalStep`'s version (`prepareSchema`). */
+function connect(
+	target: string,
+	privateParent: boolean,
+	kind: FileKind,
+	waitMs: number,
+	takesStep = false,
+): Connection {
 	// Private to this user: it holds prompts, notes and memories. SQLite gives its -wal and -shm files the same mode.
 	// Our own folder is tightened when it already exists; a folder named by OCTOCODE_AGENT_DB is only created.
 	if (privateParent) privateDir(path.dirname(target));
@@ -224,7 +324,7 @@ function connect(target: string, privateParent: boolean, kind: FileKind, waitMs:
 	};
 	try {
 		db.exec(`PRAGMA busy_timeout=${waitMs}; PRAGMA foreign_keys=ON;`);
-		const { fts } = prepareSchema(db, target, transaction, kind);
+		const { fts } = prepareSchema(db, target, transaction, kind, takesStep);
 		db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;");
 		if (waitMs !== 5000) db.exec("PRAGMA busy_timeout=5000");
 		tighten(target);
@@ -296,69 +396,4 @@ function tighten(target: string): void {
 			// Missing, or not ours to change.
 		}
 	}
-}
-
-const shared = new Map<string, AgentDb>();
-const refused = new Map<string, AgentDbError>();
-let sharedGeneration = 0;
-
-/**
- * One process connection per configured file. Opening another home must not close a database borrowed by a live
- * session. An `AgentDbError` is remembered per file and thrown again without retrying.
- */
-export function sharedDatabase(locations: DatabaseLocations): AgentDb {
-	return sharedWithTimeout(locations, 5000);
-}
-
-function sharedWithTimeout(locations: DatabaseLocations, waitMs: number): AgentDb {
-	const key = canonicalPath(locations.file);
-	const current = shared.get(key);
-	if (current?.db.isOpen) return current;
-	const problem = refused.get(key);
-	if (problem) throw problem;
-	try {
-		const opened = openWithTimeout(locations, COORDINATION_FILE, waitMs);
-		shared.set(key, opened);
-		return opened;
-	} catch (error) {
-		if (error instanceof AgentDbError) refused.set(key, error);
-		throw error;
-	}
-}
-
-/** Open the shared connection, optionally its mirror, yielding while initialization waits for a peer's SQLite lock. */
-export async function prepareSharedDatabase(
-	locations: DatabaseLocations,
-	options: { mirror?: boolean; signal?: AbortSignal } = {},
-): Promise<AgentDb> {
-	const generation = sharedGeneration;
-	const check = () => {
-		options.signal?.throwIfAborted();
-		if (generation !== sharedGeneration) throw new DOMException("Database preparation was closed", "AbortError");
-	};
-	const retry = async <T>(open: () => T): Promise<T> => {
-		const deadline = performance.now() + 5000;
-		for (;;) {
-			check();
-			try {
-				return open();
-			} catch (error) {
-				const left = deadline - performance.now();
-				if (!isBusy(error) || left <= 0) throw error;
-				await sleep(Math.min(RETRY_MS, left), undefined, { signal: options.signal });
-			}
-		}
-	};
-	const agent = await retry(() => sharedWithTimeout(locations, 0));
-	if (options.mirror) await retry(() => mirrorOpeners.get(agent)!(0));
-	check();
-	return agent;
-}
-
-/** Closes all process-owned connections; `api.ts`'s `closeSharedAgentDb` also stops their writers (`writer/client.ts`). */
-export function closeSharedConnections(): void {
-	sharedGeneration += 1;
-	for (const connection of shared.values()) connection.close();
-	shared.clear();
-	refused.clear();
 }

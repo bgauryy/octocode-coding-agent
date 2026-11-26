@@ -7,7 +7,10 @@ import { inputRoomTokens } from "../compaction/settings.ts";
 import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { isCredentialError, isModelAccessError, isRateLimitedText, isUsageLimitError } from "@octocodeai/octocode-ai";
 import type { AssistantMessage, Model } from "@octocodeai/octocode-ai/compat";
-import { isValidThinkingLevel } from "../thinking-level.ts";
+import { tryParseModelReference } from "../model-reference.ts";
+import type { FallbackOnClass } from "../settings-defaults.ts";
+import { fallbackSelectors } from "./fallback-chain.ts";
+import { committedBy } from "./replay-safety.ts";
 import { isVirtualModel } from "../virtual-models.ts";
 import { FALLBACK_ENTRY, type FallbackFacts, fallbackNotice, fallbackRecord } from "./fallback-switch.ts";
 import type { SessionInternals } from "./host.ts";
@@ -27,14 +30,18 @@ const recent = (key: string, cooldownMs: number) => Date.now() - (exhausted.get(
 const isExhausted = (provider: string, id: string, cooldownMs: number) =>
 	recent(keyOf(provider, id), cooldownMs) || recent(keyOf(provider, "*"), cooldownMs);
 
-/** Why the turn moves on: `usage` a usage limit, `credential` a refused credential, `outage` retries ran out. */
-type FallbackReason = "usage" | "credential" | "outage" | "model";
+/**
+ * Why the turn moves on: `usage` a usage limit, `credential` a refused credential, `outage` retries ran out, `model` the
+ * model is unavailable, `rate-limit` a rate limit outlasted the retries. Names match `retry.fallbackOn`.
+ */
+type FallbackReason = FallbackOnClass;
 
 const REASON_TEXT: Record<FallbackReason, string> = {
 	usage: "hit a usage limit",
 	credential: "refused the credential",
 	model: "was unavailable for this account or endpoint",
 	outage: "kept failing after retries",
+	"rate-limit": "kept being rate limited after retries",
 };
 
 export interface FallbackHost extends Pick<SessionInternals, "session" | "run" | "emit"> {
@@ -46,15 +53,12 @@ export interface FallbackHost extends Pick<SessionInternals, "session" | "run" |
 
 /** `provider/id[:thinking]`; the id may hold slashes (gateway models). */
 function parseSelector(selector: string): { provider: string; id: string; thinking?: ThinkingLevel } | undefined {
-	const colon = selector.lastIndexOf(":");
-	const level = colon > 0 ? selector.slice(colon + 1) : "";
-	const base = isValidThinkingLevel(level) ? selector.slice(0, colon) : selector;
-	const slash = base.indexOf("/");
-	if (slash <= 0 || slash === base.length - 1) return undefined;
+	const reference = tryParseModelReference(selector);
+	if (!reference?.provider) return undefined;
 	return {
-		provider: base.slice(0, slash),
-		id: base.slice(slash + 1),
-		...(isValidThinkingLevel(level) ? { thinking: level } : {}),
+		provider: reference.provider,
+		id: reference.id,
+		...(reference.thinkingLevel ? { thinking: reference.thinkingLevel } : {}),
 	};
 }
 
@@ -80,7 +84,7 @@ export class SessionFallback {
 		if (isUsageLimitError(text)) return "usage";
 		// A rate limit (not a usage limit, tested above) clears by waiting, which the retries did; another model would not
 		// help for long, and it would stay selected. Before the credential test: one that names the key is about waiting.
-		if (isRateLimitedText(text)) return undefined;
+		if (isRateLimitedText(text)) return this.host.isRetryable(message) ? "rate-limit" : undefined;
 		if (this.host.isRetryable(message)) return "outage";
 		return isCredentialError(text) ? "credential" : undefined;
 	}
@@ -97,6 +101,11 @@ export class SessionFallback {
 		const { session } = this.host;
 		const reason = this.reasonOf(message);
 		if (!reason) return false;
+		// A switch replays the request: not after text was shown or a tool ran, which would repeat them.
+		if (committedBy(this.host.run.attempt, message)) return false;
+		// The usage-limit choice is the person's: `fallbackOn` does not remove it.
+		if (!session.settingsManager.getRetryFallbackOn().includes(reason))
+			return reason === "usage" ? this.usageLimit.recover(message) : false;
 		// The usage-limit choice is the person's, not an automatic retry: it comes with retries off too.
 		if (!session.settingsManager.getRetryEnabled())
 			return reason === "usage" ? this.usageLimit.recover(message) : false;
@@ -118,7 +127,7 @@ export class SessionFallback {
 		if (reason !== "model")
 			exhausted.set(reason === "credential" ? keyOf(message.provider, "*") : failedKey, Date.now());
 		const candidate = await this.pick(
-			session.settingsManager.getRetryFallbackModels(),
+			fallbackSelectors(session.settingsManager, message.provider, message.model),
 			reason === "model" ? failedKey : undefined,
 			session.settingsManager.getRetryFallbackCooldownMs(),
 		);

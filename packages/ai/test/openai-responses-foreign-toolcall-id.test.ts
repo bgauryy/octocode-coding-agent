@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { convertResponsesMessages } from "../src/api/openai-responses-shared/messages.ts";
+import { replayedResponsesInput } from "./capture-responses-payload.ts";
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, ToolResultMessage, Usage } from "../src/types.ts";
@@ -18,7 +18,7 @@ const usage: Usage = {
 };
 
 describe("OpenAI Responses foreign tool call ID normalization", () => {
-	it("hashes foreign Copilot tool item IDs into a bounded Responses-safe fc_<hash> shape", () => {
+	it("hashes foreign Copilot tool item IDs into a bounded Responses-safe fc_<hash> shape", async () => {
 		const model = getBuiltinModel("openai", "gpt-5.5");
 		const assistant: AssistantMessage = {
 			role: "assistant",
@@ -50,18 +50,15 @@ describe("OpenAI Responses foreign tool call ID normalization", () => {
 			messages: [{ role: "user", content: "Use the tool.", timestamp: Date.now() - 3000 }, assistant, toolResult],
 		});
 
-		const input = convertResponsesMessages(model, context, new Set(["openai", "opencode"]));
+		const input = await replayedResponsesInput(model, context);
 		const functionCall = input.find((item) => item.type === "function_call");
 
 		expect(functionCall).toBeDefined();
-		expect(functionCall?.type).toBe("function_call");
-		if (!functionCall || functionCall.type !== "function_call") {
-			throw new Error("Expected function_call item");
-		}
+		const id = functionCall?.id as string;
 
 		const expectedItemId = `fc_${fastHash(COPILOT_RAW_TOOL_CALL_ID.split("|")[1])}`;
-		expect(functionCall.id).toBe(expectedItemId);
-		expect(functionCall.id?.length ?? 0).toBeLessThanOrEqual(64);
-		expect(functionCall.id).toMatch(/^fc_[A-Za-z0-9]+$/);
+		expect(id).toBe(expectedItemId);
+		expect(id.length).toBeLessThanOrEqual(64);
+		expect(id).toMatch(/^fc_[A-Za-z0-9]+$/);
 	});
 });

@@ -3,19 +3,16 @@ import type { LayoutBox, LayoutFrame } from "../layout/types.ts";
 import { getScrollViewBox, getScrollViewsAt } from "../layout.ts";
 import type { Terminal } from "../terminal.ts";
 import type { TuiMouseDispatchResult, TuiMouseEvent } from "../tui.ts";
-import { visibleWidth } from "../utils/width.ts";
 import { getOsc8LinkAtColumn } from "../utils/columns.ts";
 import type { LayoutHit } from "./mouse-gesture.ts";
-import { COPY_ERROR_FLASH_DURATION_MS, DOUBLE_CLICK_INTERVAL_MS } from "./constants.ts";
+import { COPY_ERROR_FLASH_DURATION_MS } from "./constants.ts";
 import { SelectionAutoScroll } from "./selection-auto-scroll.ts";
 import {
 	applySelectionToScreen,
 	getSelectionBounds,
 	getSelectionText,
-	getWordSelection,
 	rebasePoint,
 	scrollSelectionPoint,
-	selectionSourceLine,
 	selectedLines,
 	selectedTextLines,
 } from "./selection.ts";
@@ -26,6 +23,7 @@ import {
 	TERMINAL_CLIPBOARD_BYTES,
 } from "./selection-copy.ts";
 export { NATIVE_CLIPBOARD_BYTES };
+import { lineRangeAt, nextClick, wordRangeAt } from "./selection-units.ts";
 import type { ClickTarget, SelectionGranularity, SelectionPoint, SelectionRange, SgrMouseEvent } from "./types.ts";
 
 /** Alternate-screen state and operations the text selection reads and calls live. */
@@ -165,19 +163,12 @@ export class AltScreenSelection {
 		};
 	}
 
-	private getSelectionSourceLine(point: SelectionPoint): string {
-		return selectionSourceLine(point, this.host.getCurrentLayout(), this.host.getPreviousScreen());
-	}
-
 	private getWordSelection(point: SelectionPoint): SelectionRange | undefined {
-		return getWordSelection(this.getSelectionSourceLine(point), point);
+		return wordRangeAt(point, this.host.getCurrentLayout(), this.host.getPreviousScreen());
 	}
 
 	private getLineSelection(point: SelectionPoint): SelectionRange {
-		return {
-			start: { ...point, col: 0 },
-			end: { ...point, col: visibleWidth(this.getSelectionSourceLine(point)), boundary: true },
-		};
+		return lineRangeAt(point, this.host.getCurrentLayout(), this.host.getPreviousScreen());
 	}
 
 	private updateSelectionFocus(point: SelectionPoint): void {
@@ -200,34 +191,91 @@ export class AltScreenSelection {
 		}
 	}
 
-	private getClickCount(point: SelectionPoint, word: SelectionRange | undefined): number {
-		const now = Date.now();
-		const previous = this.lastClick;
-		const count =
-			word &&
-			previous &&
-			now - previous.timestamp <= DOUBLE_CLICK_INTERVAL_MS &&
-			previous.row === point.row &&
-			previous.scrollView === point.scrollView &&
-			previous.wordStart === word.start.col &&
-			previous.wordEnd === word.end.col
-				? (previous.count % 3) + 1
-				: 1;
-		this.lastClick = word
-			? {
-					timestamp: now,
-					count,
-					row: point.row,
-					scrollView: point.scrollView,
-					wordStart: word.start.col,
-					wordEnd: word.end.col,
-				}
-			: undefined;
-		return count;
+	/**
+	 * Shift-press with a selection showing: move its focus to the pointer, by the unit it was made with, and keep
+	 * extending while the button is held. Only terminals that pass Shift with the mouse report get here; most take
+	 * Shift-drag for their own selection.
+	 */
+	private extendFromPress(event: SgrMouseEvent): boolean {
+		const anchor = this.selectionAnchor;
+		if (!anchor || !getSelectionBounds(anchor, this.selectionFocus)) return false;
+		this.stopSelectionAutoScroll();
+		this.selectionPressActive = true;
+		this.selectionDragged = true;
+		this.pressCell = undefined;
+		this.pressedUrl = undefined;
+		this.lastClick = undefined;
+		this.updateSelectionFocus(this.getSelectionPoint(event, anchor.scrollView));
+		this.host.requestRender();
+		return true;
+	}
+
+	/** Drop a selection that shows (Escape): true when there was one to drop. */
+	clearVisibleSelection(): boolean {
+		if (this.selectionPressActive || !this.hasActiveSelection()) return false;
+		this.clearTextSelection();
+		this.lastClick = undefined;
+		this.host.requestRender();
+		return true;
 	}
 
 	stopSelectionAutoScroll(): void {
 		this.autoScroll.stop();
+	}
+
+	private urlAt(x: number, y: number): string | undefined {
+		const row = Math.max(0, Math.min(this.host.getTerminal().rows - 1, y));
+		const col = Math.max(0, Math.min(this.host.getTerminal().columns - 1, x));
+		return getOsc8LinkAtColumn(this.host.getPreviousScreen()[row] ?? "", col);
+	}
+
+	private dispatchCellClick(
+		event: SgrMouseEvent,
+		hits: readonly LayoutHit[] | undefined,
+		clickedUrl: string | undefined,
+		clickCount: number,
+		clearSelection: boolean,
+	): boolean {
+		if (clickedUrl && this.host.openUrl) {
+			if (clearSelection) this.resetSelectionPoints();
+			try {
+				this.host.openUrl(clickedUrl);
+			} catch {
+				// URL activation is best-effort.
+			}
+			if (clearSelection) this.host.requestRender();
+			return true;
+		}
+		const clickEvent = this.host.createMouseEvent("click", event.button, event.x, event.y, { clickCount });
+		const overlay = this.host.dispatchMouseToOverlay(clickEvent);
+		const result = overlay.result ?? (overlay.hit ? undefined : this.host.dispatchMouseToLayout(clickEvent, hits));
+		if (!result) return false;
+		const render = this.host.applyMouseDispatchResult(clickEvent, result);
+		if (clearSelection) this.clearTextSelection();
+		if (render) this.host.requestRender();
+		return true;
+	}
+
+	/** Press-to-release click & OSC 8 link dispatch when text selection is disabled. */
+	handleClickOnlyMouseEvent(event: SgrMouseEvent): void {
+		const button = event.button & 3;
+		if (button !== 0 && !(event.release && button === 3)) return;
+		if (event.release) {
+			const { pressCell: press, pressedUrl: url } = this;
+			this.pressCell = undefined;
+			this.pressedUrl = undefined;
+			if (press && press.x === event.x && press.y === event.y) this.dispatchCellClick(event, press.hits, url, 1, false);
+			return;
+		}
+		if ((event.button & 32) !== 0) {
+			if (this.pressCell && (this.pressCell.x !== event.x || this.pressCell.y !== event.y)) {
+				this.pressCell = undefined;
+				this.pressedUrl = undefined;
+			}
+			return;
+		}
+		this.pressCell = { x: event.x, y: event.y, hits: this.host.hitLayoutAt(event.x, event.y) };
+		this.pressedUrl = this.urlAt(event.x, event.y);
 	}
 
 	handleSelectionMouseEvent(event: SgrMouseEvent): void {
@@ -249,31 +297,7 @@ export class AltScreenSelection {
 			else if (this.selectionGranularity === "character") this.selectionFocus = this.selectionAnchor;
 			const clickedUrl = isClick ? this.pressedUrl : undefined;
 			this.pressedUrl = undefined;
-			if (clickedUrl && this.host.openUrl) {
-				this.selectionAnchor = undefined;
-				this.selectionFocus = undefined;
-				try {
-					this.host.openUrl(clickedUrl);
-				} catch {
-					// URL activation is best-effort.
-				}
-				this.host.requestRender();
-				return;
-			}
-			if (isClick) {
-				const clickEvent = this.host.createMouseEvent("click", event.button, event.x, event.y, {
-					clickCount: this.lastClick?.count ?? 1,
-				});
-				const overlay = this.host.dispatchMouseToOverlay(clickEvent);
-				const result =
-					overlay.result ?? (overlay.hit ? undefined : this.host.dispatchMouseToLayout(clickEvent, press?.hits));
-				if (result) {
-					const render = this.host.applyMouseDispatchResult(clickEvent, result);
-					this.clearTextSelection();
-					if (render) this.host.requestRender();
-					return;
-				}
-			}
+			if (isClick && this.dispatchCellClick(event, press?.hits, clickedUrl, this.lastClick?.count ?? 1, true)) return;
 			if (this.host.getCopyOnSelect()) void this.copySelectionToClipboard();
 			this.host.requestRender();
 			return;
@@ -292,6 +316,7 @@ export class AltScreenSelection {
 			this.host.requestRender();
 			return;
 		}
+		if ((event.button & 4) !== 0 && this.extendFromPress(event)) return;
 		this.stopSelectionAutoScroll();
 		this.selectionPressActive = true;
 		const currentLayout = this.host.getCurrentLayout();
@@ -299,7 +324,8 @@ export class AltScreenSelection {
 			!this.host.hasOverlay() && currentLayout ? getScrollViewsAt(currentLayout, event.x, event.y)[0] : undefined;
 		const anchor = this.getSelectionPoint(event, scrollView);
 		const word = this.getWordSelection(anchor);
-		const clickCount = this.getClickCount(anchor, word);
+		this.lastClick = nextClick(this.lastClick, anchor, word);
+		const clickCount = this.lastClick.count;
 		const range = clickCount === 2 ? word : clickCount === 3 ? this.getLineSelection(anchor) : undefined;
 		this.selectionGranularity = range ? (clickCount === 2 ? "word" : "line") : "character";
 		this.selectionInitialRange = range;
@@ -307,12 +333,7 @@ export class AltScreenSelection {
 		this.selectionFocus = range?.end ?? anchor;
 		this.selectionDragged = false;
 		this.pressCell = { x: event.x, y: event.y, hits: this.host.hitLayoutAt(event.x, event.y) };
-		this.pressedUrl = range
-			? undefined
-			: getOsc8LinkAtColumn(
-					this.host.getPreviousScreen()[Math.max(0, Math.min(this.host.getTerminal().rows - 1, event.y))] ?? "",
-					Math.max(0, Math.min(this.host.getTerminal().columns - 1, event.x)),
-				);
+		this.pressedUrl = range ? undefined : this.urlAt(event.x, event.y);
 		this.host.requestRender();
 	}
 

@@ -1,6 +1,5 @@
-import type { ResponseOutputMessage } from "../src/api/ai-sdk/openai-wire-types.ts";
 import { describe, expect, it } from "vitest";
-import { convertResponsesMessages } from "../src/api/openai-responses-shared/messages.ts";
+import { replayedResponsesInput } from "./capture-responses-payload.ts";
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, Usage } from "../src/types.ts";
@@ -15,7 +14,7 @@ const usage: Usage = {
 };
 
 describe("OpenAI Responses message ID conversion", () => {
-	it("generates unique fallback message IDs for multiple text blocks in one assistant turn", () => {
+	it("generates unique fallback message IDs for multiple text blocks in one assistant turn", async () => {
 		const model = getBuiltinModel("openai", "gpt-5.5");
 		const assistant: AssistantMessage = {
 			role: "assistant",
@@ -35,11 +34,9 @@ describe("OpenAI Responses message ID conversion", () => {
 			messages: [{ role: "user", content: "hello", timestamp: Date.now() - 2000 }, assistant],
 		});
 
-		const input = convertResponsesMessages(model, context, new Set(["openai", "opencode"]));
+		const input = await replayedResponsesInput(model, context);
 		const messageIds = input
-			.filter(
-				(item): item is ResponseOutputMessage => item.type === "message" && "id" in item && typeof item.id === "string",
-			)
+			.filter((item) => item.type === "message" && typeof item.id === "string")
 			.map((item) => item.id);
 
 		expect(messageIds).toEqual(["msg_pi_1", "msg_pi_1_1"]);

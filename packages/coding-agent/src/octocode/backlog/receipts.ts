@@ -12,7 +12,11 @@ const LATEST_RECEIPT = "latest";
 /** Marks the note a skipped QA review leaves; a completion written with it records `qa: skipped`. */
 export const QA_SKIPPED_PREFIX = "QA skipped:";
 
+/** Marks the note of a review that is owed: no reviewer could start, so it reruns when one can; a completion written with it records `qa: owed`. */
+export const QA_OWED_PREFIX = "QA owed:";
+
 const QA_SKIPPED = new RegExp(`^${QA_SKIPPED_PREFIX}`, "m");
+const QA_OWED = new RegExp(`^${QA_OWED_PREFIX}`, "m");
 
 /** Finds a receipt by a reference (an id or `latest`) among this session's saved bash results; throws when none resolves. */
 export type ReceiptLookup = (ref: string) => CompletionReceipt;
@@ -87,7 +91,7 @@ export function receiptLookup(entries: () => readonly Entry[]): ReceiptLookup {
 }
 
 /** The indicator a reader sees beside a completion's verification: what the evidence says about the command, never that the goal is met. */
-export type EvidenceIndicator = "Recorded check" | "Reported" | "Skipped" | "Stale";
+export type EvidenceIndicator = "Recorded check" | "Reported" | "Skipped" | "QA owed" | "Stale";
 
 export function evidenceIndicator(completion: Pick<Completion, "receipt" | "qa">): EvidenceIndicator {
 	const { receipt } = completion;
@@ -97,6 +101,7 @@ export function evidenceIndicator(completion: Pick<Completion, "receipt" | "qa">
 			: receipt.state === "finished" && receipt.exitCode === 0
 				? "Recorded check"
 				: "Reported";
+	if (completion.qa === "owed") return "QA owed";
 	return completion.qa === "skipped" ? "Skipped" : "Reported";
 }
 
@@ -104,9 +109,18 @@ export function evidenceIndicator(completion: Pick<Completion, "receipt" | "qa">
 export function evidenceLine(completion: Pick<Completion, "receipt" | "qa">): string {
 	const { receipt } = completion;
 	const label = evidenceIndicator(completion);
-	if (!receipt) return `Evidence: ${label}${label === "Skipped" ? " (QA did not run)" : " (text only)"}`;
+	if (!receipt)
+		return `Evidence: ${label}${label === "Skipped" ? " (QA did not run)" : label === "QA owed" ? " (no reviewer could start; it reruns)" : " (text only)"}`;
 	const exit = receipt.exitCode === undefined ? receipt.state : `exit ${receipt.exitCode}`;
 	return `Evidence: ${label} (${receipt.id}: ${receipt.command}; ${exit}${receipt.stale ? "; later edits or another process" : ""})`;
+}
+
+/** What the reviewer is told of how a completion was verified: the holder's words and status, and the receipt's facts when it cites one. */
+export function qaVerification(
+	verification: Completion["verification"],
+	receipt: CompletionReceipt | undefined,
+): string {
+	return `${verification.summary} (status: ${verification.status})${receipt ? `\n${evidenceLine({ receipt })}` : ""}`;
 }
 
 /**
@@ -134,6 +148,10 @@ export function withEvidence<C extends { operationKey: string; receipt?: unknown
 	return {
 		...rest,
 		...(cited !== undefined && lookup ? { receipt: lookup(cited) } : {}),
-		...(note && QA_SKIPPED.test(note) ? { qa: "skipped" as const } : {}),
+		...(note && QA_OWED.test(note)
+			? { qa: "owed" as const }
+			: note && QA_SKIPPED.test(note)
+				? { qa: "skipped" as const }
+				: {}),
 	};
 }

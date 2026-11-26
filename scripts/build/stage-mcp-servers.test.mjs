@@ -18,13 +18,19 @@ const allFiles = (dir) =>
 test("stages the host-dependency server with its dependencies for one platform, from what the host resolves", () => {
 	const root = mkdtempSync(join(tmpdir(), "stage-mcp-"));
 	try {
-		const recommended = join(root, "recommended");
+		const defaultConfig = join(root, "default_mcp_config.json");
 		write(
-			join(recommended, "octocode.json"),
-			JSON.stringify({ install: { npm: "octocode-mcp", hostDependency: true } }),
+			defaultConfig,
+			JSON.stringify({
+				servers: {
+					octocode: { install: { npm: "octocode-mcp", hostDependency: true } },
+					other: { install: { npm: "other-mcp" } },
+					plain: { command: "x" },
+				},
+				agents: {},
+			}),
 		);
-		write(join(recommended, "other.json"), JSON.stringify({ install: { npm: "other-mcp" } }));
-		assert.deepEqual(hostMcpPackages(recommended), ["octocode-mcp"]);
+		assert.deepEqual(hostMcpPackages(defaultConfig), ["octocode-mcp"]);
 
 		const host = join(root, "host");
 		write(join(host, "package.json"), "{}");
@@ -75,7 +81,7 @@ test("stages the host-dependency server with its dependencies for one platform, 
 		const out = join(root, "out");
 		const darwin = stageHostMcpServers(out, "darwin-arm64", {
 			packageDir: host,
-			recommendedDir: recommended,
+			defaultConfig,
 			listFiles: allFiles,
 		});
 		assert.deepEqual(darwin, {
@@ -90,7 +96,7 @@ test("stages the host-dependency server with its dependencies for one platform, 
 		// Another platform's packages are not installed here: reported, and the server is still staged.
 		const linux = stageHostMcpServers(join(root, "linux"), "linux-x64", {
 			packageDir: host,
-			recommendedDir: recommended,
+			defaultConfig,
 			listFiles: allFiles,
 		});
 		assert.deepEqual(linux, {
@@ -103,7 +109,7 @@ test("stages the host-dependency server with its dependencies for one platform, 
 			() =>
 				stageHostMcpServers(out, "darwin-arm64", {
 					packageDir: root,
-					recommendedDir: recommended,
+					defaultConfig,
 					listFiles: allFiles,
 				}),
 			/octocode-mcp does not resolve/,

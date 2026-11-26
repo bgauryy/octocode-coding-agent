@@ -1,6 +1,7 @@
 import type { AssistantMessage, Usage } from "@octocodeai/octocode-ai/compat";
 import type { SessionEntry, SessionManager, UsageEntry } from "./session-manager.ts";
 import type { Billing } from "./spend-capture.ts";
+import { referenceProvider } from "./model-reference.ts";
 
 export interface UsageTotals {
 	input: number;
@@ -173,7 +174,7 @@ export function runBilling(details: unknown, facts: BillingFacts): Billing {
 	if (named === "plan" || named === "metered") return named;
 	const ran = (record as { ran?: unknown }).ran;
 	const model = (ran && typeof ran === "object" ? textField(ran, "model") : undefined) ?? textField(record, "model");
-	const provider = model?.split("/")[0] || facts.provider;
+	const provider = referenceProvider(model) ?? facts.provider;
 	return provider ? facts.billingOf(provider, "child") : "metered";
 }
 

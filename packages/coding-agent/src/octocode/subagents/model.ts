@@ -3,7 +3,8 @@ import { clampThinkingLevel } from "@octocodeai/octocode-ai/compat";
 import type { Catalog } from "../../core/model-catalog/index-shape.ts";
 import { closeModels } from "./close-models.ts";
 import { type ConfiguredModels, settingKey } from "./configured-models.ts";
-import { routeThinking, THINKING_LEVELS, thinkingSuffix, withThinking } from "../render/route-thinking.ts";
+import { referenceProvider, splitThinkingSuffix } from "../../core/model-reference.ts";
+import { routeThinking, thinkingSuffix, withThinking } from "../render/route-thinking.ts";
 import { SUBAGENT_DEFAULT_THINKING, SUBAGENT_THINKING_ENV, subagentThinking } from "./thinking.ts";
 import {
 	isModelTier,
@@ -156,12 +157,12 @@ function modelChoice(
 	available: readonly ModelRef[],
 	parentProvider?: string,
 ): { model: string; alternatives?: string[] } | undefined {
-	const colon = requested.lastIndexOf(":");
-	const suffix = colon > 0 && THINKING_LEVELS.has(requested.slice(colon + 1)) ? requested.slice(colon) : "";
+	const suffix = thinkingSuffix(requested);
 	// The whole text first: a model id may itself contain a colon.
-	for (const [base, thinking] of [[requested, ""], ...(suffix ? [[requested.slice(0, colon), suffix]] : [])] as Array<
-		[string, string]
-	>) {
+	for (const [base, thinking] of [
+		[requested, ""],
+		...(suffix ? [[requested.slice(0, requested.length - suffix.length), suffix]] : []),
+	] as Array<[string, string]>) {
 		const qualified = available.find((model) => `${model.provider}/${model.id}` === base);
 		const bare = available.filter((model) => model.id === base);
 		const parent = bare.find((model) => model.provider === parentProvider);
@@ -198,8 +199,8 @@ interface RouteInput {
 /** The listed model a route's `provider/id[:thinking]` names, or undefined without a route or a listed match. */
 export function routedModel<T extends ModelRef>(route: string | undefined, models: readonly T[]): T | undefined {
 	if (!route) return undefined;
-	const colon = route.lastIndexOf(":");
-	const bases = colon > 0 && THINKING_LEVELS.has(route.slice(colon + 1)) ? [route, route.slice(0, colon)] : [route];
+	const split = splitThinkingSuffix(route);
+	const bases = split ? [route, split.base] : [route];
 	for (const base of bases) {
 		const found = models.find((model) => `${model.provider}/${model.id}` === base);
 		if (found) return found;
@@ -209,8 +210,7 @@ export function routedModel<T extends ModelRef>(route: string | undefined, model
 
 /** A purpose with an optional `:<thinking>` suffix (`small:high`), or undefined for a model id. */
 function tierOf(value: string): { tier: ModelTier; thinking: string } | undefined {
-	const at = value.lastIndexOf(":");
-	const name = at > 0 && THINKING_LEVELS.has(value.slice(at + 1)) ? value.slice(0, at) : value;
+	const name = splitThinkingSuffix(value)?.base ?? value;
 	return isModelTier(name) ? { tier: name, thinking: value.slice(name.length) } : undefined;
 }
 
@@ -299,7 +299,7 @@ function withFallbackModels(input: RouteInput, route: ModelRoute): ModelRoute {
 	const tier = asked ? tierOf(asked) : undefined;
 	if ("error" in route || !route.model || !tier) return route;
 	const level = thinkingSuffix(route.model);
-	const skip = new Set([route.model.slice(0, route.model.indexOf("/"))]);
+	const skip = new Set([referenceProvider(route.model) ?? ""]);
 	const usable = usableModels(input.available, input.parent, input.refused);
 	const next: string[] = [];
 	while (next.length < MAX_FALLBACK_MODELS) {
@@ -351,6 +351,6 @@ function routeWithoutThinking(request: RouteInput): ModelRoute {
 	return {
 		...parentModel,
 		fallback: preferred,
-		...(skipped ? { refusedBy: skipped.slice(0, skipped.indexOf("/")) } : {}),
+		...(skipped ? { refusedBy: referenceProvider(skipped) ?? "" } : {}),
 	};
 }

@@ -44,6 +44,7 @@ import type { RunDetails } from "./run-types.ts";
 import type { ChainQueue } from "./chain.ts";
 import type { GraphWake } from "./graph-wake.ts";
 import type { HandedItems } from "./handed-items.ts";
+import { referenceProvider } from "../../core/model-reference.ts";
 
 /** Starting a subagent: who it is (name, role, goal), its slot under the limit, and the task text it receives. */
 
@@ -169,7 +170,7 @@ function childAccountError(model: { provider: string; id: string }): Error {
 /** The models a child process can authenticate for; naming a session-only provider explicitly is refused with the reason. */
 function childAvailable(registry: FeatureContext["modelRegistry"] | undefined, explicit: string | undefined) {
 	if (!registry) return [];
-	const provider = explicit?.includes("/") ? explicit.slice(0, explicit.indexOf("/")) : undefined;
+	const provider = referenceProvider(explicit);
 	if (provider && sessionOnlyProvider(registry, provider)) throw sessionOnlyError(provider);
 	const all = registry.getAvailable();
 	const requested = routedModel(explicit, all);

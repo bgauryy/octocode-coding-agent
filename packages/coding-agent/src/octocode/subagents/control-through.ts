@@ -8,8 +8,8 @@ import type { AgentControl } from "./tool.ts";
 /** `coordinate merge` for a registration that reaches the agent tool later (`index.ts` builds the team tools first). */
 export const mergeThrough =
 	(agents: () => AgentControl | undefined) =>
-	async (id: string, ctx: FeatureContext, signal?: AbortSignal): Promise<MergeResult> =>
-		(await agents()?.merge(id, ctx, signal)) ?? { ok: false, text: "Agent controls are unavailable." };
+	async (id: string, ctx: FeatureContext, signal?: AbortSignal, discard?: boolean): Promise<MergeResult> =>
+		(await agents()?.merge(id, ctx, signal, discard)) ?? { ok: false, text: "Agent controls are unavailable." };
 
 /** `agent` `message` with `item`, for a registration that reaches the agent tool later, like `mergeThrough`. */
 const handThrough =

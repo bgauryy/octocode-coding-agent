@@ -2,7 +2,8 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { recommendedPreset, recommendedPresets } from "../src/recommended/index.ts";
+import { serverPreset } from "../src/presets/default-config.ts";
+import { builtinPreset, builtinPresets } from "../src/presets/index.ts";
 import { resolveToolRoles } from "../src/roles.ts";
 import { validateMcpServerConfig } from "../src/servers.ts";
 
@@ -75,17 +76,19 @@ describe("roles and install validation", () => {
 	});
 });
 
-describe("recommended servers", () => {
-	it("are valid entries whose roles name a research server", () => {
-		const presets = recommendedPresets({});
-		expect(presets.length).toBeGreaterThan(0);
+describe("default servers", () => {
+	it("are valid entries whose roles name the octocode server as the research server", () => {
+		const presets = builtinPresets({});
 		const roles = resolveToolRoles(presets.map(({ name, config }) => ({ name, config: config!, scope: "default" })));
-		expect(roles.research?.server).toBe(presets[0].name);
-		for (const { config } of presets) expect(config && "install" in config && config.install?.version).toBeTruthy();
+		expect(roles.research?.server).toBe("octocode");
+		for (const name of ["octocode", "freellama"]) {
+			const config = builtinPreset(name, {}).config;
+			expect(config && "install" in config && config.install?.version, name).toBeTruthy();
+		}
 	});
 
 	it("leave every Octocode tool to the server: no exposure override, the inherited environment plus clone", () => {
-		const octocode = recommendedPresets({}).find(({ name }) => name === "octocode")?.config;
+		const octocode = builtinPreset("octocode", {}).config;
 		expect(octocode).toMatchObject({ enabled: true, inheritEnv: true, env: { OCTOCODE_ENABLE_CLONE: "true" } });
 		expect(octocode && "toolExposure" in octocode).toBe(false);
 		expect(octocode && "exposure" in octocode).toBe(false);
@@ -97,8 +100,7 @@ describe("recommended servers", () => {
 
 	it("turn clone on by default, but leave a clone setting in the user's own environment to reach the server", () => {
 		const envOf = (env: NodeJS.ProcessEnv) =>
-			(recommendedPresets(env).find(({ name }) => name === "octocode")?.config as { env?: Record<string, string> })
-				?.env;
+			(builtinPreset("octocode", env).config as { env?: Record<string, string> } | undefined)?.env;
 		expect(envOf({})).toMatchObject({ OCTOCODE_ENABLE_CLONE: "true" });
 		// The server inherits the user's value; ours would override it, so it is left out.
 		expect(envOf({ OCTOCODE_ENABLE_CLONE: "false" })).not.toHaveProperty("OCTOCODE_ENABLE_CLONE");
@@ -106,19 +108,19 @@ describe("recommended servers", () => {
 	});
 
 	it("turn off through their environment flag", () => {
-		const data = { name: "rec", enabledEnv: "REC_FLAG", command: "x" };
-		expect(recommendedPreset(data, { REC_FLAG: "0" }).config?.enabled).toBe(false);
-		expect(recommendedPreset(data, {}).config?.enabled).toBe(true);
-		expect(() => recommendedPreset({ name: "rec", command: 1 })).toThrow(/recommended server data/);
+		const data = { enabledEnv: "REC_FLAG", command: "x" };
+		expect(serverPreset("rec", data, { REC_FLAG: "0" }).config?.enabled).toBe(false);
+		expect(serverPreset("rec", data, {}).config?.enabled).toBe(true);
+		expect(() => serverPreset("rec", { command: 1 })).toThrow(/default MCP server "rec"/);
 	});
 
 	it("with enabledByDefault false, stay off until their environment flag turns them on", () => {
-		const data = { name: "rec", enabledEnv: "REC_FLAG", enabledByDefault: false, command: "x" };
-		const enabled = (env: NodeJS.ProcessEnv) => recommendedPreset(data, env).config?.enabled;
+		const data = { enabledEnv: "REC_FLAG", enabledByDefault: false, command: "x" };
+		const enabled = (env: NodeJS.ProcessEnv) => serverPreset("rec", data, env).config?.enabled;
 		expect(enabled({})).toBe(false);
 		expect(enabled({ REC_FLAG: "1" })).toBe(true);
 		expect(enabled({ REC_FLAG: "0" })).toBe(false);
-		expect(() => recommendedPreset({ ...data, enabledByDefault: "no" }, {})).toThrow(/enabledByDefault must be/);
+		expect(() => serverPreset("rec", { ...data, enabledByDefault: "no" }, {})).toThrow(/enabledByDefault must be/);
 	});
 
 	it("include FreeLlama, off by default even where ollama is installed, on through OCTOCODE_MCP_FREELLAMA", () => {
@@ -126,7 +128,7 @@ describe("recommended servers", () => {
 		const ollama = join(bin, "ollama");
 		writeFileSync(ollama, "#!/bin/sh\n");
 		chmodSync(ollama, 0o755);
-		const freellama = (env: NodeJS.ProcessEnv) => recommendedPresets(env).find(({ name }) => name === "freellama");
+		const freellama = (env: NodeJS.ProcessEnv) => builtinPreset("freellama", env);
 		try {
 			expect(freellama({ PATH: bin })?.config?.enabled).toBe(false);
 		} finally {
@@ -137,6 +139,5 @@ describe("recommended servers", () => {
 			install: { npm: "@octocodeai/freellama-mcp-server", bin: "freellama-mcp-server" },
 		});
 		expect(freellama({ OCTOCODE_MCP_FREELLAMA: "1" })?.config?.enabled).toBe(true);
-		expect(recommendedPresets({})[0]?.name).toBe("octocode");
 	});
 });

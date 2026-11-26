@@ -3,7 +3,7 @@ import { type CachePreferences, mergeCachePreferences } from "@octocodeai/octoco
 import { builtInCompactionSettings } from "../../compaction/settings.ts";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS } from "../../http-dispatcher.ts";
 import { limitsModelKey, type ResolvedLimits, resolveLimits } from "../../limits.ts";
-import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
+import { FALLBACK_ON_CLASSES, type FallbackOnClass, SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
 import type { CacheWarmingMode } from "../../settings-schema.ts";
 import type { SmartRouterOptions } from "../../smart-router/index.ts";
 import type { CompactionPolicyModel, RetrySettings, RuntimeSettingsApi } from "../api/runtime.ts";
@@ -74,6 +74,25 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 	getRetryFallbackModels(): string[] {
 		const models = this.settings.retry?.fallbackModels;
 		return Array.isArray(models) ? models.filter((model) => typeof model === "string" && model.trim() !== "") : [];
+	}
+
+	getRetryFallbackChains(): Record<string, string[]> {
+		const chains = this.settings.retry?.fallbackChains;
+		if (!chains || typeof chains !== "object") return {};
+		const valid: Record<string, string[]> = {};
+		for (const [key, list] of Object.entries(chains)) {
+			if (!Array.isArray(list)) continue;
+			const models = list.filter((model) => typeof model === "string" && model.trim() !== "");
+			if (models.length > 0) valid[key] = models;
+		}
+		return valid;
+	}
+
+	getRetryFallbackOn(): readonly FallbackOnClass[] {
+		const on = this.settings.retry?.fallbackOn;
+		return Array.isArray(on)
+			? on.filter((name): name is FallbackOnClass => (FALLBACK_ON_CLASSES as readonly string[]).includes(name))
+			: SETTINGS_DEFAULTS.retry.fallbackOn;
 	}
 
 	getRetryFallbackCooldownMs(): number {
@@ -164,6 +183,13 @@ export abstract class RuntimeSettingsAccessors extends ModelSettingsAccessors im
 			cooldownRequests: routing?.cooldownRequests,
 			outputReserveTokens: routing?.outputReserveTokens,
 		};
+	}
+
+	getRequestsPerMinute(): number {
+		const limit = this.settings.requestsPerMinute;
+		return typeof limit === "number" && Number.isInteger(limit) && limit >= 0
+			? limit
+			: SETTINGS_DEFAULTS.requestsPerMinute;
 	}
 
 	getProviderRetrySettings(): { timeoutMs?: number; maxRetries?: number; maxRetryDelayMs: number } {

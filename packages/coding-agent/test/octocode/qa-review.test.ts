@@ -116,14 +116,30 @@ describe("the QA reviewer child", () => {
 		expect(spawn.calls).toHaveLength(0);
 	});
 
-	it("is skipped when the child cannot start or answers off the schema", async () => {
+	it("is unavailable when the child cannot start, and owed when it answers off the schema", async () => {
 		spawn.fail = new Error("slot limit");
-		expect(await review()).toEqual({ skipped: "the reviewer could not start: slot limit" });
+		expect(await review()).toEqual({ unavailable: "the reviewer could not start: slot limit" });
 		spawn.fail = undefined;
 		spawn.reply = { details: { structured: { version: 1, schemaHash: "h", status: "invalid" } } };
-		// Contract change: an answer off the schema is retried once before the review is skipped.
-		expect(await review()).toEqual({ skipped: "the reviewer gave no valid verdict twice (invalid)" });
+		// Contract change: an answer off the schema is retried once before the review is owed.
+		expect(await review()).toMatchObject({ unavailable: expect.stringContaining("no valid verdict twice") });
 		spawn.reply = valid({ verdict: "Maybe", summary: "x", findings: [] });
-		expect(await review()).toMatchObject({ skipped: expect.stringContaining("no valid verdict") });
+		expect(await review()).toMatchObject({ unavailable: expect.stringContaining("no valid verdict") });
+	});
+
+	it("keeps the rejection explanation and location in the owed note, bounded", async () => {
+		spawn.reply = {
+			details: { structured: { version: 1, schemaHash: "h", status: "invalid", error: { code: "schema", path: "$.findings" } } },
+		};
+		const result = await review();
+		const reason = "unavailable" in result ? result.unavailable : "";
+		expect(reason).toContain("schema");
+		expect(reason).toContain("$.findings");
+		expect(reason).toContain("did not match");
+		spawn.reply = {
+			details: { structured: { version: 1, schemaHash: "h", status: "invalid", error: { code: "schema", path: `$.${"x".repeat(2000)}` } } },
+		};
+		const long = await review();
+		expect("unavailable" in long && long.unavailable.length).toBeLessThan(500);
 	});
 });

@@ -34,8 +34,8 @@ describe("next-step hints", () => {
 		// Bare, these open a page or picker; with arguments they print a result and get their entry.
 		expect(nextStepFor("permissions")).toBeUndefined();
 		expect(nextStepFor("permissions", "workspace")?.[0]).toBe("/permissions log");
-		expect(nextStepFor("realm")).toBeUndefined();
-		expect(nextStepFor("realm", "zz-none")?.[0]).toBe("/help realm");
+		expect(nextStepFor("realm")?.[0]).toBe("/realm places");
+		expect(nextStepFor("realm", "places")).toBeUndefined();
 		expect(nextStepFor("modelsettings")).toBeUndefined();
 		expect(nextStepFor("messages")).toBeUndefined();
 	});

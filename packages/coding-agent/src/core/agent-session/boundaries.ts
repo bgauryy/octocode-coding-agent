@@ -12,6 +12,7 @@ import { convertToLlm, type CustomMessage } from "../messages.ts";
 import { type ReadonlySessionProjection, type SessionEntry, SessionManager } from "../session-manager.ts";
 import type { DraftAppender } from "../session-manager/projection-memo.ts";
 import type { SessionInternals } from "./host.ts";
+import { lengthStopNearWindow } from "./compaction-check.ts";
 import {
 	lengthContinuationMessage,
 	MAX_TRUNCATED_TOOL_TURNS,
@@ -201,11 +202,28 @@ export class SessionBoundaries {
 				run.outcome.errorMessage = TRUNCATED_TOOL_TURNS_MESSAGE;
 				return { action: "end" };
 			}
-			const continuation = lengthContinuationMessage(
-				turn.message,
-				run.lengthContinuations,
-				session.agent.state.model?.maxTokens ?? 0,
-			);
+			if (turn.message.stopReason !== "length") {
+				run.lengthContinuations = 0;
+				return undefined;
+			}
+			const model = session.agent.state.model;
+			const nearWindow =
+				model && model.contextWindow > 0
+					? lengthStopNearWindow(
+							turn.message,
+							session.sessionManager.readSessionProjection(),
+							session.sessionManager,
+							model,
+							session.settingsManager.getCompactionSettings(
+								model,
+								session.routedModel?.thinkingLevel ?? session.thinkingLevel,
+							),
+						)
+					: true;
+			const continuation = lengthContinuationMessage(turn.message, run.lengthContinuations, model?.maxTokens ?? 0, {
+				nearWindow,
+				hasPendingSteering: session.agent.hasQueuedMessages(),
+			});
 			if (!continuation) return undefined;
 			run.lengthContinuations++;
 			return { action: "continue", messages: [continuation] };

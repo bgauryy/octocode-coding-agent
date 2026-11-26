@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeedEntry, Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import { type AgentDb } from "../../../db/src/api.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
+import { openWorkspaceDb } from "../../src/storage/workspace-database.ts";
 import { endpointLabel, endpointOf, type EndpointDirectory } from "../../src/octocode/team/endpoint.ts";
 import { messageEntry, noticeEntry, pageFeed, type FeedNotice } from "../../src/octocode/team/feed.ts";
 import { readFeed, teamFeedSource } from "../../src/octocode/team/feed-read.ts";
@@ -175,6 +176,7 @@ describe("feed entries", () => {
 
 describe("the team feed from the database", () => {
 	let db: AgentDb;
+	let rows: AgentDb;
 	let store: TeamStore;
 	beforeEach(() => {
 		fs.mkdirSync(path.join(root, ".git"));
@@ -182,11 +184,13 @@ describe("the team feed from the database", () => {
 		vi.stubEnv("OCTOCODE_HOME", path.join(root, "home"));
 		vi.stubEnv("OCTOCODE_AGENT_DB", path.join(root, "agent.db"));
 		db = openAgentDb();
+		rows = openWorkspaceDb(db, root).agent;
 		store = TeamStore.open(root, db.file);
 		store.lifecycle = { activationId: "start", sessionId: "session-main" };
 	});
 	afterEach(() => {
 		store.close();
+		if (rows !== db) rows.close();
 		db.close();
 		vi.unstubAllEnvs();
 	});
@@ -200,7 +204,7 @@ describe("the team feed from the database", () => {
 		const now = Date.now();
 		for (let i = 0; i < 75; i++)
 			store.send(i % 2 ? "beta" : "alpha", [i % 2 ? "alpha" : "beta"], `body ${i}`, { replyRequired: false }, now + i);
-		const source = (members: () => Member[]) => teamFeedSource({ db: db.db, team: store.team, members, root });
+		const source = (members: () => Member[]) => teamFeedSource({ db: rows.db, team: store.team, members, root });
 		const live = source(() => store.list());
 
 		const first = readFeed(live);

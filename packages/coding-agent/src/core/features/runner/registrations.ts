@@ -11,15 +11,36 @@ import type {
 	ResolvedCommand,
 } from "../types.ts";
 
+/** Whether two lists hold the same items, by identity, in the same order. */
+export function sameItems(a: readonly unknown[], b: readonly unknown[]): boolean {
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+	return true;
+}
+
+/**
+ * Last resolution per features list. A feature may register a command after load (its `commands` map changes in
+ * place), so the cache holds while the registered command objects are the same ones in the same order.
+ */
+const resolved = new WeakMap<FeatureRecord[], { registered: RegisteredCommand[]; commands: ResolvedCommand[] }>();
+
+/** Commands with their invocation names; the same list (by identity) while no registration changed. */
 export function resolveRegisteredCommands(features: FeatureRecord[]): ResolvedCommand[] {
+	const registered = features.flatMap((ext) => [...ext.commands.values()]);
+	const cached = resolved.get(features);
+	if (cached && sameItems(cached.registered, registered)) return cached.commands;
+	const commands = resolveCommands(registered);
+	resolved.set(features, { registered, commands });
+	return commands;
+}
+
+function resolveCommands(registered: readonly RegisteredCommand[]): ResolvedCommand[] {
 	const commands: RegisteredCommand[] = [];
 	const counts = new Map<string, number>();
 
-	for (const ext of features) {
-		for (const command of ext.commands.values()) {
-			commands.push(command);
-			counts.set(command.name, (counts.get(command.name) ?? 0) + 1);
-		}
+	for (const command of registered) {
+		commands.push(command);
+		counts.set(command.name, (counts.get(command.name) ?? 0) + 1);
 	}
 
 	const seen = new Map<string, number>();

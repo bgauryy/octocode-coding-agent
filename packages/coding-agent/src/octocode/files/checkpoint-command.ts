@@ -9,6 +9,7 @@ import { plural } from "../shared/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { Checkpoints, RewindResult } from "./checkpoint.ts";
 import { inheritCheckpoints, sessionIdOf } from "./checkpoint-store.ts";
+import { harnessSource, sourcedText } from "../events/source.ts";
 
 /** The named answers of the rewind prompts: the safe one first, never Yes/No. */
 const REWIND = "Rewind";
@@ -196,7 +197,10 @@ export function registerCheckpoints(
 				await api.session.sendMessage(
 					{
 						customType: "octocode-rewind",
-						content: renderPrompt("notices/rewind.md", { what: describe(result, ctx.cwd, turns.length) }),
+						content: sourcedText(
+							renderPrompt("notices/rewind.md", { what: describe(result, ctx.cwd, turns.length) }),
+							harnessSource("checkpoints"),
+						),
 						display: false,
 					},
 					{ triggerTurn: false },

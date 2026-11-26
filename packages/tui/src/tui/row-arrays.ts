@@ -16,3 +16,13 @@ export function arrayWithPrefix(previous: readonly string[], keep: number, lengt
 	if (length <= previous.length) return previous.slice(0, length);
 	return previous.concat(Array.from({ length: length - previous.length }, () => ""));
 }
+
+/** `compute` of each row, taking the value from `knownValues` for a row equal to the one at the same index in `knownRows`. */
+export function mapRowsReusing<T>(
+	rows: readonly string[],
+	knownRows: readonly string[],
+	knownValues: readonly T[],
+	compute: (row: string) => T,
+): T[] {
+	return rows.map((row, index) => (row === knownRows[index] ? knownValues[index] : compute(row)));
+}

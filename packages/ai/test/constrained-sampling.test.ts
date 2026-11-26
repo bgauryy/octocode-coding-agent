@@ -6,7 +6,8 @@ import {
 	makeStrictJsonSchema,
 	resolveJsonSchemaStrictSampling,
 } from "../src/api/constrained-sampling.ts";
-import { convertResponsesMessages } from "../src/api/openai-responses-shared/messages.ts";
+import { responsesMessages } from "../src/api/ai-sdk/responses-messages.ts";
+import { replayedResponsesInput } from "./capture-responses-payload.ts";
 import { stream as streamResponses } from "../src/api/openai-responses.ts";
 import { convertResponsesTools } from "../src/api/openai-responses-shared/tools.ts";
 import type { AssistantMessage, Model, Tool, ToolCall } from "../src/types.ts";
@@ -66,6 +67,9 @@ function captureToolCallEvents(stream: AssistantMessageEventStream): {
 	};
 	return { starts, deltas };
 }
+
+const grammarTool = makeTool({ constrainedSampling: { type: "grammar", variants: { openai_regex: "[a-z]+" } } });
+const grammarModel: Model<"openai-responses"> = { ...makeModel(), compat: { supportsOpenAIGrammarTools: true } };
 
 describe("constrained tool sampling", () => {
 	it("converts supported constraints and falls back when unsupported", () => {
@@ -177,7 +181,7 @@ describe("constrained tool sampling", () => {
 		}
 	});
 
-	it("replays grammar calls as custom Responses items", () => {
+	it("replays grammar calls as custom Responses items", async () => {
 		const replayedToolCall: ToolCall = {
 			type: "toolCall",
 			id: "call_1|ctc_1",
@@ -185,6 +189,7 @@ describe("constrained tool sampling", () => {
 			arguments: { payload: "abc" },
 		};
 		const context = normalizeContext({
+			tools: [grammarTool],
 			messages: [
 				{
 					role: "assistant",
@@ -209,17 +214,13 @@ describe("constrained tool sampling", () => {
 		const invalidArgumentsList: ToolCall["arguments"][] = [{}, { payload: 42 }];
 		for (const invalidArguments of invalidArgumentsList) {
 			replayedToolCall.arguments = invalidArguments;
-			expect(() =>
-				convertResponsesMessages(makeModel(), context, new Set(["openai"]), {
-					grammarToolInputProperties: new Map([["sample_tool", "payload"]]),
-				}),
-			).toThrow('Grammar tool call "sample_tool" requires argument "payload" to be a string');
+			expect(() => responsesMessages(grammarModel, context, {})).toThrow(
+				'Grammar tool call "sample_tool" requires argument "payload" to be a string',
+			);
 		}
 
 		replayedToolCall.arguments = { payload: "abc" };
-		const messages = convertResponsesMessages(makeModel(), context, new Set(["openai"]), {
-			grammarToolInputProperties: new Map([["sample_tool", "payload"]]),
-		});
+		const messages = await replayedResponsesInput(grammarModel, context);
 
 		expect(messages).toContainEqual({
 			type: "custom_tool_call",
@@ -236,8 +237,9 @@ describe("constrained tool sampling", () => {
 	});
 
 	// A gateway forwards another model's history as a foreign provider.
-	it("drops foreign item ids when replaying grammar calls as custom Responses items", () => {
+	it("drops foreign item ids when replaying grammar calls as custom Responses items", async () => {
 		const context = normalizeContext({
+			tools: [grammarTool],
 			messages: [
 				{
 					role: "assistant",
@@ -260,9 +262,7 @@ describe("constrained tool sampling", () => {
 			],
 		});
 
-		const messages = convertResponsesMessages(makeModel(), context, new Set(["openai"]), {
-			grammarToolInputProperties: new Map([["sample_tool", "payload"]]),
-		});
+		const messages = await replayedResponsesInput(grammarModel, context);
 
 		const call = messages.find((item) => "type" in item && item.type === "custom_tool_call");
 		expect(call).toMatchObject({ type: "custom_tool_call", call_id: "call_1", input: "abc" });

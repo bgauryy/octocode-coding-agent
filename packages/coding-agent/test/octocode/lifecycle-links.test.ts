@@ -70,6 +70,9 @@ describe("a backlog item written from two workspaces", () => {
 		expect(resolveAgent(db.db, "B1", ALPHA)?.backlog?.ref).toBe("B1");
 		expect(resolveAgent(db.db, "nowhere:B1", ALPHA)).toBeUndefined();
 		expect(resolveAgent(db.db, "B2", ALPHA)).toBeUndefined();
+		// Without the caller's workspace a bare B1 names no board, not whichever workspace has one.
+		expect(parseItemRef(db.db, "B1")).toEqual({ workspaceIds: [], seq: 1 });
+		expect(resolveAgent(db.db, "B1")).toBeUndefined();
 	});
 
 	it("lists, in `backlog get`, only the runs of this workspace's item: agent, how it ended, outcome and cost", () => {

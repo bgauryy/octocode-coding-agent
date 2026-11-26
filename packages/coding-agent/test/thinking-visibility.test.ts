@@ -4,7 +4,6 @@ import { AssistantMessageComponent } from "../src/modes/interactive/components/a
 import { toggleThinkingBlockVisibility } from "../src/modes/interactive/interactive-mode/view-state.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
-import { bindRender } from "../src/modes/interactive/state/bind-render.ts";
 import { bindViewState } from "../src/modes/interactive/state/bind-view.ts";
 import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
@@ -33,7 +32,6 @@ function transcript() {
 	};
 	const host = createFakeHost(context);
 	bindViewState(host);
-	bindRender(context.uiStore, context.ui);
 	return { top, nested, context, host };
 }
 

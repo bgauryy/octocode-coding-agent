@@ -111,6 +111,40 @@ export function precheckFileLine(
 	if (repeat) throw new MemoryError(`Not saved: every session already reads this (${repeat}).`);
 }
 
+/** The scope a note backing a line of `file` has: the file's own when the store can hold it. */
+const noteScope = (store: MemoryStore, file: MemoryFileRef): Memory["scope"] =>
+	file.scope === "global" ? "global" : store.workspaceId ? "workspace" : "project";
+
+/**
+ * Gives every line of `lines` that no note holds a note of the file's scope (title = line text), so `memory` can find,
+ * edit and delete it. Covers lines a reflection or consolidation wrote and lines written by hand; a line a similar
+ * note already covers stays as it is. Returns how many notes it created.
+ */
+export function adoptFileLines(store: MemoryStore, file: MemoryFileRef, lines: readonly MemoryLine[]): number {
+	const held = new Set(store.titles().map((memory) => normalizeTitle(memory.title)));
+	let created = 0;
+	for (const line of lines) {
+		const key = memoryLineKey(line.text);
+		if (held.has(key)) continue;
+		try {
+			store.set({
+				title: line.text,
+				kind: KIND_OF_SECTION[line.section],
+				scope: noteScope(store, file),
+				keywords: `memory-file ${line.section.toLowerCase()} ${line.date ?? ""}`.trim(),
+				pinned: line.pinned,
+				author: authorOfSource(line.source),
+			});
+			held.add(key);
+			created++;
+		} catch (error) {
+			// A similar note already holds it; the database refuses a second.
+			if (!(error instanceof MemoryError)) throw error;
+		}
+	}
+	return created;
+}
+
 /**
  * Lines `update` evicted, kept as database notes when none holds them yet: what to name in a result. A queued candidate
  * with the same text does not count, since a consolidation pass drops it.
@@ -134,7 +168,7 @@ export async function archive(
 			const { memory } = store.set({
 				title: line.text,
 				kind: KIND_OF_SECTION[line.section],
-				scope: file.scope === "global" ? "global" : "project",
+				scope: noteScope(store, file),
 				keywords: `memory-file ${line.section.toLowerCase()} ${line.date ?? ""}`.trim(),
 				author: authorOfSource(line.source),
 			});

@@ -7,7 +7,7 @@ import { MEMORY_SOURCES_SCHEMA } from "./schema-memory-sources.ts";
 import { PROVIDER_QUOTA_SCHEMA } from "./schema-quota.ts";
 import { PROVIDER_THROUGHPUT_SCHEMA } from "./schema-throughput.ts";
 import { USAGE_DAILY_SCHEMA } from "./schema-usage-daily.ts";
-import { SESSION_ACTIVITY_BY_COLUMN, SESSION_ACTIVITY_COLUMN } from "./schema-columns.ts";
+import { SESSION_ACTIVITY_BY_COLUMN, SESSION_ACTIVITY_COLUMN, WORKSPACE_DB_KEY_COLUMN } from "./schema-columns.ts";
 
 /** The statuses an agent row may hold; `settled`: a headless child whose run ended and whose parent still holds its reservations. */
 const AGENT_STATUS_CHECK = "CHECK(status IN ('idle','working','settled'))";
@@ -136,7 +136,7 @@ END;
 export const SCHEMA = `
 CREATE TABLE workspaces (
   id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, root TEXT NOT NULL, binding TEXT NOT NULL,
-  git_common_dir TEXT, linked_worktree INTEGER CHECK(linked_worktree IN (0,1)),
+  git_common_dir TEXT, linked_worktree INTEGER CHECK(linked_worktree IN (0,1)), ${WORKSPACE_DB_KEY_COLUMN},
   CHECK((git_common_dir IS NULL) = (linked_worktree IS NULL)));
 CREATE INDEX workspaces_root ON workspaces(root);
 CREATE INDEX workspaces_git ON workspaces(git_common_dir, name, root, id) WHERE git_common_dir IS NOT NULL;

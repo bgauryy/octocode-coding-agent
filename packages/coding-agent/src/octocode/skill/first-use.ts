@@ -24,9 +24,12 @@ interface FirstUse {
 	covers: (input: Record<string, unknown>) => boolean;
 }
 
+/** The coordinator's skill a first child task delivers; the main policy leaves the child-report rules to it. */
+export const SUBAGENTS_SKILL = "octocode-subagents";
+
 const FIRST_USES: readonly FirstUse[] = [
 	// Starting a child, a resume included; messaging, coordinating and the external types do not brief one.
-	{ tool: "agent", skill: "octocode-subagents", covers: (input) => agentCall(input).type === "task" },
+	{ tool: "agent", skill: SUBAGENTS_SKILL, covers: (input) => agentCall(input).type === "task" },
 	{ tool: "backlogPlan", skill: "octocode-backlog", covers: (input) => input.op === "add" || input.op === "edit" },
 ];
 

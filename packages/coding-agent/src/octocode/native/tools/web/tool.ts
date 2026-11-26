@@ -7,7 +7,7 @@ import { formatBytes } from "@octocodeai/octocode-common/bytes";
 import type { Permission } from "../../../permission/ask.ts";
 import { actionWhy } from "../../../permission/mode.ts";
 import { shortPath } from "../../../../utils/display-path.ts";
-import { REQUEST_MAX_CHARS, RESULT_DEFAULT_BYTES } from "../../../../utils/output-budget.ts";
+import { REQUEST_MAX_CHARS, WEB_FETCH_DEFAULT_CHARS } from "../../../../utils/output-budget.ts";
 import { resultBlock, resultText, spillPath, toolHeader } from "../../../render/tool.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { boundImagePart, capResultText, saveFullOutput, saveImageFile } from "../../../shared/spill.ts";
@@ -32,8 +32,8 @@ import { budgetedTool } from "../../../jobs/tool.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { cutText } from "@octocodeai/octocode-common/text";
 
-/** Default and largest page text a fetch returns (the shared result default and request maximum); `maxChars` picks a size in between. */
-const DEFAULT_FETCH_CHARS = RESULT_DEFAULT_BYTES;
+/** Default and largest page text a fetch returns (the web default and the request maximum); `maxChars` picks a size in between. */
+const DEFAULT_FETCH_CHARS = WEB_FETCH_DEFAULT_CHARS;
 const MAX_FETCH_CHARS = REQUEST_MAX_CHARS;
 
 /** What the result row summarizes: the page size, or the search provider and hit count. */

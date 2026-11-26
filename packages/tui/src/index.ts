@@ -282,7 +282,7 @@ export { linkPath } from "./utils/link-path.ts";
 export { stripTerminalSequences } from "./utils.ts";
 export { type VisualTruncateResult, VisualLinePreview, truncateToVisualLines } from "./components/visual-truncate.ts";
 export { incompleteAnsiStart } from "./utils/ansi-codes.ts";
-export type { WheelScrollLines } from "./wheel-scroll.ts";
+export { terminalWheelModel, type WheelModel, type WheelScrollLines } from "./wheel-scroll.ts";
 export { createChatViewport } from "./layout/chat-viewport.ts";
 export { type HorizontalViewportRow, renderHorizontalViewport } from "./layout/horizontal-viewport.ts";
 export { CountdownTimer } from "./components/countdown-timer.ts";

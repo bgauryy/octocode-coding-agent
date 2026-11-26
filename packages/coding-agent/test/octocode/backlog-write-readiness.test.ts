@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { agents, closeSharedAgentDb } from "../../../db/src/api.ts";
-import { holdWrite } from "../../../db/test/hold-write.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
+import { holdWorkspaceWrite } from "./hold-workspace-write.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -12,7 +12,7 @@ import { fakeCtx, fakeHost } from "./fake-host.ts";
 
 let root: string;
 let env: NodeJS.ProcessEnv;
-const holders: Awaited<ReturnType<typeof holdWrite>>[] = [];
+const holders: Awaited<ReturnType<typeof holdWorkspaceWrite>>[] = [];
 beforeEach(() => {
 	root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "octocode-backlog-ready-")));
 	env = {
@@ -34,7 +34,7 @@ function setup() {
 	const options = { commands: new Subcommands(), isSubagent: false, env };
 	registerBacklog(fake.api, options);
 	const ctx = fakeCtx({ cwd });
-	const agent = sharedAgentDb(env);
+	const { agent } = workspaceDb(cwd, env);
 	agents.setBusyTimeout(agent.db, 200);
 	const call = async (name: string, args: Record<string, unknown>, signal?: AbortSignal) => {
 		const result = await fake.tools.get(name).execute("fixture", args, signal, undefined, ctx);
@@ -51,7 +51,7 @@ const entry = (title: string) => ({
 it("yields during a warm native write, then applies its note exactly once", async () => {
 	const { agent, call, store } = setup();
 	await call("backlogPlan", { op: "add", ...entry("Warm fixture") });
-	const holder = await holdWrite(agent.file);
+	const holder = await holdWorkspaceWrite(agent);
 	holders.push(holder);
 	let released = false;
 	const timer = setTimeout(() => {
@@ -73,7 +73,7 @@ it("yields during a warm native write, then applies its note exactly once", asyn
 
 it("awaits the first workspace metadata write on an already open database", async () => {
 	const { agent, call, store } = setup();
-	const holder = await holdWrite(agent.file);
+	const holder = await holdWorkspaceWrite(agent);
 	holders.push(holder);
 	let released = false;
 	const timer = setTimeout(() => {
@@ -96,7 +96,7 @@ it("keeps registered get and list shared and readable under another writer", asy
 	await new Promise((resolve) => setImmediate(resolve));
 	const commits = vi.fn();
 	agent.onCommit(commits);
-	const holder = await holdWrite(agent.file);
+	const holder = await holdWorkspaceWrite(agent);
 	holders.push(holder);
 	expect(fake.tools.get("backlog").concurrency({ op: "get" })).toBe("shared");
 	expect(fake.tools.get("backlogPlan").concurrency({ op: "list" })).toBe("shared");
@@ -137,7 +137,7 @@ it("commits each successful batch entry and preserves actor and refused-entry ro
 it("aborts a waiting native mutation without applying it", async () => {
 	const { agent, call, store } = setup();
 	await call("backlogPlan", { op: "add", ...entry("Abort fixture") });
-	const holder = await holdWrite(agent.file);
+	const holder = await holdWorkspaceWrite(agent);
 	holders.push(holder);
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), 10);

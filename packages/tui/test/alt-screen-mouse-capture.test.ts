@@ -5,7 +5,11 @@ import { Text } from "../src/components/text.ts";
 import { VStack } from "../src/components/v-stack.ts";
 import { TuiAltScreen } from "../src/tui-alt-screen.ts";
 import { DISABLE_MOUSE, ENABLE_MOUSE } from "../src/tui-alt-screen/constants.ts";
-import { mouseCaptureMessage } from "../src/tui-alt-screen/mouse-capture.ts";
+import {
+	mouseCaptureMessage,
+	nativeSelectionModifier,
+	terminalSelectionHint,
+} from "../src/tui-alt-screen/mouse-capture.ts";
 import { formatKeyText } from "../src/keys/display.ts";
 import { VirtualTerminal } from "./virtual-terminal.ts";
 
@@ -91,10 +95,32 @@ describe("fullscreen mouse capture", () => {
 		assert.deepEqual(copied, ["alpha\nbeta", "alpha\nbeta"]);
 		assert.deepEqual(flashes, [
 			"Copied 2 lines · 10 chars",
-			`${formatKeyText("alt+m")} or shift+drag: select with your terminal`,
+			terminalSelectionHint(),
 			"Copied 2 lines · 10 chars",
 		]);
 		tui.stop();
+	});
+});
+
+describe("the terminal-selection modifier", () => {
+	it("is Shift in most terminals, Option in iTerm2 and VS Code on macOS, Fn in Terminal.app", () => {
+		assert.equal(nativeSelectionModifier({ TERM_PROGRAM: "ghostty" }, "darwin"), "shift");
+		assert.equal(nativeSelectionModifier({}, "darwin"), "shift");
+		assert.equal(nativeSelectionModifier({ TERM_PROGRAM: "iTerm.app" }, "darwin"), "option");
+		assert.equal(nativeSelectionModifier({ TERM_PROGRAM: "vscode" }, "darwin"), "option");
+		assert.equal(nativeSelectionModifier({ TERM_PROGRAM: "Apple_Terminal" }, "darwin"), "fn");
+		assert.equal(nativeSelectionModifier({ TERM_PROGRAM: "vscode" }, "linux"), "shift");
+		const vscodeMac = terminalSelectionHint({ TERM_PROGRAM: "vscode" }, "darwin");
+		assert.match(vscodeMac, /macOptionClickForcesSelection/);
+		assert.ok(vscodeMac.startsWith(formatKeyText("alt+m")));
+		assert.doesNotMatch(terminalSelectionHint({ TERM_PROGRAM: "iTerm.app" }, "darwin"), /macOption/);
+		assert.doesNotMatch(terminalSelectionHint({ TERM_PROGRAM: "vscode" }, "linux"), /macOption/);
+		assert.equal(nativeSelectionModifier({ TERM_PROGRAM: "tmux" }, "darwin"), "shift");
+		assert.match(
+			mouseCaptureMessage(true, { TERM_PROGRAM: "vscode" }, "darwin"),
+			/option\+drag \(needs macOptionClickForcesSelection\)/,
+		);
+		assert.doesNotMatch(mouseCaptureMessage(true, { TERM_PROGRAM: "iTerm.app" }, "darwin"), /macOption/);
 	});
 });
 

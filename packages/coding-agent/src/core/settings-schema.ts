@@ -6,6 +6,7 @@ import { CachePreferenceProperties } from "./cache-preferences-schema.ts";
 import { OptimizePromptsSchema } from "./settings-schema/prompt-optimization.ts";
 import { LeanPromptSchema } from "./settings-schema/lean-prompt.ts";
 import { ModelAvailabilitySettingsProperties } from "./settings-schema/model-availability.ts";
+import { ExternalModelsSettingsProperties } from "./settings-schema/external-models.ts";
 import { BacklogSettingsSchema } from "./settings-schema/backlog.ts";
 import { RetentionSettingsSchema } from "./settings-schema/retention.ts";
 import { SessionApiTurnPermissionSchema } from "./settings-schema/session-api.ts";
@@ -18,6 +19,7 @@ import { FullscreenSettingsProperties } from "./settings-schema/fullscreen.ts";
 import { WebSettingsProperties } from "./settings-schema/web.ts";
 import { McpSettingsProperties } from "./settings-schema/mcp.ts";
 import { MemorySettingsProperties } from "./settings-schema/memory.ts";
+import { CacheWarmingSchema } from "./settings-schema/cache-warming.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
 import {
 	BranchSummarySettingsSchema,
@@ -78,6 +80,14 @@ export const SettingsSchema = Type.Object(
 		theme: Type.Optional(Type.String()),
 		branchSummary: Type.Optional(BranchSummarySettingsSchema),
 		retry: Type.Optional(RetrySettingsSchema),
+		requestsPerMinute: Type.Optional(
+			Type.Integer({
+				description:
+					"Most model requests one session sends to one provider per minute (a sliding 60-second window; retries, compaction and cache warming count). A request over the limit waits for a slot. 0 turns the limit off. A `requestsPerMinute` on a provider or model in models.json wins.",
+				minimum: 0,
+				default: SETTINGS_DEFAULTS.requestsPerMinute,
+			}),
+		),
 		toolExecution: Type.Optional(ToolExecutionSettingsSchema),
 		hideThinkingBlock: Type.Optional(Type.Boolean({ default: SETTINGS_DEFAULTS.hideThinkingBlock })),
 		showCacheMissNotices: Type.Optional(
@@ -118,7 +128,7 @@ export const SettingsSchema = Type.Object(
 		externalAgents: Type.Optional(
 			Type.Boolean({
 				description:
-					"Allow model-directed external agent tasks and connections. Off by default; enable selected installed CLIs in /providers. enabledExternalAgents limits vendor CLIs; an existing explicit true without that list keeps all runners available. Discovery starts no CLI; sign-in is checked when used. Global only; project files cannot change it. Reload to apply changes.",
+					"Allow model-directed external agent tasks and connections. Off by default; enable selected installed CLIs in /providers. enabledExternalAgents names the vendor CLIs tasks may use. Discovery starts no CLI; sign-in is checked when used. Global only; project files cannot change it. Reload to apply changes.",
 				default: SETTINGS_DEFAULTS.externalAgents,
 			}),
 		),
@@ -137,7 +147,7 @@ export const SettingsSchema = Type.Object(
 					allowedPaths: Type.Optional(
 						Type.Array(Type.String(), {
 							description:
-								'Extra folders the research tools (localFetch, localSearch, structureSearch, astSearch, lspSearch) may read, added to the workspace, the session folders and loaded skill folders. Absolute paths or paths starting with ~/, for example ["~/code/private-skills"]. Read from the global settings only: a project settings file cannot add folders. Relative paths, "..", the filesystem root, your home folder, the Octocode home and credential folders such as ~/.ssh are refused with a warning. An edit applies after /reload, at the next turn.',
+								'Extra folders the research MCP server local file tools may read, added to the workspace, the session folders and loaded skill folders. Absolute paths or paths starting with ~/, for example ["~/code/private-skills"]. Read from the global settings only: a project settings file cannot add folders. Relative paths, "..", the filesystem root, your home folder, the Octocode home and credential folders such as ~/.ssh are refused with a warning. An edit applies after /reload, at the next turn.',
 						}),
 					),
 				},
@@ -224,6 +234,7 @@ export const SettingsSchema = Type.Object(
 		terminal: Type.Optional(TerminalSettingsSchema),
 		images: Type.Optional(ImageSettingsSchema),
 		...ModelAvailabilitySettingsProperties,
+		...ExternalModelsSettingsProperties,
 		defaultTools: Type.Optional(
 			Type.Array(Type.String(), {
 				description:
@@ -353,13 +364,7 @@ export const SettingsSchema = Type.Object(
 		...MonitorSettingsProperties,
 		...RuntimeSettingsProperties,
 		...MemorySettingsProperties,
-		cacheWarming: Type.Optional(
-			Type.Union([Type.Literal("off"), Type.Literal("streaming"), Type.Literal("idle")], {
-				description:
-					'Cache-warming profile. "idle" also warms between agent runs. Global only because each refresh costs money.',
-				default: SETTINGS_DEFAULTS.cacheWarming,
-			}),
-		),
+		cacheWarming: Type.Optional(CacheWarmingSchema),
 		retention: Type.Optional(RetentionSettingsSchema),
 		backlog: Type.Optional(BacklogSettingsSchema),
 		subagents: Type.Optional(SubagentSettingsSchema),

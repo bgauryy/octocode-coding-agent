@@ -15,7 +15,7 @@ export interface SecurityApi {
 	act: (command: SecurityActionCommand) => Promise<SecurityList>;
 }
 
-const KIND_WORDS = { hook: "Hook", mcp: "MCP server", skill: "Skill" } as const;
+const KIND_WORDS = { hook: "Hook", mcp: "MCP server", skill: "Skill", agent: "External model" } as const;
 const TONES = { LOW: "neutral", MEDIUM: "warning", HIGH: "danger", CRITICAL: "danger" } as const;
 const ACTION_WORDS: Record<SecurityAction, string> = { approve: "Approve", deny: "Deny", forget: "Forget" };
 

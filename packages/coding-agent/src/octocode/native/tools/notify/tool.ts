@@ -26,6 +26,7 @@ import {
 import { cronOf, cronSetText, describeCron, nextRunAt, parseCron, settledDue } from "../../../timer/cron.ts";
 import { type EventFilter, LISTEN_EVENTS, untilOfEvent } from "../../../timer/on.ts";
 import type { LiveJob } from "../../../timer/job-poll.ts";
+import { type NotifyAliases, normalizeNotify } from "../../../timer/normalize.ts";
 
 const text = (description: string) => Type.Optional(Type.String({ description }));
 
@@ -81,11 +82,29 @@ const parameters = Type.Object(
  * batch is checked as strictly as one call while the declared schema stays short.
  */
 const validation = (() => {
-	const { op: _op, items: _items, ...single } = parameters.properties;
+	const { op: _op, items: _items, ...declared } = parameters.properties;
+	// Shapes models send for declared fields: accepted here and mapped by `normalizeNotify`, so the declared schema stays short.
+	const single = {
+		...declared,
+		delay: Type.Optional(Type.Number()),
+		seconds: Type.Optional(Type.Number()),
+		interval: Type.Optional(Type.Number()),
+		filter: Type.Optional(
+			Type.Object(
+				{
+					...(declared.filter as unknown as { properties: Record<string, never> }).properties,
+					job: Type.Optional(Type.String()),
+					name: Type.Optional(Type.String()),
+				},
+				{ additionalProperties: false },
+			),
+		),
+	};
 	return withReason(
 		Type.Object(
 			{
-				...parameters.properties,
+				...single,
+				op: parameters.properties.op,
 				items: Type.Optional(Type.Array(Type.Object(single, { additionalProperties: false }), { minItems: 1 })),
 			},
 			{ additionalProperties: false },
@@ -93,16 +112,17 @@ const validation = (() => {
 	);
 })();
 
-type Params = Omit<TimerSetInput, "until"> & {
-	op: "set" | "on" | "off" | "list";
-	event?: string;
-	filter?: EventFilter;
-	check?: string;
-	id?: number;
-	all?: boolean;
-	/** set, on or off: several entries of the single-call fields, each run as its own call. */
-	items?: object[];
-};
+type Params = Omit<TimerSetInput, "until"> &
+	NotifyAliases & {
+		op: "set" | "on" | "off" | "list";
+		event?: string;
+		filter?: EventFilter;
+		check?: string;
+		id?: number;
+		all?: boolean;
+		/** set, on or off: several entries of the single-call fields, each run as its own call. */
+		items?: object[];
+	};
 
 /** Where the tool reads and writes: the shared database, this workspace and the owner session. */
 export interface TimerHost {
@@ -116,6 +136,8 @@ export interface TimerHost {
 	checkRefusal: (ctx: FeatureContext) => Promise<string | undefined>;
 	/** The background jobs whose end wakes the session: `on` refuses a command that polls one. Omitted: none. */
 	jobs?: (ctx: FeatureContext) => readonly LiveJob[];
+	/** The names of the running children, for an `agent.ended` that names none. Omitted: none. */
+	children?: () => readonly string[];
 	/** What wakes the session without a wait (its running children and background jobs), one line, or empty. */
 	implicit: () => string;
 	/** Before a cron wait is set: why it may not be (subagent, no screen to confirm, declined), or undefined; asks the user once per session. */
@@ -135,8 +157,15 @@ export interface TimerToolDetails {
 
 export function timerTool(host: TimerHost): ToolDefinition<typeof parameters, TimerToolDetails> {
 	/** One set, on or off: the checks each kind of wait needs, then its row; off cancels. */
-	async function write(params: Params, toolCallId: string, signal: AbortSignal | undefined, ctx: FeatureContext) {
+	async function write(sent: Params, toolCallId: string, signal: AbortSignal | undefined, ctx: FeatureContext) {
 		signal?.throwIfAborted();
+		const meant = sent.op === "off" ? undefined : normalizeNotify(sent, host.children?.() ?? []);
+		if (meant?.kind === "implicit")
+			return textResult(
+				`You are already notified when ${meant.job} ends, with its exit and log: nothing was set. Keep working or end your turn.`,
+				{},
+			);
+		const params = (meant?.params ?? sent) as Params;
 		const { db } = host.db();
 		const session = ctx.sessionManager.getSessionId();
 		const now = host.now();

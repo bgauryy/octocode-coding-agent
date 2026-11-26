@@ -2,7 +2,7 @@ import { StringEnum } from "@octocodeai/octocode-ai";
 import { BACKLOG_ITEM_ENV } from "@octocodeai/octocode-common/env";
 import type { CloseInput } from "@octocodeai/octocode-contracts/backlogs";
 import { Type } from "typebox";
-import type { FeatureSetup, FeatureContext } from "../../../../core/features/index.ts";
+import type { FeatureSetup, FeatureContext, ToolDefinition } from "../../../../core/features/index.ts";
 import { timedTool } from "../../../render/rows.ts";
 import { withReason } from "../../../shared/reason.ts";
 import { type Backlog, type BacklogOptions, openBacklogWhenReady } from "../../../backlog/context.ts";
@@ -16,13 +16,17 @@ import { type CompletionGate, completionInfo } from "../../../backlog/completion
 import { doneRefusal, type Holdings } from "../../../backlog/done-guard.ts";
 import { dropBaseline, recordBaseline } from "../../../backlog/qa-baseline.ts";
 import { reviewBeforeDone } from "../../../backlog/qa-run.ts";
-import type { QaReviewer } from "../../../backlog/qa-gate.ts";
+import { startReviews } from "../../../backlog/qa-prefetch.ts";
+import { announceDone } from "../../../backlog/done-signal.ts";
+import { doneReply } from "../../../backlog/done-reply.ts";
+import type { QaReview, QaReviewer } from "../../../backlog/qa-gate.ts";
 import { completeStep } from "../../../backlog/tool-step.ts";
 import { SETTINGS_DEFAULTS } from "../../../../core/settings-defaults.ts";
-import { closeField, completionField, legacyEntityFields } from "../../../backlog/tool-schema.ts";
+import { closeField, completionField, undeclaredEntityFields } from "../../../backlog/tool-schema.ts";
 import { checkMerged } from "../../../backlog/merge-gate.ts";
 import { oneWrite, rehearse } from "../../../backlog/tool-support.ts";
 import { backlogPrompt } from "../../../backlog/tool-text.ts";
+import { signatureRates } from "./signature-rates.ts";
 
 const OPS = ["get", "claim", "note", "done", "close", "step"] as const;
 type Op = (typeof OPS)[number];
@@ -39,6 +43,27 @@ const OP_FIELDS: Record<Op, readonly string[]> = {
 	step: ["id", "note", "version"],
 };
 const DECLARED = ["id", "note", "why", "goal", "completion", "close", "version"];
+/** The head line of a batch: what it did, by operation. */
+const VERBS: Record<Exclude<Op, "get">, string> = {
+	claim: "Claimed",
+	note: "Noted",
+	done: "Done",
+	close: "Closed",
+	step: "Stepped",
+};
+
+/** `result` with a line of text after its own. */
+const withText = <T extends { content: Array<{ type: "text"; text: string }> }>(result: T, text: string): T => ({
+	...result,
+	content: [{ type: "text" as const, text: `${result.content[0]?.text ?? ""}\n${text}` }],
+});
+
+/** What one entry of a batch tells `write` about its place and review: an early review, and where to report progress. */
+interface EntryRun {
+	started?: Promise<QaReview | undefined>;
+	progress?: (text: string) => void;
+	place?: { n: number; of: number };
+}
 
 interface Params {
 	op: Op | (typeof MOVED_OPS)[number];
@@ -57,10 +82,15 @@ interface Params {
 	state?: unknown;
 }
 
-/** A write entry's fields: the declared ones but `op` and `items`, each in its legacy-tolerant form. */
+/** A write entry's fields: the declared ones but `op` and `items`, each in its accepted form. */
 function entryFields<P extends Record<string, unknown>>(properties: P) {
 	const { op: _op, items: _items, ...single } = properties;
-	return { ...single, version: legacyEntityFields.version, completion: legacyEntityFields.completion };
+	return { ...single, version: undeclaredEntityFields.version, completion: undeclaredEntityFields.completion };
+}
+
+/** A progress line for the row while a slow step (the QA review) runs, or nothing when the caller takes no updates. */
+function progressTo(onUpdate: Parameters<ToolDefinition["execute"]>[3]): ((text: string) => void) | undefined {
+	return onUpdate && ((text) => onUpdate({ content: [{ type: "text", text }], details: {} }));
 }
 
 /** Where a call in the tool's old shape (`op` list, add or update) goes now, in one sentence. */
@@ -101,17 +131,18 @@ export function registerBacklogTool(
 		{
 			op: StringEnum(OPS, { description: ops }),
 			id: Type.Optional(Type.String({ description: "B12; get: several; step: T12" })),
-			note: Type.Optional(Type.String({ description: "step: result/check evidence" })),
+			note: Type.Optional(Type.String({ description: "step: evidence" })),
 			why: Type.Optional(Type.String({ description: "claim: if unset" })),
 			goal: Type.Optional(Type.String({ description: "claim: checkable, if unset" })),
 			completion: completionField("done: the result"),
 			close: Type.Optional(closeField),
 			version: Type.Optional(Type.Integer({ description: "refused if stale" })),
 			items: Type.Optional(
+				// Entries are checked by `accepted` below, so the declared schema stays short.
 				Type.Unsafe<Record<string, unknown>[]>({
 					type: "array",
 					items: { type: "object" },
-					description: "batch entries",
+					description: "Batch: per-entry op fields",
 				}),
 			),
 		},
@@ -127,8 +158,8 @@ export function registerBacklogTool(
 			limit: Type.Optional(Type.Integer()),
 			offset: Type.Optional(Type.Integer()),
 			changes: Type.Optional(Type.Boolean()),
-			version: legacyEntityFields.version,
-			completion: legacyEntityFields.completion,
+			version: undeclaredEntityFields.version,
+			completion: undeclaredEntityFields.completion,
 			// Each entry is typed as a single write; `batchUpdate` names an entry's fields its op does not take.
 			items: Type.Optional(Type.Array(Type.Object(entryFields(parameters.properties)), { minItems: 1 })),
 		},
@@ -148,7 +179,7 @@ export function registerBacklogTool(
 			validationParameters: withReason(accepted),
 			// A `get` runs beside other reads; a write runs alone in its message and after every earlier write.
 			concurrency: (args) => (args.op === "get" ? "shared" : "exclusive"),
-			async execute(_id, params, signal, _onUpdate, ctx) {
+			async execute(_id, params, signal, onUpdate, ctx) {
 				signal?.throwIfAborted();
 				// `reason` is every native call's purpose (`shared/reason.ts`), never the item's why.
 				const { reason: _reason, ...args } = parseJsonStrings(params as Params & { reason?: string });
@@ -166,16 +197,35 @@ export function registerBacklogTool(
 					if (other.length)
 						throw new Error(`items carries each entry's fields: move ${other.join(", ")} into the entries.`);
 					const entries = args.items.map((entry) => parseJsonStrings(entry));
+					// Reviews of a batch's dones run ahead, a few at a time; the entries' writes below stay serial and in order.
+					const ahead =
+						op === "done" && options.review
+							? startReviews(
+									await openBacklogWhenReady(ctx, options, signal),
+									entries,
+									qaMode(),
+									options.review,
+									ctx,
+									signal,
+								)
+							: undefined;
 					try {
 						return await batchUpdate(
 							entries,
 							OP_FIELDS[op],
 							"items",
-							(entry) => write({ ...(entry as Omit<Params, "op">), op }, op, ctx, signal),
+							(entry, index) =>
+								write({ ...(entry as Omit<Params, "op">), op }, op, ctx, signal, {
+									started: ahead?.started[index],
+									progress: progressTo(onUpdate),
+									place: { n: index + 1, of: entries.length },
+								}),
 							undefined,
 							signal,
+							{ operation: op, verb: VERBS[op] },
 						);
 					} finally {
+						ahead?.stop();
 						options.changed?.(ctx); // a refused or cancelled batch may still have applied entries
 					}
 				}
@@ -193,11 +243,18 @@ export function registerBacklogTool(
 						const audits =
 							changes && each ? await backlog.store.auditAsync(each, AUDIT_SHOWN, undefined, signal) : undefined;
 						signal?.throwIfAborted();
-						return runBacklog(backlog, { op: "get", id: each, limit, offset, changes }, { subagent, word: op, audits });
+						const got = runBacklog(
+							backlog,
+							{ op: "get", id: each, limit, offset, changes },
+							{ subagent, word: op, audits },
+						);
+						const item = each ? backlog.store.get(each) : undefined;
+						const rates = item && (await signatureRates(item, ctx.cwd, signal));
+						return rates ? withText(got, rates) : got;
 					};
 					return ids.length > 1 ? batchGet(ids, read, signal) : read(ids[0]);
 				}
-				const result = await write(args, op, ctx, signal);
+				const result = await write(args, op, ctx, signal, { progress: progressTo(onUpdate) });
 				options.changed?.(ctx);
 				return result;
 			},
@@ -209,7 +266,13 @@ export function registerBacklogTool(
 	 * One write: the done guard, git's merge check and a rehearsal of the store write (its own refusals), then the
 	 * TaskCompleted hooks and the QA review, then the store write, alone in its transaction.
 	 */
-	async function write(args: Params, op: Exclude<Op, "get">, ctx: FeatureContext, signal?: AbortSignal) {
+	async function write(
+		args: Params,
+		op: Exclude<Op, "get">,
+		ctx: FeatureContext,
+		signal?: AbortSignal,
+		run: EntryRun = {},
+	) {
 		/** The QA note recorded with the completion, when a review ran or was skipped. */
 		let qa: string | undefined;
 		/** The isolated-change refs git found merged, checked before (never inside) the write's transaction. */
@@ -231,29 +294,47 @@ export function registerBacklogTool(
 						`${item.ref} was not ${change === "done" ? "completed" : "closed"}: a TaskCompleted hook refused it: ${refusal}`,
 					);
 				if (op === "done" && options.review)
-					qa = await reviewBeforeDone(
-						backlog,
-						item,
-						args.completion,
-						api.settings.get().backlog?.qa ?? SETTINGS_DEFAULTS.backlog.qa,
-						options.review,
-						ctx,
-						signal,
-					);
+					qa = await reviewBeforeDone(backlog, item, args.completion, qaMode(), options.review, ctx, signal, {
+						started: run.started,
+						reviewing: () =>
+							run.progress?.(`reviewing ${item.ref}${run.place ? ` (${run.place.n} of ${run.place.of})` : ""}…`),
+					});
 			}
 		}
+		// A done on an item already done changes nothing, so it is not announced (no second compaction at the boundary).
+		const wasDone =
+			op === "done" && args.id
+				? (await openBacklogWhenReady(ctx, options, signal)).store.get(args.id)?.state === "done"
+				: false;
 		const written = await oneWrite(async () => {
 			signal?.throwIfAborted();
 			const backlog = await openBacklogWhenReady(ctx, options, signal);
-			const given = qa ? { ...args, note: [args.note, qa].filter(Boolean).join("\n\n") } : args;
+			// The version was checked by the rehearsal just before the review, which can run for minutes and whose own
+			// notes move it: the write follows the item as it is now, so a paid review is not wasted on a stale refusal.
+			const now = qa && args.id && args.version !== undefined ? backlog.store.get(args.id)?.version : undefined;
+			const given = {
+				...args,
+				...(qa ? { note: [args.note, qa].filter(Boolean).join("\n\n") } : {}),
+				...(now === undefined ? {} : { version: now }),
+			};
 			return backlog.store.transactionWhenReady(() => work(backlog, given, op, merged), signal);
 		});
 		// The baseline QA later judges the item's own changes against: taken at the claim, dropped when the item ends.
 		if (op === "claim" && args.id) await recordBaseline(ctx.cwd, args.id);
 		else if ((op === "done" || op === "close") && args.id) await dropBaseline(ctx.cwd, args.id);
-		return qa
-			? { ...written, content: [{ type: "text" as const, text: `${written.content[0]?.text ?? ""}\n${qa}` }] }
-			: written;
+		if (op === "done" && args.id && args.completion !== undefined && !wasDone)
+			announceDone(api, await openBacklogWhenReady(ctx, options, signal), args.id, args.completion);
+		// A done tells what was finished: the summary, how it was verified and the QA outcome.
+		const done = op === "done" && args.completion !== undefined;
+		const finished =
+			done && args.id ? (await openBacklogWhenReady(ctx, options, signal)).store.get(args.id) : undefined;
+		const rates = finished && (await signatureRates(finished, ctx.cwd, signal));
+		const reply = [done ? doneReply(args.completion, qa) : qa, rates].filter(Boolean).join("\n");
+		return reply ? withText(written, reply) : written;
+	}
+
+	function qaMode() {
+		return api.settings.get().backlog?.qa ?? SETTINGS_DEFAULTS.backlog.qa;
 	}
 
 	/**

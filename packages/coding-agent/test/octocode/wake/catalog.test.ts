@@ -5,7 +5,7 @@ import { HOOK_LIFECYCLE_EVENTS, hookTopic } from "../../../src/octocode/events/h
 describe("the agent event catalog", () => {
 	it("gives every kind a label and a dedupe key, and lists the closed set", () => {
 		const lifecycle = HOOK_LIFECYCLE_EVENTS.map(hookTopic);
-		expect(EVENT_KINDS).toHaveLength(15 + lifecycle.length);
+		expect(EVENT_KINDS).toHaveLength(16 + lifecycle.length);
 		expect(EVENT_KINDS).toEqual(expect.arrayContaining(lifecycle));
 		expect(EVENT_KINDS).toEqual(expect.arrayContaining(["ticket.resolved", "ticket.rejected"]));
 		for (const kind of EVENT_KINDS) {

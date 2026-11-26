@@ -1,8 +1,12 @@
 import { DEFAULT_MAX_RETRY_DELAY_MS, DEFAULT_OFFLINE_INTERVAL_MS } from "@octocodeai/octocode-ai/utils/retry";
 import { RETENTION_DEFAULTS } from "../storage/retention.ts";
-import { RESULT_DEFAULT_BYTES } from "../utils/output-budget.ts";
+import { BASH_RESULT_DEFAULT_BYTES } from "../utils/output-budget.ts";
 import { MONITOR_DEFAULTS } from "./settings-schema/monitor.ts";
 import { RUNTIME_DEFAULTS } from "./settings-schema/runtime.ts";
+
+/** The failure classes `retry.fallbackOn` names; the first four switch models by default. */
+export const FALLBACK_ON_CLASSES = ["usage", "credential", "model", "outage", "rate-limit"] as const;
+export type FallbackOnClass = (typeof FALLBACK_ON_CLASSES)[number];
 
 /** `sandbox.mode`: never, in every permission mode but `bypass`, or always. */
 export type SandboxMode = "off" | "auto" | "on";
@@ -44,6 +48,7 @@ export const SETTINGS_DEFAULTS = {
 			maxRetryDelayMs: 60000,
 		},
 		fallbackModels: [] as string[],
+		fallbackOn: ["usage", "credential", "model", "outage"] as FallbackOnClass[],
 		fallbackCooldownMs: 15 * 60_000,
 		/** 0: an unattended run fails at once on a usage limit, naming its reset. */
 		maxUsageWaitMs: 0,
@@ -55,7 +60,9 @@ export const SETTINGS_DEFAULTS = {
 	/** How file references open: `auto` picks the IDE or GUI editor, `editor` the prompt editor, else a command. */
 	referenceOpener: "auto",
 	bashBackgroundAfterSeconds: 90,
-	bashOutputMaxBytes: RESULT_DEFAULT_BYTES,
+	/** Sends per minute to one provider from one process; 0 turns the window off (`model-runtime/request-rate.ts`). */
+	requestsPerMinute: 12,
+	bashOutputMaxBytes: BASH_RESULT_DEFAULT_BYTES,
 	bash: {
 		inheritProviderKeys: false,
 		spillMaxBytes: 1024 * 1024 * 1024,
@@ -64,7 +71,7 @@ export const SETTINGS_DEFAULTS = {
 		longCommandPatterns: [] as string[],
 	},
 	sandbox: { mode: "off" as SandboxMode, allowUnsandboxed: true },
-	backlog: { qa: "important" as "important" | "all" | "off" },
+	backlog: { qa: "important" as "important" | "all" | "off", compactOnDone: 0.5 },
 	subagents: {
 		peerOverlapWake: true,
 	},

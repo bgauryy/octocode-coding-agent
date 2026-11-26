@@ -176,4 +176,14 @@ process.stdout.write(JSON.stringify(await mergeRef(${JSON.stringify(cwd)}, ${JSO
 			await holder;
 		}
 	});
+
+	it("refuses a merge into a tree with staged files, naming them", async () => {
+		const cwd = repo();
+		fs.writeFileSync(path.join(cwd, "staged.txt"), "x\n");
+		git(cwd, "add", "staged.txt");
+		const result = await mergeRef(cwd, "refs/octocode/alpha");
+		expect(result).toMatchObject({ ok: false });
+		expect(result.text).toMatch(/refused: 1 file is staged in .*: staged\.txt/);
+		expect(result.text).toContain("unstage");
+	});
 });

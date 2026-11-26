@@ -2,9 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { closeSharedAgentDb, events } from "../../../db/src/api.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import {
 	qaRequired,
@@ -45,10 +44,11 @@ const verdict = (word: QaVerdictWord, findings: string[] = []): QaReview => ({
 /** A registered backlog tool whose QA reviewer is a scripted port: the model and the child are external boundaries. */
 function setup(options: { qa?: QaMode; reviewer?: QaReviewer | undefined } = {}) {
 	const requests: QaRequest[] = [];
-	let reply: QaReview | { skipped: string } = verdict("Ready");
+	let reply: QaReview = verdict("Ready");
+	const queue: QaReview[] = [];
 	const review: QaReviewer = async (request) => {
 		requests.push(request);
-		return reply;
+		return queue.shift() ?? reply;
 	};
 	const fake = fakeHost(options.qa ? { backlog: { qa: options.qa } } : {});
 	const reviewer = "reviewer" in options ? options.reviewer : review;
@@ -68,7 +68,7 @@ function setup(options: { qa?: QaMode; reviewer?: QaReviewer | undefined } = {})
 				content: Array<{ text: string }>;
 			}
 		).content[0].text;
-	const store = () => new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
+	const store = () => new BacklogStore(() => workspaceDb(cwd).agent, workspaceDb(cwd).workspace.id);
 	const open = async (item: Record<string, unknown> = {}) => {
 		await call({
 			op: "add",
@@ -76,7 +76,14 @@ function setup(options: { qa?: QaMode; reviewer?: QaReviewer | undefined } = {})
 		});
 		await call({ op: "claim", id: "B1" });
 	};
-	return { call, store, open, requests, answer: (next: QaReview | { skipped: string }) => (reply = next) };
+	return {
+		call,
+		store,
+		open,
+		requests,
+		answer: (next: QaReview) => (reply = next),
+		queue: (...next: QaReview[]) => queue.push(...next),
+	};
 }
 
 const notes = (store: BacklogStore) =>
@@ -175,13 +182,79 @@ describe("done on an important item", () => {
 		expect(item.completions).toHaveLength(0);
 	});
 
-	it("completes with a note when no reviewer could run (no priced small model, a refused start)", async () => {
+	it("completes with a skipped note when QA is not configured (no priced small model)", async () => {
 		const t = setup();
 		await t.open();
 		t.answer({ skipped: "no priced small model is connected" });
 		await t.call({ op: "done", id: "B1", completion: DONE });
 		expect(t.store().get("B1")?.state).toBe("done");
 		expect(notes(t.store())).toMatch(/QA skipped: UNVERIFIED.*no priced small model is connected/);
+	});
+
+	it("completes with the review owed, a pinned note, receipt qa owed and a qa.unavailable event when no reviewer could start", async () => {
+		const t = setup({ qa: "all" });
+		await t.open();
+		t.answer({ unavailable: "the reviewer could not start: spawn ENOENT" });
+		const text = await t.call({ op: "done", id: "B1", completion: DONE });
+		const item = t.store().get("B1")!;
+		expect(item.state).toBe("done");
+		expect(item.completions[0]?.qa).toBe("owed");
+		expect(notes(t.store())).toMatch(/QA owed: .*spawn ENOENT.*it reruns when a reviewer can start/);
+		expect(text).toMatch(/QA owed: .*spawn ENOENT/);
+		const { agent, workspace } = workspaceDb(path.join(tmp, "repo"));
+		const logged = events.read(agent.db, { workspaceId: workspace.id, after: 0, topic: "qa.unavailable" });
+		expect(logged.map((row) => JSON.parse(row.payload))).toEqual([
+			{ item: "B1", cause: "the reviewer could not start: spawn ENOENT" },
+		]);
+	});
+
+	describe("an owed review", () => {
+		const owe = async (t: ReturnType<typeof setup>) => {
+			await t.open();
+			t.answer({ unavailable: "the reviewer could not start: down" });
+			await t.call({ op: "done", id: "B1", completion: DONE });
+			await t.call({ op: "add", items: [{ title: "Next", ...READY, state: "todo", priority: "p1", type: "feature" }] });
+			await t.call({ op: "claim", id: "B2" });
+		};
+		const noteText = (t: ReturnType<typeof setup>) =>
+			t
+				.store()
+				.notes(t.store().get("B1")!, -1)
+				.map((note) => note.text)
+				.join("\n");
+
+		it("does not rerun while the reviewer is still unavailable", async () => {
+			const t = setup({ qa: "all" });
+			await owe(t);
+			await t.call({ op: "done", id: "B2", completion: DONE });
+			expect(t.requests.map((request) => request.ref)).toEqual(["B1", "B2"]);
+			expect(t.store().get("B1")?.completions.at(-1)?.qa).toBe("owed");
+			expect(t.store().get("B2")?.completions.at(-1)?.qa).toBe("owed");
+		});
+
+		it("reruns at the next successful reviewer start, and a Ready verdict clears the debt", async () => {
+			const t = setup({ qa: "all" });
+			await owe(t);
+			t.answer(verdict("Ready"));
+			const text = await t.call({ op: "done", id: "B2", completion: DONE });
+			expect(t.requests.map((request) => request.ref)).toEqual(["B1", "B2", "B1"]);
+			const one = t.store().get("B1")!;
+			expect(one.state).toBe("done");
+			expect(one.completions.at(-1)?.qa).toBeUndefined();
+			expect(text).toMatch(/B1: owed QA review ran, Ready/);
+			expect(noteText(t)).toMatch(/Owed review, now run\. QA Ready/);
+		});
+
+		it("reopens the item when the rerun finds changes required, like an ordinary QA failure", async () => {
+			const t = setup({ qa: "all" });
+			await owe(t);
+			t.queue(verdict("Ready"), verdict("Changes required", ["src/a.ts:1 wrong"]));
+			const text = await t.call({ op: "done", id: "B2", completion: DONE });
+			expect(t.store().get("B1")?.state).toBe("ongoing");
+			expect(noteText(t)).toMatch(/Owed review, now run\. QA Changes required[^]*src\/a\.ts:1 wrong/);
+			expect(text).toMatch(/B1: owed QA review ran, Changes required: the item was reopened/);
+			expect(t.store().get("B2")?.state).toBe("done");
+		});
 	});
 
 	it("reviews a p2 item whose summary says the goal is unmet", async () => {

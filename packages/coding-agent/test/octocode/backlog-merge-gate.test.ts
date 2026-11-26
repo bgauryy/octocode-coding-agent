@@ -9,7 +9,7 @@ import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { everyWorkspaceFile, workspaceDb } from "../../src/storage/workspace-database.ts";
 import { backlogToolName } from "./backlog-fixture.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
@@ -18,7 +18,9 @@ const gitInTransaction: boolean[] = [];
 vi.mock("node:child_process", async (original) => {
 	const real = await original<typeof ChildProcess>();
 	const seen = (command: unknown) => {
-		if (command === "git") gitInTransaction.push(sharedAgentDb().db.isTransaction);
+		if (command !== "git") return;
+		const machine = sharedAgentDb();
+		gitInTransaction.push([machine, ...everyWorkspaceFile(machine)].some((agent) => agent.db.isTransaction));
 	};
 	return {
 		...real,
@@ -65,8 +67,8 @@ async function setup() {
 		).content[0].text;
 	await text({ op: "add", items: [{ title: "work", goal: "work done", why: "needed", state: "todo" }] });
 	await text({ op: "claim", id: "B1" });
-	const agent = sharedAgentDb();
-	const store = new BacklogStore(() => agent, registeredWorkspace(cwd, agent).id);
+	const { agent, workspace } = workspaceDb(cwd);
+	const store = new BacklogStore(() => agent, workspace.id);
 	const item = store.get("B1")!;
 	store.update(
 		"B1",

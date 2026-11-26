@@ -11,7 +11,8 @@ export interface StoredFile {
 	omitted?: true;
 }
 
-export const REVIEW_KINDS = ["hook", "mcp", "skill"] as const;
+/** `agent`: a project's `externalModels` entry (an external CLI or ACP agent offered as a model). */
+export const REVIEW_KINDS = ["hook", "mcp", "skill", "agent"] as const;
 export type ReviewKind = (typeof REVIEW_KINDS)[number];
 
 export const RATINGS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;

@@ -85,23 +85,15 @@ describe("evidence links", () => {
 			file("docs/b.md"),
 		]);
 	});
-	it("reads path and URL evidence stored before links as links, and keeps them when any update rewrites the row", () => {
-		const item = add("old row");
-		// A row written by an older build: references sit in the evidence text.
-		db.db
-			.prepare("UPDATE backlog SET evidence = ? WHERE id = ?")
-			.run("docs/a.md\nhttps://example.com/a\nsaw it fail", item.rowId);
+	it("reads and keeps stored evidence text as it is: the database upgrade converted older rows", () => {
+		const item = add("stored row");
+		db.db.prepare("UPDATE backlog SET evidence = ? WHERE id = ?").run("docs/a.md\nsaw it fail", item.rowId);
 		const read = store.get(item.ref)!;
-		expect(read.evidence).toEqual(["saw it fail"]);
-		expect(read.links).toEqual([file("docs/a.md"), url("https://example.com/a")]);
+		expect(read).toMatchObject({ evidence: ["docs/a.md", "saw it fail"], links: [] });
 		const noted = store.update(item.ref, { state: "ongoing", note: "starting" }, actor);
-		expect(noted).toMatchObject({ evidence: ["saw it fail"], links: read.links });
-		expect(store.notes(noted, 10).map((note) => note.text)).toEqual([
-			"state backlog → ongoing · assignee none → session",
-			"starting",
-		]);
+		expect(noted).toMatchObject({ evidence: ["docs/a.md", "saw it fail"], links: [] });
 		expect(db.db.prepare("SELECT evidence FROM backlog WHERE id = ?").get(item.rowId)).toEqual({
-			evidence: "saw it fail",
+			evidence: "docs/a.md\nsaw it fail",
 		});
 	});
 });
@@ -129,7 +121,7 @@ describe("backlog composition", () => {
 		expect(() => store.update(api.ref, { dependsOn: [epic.ref] }, actor)).toThrow(/cycle/);
 		expect(store.get(api.ref)?.dependsOn).toEqual([]);
 		expect(() => store.update(ui.ref, { state: "ongoing" }, actor)).toThrow(/Blocked by/);
-		expect(() => store.update(epic.ref, { state: "done", completion: result() }, actor)).toThrow(/child/);
+		expect(() => store.update(epic.ref, { state: "done", completion: result() }, actor)).toThrow(/epic with items that are not done/);
 		store.update(api.ref, { state: "done", completion: result() }, actor);
 		expect(store.update(ui.ref, { state: "ongoing" }, actor).state).toBe("ongoing");
 	});

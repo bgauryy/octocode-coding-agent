@@ -9,6 +9,7 @@ import { isCancelledText } from "../../../octocode/shared/commands.ts";
 import { countProblem, noticeLine } from "./display.ts";
 import { askInTerminal } from "./ask-dialog.ts";
 import type { InteractiveModeHost } from "./host.ts";
+import { terminalDiagnosticLines } from "../terminal-diagnostics.ts";
 import { pickSession } from "./session-picker.ts";
 
 /** Interactive-mode members used by the feature UI context. */
@@ -27,6 +28,7 @@ type SessionUIHost = Pick<
 	| "session"
 	| "sessionManager"
 	| "setCustomEditorComponent"
+	| "renderer"
 	| "setFeatureFooter"
 	| "setFeatureHeader"
 	| "setFeatureStatus"
@@ -62,6 +64,7 @@ export function createSessionUI(host: SessionUIHost): SessionUI {
 		setFooter: (factory) => host.setFeatureFooter(factory),
 		setHeader: (factory) => host.setFeatureHeader(factory),
 		setTitle: (title) => host.ui.terminal.setTitle(title),
+		terminalDiagnostics: () => terminalDiagnosticLines(host),
 		custom: (factory, options) => host.showCustomDialog(factory, options),
 		pickSession: (options) => pickSession(host, options),
 		setEditorText: (text) => host.editor.setText(text),

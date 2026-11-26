@@ -65,13 +65,16 @@ export function blockerText(plan: PurgePlan): string | undefined {
 	return `Another Octocode process holds data in scope; close it first: ${plan.blockers.map((b) => `${b.what} (pid ${b.pid})`).join(", ")}.`;
 }
 
-/** The size of the agent database's files (coordination and transcript mirror), for the preview. */
+/** The size of the agent database's files (machine, workspace files and transcript mirror), for the preview. */
 export const databaseBytes = (index: SessionIndex): number =>
-	maintenance.checkpoint(index.agent.db).bytesAfter + maintenance.checkpoint(index.agent.mirror.db).bytesAfter;
+	[...index.files().map((file) => file.db), index.agent.mirror.db].reduce(
+		(sum, db) => sum + maintenance.checkpoint(db).bytesAfter,
+		0,
+	);
 
-/** Both files' `VACUUM`, as one result: their sizes summed, busy when either was. */
+/** Every file's `VACUUM`, as one result: their sizes summed, busy when any was. */
 function vacuumBoth(index: SessionIndex): MaintenanceResult {
-	const parts = [maintenance.vacuum(index.agent.mirror.db), maintenance.vacuum(index.agent.db)];
+	const parts = [index.agent.mirror.db, ...index.files().map((file) => file.db)].map((db) => maintenance.vacuum(db));
 	return {
 		busy: parts.some((part) => part.busy),
 		bytesBefore: parts.reduce((sum, part) => sum + part.bytesBefore, 0),
@@ -106,10 +109,16 @@ async function applyPurge(index: SessionIndex, plan: PurgePlan): Promise<PurgeRe
 		const keepSessions = plan.current ? [plan.current] : [];
 		// Another process that opened a session since the plan keeps it (this process's own sessions stay purgeable, as planned).
 		const isLive = (pid: number, started: string | null) => pid !== process.pid && sameProcess(pid, started);
-		if (plan.scope === "all") result.rows = purge.all(db, mirror, { keepSessions, isLive });
+		const workspaceFiles = index
+			.files()
+			.slice(1)
+			.map((file) => file.db);
+		if (plan.scope === "all") result.rows = purge.all(db, mirror, { keepSessions, isLive, workspaceFiles });
 		else
 			for (const workspace of plan.workspaces)
-				for (const [table, n] of Object.entries(purge.workspace(db, mirror, workspace.id, { keepSessions, isLive })))
+				for (const [table, n] of Object.entries(
+					purge.workspace(db, mirror, workspace.id, { keepSessions, isLive, workspaceFiles }),
+				))
 					result.rows[table] = (result.rows[table] ?? 0) + n;
 		result.vacuum = vacuumBoth(index);
 	} catch (error) {

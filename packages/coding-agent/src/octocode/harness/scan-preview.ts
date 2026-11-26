@@ -47,8 +47,13 @@ export interface PreviewOptions {
 	settings: Settings;
 }
 
-const KIND_WORDS: Record<ReviewKind, string> = { skill: "skill", mcp: "MCP server", hook: "hook" };
-const KIND_ORDER: Record<ReviewKind, number> = { mcp: 0, hook: 1, skill: 2 };
+const KIND_WORDS: Record<ReviewKind, string> = {
+	skill: "skill",
+	mcp: "MCP server",
+	hook: "hook",
+	agent: "external model",
+};
+const KIND_ORDER: Record<ReviewKind, number> = { mcp: 0, hook: 1, skill: 2, agent: 3 };
 const SEVERITY = (rating: Rating): number => RATINGS.indexOf(rating);
 
 /** Names of the skills Octocode ships: a skill that takes one is rated CRITICAL, as at load. */

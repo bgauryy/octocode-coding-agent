@@ -3,6 +3,7 @@ import { recordProblem } from "../../../core/diagnostics-log.ts";
 import type { FeatureSetup } from "../../../core/features/index.ts";
 import { renderPrompt } from "../../../core/prompt-template.ts";
 import { PERMISSION_ID, type PermissionMode } from "../mode.ts";
+import { harnessSource, sourcedText } from "../../events/source.ts";
 
 /**
  * Tells the model the permission mode changed: hidden and turn-neutral, so during a run Octocode appends it after the
@@ -13,7 +14,10 @@ export function sendModeNotice(api: Pick<FeatureSetup, "session">, mode: Permiss
 		api.session.sendMessage(
 			{
 				customType: PERMISSION_ID,
-				content: renderPrompt("notices/permission-mode.md", { id: PERMISSION_ID, mode, summary }),
+				content: sourcedText(
+					renderPrompt("notices/permission-mode.md", { id: PERMISSION_ID, mode, summary }),
+					harnessSource("permissions"),
+				),
 				display: false,
 				details: { mode },
 			},

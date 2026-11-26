@@ -1,3 +1,4 @@
+import { splitThinkingSuffix } from "../../core/model-reference.ts";
 import { VALID_THINKING_LEVELS } from "../../core/thinking-level.ts";
 
 /** The `:<level>` suffixes Octocode's `--model <pattern>` accepts. */
@@ -5,8 +6,8 @@ export const THINKING_LEVELS: ReadonlySet<string> = new Set(VALID_THINKING_LEVEL
 
 /** The `:<level>` suffix a model value or purpose ends with (`:low`), or "" without one. */
 export function thinkingSuffix(value: string | undefined): string {
-	const colon = value ? value.lastIndexOf(":") : -1;
-	return value && colon > 0 && THINKING_LEVELS.has(value.slice(colon + 1)) ? value.slice(colon) : "";
+	const split = value ? splitThinkingSuffix(value) : undefined;
+	return value && split ? value.slice(split.base.length) : "";
 }
 
 /** A route's `:thinking` level (`low` in `p/m:low`), or undefined without one. */

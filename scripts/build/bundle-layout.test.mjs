@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { BUNDLE_CODE_FILES, FAST_COMMANDS, launcherSource, workerForeignModules } from "./bundle-layout.mjs";
+import { BUNDLE_CODE_FILES, FAST_COMMANDS, MIN_NODE, launcherSource, workerForeignModules } from "./bundle-layout.mjs";
 
 /** A bundle folder whose files print which of them ran, with `cli.js` as the build writes it. */
 function stubBundle(t) {
@@ -21,6 +21,36 @@ function stubBundle(t) {
 	return (launcher, ...args) =>
 		execFileSync(process.execPath, [join(directory, launcher), ...args], { encoding: "utf8" }).trim();
 }
+
+test("an older Node gets the version message and exit code 1, before the bundle loads", (t) => {
+	const directory = mkdtempSync(join(tmpdir(), "bundle-guard-"));
+	t.after(() => rmSync(directory, { recursive: true, force: true }));
+	writeFileSync(join(directory, "octocode.js"), 'throw new Error("bundle loaded");\n');
+	writeFileSync(join(directory, "cli.js"), launcherSource("runCli", FAST_COMMANDS));
+	writeFileSync(
+		join(directory, "fake-version.mjs"),
+		'Object.defineProperty(process, "version", { value: "v22.1.0" });\nObject.defineProperty(process, "versions", { value: { ...process.versions, node: "22.1.0" } });\n',
+	);
+	const result = spawnSync(
+		process.execPath,
+		["--import", join(directory, "fake-version.mjs"), join(directory, "cli.js")],
+		{
+			encoding: "utf8",
+		},
+	);
+	assert.equal(result.status, 1);
+	assert.equal(
+		result.stderr.trim(),
+		"Octocode needs Node >= 24.15.0 (found v22.1.0). Install the current LTS from https://nodejs.org",
+	);
+});
+
+test("the guard's floor is the package's engines floor", () => {
+	const engines = JSON.parse(
+		readFileSync(new URL("../../packages/coding-agent/package.json", import.meta.url), "utf8"),
+	).engines;
+	assert.equal(engines.node, `>=${MIN_NODE.join(".")}`);
+});
 
 test("a fast command given alone loads only its own file", (t) => {
 	const launch = stubBundle(t);

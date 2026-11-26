@@ -35,6 +35,8 @@ export interface BeforeToolCallResult {
 	 * Early termination only happens when every finalized tool result in the batch sets this to true.
 	 */
 	terminate?: boolean;
+	/** Hard-halt the batch and run at once: skip remaining tool calls and do not poll queued turns. */
+	halt?: boolean;
 	/**
 	 * Only for a call with `BeforeToolCallContext.early`: the call would need the user (a dialog) and none may open while the
 	 * message streams. The call is withdrawn from the early set: this attempt leaves no events, and the call goes through

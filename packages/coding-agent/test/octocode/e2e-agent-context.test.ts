@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { RESEARCH } from "./research-roles.ts";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -35,7 +36,7 @@ const bundledProfiles = loadProfiles(os.tmpdir(), os.tmpdir(), false, {});
 /** Whether an agent's tool selection admits the Octocode MCP server's tools, which every agent gets by default. */
 const admitsOctocode = (role: string | undefined): boolean => {
 	if (role === undefined) return true;
-	const probe = "mcp__octocode__localSearch";
+	const probe = RESEARCH.reader;
 	return profileSelectsTool(bundledProfiles.get(role), probe, [probe]);
 };
 
@@ -108,13 +109,13 @@ describe.each(AGENTS)("$name context", (agent) => {
 		}
 		if (!admitsOctocode(agent.role)) {
 			// A role whose tools leave out the research server gets neither its tools nor its block.
-			expect(names.filter((name) => name.startsWith("mcp__octocode__"))).toEqual([]);
-			expect(sectionNames(context())).not.toContain("mcps:octocode");
+			expect(names.filter((name) => name.startsWith(RESEARCH.prefix))).toEqual([]);
+			expect(sectionNames(context())).not.toContain(`mcps:${RESEARCH.server}`);
 			return;
 		}
 		expect(sectionNames(context())).toContain("mcps");
-		expect(names).toContain("mcp__octocode__localSearch");
-		expect(names).toContain("mcp__octocode__localFetch");
+		expect(names).toContain(RESEARCH.reader);
+		for (const name of RESEARCH.search) expect(names).toContain(name);
 	});
 
 	it("declares every tool with a description and an object schema", () => {

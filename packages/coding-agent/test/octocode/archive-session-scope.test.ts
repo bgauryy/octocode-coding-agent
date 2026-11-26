@@ -10,7 +10,7 @@ import { archiveFolder, setSessionLineage, writeSegment } from "../../src/octoco
 import { writeSessionRecord } from "../../src/octocode/history/archive/record.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { registeredWorkspace, workspaceDb } from "../../src/storage/workspace-database.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -125,8 +125,8 @@ function family() {
 }
 
 it("refuses a schema-valid child event get while preserving the coordinator getter", async () => {
-	const db = sharedAgentDb();
-	agentEvents.append(db.db, registeredWorkspace(cwd).id, {
+	const { agent, workspace } = workspaceDb(cwd);
+	agentEvents.append(agent.db, workspace.id, {
 		id: "event-guard",
 		time: new Date(0).toISOString(),
 		name: "coordinator",

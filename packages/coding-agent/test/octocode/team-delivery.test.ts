@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import * as importedModule1 from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
 import { INTERNAL_MESSAGE_TYPE, USER_SENDER } from "../../src/octocode/shared/messages.ts";
@@ -13,6 +12,8 @@ import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { Delivery as UiDelivery } from "../../src/octocode/ui/delivery.ts";
 import { fakeCtx, fakeHost, theme } from "./fake-host.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
+import { openWorkspaceDb } from "../../src/storage/workspace-database.ts";
 import { tmp } from "./helpers.ts";
 import { parentProcessGone } from "../../src/octocode/team/session/parent.ts";
 import { LEASE_MS } from "../../src/octocode/team/store/limits.ts";
@@ -877,10 +878,11 @@ describe("delivery edge cases", () => {
 			receiver.ctx,
 		);
 		// The messages are wiped and their numbers start again, as in a replaced database.
-		const { DatabaseSync } = await Promise.resolve(importedModule1);
-		const raw = new DatabaseSync(db);
-		raw.exec("DELETE FROM messages; DELETE FROM sqlite_sequence WHERE name = 'messages'");
-		raw.close();
+		const machine = openAgentDb(db);
+		const rows = openWorkspaceDb(machine, cwd).agent;
+		rows.db.exec("DELETE FROM messages; DELETE FROM sqlite_sequence WHERE name = 'messages'");
+		if (rows !== machine) rows.close();
+		machine.close();
 		const id = (
 			(await sender.team.send(receiver.team.id, "after the reset", { replyRequired: false, wake: false })) as {
 				id: number;

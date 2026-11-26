@@ -57,12 +57,19 @@ function mentionKey(file: string): string | undefined {
 	return /[/]|[^.]\.[^.]/.test(key) ? key : undefined;
 }
 
-/** The text of the assistant messages from `start` on, joined: what the recent turns said and called. */
+/** The text of the recent turns from `start` on, joined: what the user, custom notes, and assistant said and called. */
 function recentText(messages: readonly MessageRef[], start: number): string {
 	const parts: string[] = [];
 	for (let index = start; index < messages.length; index++) {
 		const message = messages[index].message;
-		if (!isRecord(message) || message.role !== "assistant" || !Array.isArray(message.content)) continue;
+		if (!isRecord(message)) continue;
+		const role = message.role;
+		if (role !== "assistant" && role !== "user" && role !== "custom") continue;
+		if (typeof message.content === "string") {
+			parts.push(message.content);
+			continue;
+		}
+		if (!Array.isArray(message.content)) continue;
 		for (const part of message.content) {
 			if (!isRecord(part)) continue;
 			if (typeof part.text === "string") parts.push(part.text);

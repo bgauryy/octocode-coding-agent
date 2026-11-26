@@ -7,8 +7,8 @@ import type { BacklogStore } from "./store.ts";
  * (or this child) only: another session's children, jobs and reservations are its own to release.
  */
 export interface Holdings {
-	/** The children running now, by name, with the item each was started on. */
-	children(): ReadonlyMap<string, string>;
+	/** The children running now, by `[child, item]` pair (including handed items). */
+	children(): Iterable<readonly [string, string]>;
 	/** The background bash jobs and timers running now (`item` of a job, `items` a timer's note names). */
 	work(): readonly WorkRow[];
 	/** The paths this agent reserves, as `coordinate` lists them (a trailing `/` marks a tree). */
@@ -59,7 +59,8 @@ export function doneRefusal(
 	cwd: string,
 ): string | undefined {
 	const below = derivedRefs(store, item);
-	const running = holdings.children();
+	const running = [...holdings.children()];
+	const runningIds = new Set(running.map(([child]) => child));
 	const holds: string[] = [];
 	for (const [child, ref] of running) {
 		if (ref === item.ref)
@@ -78,7 +79,7 @@ export function doneRefusal(
 	for (const lock of overlapping(holdings.locks(), item.paths))
 		holds.push(`reservation ${lock} covers the item's paths: release it (\`coordinate\` action unlock)`);
 	for (const worktree of holdings.worktrees(item.ref, cwd))
-		if (!running.has(worktree))
+		if (!runningIds.has(worktree))
 			holds.push(
 				`worktree ${worktree} was made for ${item.ref}: merge it (\`coordinate\` action merge) or ask the user to discard it`,
 			);

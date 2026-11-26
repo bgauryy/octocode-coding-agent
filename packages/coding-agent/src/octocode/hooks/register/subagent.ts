@@ -1,4 +1,3 @@
-import { renderPrompt } from "../../../core/prompt-template.ts";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import { commandsFor } from "../config/calls.ts";
@@ -7,7 +6,7 @@ import type { FeatureSetup, FeatureContext } from "../../../core/features/index.
 import { notify } from "../../shared/commands.ts";
 import { PARENT_SESSION_ENV, PARENT_TRANSCRIPT_ENV } from "@octocodeai/octocode-common/env";
 import { contentText } from "../../shared/util.ts";
-import { capContext } from "../runner.ts";
+import { hookContext } from "../context-message.ts";
 import {
 	CONTEXT_TYPE,
 	type Dispatch,
@@ -123,14 +122,7 @@ export function registerSubagentHooks(
 							message.details.subagentStartKeys.includes(key),
 					);
 			if (!present) {
-				contexts.push(
-					capContext(
-						renderPrompt("hooks/context.md", {
-							source: `${protocol} SubagentStart`,
-							text,
-						}),
-					),
-				);
+				contexts.push(hookContext(`${protocol} SubagentStart`, text));
 				contextKeys.push(key);
 			}
 		}

@@ -10,7 +10,7 @@ import { DefaultResourceLoader } from "../../src/core/resource-loader.ts";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { SettingsManager } from "../../src/core/settings-manager.ts";
 import { createClaudeCodeBackend } from "../../src/octocode/claude-code/provider.ts";
-import { attachBackend } from "../../src/octocode/claude-code/register.ts";
+import { attachBackend } from "../../src/octocode/cli-models/attach.ts";
 import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
 import { createTestSession } from "../helpers/session.ts";
 import { resetOctocodeEnv, tmp, trustFolder } from "./helpers.ts";

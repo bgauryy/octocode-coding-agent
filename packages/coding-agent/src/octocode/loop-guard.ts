@@ -88,8 +88,10 @@ export function registerLoopGuard(api: FeatureSetup): Gate {
 	registerRepeatedProseGuard(api);
 	/** Call key and executed outcome of each top-level call of the current message, by tool call id. */
 	const calls = new Map<string, { key?: string; outcome?: string; checked?: boolean }>();
+	const readHashes = new Map<string, string>();
 	let lastCall: string | undefined;
 	let last: string | undefined;
+	let lastFailed = false;
 	let count = 0;
 	const refusal = (tool: string, previous: number) => renderPrompt("notices/loop-guard/refused.md", { tool, previous });
 	// A halted run gets no further turn, so nothing the refusal asks of the model happens. In a subagent this notice is what
@@ -102,8 +104,10 @@ export function registerLoopGuard(api: FeatureSetup): Gate {
 	const counts = (ctx: Pick<FeatureContext, "model">): LoopCounts => limitsFor(api, ctx.model).loop ?? BUILT_IN;
 	const reset = () => {
 		calls.clear();
+		readHashes.clear();
 		lastCall = undefined;
 		last = undefined;
+		lastFailed = false;
 		count = 0;
 	};
 	api.bus.on("session_start", reset);
@@ -115,13 +119,20 @@ export function registerLoopGuard(api: FeatureSetup): Gate {
 	api.bus.on("tool_result", async (event) => {
 		const call = event.parentToolCallId ? undefined : calls.get(event.toolCallId);
 		if (call && !event.isError) {
+			const unchangedOf = isRecord(event.details) ? event.details.unchangedOf : undefined;
+			if (typeof unchangedOf === "string" && readHashes.has(unchangedOf)) {
+				call.outcome = readHashes.get(unchangedOf);
+				return undefined;
+			}
 			const text = plainText(event.content) ?? JSON.stringify(event.content);
 			// A models call itself increases the reported spend. Keep every catalog, price, quota and health change.
 			const comparable =
 				event.toolName === "models"
 					? text.replace(/\bspent (?:≈\$<?[\d.]+(?: \+ n\/a)?(?: · ~\$<?[\d.]+ plan)?|~\$<?[\d.]+ plan)/g, "spent")
 					: text;
-			call.outcome = sha256(comparable);
+			const hash = sha256(comparable);
+			readHashes.set(event.toolCallId, hash);
+			call.outcome = hash;
 		}
 		return undefined;
 	});
@@ -132,16 +143,22 @@ export function registerLoopGuard(api: FeatureSetup): Gate {
 		calls.delete(message.toolCallId);
 		if (!call) return undefined;
 		if (!call.key) {
-			// An exempt call is a different call: the streak starts again after it.
-			last = undefined;
-			lastCall = undefined;
-			count = 0;
+			// Exempt bookkeeping may separate retries of a failing call without erasing that failure streak. A successful
+			// streak is different: any exempt call is new progress and starts the next comparison fresh.
+			if (!lastFailed) {
+				lastCall = undefined;
+				last = undefined;
+				count = 0;
+			}
 			return undefined;
 		}
-		const outcome = message.isError ? "error" : (call.outcome ?? sha256(JSON.stringify(message.content)));
+		const unchangedOf = !message.isError && isRecord(message.details) ? message.details.unchangedOf : undefined;
+		const resolvedOutcome = call.outcome ?? (typeof unchangedOf === "string" ? readHashes.get(unchangedOf) : undefined);
+		const outcome = message.isError ? "error" : (resolvedOutcome ?? sha256(JSON.stringify(message.content)));
 		const key = `${call.key}\0${outcome}`;
 		count = key === last ? count + 1 : 1;
 		last = key;
+		lastFailed = message.isError;
 		lastCall = call.key;
 		// Unknown tools and schema-invalid arguments never reach tool_call. Their result still ends the run here.
 		const at = counts(ctx);
@@ -167,7 +184,8 @@ export function registerLoopGuard(api: FeatureSetup): Gate {
 			? calls.get(event.toolCallId)?.key
 			: loopCallKey(event.toolName, event.input);
 		if (key !== lastCall) return undefined;
+		if (event.early) return { defer: true };
 		halted(ctx, event.toolName, count);
-		return { block: true, terminate: true, reason: refusal(event.toolName, count) };
+		return { block: true, halt: true, terminate: true, reason: refusal(event.toolName, count) };
 	};
 }

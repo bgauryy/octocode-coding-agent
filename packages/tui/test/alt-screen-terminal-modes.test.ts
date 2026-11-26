@@ -60,7 +60,7 @@ describe("alternate-screen terminal modes", () => {
 		}
 	});
 
-	it("tracks bare pointer movement only while a scrollbar is on screen", async () => {
+	it("tracks bare pointer movement only while the pointer is at a shown scrollbar", async () => {
 		const terminal = new WriteLog(40, 10);
 		const { tui } = transcript(terminal, 40);
 		await terminal.waitForRender();
@@ -68,8 +68,14 @@ describe("alternate-screen terminal modes", () => {
 		assert.strictEqual(terminal.count(BUTTON_MOTION), 1);
 		assert.strictEqual(terminal.count(ANY_MOTION_ON), 0, "an idle pointer reports nothing");
 		terminal.sendInput(WHEEL_UP);
-		// The scroll shows the scrollbar: hovering it highlights it, so movement is tracked while it shows.
-		await until(() => terminal.count(ANY_MOTION_ON) === 1, "movement tracking with the scrollbar shown");
+		// The scroll shows the scrollbar, but the pointer is far from it: crossing cells there reports nothing.
+		await wait(30);
+		assert.strictEqual(terminal.count(ANY_MOTION_ON), 0, "no movement tracking away from the scrollbar");
+		// At the scrollbar column hover highlights it, so movement is tracked.
+		terminal.sendInput("\x1b[<64;40;5M");
+		await until(() => terminal.count(ANY_MOTION_ON) === 1, "movement tracking at the scrollbar");
+		// The pointer leaves; once the scrollbar hides, movement is not tracked.
+		terminal.sendInput("\x1b[<35;5;5M");
 		await until(() => terminal.count(ANY_MOTION_OFF) === 1, "no movement tracking once the scrollbar hides");
 		await terminal.flush();
 		assert.strictEqual(terminal.mouseTrackingMode, "drag", "wheel and selection remain available while idle");
@@ -128,6 +134,54 @@ describe("alternate-screen terminal modes", () => {
 		const frozen = animationClock.decorationTime();
 		await wait(30);
 		assert.strictEqual(animationClock.decorationTime(), frozen);
+		tui.stop();
+	});
+
+	it("disables bare-motion tracking and drag-selection when hoverTracking and selection are false", async () => {
+		const terminal = new WriteLog(40, 10);
+		const tui = new TuiAltScreen(terminal, undefined, undefined, {
+			selection: false,
+			hoverTracking: false,
+			copyOnSelect: false,
+		});
+		let clicked = 0;
+		const content = new Text(Array.from({ length: 60 }, (_, index) => `line ${index}`).join("\n"), 0, 0);
+		const clickable = {
+			render: (width: number) => content.render(width),
+			invalidate: () => content.invalidate(),
+			handleMouse: (event: { type: string }) => {
+				if (event.type === "press") return { handled: true };
+				if (event.type === "click") {
+					clicked += 1;
+					return { handled: true };
+				}
+				return undefined;
+			},
+		};
+		const scroll = new ScrollView(clickable, {
+			follow: "end",
+			primary: true,
+			scrollbar: "auto",
+			scrollbarHideDelayMs: 40,
+		});
+		tui.setLayoutRoot(new VStack([{ component: scroll, basis: 0, grow: 1, shrink: 1, minSize: 1 }]));
+		tui.start();
+		await terminal.waitForRender();
+		// Scroll shows the scrollbar, yet hoverTracking: false must never enable ?1003h bare-motion floods.
+		const before = scroll.scrollTop;
+		terminal.sendInput(WHEEL_UP);
+		assert.strictEqual(scroll.scrollTop, before - 1);
+		await wait(30);
+		assert.strictEqual(terminal.count(ANY_MOTION_ON), 0);
+		// Dragging across rows must not create a selection when selection: false.
+		terminal.sendInput("\x1b[<0;2;2M");
+		terminal.sendInput("\x1b[<32;10;2M");
+		terminal.sendInput("\x1b[<0;10;2m");
+		assert.strictEqual(tui.hasActiveSelection(), false);
+		// Component clicks still fire.
+		terminal.sendInput("\x1b[<0;5;3M");
+		terminal.sendInput("\x1b[<0;5;3m");
+		assert.strictEqual(clicked, 1);
 		tui.stop();
 	});
 });

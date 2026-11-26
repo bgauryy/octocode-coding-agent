@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { tmp } from "../../coding-agent/test/octocode/helpers.ts";
 import type { McpServerEntry } from "../src/config.ts";
 import { DEFAULT_MCP_EXPOSURE_SETTING, recentToolKey } from "../src/deferral.ts";
-import { recommendedPresets } from "../src/recommended/index.ts";
+import { builtinPresets } from "../src/presets/index.ts";
 import { mcpHost } from "./mcp-host-fixture.ts";
 
 /**
@@ -51,12 +51,12 @@ const text = (result: { content: Array<{ type: string; text?: string }> }) =>
 	result.content.map((part) => part.text ?? "").join("");
 
 describe("mcpExposure recent", () => {
-	it("is not the default (usage is), and only FreeLlama, all on demand, sets its own exposure past the setting", () => {
+	it("is not the default (usage is), and only FreeLlama and the browser, all on demand, set their own exposure past the setting", () => {
 		expect(DEFAULT_MCP_EXPOSURE_SETTING).toBe("usage");
-		const presets = recommendedPresets();
+		const presets = builtinPresets();
 		expect(presets.map(({ name }) => name)).toContain("octocode");
 		for (const { name, config } of presets)
-			expect(config?.exposure, name).toBe(name === "freellama" ? "onDemand" : undefined);
+			expect(config?.exposure, name).toBe(name === "freellama" || name === "browser" ? "onDemand" : undefined);
 	});
 
 	it("defers an unused tool with the server's whole description and thin parameters", async () => {

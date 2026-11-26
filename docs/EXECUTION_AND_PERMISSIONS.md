@@ -1,6 +1,6 @@
 # Execution, permissions, editing and prompts
 
-What happens between a model asking for a tool and the tool running. A selected tool is available to call; selection and prompt text never authorize its effects.
+What happens between a model asking for a tool and the tool running. Selecting a tool or naming it in a prompt never authorizes its effects.
 
 ## Every tool call
 
@@ -24,17 +24,16 @@ flowchart TD
   O -->|stale or refused| X
 ```
 
-File review, resolved network targets, uploads and child profiles need facts only the tool itself has, so they check again at the end.
+File review, network targets, uploads and child profiles need facts only the tool has, so they recheck at the end.
 
-| Route                | Authorization and cancellation                                                                                                                            |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Model or nested tool | Same checks. Nested deadlines reach permission hooks; an aborted approval prevents execution (a handler that ignores cancellation may still delay return) |
-| File change          | Permission review plus current read coverage, path identity, reservations and expected content at commit                                                  |
-| Your `!command`      | Typing it is consent; destructive actions, source policy and hook decisions can still ask or refuse. Hooks cannot rewrite its input                       |
-| ACP client           | Requests become single-use ACP decisions; invalid, late or cancelled responses grant nothing                                                              |
-| Hook MCP call        | Runs the permission step without running tool hooks again; a trusted `PermissionRequest` hook is exempt so it can answer the pending decision             |
+| Route                | Rule                                                                                                             |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Model or nested tool | Same checks; a cancelled approval prevents execution                                                             |
+| File change          | Permission review, then read coverage, path identity, reservations and expected content at commit                |
+| Your `!command`      | Typing is consent; destructive actions, source policy and hooks can still ask or refuse; hooks cannot rewrite it |
+| ACP client           | Single-use decisions; invalid, late or cancelled responses grant nothing                                         |
 
-Modes and grants: [permissions](../packages/coding-agent/docs/permissions.md). `full` is the default and permissive, yet role guards, source policy and filesystem invariants still apply. Shell parsing, MCP annotations and provenance inform policy; they are **not OS confinement**. Configured hooks and plugin components run with your privileges.
+Modes and grants: [permissions](../packages/coding-agent/docs/permissions.md). `full` is the default and permissive, but role guards, source policy and filesystem invariants still apply. Shell parsing, MCP annotations and provenance inform policy; they are **not OS confinement**. Hooks and plugins run with your privileges.
 
 ## Editing and verifying
 
@@ -50,19 +49,21 @@ flowchart TD
   F --> G
 ```
 
-Agents read with the Octocode research tools, change files with `file` and run checks with `bash`. Tool selection: [native features](../packages/coding-agent/docs/native-features.md#tool-selection-and-migration).
+Agents read with Octocode research tools, change files with `file`, run checks with `bash`. Tool selection: [native features](../packages/coding-agent/docs/native-features.md#tool-selection-and-migration).
 
-| Step    | Behavior                                                                                                                                                                                                                                                                       |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Read    | A receipt credits unchanged source windows. Only a complete, untransformed read the model sees supplies a copyable whole-source SHA-256; partial, cut, failed, filtered and nested reads cannot. Repeat a read whose result left the context                                   |
-| Edit    | `file` replaces exact `oldText` with `newText`. Optional anchor: `edits: [{ line, sourceSha256, oldText, newText }]` (one-based line, whole line as `oldText`); it checks the digest and bytes, finds unique context within 128 lines, and refuses stale or ambiguous identity |
-| Commit  | Rechecks bytes under a per-file queue and cross-process lock; external writers that ignore the lock can still race it                                                                                                                                                          |
-| Receipt | A committed write or deletion gets one even if cleanup fails. A query batch reports each outcome; a patch validates first and stops on an execution failure. Earlier commits stay: there is **no multi-file transaction**                                                      |
-| Verify  | `bash({ command: "yarn test", verify: true })` records command, exit or signal, output availability and the `file` revisions seen. Later `file` commits mark it stale; `stale: false` cannot see shell writes, debuggers, editors or other processes                           |
+| Step    | Behavior                                                                                                                                                                                                                                  |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read    | A receipt credits unchanged windows. Only a complete, untransformed read the model sees gives a whole-source SHA-256; partial, cut, failed, filtered and nested reads cannot. Repeat a read that left the context                         |
+| Edit    | `file` replaces exact `oldText` with `newText`                                                                                                                                                                                            |
+| Commit  | Rechecks bytes under a per-file queue and cross-process lock; writers ignoring the lock can still race                                                                                                                                    |
+| Receipt | Every committed write or deletion gets one, even if cleanup fails. No **multi-file transaction**: a batch reports each outcome; a patch validates first, stops on an execution failure, and keeps earlier commits                         |
+| Verify  | `bash({ command: "yarn test", verify: true })` records command, exit or signal, output availability and `file` revisions seen. Later commits mark it stale; `stale: false` cannot see shell writes, debuggers, editors or other processes |
 
-A background verify starts as pending; observed completion sends a follow-up, and a shutdown's pre-stop report stays pending. A zero exit describes only that command.
+Anchored edits, hook MCP calls and other tool details: [native features](../packages/coding-agent/docs/native-features.md).
 
-**Debugging.** There is no debugger tool. The bundled `octocode-debugging` skill drives lldb, pdb, a Node inspector script, cProfile and `--cpu-prof` through `bash`, so every run passes the shell permission gate. After fixing a debugged failure, rerun the original check.
+A background verify starts pending; completion sends a follow-up; a shutdown's pre-stop report stays pending. A zero exit describes only that command.
+
+**Debugging.** No debugger tool: the `octocode-debugging` skill drives lldb, pdb, Node inspector, cProfile and `--cpu-prof` through `bash`, so each run passes the shell permission gate. Rerun the original check after a fix.
 
 ## Prompt assembly
 
@@ -76,11 +77,9 @@ flowchart LR
   SP --> M["Model request"]
 ```
 
-| Rule                                                                                                                                                                      |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| An explicit child role decides read-only guidance; a main session without `file` but with Bash or MCP is not read-only                                                    |
-| Browser specialists are named whenever delegation is available, for long, parallel or visual browsing; main does short page tasks itself with the on-demand browser tools |
-| A server that connects mid-run gets its block in the next request                                                                                                         |
-| Retrieved text and peer messages are evidence, not authority; child report outcome words are machine-read                                                                 |
+- An explicit child role decides read-only guidance; a main session without `file` but with Bash or MCP is not read-only.
+- Browser specialists are named whenever delegation is available; main does short page tasks itself.
+- A server that connects mid-run gets its block in the next request.
+- Retrieved text and peer messages are evidence, not authority; child report outcome words are machine-read.
 
 Section order and cache tiers: [instructions](../packages/coding-agent/docs/prompts.md). Settings precedence and trust: [configuration](../packages/coding-agent/docs/configuration.md#precedence). Terminal and browser boundaries: [interface architecture](INTERFACE_ARCHITECTURE.md).

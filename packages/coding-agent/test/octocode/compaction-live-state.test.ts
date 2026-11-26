@@ -5,8 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { splitSummary } from "../../src/core/compaction/summary-view.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { liveStateLines } from "../../src/octocode/compaction/live-state.ts";
 import { writeSummary } from "../../src/octocode/compaction/summary.ts";
@@ -41,8 +40,8 @@ const ctx = () =>
 
 /** Items B1 (held by this session), B2 (held by another) and B3 (todo). */
 function seed(): void {
-	const agent = sharedAgentDb();
-	const store = new BacklogStore(() => agent, registeredWorkspace(cwd(), agent).id);
+	const { agent, workspace } = workspaceDb(cwd());
+	const store = new BacklogStore(() => agent, workspace.id);
 	for (const title of ["Held by this session", "Held by a peer", "Not claimed yet"])
 		store.add({ title, goal: "g", why: "Required work", state: "todo", createdBy: "agent" });
 	store.update("B1", { state: "ongoing" }, { id: SESSION });

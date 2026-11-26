@@ -24,6 +24,7 @@ describe("one-shot subcommands", () => {
 			"mcp",
 			"plugin",
 			"profile",
+			"providers",
 			"security",
 			"trust",
 		]);

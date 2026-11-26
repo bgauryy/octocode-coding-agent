@@ -36,8 +36,8 @@ const ITEM = /^(?:(.+):)?B(\d+)$/i;
 const INTEGER = /^\d+$/;
 
 /**
- * A backlog item reference as written: `B36` (in `workspaceId`, or in any workspace when none is given) or
- * `<workspace name>:B36` (a workspace of that name, or its id). Undefined when `ref` is not one.
+ * A backlog item reference as written: `B36` (in `workspaceId`; with none given it names no workspace, since every
+ * board has its own B36) or `<workspace name>:B36` (a workspace of that name, or its id). Undefined when `ref` is not one.
  */
 export function parseItemRef(
 	db: DatabaseSync,
@@ -47,15 +47,7 @@ export function parseItemRef(
 	const match = ITEM.exec(ref.trim());
 	if (!match) return undefined;
 	const seq = Number(match[2]);
-	if (match[1] === undefined) {
-		if (workspaceId) return { workspaceIds: [workspaceId], seq };
-		return {
-			workspaceIds: (db.prepare("SELECT DISTINCT workspace_id AS id FROM backlog WHERE seq = ?").all(seq) as Row[]).map(
-				(row) => String(row.id),
-			),
-			seq,
-		};
-	}
+	if (match[1] === undefined) return { workspaceIds: workspaceId ? [workspaceId] : [], seq };
 	const named = db.prepare("SELECT id FROM workspaces WHERE name = ? OR id = ?").all(match[1], match[1]) as Row[];
 	return { workspaceIds: named.map((row) => String(row.id)), seq };
 }
@@ -130,8 +122,14 @@ const text = (value: unknown): string | undefined => (typeof value === "string" 
  * Finds an agent by any name it goes by: its name, session id, registration or run id, process title, pid,
  * or a backlog item it works or worked for (`B36`, `<workspace name>:B36`). A live agent answers first, then the latest
  * run of a past one; a name reused since answers with its newest run. `workspaceId` is the caller's, for unqualified items.
+ * `db` holds the workspace's agents, runs and backlog; `machine` the session rows (`db` while they share a file).
  */
-export function resolveAgent(db: DatabaseSync, ref: string, workspaceId?: string): ResolvedAgent | undefined {
+export function resolveAgent(
+	db: DatabaseSync,
+	ref: string,
+	workspaceId?: string,
+	machine: DatabaseSync = db,
+): ResolvedAgent | undefined {
 	const wanted = ref.trim();
 	if (!wanted) return undefined;
 	const item = parseItemRef(db, wanted, workspaceId);
@@ -155,7 +153,9 @@ export function resolveAgent(db: DatabaseSync, ref: string, workspaceId?: string
 		model: text(live?.model) ?? run?.model,
 		goal: text(live?.task) ?? run?.goal,
 		backlog: backlog ? { ...backlog, ref: itemRef(db, backlog.workspaceId, backlog.seq, workspaceId) } : undefined,
-		sessionFile: session ? text(db.prepare("SELECT file FROM sessions WHERE id = ?").get(session)?.file) : undefined,
+		sessionFile: session
+			? text(machine.prepare("SELECT file FROM sessions WHERE id = ?").get(session)?.file)
+			: undefined,
 		run,
 	};
 }

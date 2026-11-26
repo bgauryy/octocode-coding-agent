@@ -37,7 +37,7 @@ const guard = { restore: vi.fn(), forget: vi.fn(), record: vi.fn() } as never;
 function host(isSubagent = false) {
 	const fake = fakeHost();
 	registerCompactTool(fake.api, registerCompaction(fake.api, guard, isSubagent), isSubagent);
-	const state = { tokens: 60_000 };
+	const state = { tokens: 80_000 };
 	const ctx = {
 		cwd: "/w",
 		hasUI: false,
@@ -53,7 +53,7 @@ function host(isSubagent = false) {
 			getSessionId: () => "s",
 			getBranch: () => [],
 			getEntries: () => [],
-			buildSessionProjection: () => ({ entries: [] }),
+			buildSessionProjection: () => ({ entries: [], messages: [] }),
 			getSessionFile: () => undefined,
 		},
 	};
@@ -159,14 +159,14 @@ describe("compact tool", () => {
 		]);
 	});
 
-	it("refuses below half the room before automatic compaction, and right after a compaction", async () => {
+	it("refuses below 90% of the room before automatic compaction, and right after a compaction", async () => {
 		const { state, call, settle, compacted } = host();
-		state.tokens = 40_000;
-		await expect(call()).rejects.toThrow(/45% of the room.*under 50%/);
-		// Just under the floor (49.9%) reads as under it, not as the 50% it is refused below.
-		state.tokens = 43_700;
-		await expect(call()).rejects.toThrow(/49% of the room.*under 50%/);
-		state.tokens = 60_000;
+		state.tokens = 65_625;
+		await expect(call()).rejects.toThrow(/75% of the room.*under 90%.*\/compact/);
+		// Just under the floor (89.9%) reads as under it, not as the 90% it is refused below.
+		state.tokens = 78_700;
+		await expect(call()).rejects.toThrow(/89% of the room.*under 90%/);
+		state.tokens = 80_000;
 		await compacted("threshold");
 		await expect(call()).rejects.toThrow(/compacted in this turn/);
 		await settle();
@@ -299,10 +299,10 @@ describe("compact tool in a real session", () => {
 					return fauxAssistantMessage("Going on without it.");
 				},
 			]);
-			// Over half the room before automatic compaction (the tool's floor) and under its threshold. The single
+			// Over 90% of the room before automatic compaction (the tool's floor) and under its threshold. The single
 			// earlier turn fits the kept tail, so the summary is refused as too small: that path is checked here, and a
 			// successful resume with the fake host above.
-			await session.prompt(`Background for the long task: ${"abcdefghij".repeat(2_700)}`);
+			await session.prompt(`Background for the long task: ${"abcdefghij".repeat(4_900)}`);
 			await session.prompt("Compact, then do the long task.");
 			const note = () =>
 				sessionManager

@@ -377,8 +377,8 @@ describe("purge", () => {
 				.all() as Array<{ name: string }>
 		).map((row) => row.name);
 		const left = Object.fromEntries(tables.map((name) => [name, count(name)]).filter(([, n]) => n !== 0));
-		// `meta` keeps its settings (`memory_auto`); a new file at version 10 records no floor (step 10 is not additive).
-		expect(left).toEqual({ meta: 1, trusted_folders: 1 });
+		// `meta` keeps its settings (`memory_auto`); `schema_meta` keeps the file's `min_reader` stamp, which describes the file, not its data.
+		expect(left).toEqual({ meta: 1, schema_meta: 1, trusted_folders: 1 });
 		expect([...MIRROR_TABLES].map((table) => count(table))).toEqual([0, 0, 0]);
 		expect(objects()).toEqual(schema);
 		agent.close();

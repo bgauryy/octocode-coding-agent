@@ -118,6 +118,8 @@ export async function createSessionFromServices(
 ): Promise<CreateSessionResult> {
 	const { cwd, modelRuntime, settingsManager, resourceLoader } = options.services;
 	const { sessionManager } = options;
+	// Every request of this runtime (turns, compaction, cache warming) reads the live setting for providers models.json leaves unset.
+	modelRuntime.defaultRequestsPerMinute = () => settingsManager.getRequestsPerMinute();
 
 	// Check if session has existing data to restore
 	const existingSession = sessionManager.buildSessionContext();

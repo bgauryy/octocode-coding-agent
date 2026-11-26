@@ -242,7 +242,7 @@ describe("the lean main policy", () => {
 		registerTurnSetup(fake.api, {
 			isSubagent: false,
 			profiles: () => new Map(),
-			skillCatalog: { withhold } as unknown as SkillCatalog,
+			skillCatalog: { withhold, invocable: () => [] } as unknown as SkillCatalog,
 		});
 		const options = {
 			sections: {} as Record<string, string>,

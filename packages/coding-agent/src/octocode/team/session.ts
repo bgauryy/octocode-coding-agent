@@ -23,6 +23,7 @@ import { declareEditing, editingNotice } from "./session/editing-notice.ts";
 import { patiently } from "./store/patient.ts";
 import { openRunnerBridge } from "./runner-bridge.ts";
 import type { RunnerMemberInput } from "./runner-member.ts";
+import { wakeGateOf } from "../wake/gate.ts";
 
 /** This process's place in the team: joins, reports what it is doing, holds reservations and delivers messages sent to it. */
 export class Team extends TeamState {
@@ -311,6 +312,7 @@ export class Team extends TeamState {
 	/** Delivers held interrupts first; a headless child then leaves, saying how its run ended, because its parent closes its input. */
 	async onAgentSettled(status?: string): Promise<void> {
 		if (this.mail.settled()) return; // An interrupt stopped the run: its message starts the next turn.
+		if (wakeGateOf(this.api).hasPendingWake()) return; // A waking message is held by the event loop for the next turn.
 		const me = this.me;
 		if (me && this.headless()) {
 			const reason = settleReason(status);

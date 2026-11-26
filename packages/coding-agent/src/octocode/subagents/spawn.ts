@@ -9,7 +9,6 @@ import { checkGoal } from "../team/identity.ts";
 import { launchOverlap } from "../team/overlap.ts";
 import { claimRun, planRun, type Run } from "./claim.ts";
 import { runSubagent } from "./process.ts";
-import type { SubagentOutcome } from "./process/outcome.ts";
 import { buildRouteArgs, childSession } from "./process/session.ts";
 import { forkedContext, writeForkedSession } from "./context-fork.ts";
 import { askSpawn } from "./profiles.ts";
@@ -22,9 +21,9 @@ import { pendingRefs, recordWorktreePid } from "./worktree.ts";
 import type { agentToolSpec } from "../native/tools/agent/spec.ts";
 import { resumeChild, resumedTask, resumeText } from "./children.ts";
 import { Isolation } from "./isolation.ts";
+import { refuseLinkedIsolation } from "./worktree-create.ts";
 import { nestingRefusal } from "./process/child-env.ts";
-import { bookkeepingFailed, finishChildNotes } from "./child-tasks.ts";
-import { delegatedCostNote } from "./delegated-cost.ts";
+import { createChildFinish } from "./run-finish.ts";
 import {
 	chainHandoff,
 	chainPlan,
@@ -52,11 +51,8 @@ import { type AgentUpdate, runDetails, tracker, waitingUpdate } from "./tracking
 
 type AgentParams = Static<ReturnType<typeof agentToolSpec>["parameters"]>;
 /**
- * One `agent` task call. A foreground call past the limit waits for a slot, its row saying so. A background call past it
- * returns its id at once and takes the slot detached (tied to the session), so a batch never keeps the parent deaf. `mail`:
- * the resume's `task` is a delivered message naming its sender, so it goes without the coordinator's follow-up header.
- * A foreground call that outlasts the foreground budget continues as a background run and returns its id, unless
- * `holdTurn`: the caller needs the child's report in this call.
+ * One `agent` task call. Foreground calls past the limit wait for a slot; background calls claim detached; foreground calls
+ * exceeding the foreground budget hand over to the background unless `holdTurn` is set.
  */
 export async function spawnAgent(
 	env: SpawnEnv,
@@ -77,6 +73,7 @@ export async function spawnAgent(
 	launchSignal.throwIfAborted();
 	const tooDeep = nestingRefusal();
 	if (tooDeep) throw new Error(tooDeep);
+	if (params.isolate) refuseLinkedIsolation(ctx.cwd);
 	if (params.workingCopy && !params.isolate) throw new Error("workingCopy requires isolate: true.");
 	const resultContract = params.resultSchema === undefined ? undefined : admitResultSchema(params.resultSchema);
 	const startedHeld = params.resume ? startHeld(runs, params.resume) : undefined;
@@ -194,31 +191,23 @@ export async function spawnAgent(
 	const run = claimed;
 	const queued = !slot.held;
 	const isolation = new Isolation(run.identity.id, linked?.ref, resumed?.worktree);
-	let finalized: Promise<string> | undefined;
 	/** A queued run's worktree warning, which came too late for the start result. */
 	let lateNote = "";
 	/** The run's place in the queue of children waiting for prerequisites. */
 	let queuedChild: QueuedRun | undefined;
-	// With the report's outcome (the success paths), the item the child worked on gets the report noted on it; `lingers`: the child stays reachable after it.
-	const finish = (outcome?: SubagentOutcome, lingers?: boolean, stopped?: boolean) =>
-		(finalized ??= finishChildNotes(ctx, isolation, linked, outcome, run.identity.id, lingers, current, stopped)
-			.then((note) => {
-				runs.chain?.gate.refresh();
-				// A background report carrying a graph notice wakes the parent for it (`graph-wake.ts`).
-				if (params.background && linked?.notice) runs.graph?.mark(run.identity.id, linked.notice);
-				// A run that reported may take delegated cost past a new multiple of this session's own: its report says so.
-				const cost =
-					outcome && current()
-						? delegatedCostNote(runs, ctx, outcome.usage.cost.total, runs.live.get(run.identity.id))
-						: "";
-				return `${note}${lateNote}${cost}`;
-			})
-			.catch(bookkeepingFailed) // a failure here rides in the report's footer: the report goes out either way
-			.finally(() => {
-				runs.live.delete(run.identity.id);
-				run.release();
-				queuedChild?.finish();
-			}));
+	let detailsRef: RunDetails | undefined;
+	const isBackground = () => params.background === true || detailsRef?.status === "background";
+	const finish = createChildFinish({
+		ctx,
+		runs,
+		run,
+		isolation,
+		linked,
+		current,
+		isBackground,
+		lateNote: () => lateNote,
+		onFinally: () => queuedChild?.finish(),
+	});
 	let handedOff = false;
 	// Failures go through `finish`. The item: registered before the reservation (one batch, one child), claimed after it.
 	const waitsForSiblings = reserving.waitOn.length > 0;
@@ -241,12 +230,14 @@ export async function spawnAgent(
 		const host = env.relayHost(ctx);
 		const session = resumed && !resumed.runnerSession ? resumed.session : childSession(run.identity);
 		const details = runDetails(run, session);
+		detailsRef = details;
 		run.identity.runId = details.runId;
 		runs.live.set(run.identity.id, details);
 		const tracking = tracker(run.identity, details, modelLookup(ctx), ctx);
-		// Only a background run that is not isolated can stay reachable for a follow-up; a runner's conversation lives in its own CLI.
+		// A background or handed-over non-isolated run can stay reachable for a follow-up; a runner's conversation lives in its own CLI.
 		const isolated = params.isolate === true || resumed?.worktree !== undefined;
-		const lingers = !runner && params.background === true && !isolated;
+		const canLinger = !runner && !isolated;
+		const lingers = canLinger && params.background === true;
 		const args = buildRouteArgs(run.profile, run.route, session, run.identity.mcpNamed);
 		const prefix = childCacheGroup(run, run.model);
 		const notes = `${run.teamNote}${reserved}${launchOverlap(team, run.identity.id, goal, env.overlapWarned)}`;
@@ -305,8 +296,10 @@ export async function spawnAgent(
 							host,
 							ready: turn.ready,
 							exited: turn.lost,
-							// A background child that settled has its report in flight: sibling reports wait for it (`ReportQueue`).
-							settled: params.background ? () => reportInFlight(runs, run.identity.id) : undefined,
+							// A background (or handed-over) child that settled has its report in flight: sibling reports wait for it (`ReportQueue`).
+							settled: () => {
+								if (isBackground()) reportInFlight(runs, run.identity.id);
+							},
 							working: (probe) => runs.groups.working(run.identity.id, probe),
 							workingChanged: () => runs.reports.reportingChanged(),
 						});
@@ -368,8 +361,12 @@ export async function spawnAgent(
 		const started = await begin(launchSignal);
 		const warning = `${started.warning}${notes}`;
 		if (!params.background) {
-			const call = { runs, run, details, task: params.task, finish, sessionId, warning, onUpdate };
-			const handing = foregroundHandOver(call, holdTurn);
+			const linger = canLinger ? lingering.window(run, ctx) : undefined;
+			const onHandOver = () => host.budgets?.enableAsk(run.identity.id);
+			const handing = foregroundHandOver(
+				{ runs, run, details, task: params.task, finish, sessionId, warning, onUpdate, linger, onHandOver },
+				holdTurn,
+			);
 			const launch = started.staggered(handing?.onUpdate ?? onUpdate);
 			// A handed-over child still runs: its background run keeps the slot and worktree, and calls `finish` when it ends.
 			return await runForeground(

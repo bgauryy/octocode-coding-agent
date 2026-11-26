@@ -52,6 +52,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
 			"cacheWarming",
 			"showCacheMissNotices",
 			"retry",
+			"requestsPerMinute",
 			"httpProxy",
 			"httpIdleTimeoutMs",
 		],

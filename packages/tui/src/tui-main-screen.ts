@@ -171,7 +171,8 @@ export class TuiMainScreen extends TuiBase implements TUI {
 			output.append(BEGIN_SYNCHRONIZED_OUTPUT);
 			if (clear) {
 				output.append(deleteKittyImages(this.previousKittyImageIds));
-				output.append("\x1b[2J\x1b[H\x1b[3J"); // Clear screen, home, then clear scrollback
+				// Clear screen, home, then clear scrollback: the replay below repaints the transcript, so old rows would duplicate it.
+				output.append("\x1b[2J\x1b[H\x1b[3J");
 			}
 			appendFullRenderLines(
 				output,

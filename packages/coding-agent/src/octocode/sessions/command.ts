@@ -17,7 +17,7 @@ import { listingScope, quickList } from "./catalog.ts";
 import { pickerRemoval, sharedPickerRemoval } from "./delete.ts";
 import { checkoutText } from "../../core/worktree-path.ts";
 import { type SessionExtra, type SessionIndex, type SessionLinks, shownLine } from "./store.ts";
-import { registeredWorkspace } from "../../storage/workspace-database.ts";
+import { workspaceDb } from "../../storage/workspace-database.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { agentRunChildren, workspaces } from "../../../../db/src/api.ts";
 import { readWorkspaceIdentity } from "../../storage/workspace.ts";
@@ -49,7 +49,10 @@ interface ListedSession {
 
 /** How many child agents each of `ids` started itself, from the agent run history; sessions with none are absent. */
 function childCounts(index: SessionIndex | undefined, ids: readonly string[]): Map<string, number> {
-	return index ? agentRunChildren.countBySession(index.agent.db, ids) : new Map();
+	const counts = new Map<string, number>();
+	for (const file of index?.files() ?? [])
+		for (const [id, n] of agentRunChildren.countBySession(file.db, ids)) counts.set(id, (counts.get(id) ?? 0) + n);
+	return counts;
 }
 
 /** Whether a session's process is running now (this one included). */
@@ -277,7 +280,7 @@ export function registerSessionsCommand(
 			const seq = itemOf(query);
 			const only =
 				seq !== undefined && index
-					? index.heldItem(seq, all ? undefined : registeredWorkspace(ctx.cwd, index.agent).id)
+					? index.heldItem(seq, all ? undefined : workspaceDb(ctx.cwd).workspace.id)
 					: undefined;
 			if (seq !== undefined && only?.size === 0)
 				return say(ctx, `No session has held ${itemRef(seq)}.${all ? "" : " Try /resume all."}`);

@@ -266,6 +266,18 @@ export function saveItem(db: DatabaseSync, rowId: number, c: ItemChanges): void 
 	);
 }
 
+/** Every item's row id, workspace and evidence text, for the items that have any, in row order. */
+export function evidenceRows(db: DatabaseSync): Array<{ id: number; workspace_id: string; evidence: string }> {
+	return allRows<{ id: number; workspace_id: string; evidence: string }>(
+		db.prepare("SELECT id, workspace_id, evidence FROM backlog WHERE evidence != '' ORDER BY id"),
+	);
+}
+
+/** Sets one item's evidence text and nothing else: not its version or `updated_at`, since no one edited the item. */
+export function setEvidence(db: DatabaseSync, rowId: number, evidence: string): void {
+	db.prepare("UPDATE backlog SET evidence = ? WHERE id = ?").run(evidence, rowId);
+}
+
 /**
  * Sets one item's manual `rank` and nothing else: not its version, so a copy read before the move still writes, and not
  * `updated_at`, so ordering a card is neither an edit, a state change nor fresh activity. The audit still records it;

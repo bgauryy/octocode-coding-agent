@@ -179,7 +179,8 @@ export class Delivery {
 		const idle = ctx?.isIdle() === true;
 		const waking = batch.filter((message) => message.wake);
 		const paced = idle ? waking.filter((message) => this.paced(db, me, message)) : [];
-		if (paced.length > 0 && paced.length === waking.length && !this.pace.allows()) return false;
+		const pacedSenders = [...new Set(paced.map((message) => message.from))];
+		if (paced.length > 0 && paced.length === waking.length && !this.pace.allows(pacedSenders)) return false;
 		// Octocode can refuse the handoff after accepting the call (no model, a turn it cannot start): that turn never ran.
 		let counted: number | undefined;
 		const rejected = () => {
@@ -189,19 +190,27 @@ export class Delivery {
 		const handed = this.mail.deliver(batch, this.host.parentId(), ctx, rejected);
 		if (handed && idle && waking.length > 0) {
 			this.wakeHandedAt ??= Date.now();
-			if (paced.length > 0) counted = this.pace.record();
+			if (paced.length > 0) counted = this.pace.record(pacedSenders);
 		}
 		return handed;
 	}
 
 	/**
 	 * Whether waking this agent is a peer's choice, and so paced: not the user's or an API client's message to this agent,
-	 * not an interrupt, and not the answer to a question this agent asked and still waits on. An API client's broadcast
-	 * (`agents.tell` to "all", stored with several recipients) is paced like a peer's: one admission reaches every idle agent.
+	 * not its parent's message, not a direct child's blocking `replyRequired` question, not an interrupt, and not the
+	 * answer to a question this agent asked and still waits on.
 	 */
 	private paced(db: TeamStore, me: string, message: Message): boolean {
 		if (!message.wake || message.interrupt) return false;
 		if (outside(message.from)) return message.from === EXTERNAL_SENDER && broadcast(db, message.id);
+		if (message.from === this.host.parentId()) return false;
+		if (
+			message.replyRequired &&
+			(db.list().some((member) => member.id === message.from && member.parentId === me) ||
+				db.list(Date.now(), true).some((member) => member.id === message.from && member.parentId === me))
+		) {
+			return false;
+		}
 		if (message.replyTo === undefined) return true;
 		const asked = db.replyTarget(message.replyTo);
 		return !(asked?.from === me && asked.replyRequired);

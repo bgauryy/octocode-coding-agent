@@ -1,21 +1,19 @@
 /**
- * Stage the MCP servers a compiled binary runs from its own dependencies (`install.hostDependency` in the recommended
- * presets), with their production dependencies for its platform, into `<binary folder>/node_modules/`, where the binary
+ * Stage the MCP servers a compiled binary runs from its own dependencies (`install.hostDependency` in the default
+ * servers of `default_mcp_config.json`), with their production dependencies for its platform, into `<binary folder>/node_modules/`, where the binary
  * resolves them (`mcp/src/host-dependency.ts`) and the server finds its language server (`tsgo`). Each is
  * copied as `npm pack` would publish it from the package the coding agent resolves: in development the linked
  * sibling build, whose version may not be on npm yet; in a release checkout the installed one. The binary then starts
  * its research server without an npm install or a download, offline too. Used by `stage-binary.mjs`.
  */
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
-/** The npm package of each recommended preset that the host runs from its own dependencies. */
-export function hostMcpPackages(recommendedDir) {
-	return readdirSync(recommendedDir)
-		.filter((file) => file.endsWith(".json"))
-		.map((file) => JSON.parse(readFileSync(join(recommendedDir, file), "utf8")))
+/** The npm package of each default server (`servers` in the default MCP config file) the host runs from its own dependencies. */
+export function hostMcpPackages(defaultConfig) {
+	return Object.values(JSON.parse(readFileSync(defaultConfig, "utf8")).servers)
 		.filter((preset) => preset.install?.hostDependency === true)
 		.map((preset) => String(preset.install.npm))
 		.sort((a, b) => a.localeCompare(b));
@@ -98,9 +96,9 @@ function stageWithDependencies(name, from, outDir, target, listFiles, result) {
  * fails the build. A platform package that is not built or installed here (another platform's) is reported: that
  * binary's server fetches its native binary on first start, and goes without that language server.
  */
-export function stageHostMcpServers(outDir, platform, { packageDir, recommendedDir, listFiles = npmPackFiles }) {
+export function stageHostMcpServers(outDir, platform, { packageDir, defaultConfig, listFiles = npmPackFiles }) {
 	const result = { staged: [], missing: [] };
-	for (const name of hostMcpPackages(recommendedDir))
+	for (const name of hostMcpPackages(defaultConfig))
 		stageWithDependencies(name, packageDir, outDir, NPM_TARGET[platform], listFiles, result);
 	return result;
 }

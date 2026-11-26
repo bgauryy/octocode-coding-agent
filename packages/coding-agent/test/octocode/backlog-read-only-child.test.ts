@@ -10,8 +10,7 @@ import { readOnlyRoleRefusal } from "../../src/octocode/permission/read-only-rol
 import { shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { registerBacklogPlanTool } from "../../src/octocode/native/tools/backlog-plan/tool.ts";
 import { registerBacklogTool } from "../../src/octocode/native/tools/backlog/tool.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { fakeHost } from "./fake-host.ts";
 
 const CHILD = { [SUBAGENT_ENV]: "1", [READ_ONLY_ENV]: "1" };
@@ -38,7 +37,7 @@ afterEach(() => {
 });
 
 function seed(): BacklogStore {
-	const store = new BacklogStore(() => sharedAgentDb(env), registeredWorkspace(repo, sharedAgentDb(env)).id);
+	const store = new BacklogStore(() => workspaceDb(repo, env).agent, workspaceDb(repo, env).workspace.id);
 	store.add({ title: "Docs sweep", goal: "Fix stale docs", why: "Required work", state: "todo", createdBy: "agent" });
 	store.add({ title: "Cache audit", goal: "Check cache", why: "Required work", state: "todo", createdBy: "agent" });
 	return store;

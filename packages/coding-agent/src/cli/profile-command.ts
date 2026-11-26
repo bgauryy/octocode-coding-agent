@@ -7,7 +7,7 @@ import { prepareAgentDb, sharedAgentDb } from "../storage/database.ts";
 import { agentDbPath } from "../storage/state-paths.ts";
 import { createProfiler } from "../octocode/profiler/index.ts";
 import { agentsTable, insightsTable, requestsTable, timelineTable } from "../octocode/profiler/format.ts";
-import { findSession, ProfileSessionError, storedProfilerSource } from "../octocode/profiler/stored-source.ts";
+import { findSession, ProfileSessionError, storedSessionSource } from "../octocode/profiler/stored-source.ts";
 
 const PROFILE_COMMAND_USAGE = `Usage:
   ${APP_NAME} profile [--session <id>] [--json]
@@ -129,7 +129,7 @@ export async function runProfileCommand(args: string[], io: ProfileCommandIo): P
 	try {
 		await prepareAgentDb(env);
 		const db = sharedAgentDb(env).db;
-		profiler = createProfiler(storedProfilerSource({ db, session: findSession(db, io.cwd, options.session) }));
+		profiler = createProfiler(storedSessionSource(findSession(db, io.cwd, options.session), env));
 		const show = <T>(data: T, text: (data: T) => string) =>
 			out(options.json ? JSON.stringify(data, null, 2) : text(data));
 		if (options.trace) {

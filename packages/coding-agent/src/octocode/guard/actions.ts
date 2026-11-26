@@ -18,6 +18,8 @@ const KIND_NAMES: Partial<Record<string, ReviewKind>> = {
 	mcp: "mcp",
 	skills: "skill",
 	skill: "skill",
+	agents: "agent",
+	agent: "agent",
 };
 
 export class SecurityCommandError extends Error {}
@@ -40,7 +42,9 @@ export function findReview(reviews: readonly Review[], id: string): Review {
 		throw new SecurityCommandError(
 			`${id} names ${named.length} items; use an id: ${named.map((review) => review.item.id).join(", ")}`,
 		);
-	throw new SecurityCommandError(`No hook, MCP server or skill ${id} was found. /security list shows the ids.`);
+	throw new SecurityCommandError(
+		`No hook, MCP server, skill or external model ${id} was found. /security list shows the ids.`,
+	);
 }
 
 /** `--kind hooks,mcp` as review kinds; every kind when absent. */
@@ -49,7 +53,8 @@ export function parseKinds(value: string | undefined): ReviewKind[] {
 	const kinds: ReviewKind[] = [];
 	for (const word of value.split(",")) {
 		const kind = KIND_NAMES[word.trim()];
-		if (!kind) throw new SecurityCommandError(`--kind takes hooks, mcp or skills (comma-separated), not ${value}.`);
+		if (!kind)
+			throw new SecurityCommandError(`--kind takes hooks, mcp, skills or agents (comma-separated), not ${value}.`);
 		kinds.push(kind);
 	}
 	return kinds;

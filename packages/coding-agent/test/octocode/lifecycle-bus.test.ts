@@ -81,6 +81,24 @@ describe("the lifecycle bus", () => {
 		expect(heard.map((event) => event.seq)).toEqual(heard.map((event) => event.seq).sort((x, y) => x - y));
 	});
 
+	it("hears only its own team: another folder's agents on the same file stay out", () => {
+		const elsewhere = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "lifecycle-bus-other-")));
+		const stranger = TeamStore.open(elsewhere, db.file);
+		try {
+			const { bus } = busOver(mine);
+			const heard: string[] = [];
+			bus.on((event) => heard.push(event.agent));
+			stranger.join(member("far-away"));
+			peer.join(member("next-door"));
+			bus.poll();
+			expect(stranger.team).not.toBe(mine.team);
+			expect(heard).toEqual(["next-door"]);
+		} finally {
+			stranger.close();
+			fs.rmSync(elsewhere, { recursive: true, force: true });
+		}
+	});
+
 	it("reports a reaped agent as crashed, written by the reaping process", () => {
 		const { bus } = busOver(mine);
 		const heard: LifecycleEvent[] = [];
@@ -156,7 +174,9 @@ describe("the lifecycle bus", () => {
 
 describe("stalled episodes", () => {
 	const stalledEvents = () =>
-		agentEvents.since(db.db, 0).filter((event) => event.type === "update" && event.data.state === "stalled");
+		agentEvents
+			.since(db.db, 0, { team: mine.team })
+			.filter((event) => event.type === "update" && event.data.state === "stalled");
 	const prune = (store: TeamStore, at: number) => (store as unknown as { prune(at: number): void }).prune(at);
 	// The stores prune at most once a minute from their opening: the test's clock starts a minute after it.
 	const start = () => Date.now() + 61_000;

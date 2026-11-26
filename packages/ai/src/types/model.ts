@@ -15,6 +15,7 @@ import type {
 	ThinkingLevelMap,
 } from "../providers/model-schema.ts";
 import type { Api, ClassifierApi, ImageApi, ProviderId } from "./ids.ts";
+import type { ProviderProfileId } from "./profile.ts";
 
 export type SamplingParams = Record<string, unknown>;
 export type SamplingParamsByThinkingLevel = Partial<Record<ModelThinkingLevel, SamplingParams>>;
@@ -55,6 +56,11 @@ export interface Model<TApi extends Api> extends BaseModel<TApi> {
 	samplingParams?: SamplingParams;
 	/** Sampling parameter overrides selected by the effective Octocode thinking level. */
 	samplingParamsByThinkingLevel?: SamplingParamsByThinkingLevel;
+	/**
+	 * The provider profile (cache facts and request-format quirks) this model follows. Unset: detected from the provider
+	 * id and host. An explicit `compat` value still wins over the profile.
+	 */
+	profile?: ProviderProfileId;
 	/** Compatibility overrides for OpenAI-compatible APIs. If not set, auto-detected from baseUrl. */
 	compat?: TApi extends "openai-completions"
 		? OpenAICompletionsCompat

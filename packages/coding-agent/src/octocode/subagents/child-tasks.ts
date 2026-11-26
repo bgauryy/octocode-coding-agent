@@ -2,7 +2,7 @@ import type { FeatureContext } from "../../core/features/index.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { openBacklogWhenReady } from "../backlog/context.ts";
 import { readWorkspaceIdentity } from "../../storage/workspace.ts";
-import { sharedAgentDb } from "../../storage/database.ts";
+import { registeredWorkspaceDb } from "../../storage/workspace-database.ts";
 import { tasks } from "../../../../db/src/api.ts";
 import { redactSecrets, visibleControls } from "@octocodeai/octocode-common/sanitize";
 import { cutText } from "@octocodeai/octocode-common/text";
@@ -15,8 +15,9 @@ type Ctx = Pick<FeatureContext, "cwd" | "sessionManager">;
 export function isolatedChildSteps(cwd: string, agent: string): string {
 	try {
 		const workspace = readWorkspaceIdentity(cwd);
-		if (!workspace) return "";
-		const open = tasks.listTasks(sharedAgentDb().db, {
+		const agentDb = workspace && registeredWorkspaceDb(workspace.id)?.agent;
+		if (!workspace || !agentDb) return "";
+		const open = tasks.listTasks(agentDb.db, {
 			repo: workspace.id,
 			sessionId: agent,
 			states: ["todo", "ongoing"],

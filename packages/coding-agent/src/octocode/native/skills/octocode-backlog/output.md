@@ -1,5 +1,14 @@
 # Output
 
-A sprint report, result first: the reader sees what changed on the board and what needs them. Include, in this order and only where there is content: the board (a table of open items per state: backlog, todo, ongoing, plus closed and done in this pass, with the before and after counts and the change (Δ), both from `backlogPlan` `list`); the changes (a table of verdict groups: done, obsolete, duplicate, promoted, reprioritized, released, reopened, split, each group's items with one line of evidence per item or per shared cause); items kept despite a done-looking verdict, each with the goal clause still unmet; what needs the user (the questions asked, or still to ask, and their items); what is blocked or held (items held by live sessions, with their holders; stale claims you released; items blocked by prerequisites); the next sprint (the todo items that are ready, prerequisites done, by priority, each with a proposed owner: you, a child profile, a session or the user); and what was not checked (items kept without a code check, tests not run, areas a child skipped).
+Lead with what changed and what matters; include only non-empty sections:
+
+- **Board:** open items per state plus done/closed in this pass, with before/after counts and Δ from `backlogPlan` `stat` or `list`.
+- **Changes:** done, obsolete, duplicate, merged, promoted, reprioritized, released, reopened, split and noted items, with one line of evidence each or per shared cause.
+- **Most important:** the highest-impact or urgent items and why, including decisions only the user can unblock.
+- **Kept despite looking done:** the goal clause still unmet.
+- **Needs the user:** questions asked or pending, with their items.
+- **Blocked or held:** live holders, released stale claims and unfinished prerequisites.
+- **Next sprint:** ready todo items by priority, each with a proposed owner: you, child profile, session or user.
+- **Not checked:** items kept without a code check, tests not run and areas a child skipped.
 
 Save the full per-item table to `.octocode/agent/backlog-grooming/<date>/report.md` when the board has more than about 40 items, and keep the reply to the summary.

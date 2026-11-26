@@ -116,16 +116,13 @@ describe("ensureWorktree", () => {
 		}
 	});
 
-	it("creates under the main root when called from a linked worktree, starting at that worktree's HEAD", async () => {
+	it("refuses to create from a linked worktree, naming the orchestrator, but reuses an existing one", async () => {
 		const first = await ensureWorktree(repo.root, "auth");
-		writeFileSync(path.join(first.path, "c.txt"), "c");
-		sh(first.path, "add", ".");
-		sh(first.path, "commit", "-q", "-m", "c");
-		const nested = await ensureWorktree(first.path, "billing");
-		expect(nested.path).toBe(path.join(repo.root, ".octocode", "agent", "worktrees", "billing"));
-		expect(nested.main).toBe(repo.root);
-		expect(existsSync(path.join(first.path, ".octocode"))).toBe(false);
-		expect(readFileSync(path.join(nested.path, "c.txt"), "utf8")).toBe("c");
+		await expect(ensureWorktree(first.path, "billing")).rejects.toThrow(
+			/Refused: .*linked worktree.*proxy of its orchestrator.*main-checkout session of/s,
+		);
+		expect(existsSync(path.join(repo.root, ".octocode", "agent", "worktrees", "billing"))).toBe(false);
+		expect((await ensureWorktree(first.path, "auth")).created).toBe(false);
 	});
 
 	it("runs the repository's hooks as a manual git worktree add would", async () => {

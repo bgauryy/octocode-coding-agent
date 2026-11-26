@@ -7,7 +7,7 @@ import type { ParsedCommand, ParsedShell } from "../shared/shell-commands.ts";
  * largest single cause of refused read-only work (RFC 2026-11-11 core tools, step B4).
  */
 const READERS = new Set(["rg", "grep", "ls", "cat", "wc", "fd"]);
-const GIT_READERS = new Set(["log", "diff", "show"]);
+const GIT_READERS = new Set(["log", "diff", "show", "ls-files", "status", "rev-parse", "ls-tree"]);
 
 /**
  * Filters and shell builtins that print and write nothing, which let a pipeline or a `cd dir &&` prefix run. A computed
@@ -133,5 +133,27 @@ function allowedReader(command: ParsedCommand): boolean {
  */
 export function onlyAllowedReaders(parsed: ParsedShell | undefined): boolean {
 	if (!parsed || parsed.commands.length === 0 || parsed.functions.length > 0) return false;
-	return parsed.commands.every(allowedReader);
+	return parsed.commands.every(checked);
+}
+
+/**
+ * The synthetic hidden-arithmetic command is no program and names no path: the permission policy keeps it opaque, but
+ * the reservation gate has nothing to check in it (accepted risk, see the top of this file).
+ */
+const checked = (command: ParsedCommand): boolean => command.hiddenArithmetic === true || allowedReader(command);
+
+/**
+ * The first stage that keeps a line from `onlyAllowedReaders`, as the refusal names it; undefined when no single stage does.
+ * Only a line with hidden arithmetic needs it (the arithmetic would otherwise be blamed); any other line keeps the cause the
+ * caller already has, such as an exported variable, which no single stage shows.
+ */
+export function refusedStage(parsed: ParsedShell | undefined): { name: string; cause: string } | undefined {
+	if (!parsed?.commands.some((command) => command.hiddenArithmetic === true)) return undefined;
+	const stage = parsed?.commands.find((command) => !checked(command));
+	if (!stage) return undefined;
+	const text = stage.words.join(" ");
+	return {
+		name: stage.literals[stage.program ?? 0] ?? text.split(" ")[0] ?? "",
+		cause: stage.opaqueBecause ?? `\`${text}\` is not a read-only command the gate can check`,
+	};
 }

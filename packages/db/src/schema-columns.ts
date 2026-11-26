@@ -16,24 +16,29 @@ export const SESSION_ACTIVITY_COLUMN =
  */
 export const SESSION_ACTIVITY_BY_COLUMN = "activity_by TEXT";
 
-/** Columns added to a table of the version-10 file after it shipped: `SCHEMA` creates them, `ensureAddedColumns` adds them. */
+/**
+ * `workspaces.db_key` (machine file): the key of the workspace file holding this workspace's rows (`schema-split.ts`).
+ * Set once, at the first registration or by the version-12 split, and never changed: every workspace of one repository
+ * shares one key. NULL until then.
+ */
+export const WORKSPACE_DB_KEY_COLUMN = "db_key TEXT";
+
+/** Columns added to a table of the version-10 file after it shipped: `SCHEMA` creates them, its upgrade adds them. */
 const ADDED_COLUMNS: ReadonlyArray<{ table: string; column: string; definition: string }> = [
 	{ table: "sessions", column: "activity", definition: SESSION_ACTIVITY_COLUMN },
 	{ table: "sessions", column: "activity_by", definition: SESSION_ACTIVITY_BY_COLUMN },
 ];
 
 /**
- * Gives a current file the columns it lacks, like the ensured objects: one catalog read per column on every open, an
- * `ALTER TABLE … ADD COLUMN` once per file (nullable, so existing rows need no rewrite). Another process may add the same
- * column between the read and the change: its "duplicate column" is the outcome wanted, anything else throws.
+ * Gives a version-10 file the columns it lacks, inside its upgrade transaction: an `ALTER TABLE … ADD COLUMN` (nullable,
+ * so existing rows need no rewrite) for each column the catalog does not list yet.
  */
-export function ensureAddedColumns(db: DatabaseSync): void {
-	for (const { table, column, definition } of ADDED_COLUMNS) {
-		if (db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column)) continue;
-		try {
-			db.exec(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
-		} catch (error) {
-			if (!(error instanceof Error && /duplicate column name/i.test(error.message))) throw error;
-		}
-	}
+export function addMissingColumns(db: DatabaseSync): void {
+	for (const { table, column, definition } of ADDED_COLUMNS) addColumn(db, table, column, definition);
+}
+
+/** `ALTER TABLE … ADD COLUMN` unless the table already has `column`. */
+export function addColumn(db: DatabaseSync, table: string, column: string, definition: string): void {
+	if (db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column)) return;
+	db.exec(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
 }

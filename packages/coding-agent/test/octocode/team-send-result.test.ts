@@ -1,8 +1,9 @@
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Team } from "../../src/octocode/team/session.ts";
 import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
+import { openWorkspaceDb } from "../../src/storage/workspace-database.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -133,11 +134,13 @@ describe("sendMessage delivery status", () => {
 		await run(b.tools.get("coordinate"), { action: "join" }, b.ctx);
 		// The recipient was live when the send began; its heartbeat lapses while the message hook runs.
 		a.team.setMessageHook(async () => {
-			const raw = new DatabaseSync(file);
+			const machine = openAgentDb(file);
+			const rows = openWorkspaceDb(machine, cwd).agent;
 			try {
-				raw.prepare("UPDATE agents SET seen_at = ? WHERE id = ?").run(Date.now() - 120_000, b.team.id!);
+				rows.db.prepare("UPDATE agents SET seen_at = ? WHERE id = ?").run(Date.now() - 120_000, b.team.id!);
 			} finally {
-				raw.close();
+				if (rows !== machine) rows.close();
+				machine.close();
 			}
 		});
 		const sent = await run(a.tools.get("sendMessage"), { to: b.team.id, message: "are you there?" }, a.ctx);

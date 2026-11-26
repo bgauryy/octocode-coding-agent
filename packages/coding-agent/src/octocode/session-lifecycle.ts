@@ -11,6 +11,7 @@ import { interactive } from "./shared/interactive.ts";
 import { contentText, MINUTE_MS, settleWithin } from "./shared/util.ts";
 import { reportStatus } from "./subagents/report-outcome.ts";
 import { JOB_TYPE } from "./shared/messages.ts";
+import { harnessSource, sourcedText } from "./events/source.ts";
 import { holdFailedRun } from "./held-failure.ts";
 import { registerWakeRetry } from "./wake-retry.ts";
 import { callSmallModel, smallModelLabel } from "./subagents/small-call.ts";
@@ -98,7 +99,7 @@ export function registerNativeSessionLifecycle(
 				const notes: Array<Promise<void>> = [];
 				const notify = (text: string) => {
 					const sent = api.session.sendMessage(
-						{ customType: JOB_HOLD_TYPE, content: text, display: true },
+						{ customType: JOB_HOLD_TYPE, content: sourcedText(text, harnessSource("jobs")), display: true },
 						{ triggerTurn: false },
 					);
 					notes.push(Promise.resolve(sent));

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { AGENT_SCRATCH_ENV } from "@octocodeai/octocode-common/env";
 import { isUnderPath } from "@octocodeai/octocode-common/paths";
-import { getAgentDir, getLegacyConfigDirs, getOctocodeHome } from "../../../config.ts";
+import { getAgentDir, getPiConfigDirs, getOctocodeHome } from "../../../config.ts";
 import { modelsFileHoldsLiteralKey } from "../../../core/models-json-keys.ts";
 import type { SandboxMode } from "../../../core/settings-defaults.ts";
 import { AGENT_DIR, AGENT_FOLDERS } from "../../../storage/agent-layout.ts";
@@ -74,7 +74,7 @@ const TOKEN_FOLDERS = ["web", HOME_NAMES.api, "child-credentials"];
  */
 function credentialPaths(): string[] {
 	const octocodeHome = getOctocodeHome();
-	const stores = [...new Set([getAgentDir(), octocodeHome, ...getLegacyConfigDirs()])];
+	const stores = [...new Set([getAgentDir(), octocodeHome, ...getPiConfigDirs()])];
 	const paths = [
 		...stores.flatMap((dir) => STORE_FILES.map((name) => path.join(dir, name))),
 		...stores.map((dir) => path.join(dir, "models.json")).filter(modelsFileHoldsLiteralKey),

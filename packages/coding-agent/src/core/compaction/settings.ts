@@ -31,9 +31,13 @@ export function inputRoomTokens(contextWindow: number, reserveTokens: number, ma
 	return Math.max(0, Math.min(contextWindow - reserveTokens, maxInputTokens ?? Infinity));
 }
 
+/** The share of the window at which compaction starts at the latest, so a large reserve-free window still compacts early. */
+const COMPACTION_STOP_AT_WINDOW = 0.9;
+
 /**
- * Context size past which automatic compaction starts: the room the reserve leaves, or the configured
- * `triggerTokens` when that is lower. The trigger never raises the point: the reserve holds the reply and the summary.
+ * Context size at which automatic compaction first starts, the one point the loop, footer, `/context`, monitor and
+ * tools read: 90% of the window, the room the reserve leaves, or the configured `triggerTokens`, whichever is lowest.
+ * The trigger never raises the point: the reserve holds the reply and the summary.
  */
 export function compactionThresholdTokens(
 	contextWindow: number,
@@ -41,6 +45,7 @@ export function compactionThresholdTokens(
 ): number {
 	return Math.min(
 		inputRoomTokens(contextWindow, settings.reserveTokens, settings.maxInputTokens),
+		Math.ceil(COMPACTION_STOP_AT_WINDOW * contextWindow),
 		settings.triggerTokens ?? Infinity,
 	);
 }

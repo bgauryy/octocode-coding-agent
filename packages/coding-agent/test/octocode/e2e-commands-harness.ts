@@ -97,6 +97,8 @@ export interface InteractiveOptions {
 	files?: Record<string, string>;
 	/** Model ids the scripted provider offers (default `["faux-1"]`); the first is the session's model. */
 	models?: string[];
+	/** Scripted replies stream at this pace in small tokens (default: as fast as possible). */
+	tokensPerSecond?: number;
 }
 
 /** One scripted model turn: text, or a function that decides (and may wait) given the request. */
@@ -202,6 +204,7 @@ export async function startInteractive(options: InteractiveOptions = {}): Promis
 	const faux = createFauxCore({
 		provider: "faux",
 		models: (options.models ?? ["faux-1"]).map((id) => ({ id, contextWindow: 200_000, maxTokens: 4_096 })),
+		...(options.tokensPerSecond ? { tokensPerSecond: options.tokensPerSecond, tokenSize: { min: 2, max: 5 } } : {}),
 	});
 	const provider: FeatureRegister = (api) => {
 		api.providers.register("faux", {

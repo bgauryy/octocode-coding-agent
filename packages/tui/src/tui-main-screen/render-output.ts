@@ -1,6 +1,6 @@
 import { BEGIN_SYNCHRONIZED_OUTPUT } from "../terminal/sequences.ts";
 import { isImageLine } from "../terminal-image.ts";
-import { trimTrailingBlanks } from "../tui/trailing-blanks.ts";
+import { eraseAndWriteRow } from "../tui/row-text.ts";
 import { getKittyImageReservedRows } from "./kitty-images.ts";
 import type { BoundedTerminalWriter } from "./terminal-writer.ts";
 
@@ -112,8 +112,7 @@ export function appendChangedRows(
 
 		// An unchanged row between changed ones is already on screen: step over it.
 		if (i < previousLines.length && line === previousLines[i] && !isImage) continue;
-		output.append("\x1b[2K"); // Clear current line
-		output.append(isImage ? line : trimTrailingBlanks(line));
+		output.append(eraseAndWriteRow(line, isImage));
 	}
 
 	return undefined;

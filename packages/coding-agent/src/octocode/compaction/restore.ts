@@ -15,6 +15,7 @@ import type { CompactionThinking } from "../../core/compaction/settings.ts";
 import { covers, shownRanges } from "./restore-shown.ts";
 import { type Outline, outlineOf } from "./restore-outline.ts";
 import { restoreLimits, type RestoreLimits, RESTORE_TOTAL_CHARS } from "./restore-limits.ts";
+import { limitsFor } from "./limits.ts";
 import { autoCompactAt } from "../shared/tokens.ts";
 import { isStaleSessionError } from "../shared/util.ts";
 import { cutText } from "@octocodeai/octocode-common/text";
@@ -283,7 +284,7 @@ export interface PendingRestore {
  * record once the message is delivered.
  */
 export async function deliverRestoredFiles(
-	api: SetupPick<"session", "sendMessage">,
+	api: SetupPick<"session", "sendMessage"> & SetupPick<"settings", "get">,
 	pending: readonly WorkedFile[],
 	ctx: Pick<FeatureContext, "cwd" | "sessionManager"> & Partial<Pick<FeatureContext, "model">>,
 	budget: number,
@@ -292,16 +293,14 @@ export async function deliverRestoredFiles(
 ): Promise<PendingRestore | undefined> {
 	let total = budget;
 	if (ctx.model && Number.isFinite(ctx.model.contextWindow) && ctx.model.contextWindow > 0) {
-		try {
-			const tokens = estimateProjectedContextTokens(
-				ctx.sessionManager.buildSessionProjection(),
-				ctx.sessionManager.getBranch(),
-			).tokens;
-			const remaining = autoCompactAt(ctx.model, thinking) - tokens;
-			total = Math.min(total, Math.max(0, Math.floor(remaining * CHARS_PER_TOKEN)));
-		} catch {
-			return undefined;
-		}
+		const tokens = estimateProjectedContextTokens(
+			ctx.sessionManager.buildSessionProjection(),
+			ctx.sessionManager.getBranch(),
+		).tokens;
+		// The trigger the session compacts at (`limits.compaction`), as every other caller reads it.
+		const remaining =
+			autoCompactAt(ctx.model, thinking, limitsFor({ settings: api.settings }, ctx.model).compaction) - tokens;
+		total = Math.min(total, Math.max(0, Math.floor(remaining * CHARS_PER_TOKEN)));
 	}
 	const reads = contextReads(ctx);
 	const restored = restoreFiles(

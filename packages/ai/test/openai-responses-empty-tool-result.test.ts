@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { convertResponsesMessages } from "../src/api/openai-responses-shared/messages.ts";
+import { replayedResponsesInput } from "./capture-responses-payload.ts";
 import { normalizeContext } from "../src/compat.ts";
 import { getBuiltinModel } from "../src/providers/all.ts";
 import type { AssistantMessage, ToolResultMessage, Usage } from "../src/types.ts";
@@ -24,11 +24,11 @@ function buildEmptyToolResult(toolCallId: string, timestamp: number, text = ""):
 	};
 }
 
-describe("OpenAI Responses convertResponsesMessages empty tool result", () => {
+describe("OpenAI Responses replay of empty tool result", () => {
 	// Whitespace-only cases.
 	it.each(["", "\r\n", " \n\t"])(
 		"uses '(no tool output)' placeholder for tool result text %j without images",
-		(text) => {
+		async (text) => {
 			const model = getBuiltinModel("openai", "gpt-4o-mini");
 			const now = Date.now();
 			const assistant: AssistantMessage = {
@@ -50,7 +50,7 @@ describe("OpenAI Responses convertResponsesMessages empty tool result", () => {
 				],
 			});
 
-			const input = convertResponsesMessages(model, context, new Set(["openai", "opencode"]));
+			const input = await replayedResponsesInput(model, context);
 			const functionCallOutput = input.find((item) => item.type === "function_call_output") as
 				| { type: "function_call_output"; output: string }
 				| undefined;

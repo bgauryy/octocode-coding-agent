@@ -65,17 +65,17 @@ export interface ChatCompletionCreateParamsStreaming {
 	prompt_cache_retention?: string;
 	[key: string]: unknown;
 }
-export interface ResponseInputText {
+interface ResponseInputText {
 	type: "input_text";
 	text: string;
 }
-export interface ResponseInputImage {
+interface ResponseInputImage {
 	type: "input_image";
 	detail: "auto" | "low" | "high" | "original";
 	image_url?: string;
 	file_id?: string;
 }
-export type ResponseInputContent = ResponseInputText | ResponseInputImage;
+type ResponseInputContent = ResponseInputText | ResponseInputImage;
 export interface ResponseOutputText {
 	type: "output_text";
 	text: string;
@@ -91,7 +91,7 @@ export interface ResponseOutputText {
 	}>;
 	logprobs?: unknown[];
 }
-export interface ResponseOutputMessage {
+interface ResponseOutputMessage {
 	type: "message";
 	id: string;
 	role: "assistant";
@@ -191,11 +191,11 @@ export type Tool =
 			format: { type: "grammar"; syntax: string; definition: string };
 			defer_loading?: boolean;
 	  };
-export interface ResponseConfigurationUpdateItemParam {
+interface ResponseConfigurationUpdateItemParam {
 	type: "configuration_update";
 	reasoning: { effort?: string | null };
 }
-export interface ResponseToolSearchOutputItemParam {
+interface ResponseToolSearchOutputItemParam {
 	type: "tool_search_output";
 	call_id: string;
 	execution: "client";
@@ -203,7 +203,7 @@ export interface ResponseToolSearchOutputItemParam {
 	tools: Tool[];
 }
 export type ResponseFunctionCallOutputItemList = ResponseInputContent[];
-export type ResponseInputItem =
+type ResponseInputItem =
 	| ResponseOutputItem
 	| ResponseConfigurationUpdateItemParam
 	| ResponseToolSearchOutputItemParam
@@ -221,7 +221,7 @@ export type ResponseInputItem =
 			call_id: string;
 			output: string | ResponseInputContent[];
 	  };
-export type ResponseInput = ResponseInputItem[];
+type ResponseInput = ResponseInputItem[];
 export interface ResponseCreateParamsStreaming {
 	model: string;
 	input: string | ResponseInput;

@@ -1,8 +1,9 @@
 import type { ResponseStreamEvent } from "../src/api/ai-sdk/openai-wire-types.ts";
+import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import { convertResponsesMessages } from "../src/api/openai-responses-shared/messages.ts";
+import { replayedResponsesInput } from "./capture-responses-payload.ts";
 import { processResponsesStream } from "../src/api/openai-responses-shared/stream-processing.ts";
-import type { Api, AssistantMessage, Model, ToolCall } from "../src/types.ts";
+import type { AssistantMessage, Model, Tool, ToolCall } from "../src/types.ts";
 import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
@@ -17,6 +18,14 @@ const model: Model<"openai-responses"> = {
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 	contextWindow: 400000,
 	maxTokens: 128000,
+};
+
+const grammarModel: Model<"openai-responses"> = { ...model, compat: { supportsOpenAIGrammarTools: true } };
+const grammarTool: Tool = {
+	name: "query",
+	description: "Query",
+	parameters: Type.Object({ input: Type.String() }, { additionalProperties: false }),
+	constrainedSampling: { type: "grammar", variants: { openai_regex: "[a-z]+" } },
 };
 
 function createOutput(): AssistantMessage {
@@ -133,11 +142,9 @@ describe("OpenAI Responses tool-call namespaces", () => {
 			namespace: "dynamic_tools",
 		});
 
-		const replayed = convertResponsesMessages(
-			model,
-			normalizeContext({ messages: [output] }),
-			new Set(["openai"]),
-		).find((item) => item.type === "function_call");
+		const replayed = (await replayedResponsesInput(model, normalizeContext({ messages: [output] }))).find(
+			(item) => item.type === "function_call",
+		);
 		expect(replayed).toMatchObject({
 			type: "function_call",
 			id: "fc_test",
@@ -150,9 +157,8 @@ describe("OpenAI Responses tool-call namespaces", () => {
 
 	it("round-trips a custom-tool namespace received only on output_item.done", async () => {
 		const output = createOutput();
-		const grammarToolInputProperties = new Map([["query", "input"]]);
 		await processResponsesStream(createCustomToolCallEvents(), output, new AssistantMessageEventStream(), model, {
-			grammarToolInputProperties,
+			grammarToolInputProperties: new Map([["query", "input"]]),
 		});
 
 		const toolCall = getToolCall(output);
@@ -163,9 +169,9 @@ describe("OpenAI Responses tool-call namespaces", () => {
 			namespace: "dynamic_tools",
 		});
 
-		const replayed = convertResponsesMessages(model, normalizeContext({ messages: [output] }), new Set(["openai"]), {
-			grammarToolInputProperties,
-		}).find((item) => item.type === "custom_tool_call");
+		const replayed = (
+			await replayedResponsesInput(grammarModel, normalizeContext({ messages: [output], tools: [grammarTool] }))
+		).find((item) => item.type === "custom_tool_call");
 		expect(replayed).toMatchObject({
 			type: "custom_tool_call",
 			id: "ctc_test",
@@ -176,7 +182,7 @@ describe("OpenAI Responses tool-call namespaces", () => {
 		});
 	});
 
-	it("drops namespaces when the target cannot replay their load items", () => {
+	it("drops namespaces when the target cannot replay their load items", async () => {
 		const output = createOutput();
 		output.content.push(
 			{
@@ -194,19 +200,15 @@ describe("OpenAI Responses tool-call namespaces", () => {
 				namespace: "dynamic_tools",
 			},
 		);
-		const targetModels: Model<Api>[] = [
-			{ ...model, id: "gpt-5.2", name: "GPT-5.2" },
-			{ ...model, provider: "azure" },
+		const targetModels: Model<"openai-responses">[] = [
+			{ ...grammarModel, id: "gpt-5.2", name: "GPT-5.2" },
+			{ ...grammarModel, provider: "azure" },
 		];
 
 		for (const targetModel of targetModels) {
-			const replayed = convertResponsesMessages(
+			const replayed = await replayedResponsesInput(
 				targetModel,
-				normalizeContext({ messages: [output] }),
-				new Set(["openai"]),
-				{
-					grammarToolInputProperties: new Map([["query", "input"]]),
-				},
+				normalizeContext({ messages: [output], tools: [grammarTool] }),
 			);
 			const functionCall = replayed.find((item) => item.type === "function_call");
 			const customToolCall = replayed.find((item) => item.type === "custom_tool_call");
@@ -217,7 +219,7 @@ describe("OpenAI Responses tool-call namespaces", () => {
 		}
 	});
 
-	it("does not add a namespace to ordinary function calls", () => {
+	it("does not add a namespace to ordinary function calls", async () => {
 		const output = createOutput();
 		output.content.push({
 			type: "toolCall",
@@ -226,11 +228,9 @@ describe("OpenAI Responses tool-call namespaces", () => {
 			arguments: { value: "hello" },
 		});
 
-		const replayed = convertResponsesMessages(
-			model,
-			normalizeContext({ messages: [output] }),
-			new Set(["openai"]),
-		).find((item) => item.type === "function_call");
+		const replayed = (await replayedResponsesInput(model, normalizeContext({ messages: [output] }))).find(
+			(item) => item.type === "function_call",
+		);
 		expect(replayed).toBeDefined();
 		expect(replayed).not.toHaveProperty("namespace");
 	});

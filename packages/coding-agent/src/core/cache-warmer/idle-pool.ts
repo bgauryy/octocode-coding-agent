@@ -43,11 +43,15 @@ function countContinuations(gaps: readonly number[], idleMs: number, ttlMs: numb
 	return { used, survivors };
 }
 
-/** The seed for the measured lifetime nearest `ttlMs` (by ratio). */
-function seedFor(ttlMs: number): { q: number; weight: number } {
+/**
+ * The seed for the measured lifetime nearest `ttlMs` (by ratio). It was measured at idle age 0.9 × the lifetime; a
+ * longer idle age lowers its q in proportion (a session idle five lifetimes is likelier gone than one idle a lifetime).
+ */
+function seedFor(ttlMs: number, idleMs: number): { q: number; weight: number } {
 	const distance = (seconds: number) => Math.abs(Math.log((seconds * 1000) / Math.max(ttlMs, 1)));
 	const nearest = SEED.reduce((best, entry) => (distance(entry.ttlSeconds) < distance(best.ttlSeconds) ? entry : best));
-	return { q: nearest.used / nearest.survivors, weight: Math.min(PRIOR_WEIGHT, nearest.survivors) };
+	const age = Math.min(1, Math.max(ttlMs, 1) / Math.max(idleMs, 1));
+	return { q: (nearest.used / nearest.survivors) * age, weight: Math.min(PRIOR_WEIGHT, nearest.survivors) };
 }
 
 /** Where pooled gaps live: read the current list; append one gap and return the list as stored. */
@@ -88,7 +92,7 @@ export class IdleContinuationPool {
 	/** q at idle age `idleMs` for an entry living `ttlMs`: the pooled gaps, pulled toward the seed while they are few. */
 	probability(idleMs: number, ttlMs: number): number {
 		const { used, survivors } = countContinuations(this.loaded(), idleMs, ttlMs);
-		const seed = seedFor(ttlMs);
+		const seed = seedFor(ttlMs, idleMs);
 		return (used + seed.q * seed.weight) / (survivors + seed.weight);
 	}
 

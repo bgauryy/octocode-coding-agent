@@ -95,7 +95,7 @@ export interface BashToolOptions {
 	exposeSessionEnvironment?: boolean;
 	/** Hook to adjust command, cwd, or env before execution */
 	spawnHook?: BashSpawnHook;
-	/** Most bytes of a result that reach the model (the `bashOutputMaxBytes` setting). Default: 20 KB */
+	/** Most bytes of a result that reach the model (the `bashOutputMaxBytes` setting). Default: 12 KB */
 	maxOutputBytes?: number;
 	/** Most bytes the saved full output holds (the `bash.spillMaxBytes` setting); 0 lifts the cap. Default: 1 GiB */
 	spillMaxBytes?: number;

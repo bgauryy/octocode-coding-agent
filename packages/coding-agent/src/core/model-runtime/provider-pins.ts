@@ -59,6 +59,8 @@ export class ProviderPins {
 				return models.getAuth(model, overrides);
 			},
 			getCachePolicy: (model, options) => live.getCachePolicy(model, options),
+			requestsPerMinute: (model) => live.requestsPerMinute?.(model),
+			tokensPerMinute: (model) => live.tokensPerMinute?.(model),
 			resolveModel: (model, messages, options) => live.resolveModel(model, messages, options),
 			streamSimple: (model, context, options) => streamSimpleChatModel(pinned, model, context, options),
 		};

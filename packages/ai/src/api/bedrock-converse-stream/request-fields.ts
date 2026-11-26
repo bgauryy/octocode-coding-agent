@@ -1,4 +1,5 @@
 import type { Model, ThinkingLevel } from "../../types.ts";
+import { effortLevel, effortValue } from "../../models/model-helpers.ts";
 import { bedrockRequestEffort, isBedrockNova2 } from "../../utils/bedrock-models.ts";
 import { thinkingBudgetForLevel } from "../simple-options.ts";
 import { getConfiguredBedrockRegion } from "./client-config.ts";
@@ -38,6 +39,7 @@ export function buildAdditionalModelRequestFields(
 		// created with. Bedrock 400s on replay after either changes unless stale blocks are
 		// dropped, matching the Anthropic provider. Skipped on GovCloud like display.
 		const useBlockBinding = !isGovCloud && supportsThinkingBlockBinding(model);
+		const adaptiveEffort = mapThinkingLevelToEffort(model, options.reasoning);
 		const result: Record<string, any> = supportsAdaptiveThinking(model.id, model.name)
 			? {
 					thinking: {
@@ -45,7 +47,7 @@ export function buildAdditionalModelRequestFields(
 						...(display !== undefined ? { display } : {}),
 						...(useBlockBinding ? { block_binding: { prefix_mismatch_behavior: "drop_block" } } : {}),
 					},
-					output_config: { effort: mapThinkingLevelToEffort(model, options.reasoning) },
+					...(adaptiveEffort ? { output_config: { effort: adaptiveEffort } } : {}),
 					...(useBlockBinding ? { anthropic_beta: [THINKING_BINDING_CONTROLS_BETA] } : {}),
 				}
 			: {
@@ -70,10 +72,9 @@ export function buildAdditionalModelRequestFields(
 	}
 
 	if (candidates.some((s) => s.includes("gpt-"))) {
-		const mapped = model.thinkingLevelMap?.[options.reasoning];
-		return {
-			reasoning: { effort: typeof mapped === "string" ? mapped : OPENAI_GPT_EFFORT[options.reasoning] },
-		};
+		const level = effortLevel(model, options.reasoning);
+		const effort = effortValue(model, options.reasoning) ?? (level ? OPENAI_GPT_EFFORT[level] : undefined);
+		return effort ? { reasoning: { effort } } : {};
 	}
 
 	if (model.thinkingLevelMap && Object.values(model.thinkingLevelMap).every((level) => level === null))

@@ -15,9 +15,10 @@ import { ReadWatch } from "./read-watch.ts";
 import { activityBadge } from "../../theme/page-kit.ts";
 import { liveSessionActivity } from "../activity/session-activity.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
+import { recordedCreator } from "../worktrees/proxy.ts";
 import { canonical, locateRepo } from "../worktrees/repo.ts";
 
-/** The `to` of a worktree session's merge request: the session in the repository's main checkout. */
+/** The `to` of a linked worktree session's merge request and reports: the orchestrator that created its worktree. */
 const COORDINATOR = "coordinator";
 
 /** What sending needs of the session: the same checks an external prompt passes, and a way to tell the model later. */
@@ -34,7 +35,7 @@ interface PeerPolicy {
 	/** This session's team name, sent with each message as the sender's claim. */
 	ownName?(): string | undefined;
 	/** The live members of this session's team and the process each runs, so a team name addresses that process. */
-	members?(): ReadonlyArray<{ id: string; pid: number }>;
+	members?(): ReadonlyArray<{ id: string; pid: number; parentId?: string }>;
 }
 
 /** A refusal before anything reached the other session. */
@@ -85,7 +86,7 @@ function sendFailure(name: string, error: unknown): Error {
 async function placeInRepository(
 	cwd: string,
 	instances: readonly InstanceRecord[],
-): Promise<{ main: string; linked: boolean; coordinators: InstanceRecord[] }> {
+): Promise<{ main: string; checkout: string; linked: boolean; coordinators: InstanceRecord[] }> {
 	const repo = await locateRepo(cwd);
 	const roots = repo.entries.filter((entry) => !entry.prunable).map((entry) => entry.path);
 	const inMain = (dir: string) => {
@@ -94,6 +95,7 @@ async function placeInRepository(
 	};
 	return {
 		main: repo.main,
+		checkout: repo.checkout,
 		linked: !inMain(cwd),
 		coordinators: instances.filter((instance) => inMain(instance.cwd)),
 	};
@@ -124,9 +126,11 @@ export class Peers {
 		return listInstances(apiDir(this.env));
 	}
 
-	/** The live team member `to` names that runs another process; none when `to` is not a team name. */
+	/** The live top-level team member `to` names that runs another process; subagents stay on the team store. */
 	private member(to: string): { id: string; pid: number } | undefined {
-		return this.policy.members?.().find((member) => member.id === to && member.pid !== process.pid);
+		return this.policy
+			.members?.()
+			.find((member) => member.id === to && member.pid !== process.pid && member.parentId === undefined);
 	}
 
 	/** The instance a team name's process runs; a name with no session API, or with several records, is a refusal saying what to do. */
@@ -160,11 +164,11 @@ export class Peers {
 		const you = own ? `You are ${own.name ?? own.id}. ` : "";
 		const others = probed.filter(({ instance }) => instance.pid !== process.pid);
 		if (others.length === 0) return `${you}No other Octocode session is running.`;
-		const coordinators = await placeInRepository(
+		const coordinators = await this.orchestrator(
 			cwd,
 			others.map(({ instance }) => instance),
 		).then(
-			({ coordinators: found }) => found,
+			({ instance }) => (instance ? [instance] : []),
 			(): InstanceRecord[] => [],
 		);
 		const doing = this.doing();
@@ -197,24 +201,38 @@ export class Peers {
 		};
 	}
 
-	/** The one session in the main checkout; no such session, or several, is a refusal saying what to do. */
-	private async coordinator(cwd: string, instances: readonly InstanceRecord[]): Promise<InstanceRecord> {
+	/**
+	 * The orchestrator of a linked worktree session at `cwd`: the live session that created its worktree (recorded when
+	 * `/worktree new` made it), else the oldest live session in the main checkout. Each main-checkout session is the
+	 * orchestrator of its own realm (one process with its children), so a session in the main checkout has none.
+	 */
+	private async orchestrator(
+		cwd: string,
+		instances: readonly InstanceRecord[],
+	): Promise<{ main: string; linked: boolean; instance?: InstanceRecord }> {
 		const others = instances.filter((instance) => instance.pid !== process.pid);
-		const { main, linked, coordinators } = await placeInRepository(cwd, others).catch((error: unknown) => {
+		const { main, checkout, linked, coordinators } = await placeInRepository(cwd, others);
+		if (!linked) return { main, linked };
+		const creator = recordedCreator(checkout, { env: this.env });
+		const member = creator ? this.member(creator) : undefined;
+		if (member) return { main, linked, instance: this.byTeamName(member, instances) };
+		const live = (await probeInstances(coordinators)).map(({ instance }) => instance);
+		return { main, linked, instance: live.sort((a, b) => a.startedAt - b.startedAt)[0] };
+	}
+
+	/** The orchestrator `to: "coordinator"` reaches; a session that has none, or cannot reach it, gets a refusal saying what to do. */
+	private async coordinator(cwd: string, instances: readonly InstanceRecord[]): Promise<InstanceRecord> {
+		const { main, linked, instance } = await this.orchestrator(cwd, instances).catch((error: unknown) => {
+			if (error instanceof Error && (error as { execution?: string }).execution === "not-sent") throw error;
 			throw notSent(`A ${COORDINATOR} needs a git repository: ${errorMessage(error)} Nothing was sent.`);
 		});
 		if (!linked)
 			throw notSent(
 				`This session is in the main checkout, so it is the ${COORDINATOR}. Nothing was sent; merge with \`agent\` type \`coordinate\`, action \`merge\`.`,
 			);
-		const live = (await probeInstances(coordinators)).map(({ instance }) => instance);
-		if (live.length === 1) return live[0];
-		if (live.length === 0)
-			throw notSent(
-				`No Octocode session runs in the main checkout ${main}, so nobody can take this. Nothing was sent. Tell the user; leave this worktree and its branch as they are. A session started there, with its API on, can take the request.`,
-			);
+		if (instance) return instance;
 		throw notSent(
-			`Several Octocode sessions run in the main checkout ${main}: ${live.map(describeInstance).join("; ")}. Nothing was sent. Ask the user which one owns this merge, then send to that name; leave this worktree as it is.`,
+			`No Octocode session runs in the main checkout ${main}, so nobody can take this. Nothing was sent. Tell the user; leave this worktree and its branch as they are. A session started there, with its API on, can take the request.`,
 		);
 	}
 
@@ -236,6 +254,8 @@ export class Peers {
 					? this.byTeamName(member, instances)
 					: pick(instances, to);
 		const name = chosen.name ?? chosen.id;
+		// One label everywhere: the team member's name with its process, or the process name alone.
+		const label = member ? `${member.id} (process ${name})` : name;
 		if (chosen.pid === process.pid) throw notSent(`${name} is this session; name another.`);
 		// The ticket below lets the receiver confirm this call: only the record in its target's own file, repeated by no other, gets one.
 		let target: InstanceRecord;
@@ -275,7 +295,7 @@ export class Peers {
 			});
 		} catch (error) {
 			ticket.release();
-			throw sendFailure(name, error);
+			throw sendFailure(label, error);
 		}
 		// The receiver answered: the same text sent again is a new message, not a retry.
 		this.keys.delete(`${memo}\0${text}`);
@@ -284,18 +304,18 @@ export class Peers {
 		if (queued === "steer" || queued === "followUp") this.unread.track({ name, text, target });
 		// A follow-up repeats the same params (and ticket) until the receiver's user decides.
 		if ((queued === WAITING_FOR_USER || queued === PREPARING) && isRecord(receipt))
-			void this.follow(client, name, { ...params, key: receipt.key }).finally(ticket.release);
+			void this.follow(client, label, { ...params, key: receipt.key }).finally(ticket.release);
 		else ticket.release();
 		const replyPath = own ? "" : " This session's API is off, so it cannot be answered; /api on turns it on.";
 		const fate =
 			queued === PREPARING
-				? `${name} has the message and is still preparing it. You are told if it cannot take it; do not send it again.`
+				? `${label} has the message and is still preparing it. You are told if it cannot take it; do not send it again.`
 				: queued === WAITING_FOR_USER
-					? `Waiting for ${name}'s user to allow this message. You are told if it is refused; do not send it again.`
-					: `Sent to ${name}.`;
+					? `Waiting for ${label}'s user to allow this message. You are told if it is refused; do not send it again.`
+					: `Sent to ${label}.`;
 		return {
 			text: `${fate}${replyPath}`,
-			details: { to: [name], queued },
+			details: { to: [name], queued, ...(member ? { member: member.id } : {}), process: name },
 		};
 	}
 

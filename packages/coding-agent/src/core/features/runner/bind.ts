@@ -24,6 +24,7 @@ export function createRunnerBindings(cwd: string): RunnerBindings {
 		getContextUsageFn: () => undefined,
 		getCacheWarmingReportFn: () => [],
 		compactFn: () => {},
+		requestBoundaryCompactionFn: () => {},
 		getSystemPromptFn: () => "",
 		getSystemPromptOptionsFn: () => normalizeBuildSystemPromptOptions({ cwd }),
 		executeToolFn: undefined,
@@ -88,6 +89,7 @@ export function bindRunnerCore(
 	host.bindings.getContextUsageFn = contextActions.getContextUsage;
 	host.bindings.getCacheWarmingReportFn = contextActions.getCacheWarmingReport ?? (() => []);
 	host.bindings.compactFn = contextActions.compact;
+	host.bindings.requestBoundaryCompactionFn = contextActions.requestBoundaryCompaction ?? (() => {});
 	host.bindings.getSystemPromptFn = contextActions.getSystemPrompt;
 	host.bindings.getSystemPromptOptionsFn =
 		contextActions.getSystemPromptOptions ?? (() => normalizeBuildSystemPromptOptions({ cwd: host.cwd }));

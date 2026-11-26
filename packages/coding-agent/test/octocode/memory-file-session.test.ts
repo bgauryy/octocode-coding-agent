@@ -327,7 +327,7 @@ describe("the memory tool and MEMORY.md", () => {
 		expect(readWorkspace().split("\n").filter(Boolean)).toHaveLength(40);
 		expect(memoryStore(cwd).get(2)).toMatchObject({
 			title: "Old pointer alpha0 beta0",
-			scope: "project",
+			scope: "workspace",
 			kind: "reference",
 		});
 	});

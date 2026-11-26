@@ -211,8 +211,61 @@
           },
           "description": "Models to continue on when the current one fails on a usage limit (quota, billing or plan limit), a refused credential (401; an invalid, expired or revoked key or token; a 403 naming a key, token or authentication), a model unavailable for the account, or an outage that outlasts the retries, tried in order, each as `provider/id` with an optional `:thinking` level, for example `[\"openrouter/some-model\", \"openai/other-model:high\"]`. A rate limit never switches the model: it is retried on the same one. After a refused credential, entries of the same provider are skipped; entries models.dev lists as deprecated are skipped too. The first one with credentials becomes the session model with a notice, which names a change between plan and per-token billing, and stays selected; `/model` switches back. Empty: such a failure ends the turn.",
           "default": []
+        },
+        "fallbackChains": {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Models to continue on, in order, each as `provider/id` with an optional `:thinking` level."
+            }
+          },
+          "description": "Ordered fallback models per model that fails, instead of `fallbackModels` for that model: the key is the failing model as `provider/id` (glob characters `*`, `?`, `[` match several), the value its list, for example `{\"anthropic/claude-sonnet-4-5\": [\"openai/gpt-5\", \"openrouter/some-model:high\"]}`. A listed model that fails in turn continues down its own chain, skipping models that failed within `fallbackCooldownMs`. Each model gets a fresh retry budget. A model with no chain uses `fallbackModels`. Which failures switch is `fallbackOn`."
+        },
+        "fallbackOn": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "usage"
+              },
+              {
+                "type": "string",
+                "const": "credential"
+              },
+              {
+                "type": "string",
+                "const": "model"
+              },
+              {
+                "type": "string",
+                "const": "outage"
+              },
+              {
+                "type": "string",
+                "const": "rate-limit"
+              }
+            ]
+          },
+          "description": "Failure classes that move the turn to the next fallback model: `usage` (quota, plan or billing limit), `credential` (refused key or sign-in), `model` (unavailable for the account or endpoint), `outage` (a transient failure that outlasted its retries), `rate-limit` (a rate limit that outlasted its retries; normally only waited out). Default: `[\"usage\", \"credential\", \"model\", \"outage\"]`. A usage limit with no fallback still asks you (or waits) as usual.",
+          "default": [
+            "usage",
+            "credential",
+            "model",
+            "outage"
+          ]
         }
       }
+    },
+    "requestsPerMinute": {
+      "type": "integer",
+      "description": "Most model requests one session sends to one provider per minute (a sliding 60-second window; retries, compaction and cache warming count). A request over the limit waits for a slot. 0 turns the limit off. A `requestsPerMinute` on a provider or model in models.json wins.",
+      "minimum": 0,
+      "default": 12
     },
     "toolExecution": {
       "type": "object",
@@ -274,7 +327,7 @@
       "type": "number",
       "description": "Most bytes of one foreground bash result that reach the model (about 4 bytes per token); the line limit scales with it (500 lines at the default). Longer output keeps its first 20% and last 80%, plus matched error lines, and is saved in full. A call can lower it with maxOutputTokens but never raise it. Output of the user's own `!` commands follows the same limit.",
       "minimum": 1024,
-      "default": 20000
+      "default": 12000
     },
     "bash": {
       "type": "object",
@@ -344,7 +397,7 @@
     },
     "externalAgents": {
       "type": "boolean",
-      "description": "Allow model-directed external agent tasks and connections. Off by default; enable selected installed CLIs in /providers. enabledExternalAgents limits vendor CLIs; an existing explicit true without that list keeps all runners available. Discovery starts no CLI; sign-in is checked when used. Global only; project files cannot change it. Reload to apply changes.",
+      "description": "Allow model-directed external agent tasks and connections. Off by default; enable selected installed CLIs in /providers. enabledExternalAgents names the vendor CLIs tasks may use. Discovery starts no CLI; sign-in is checked when used. Global only; project files cannot change it. Reload to apply changes.",
       "default": false
     },
     "sessionApi": {
@@ -442,7 +495,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Extra folders the research tools (localFetch, localSearch, structureSearch, astSearch, lspSearch) may read, added to the workspace, the session folders and loaded skill folders. Absolute paths or paths starting with ~/, for example [\"~/code/private-skills\"]. Read from the global settings only: a project settings file cannot add folders. Relative paths, \"..\", the filesystem root, your home folder, the Octocode home and credential folders such as ~/.ssh are refused with a warning. An edit applies after /reload, at the next turn."
+          "description": "Extra folders the research MCP server local file tools may read, added to the workspace, the session folders and loaded skill folders. Absolute paths or paths starting with ~/, for example [\"~/code/private-skills\"]. Read from the global settings only: a project settings file cannot add folders. Relative paths, \"..\", the filesystem root, your home folder, the Octocode home and credential folders such as ~/.ssh are refused with a warning. An edit applies after /reload, at the next turn."
         }
       },
       "description": "Research tool settings."
@@ -909,7 +962,7 @@
         "type": "string",
         "minLength": 1
       },
-      "description": "Vendor CLI ids allowed for external agent tasks when externalAgents is on. An empty list allows none; omitted preserves all runners for an existing explicit externalAgents: true. Global only; manage individual agents in /providers."
+      "description": "Vendor CLI ids allowed for external agent tasks when externalAgents is on. Empty or omitted allows none. Global only; manage individual agents in /providers."
     },
     "enabledModels": {
       "type": "array",
@@ -955,6 +1008,72 @@
         }
       },
       "description": "Provider sources you changed from their defaults (Octocode and Pi on, COPILOT_GITHUB_TOKEN off), managed in /providers. Global only."
+    },
+    "externalModels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "command"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*$",
+            "description": "Provider id its models are listed under (`<id>/<model>`). Lowercase letters, digits, dot, dash and underscore; must not be the id of a built-in provider."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Display name; the id when absent."
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "acp"
+              },
+              {
+                "type": "string",
+                "const": "cli"
+              }
+            ],
+            "description": "acp: an Agent Client Protocol agent over stdio, one session per Octocode session, given Octocode's tools over MCP. cli: one process per request, the conversation on stdin and its stdout as the reply, without Octocode's tools."
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The executable: a name looked up on PATH, or a path."
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Its arguments; for kind cli, {model} becomes the chosen model id."
+          },
+          "env": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "description": "Names of environment variables passed to it from Octocode's environment; every other credential variable is removed."
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Model ids it offers; default when absent. default leaves the choice to the CLI; another id is selected through ACP (kind acp) or {model} (kind cli)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Your own external CLI or ACP agents, offered in /model after the built-in CLIs. Entries of the global file load as written; a trusted project's entries are added, each off until approved in /security, and asked again when its command, arguments or variable names change."
     },
     "defaultTools": {
       "type": "array",
@@ -1338,8 +1457,6 @@
           },
           "description": "Shares of the room before automatic compaction at which the model is told, once each, how much context it has used and how much is left. Each is above 0 and below 1; [] turns the notices off.",
           "default": [
-            0.5,
-            0.75,
             0.9
           ]
         },
@@ -1605,6 +1722,13 @@
           ],
           "description": "Which items a small reviewer model checks before `backlog done` completes them. `important`: p0 and p1 features and bugs. `all`: every item except epics. `off`: none. A reviewer that finds a defect returns the item to ongoing, or to the backlog when evidence is missing, with its findings noted; without a priced small model the item completes with a note. Each review costs a small-model run.",
           "default": "important"
+        },
+        "compactOnDone": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Floor on the share of the room before automatic compaction that the history (the context less the system prompt and tool declarations) must have reached before `backlog done` may compact the main session's context; it limits how often this runs, and a cost check limits losses: the compaction runs only when the requests the session still expects for its own open items repay the summary. The summary keeps the finished items in focus. `0` turns it off. Subagents never compact this way.",
+          "default": 0.5
         }
       },
       "additionalProperties": false
@@ -1862,7 +1986,7 @@
           "const": "off"
         }
       ],
-      "description": "The main session's policy text. \"auto\" (the default) uses the lean policy for a model whose context window is under 64k tokens or the model subagents.models.small names, and the full policy otherwise; \"on\" always uses the lean policy, \"off\" never. The lean policy states the working, safety and reporting rules only: it leaves out delegation, the rules for running subagents and the list of skills (each stays loadable by name), so a small or local model keeps its window for the work.",
+      "description": "The main session's policy text. \"auto\" (the default) uses the lean policy for a model whose context window is at most 64k tokens (65,536) or the model subagents.models.small names, and the full policy otherwise; \"on\" always uses the lean policy, \"off\" never. The lean policy states the working, safety and reporting rules only: it leaves out delegation, the rules for running subagents and the list of skills (each stays loadable by name), so a small or local model keeps its window for the work.",
       "default": "auto"
     },
     "tuiMode": {

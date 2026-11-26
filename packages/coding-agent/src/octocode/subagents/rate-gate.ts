@@ -1,11 +1,10 @@
 import { sleepUnlessAborted } from "@octocodeai/octocode-ai/utils/abort";
+import { referenceProvider } from "../../core/model-reference.ts";
 import { type ProviderCooldowns, providerCooldowns } from "../../core/model-runtime/provider-cooldown.ts";
 
 /** The provider a run's requests go to: its routed model's (`provider/id[:thinking]`), else the parent session's. */
 export function routeProvider(route: { model?: string; parent?: string }): string | undefined {
-	const model = route.model ?? route.parent;
-	const slash = model?.indexOf("/") ?? -1;
-	return slash > 0 ? model!.slice(0, slash) : undefined;
+	return referenceProvider(route.model ?? route.parent);
 }
 
 /**

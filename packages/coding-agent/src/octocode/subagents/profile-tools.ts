@@ -1,5 +1,6 @@
 // Tool-list selection for profiles: selector validation and matching, the lean tool list and the specialist floor.
 import { parseArgs } from "../../cli/args.ts";
+import type { AgentMcp } from "../../../../mcp/src/api.ts";
 import {
 	CORE_TOOLS,
 	DEFAULT_CHILD_TOOLS,
@@ -19,6 +20,23 @@ export const toolList = (list: string | undefined): string[] =>
 		.split(",")
 		.map((name) => name.trim())
 		.filter(Boolean);
+
+/**
+ * A bundled profile's front-matter `tools` with its MCP assignment from the default MCP config: `tools` entries lead the
+ * list, `servers` are returned as the servers it runs. A lean profile runs no MCP, so its assignment must be empty.
+ */
+export function assignedMcp(
+	profile: string,
+	lean: boolean,
+	tools: string | undefined,
+	assigned: AgentMcp | undefined,
+): { tools?: string; mcpServers?: readonly string[] } {
+	const entries = assigned?.tools ?? assigned?.servers ?? [];
+	if (lean && entries.length > 0)
+		throw new Error(`Profile "${profile}" is lean and runs no MCP server; the default MCP config must assign it none.`);
+	if (assigned?.tools && entries.length > 0) return { tools: [...entries, ...toolList(tools)].join(",") };
+	return { tools, ...(assigned?.servers && entries.length > 0 ? { mcpServers: entries } : {}) };
+}
 
 /** Octocode owns selector validation. Its matcher is private; only `*` is special in a tool-name pattern. */
 export function selectedTools(tools: string | undefined): string[] | undefined {
@@ -65,9 +83,6 @@ export function withBacklogTool<T extends { name: string; lean?: true; tools?: s
 	if (!list || isRelative(selected) || matchesTool(selected ?? [], "backlog")) return profile;
 	return { ...profile, tools: [...toolList(list), "backlog"].join(",") };
 }
-
-export const mcpRequired = (name: string): string =>
-	`Profile "${name}" disables MCP, but every specialist needs Octocode local research. Remove mcp: false.`;
 
 /**
  * An absolute allowlist replaces the selection, so add missing shared capabilities. Relative lists are completed

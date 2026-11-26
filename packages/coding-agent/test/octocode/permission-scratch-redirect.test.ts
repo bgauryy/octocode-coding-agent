@@ -84,3 +84,24 @@ describe("a redirect into .octocode/agent/tmp", () => {
 			expect(stateRefused(await run(command))).toBe(true);
 	});
 });
+
+describe("scratch under the global agent state store", () => {
+	it("runs the V8 line, and one that logs into the global tmp/ and temp/ folders", async () => {
+		const { root, run } = checkout(".", true);
+		expect(await run("cd packages/app && x=$(ls) && echo hi > ../../.octocode/agent/tmp/x.log")).toBeUndefined();
+		expect(stateRefused(await run("echo hi > ../../.octocode/agent/temp/x.log"))).toBe(false);
+		const absolute = path.join(root, "..", "..", ".octocode", "agent", "tmp", "x.log");
+		expect(stateRefused(await run(`echo hi > ${absolute}`))).toBe(false);
+	});
+
+	it.each(["workspaces.db", "sessions/x", "temp/sessions/x"])(
+		"still refuses the global %s and shows the resolved path",
+		async (name) => {
+			const { root, run } = checkout(".", true);
+			const result = await run(`echo hi > ../../.octocode/agent/${name}`);
+			expect(result).toMatchObject({ block: true });
+			expect(result?.reason).toContain(`../../.octocode/agent/${name}`);
+			expect(result?.reason).toContain(path.join(root, "..", "..", ".octocode", "agent", name));
+		},
+	);
+});

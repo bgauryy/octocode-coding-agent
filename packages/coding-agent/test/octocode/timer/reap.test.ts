@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { type AgentDb, openDatabase, timers } from "../../../../db/src/api.ts";
-import { registeredWorkspace } from "../../../src/storage/workspace-database.ts";
+import { type AgentDb, timers } from "../../../../db/src/api.ts";
+import { openAgentDb } from "../../../src/storage/database.ts";
+import { openWorkspaceDb } from "../../../src/storage/workspace-database.ts";
 import { timerFields } from "../../../src/octocode/timer/model.ts";
 import { registerTimers } from "../../../src/octocode/timer/register.ts";
 import { fakeCtx, fakeHost } from "../fake-host.ts";
@@ -11,6 +12,8 @@ import { tmp } from "../helpers.ts";
 const T0 = Date.UTC(2026, 10, 5, 12);
 let root: string;
 let file: string;
+/** The machine file; `agent` is the workspace file of `root` (the machine file while workspace files are off). */
+let machine: AgentDb;
 let agent: AgentDb;
 let workspaceId: string;
 const add = (input: Parameters<typeof timerFields>[0], sessionId: string, now = T0) =>
@@ -21,17 +24,15 @@ beforeEach(() => {
 	vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"], now: T0 });
 	root = tmp();
 	file = path.join(root, "workspaces.db");
-	agent = openDatabase({
-		file,
-		mirrorFile: `${file}.transcripts`,
-		archiveDir: path.join(root, "archive"),
-		privateParent: false,
-	});
-	workspaceId = registeredWorkspace(root, agent).id;
+	machine = openAgentDb(file, { ...process.env, OCTOCODE_HOME: path.join(root, "home") });
+	const workspace = openWorkspaceDb(machine, root);
+	agent = workspace.agent;
+	workspaceId = workspace.workspace.id;
 });
 afterEach(() => {
 	vi.useRealTimers();
-	agent.close();
+	if (agent !== machine) agent.close();
+	machine.close();
 	fs.rmSync(root, { recursive: true, force: true });
 });
 

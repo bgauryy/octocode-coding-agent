@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { animationClock } from "@octocodeai/octocode-tui";
 import { AGENT_APPLICATION_ID, AgentDbError } from "../../../db/src/schema.ts";
 import { subagentProcessEnv } from "../../src/octocode/subagents/process/env.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { LEASE_MS } from "../../src/octocode/team/store/limits.ts";
 import { pathKey } from "../../src/octocode/team/store/workspace.ts";
 import { reservationPath } from "../../src/octocode/shared/home.ts";
@@ -572,13 +573,15 @@ describe("team database schema", () => {
 		const cwd = repo();
 		const other = open(cwd, file);
 		other.save(member("a-0001"));
+		// The team's rows are in its workspace file (the machine file while workspace files are off).
+		const rows = other.file;
 		other.close();
-		// A newer, breaking writer also raises the floor an older Octocode may still read (`schema_readable_from`).
-		exec(file, "PRAGMA user_version=99; UPDATE meta SET value = '99' WHERE key = 'schema_readable_from';");
+		// A newer, breaking writer also raises the oldest schema that may still read the file (`schema_meta.min_reader`).
+		exec(file, "PRAGMA user_version=99; UPDATE schema_meta SET min_reader = 99;");
 		expect(() => open(cwd, file)).toThrow(
 			/schema version 99, newer than this Octocode's .*Nothing in the file changed/,
 		);
-		const db = new DatabaseSync(file);
+		const db = new DatabaseSync(rows);
 		expect((db.prepare("SELECT id FROM agents").all() as Array<{ id: string }>).map((row) => row.id)).toEqual([
 			"a-0001",
 		]);
@@ -992,7 +995,7 @@ describe("Team safety", () => {
 			expect(main.lock(["src/a.ts"], "refactor")).toMatchObject({ ok: true });
 			expect(main.reservation(target, "src/a.ts")).toBeUndefined();
 			// A stalled heartbeat: the lease expired in the database before it was renewed.
-			const raw = new DatabaseSync(file);
+			const raw = new DatabaseSync(workspaceDb(cwd, env).agent.file);
 			raw.exec("UPDATE leases SET expires_at = 1");
 			raw.close();
 			vi.advanceTimersByTime(6_000);

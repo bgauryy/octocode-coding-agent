@@ -3,6 +3,8 @@ import path from "node:path";
 import { homeTilde } from "@octocodeai/octocode-common/home-tilde";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { mask, unhide } from "@octocodeai/octocode-common/shell-words";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { contentHash } from "./scan.ts";
 import type { Finding, ItemFile, Rating, ReviewItem } from "./types.ts";
 
 /**
@@ -68,24 +70,47 @@ export interface HookItemInput {
 	home?: string;
 }
 
-/** Script files a hook command names that exist: `./x.sh`, `$CLAUDE_PROJECT_DIR/.claude/hooks/x.py`, `/abs/x.js`. */
-function scriptFiles(command: string, cwd: string): { files: ItemFile[]; unreadable?: string } {
-	const files: ItemFile[] = [];
+type Pinned = { files: ItemFile[]; unreadable?: string };
+
+/** Adds the bytes of `file` (named `word`) to `into`; false when it is no file or cannot be read. */
+function pinFile(into: Pinned, word: string, file: string): boolean {
+	let stat;
+	try {
+		stat = statSync(file);
+	} catch {
+		// A word that names no file is part of the command, which is hashed whole.
+		return false;
+	}
+	if (!stat.isFile()) return false;
+	if (stat.size > SCRIPT_LIMIT) {
+		into.unreadable ??= `${word} is larger than ${SCRIPT_LIMIT} bytes`;
+		return true;
+	}
+	try {
+		into.files.push(fileOf(`script ${word}`, readFileSync(file)));
+	} catch (error) {
+		// An existing file whose bytes cannot be read must not be approved unpinned.
+		into.unreadable ??= `${word} cannot be read (${errorMessage(error)})`;
+	}
+	return true;
+}
+
+/**
+ * Script files a command names that exist: `./x.sh`, `$CLAUDE_PROJECT_DIR/.claude/hooks/x.py`, `/abs/x.js`. With
+ * `anyInProject`, a file inside `cwd` is pinned whatever its extension.
+ */
+function scriptFiles(command: string, cwd: string, anyInProject = false): Pinned {
+	const pinned: Pinned = { files: [] };
 	const expanded = command.replace(/\$\{?(?:CLAUDE_PROJECT_DIR|OCTOCODE_PROJECT_DIR|PWD)\}?/g, cwd);
 	for (const raw of mask(expanded, []).split(/[\s;&|()<>]+/)) {
 		const word = unhide(raw);
-		if (!SCRIPT_EXTENSIONS.has(path.extname(word).toLowerCase())) continue;
 		const file = path.resolve(cwd, word);
-		try {
-			const stat = statSync(file);
-			if (!stat.isFile()) continue;
-			if (stat.size > SCRIPT_LIMIT) return { files, unreadable: `${word} is larger than ${SCRIPT_LIMIT} bytes` };
-			files.push(fileOf(`script ${word}`, readFileSync(file)));
-		} catch {
-			// A word that names no file is part of the command, which is hashed whole.
-		}
+		const known = SCRIPT_EXTENSIONS.has(path.extname(word).toLowerCase());
+		if (!known && !(anyInProject && word && inside(file, cwd))) continue;
+		pinFile(pinned, word, file);
+		if (pinned.unreadable) break;
 	}
-	return { files };
+	return pinned;
 }
 
 const HOOK_FLOORS: Record<HookItemInput["type"], Rating> = {
@@ -282,5 +307,81 @@ export function skillItem(input: SkillItemInput): ReviewItem {
 		files: read.files,
 		...(read.over ? { unreadable: read.over } : {}),
 		...(findings.length ? { preset: findings } : {}),
+	};
+}
+
+export interface AgentItemInput {
+	/** The entry's provider id. */
+	id: string;
+	kind: "acp" | "cli";
+	command: string;
+	args: readonly string[];
+	/** Names of the variables it receives. */
+	env: readonly string[];
+	/** The settings file that declares it. */
+	source: string;
+	scope: string;
+	/** The project folder: relative paths resolve here, and a program or script inside it is pinned by its bytes. */
+	cwd: string;
+	/** The file `command` resolves to, when it was found. */
+	executable?: string;
+	home?: string;
+}
+
+const inside = (file: string, folder: string): boolean => {
+	const relative = path.relative(folder, file);
+	return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+};
+
+/** The project files an entry pins: the scripts its arguments name and its own program when it lies in the project. */
+function agentScripts(input: AgentItemInput): Pinned {
+	const scripts = scriptFiles(input.args.join(" "), input.cwd, true);
+	if (input.executable && inside(input.executable, input.cwd)) pinFile(scripts, input.command, input.executable);
+	return scripts;
+}
+
+/**
+ * The hash of the project files an entry pins, read now; undefined when it pins none. A later call that differs means
+ * a file changed after the entry was approved.
+ */
+export function agentPinHash(input: AgentItemInput): string | undefined {
+	const { files, unreadable } = agentScripts(input);
+	return files.length || unreadable ? `${contentHash(files)}${unreadable ?? ""}` : undefined;
+}
+
+/**
+ * A project's `externalModels` entry: its launch (kind, command, arguments, variable names) is the approved content,
+ * with the bytes of the program when it lies in the project and of any script its arguments name, so a changed script
+ * asks again.
+ */
+export function agentItem(input: AgentItemInput): ReviewItem {
+	const launch = [input.command, ...input.args].join(" ");
+	const secrets = input.env.filter((name) => SECRET_NAME.test(name));
+	const scripts = agentScripts(input);
+	return {
+		kind: "agent",
+		id: `agent:${input.id}`,
+		identity: input.id,
+		scope: input.scope,
+		label: input.id,
+		path: homeTilde(input.source, input.home),
+		grants: [
+			`Starts \`${launch}\` as you, with your file access, to answer this session's turns`,
+			...(input.env.length ? [`Receives ${input.env.join(", ")}`] : []),
+			...(input.kind === "acp" ? ["Calls the tools Octocode offers it"] : []),
+		],
+		floor: "MEDIUM",
+		files: [
+			{
+				name: "entry",
+				text: JSON.stringify({ kind: input.kind, command: input.command, args: input.args, env: input.env }, null, 1),
+			},
+			{ name: "launch", text: launch },
+			...scripts.files,
+		],
+		...(scripts.unreadable ? { unreadable: scripts.unreadable } : {}),
+		...(secrets.length
+			? { preset: [{ rule: "secret-env", rating: "HIGH" as const, text: `Receives ${secrets.join(", ")}` }] }
+			: {}),
 	};
 }

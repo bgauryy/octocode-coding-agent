@@ -12,6 +12,7 @@ import { connectAcp } from "./acp-host.ts";
 import { runnerSessionMeta } from "./runner-isolation.ts";
 import { selectedExternalAgent } from "./selection.ts";
 import { type InstalledAcpAgent, installedAcpAgents } from "./discover.ts";
+import { runnerSpec } from "./runners.ts";
 import { OctocodeBackend } from "./octocode.ts";
 import { expandPromptRefs } from "./refs.ts";
 import type { ExternalBackend } from "@octocodeai/octocode-contracts/external";
@@ -27,7 +28,7 @@ function notSent(message: string): Error {
 }
 
 export interface ExternalPolicy {
-	/** Undefined preserves an explicitly enabled legacy/custom ACP setup. */
+	/** The selected vendors (`enabledExternalAgents`); undefined when none is configured: manual connections are not limited. */
 	enabledRunners?: readonly string[];
 	authorize(input: ExternalParams, ctx: FeatureContext, signal: AbortSignal): Promise<void>;
 	beforeSend(message: MessageEnvelope, ctx: FeatureContext, signal?: AbortSignal): Promise<void>;
@@ -99,12 +100,15 @@ export class ExternalAgents {
 	}
 
 	/**
-	 * Whether there is anything to connect to: a known ACP agent on PATH, or another live Octocode instance. The `agent`
+	 * Whether there is anything to connect to: a known ACP agent on PATH, a selected vendor Octocode does not ship (the
+	 * user's own ACP agent, connected by its command), or another live Octocode instance. The `agent`
 	 * tool declares its `external` type only then, and only with the `externalAgents` setting on; `/agents external` stays available either way. Reads only; nothing is
 	 * started or pruned.
 	 */
 	discoverable(): boolean {
 		if (this.installed().length > 0) return true;
+		// `octocode` is a selectable vendor too, but another Octocode counts only when it is live (below).
+		if (this.policy.enabledRunners?.some((id) => id !== "octocode" && !runnerSpec(id))) return true;
 		return peerInstances(false).length > 0;
 	}
 

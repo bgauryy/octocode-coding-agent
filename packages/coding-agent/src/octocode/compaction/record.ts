@@ -23,16 +23,20 @@ type CompactionNoteKind =
 	/** Complete checkpoint content could not be persisted, so compaction was cancelled. */
 	| "checkpoint-not-saved"
 	/** The summary requested ahead of the threshold (`early-summary.ts`): requested, ready, or why it cannot be used. */
-	| "early-summary";
+	| "early-summary"
+	/** The decision at a finished backlog item (`on-done.ts`): its measures and whether it compacted. */
+	| "done-compaction";
 
 /** Appends a compaction note to the session; a session replaced meanwhile (a stale `api`) records nothing. */
 export function recordCompactionNote(
 	api: SetupPick<"session", "appendEntry">,
 	kind: CompactionNoteKind,
 	reason: string,
+	/** Measures a reader of the history can use; written beside `kind` and `reason`. */
+	data: Record<string, unknown> = {},
 ): void {
 	try {
-		api.session.appendEntry(COMPACTION_NOTE_TYPE, { kind, reason });
+		api.session.appendEntry(COMPACTION_NOTE_TYPE, { ...data, kind, reason });
 	} catch (error) {
 		if (!isStaleSessionError(error)) throw error;
 	}

@@ -14,24 +14,11 @@ import { getCompat, getConfigurationUpdateEffort } from "../openai-responses/com
 import type { OpenAIResponsesOptions } from "../openai-responses/types.ts";
 import { transformMessages } from "../transform-messages.ts";
 import { fastHash } from "../../utils/hash.ts";
-import { fitToolCallId, sanitizeToolCallId, DEFAULT_TOOL_CALL_ID_MAX_LENGTH } from "../tool-call-id.ts";
-import { RESPONSES_TOOL_CALL_PROVIDERS } from "../openai-responses-shared/messages.ts";
+import { responsesToolCallIdNormalizer } from "../openai-responses-shared/tool-call-ids.ts";
 import { parseTextSignature } from "../openai-responses-shared/text-signature.ts";
 
 export function responsesReplayMessages(model: ResponsesModel, context: TranscriptContext) {
-	return transformMessages(context.messages, model, (id, _model, source) => {
-		if (
-			!(model.api === "azure-openai-responses" || RESPONSES_TOOL_CALL_PROVIDERS.has(model.provider)) ||
-			!id.includes("|")
-		)
-			return fitToolCallId(id).replace(/_+$/, "");
-		const [callId, itemId] = id.split("|");
-		const normalize = (value: string) =>
-			sanitizeToolCallId(value, DEFAULT_TOOL_CALL_ID_MAX_LENGTH, { trimTrailingUnderscores: true });
-		const foreign = source.provider !== model.provider || source.api !== model.api;
-		const normalizedItem = foreign ? `fc_${fastHash(itemId)}` : normalize(itemId);
-		return `${normalize(callId)}|${!foreign && normalizedItem.startsWith("ctc_") ? normalizedItem : normalizedItem.startsWith("fc_") ? normalizedItem : `fc_${normalizedItem}`}`;
-	});
+	return transformMessages(context.messages, model, responsesToolCallIdNormalizer(model, context.messages));
 }
 
 function replayMessage(
@@ -95,7 +82,7 @@ function replayMessage(
 									: block.arguments,
 								providerOptions: {
 									openai: {
-										...(itemId?.startsWith("fc_") &&
+										...(itemId?.startsWith(grammarProperties.has(block.name) ? "ctc_" : "fc_") &&
 										(sameModel || message.provider !== model.provider || message.api !== model.api)
 											? { itemId }
 											: {}),

@@ -135,7 +135,7 @@ Add `--local` to enable for this workspace only. A same-named server in an Octoc
 | Server      | Default                                                                                                                       | Turn off                                                                                                        | Turn on again                                                                   |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | `octocode`  | on                                                                                                                            | `/settings disable mcp:octocode`, `OCTOCODE_MCP=0`, or `{ "mcpServers": { "octocode": { "enabled": false } } }` | `/settings enable mcp:octocode`; a file definition overrides `OCTOCODE_MCP=0`   |
-| `browser`   | on, on demand in the main session; a subagent gets it only through the bundled `browser` role or a task's `mcp` list          | `/settings disable mcp:browser`                                                                                 | `/settings enable mcp:browser`                                                  |
+| `browser`   | on, on demand in the main session; a subagent gets it through the bundled `browser` or `desktop` role or a task's `mcp` list  | `/settings disable mcp:browser`                                                                                 | `/settings enable mcp:browser`                                                  |
 | `desktop`   | on while `cua-driver` is found (on `PATH`, or at `OCTOCODE_CUA_DRIVER_PATH`), assigned only to the bundled `desktop` subagent | `/settings disable mcp:desktop`, or `OCTOCODE_MCP_DESKTOP=0`                                                    | `/settings enable mcp:desktop`                                                  |
 | `freellama` | off                                                                                                                           | `/harness mcp`, `/settings disable mcp:freellama`, or `OCTOCODE_MCP_FREELLAMA=0`                                | `/harness mcp`, `/settings enable mcp:freellama`, or `OCTOCODE_MCP_FREELLAMA=1` |
 
@@ -147,7 +147,19 @@ The `octocode` server offers local, GitHub and package research tools to every a
 
 `freellama` runs [FreeLlama](https://github.com/bgauryy/FreeLlama) (`@octocodeai/freellama-mcp-server`), which picks, runs and manages local Ollama models. It is off until you turn it on, even where Ollama is installed; Octocode then installs the pinned package from npm on its first launch. A switch you save in `/harness` or `/settings` wins over `OCTOCODE_MCP_FREELLAMA`. Ollama must be running for its tools to work. It serves the main session only: a subagent never starts it (no tools, no instructions in its prompt), unless its profile's `tools` names `mcp__freellama__*` or its task's `mcp` list names `freellama`. Its tools are `onDemand`: the prompt lists each by name and trigger, and keeps its instructions out until the agent reads the server or one of its tools with the `mcp` tool.
 
-Your own servers serve the main session. A subagent runs only the built-in servers its role uses (`octocode` for every role except `lean`, `browser` and `desktop` for the roles that name them) plus any server its profile's `tools:` names (`mcp__<server>__*`) or its task's `mcp` list names; every other server, from your files, another tool's files, a plugin or the `mcp` tool, stays with the main session ([servers per task](mcp-reference.md#assign-servers-to-agents)).
+Octocode assigns each default server to agents in one place, shipped with it:
+
+| Agent                                                                         | Default servers                                                                               |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| main session                                                                  | `octocode`, `freellama` (once turned on), `browser` (tools on demand); `desktop` is delegated |
+| `general` (a task without a profile), `researcher`, `reviewer`, `implementer` | `octocode`                                                                                    |
+| `browser`                                                                     | its page tools of `browser`, and `octocode`                                                   |
+| `desktop`                                                                     | `desktop` and `octocode`                                                                      |
+| `lean`                                                                        | none                                                                                          |
+
+A profile of your own, including one that replaces a bundled role by name, gets only what its own `tools:` and its task name, plus `octocode`'s research tools unless it is lean.
+
+Your own servers serve the main session. A subagent runs only the built-in servers its role is assigned above plus any server its profile's `tools:` names (`mcp__<server>__*`) or its task's `mcp` list names; every other server, from your files, another tool's files, a plugin or the `mcp` tool, stays with the main session ([servers per task](mcp-reference.md#assign-servers-to-agents)).
 
 Defining a server with the same name in `mcp.json` replaces the built-in launch. To switch MCP off for one run use `--no-mcp` (no servers connect, no MCP tools; subagents inherit it). The browser server and its permission rules: [reference](mcp-reference.md#built-in-mcp-host).
 
@@ -190,8 +202,8 @@ By default every server is in the main agent's tool selection; a subagent runs o
 
 ## Host and protocol support
 
-| Supported | Not supported |
-| --- | --- |
+| Supported                                                                                                                                                                             | Not supported                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | stdio and Streamable HTTP, stateful MCP up to `2025-11-25`, [resources and prompts](mcp-reference.md#resources-and-prompts), [elicitation forms](mcp-reference.md#requests-for-input) | Stateless `2026-07-28`, resource subscriptions, URL-mode elicitation, sampling, tasks, MCP Apps |
 
 ## Let the model manage servers

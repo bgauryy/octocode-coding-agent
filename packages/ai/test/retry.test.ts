@@ -373,10 +373,34 @@ describe("retryAssistantCall", () => {
 				: fauxAssistantMessage("recovered");
 		});
 		const onRetryScheduled = vi.fn();
-
-		await retryAssistantCall(produce, policy, undefined, { onRetryScheduled });
+		// No jitter: the delays are the exponential backoff, capped.
+		const random = vi.spyOn(Math, "random").mockReturnValue(0);
+		try {
+			await retryAssistantCall(produce, policy, undefined, { onRetryScheduled });
+		} finally {
+			random.mockRestore();
+		}
 
 		expect(onRetryScheduled.mock.calls.map((call) => call[2])).toEqual([10, 15, 15, 15]);
+	});
+
+	it("spreads an ordinary error's backoff by up to half again, under the cap", async () => {
+		const policy: RetryPolicy = { enabled: true, maxRetries: 3, baseDelayMs: 10, maxAgentDelayMs: 40 };
+		let n = 0;
+		const produce = vi.fn(async () =>
+			++n < 4
+				? fauxAssistantMessage("", { stopReason: "error", errorMessage: "request timeout" })
+				: fauxAssistantMessage("recovered"),
+		);
+		const onRetryScheduled = vi.fn();
+		await retryAssistantCall(produce, policy, undefined, { onRetryScheduled });
+		const delays = onRetryScheduled.mock.calls.map((call) => call[2] as number);
+		expect(delays).toHaveLength(3);
+		delays.forEach((delay, index) => {
+			const backoff = Math.min(10 * 2 ** index, 40);
+			expect(delay).toBeGreaterThanOrEqual(backoff);
+			expect(delay).toBeLessThanOrEqual(Math.min(backoff * 1.5, 40));
+		});
 	});
 
 	it("stops retrying once a call succeeds", async () => {

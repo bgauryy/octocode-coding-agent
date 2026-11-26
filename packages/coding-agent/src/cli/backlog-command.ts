@@ -5,9 +5,8 @@ import { LIST_STATES, type ListState } from "@octocodeai/octocode-contracts/snap
 import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import { backlog as queries } from "../../../db/src/api.ts";
 import { APP_NAME } from "../config.ts";
-import { sharedAgentDb } from "../storage/database.ts";
 import { agentDbPath } from "../storage/state-paths.ts";
-import { registeredWorkspace } from "../storage/workspace-database.ts";
+import { workspaceDb } from "../storage/workspace-database.ts";
 import type { Backlog } from "../octocode/backlog/context.ts";
 import { exportMarkdown } from "../octocode/backlog/format.ts";
 import { sessionWorkspace } from "../octocode/shared/home/workspace.ts";
@@ -110,8 +109,7 @@ const forCommand = (text: string): string =>
 	});
 
 function openBoard(io: BacklogCommandIo, env: NodeJS.ProcessEnv): Backlog {
-	const agent = sharedAgentDb(env);
-	const workspace = registeredWorkspace(sessionWorkspace(io.cwd, env), agent);
+	const { agent, workspace } = workspaceDb(sessionWorkspace(io.cwd, env), env);
 	return {
 		store: new BacklogStore(() => agent, workspace.id),
 		actor: { id: "cli", surface: "command" },
@@ -121,7 +119,7 @@ function openBoard(io: BacklogCommandIo, env: NodeJS.ProcessEnv): Backlog {
 	};
 }
 
-function run(sub: string, options: Options, board: Backlog, io: BacklogCommandIo, env: NodeJS.ProcessEnv): string {
+function run(sub: string, options: Options, board: Backlog, io: BacklogCommandIo): string {
 	if (sub === "get") {
 		const [id] = options.operands;
 		if (id === undefined || options.operands.length > 1) throw new UsageError("get takes one item id.");
@@ -169,11 +167,10 @@ function run(sub: string, options: Options, board: Backlog, io: BacklogCommandIo
 	if (sub === "graph") {
 		if (options.operands.length > 0) throw new UsageError(`graph takes options, not ${options.operands[0]}.`);
 		const item = options.flags.get("--item");
-		const agentDb = sharedAgentDb(env);
 		return graphCommandText({
-			agentDb,
+			agentDb: board.store.agent,
 			store: board.store,
-			repo: registeredWorkspace(board.repoRoot, agentDb).id,
+			repo: board.store.repo,
 			root: board.repoRoot,
 			now: Date.now(),
 			json: options.json,
@@ -208,7 +205,7 @@ export async function runBacklogCommand(args: string[], io: BacklogCommandIo): P
 			err(`No backlog board for ${io.cwd}.`);
 			return 1;
 		}
-		out(run(sub, options, openBoard(io, env), io, env));
+		out(run(sub, options, openBoard(io, env), io));
 		return 0;
 	} catch (error) {
 		if (error instanceof UsageError) err(`${error.message}\n${BACKLOG_COMMAND_USAGE}`);

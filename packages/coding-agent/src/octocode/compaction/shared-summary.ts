@@ -62,12 +62,13 @@ const PREVIOUS_SUMMARY_NOTE = renderPrompt("workflows/compaction/shared-previous
  * reference to its saved file. It goes into the final message rather than replacing the reference, so the cached
  * messages stay the same.
  */
-function archivedPreviousNote(entries: ReadonlyArray<{ sourceEntry: unknown; messages: unknown[] }>): string {
+export function archivedPreviousNote(entries: ReadonlyArray<{ sourceEntry: unknown; messages: unknown[] }>): string {
 	const previous = entries.find(
 		(entry) => isRecord(entry.sourceEntry) && entry.sourceEntry.type === "compaction" && entry.messages.length > 0,
 	);
-	const text = isRecord(previous?.sourceEntry) ? archivedSummary(previous.sourceEntry.details) : undefined;
-	return text === undefined ? "" : renderPrompt("workflows/compaction/shared-archived-summary.md", { text });
+	const raw = isRecord(previous?.sourceEntry) ? archivedSummary(previous.sourceEntry.details) : undefined;
+	if (raw === undefined) return "";
+	return renderPrompt("workflows/compaction/shared-archived-summary.md", { text: splitSummary(raw).body });
 }
 
 /** The longest a quoted start of a message gets. */
@@ -81,28 +82,45 @@ function describeMessage(message: unknown): string | undefined {
 	const content = message.content;
 	const text = contentText(content);
 	if (message.role === "toolResult") return `result of the ${String(message.toolName)} tool call`;
+	if (message.role === "bashExecution") {
+		const cmd = typeof message.command === "string" ? quote(message.command) : quote(text);
+		return cmd ? `bash command "${cmd}"` : "bash execution";
+	}
+	if (message.role === "custom") {
+		return quote(text) ? `message beginning "${quote(text)}"` : undefined;
+	}
+	if (message.role === "branchSummary") {
+		const summary = typeof message.summary === "string" ? quote(message.summary) : "";
+		return summary ? `branch summary beginning "${summary}"` : "branch summary";
+	}
 	const role = message.role === "user" || message.role === "assistant" ? message.role : undefined;
 	if (!role) return undefined;
 	if (quote(text)) return `${role} message beginning "${quote(text)}"`;
 	const toolCall = Array.isArray(content)
 		? content.find((part) => isRecord(part) && part.type === "toolCall")
 		: undefined;
-	return isRecord(toolCall)
-		? `${role} message that calls the ${String(toolCall.name)} tool with ${quote(JSON.stringify(toolCall.arguments))}`
-		: undefined;
+	if (isRecord(toolCall)) {
+		return `${role} message that calls the ${String(toolCall.name)} tool with ${quote(JSON.stringify(toolCall.arguments))}`;
+	}
+	const hasImage = Array.isArray(content) && content.some((part) => isRecord(part) && part.type === "image");
+	return hasImage ? `${role} message with an image` : undefined;
 }
 
 /**
  * Where the kept messages begin, as the model can recognise it. The model sees the whole conversation, but the messages
  * from `firstKeptEntryId` on stay in context after the summary, so it summarizes what comes before them.
  */
-function boundaryNote(
+export function boundaryNote(
 	entries: ReadonlyArray<{ sourceEntry: { id: string }; messages: unknown[] }>,
 	firstKeptEntryId: string,
 ): string {
-	const kept = entries.find((entry) => entry.sourceEntry.id === firstKeptEntryId);
-	const first = kept?.messages.map(describeMessage).find((description) => description !== undefined);
-	return first === undefined ? "" : renderPrompt("workflows/compaction/shared-boundary.md", { first });
+	const start = entries.findIndex((entry) => entry.sourceEntry.id === firstKeptEntryId);
+	if (start < 0) return "";
+	for (let i = start; i < entries.length; i++) {
+		const first = entries[i].messages.map(describeMessage).find((description) => description !== undefined);
+		if (first !== undefined) return renderPrompt("workflows/compaction/shared-boundary.md", { first });
+	}
+	return "";
 }
 
 /** Octocode's cap on a summary: what fits inline (`inlineSummaryTokens`), and never beyond what the model can write. */

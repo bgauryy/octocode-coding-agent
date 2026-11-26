@@ -1,3 +1,4 @@
+import { effortLevel, effortValue } from "../../models/model-helpers.ts";
 import { bedrockRequestEffort } from "../../utils/bedrock-models.ts";
 import { jsonSchema, tool, type ToolChoice, type ToolSet, type TextStreamPart } from "ai";
 import { splitSystemMessageIntoBlocks } from "../../utils/instruction-split.ts";
@@ -24,7 +25,7 @@ import {
 	resolvePromptCacheKey,
 } from "../../utils/cache-policy.ts";
 import { completionsCacheProfile } from "../../utils/cache-profile-resolve.ts";
-import { matchesHost } from "../../utils/provider-host.ts";
+import { profileCacheFacts, profileQuirks } from "../../utils/provider-profile.ts";
 import { getCompat } from "../openai-completions/compat.ts";
 import type { OpenAICompletionsOptions } from "../openai-completions/types.ts";
 import { clampOpenAIPromptCacheKey } from "../openai-prompt-cache.ts";
@@ -183,7 +184,7 @@ function augmentCompletionsRequest(
 		compat.supportsLongCacheRetention &&
 		profile.extendedRetention !== undefined &&
 		!model.compat?.supportsExplicitPromptCacheMode &&
-		(matchesHost(model.baseUrl, "api.openai.com") || model.compat?.supportsLongCacheRetention)
+		(profileCacheFacts(model).keyWhenCached || model.compat?.supportsLongCacheRetention)
 	)
 		body.prompt_cache_retention = profile.extendedRetention;
 	if (compat.supportsStore) body.store = false;
@@ -198,10 +199,10 @@ function augmentCompletionsRequest(
 	const effort =
 		bedrockRequestEffort(model, options.reasoningEffort) ??
 		(enabled
-			? (model.thinkingLevelMap?.[options.reasoningEffort!] ?? options.reasoningEffort)
+			? (effortValue(model, options.reasoningEffort!) ?? effortLevel(model, options.reasoningEffort!))
 			: model.thinkingLevelMap?.off === null
 				? undefined
-				: (model.thinkingLevelMap?.off ?? (matchesHost(model.baseUrl, "api.openai.com") ? "none" : undefined)));
+				: (model.thinkingLevelMap?.off ?? profileQuirks(model, "host").reasoningOffEffort));
 	if (model.reasoning) {
 		delete body.reasoning_effort;
 		if (compat.supportsReasoningEffort && typeof effort === "string") body.reasoning_effort = effort;

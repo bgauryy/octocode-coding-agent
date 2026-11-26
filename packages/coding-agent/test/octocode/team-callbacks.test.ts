@@ -9,6 +9,7 @@ import { MAX_PENDING_PER_REQUESTER } from "../../src/octocode/events/tickets.ts"
 import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 
 const started: Array<{ emit: (name: string, event: unknown, ctx: unknown) => Promise<unknown>; ctx: unknown }> = [];
 afterEach(async () => {
@@ -30,7 +31,7 @@ function setup() {
 		return { team, ctx, emit: fake.emit };
 	};
 	const sql = (statement: string, ...args: Array<string | number>) => {
-		const raw = new DatabaseSync(file);
+		const raw = new DatabaseSync(workspaceDb(cwd, { ...process.env, OCTOCODE_AGENT_DB: file }).agent.file);
 		try {
 			return raw.prepare(statement).all(...args) as Array<Record<string, unknown>>;
 		} finally {

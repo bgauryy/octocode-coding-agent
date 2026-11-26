@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { jobs } from "../../../db/src/api.ts";
 import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -79,8 +79,8 @@ describe.runIf(process.platform !== "win32")("background bash joins", () => {
 		// Once the first run ended, the row says so and a new start is not a join.
 		first.bashJobs.stop("bash-1", "user");
 		second.bashJobs.stop("bash-1", "user");
-		const rows = () =>
-			jobs.running(sharedAgentDb().db, jobs.bySessionJob(sharedAgentDb().db, "s-one", "bash-1")!.workspace_id);
+		const { agent } = workspaceDb(cwd);
+		const rows = () => jobs.running(agent.db, jobs.bySessionJob(agent.db, "s-one", "bash-1")!.workspace_id);
 		await until(() => rows().length === 0);
 		const again = await second.run({ command: SLEEP, background: true });
 		expect(text(again)).not.toMatch(/^joined/);
@@ -92,9 +92,10 @@ describe.runIf(process.platform !== "win32")("background bash joins", () => {
 		const first = session("s-live", cwd);
 		const second = session("s-ghost", cwd);
 		await first.run({ command: SLEEP, background: true });
-		const row = jobs.bySessionJob(sharedAgentDb().db, "s-live", "bash-1")!;
+		const { agent } = workspaceDb(cwd);
+		const row = jobs.bySessionJob(agent.db, "s-live", "bash-1")!;
 		// A row naming a pid the owner record does not confirm grants no join.
-		sharedAgentDb().db.prepare("UPDATE jobs SET pid = pid + 1 WHERE id = ?").run(row.id);
+		agent.db.prepare("UPDATE jobs SET pid = pid + 1 WHERE id = ?").run(row.id);
 		expect(text(await second.run({ command: SLEEP, background: true }))).not.toMatch(/^joined/);
 		first.bashJobs.stop("bash-1", "user");
 		second.bashJobs.stop("bash-1", "user");

@@ -5,6 +5,8 @@ description: "Use to sort many unread files, hits, history rows or logs by a yes
 
 # Classify instead of reading
 
+Tool names here are the research server's at writing; use the equivalent it lists. Without a classification tool, read or search instead.
+
 `clasify` (and `classification` on `localSearch`, `localFetch`, `ghSearchCode`, `ghGetFileContent`, `ghSearchHistory`, `ghGetHistoryItem`, `structureSearch`) asks a model a typed question about material you have not read. It scouts; it never proves. Each `evaluate`, `sections` and fresh inline query bills the provider; a repeated `evaluate` bills again. Without a classification key the tool and the fields are absent or answer `missingConfiguration`: that is a gap, not a setting to change.
 
 ## When

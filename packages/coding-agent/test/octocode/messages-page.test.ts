@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import { type AgentDb } from "../../../db/src/api.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
+import { openWorkspaceDb } from "../../src/storage/workspace-database.ts";
 import type { PageChoice } from "../../src/octocode/shared/page.ts";
 import type { FeedNotice } from "../../src/octocode/team/feed.ts";
 import { type FeedSource, readFeed } from "../../src/octocode/team/feed-read.ts";
@@ -245,6 +246,7 @@ describe("messages page over a fake feed", () => {
 
 describe("messages page over the team database and transcript files", () => {
 	let db: AgentDb;
+	let rows: AgentDb;
 	let store: TeamStore;
 	beforeEach(() => {
 		fs.mkdirSync(path.join(root, ".git"));
@@ -252,11 +254,13 @@ describe("messages page over the team database and transcript files", () => {
 		vi.stubEnv("OCTOCODE_HOME", path.join(root, "home"));
 		vi.stubEnv("OCTOCODE_AGENT_DB", path.join(root, "agent.db"));
 		db = openAgentDb();
+		rows = openWorkspaceDb(db, root).agent;
 		store = TeamStore.open(root, db.file);
 		store.lifecycle = { activationId: "start", sessionId: "session-main" };
 	});
 	afterEach(() => {
 		store.close();
+		if (rows !== db) rows.close();
 		db.close();
 		vi.unstubAllEnvs();
 	});
@@ -264,7 +268,7 @@ describe("messages page over the team database and transcript files", () => {
 	it("reads a session whose transcript is not written yet (no message sent) as one with no notices", async () => {
 		store.join(member("alpha", { sessionId: "s-alpha", checkout: root, cwd: root }));
 		const ports = messagesPorts({
-			db: db.db,
+			db: rows.db,
 			team: store.team,
 			members: () => store.list(),
 			root,
@@ -312,7 +316,7 @@ describe("messages page over the team database and transcript files", () => {
 		];
 		fs.writeFileSync(file, lines.map((line) => `${JSON.stringify(line)}\n`).join(""));
 		const ports = messagesPorts({
-			db: db.db,
+			db: rows.db,
 			team: store.team,
 			members: () => store.list(),
 			root,

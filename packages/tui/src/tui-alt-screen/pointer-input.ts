@@ -17,6 +17,7 @@ import type { ScrollToEndIndicatorRect, SgrMouseEvent, WheelEvent } from "./type
 export interface AltScreenPointerHost {
 	readonly search: AltScreenSearchController;
 	readonly selection: AltScreenSelection;
+	readonly selectionEnabled?: boolean;
 	readonly scrollbar: AltScreenScrollbar;
 	readonly mouse: AltScreenMouseGesture;
 	readonly wheelScroll: WheelScrollAccelerator;
@@ -26,6 +27,8 @@ export interface AltScreenPointerHost {
 	getScrollToEndIndicatorRect(): ScrollToEndIndicatorRect | undefined;
 	/** Write the screen's terminal modes again: a terminal reset while it was in the background turned them off. */
 	reassertModes(): void;
+	/** Report whether a mouse button is held (press and drag) or not (release, motion). */
+	noteMouseButton(down: boolean): void;
 	dispatchMouseToOverlay(event: TuiMouseEvent): { hit: boolean; result?: TuiMouseDispatchResult };
 	requestRender(): void;
 	scrollToBottom(): void;
@@ -33,6 +36,7 @@ export interface AltScreenPointerHost {
 
 /** End selection auto-scroll, presses, wheel and arrow bursts, scrollbar hover and drags, and component gestures. */
 export function stopPointerGestures(host: AltScreenPointerHost & { readonly arrowBurst: { cancel(): void } }): void {
+	host.noteMouseButton(false);
 	host.selection.stopSelectionAutoScroll();
 	host.wheelScroll.clearPending();
 	host.arrowBurst.cancel();
@@ -45,6 +49,7 @@ export function stopPointerGestures(host: AltScreenPointerHost & { readonly arro
 /** Drop pointer state when the terminal loses focus: presses, drags, hover and multi-click history. */
 function handlePointerFocusOut(host: AltScreenPointerHost): void {
 	const selection = host.selection;
+	host.noteMouseButton(false);
 	const hadActiveSelection = selection.selectionPressActive;
 	const hadNonEmptyActiveSelection = hadActiveSelection && selection.getSelectionBounds() !== undefined;
 	selection.selectionPressActive = false;
@@ -118,6 +123,7 @@ function handleMouseEvent(host: AltScreenPointerHost, raw: SgrMouseEvent): void 
 				? "move"
 				: "drag"
 			: "press";
+	host.noteMouseButton(type === "press" || type === "drag");
 	const event = host.mouse.createMouseEvent(type, raw.button, raw.x, raw.y);
 
 	// Motion with no button held: the release of an earlier press never arrived, so its gesture is over.
@@ -149,7 +155,8 @@ function handleMouseEvent(host: AltScreenPointerHost, raw: SgrMouseEvent): void 
 	}
 
 	if (handleRightClickPaste(host, raw)) return;
-	host.selection.handleSelectionMouseEvent(raw);
+	if (host.selectionEnabled === false) host.selection.handleClickOnlyMouseEvent(raw);
+	else host.selection.handleSelectionMouseEvent(raw);
 }
 
 function routeWheel(host: AltScreenPointerHost, event: WheelEvent, delta: number): void {

@@ -4,6 +4,7 @@ import { isRecord } from "@octocodeai/octocode-contracts/guards";
 import type { FeatureContext, SetupPick } from "../../core/features/index.ts";
 import { renderPrompt } from "../../core/prompt-template.ts";
 import { contextMessages } from "../files/reads.ts";
+import { harnessSource, sourcedText } from "../events/source.ts";
 import { contentText, isStaleSessionError } from "../shared/util.ts";
 import { carriedLoadedSkills, SKILL_BLOCK, skillBlocksIn, skillsOf } from "./loaded-skills.ts";
 
@@ -39,6 +40,9 @@ function blocksOf(message: unknown): Map<string, { location: string; block: stri
 		blocks.set(match[1], { location: match[2], block: match[0] });
 	return blocks;
 }
+
+/** The message text of restored skill bodies: under the skills source's header. */
+const restoredText = (content: string): string => sourcedText(content, harnessSource("skills"));
 
 /** The skills whose bodies `messages` (the context kept after a compaction) already show, a restored message included. */
 function shownSkills(messages: readonly unknown[]): Set<string> {
@@ -134,11 +138,11 @@ export async function restoreLoadedSkills(
 				? Math.min(total, Math.floor(window * CHARS_PER_TOKEN * RESTORE_SKILLS_SHARE))
 				: total;
 		const messages = branch.flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
-		const restored = restoredSkills(messages, carried, shown, budget);
+		const restored = restoredSkills(messages, carried, shown, budget - restoredText("").length);
 		if (!restored) return [];
 		const details = { skills: restored.skills, ...(restored.cut.length > 0 ? { cut: restored.cut } : {}) };
 		await api.session.sendMessage(
-			{ customType: RESTORED_SKILLS_TYPE, content: restored.content, display: false, details },
+			{ customType: RESTORED_SKILLS_TYPE, content: restoredText(restored.content), display: false, details },
 			{ triggerTurn: false },
 		);
 		return restored.skills;

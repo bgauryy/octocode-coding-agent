@@ -49,11 +49,17 @@ flowchart LR
 
 - Paid tests live in `*.live.test.ts`; every vitest config excludes them unless `OCTOCODE_LIVE_TESTS=1` (set by `test:live`), and `yarn run check:live-tests` fails when a default run would collect one or a test gated on provider credentials. Local Ollama tests are not paid.
 - Run builds and full suites in the background; write long output to `.octocode/agent/tmp/`. Never run two builds or generators at once.
-- One full run at a time on this machine, across sessions, checkouts and worktrees: a whole vitest suite (no file filters) or `yarn run check` waits while another holds `~/.octocode/locks/full-run` and prints the holder (label, pid, session, folder, and the agent, backlog item and bash job when the `bash` tool started the run). Runs that name test files never wait. A killed holder's lock is taken over at once; `OCTOCODE_RUN_LOCK=off` skips it. To wait for the lock, poll `node scripts/test/full-run-lock.ts --status` (exit 0 when free; it clears a dead holder's lock) rather than the lock file. The core suite, like native and e2e, uses at most 4 workers.
+- One full run at a time on this machine, across sessions, checkouts and worktrees: a whole vitest suite (no file filters) or `yarn run check` waits while another holds `~/.octocode/locks/full-run` and prints the holder (label, pid, session, folder, and the agent, backlog item and bash job when the `bash` tool started the run). Runs that name test files never wait. A killed holder's lock is taken over at once; `OCTOCODE_RUN_LOCK=off` skips it. A full run that ends after files in the tree changed during it prints `tree changed during run: N files` and the first paths, since its result may mix states: rerun it once the tree is settled. To wait for the lock, poll `node scripts/test/full-run-lock.ts --status` (exit 0 when free; it clears a dead holder's lock) rather than the lock file. The core suite, like native and e2e, uses at most 4 workers.
 - After browser source changes run `yarn run generate:workspace`. After prompt, tool description or MCP preset changes run `yarn workspace @octocodeai/octocode-agent run generate:prompts` and read `.octocode/agent/tmp/agent-prompts/`.
 - Harness-based session tests: [suite rules](packages/coding-agent/test/suite/README.md).
 - Known flakes: `team-interpreter-parsed` "gates a 2000-stage pipeline quickly" (400 ms limit) under heavy load; the real-browser e2e can leave a Chrome process behind.
 - `octocode-test.sh` runs the agent from source; it is a launcher, not a suite.
+
+### Database schema compatibility
+
+Each schema migration declares `breaking`. A step that only adds tables, columns, indexes or rows is not breaking and must not raise anything. `schema_meta.min_reader` holds the oldest schema version that can still read the file: a breaking step raises it to that step's target version, and a build opens a file whose `min_reader` is at most its own schema version. A file written by a newer build stays readable by an older one until a breaking step runs.
+
+Moving rows between files is not a schema step. The split of the machine file (`workspaces.db`) into workspace files (`packages/db/src/schema-split.ts`) runs at open only when the host names the workspace folder, after a copy to `workspaces.db.pre-split.bak`, and raises `min_reader` itself once the rows are gone, so an older build refuses the file instead of showing empty boards.
 
 ## Release
 

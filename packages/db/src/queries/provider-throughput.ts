@@ -31,18 +31,18 @@ export interface ThroughputReserveInput {
 	estimatedTokens: number;
 	/** Tokens per minute before the key's adaptive scale and `utilization`. */
 	tokenLimit: number;
-	/** Requests per minute before the key's adaptive scale and `utilization`. */
-	requestLimit: number;
+	/** Requests per minute before the key's adaptive scale and `utilization`; omitted: no request cap, tokens only. */
+	requestLimit?: number;
 	/** Share of the capacity the caller may use, above 0 up to 1 (default 1); background callers leave headroom. */
 	utilization?: number;
 }
 
 export type ThroughputReserveResult =
-	| { admitted: true; effectiveTokenLimit: number; effectiveRequestLimit: number; usage: ThroughputUsage }
+	| { admitted: true; effectiveTokenLimit: number; effectiveRequestLimit?: number; usage: ThroughputUsage }
 	| {
 			admitted: false;
 			effectiveTokenLimit: number;
-			effectiveRequestLimit: number;
+			effectiveRequestLimit?: number;
 			usage: ThroughputUsage;
 			/** When the oldest counted request expires and capacity can return, ms since the epoch. */
 			retryAt: number;
@@ -131,13 +131,14 @@ export function reserve(db: DatabaseSync, input: ThroughputReserveInput): Throug
 	const now = int("now", input.now, 0);
 	const estimated = int("estimatedTokens", input.estimatedTokens, 0);
 	const tokenLimit = int("tokenLimit", input.tokenLimit, 1);
-	const requestLimit = int("requestLimit", input.requestLimit, 1);
+	const requestLimit = input.requestLimit === undefined ? undefined : int("requestLimit", input.requestLimit, 1);
 	const utilization = validUtilization(input.utilization);
 	return inTransaction(db, () => {
 		prune(db, now);
 		const factor = readState(db, key).scale * utilization;
 		const effectiveTokenLimit = Math.max(1, Math.floor(tokenLimit * factor));
-		const effectiveRequestLimit = Math.max(1, Math.floor(requestLimit * factor));
+		const effectiveRequestLimit =
+			requestLimit === undefined ? undefined : Math.max(1, Math.floor(requestLimit * factor));
 		// Only the current and preceding storage buckets intersect the rolling minute.
 		const recent = keptStatement(
 			db,
@@ -154,7 +155,9 @@ export function reserve(db: DatabaseSync, input: ThroughputReserveInput): Throug
 			db,
 			`SELECT 1 AS held FROM ${RESERVATIONS} WHERE key = ? AND window_start = ? AND reservation_id = ?`,
 		).get(key, windowStart, reservationId);
-		const fits = usage.requests + 1 <= effectiveRequestLimit && usage.tokens + estimated <= effectiveTokenLimit;
+		const fits =
+			(effectiveRequestLimit === undefined || usage.requests + 1 <= effectiveRequestLimit) &&
+			usage.tokens + estimated <= effectiveTokenLimit;
 		if (!held && !fits && usage.requests > 0) {
 			return {
 				admitted: false,

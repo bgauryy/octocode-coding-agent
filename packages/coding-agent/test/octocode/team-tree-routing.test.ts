@@ -4,12 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { afterEach, describe, expect, it } from "vitest";
-import { agentRuns, backlog, sessions, sharedDatabase } from "../../../db/src/api.ts";
+import { agentRuns, backlog, sessions } from "../../../db/src/api.ts";
 import { describeMembers } from "../../src/octocode/team/member-list.ts";
 import { interruptRefusal, resolveTarget } from "../../src/octocode/team/routing.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
+import { sharedAgentDb } from "../../src/storage/database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -174,16 +176,12 @@ describe("coordinate list details", () => {
 	it("shows the item, its why and the log folders, each on one row, and nothing without data", async () => {
 		const { cwd, file } = setup();
 		const store = TeamStore.open(cwd, file);
-		const agent = sharedDatabase({
-			file,
-			mirrorFile: `${file}.transcripts`,
-			archiveDir: path.join(path.dirname(file), "archive"),
-			privateParent: false,
-		});
+		const agent = sharedAgentDb({ ...process.env, OCTOCODE_AGENT_DB: file });
+		const rows = workspaceDb(cwd, { ...process.env, OCTOCODE_AGENT_DB: file }).agent;
 		try {
 			const at = Date.now();
 			const item = { goal: "", body: "", paths: "", evidence: "", plan: "", priority: 1, tags: "" };
-			backlog.insertItem(agent.db, {
+			backlog.insertItem(rows.db, {
 				...item,
 				repo: store.workspaceId,
 				seq: 7,
@@ -196,7 +194,7 @@ describe("coordinate list details", () => {
 				fromItem: null,
 				type: "feature",
 			});
-			agentRuns.begin(agent.db, {
+			agentRuns.begin(rows.db, {
 				workspaceId: store.workspaceId,
 				agentId: "kid-a1",
 				parentAgentId: "main-a",

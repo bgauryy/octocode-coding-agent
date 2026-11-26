@@ -334,6 +334,20 @@ function Results({ item: it }: { item: SnapshotItem }) {
 						</Badge>{" "}
 						{completion.verification.summary}
 					</p>
+					{completion.qa && (
+						<p>
+							<Badge
+								tone="warning"
+								title={
+									completion.qa === "owed"
+										? "No reviewer could start: the independent review reruns when one can."
+										: "QA was not configured or its answer was unusable: no independent review ran."
+								}
+							>
+								qa: {completion.qa}
+							</Badge>
+						</p>
+					)}
 					{completion.files.length > 0 && (
 						<ul className="plain-list">
 							{completion.files.map((file) => (

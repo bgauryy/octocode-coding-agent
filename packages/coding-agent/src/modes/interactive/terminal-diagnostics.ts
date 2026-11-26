@@ -1,6 +1,7 @@
 import {
 	getCapabilities,
 	getTerminalColorMode,
+	terminalWheelModel,
 	Text,
 	type TUI,
 	type Container,
@@ -67,8 +68,57 @@ export function describeLatencyFence(
 	return `Latency fence: on (${source}); ${verdict}; last RTT ${fence.lastRttMs.toFixed(0)} ms; floor ${fence.floorMs.toFixed(0)} ms; held frames ${fence.heldFrames}`;
 }
 
+/** Fullscreen renderer state that an `ui` of another mode lacks: read structurally. */
+interface FullscreenState {
+	modes?: { hoverTracking: boolean; mouseCaptured?: boolean };
+	renderCounters?: { bigFrames?: { fullRedraw: number; images: number; rows: number } };
+}
+
+const onOff = (value: boolean | undefined) => (value === undefined ? "n/a" : value ? "on" : "off");
+
+/** The terminal program (from the environment) and whether frames are wrapped in synchronized output (mode 2026). */
+export function describeTerminalProgram(
+	env: Readonly<Record<string, string | undefined>>,
+	synchronizedOutput: boolean | undefined,
+): string {
+	const program = env.TERM_PROGRAM
+		? `${env.TERM_PROGRAM}${env.TERM_PROGRAM_VERSION ? ` ${env.TERM_PROGRAM_VERSION}` : ""}`
+		: "unknown (TERM_PROGRAM unset)";
+	const sync =
+		synchronizedOutput === undefined
+			? "n/a"
+			: synchronizedOutput
+				? "in use (terminal confirmed mode 2026)"
+				: "not in use (terminal did not confirm mode 2026)";
+	return `Terminal program: ${program}; synchronized output: ${sync}`;
+}
+
+function describePointer(ui: object): string {
+	const modes = (ui as FullscreenState).modes;
+	return `Wheel: ${terminalWheelModel()} reports; mouse capture: ${onOff(modes?.mouseCaptured)}; pointer motion tracking: ${onOff(modes?.hoverTracking)}`;
+}
+
+function describeBigFrames(ui: object): string {
+	const big = (ui as FullscreenState).renderCounters?.bigFrames;
+	if (!big) return "Frames over 64 KiB: n/a";
+	return `Frames over 64 KiB: ${big.fullRedraw + big.images + big.rows} (full redraw ${big.fullRedraw}, images ${big.images}, rows ${big.rows})`;
+}
+
 /** Aggregate counters only: no transcript, credentials, process enumeration or terminal-specific API. */
+/** Shows the diagnostics in the transcript; the counters keep running until exit. */
 export function showTerminalDiagnostics(host: DiagnosticHost): void {
+	host.chatContainer.addChild(
+		new Text(
+			terminalDiagnosticLines(host).map(sanitizeTerminalText).join("\n"),
+			host.uiStore.getState().view.outputPad,
+			1,
+		),
+	);
+	host.ui.requestRender();
+}
+
+/** The diagnostic lines, after turning the render counters on (they stay on until exit; the first read may be empty). */
+export function terminalDiagnosticLines(host: Omit<DiagnosticHost, "chatContainer" | "uiStore">): string[] {
 	host.renderer.setRenderPacing({ metrics: true });
 	const terminal = host.ui.terminal;
 	const capabilities = getCapabilities();
@@ -78,11 +128,13 @@ export function showTerminalDiagnostics(host: DiagnosticHost): void {
 	const mib = (bytes: number) => (bytes / (1024 * 1024)).toFixed(1);
 	const rows = [
 		"Terminal diagnostics (render counters enabled until exit)",
+		describeTerminalProgram(process.env, terminal.synchronizedOutput),
 		`Mode: ${host.ui.mode}; viewport: ${terminal.columns} columns × ${terminal.rows} rows`,
 		`Colors: ${getTerminalColorMode()}; hyperlinks: ${capabilities.hyperlinks ? "OSC 8" : "readable text fallback"}`,
 		`Images: ${capabilities.images ?? "text fallback"}; keyboard: ${terminal.kittyProtocolActive ? "Kitty protocol" : "legacy sequences"}`,
 		`Configured overrides: ${JSON.stringify(overrides)}`,
 		`Environment controls: links=${process.env.OCTOCODE_HYPERLINKS ?? "auto"}; images=${process.env.OCTOCODE_IMAGE_PROTOCOL ?? "auto"}; color=${process.env.NO_COLOR !== undefined ? "NO_COLOR" : "auto"}`,
+		describePointer(host.ui),
 		`Motion: ${host.settingsManager.isReduceMotionActive() ? "reduced" : "animated"}; copy on select: ${host.settingsManager.getFullscreenCopyOnSelect() ? "on" : "off"}`,
 		"Clipboard: platform helpers with OSC 52 fallback for remote/headless sessions; OSC 52 delivery is unacknowledged.",
 		`Node output queue: ${terminal.pendingOutputBytes ?? "unavailable"} bytes; peak observed: ${stats.maxPendingOutputBytes} bytes`,
@@ -94,6 +146,7 @@ export function showTerminalDiagnostics(host: DiagnosticHost): void {
 			process.env.OCTOCODE_LATENCY_FENCE,
 		),
 		`Frames submitted: ${stats.paintedFrames}; deferred: ${stats.deferredFrames}`,
+		describeBigFrames(host.ui),
 		`Frame generation/write: last ${stats.lastFrameCostMs.toFixed(2)} ms; peak ${stats.maxFrameCostMs.toFixed(2)} ms`,
 		`Peak input-to-submission: ${stats.maxInputToPaintMs.toFixed(2)} ms; timer lag: ${stats.maxTimerLagMs.toFixed(2)} ms`,
 		stats.output
@@ -107,11 +160,8 @@ export function showTerminalDiagnostics(host: DiagnosticHost): void {
 				]
 			: []),
 		"Submission is not display: terminal parsing, layout and GPU presentation are outside these counters.",
-		"Counters cover this renderer since metrics were enabled; zero can mean no sample yet.",
+		"Counters cover this renderer since metrics were enabled (the first read); zero can mean no sample yet: read again after the lag is reproduced.",
 		"Use /links for references without a mouse or hyperlink support.",
 	];
-	host.chatContainer.addChild(
-		new Text(rows.map(sanitizeTerminalText).join("\n"), host.uiStore.getState().view.outputPad, 1),
-	);
-	host.ui.requestRender();
+	return rows;
 }

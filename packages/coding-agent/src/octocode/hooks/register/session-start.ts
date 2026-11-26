@@ -1,4 +1,3 @@
-import { renderPrompt } from "../../../core/prompt-template.ts";
 import type { FeatureSetup, FeatureContext } from "../../../core/features/index.ts";
 import { say } from "../../shared/commands.ts";
 import { STATUS } from "../../shared/status.ts";
@@ -6,7 +5,7 @@ import { effectivePlugins } from "../../../core/extensibility/toggles.ts";
 import { loadHooks } from "../config.ts";
 import { enforces, guardNotices } from "../../guard/registry.ts";
 import { emptyHooks } from "../config/parse.ts";
-import { capContext } from "../runner.ts";
+import { hookContext } from "../context-message.ts";
 import { resumeFields } from "./resume-fields.ts";
 import { CONTEXT_TYPE, type Dispatch, type HookSession, type ReportFailure, START_HOOKS_WAIT_MS } from "./types.ts";
 
@@ -142,9 +141,7 @@ export function registerSessionStartHooks(
 			}
 		}
 		if (pending.length === 0) return undefined;
-		const content = capContext(
-			renderPrompt("hooks/context.md", { source: "SessionStart", text: pending.join("\n\n") }),
-		);
+		const content = hookContext("SessionStart", pending.join("\n\n"));
 		pending = [];
 		return { message: { customType: CONTEXT_TYPE, content, display: false } };
 	});

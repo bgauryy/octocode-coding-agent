@@ -16,6 +16,16 @@ export const SESSION_TITLE_MAX = 60;
  * at `max` characters with an ellipsis.
  */
 export function cleanTitle(text: string, max = SESSION_TITLE_MAX): string {
+	// Renders ask for the same title again and again: keep the last answer.
+	if (lastTitle && lastTitle.text === text && lastTitle.max === max) return lastTitle.title;
+	const title = computeTitle(text, max);
+	lastTitle = { text, max, title };
+	return title;
+}
+
+let lastTitle: { text: string; max: number; title: string } | undefined;
+
+function computeTitle(text: string, max: number): string {
 	const skill = parseSkillBlock(text);
 	const raw = skill ? (skill.userMessage ? `${skill.name}: ${skill.userMessage}` : skill.name) : text;
 	const flat = sanitizeTerminalText(raw).replace(/\s+/g, " ").trim();

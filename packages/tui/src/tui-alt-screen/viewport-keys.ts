@@ -1,6 +1,7 @@
 import { Editor } from "../components/editor.ts";
 import type { ScrollView } from "../components/scroll-view.ts";
 import { getKeybindings } from "../keybindings.ts";
+import { matchesKey } from "../keys/match.ts";
 import { isKeyRelease } from "../keys/sequences.ts";
 import type { LayoutFrame } from "../layout/types.ts";
 import type { Component } from "../tui/component.ts";
@@ -14,6 +15,8 @@ import type { AltScreenSearchController } from "./search-controller.ts";
 export interface AltScreenViewportKeysHost {
 	readonly search: AltScreenSearchController;
 	readonly arrowBurst: ArrowBurstScroll;
+	/** Whether the terminal may send the wheel as arrow keys (mouse reports are off). */
+	wheelMayBeArrows(): boolean;
 	getFocusedComponent(): Component | null;
 	getCurrentLayout(): LayoutFrame | undefined;
 	getPrimaryScrollView(): ScrollView;
@@ -23,6 +26,8 @@ export interface AltScreenViewportKeysHost {
 	scrollToTop(): void;
 	scrollToBottom(): void;
 	toggleMouseCapture(): void;
+	/** Drop the text selection that shows; true when there was one. */
+	clearVisibleSelection(): boolean;
 }
 
 function scrollToPrompt(host: AltScreenViewportKeysHost, direction: -1 | 1): void {
@@ -67,11 +72,15 @@ export function handleViewportKeys(host: AltScreenViewportKeysHost, data: string
 		if (!isRelease) host.toggleMouseCapture();
 		return { consume: true };
 	}
+	// Escape first drops a selection that shows, as an editor does; the next Escape reaches the app (interrupt, close).
+	if (!isRelease && matchesKey(data, "escape") && host.clearVisibleSelection()) return { consume: true };
 	// Arrow bursts are a wheel only where arrows recall history: the editor. A selector or dialog keeps its arrows, and
-	// so does the editor's open completion list (the `/` menu), where arrows move the selection.
+	// so does the editor's open completion list (the `/` menu), where arrows move the selection. While mouse reports
+	// are on the wheel is a report, so queued arrows are keys.
 	const focused = host.getFocusedComponent();
-	if (!(focused instanceof Editor) || focused.isShowingAutocomplete()) host.arrowBurst.flush();
-	else if (host.arrowBurst.handle(data)) return { consume: true };
+	if (!host.wheelMayBeArrows() || !(focused instanceof Editor) || focused.isShowingAutocomplete()) {
+		host.arrowBurst.flush();
+	} else if (host.arrowBurst.handle(data)) return { consume: true };
 	if (keybindings.matches(data, "tui.altScreen.pageUp")) {
 		if (!isRelease) {
 			host.scrollBy(-Math.max(1, host.getPrimaryScrollView().viewportHeight - PAGE_SCROLL_OVERLAP));

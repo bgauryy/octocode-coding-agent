@@ -88,6 +88,10 @@
 			"types": "./dist/providers/discovery.d.ts",
 			"import": "./dist/providers/discovery.js"
 		},
+		"./models/credential-renewal": {
+			"types": "./dist/models/credential-renewal.d.ts",
+			"import": "./dist/models/credential-renewal.js"
+		},
 		"./providers/faux": {
 			"types": "./dist/providers/faux.d.ts",
 			"import": "./dist/providers/faux.js"
@@ -175,6 +179,10 @@
 		"./utils/provider-host": {
 			"types": "./dist/utils/provider-host.d.ts",
 			"import": "./dist/utils/provider-host.js"
+		},
+		"./utils/provider-profile": {
+			"types": "./dist/utils/provider-profile.d.ts",
+			"import": "./dist/utils/provider-profile.js"
 		},
 		"./utils/resolve-config-value": {
 			"types": "./dist/utils/resolve-config-value.d.ts",

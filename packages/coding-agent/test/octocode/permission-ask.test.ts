@@ -484,7 +484,9 @@ describe("Permission modes over a session", () => {
 				message: expect.objectContaining({
 					customType: "octocode-permission",
 					display: false,
-					content: expect.stringMatching(/^\[octocode-permission\] mode is now manual: /),
+					content: expect.stringMatching(
+						/^\[src system:permissions ✓proven via in-process\] t2\n\[octocode-permission\] mode is now manual: /,
+					),
 				}),
 				options: { triggerTurn: false },
 			},

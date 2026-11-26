@@ -2,8 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fauxAssistantMessage } from "@octocodeai/octocode-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { type AgentDb, openDatabase, timers } from "../../../db/src/api.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { type AgentDb, timers } from "../../../db/src/api.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
+import { openWorkspaceDb } from "../../src/storage/workspace-database.ts";
 import type { FeatureContext } from "../../src/core/features/index.ts";
 import { runningWorkOf } from "../../src/octocode/shared/running-work.ts";
 import { conditionChecker, conditionWatcher } from "../../src/octocode/timer/condition.ts";
@@ -20,24 +21,24 @@ import { tmp } from "./helpers.ts";
 
 const T0 = Date.UTC(2026, 10, 6, 12);
 let root: string;
+/** The machine file; `agent` is the workspace file of `root` (the machine file while workspace files are off). */
+let machine: AgentDb;
 let agent: AgentDb;
 let workspaceId: string;
 const started: TimerScheduler[] = [];
 
 beforeEach(() => {
 	root = tmp();
-	agent = openDatabase({
-		file: path.join(root, "workspaces.db"),
-		mirrorFile: path.join(root, "transcripts.db"),
-		archiveDir: path.join(root, "archive"),
-		privateParent: false,
-	});
-	workspaceId = registeredWorkspace(root, agent).id;
+	machine = openAgentDb(path.join(root, "workspaces.db"), { ...process.env, OCTOCODE_HOME: path.join(root, "home") });
+	const workspace = openWorkspaceDb(machine, root);
+	agent = workspace.agent;
+	workspaceId = workspace.workspace.id;
 });
 afterEach(() => {
 	for (const each of started.splice(0)) each.stop();
 	vi.useRealTimers();
-	agent.close();
+	if (agent !== machine) agent.close();
+	machine.close();
 	fs.rmSync(root, { recursive: true, force: true });
 });
 

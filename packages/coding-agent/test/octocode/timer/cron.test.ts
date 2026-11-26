@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { type AgentDb, openDatabase, timers } from "../../../../db/src/api.ts";
-import { registeredWorkspace } from "../../../src/storage/workspace-database.ts";
+import { type AgentDb, timers } from "../../../../db/src/api.ts";
+import { openAgentDb } from "../../../src/storage/database.ts";
+import { openWorkspaceDb } from "../../../src/storage/workspace-database.ts";
 import { Subcommands } from "../../../src/octocode/shared/commands.ts";
 import { runningWorkOf } from "../../../src/octocode/shared/running-work.ts";
 import {
@@ -32,6 +33,8 @@ const utc = (iso: string) => Date.parse(iso);
 const iso = (ms: number | undefined) => (ms === undefined ? undefined : new Date(ms).toISOString());
 
 let root: string;
+/** The machine file; `agent` is the workspace file of `root` (the machine file while workspace files are off). */
+let machine: AgentDb;
 let agent: AgentDb;
 let workspaceId: string;
 const started: TimerScheduler[] = [];
@@ -41,19 +44,17 @@ const open: Array<() => Promise<unknown>> = [];
 beforeEach(() => {
 	vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"], now: T0 });
 	root = tmp();
-	agent = openDatabase({
-		file: path.join(root, "workspaces.db"),
-		mirrorFile: path.join(root, "transcripts.db"),
-		archiveDir: path.join(root, "archive"),
-		privateParent: false,
-	});
-	workspaceId = registeredWorkspace(root, agent).id;
+	machine = openAgentDb(path.join(root, "workspaces.db"), { ...process.env, OCTOCODE_HOME: path.join(root, "home") });
+	const workspace = openWorkspaceDb(machine, root);
+	agent = workspace.agent;
+	workspaceId = workspace.workspace.id;
 });
 afterEach(async () => {
 	for (const close of open.splice(0)) await close();
 	for (const each of started.splice(0)) each.stop();
 	vi.useRealTimers();
-	agent.close();
+	if (agent !== machine) agent.close();
+	machine.close();
 	fs.rmSync(root, { recursive: true, force: true });
 });
 

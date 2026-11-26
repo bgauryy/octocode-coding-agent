@@ -4,6 +4,7 @@
  */
 
 import { execSync, spawn, spawnSync } from "node:child_process";
+import { clearCredentialCommandCache } from "./credential-command.ts";
 
 /** How to start a shell on this host; `getShellConfig` of the coding agent is the usual provider. */
 export interface ConfigValueShell {
@@ -71,27 +72,43 @@ function executeWithConfiguredShell(command: string): { executed: boolean; value
 	}
 }
 
-function executeWithDefaultShell(command: string): string | undefined {
+/** What a command run produced: its trimmed output, or why it produced none (never the command text or its output). */
+export interface CommandRun {
+	value: string | undefined;
+	failure?: string;
+}
+
+function describeCommandError(error: unknown): string {
+	const { code, status, signal } = error as { code?: string; status?: number | null; signal?: string | null };
+	if (code === "ETIMEDOUT") return `timed out after ${COMMAND_TIMEOUT_MS / 1000} s`;
+	if (typeof status === "number") return `exited with status ${status}`;
+	if (signal) return `was stopped by ${signal}`;
+	return "could not be run";
+}
+
+function executeWithDefaultShell(command: string): CommandRun {
 	try {
 		const output = execSync(command, {
 			encoding: "utf-8",
 			timeout: COMMAND_TIMEOUT_MS,
 			stdio: ["ignore", "pipe", "ignore"],
-		});
-		return output.trim() || undefined;
-	} catch {
-		return undefined;
+		}).trim();
+		return output ? { value: output } : { value: undefined, failure: "printed nothing" };
+	} catch (error) {
+		return { value: undefined, failure: describeCommandError(error) };
 	}
 }
 
-export function executeCommandUncached(commandConfig: string): string | undefined {
+/** Runs the command like `executeCommandUncached`, and says why when it yields no value. */
+export function runCommandUncached(commandConfig: string): CommandRun {
 	const command = commandConfig.slice(1);
-	return process.platform === "win32"
-		? (() => {
-				const configuredResult = executeWithConfiguredShell(command);
-				return configuredResult.executed ? configuredResult.value : executeWithDefaultShell(command);
-			})()
-		: executeWithDefaultShell(command);
+	if (process.platform !== "win32") return executeWithDefaultShell(command);
+	const configured = executeWithConfiguredShell(command);
+	return configured.executed ? { value: configured.value } : executeWithDefaultShell(command);
+}
+
+export function executeCommandUncached(commandConfig: string): string | undefined {
+	return runCommandUncached(commandConfig).value;
 }
 
 /**
@@ -219,8 +236,9 @@ export function executeCommandAsync(commandConfig: string): Promise<string | und
 	return run;
 }
 
-/** Clear the config value command cache. Exported for testing. */
+/** Clear the config value command cache, structured credential commands' too (a keychain write, a test). */
 export function clearConfigValueCache(): void {
+	clearCredentialCommandCache();
 	commandResultCache.clear();
 	pendingCommands.clear();
 	cacheGeneration++;

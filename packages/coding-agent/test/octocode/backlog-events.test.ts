@@ -3,8 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BACKLOG_ITEM_ENV, PARENT_SESSION_ENV } from "@octocodeai/octocode-common/env";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { closeSharedAgentDb, history } from "../../../db/src/api.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BACKLOG_EVENTS_TYPE } from "../../src/octocode/backlog/task-events.ts";
@@ -85,8 +84,8 @@ function setup(child?: { agentId: string; item: string }) {
 	const toolResult = () => fake.emit("tool_result", { type: "tool_result", toolName: "bash", content: [] }, ctx);
 	/** Events delivered during a run, right after a tool result. */
 	const urgent = () => fake.sent.filter((sent) => sent.message.customType === BACKLOG_EVENTS_TYPE);
-	const store = () => new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
-	return { fake, call, start, turn, toolResult, urgent, store };
+	const store = () => new BacklogStore(() => workspaceDb(cwd).agent, workspaceDb(cwd).workspace.id);
+	return { fake, call, start, turn, toolResult, urgent, store, cwd };
 }
 
 describe("foreign backlog changes (V5)", () => {
@@ -160,7 +159,7 @@ describe("foreign backlog changes (V5)", () => {
 		await t.call({ op: "claim", id: "B1" });
 		await t.turn();
 		t.store().update("B1", { priority: 0 }, OTHER);
-		const agent = sharedAgentDb();
+		const { agent } = workspaceDb(t.cwd);
 		agent.transaction(() =>
 			history.deleteRows(
 				agent.db,

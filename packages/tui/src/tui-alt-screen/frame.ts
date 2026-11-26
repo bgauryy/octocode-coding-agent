@@ -3,7 +3,9 @@ import { getKittyImagePlacementRows } from "../terminal-image/kitty-metadata.ts"
 import { deleteAllKittyPlacements, isImageLine } from "../terminal-image.ts";
 import { BEGIN_SYNCHRONIZED_OUTPUT, END_SYNCHRONIZED_OUTPUT } from "../terminal/sequences.ts";
 import { DISABLE_AUTOWRAP, DISABLE_MOUSE, ENABLE_AUTOWRAP, EXIT_ALT_SCREEN } from "./constants.ts";
-import { sameRowAfterErase, trimTrailingBlanks } from "../tui/trailing-blanks.ts";
+import { mapRowsReusing } from "../tui/row-arrays.ts";
+import { eraseAndWriteRow } from "../tui/row-text.ts";
+import { sameRowAfterErase } from "../tui/trailing-blanks.ts";
 import { deleteKittyImagesFor, prepareKittyScreen } from "./kitty-cache.ts";
 import { planScrollShift, type ScrollShift, type TrimmedRowsMemo } from "./scroll-shift.ts";
 import type { CachedKittyImage } from "./types.ts";
@@ -17,7 +19,7 @@ export class ImageRowsMemo {
 	scan(rows: readonly string[]): readonly boolean[] {
 		if (rows === this.rows) return this.images;
 		const known = this.rows;
-		const images = rows.map((row, index) => (row === known[index] ? this.images[index] : isImageLine(row)));
+		const images = mapRowsReusing(rows, known, this.images, isImageLine);
 		this.rows = rows;
 		this.images = images;
 		return images;
@@ -147,7 +149,7 @@ function buildAltScreenFrame(frame: AltScreenFrame): string {
 		for (const row of rowWriteOrder(screen, previousScreen, height, shift, fullRedraw || imagesNeedRedraw)) {
 			const line = preparedKittyScreen.lines[row] ?? "";
 			const image = prepared ? isImageLine(line) : (imageRows[row] ?? false);
-			buffer += `\x1b[${row + 1};1H\x1b[2K${image ? line : trimTrailingBlanks(line)}`;
+			buffer += `\x1b[${row + 1};1H${eraseAndWriteRow(line, image)}`;
 		}
 	}
 
@@ -221,7 +223,7 @@ export function renderAltScreenOutput(options: {
 	synchronized?: boolean;
 	/** The screen's own cursor memo: a frame with nothing to change writes nothing. */
 	cursorMemo?: FrameCursorMemo;
-}): { buffer: string; fullRedraw: boolean } {
+}): { buffer: string; fullRedraw: boolean; imagesRedrawn: boolean } {
 	const { screen, imageProtocol, uploadedKittyImages } = options;
 	const memo = options.imageRowsMemo ?? new ImageRowsMemo();
 	const previousImageRows = memo.scan(options.previousScreen);
@@ -260,7 +262,7 @@ export function renderAltScreenOutput(options: {
 		showHardwareCursor: options.showHardwareCursor,
 		cursorMemo: options.cursorMemo ?? new FrameCursorMemo(),
 	});
-	return { buffer, fullRedraw };
+	return { buffer, fullRedraw, imagesRedrawn: redrawImages };
 }
 
 /** What stopping writes before the screen is left: images deleted, mouse off, autowrap on. */

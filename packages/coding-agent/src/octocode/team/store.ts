@@ -10,7 +10,7 @@ import {
 	deliveries,
 	leases,
 } from "../../../../db/src/api.ts";
-import { openAgentDb, sharedAgentDb } from "../../storage/database.ts";
+import { openTeamFiles, sharedTeamFiles, type TeamFiles } from "./store/files.ts";
 import { agentDbPath } from "../shared/home.ts";
 import { processAlive } from "../shared/process.ts";
 import type { Ask } from "./asks.ts";
@@ -74,22 +74,17 @@ export class TeamStore {
 	/** The team (the repository's git common dir): scopes agents, messages and deliveries, whatever worktree they work in. */
 	readonly team: string;
 	owns = (member: Member): boolean => ownsMember(this.db, member);
-	private readonly ownsConnection: boolean;
-	private constructor(
-		agent: AgentDb,
-		cwd: string,
-		env: NodeJS.ProcessEnv,
-		/** Whether `close` closes the connection: true for `open`, false for the process connection `shared` borrows. */
-		ownsConnection: boolean,
-	) {
+	private readonly files: TeamFiles;
+	private constructor(files: TeamFiles, cwd: string, env: NodeJS.ProcessEnv) {
+		const { agent } = files;
+		this.files = files;
 		this.agent = agent;
-		this.presence = new Presence(agent);
 		const origin = registeredWorkspace(cwd, agent);
 		const leaseRoot = teamWorkspace(cwd, env);
 		const leaseWorkspace = leaseRoot === origin.root ? origin : registeredWorkspace(leaseRoot, agent);
 		this.memberWorkspace = memberWorkspace(origin.id, leaseWorkspace.id, new Place(cwd));
 		this.team = teamScope(cwd, env);
-		this.ownsConnection = ownsConnection;
+		this.presence = new Presence(agent, this.team, files.machine.db);
 
 		this.db = agent.db;
 		this.edits = new EditLog(agent.db, leaseWorkspace.id);
@@ -104,34 +99,39 @@ export class TeamStore {
 		);
 	}
 
-	/** Opens its own connection to the agent database (`agentDbPath`), which checks the file is ours and adds any missing schema first. */
+	/** Opens its own connections to the agent database (`agentDbPath`) and the team's file (`store/files.ts`). */
 	static open(cwd: string, file = agentDbPath(), env: NodeJS.ProcessEnv = process.env): TeamStore {
-		const agent = openAgentDb(file, env);
+		const files = openTeamFiles(cwd, file, env);
 		try {
-			const store = new TeamStore(agent, cwd, env, true);
+			const store = new TeamStore(files, cwd, env);
 			pruneIfUnlocked(store, () => store.prune());
 			return store;
 		} catch (error) {
-			agent.close();
+			files.close();
 			throw error;
 		}
 	}
 
-	/** The team over the process's one agent database connection (`sharedAgentDb`), which sessions, memory and backlog use too. */
+	/** The team over the process's connections, which sessions, memory and backlog use too. */
 	static shared(cwd: string, env: NodeJS.ProcessEnv = process.env): TeamStore {
-		const store = new TeamStore(sharedAgentDb(env), cwd, env, false);
+		const store = new TeamStore(sharedTeamFiles(cwd, env), cwd, env);
 		pruneIfUnlocked(store, () => store.prune());
 		return store;
 	}
 
-	/** Closes a connection `open` made; a `shared` store leaves the process connection open. */
+	/** Closes the connections `open` made; a `shared` store leaves the process connections open. */
 	close(): void {
-		if (this.ownsConnection) this.agent.close();
+		this.files.close();
+	}
+
+	/** The file holding the team's rows, the one `stamp` watches. */
+	get file(): string {
+		return this.agent.file;
 	}
 
 	/** Moves whenever any process writes the database file (`dbStamp`): equal stamps mean a read would answer as it did. */
 	stamp(): string {
-		return dbStamp(this.agent.file);
+		return dbStamp(this.file);
 	}
 
 	/** Runs background work with a short busy wait, so a database held by another process never freezes this one. */

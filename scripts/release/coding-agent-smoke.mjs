@@ -74,8 +74,8 @@ export function smokeTestCodingAgent(directory, runtime = process.execPath, { st
 			)
 				throw new Error("Installed Octocode is missing the bundled research skills");
 			const preset = JSON.parse(
-				readFileSync(new URL("../../packages/mcp/src/recommended/octocode.json", import.meta.url)),
-			);
+				readFileSync(new URL("../../packages/mcp/src/default_mcp_config.json", import.meta.url)),
+			).servers.octocode;
 			args.push(join(mcpDir, mcpBin), ...preset.roles.reader, ...preset.roles.search, ...preset.roles.readOnly);
 		}
 		copyFileSync(new URL("./coding-agent-consumer-smoke.mjs", import.meta.url), entry);

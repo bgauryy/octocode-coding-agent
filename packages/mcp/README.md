@@ -2,7 +2,7 @@
 
 Contributor README. For using MCP servers in Octocode see the [MCP guide](../coding-agent/docs/mcp.md).
 
-This private workspace owns the MCP protocol client, transports, configuration, registry, lifecycle, tools, authentication and default servers. The client lives in `src/client/`; the host integration lives beside it, with the recommended default servers as data in `src/recommended/` (research) and the preset in `src/presets/browser/` (the `@octocodeai/octocode-chrome-devtools` browser server).
+This private workspace owns the MCP protocol client, transports, configuration, registry, lifecycle, tools, authentication and default servers. The client lives in `src/client/`; the host integration lives beside it, with every default server and which agent gets it as data in `src/default_mcp_config.json`, loaded and checked by `src/presets/default-config.ts`; the behavior a server adds to its data lives in `src/presets/<server>/` (the browser's launch and proxy, the desktop's Cua Driver discovery).
 
 The protocol client can run without an agent session and uses the official `@modelcontextprotocol/client` SDK. The host integration uses coding-agent services for UI, permissions and configuration. These two workspaces form one compilation unit: coding-agent declares this workspace as a development dependency, and `scripts/build/build-coding-agent.mjs` bundles its sources into coding-agent's one bundle file, behind the `/mcp` exports. The MCP SDK license ships with the host.
 

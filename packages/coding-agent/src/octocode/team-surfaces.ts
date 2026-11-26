@@ -24,7 +24,7 @@ export function registerTeamSessions(
 	api: FeatureSetup,
 	team: Team,
 	checkpoints: Checkpoints,
-	options: { commands: Subcommands; isSubagent: boolean },
+	options: { commands: Subcommands; isSubagent: boolean; serving: () => Iterable<readonly [string, string]> },
 ): void {
 	registerSessions(api, {
 		...options,
@@ -41,8 +41,8 @@ export function registerTeamSessions(
 	});
 	// A subagent whose parent died files its own stop report before it exits: nobody else is left to.
 	if (options.isSubagent) onParentGone(saveParentGoneReport);
-	// `/realm` reads the team and the session catalog; a subagent has no command line to type it in.
-	if (!options.isSubagent) registerRealm(api, options.commands, team);
+	// `/realm` reads the team, the items its children serve and the session catalog; a subagent has no command line to type it in.
+	if (!options.isSubagent) registerRealm(api, options.commands, team, options.serving);
 }
 
 /** The shell checks the collaboration tools run before a command: its reservation targets, read-only status and changes. */

@@ -4,6 +4,7 @@ import type { SessionEntry } from "../../../core/session-manager.ts";
 import { clipText } from "../../shared/util.ts";
 import type { MemoryStore } from "../store.ts";
 import { isQuarantined } from "./candidate-tags.ts";
+import { type Defect, proposeDefect, taggedLine } from "./defects.ts";
 import { listCandidates, pendingCandidates, queueCandidates } from "./candidates.ts";
 import { MEMORY_LINE_MAX_CHARS } from "./format.ts";
 import {
@@ -15,6 +16,7 @@ import {
 	passOp,
 	readPassFiles,
 	recordPass,
+	replyDefect,
 	type SmallModel,
 } from "./passes.ts";
 import type { MemoryFileRef } from "../../permission/memory-files.ts";
@@ -26,7 +28,7 @@ import type { SessionSignal } from "./signals.ts";
  * The reflection pass at the end of a main session that had an outside signal (`signals.ts`): one `small` model call
  * sees the last checkpoint, the session's candidates, the signals with the entries that show them, and both MEMORY.md
  * files, and proposes at most three ops. Code applies them as the reflection's, never pinned, with quarantined text
- * held back (`quarantine.ts`); a reply that is not the JSON asked for leaves both files unchanged.
+ * held back (`quarantine.ts`); a tool or harness defect it names is filed as a proposed backlog item (`defects.ts`); a reply that is not the JSON asked for leaves both files unchanged.
  */
 
 const MAX_OPS = 3;
@@ -106,12 +108,15 @@ export async function reflectOnSession(
 		return;
 	}
 	let planned: ReturnType<typeof parseOpsReply>;
+	let defect: Defect | undefined;
 	try {
 		planned = parseOpsReply(
 			reply.text,
 			files.map((file) => file.ref.scope),
 			MAX_OPS,
+			["defects"],
 		);
+		defect = replyDefect(reply.text);
 	} catch (problem) {
 		recordPass(deps.api, ctx, {
 			pass: "reflection",
@@ -125,6 +130,21 @@ export async function reflectOnSession(
 	}
 	const quarantined = all.filter(isQuarantined).map((memory) => memory.title);
 	const outcomes: PassFileOutcome[] = [];
+	const proposed: string[] = [];
+	if (defect) {
+		const filed = proposeDefect(deps.store, defect, { session: input.session, env: deps.env });
+		if (filed && "refused" in filed) proposed.push(`nothing (${filed.refused})`);
+		else if (filed) {
+			proposed.push(`${filed.ref} (${defect.title})`);
+			const line = taggedLine(defect, filed.ref);
+			// The workaround waits in the workspace file until the item is done.
+			if (line && files.some((file) => file.ref.scope === "workspace"))
+				planned.set("workspace", [
+					...(planned.get("workspace") ?? []),
+					{ op: "add", section: "Gotchas", text: line, source: "reflection" },
+				]);
+		}
+	}
 	for (const file of files) {
 		const ops = (planned.get(file.ref.scope) ?? []).map(passOp);
 		if (ops.length === 0) continue;
@@ -154,5 +174,6 @@ export async function reflectOnSession(
 		files: outcomes,
 		signals,
 		...(unreadable.length > 0 ? { unreadable } : {}),
+		...(proposed.length > 0 ? { proposed } : {}),
 	});
 }

@@ -7,7 +7,9 @@ import {
 	KEYCHAIN_UNREADABLE_MESSAGE,
 } from "@octocodeai/octocode-ai";
 import { findEnvKeys, providersSharingApiKeyEnvVar } from "@octocodeai/octocode-ai/compat";
+import { credentialErrorCause } from "../core/credential-cause.ts";
 import { resolveCliModel } from "../core/model-resolver.ts";
+import type { ModelsProject } from "../core/model-config/project.ts";
 import { ModelRuntime } from "../core/model-runtime.ts";
 import type { Args } from "./args.ts";
 import { AuthCommandError, getAuthCredential, validateAuthCommandArgs } from "./auth-command.ts";
@@ -27,6 +29,8 @@ export interface AuthCheckResult {
 	authType?: "api_key" | "oauth";
 	/** Where the credential comes from: the stored credential, an environment variable name, or an ambient source. */
 	source?: string;
+	/** Why the check failed, for the provider alone: a command's exit status, a missing variable, an unreadable file. Never a secret. */
+	detail?: string;
 	/** True only when the provider accepted the credential. `auth check` makes no provider request, so it is false. */
 	verified: boolean;
 	/** The other providers that read the environment variable named by `source`, so they look ready too. */
@@ -47,6 +51,7 @@ const REASON_TEXT: Record<AuthCheckReason, string> = {
 export function formatAuthCheck(result: AuthCheckResult): string {
 	const lines: string[] = [result.status];
 	if (result.reason) lines.push(`reason: ${REASON_TEXT[result.reason]}`);
+	if (result.detail) lines.push(`detail: ${result.detail}`);
 	if (result.source) {
 		const shared = result.sharedWith?.length ? ` (also read by ${result.sharedWith.join(", ")})` : "";
 		lines.push(`source: ${result.source}${shared}`);
@@ -90,11 +95,17 @@ export async function checkProviderAuth(
 		provider = resolved.model.provider;
 	}
 	if (!provider) throw new AuthCommandError("Unable to resolve an auth provider");
-	if (modelRuntime.getError()) {
-		return { status: "invalid", provider, reason: "invalid_state", verified: false };
-	}
+	// A models.json problem belongs to the providers it defines: another provider is checked on its own.
 	if (!modelRuntime.getProvider(provider)) {
-		return { status: "not_ready", provider, reason: "provider_not_found", verified: false };
+		// A provider that only an untrusted workspace file defines is missing for lack of trust; a broken file may hide it too.
+		const detail = modelRuntime.getModelsDiagnostics().untrustedHint(provider) ?? firstLine(modelRuntime.getError());
+		return {
+			status: "not_ready",
+			provider,
+			reason: "provider_not_found",
+			...(detail ? { detail } : {}),
+			verified: false,
+		};
 	}
 	try {
 		const stored = await modelRuntime.readCredential(provider, { signal: options.signal });
@@ -103,9 +114,9 @@ export async function checkProviderAuth(
 			return { status: "not_ready", provider, reason: "keychain_unreadable", verified: false };
 		}
 		const auth = await modelRuntime.checkAuth(provider, { signal: options.signal });
-		if (!auth) return { status: "not_ready", provider, reason: "credentials_not_configured", verified: false };
+		if (!auth) return notConfigured(modelRuntime, provider);
 		if (options.refresh && !(await modelRuntime.getAuth(provider, { signal: options.signal }))) {
-			return { status: "not_ready", provider, reason: "credentials_not_configured", verified: false };
+			return notConfigured(modelRuntime, provider);
 		}
 		return {
 			status: "ready",
@@ -115,10 +126,34 @@ export async function checkProviderAuth(
 			verified: false,
 			...describeSource(provider, auth, stored),
 		};
-	} catch {
-		return { status: "invalid", provider, reason: "invalid_state", verified: false };
+	} catch (error) {
+		return {
+			status: "invalid",
+			provider,
+			reason: "invalid_state",
+			detail: credentialErrorCause(error),
+			verified: false,
+		};
 	}
 }
+
+/** No credential: names the variable a `$NAME` key waits for, when that is why. */
+function notConfigured(modelRuntime: ModelRuntime, provider: string): AuthCheckResult {
+	const status = modelRuntime.getProviderAuthStatus(provider);
+	const detail =
+		!status.configured && status.source === "environment" && status.label
+			? `environment variable ${status.label} is not set`
+			: undefined;
+	return {
+		status: "not_ready",
+		provider,
+		reason: "credentials_not_configured",
+		...(detail ? { detail } : {}),
+		verified: false,
+	};
+}
+
+const firstLine = (text: string | undefined): string | undefined => text?.split("\n")[0] || undefined;
 
 export async function getProviderCredential(
 	providerId: string,
@@ -134,9 +169,11 @@ export async function getProviderCredential(
 export async function createAuthCheckModelRuntime(
 	credentials: CredentialStore,
 	signal?: AbortSignal,
+	project?: ModelsProject,
 ): Promise<ModelRuntime> {
 	return ModelRuntime.create({
 		credentials,
+		...(project ? { project } : {}),
 		modelsStore: new InMemoryModelsStore(),
 		allowModelNetwork: false,
 		refreshOnCreate: false,

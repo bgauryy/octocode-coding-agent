@@ -95,7 +95,7 @@ describe("the reservation gate for PowerShell", () => {
 });
 
 describe("the reservation gate for package scripts", () => {
-	it("lets a package script run under a reservation and tells the result it was not checked", async () => {
+	it("asks before a package script or opaque runner starts while another agent holds a reservation", async () => {
 		const cwd = workspace();
 		const db = path.join(tmp(), "team.sqlite");
 		const make = async () => {
@@ -123,11 +123,46 @@ describe("the reservation gate for package scripts", () => {
 				};
 				return { verdict, after: await peer.fake.emit("tool_result", result, peer.ctx) };
 			};
-			const script = await run("s1", "yarn run build");
-			expect(script.verdict).toBeUndefined();
-			expect(JSON.stringify(script.after)).toContain("ran a package script");
-			const plain = await run("s2", "echo hi");
-			expect(JSON.stringify(plain.after ?? null)).not.toContain("package script");
+			for (const command of [
+				"yarn run build",
+				"yarn build",
+				"yarn generate:schemas",
+				"yarn workspace @octocodeai/octocode-agent run generate:prompts",
+				"npm run lint",
+				"pnpm test",
+				"make all",
+				"bash scripts/x.sh",
+				"./build.sh",
+				"cd a && yarn build",
+				"NODE_ENV=prod yarn build",
+				"env yarn build",
+				"time make all",
+				"nohup bash x.sh",
+				"sudo make install",
+				"npx turbo run build",
+				'bash -c "yarn build"',
+				"sudo -u x make",
+				"time -p make",
+				"env -i yarn build",
+				"bash -e build.sh",
+				"sh -x x.sh",
+				"yarn",
+				"cd a && yarn && echo ok",
+			]) {
+				const { verdict } = await run("s1", command);
+				expect(verdict, command).toMatchObject({ ask: expect.stringContaining("packages/a/src/x.ts") });
+				expect((verdict as { block?: boolean }).block).toBeUndefined();
+			}
+			for (const command of ["echo hi", "yarn --version", "git status", "env", "echo yarnish", "grep -r bash src"]) {
+				const { verdict } = await run("s2", command);
+				expect(verdict, command).toBeUndefined();
+			}
+			// The holder's own run is not asked about.
+			const ownVerdict = await owner.reservationGate(
+				{ toolName: "bash", toolCallId: "o", input: { command: "yarn build" } } as never,
+				owner.ctx,
+			);
+			expect(ownVerdict).toBeUndefined();
 		} finally {
 			await owner.fake.emit("session_shutdown", {}, owner.ctx);
 			await peer.fake.emit("session_shutdown", {}, peer.ctx);

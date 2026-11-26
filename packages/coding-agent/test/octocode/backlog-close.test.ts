@@ -3,8 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { boardLayout } from "../../src/octocode/backlog/board-model.ts";
 import { boardText, countsText } from "../../src/octocode/backlog/format.ts";
@@ -44,8 +43,8 @@ async function setup() {
 		).content[0].text;
 	for (const title of ["first", "second", "third"])
 		await text({ op: "add", items: [{ title, goal: `${title} done`, why: `${title} needed`, state: "todo" }] });
-	const agent = sharedAgentDb();
-	const store = new BacklogStore(() => agent, registeredWorkspace(cwd, agent).id);
+	const { agent, workspace } = workspaceDb(cwd);
+	const store = new BacklogStore(() => agent, workspace.id);
 	return { text, tool, plan: fake.tools.get("backlogPlan"), store };
 }
 

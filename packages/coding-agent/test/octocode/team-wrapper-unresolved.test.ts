@@ -74,8 +74,11 @@ describe("reservation gate: a wrapper line with no resolvable command", () => {
 		const reader = await peer.gate('for id in $(ls); do sort "$id" x; done');
 		expect(reader?.reason).toContain('(`sort`). Why: `sort` is given `"$id"`');
 		expect(reader?.reason).not.toContain("inline code");
-		const arithmetic = await peer.gate("echo $(( $(cat n)-S ))");
-		expect(arithmetic?.reason).toContain("names a variable whose value the line does not show");
+		// Arithmetic alone writes nothing the gate could check, so it runs; beside an unresolved wrapper, the refusal names the wrapper.
+		expect(await peer.gate("echo $(( $(cat n)-S ))")).toBeUndefined();
+		const arithmetic = await peer.gate('echo $(( $(cat n)-S )); timeout "$T" make build');
+		expect(arithmetic).toMatchObject({ block: true });
+		expect(arithmetic?.reason).not.toContain("names a variable whose value the line does not show");
 		expect(arithmetic?.reason).not.toContain("inline code");
 		// A number the line computes is not code.
 		expect(await peer.gate('S=$(date +%s); sleep 0; echo "$(( $(date +%s)-S ))s"')).toBeUndefined();

@@ -1,4 +1,5 @@
 import { limitsFor } from "./limits.ts";
+import { leftInRecoveryBand } from "./recovery-band.ts";
 import type { Api, Model } from "@octocodeai/octocode-ai";
 import {
 	type FeatureSetup,
@@ -16,8 +17,9 @@ import { notify } from "../shared/commands.ts";
 import { CACHE_RETENTION_ENV } from "@octocodeai/octocode-common/env";
 import { compactionThinking, reserveTokensFor } from "../shared/tokens.ts";
 import { registerTurnBudget } from "./turn-budget.ts";
+import { registerCompactOnDone } from "./on-done.ts";
 import { ArchiveCapture, deliverArchivePointer, summaryLabel } from "./archive.ts";
-import { cacheUnusable, PromptCacheLifetimes, promptCacheTtlMs, warmingDecision } from "./cache.ts";
+import { cacheUnusable, PromptCacheLifetimes, prefixCached, promptCacheTtlMs, warmingDecision } from "./cache.ts";
 import { startEarlySummary } from "./early-summary.ts";
 import { registerPrewarmWatch } from "./prewarm-watch.ts";
 import { runningWorkOf } from "../shared/running-work.ts";
@@ -103,6 +105,9 @@ export function registerCompaction(
 	const archive = new ArchiveCapture();
 	const continuity = new FallbackContinuity();
 	const requests = new CompactRequests(thrash);
+	const onDone = registerCompactOnDone(api, requests, isSubagent, (ctx) =>
+		prefixCached(ctx.sessionManager, lifetimes.of(ctx.model), cacheEnv(ctx)),
+	);
 	const cacheEnv = (ctx: FeatureContext): NodeJS.ProcessEnv => ({
 		[CACHE_RETENTION_ENV]: ctx.model
 			? ctx.modelRegistry.getCachePolicy(ctx.model, [{ source: "session settings", values: api.settings.get() }])
@@ -126,6 +131,7 @@ export function registerCompaction(
 	api.bus.on("turn_end", async (event, ctx) => {
 		lifetimes.observe(api, ctx, event.message, cacheEnv(ctx));
 		thrash.turnEnded();
+		onDone.turnEnd(ctx);
 		noticeContextUsage(
 			api,
 			ctx,
@@ -173,9 +179,10 @@ export function registerCompaction(
 		startEarlySummary(api, event, ctx, cacheUnusable(ctx.sessionManager, lifetimes.of(ctx.model), cacheEnv(ctx)));
 	});
 	api.bus.on("session_before_compact", async (event, ctx) => {
-		// The agent's own request (`compact` tool) arrives as a manual compaction but counts as automatic.
+		// The `compact` tool's request arrives as manual but counts as automatic; only threshold ones answer to the band.
 		continuity.discard();
-		if ((event.reason !== "manual" || requests.inFlight) && thrash.tripped()) {
+		onDone.begin(event.requestedBy === "item");
+		if ((event.reason !== "manual" || requests.inFlight) && thrash.tripped(event.reason !== "threshold")) {
 			recordCompactionNote(api, "thrash-stop", THRASH_MESSAGE);
 			// While the context still fits the window, the run (and a prompt about to be sent) goes on; the refusal is a
 			// failure, which the session reports as the compaction's error.
@@ -226,6 +233,7 @@ export function registerCompaction(
 		tooLarge.reset();
 		thrash.reset();
 		requests.reset();
+		onDone.reset();
 		downshiftFrom = undefined;
 		restoreCandidates = [];
 		pendingRestore = undefined;
@@ -285,7 +293,9 @@ export function registerCompaction(
 		});
 	});
 	api.bus.on("session_compact", async (event, ctx) => {
-		thrash.compacted(event.reason === "manual" && !requests.inFlight);
+		const manual = event.reason === "manual" && !requests.inFlight;
+		const item = onDone.compacted(() => event.compactionEntry.details);
+		thrash.compacted(manual, item, leftInRecoveryBand(api, ctx));
 		requests.compacted();
 		const segment = archiveCompaction(api, archive, event, ctx);
 		// After Octocode's default summary, what code appends to a summary follows it, archive pointer included; any other
@@ -307,6 +317,7 @@ export function registerCompaction(
 		await restoreLoadedSkills(api, ctx);
 	});
 	api.bus.on("session_compact_failed", async (event) => {
+		onDone.failed();
 		if (event.aborted && event.reason === "manual") requests.reset();
 		archive.discard();
 		continuity.discard();
@@ -344,6 +355,9 @@ export function registerCompaction(
 	);
 	api.bus.on("session_tree", async (_event, ctx) => {
 		tooLarge.reset();
+		thrash.reset();
+		requests.reset();
+		downshiftFrom = undefined;
 		restoreCandidates = [];
 		pendingRestore = undefined;
 		continuity.discard();

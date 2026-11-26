@@ -50,8 +50,17 @@ export function buildSkillVocabulary(skills: readonly SkillWordSource[]): SkillV
 			words.set(key, owners);
 		}
 	}
+	// A render looks up every word of every line: keep each typed word's answer, bounded, for this vocabulary.
+	const seen = new Map<string, readonly string[]>();
 	return {
-		skillsFor: (word) => [...(words.get(wordKey(word)) ?? [])],
+		skillsFor: (word) => {
+			let skills = seen.get(word);
+			if (skills) return skills;
+			if (seen.size >= 2048) seen.clear();
+			skills = [...(words.get(wordKey(word)) ?? [])];
+			seen.set(word, skills);
+			return skills;
+		},
 		has: (name) => names.has(name),
 	};
 }

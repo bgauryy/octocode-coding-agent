@@ -23,6 +23,7 @@ import type {
 	BeforeAgentStartUserEvent,
 	BoundaryContextPreview,
 	CacheWarmingDecisionEvent,
+	BoundaryCompactionOptions,
 	CompactOptions,
 	ContextEvent,
 	ContextUsage,
@@ -149,6 +150,7 @@ export interface RunnerBindings {
 	getContextUsageFn: () => ContextUsage | undefined;
 	getCacheWarmingReportFn: () => string[];
 	compactFn: (options?: CompactOptions) => void;
+	requestBoundaryCompactionFn: (options?: BoundaryCompactionOptions) => void;
 	getSystemPromptFn: () => string;
 	getSystemPromptOptionsFn: () => BuildSystemPromptOptions;
 	executeToolFn: ContextActions["executeTool"];

@@ -31,6 +31,58 @@ function hasExtraLeadingTab(content: string, wanted: readonly string[]): boolean
 	return first >= 0 && content.indexOf(needle, first + 1) < 0;
 }
 
+/** The most lines of the nearest region an error shows. */
+const REGION_LINES = 12;
+/** The least bigram similarity (0 to 1) for a line to count as what oldText was aimed at. */
+const MIN_SIMILARITY = 0.6;
+
+function bigrams(text: string): Map<string, number> {
+	const counts = new Map<string, number>();
+	for (let i = 0; i < text.length - 1; i++) {
+		const gram = text.slice(i, i + 2);
+		counts.set(gram, (counts.get(gram) ?? 0) + 1);
+	}
+	return counts;
+}
+
+/** Dice coefficient of the bigrams of two whitespace-collapsed strings. */
+function similarity(a: Map<string, number>, aSize: number, b: string): number {
+	const size = b.length - 1;
+	if (aSize <= 0 || size <= 0) return 0;
+	let shared = 0;
+	for (const [gram, count] of bigrams(b)) shared += Math.min(count, a.get(gram) ?? 0);
+	return (2 * shared) / (aSize + size);
+}
+
+/**
+ * The file region nearest to `oldText` when no line of it matches exactly: the file line most like oldText's longest
+ * line (bigram similarity, whitespace collapsed), shown from where oldText would start, with line numbers. Undefined
+ * when no line is similar enough.
+ */
+function nearestRegion(lines: readonly string[], wanted: readonly string[]): string | undefined {
+	const collapse = (line: string) => line.trim().replace(/\s+/g, " ");
+	let key = -1;
+	for (const [index, line] of wanted.entries())
+		if (collapse(line).length > (key < 0 ? 3 : collapse(wanted[key]).length)) key = index;
+	if (key < 0) return undefined;
+	const target = collapse(wanted[key]);
+	const grams = bigrams(target);
+	let best = -1;
+	let bestScore = MIN_SIMILARITY;
+	for (const [index, line] of lines.entries()) {
+		const score = similarity(grams, target.length - 1, collapse(line));
+		if (score > bestScore) {
+			bestScore = score;
+			best = index;
+		}
+	}
+	if (best < 0) return undefined;
+	const from = Math.max(0, best - key);
+	const to = Math.min(lines.length, from + Math.min(wanted.length, REGION_LINES));
+	const shown = lines.slice(from, to).map((line, offset) => `${from + offset + 1}: ${show(line)}`);
+	return ` Nearest text in the file (lines ${from + 1}-${to}), which oldText did not match exactly: ${shown.join(" | ")}. Copy oldText from it.`;
+}
+
 /** `content` and `oldText` are LF-normalized. */
 export function mismatchHint(content: string, oldText: string): string | undefined {
 	const wanted = oldText.split("\n");
@@ -57,5 +109,5 @@ export function mismatchHint(content: string, oldText: string): string | undefin
 		const actual = lines[row];
 		return ` Line ${row + 1} of the file is ${actual === undefined ? "missing (the file ends before it)" : show(actual)}; oldText has ${show(candidate[offset])}.`;
 	}
-	return undefined;
+	return nearestRegion(lines, wanted);
 }

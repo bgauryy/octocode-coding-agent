@@ -5,6 +5,7 @@
  */
 
 import { stripTerminalSequences } from "./ansi-codes.ts";
+import { LEADING_FRAME } from "./row-frame.ts";
 
 /** APC string terminator (ST, ESC \). */
 const ST = "\x1b\\";
@@ -40,8 +41,6 @@ export function softWrapSpaceMark(): string {
 const FOLD_MARK = `\x1b_octo:fold${ST}`;
 
 const ROW_MARK = /\x1b_octo:(?:wj|ws|fold)\x1b\\/g;
-/** What may precede a join mark on its row: indent and a box gutter, no text. */
-const LEADING_FRAME = /^[\s│┃]*$/u;
 
 /** `text` marked as standing for hidden content, so search can say that the hidden text was not searched. */
 export function markFolded(text: string): string {

@@ -22,7 +22,8 @@ const LOCK_PREFIX = "lock:";
 /** The prerequisite a text names, or undefined for any other text. */
 export function parsePrerequisite(text: string): Prerequisite | undefined {
 	const name = text.trim();
-	if (/^B\d+$/i.test(name)) return { kind: "item", ref: name.toUpperCase() };
+	const itemMatch = /^(?:item:|#)?(B\d+)$/i.exec(name);
+	if (itemMatch) return { kind: "item", ref: itemMatch[1].toUpperCase() };
 	if (name.startsWith(AGENT_PREFIX) && name.length > AGENT_PREFIX.length)
 		return { kind: "agent", id: name.slice(AGENT_PREFIX.length) };
 	if (/^job:bash-\d+$/.test(name)) return { kind: "job", id: name.slice(JOB_PREFIX.length) };
@@ -62,6 +63,8 @@ export type GateResult =
 export interface GateHost {
 	/** The item's standing now: read on every check, so a missed event never strands a wait. */
 	item(ref: string): ItemStanding;
+	/** Whether `id` is a child of this session whose report is still being finalized (`noteEnd` will supply its outcome). */
+	ownRunning?(id: string): boolean;
 	/** Calls `listener` for every lifecycle transition (`AGENT_LIFECYCLE_CHANNEL`); returns the unsubscribe. */
 	lifecycle(listener: (notice: AgentLifecycleNotice) => void): () => void;
 	/** Calls `poke` whenever another process may have written the shared database (`DatabaseFollower`); returns the unsubscribe. */
@@ -225,6 +228,7 @@ export class PrerequisiteGate {
 				// The parent's own record of the run is better than the retired row's: a child's `off` row seldom has the outcome.
 				if (this.ends.has(notice.agent)) return this.refresh();
 				const outcome = notice.data.outcome;
+				if (typeof outcome !== "string" && this.host.ownRunning?.(notice.agent)) return;
 				this.noteEnd(notice.agent, {
 					reason: notice.reason ?? "left",
 					outcome: typeof outcome === "string" ? outcome : undefined,

@@ -1,6 +1,6 @@
 /**
  * Input slice of the interactive UI store: the timing of the Esc and Ctrl+C gestures, the prompts submitted that the
- * main loop has not read yet, and the `fd` binary file completion searches with. Nothing draws it, so `bindRender` asks for no frame when it changes; the key
+ * main loop has not read yet, and the `fd` binary file completion searches with. Nothing draws it, so no binder asks for a frame when it changes; the key
  * handlers change it only through these actions, which own the double-Esc and burst windows.
  */
 

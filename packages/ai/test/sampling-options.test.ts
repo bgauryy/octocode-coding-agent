@@ -139,11 +139,12 @@ describe("sampling params", () => {
 				{ temperature: 1, top_p: 0.95 },
 				{
 					reasoning: true,
-					thinkingLevelMap: { low: null, medium: null },
+					thinkingLevelMap: { xhigh: null },
 					samplingParamsByThinkingLevel: { high: { temperature: 0.8, top_k: 64 } },
 				},
 			),
-			{ reasoning: "low" },
+			// An unsupported level falls to the nearest lower one (`clampThinkingLevel`): xhigh runs as high.
+			{ reasoning: "xhigh" },
 		);
 
 		expect(payload.temperature).toBe(0.8);

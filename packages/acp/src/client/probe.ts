@@ -2,17 +2,22 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import type { AcpClientHost } from "../host.ts";
 import { authRequiredIn } from "./auth.ts";
 import { AcpBackend, type AcpConnectInput } from "./client.ts";
+import type { AcpCapabilities } from "./session-config.ts";
 
 /**
  * Whether an ACP agent can open a session without a person: signed in, signed out (with the sign-in methods it offers,
  * names only), or unknown with the reason the check could not tell.
  */
-export type AcpSignIn = { signedIn: true } | { signedIn: false; methods: string[] } | { error: string };
+export type AcpSignIn =
+	| { signedIn: true; models: string[]; capabilities: AcpCapabilities }
+	| { signedIn: false; methods: string[] }
+	| { error: string };
 
 /**
  * The sign-in check of last resort, for an agent whose CLI has no status command: `initialize` and `session/new` in
  * `input.cwd` (a folder of its own, so no project is touched), then the connection closes. It never authenticates and
- * never prompts: an `auth_required` answer means signed out. Permission requests cannot arrive without a prompt.
+ * never prompts: an `auth_required` answer means signed out. A signed-in answer carries the models the agent advertises
+ * and what it accepts, which the same session already told. Permission requests cannot arrive without a prompt.
  */
 export async function probeAcpSignIn(
 	host: AcpClientHost,
@@ -26,8 +31,9 @@ export async function probeAcpSignIn(
 			async () => ({ outcome: { outcome: "cancelled" } }),
 			signal,
 		);
+		const { models, capabilities } = backend;
 		await backend.close();
-		return { signedIn: true };
+		return { signedIn: true, models: models?.available ?? [], capabilities };
 	} catch (error) {
 		const required = authRequiredIn(error);
 		return required ? { signedIn: false, methods: required.methods } : { error: errorMessage(error) };

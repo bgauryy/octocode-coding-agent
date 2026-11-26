@@ -3,7 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { openAgentDb, sharedAgentDb } from "../../src/storage/database.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { closeSharedAgentDb, type AgentDb } from "../../../db/src/api.ts";
 import type { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { checkMerged } from "../../src/octocode/backlog/merge-gate.ts";
@@ -114,7 +115,7 @@ it("reports which entries a cancelled backlog write batch applied", async () => 
 	const first = opened.add({ title: "First", why: "w", goal: "g", createdBy: "user", state: "todo" });
 	const second = opened.add({ title: "Second", why: "w", goal: "g", createdBy: "user", state: "todo" });
 	const controller = new AbortController();
-	const unsubscribe = sharedAgentDb(env).onCommit(() => {
+	const unsubscribe = workspaceDb(cwd, env).agent.onCommit(() => {
 		if (opened.get(first.ref)?.state === "ongoing") controller.abort();
 	});
 	try {

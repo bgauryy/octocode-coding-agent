@@ -11,13 +11,13 @@ Sweep first, act second. Each area below ends in a finding, then either a fix wi
 
 ## Repository
 
-| Area                  | Check                                                                                                               | Finding becomes                                                                  |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Dependencies          | `yarn outdated` or `yarn npm audit`; read the changelog of a major bump                                             | An item per upgrade with the breaking changes; a security advisory is a fix item |
-| Dead code             | `yarn knip`, then confirm each candidate with `lspSearch` references and a search for registration, config and docs | Delete the confirmed code with its tests; list the rest as candidates            |
-| Stale docs            | Compare docs' commands, flags and paths with the code (search each name); check links                               | Fix the page that owns the fact                                                  |
-| Lint and format drift | `yarn run check` (rewrites nothing), `yarn oxfmt <files>` for formatting                                            | Fix in the touched files; report an old failure instead of hiding it             |
-| Flaky tests           | Rerun a suspect test file a few times, alone; compare with the failure's log                                        | An item with the trigger, the rate and the suspected cause; never skip the test  |
+| Area                  | Check                                                                                                                                                             | Finding becomes                                                                  |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Dependencies          | `yarn outdated` or `yarn npm audit`; read the changelog of a major bump                                                                                           | An item per upgrade with the breaking changes; a security advisory is a fix item |
+| Dead code             | `yarn knip`, then confirm each candidate with a references check (LSP if the research server offers it, else `rg`) and a search for registration, config and docs | Delete the confirmed code with its tests; list the rest as candidates            |
+| Stale docs            | Compare docs' commands, flags and paths with the code (search each name); check links                                                                             | Fix the page that owns the fact                                                  |
+| Lint and format drift | `yarn run check` (rewrites nothing), `yarn oxfmt <files>` for formatting                                                                                          | Fix in the touched files; report an old failure instead of hiding it             |
+| Flaky tests           | Rerun a suspect test file a few times, alone; compare with the failure's log                                                                                      | An item with the trigger, the rate and the suspected cause; never skip the test  |
 
 ## Octocode upkeep
 

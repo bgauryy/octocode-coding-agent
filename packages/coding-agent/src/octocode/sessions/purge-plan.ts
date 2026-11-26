@@ -97,13 +97,15 @@ function liveBlockers(
 	}
 	const seats =
 		ids === undefined
-			? agents.allProcesses(index.agent.db).map((seat) => ({ ...seat, id: seat.id }))
-			: [...ids].flatMap((id) =>
-					agents.inWorkspace(index.agent.db, id).map((row) => ({
-						id: String(row.id),
-						pid: Number(row.pid),
-						started: typeof row.started === "string" ? row.started : undefined,
-					})),
+			? index.files().flatMap((file) => agents.allProcesses(file.db).map((seat) => ({ ...seat, id: seat.id })))
+			: index.files().flatMap((file) =>
+					[...ids].flatMap((id) =>
+						agents.inWorkspace(file.db, id).map((row) => ({
+							id: String(row.id),
+							pid: Number(row.pid),
+							started: typeof row.started === "string" ? row.started : undefined,
+						})),
+					),
 				);
 	for (const seat of seats)
 		if (seat.pid !== process.pid && sameProcess(seat.pid, seat.started))

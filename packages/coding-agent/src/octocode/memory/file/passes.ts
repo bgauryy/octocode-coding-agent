@@ -7,6 +7,7 @@ import { BACKGROUND_RETRY } from "../../shared/side-retry.ts";
 import type { SmallModel as SmallModelOf } from "../../shared/small-model.ts";
 import type { MemoryStore } from "../store.ts";
 import { type MemoryOp, parseMemoryOps } from "./consolidate.ts";
+import { type Defect, parseDefects } from "./defects.ts";
 import {
 	countedLines,
 	lineCap,
@@ -18,7 +19,7 @@ import {
 	serializeMemoryFile,
 } from "./format.ts";
 import type { MemoryFileRef, MemoryFileScope } from "../../permission/memory-files.ts";
-import { archive } from "./sync.ts";
+import { adoptFileLines, archive } from "./sync.ts";
 import { MemoryFileError, MemoryFileTrackedError, readMemoryFile, updateMemoryFile } from "./writer.ts";
 
 /**
@@ -103,6 +104,8 @@ export function parseOpsReply(
 	text: string,
 	scopes: readonly MemoryFileScope[],
 	maxOps: number,
+	/** Keys a pass reads itself (not files), which are left out of the ops. */
+	otherKeys: readonly string[] = [],
 ): Map<MemoryFileScope, MemoryOp[]> {
 	let value: unknown;
 	try {
@@ -114,6 +117,7 @@ export function parseOpsReply(
 		throw new Error("the reply is not a JSON object of ops per file");
 	const out = new Map<MemoryFileScope, MemoryOp[]>();
 	for (const [key, ops] of Object.entries(value)) {
+		if (otherKeys.includes(key)) continue;
 		const scope = scopes.find((each) => each === key);
 		if (!scope) throw new Error(`the reply names "${key}", which is not a file under review`);
 		out.set(scope, parseMemoryOps(ops));
@@ -121,6 +125,11 @@ export function parseOpsReply(
 	const count = [...out.values()].reduce((sum, ops) => sum + ops.length, 0);
 	if (count > maxOps) throw new Error(`the reply has ${count} ops, over the ${maxOps} allowed`);
 	return out;
+}
+
+/** The reply's `defects` key, which `parseOpsReply` leaves out (see `defects.ts`); undefined without one. Call after `parseOpsReply` accepted the text. */
+export function replyDefect(text: string): Defect | undefined {
+	return parseDefects((replyObject(text) as Record<string, unknown>).defects);
 }
 
 /** `op` as a background pass applies it: invisible characters gone, marked as the reflection's, never pinned. */
@@ -231,6 +240,8 @@ export async function applyPassOps(
 			},
 			deps.env,
 		);
+		// Lines the pass wrote get notes, so the file holds nothing the database cannot reach.
+		if (update.changed) adoptFileLines(deps.store, file, update.lines);
 		const skippedOps = new Set(update.skipped.map(({ op }) => op));
 		Object.assign(outcome, {
 			changed: update.changed,
@@ -257,7 +268,11 @@ export async function applyPassOps(
 }
 
 /** One line for the user about what a pass did, or undefined when it did nothing worth saying. */
-function passSummary(pass: string, outcomes: readonly PassFileOutcome[]): string | undefined {
+function passSummary(
+	pass: string,
+	outcomes: readonly PassFileOutcome[],
+	proposed: readonly string[],
+): string | undefined {
 	const parts = outcomes.flatMap((outcome) => {
 		const said: string[] = [];
 		if (outcome.changed) {
@@ -269,6 +284,7 @@ function passSummary(pass: string, outcomes: readonly PassFileOutcome[]): string
 		if (outcome.flagged.length > 0) said.push(`${outcome.flagged.length} line(s) marked recheck`);
 		return said;
 	});
+	if (proposed.length > 0) parts.push(`proposed ${proposed.join(", ")} on the backlog`);
 	return parts.length > 0 ? `Memory ${pass}: ${parts.join("; ")}.` : undefined;
 }
 
@@ -290,11 +306,13 @@ export function recordPass(
 		signals?: unknown;
 		/** Files left out because they hold content to fix by hand. */
 		unreadable?: string[];
+		/** Backlog items the pass proposed for a defect it found (`defects.ts`). */
+		proposed?: string[];
 	},
 ): void {
 	const summary = record.error
 		? `Memory ${record.pass}: ${record.error}; files unchanged.`
-		: passSummary(record.pass, record.files);
+		: passSummary(record.pass, record.files, record.proposed ?? []);
 	api.session.appendEntry(MEMORY_PASS_TYPE, { ...record, ...(summary ? { text: summary } : {}) });
 	if (!summary) return;
 	if (ctx.hasUI) notify(ctx.ui, summary, record.error ? "warning" : "info");

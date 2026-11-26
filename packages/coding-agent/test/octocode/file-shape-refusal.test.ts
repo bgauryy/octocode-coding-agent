@@ -4,7 +4,7 @@ import type { JsonObject } from "@octocodeai/octocode-ai";
 import { describe, expect, it } from "vitest";
 import { validateToolArguments } from "../../../ai/src/utils/validation.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { Params, renameReasoning } from "../../src/octocode/files/tool/queries.ts";
+import { Params, prepareChangeArguments } from "../../src/octocode/files/tool/queries.ts";
 import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { asSetup, fakeCtx, fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -21,7 +21,7 @@ describe("file tool: refusal for a call with both or neither of queries and patc
 	it("refuses both fields and echoes the corrected call with queries kept and patch dropped", () => {
 		let thrown: unknown;
 		try {
-			renameReasoning({ reason: "Fix a", queries: [{ ...change, reason: "Fix a" }], patch: "*** Begin Patch" });
+			prepareChangeArguments({ reason: "Fix a", queries: [{ ...change, reason: "Fix a" }], patch: "*** Begin Patch" });
 		} catch (error) {
 			thrown = error;
 		}
@@ -32,7 +32,7 @@ describe("file tool: refusal for a call with both or neither of queries and patc
 	it("echoes a change with a path but no type as queries, and names the missing shape", () => {
 		let thrown: unknown;
 		try {
-			renameReasoning({ reason: "Fix a", path: "/work/a.ts" });
+			prepareChangeArguments({ reason: "Fix a", path: "/work/a.ts" });
 		} catch (error) {
 			thrown = error;
 		}
@@ -44,7 +44,7 @@ describe("file tool: refusal for a call with both or neither of queries and patc
 		// The shape a model produced: path and edits as fields, type only as text in `reason`.
 		let thrown: unknown;
 		try {
-			renameReasoning({
+			prepareChangeArguments({
 				reason: 'Correct the citation.</reason>\n<parameter name="type">edit',
 				path: "/work/a.ts",
 				edits: [{ oldText: "a", newText: "b" }],
@@ -59,7 +59,7 @@ describe("file tool: refusal for a call with both or neither of queries and patc
 	it("reads a queries array written as text inside reason", () => {
 		let thrown: unknown;
 		try {
-			renameReasoning({
+			prepareChangeArguments({
 				reason: `Fix a.</reason>\n<parameter name="queries">${JSON.stringify([change])}`,
 			});
 		} catch (error) {
@@ -79,7 +79,7 @@ describe("file tool: refusal for a call with both or neither of queries and patc
 		};
 		let thrown: unknown;
 		try {
-			renameReasoning(naive);
+			prepareChangeArguments(naive);
 		} catch (error) {
 			thrown = error;
 		}
@@ -101,7 +101,7 @@ describe("file tool: refusal for a call with both or neither of queries and patc
 		);
 		const cwd = tmp();
 		fs.writeFileSync(path.join(cwd, "index.ts"), "export const add = (a: number, b: number) => a + b;\n");
-		await tool!.execute("c", renameReasoning(valid), undefined, undefined, fakeCtx({ cwd, hasUI: false }));
+		await tool!.execute("c", prepareChangeArguments(valid), undefined, undefined, fakeCtx({ cwd, hasUI: false }));
 		expect(fs.readFileSync(path.join(cwd, "index.ts"), "utf8")).toBe(
 			"export const add = (a: number, b: number) => a + b + 0;\n",
 		);
@@ -110,7 +110,7 @@ describe("file tool: refusal for a call with both or neither of queries and patc
 	it("names an edit for a top-level oldText/newText pair without op or type", () => {
 		let thrown: unknown;
 		try {
-			renameReasoning({ reason: "Fix a", path: "/work/a.ts", oldText: "a", newText: "b" });
+			prepareChangeArguments({ reason: "Fix a", path: "/work/a.ts", oldText: "a", newText: "b" });
 		} catch (error) {
 			thrown = error;
 		}
@@ -118,7 +118,7 @@ describe("file tool: refusal for a call with both or neither of queries and patc
 	});
 
 	it("still accepts the valid forms", () => {
-		expect(() => renameReasoning({ reason: "Fix a", queries: [change] })).not.toThrow();
-		expect(() => renameReasoning({ patch: "*** Begin Patch\n*** End Patch" })).not.toThrow();
+		expect(() => prepareChangeArguments({ reason: "Fix a", queries: [change] })).not.toThrow();
+		expect(() => prepareChangeArguments({ patch: "*** Begin Patch\n*** End Patch" })).not.toThrow();
 	});
 });

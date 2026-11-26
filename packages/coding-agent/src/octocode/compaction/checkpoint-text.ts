@@ -83,12 +83,15 @@ export function userMessagesSection(
 	const kept = all.map((message) => (message.length > budget.perMessage ? savedReference(message, save) : message));
 	const pointed = render(kept, omittedBefore);
 	if (pointed.length <= budget.total) return pointed;
+	const savedPinned = budget.keepOldest === true && omittedBefore === 0 && kept[0].length <= budget.perMessage ? 1 : 0;
 	const reference = savedReference(whole, save);
 	const oldest =
-		render([...kept.slice(0, pinned), reference], omittedBefore).length <= budget.total ? kept.slice(0, pinned) : [];
+		render([...kept.slice(0, savedPinned), reference], omittedBefore).length <= budget.total
+			? kept.slice(0, savedPinned)
+			: [];
 	// The newest messages that fit also stay inline after the reference, so the latest request survives word for word.
 	const newest: string[] = [];
-	for (const message of kept.slice(pinned).reverse()) {
+	for (const message of kept.slice(savedPinned).reverse()) {
 		if (render([...oldest, reference, message, ...newest], omittedBefore).length > budget.total) break;
 		newest.unshift(message);
 	}

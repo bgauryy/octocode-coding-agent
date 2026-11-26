@@ -28,6 +28,7 @@ import { catalogUpdateOf } from "../model-catalog/provider.ts";
 import { allowsUnattended, isSubscriptionBilled } from "../subscription.ts";
 import type { ModelAvailability } from "./availability.ts";
 import type { ProviderLayers } from "./provider-layers.ts";
+import { configuredRequestsPerMinute, configuredTokensPerMinute } from "./request-rate.ts";
 
 /** How a provider is signed in: a stored account login, a subscription (login or token), or a key. */
 export type CredentialKind = "account" | "subscription" | "key";
@@ -125,6 +126,22 @@ export abstract class ModelCatalog {
 
 	getCachePolicy(model: Model<Api>, options?: StreamOptions, settings?: readonly CachePreferenceLayer[]) {
 		return resolveConfiguredCache(model, this.layers.config.getProvider(model.provider), options, settings);
+	}
+
+	/** Where a model's provider limit falls back to when models.json sets none: the `requestsPerMinute` setting. */
+	defaultRequestsPerMinute: () => number | undefined = () => undefined;
+
+	/** Sends per minute for the model's provider: its models.json entry, else its provider's, else the setting. */
+	requestsPerMinute(model: Model<Api>): number | undefined {
+		return (
+			configuredRequestsPerMinute(this.layers.config.getProvider(model.provider), model.id) ??
+			this.defaultRequestsPerMinute()
+		);
+	}
+
+	/** The models.json token budget per minute for the model's gated requests; undefined: the gate's default. */
+	tokensPerMinute(model: Model<Api>): number | undefined {
+		return configuredTokensPerMinute(this.layers.config.getProvider(model.provider), model.id);
 	}
 
 	getModel(providerId: string, modelId: string): Model<Api> | undefined {

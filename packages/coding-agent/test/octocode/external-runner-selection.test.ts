@@ -30,11 +30,11 @@ it("requires an explicit global choice before offering installed external agents
 	expect(externalAgentsEnabled(root)).toBe(true);
 });
 
-it("offers only selected installed runners, including an explicitly empty selection", () => {
+it("offers only selected installed runners, none for an empty or missing selection", () => {
 	expect(connectedRunners(true, permission, ["claude-code"]).ids).toEqual(["claude-code"]);
 	expect(connectedRunners(true, permission, []).ids).toEqual([]);
 	expect(connectedRunners(false, permission, ["claude-code"]).ids).toEqual([]);
-	expect(connectedRunners(true, permission).ids).toEqual(["claude-code", "codex"]);
+	expect(connectedRunners(true, permission).ids).toEqual([]);
 });
 
 it("refuses a direct turn for a runner absent from the captured selection before launching it", async () => {

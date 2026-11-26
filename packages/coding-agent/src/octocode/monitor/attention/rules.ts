@@ -1,17 +1,18 @@
 import type { MachineRule } from "../rules.ts";
 
 /**
- * How a rule tells its session: starts a turn, joins the next request, wakes only when paced (else a note), or only records
- * the alert in the ledger (its hook and room) and shows it to the user once, when the model can do nothing about it.
+ * How a rule tells its session: starts a turn, joins the next request, wakes only when paced (else a note), wakes only the
+ * session that owns the cause (else records it in the ledger), or only records the alert in the ledger (its hook and room)
+ * and shows it to the user once, when the model can do nothing about it.
  */
-type AttentionDelivery = "wake" | "note" | "wake or note" | "ledger";
+type AttentionDelivery = "wake" | "note" | "wake or note" | "wake or ledger" | "ledger";
 
 export interface AttentionRule {
 	id: string;
 	/** Where and when the rule is checked. */
 	trigger: string;
 	delivery: AttentionDelivery;
-	/** The settings that tune it (dotted paths); a deprecated fallback key follows the key it backs. */
+	/** The settings that tune it (dotted paths). */
 	settings: readonly string[];
 }
 
@@ -21,10 +22,10 @@ export interface AttentionRule {
  * skip its settings or docs.
  */
 export const ATTENTION_RULES = [
-	{ id: "load", trigger: "machine sample", delivery: "wake or note", settings: ["monitor.loadPerCore"] },
-	{ id: "memory", trigger: "machine sample", delivery: "wake or note", settings: ["monitor.memoryAvailablePercent"] },
-	{ id: "swap", trigger: "machine sample", delivery: "wake or note", settings: ["monitor.swapPercent"] },
-	{ id: "gpu", trigger: "machine sample", delivery: "wake or note", settings: ["monitor.gpuPercent"] },
+	{ id: "load", trigger: "machine sample", delivery: "wake or ledger", settings: ["monitor.loadPerCore"] },
+	{ id: "memory", trigger: "machine sample", delivery: "wake or ledger", settings: ["monitor.memoryAvailablePercent"] },
+	{ id: "swap", trigger: "machine sample", delivery: "wake or ledger", settings: ["monitor.swapPercent"] },
+	{ id: "gpu", trigger: "machine sample", delivery: "wake or ledger", settings: ["monitor.gpuPercent"] },
 	{ id: "job", trigger: "machine sample", delivery: "wake", settings: ["monitor.stuckJobMinutes"] },
 	{ id: "context", trigger: "turn end", delivery: "note", settings: ["monitor.contextBands"] },
 	{

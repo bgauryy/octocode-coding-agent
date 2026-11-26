@@ -65,7 +65,7 @@ export function stageBinary(outDir, platform = currentPlatform()) {
 	// The research server and its native binary, so the binary runs it without an npm install or a download.
 	const servers = stageHostMcpServers(outDir, platform, {
 		packageDir,
-		recommendedDir: join(repoRoot, "packages", "mcp", "src", "recommended"),
+		defaultConfig: join(repoRoot, "packages", "mcp", "src", "default_mcp_config.json"),
 	});
 	return { outDir, platform, skills: skills.skills.length, servers };
 }

@@ -782,9 +782,9 @@ describe("SettingsManager", () => {
 	});
 
 	describe("bashOutputMaxBytes", () => {
-		it("defaults to the shared 20 KB result budget and reads a valid setting", () => {
+		it("defaults to the 12 KB bash result budget and reads a valid setting", () => {
 			const settingsPath = join(agentDir, "settings.json");
-			expect(SettingsManager.create(projectDir, agentDir).getBashOutputMaxBytes()).toBe(20_000);
+			expect(SettingsManager.create(projectDir, agentDir).getBashOutputMaxBytes()).toBe(12_000);
 			writeFileSync(settingsPath, JSON.stringify({ bashOutputMaxBytes: 8192 }));
 			expect(SettingsManager.create(projectDir, agentDir).getBashOutputMaxBytes()).toBe(8192);
 		});
@@ -792,7 +792,7 @@ describe("SettingsManager", () => {
 		it("falls back to the default below 1 KB or for a non-number", () => {
 			for (const value of [100, -5, "big"]) {
 				writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ bashOutputMaxBytes: value }));
-				expect(SettingsManager.create(projectDir, agentDir).getBashOutputMaxBytes()).toBe(20_000);
+				expect(SettingsManager.create(projectDir, agentDir).getBashOutputMaxBytes()).toBe(12_000);
 			}
 		});
 	});

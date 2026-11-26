@@ -9,6 +9,8 @@ export type StructuredResultV1 = {
 	status: "valid" | "invalid" | "unavailable";
 	data?: JsonValue;
 	error?: { code: string; path?: string };
+	/** A valid answer's report trailer (`Noticed:`, `For coordinator:`, `Ask user:` sections after the block), kept for the caller. */
+	notes?: string;
 };
 export interface ResultContract {
 	readonly schema: Readonly<Record<string, unknown>>;
@@ -18,6 +20,7 @@ export interface ResultContract {
 const SCHEMA_BYTES = 16 * 1024;
 const RESULT_BYTES = 64 * 1024;
 const ENVELOPE_BYTES = 96 * 1024;
+const NOTES_CHARS = 2000;
 const TYPES = new Set(["object", "array", "string", "number", "integer", "boolean", "null"]);
 const KEYS = new Set([
 	"type",
@@ -197,15 +200,50 @@ const invalid = (contract: ResultContract, code: string, path?: string): Structu
 	error: { code, ...(path ? { path: path.slice(0, 128) } : {}) },
 });
 
-/** Only an exact final marked JSON block counts; earlier prose/code examples never become machine data. */
+const RESULT_LABEL = /(?:^|\n)[ \t]*(?:#{1,6}[ \t]+)?[*_]{0,2}Structured result:?[*_]{0,2}[ \t]*(?=\n)/gi;
+const RESULT_MARKER =
+	/(?:^|\n)[ \t]*(?:#{1,6}[ \t]+)?[*_]{0,2}Structured result:?[*_]{0,2}[ \t]*\n+[ \t]*```(?:json)?[ \t]*\n/gi;
+
+const TRAILER_LABEL = /^[ \t]*(?:[-*][ \t]+)?[*_]{0,2}(?:Noticed|For coordinator|Ask user)[*_]{0,2}:/i;
+const CONTINUATION = /^(?:[ \t]+\S|[-*][ \t]|\d+[.)][ \t])/;
+
+/**
+ * The report trailer after the block: only the profile's closing sections (`Noticed:`, `For coordinator:`, `Ask user:`),
+ * each with its own lines; a blank line then unmarked prose is not one. Undefined when anything else follows.
+ */
+function reportTrailer(text: string): string | undefined {
+	let inSection = false;
+	let blank = false;
+	for (const line of text.split("\n")) {
+		if (!line.trim()) {
+			blank = true;
+			continue;
+		}
+		if (TRAILER_LABEL.test(line)) inSection = true;
+		else if (!inSection || (blank && !CONTINUATION.test(line))) return undefined;
+		blank = false;
+	}
+	return text.trim();
+}
+
+/** Only a single final marked JSON block counts; earlier prose/code examples never become machine data. */
 export function validateResultAnswer(answer: string, contract: ResultContract): StructuredResultV1 {
-	const marker = "\nStructured result:\n```json\n";
-	const first = answer.indexOf(marker);
-	if (first < 0) return invalid(contract, "missing");
-	if (answer.indexOf("\nStructured result:", first + marker.length) >= 0) return invalid(contract, "duplicate");
-	const body = answer.slice(first + marker.length);
-	const end = body.lastIndexOf("\n```");
-	if (end < 0 || body.slice(end + 4).trim()) return invalid(contract, "framing");
+	const labels = [...answer.matchAll(RESULT_LABEL)];
+	if (labels.length === 0) return invalid(contract, "missing");
+	if (labels.length > 1) return invalid(contract, "duplicate");
+	const matches = [...answer.matchAll(RESULT_MARKER)];
+	if (matches.length === 0) return invalid(contract, "framing");
+	const match = matches[0];
+	const body = answer.slice((match.index ?? 0) + match[0].length);
+	const closeMatch = /\n[ \t]*```[ \t]*(?=\n|$)/.exec(body);
+	if (!closeMatch) return invalid(contract, "framing");
+	// The first closing fence ends the block: JSON text cannot hold a raw newline, so no fence line sits inside it. Text
+	// after it never becomes data: a report trailer, or stray prose (fenced or not), is kept as notes for the caller
+	// instead of failing a complete answer.
+	const end = closeMatch.index;
+	const closeLen = closeMatch[0].length;
+	const after = body.slice(end + closeLen).trim();
+	const notes = after ? (reportTrailer(after) ?? after) : undefined;
 	const raw = body.slice(0, end);
 	if (Buffer.byteLength(raw) > RESULT_BYTES) return invalid(contract, "oversize");
 	try {
@@ -214,7 +252,13 @@ export function validateResultAnswer(answer: string, contract: ResultContract): 
 			const error = Value.Errors(contract.schema as TSchema, data).at(0);
 			return invalid(contract, "schema", error?.instancePath);
 		}
-		return { version: 1, schemaHash: contract.hash, status: "valid", data };
+		return {
+			version: 1,
+			schemaHash: contract.hash,
+			status: "valid",
+			data,
+			...(notes ? { notes: notes.slice(0, NOTES_CHARS) } : {}),
+		};
 	} catch {
 		return invalid(contract, "json");
 	}
@@ -235,13 +279,15 @@ export function validateStoredStructuredResult(value: unknown): StructuredResult
 	if (
 		(data.status === "valid") !== hasData ||
 		(data.status !== "invalid" && data.error !== undefined) ||
+		(data.notes !== undefined &&
+			(data.status !== "valid" || typeof data.notes !== "string" || data.notes.length > NOTES_CHARS)) ||
 		(data.status === "invalid" &&
 			(!plain(data.error) ||
 				typeof data.error.code !== "string" ||
 				!/^[a-z]{1,64}$/.test(data.error.code) ||
 				Object.keys(data.error).some((key) => key !== "code" && key !== "path") ||
 				(data.error.path !== undefined && (typeof data.error.path !== "string" || data.error.path.length > 128)))) ||
-		Object.keys(data).some((key) => !["version", "schemaHash", "status", "data", "error"].includes(key))
+		Object.keys(data).some((key) => !["version", "schemaHash", "status", "data", "error", "notes"].includes(key))
 	)
 		throw new Error("Invalid saved structured result");
 	if (hasData) copyJson(data.data, { bytes: RESULT_BYTES, depth: 32, nodes: 8192 });

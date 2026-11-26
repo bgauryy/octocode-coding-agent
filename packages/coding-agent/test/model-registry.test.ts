@@ -1367,7 +1367,11 @@ describe("ModelRegistry", () => {
 
 					const registry = await createModelRegistry(authStorage, modelsJsonPath);
 
-					expect(registry.getProviderAuthStatus("custom-provider")).toEqual({ configured: false });
+					expect(registry.getProviderAuthStatus("custom-provider")).toEqual({
+						configured: false,
+						source: "environment",
+						label: envVarName,
+					});
 					expect(registry.getAvailable().some((model) => model.provider === "custom-provider")).toBe(false);
 				} finally {
 					if (originalEnv === undefined) {

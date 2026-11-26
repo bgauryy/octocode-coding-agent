@@ -3,7 +3,7 @@ import type { Subcommands } from "../shared/commands.ts";
 import { webLauncher } from "../browser/launcher.ts";
 import { STATUS } from "../shared/status.ts";
 import { DatabaseFollower } from "../shared/database-follower.ts";
-import { backlog as backlogQueries, dbStamp, isBusy } from "../../../../db/src/api.ts";
+import { type AgentDb, backlog as backlogQueries, dbStamp, isBusy } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
 import { backlogCommand } from "./command.ts";
 import { registerBacklogDigest } from "./digest.ts";
@@ -62,7 +62,9 @@ export function registerBacklog(api: FeatureSetup, options: RegisterBacklogOptio
 		stopRunFollowing?.();
 		stopRunFollowing = undefined;
 	};
-	const database = () => sharedAgentDb(backlogOptions.env ?? process.env);
+	/** The file holding the session's board, known from its start; the machine file before that. */
+	let board: AgentDb | undefined;
+	const database = () => board ?? sharedAgentDb(backlogOptions.env ?? process.env);
 	const follower = new DatabaseFollower(() => {
 		try {
 			return dbStamp(database().file);
@@ -76,7 +78,7 @@ export function registerBacklog(api: FeatureSetup, options: RegisterBacklogOptio
 		try {
 			const backlog = openBacklog(ctx, backlogOptions);
 			const audit = Number(
-				backlogQueries.auditRows(database().db, backlog.store.repo, undefined, undefined, 1)[0]?.id ?? 0,
+				backlogQueries.auditRows(backlog.store.agent.db, backlog.store.repo, undefined, undefined, 1)[0]?.id ?? 0,
 			);
 			if (changedOnly && audit === lastAudit) return;
 			lastAudit = audit;
@@ -142,6 +144,12 @@ export function registerBacklog(api: FeatureSetup, options: RegisterBacklogOptio
 		feed?.stop();
 		feed = undefined;
 		lastAudit = undefined;
+		try {
+			board = openBacklog(ctx, backlogOptions).store.agent;
+		} catch {
+			// No board (an unreadable database, a subagent without a parent): the follower watches the machine file.
+			board = undefined;
+		}
 		refresh(ctx);
 		// Every main session follows the change feed (hooks, pings), with or without a UI.
 		if (!options.isSubagent) feed = startBacklogFeed(api, ctx, backlogOptions, follower, reservations, wakes);
@@ -165,6 +173,7 @@ export function registerBacklog(api: FeatureSetup, options: RegisterBacklogOptio
 		feed?.stop();
 		feed = undefined;
 		currentContext = undefined;
+		board = undefined;
 		// A reload continues this session; any other end returns its claims (a subagent holds none).
 		if (options.isSubagent || event.reason === "reload") return;
 		try {

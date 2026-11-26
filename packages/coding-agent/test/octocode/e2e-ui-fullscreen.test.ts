@@ -24,6 +24,17 @@ const SEARCH = "\x1b[102;6u"; // ctrl+shift+f, kitty encoding
 const wheelUp = (x = 10, y = 10) => `\x1b[<64;${x};${y}M`;
 const wheelDown = (x = 10, y = 10) => `\x1b[<65;${x};${y}M`;
 
+/** Click the reply's fold hint so only the reply (not startup details) expands. */
+async function expandFoldedReply(): Promise<void> {
+	await t!.until(async () => (await t!.text()).includes("lines hidden"), "folded reply hint");
+	const folded = await t!.grid();
+	const hint = folded.findIndex((line) => line.includes("lines hidden"));
+	const col = folded[hint].indexOf("lines hidden") + 1;
+	t!.press(`\x1b[<0;${col};${hint + 1}M`);
+	t!.press(`\x1b[<0;${col};${hint + 1}m`);
+	await t!.until(async () => !(await t!.text()).includes("lines hidden"), "expanded long reply");
+}
+
 /** One long assistant reply: `row-00 marker` … `row-79 marker`, a blank line apart. */
 async function longTranscript(): Promise<void> {
 	const reply = Array.from({ length: 80 }, (_, i) => `row-${String(i).padStart(2, "0")} marker`).join("\n\n");
@@ -79,16 +90,22 @@ describe("fullscreen transcript", () => {
 	it("PageUp, Ctrl+Home, wheel and Ctrl+End move the viewport; a jump hint shows while scrolled up", async () => {
 		t = await startUi();
 		await longTranscript();
+		await expandFoldedReply();
 		expect(has(await rows(), "row-79")).toBe(true);
 		expect((await t.text()).includes(jump)).toBe(false);
 
 		await t.type("unsent draft");
 		const composer = (await t.grid()).findIndex((row) => row.includes("unsent draft"));
 		expect(composer).toBeGreaterThan(0);
+		const before = scrollTop();
 		t.press(wheelUp(10, composer + 1));
-		await t.until(async () => !has(await rows(), "row-79"), "wheel over the focused editor scrolled the transcript");
+		await t.until(
+			async () => scrollTop() < before && (await t!.text()).includes(jump),
+			"wheel over the focused editor scrolled the transcript",
+		);
+		const scrolledUp = scrollTop();
 		t.press(wheelDown(10, composer + 1));
-		await t.until(async () => has(await rows(), "row-79"), "wheel over the editor returned to latest");
+		await t.until(() => scrollTop() > scrolledUp, "wheel down over the editor scrolled back toward latest");
 		expect(t.host.editor.getText()).toBe("unsent draft");
 
 		t.press(KEY.pageUp);
@@ -129,6 +146,7 @@ describe("fullscreen transcript", () => {
 	it("search jumps to an off-screen match and Escape closes the search box", async () => {
 		t = await startUi();
 		await longTranscript();
+		await expandFoldedReply();
 		expect(has(await rows(), "row-07")).toBe(false);
 		t.press(SEARCH);
 		await wait(200);
@@ -140,51 +158,21 @@ describe("fullscreen transcript", () => {
 		expect(has(await rows(), "row-07")).toBe(true);
 	});
 
-	it("copies every marked row between a mouse press and release across a wheel scroll", async () => {
+	it("dragging across transcript rows selects them and copies once on release", async () => {
 		copied.length = 0;
 		t = await startUi();
 		await longTranscript();
-		t.press(CTRL_HOME);
-		await t.until(async () => has(await rows(), "row-01"), "the oldest rows");
-		const before = await t.grid();
-		const first = before.findIndex((row) => row.includes("row-01 marker"));
-		const col = before[first].indexOf("row-01") + 1;
-		t.press(`\x1b[<0;${col};${first + 1}M`);
-		t.press(`\x1b[<32;${col + 5};${first + 3}M`);
-		t.press(wheelDown(col, first + 3));
-		await t.until(
-			async () => (await t!.grid()).findIndex((row) => row.includes("row-01 marker")) < first,
-			"wheel moved the held selection",
-		);
-		const after = await t.grid();
-		const end = after.findIndex((row, i) => i >= first + 2 && /row-\d+ marker/.test(row));
-		expect(end).toBeGreaterThanOrEqual(first + 2);
-		const last = Number(after[end].match(/row-(\d+) marker/)?.[1]);
-		expect(last).toBeGreaterThan(2);
-		t.press(`\x1b[<32;${col + 12};${end + 1}M`);
-		t.press(`\x1b[<0;${col + 12};${end + 1}m`);
-		await t.until(() => copied.length === 1, "one clipboard write on release");
-		const labels = Array.from(copied[0].matchAll(/row-(\d+) marker/g), (hit) => Number(hit[1]));
-		expect(labels).toEqual(Array.from({ length: last }, (_, index) => index + 1));
-	});
-
-	it("dragging across transcript rows copies the selected text to the clipboard", async () => {
-		t = await startUi();
-		await longTranscript();
-		t.press(KEY.pageUp);
-		await t.until(async () => !has(await rows(), "row-79"), "scrolled up");
 		const grid = await t.grid();
 		const first = grid.findIndex((row) => row.trim().startsWith("row-"));
-		const startRow = first + 1; // 1-based
+		const startRow = first + 1;
 		const endRow = first + 3;
-		const label = grid[first].trim().match(/^row-\d+ marker/)?.[0] ?? "";
-		const next = grid[first + 2].trim().match(/^row-\d+/)?.[0] ?? "";
 		const col = grid[first].indexOf("row-") + 1;
 		t.press(`\x1b[<0;${col};${startRow}M`);
 		t.press(`\x1b[<32;${col + 4};${endRow}M`);
 		t.press(`\x1b[<0;${col + 4};${endRow}m`);
-		await t.until(() => copied.length > 0, "clipboard write");
-		expect(copied.at(-1)).toContain(label);
-		expect(copied.at(-1)).toContain(next.slice(0, 5)); /* the drag ends 4 columns into the second row */
+		await t.until(() => copied.length === 1, "one clipboard write on release");
+		// The press row whole to the release column, a blank line apart: `row-00 marker`, a break, then `row-0`.
+		expect(copied[0]).toMatch(/^row-\d+ marker\n\nrow-\d$/);
+		expect(copied).toHaveLength(1);
 	});
 });

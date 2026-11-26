@@ -205,7 +205,7 @@ export class ApplicationTranscript {
 			putBounded(this.sources, id, source, this.projector ? 0 : 64);
 			return;
 		}
-		const message = extended ?? this.display(event, id, previous);
+		const message = extended ?? this.display(event, id);
 		this.putMessage(id, message);
 		putBounded(this.sources, id, source, this.projector ? 0 : 64);
 		if (source.role === "assistant") this.activeMessage = complete ? undefined : id;
@@ -226,22 +226,13 @@ export class ApplicationTranscript {
 	}
 
 	/** The whole message normalized as `event` leaves it. */
-	private display(event: MessageEvent, id: string, previous?: ApplicationMessage): ApplicationMessage {
+	private display(event: MessageEvent, id: string): ApplicationMessage {
 		const source = event.message;
 		const complete = event.type === "message_end";
 		const message = this.normalize(complete ? source : { ...source, stopReason: "pending" }, id);
 		message.complete = complete;
 		if (!complete) message.status = "streaming";
 		message.order = this.messages.get(id)?.order ?? this.nextOrder++;
-		// Legacy emitters can deliver text deltas without a partial message body.
-		if (
-			event.type === "message_update" &&
-			!Array.isArray(asRecord(source).content) &&
-			event.assistantMessageEvent.type === "text_delta"
-		) {
-			const text = (previous?.text ?? "") + event.assistantMessageEvent.delta;
-			Object.assign(message, this.normalize({ ...source, content: text, stopReason: "pending" }, id));
-		}
 		return message;
 	}
 

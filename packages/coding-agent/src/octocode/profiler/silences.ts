@@ -15,9 +15,17 @@ export interface SilenceEpisode {
 	minutes?: number;
 }
 
-/** The session's silence episodes: `ids` names its agents, `since` (epoch ms) when its first run started. */
-export function storedSilences(db: Db, ids: readonly string[], since = 0): SilenceEpisode[] {
-	return agentEvents.silences(db, ids, since).map((row) => ({
+/**
+ * The session's silence episodes: `ids` names its agents, `scope` the workspaces they ran in, `since` (epoch ms) when its
+ * first run started.
+ */
+export function storedSilences(
+	db: Db,
+	ids: readonly string[],
+	scope: agentEvents.EventScope,
+	since = 0,
+): SilenceEpisode[] {
+	return agentEvents.silences(db, ids, scope, since).map((row) => ({
 		id: row.id,
 		agentId: row.name ?? String(row.data.agentId),
 		at: Date.parse(row.time),

@@ -1,4 +1,13 @@
-import { type AgentDb, type Db, type agentEvents, agents, deliveries, leases } from "../../../../../db/src/api.ts";
+import {
+	type AgentDb,
+	type Db,
+	type agentEvents,
+	agents,
+	deliveries,
+	leases,
+	sessions,
+} from "../../../../../db/src/api.ts";
+import { sessionRowsOf } from "../../../storage/workspace-database.ts";
 import { liveProcess, processAlive, sameProcess } from "../../shared/process.ts";
 import { type Lease, toMember } from "../model.ts";
 import { STALE_MS, stale } from "./limits.ts";
@@ -72,6 +81,16 @@ export function memberTransaction<T>(agent: AgentDb, member: Member | undefined,
 	}
 }
 
+/**
+ * `claimed`, after recording where the claiming session runs (`context`) on its row in the file holding session rows:
+ * the machine file, never a workspace file, whose pid-less row would make a live session look dead.
+ */
+function located(db: Db, claimed: boolean, context?: agentEvents.LifecycleContext): boolean {
+	if (claimed && context && (context.cwd || context.dir))
+		sessions.locate(sessionRowsOf(db), context.sessionId, context.cwd ?? null, context.dir ?? null);
+	return claimed;
+}
+
 /** Claim inside memberTransaction, using its checked process verdict. */
 export function claimMember(
 	db: Db,
@@ -83,16 +102,17 @@ export function claimMember(
 	parent?: ProcessIdentity,
 ): boolean {
 	const placed = memberPlacement(workspace, member);
-	if (agents.insert(db, team, placed, member, context) || agents.refresh(db, member, placed, context)) return true;
+	if (agents.insert(db, team, placed, member, context) || agents.refresh(db, member, placed, context))
+		return located(db, true, context);
 	const holder = agents.processOf(db, member.id);
 	// The parent holds this child's name and reservations until the child takes over.
 	if (holder && parent && sameIdentity(holder, parent)) {
 		agents.setProcess(db, member.id, member);
-		return agents.refresh(db, member, placed, context);
+		return located(db, agents.refresh(db, member, placed, context), context);
 	}
 	if (holder && held) return false;
 	retire(db, member.id, Date.now(), undefined, { fallback: "crashed", detail: "replaced dead registration" });
-	return agents.insert(db, team, placed, member, context);
+	return located(db, agents.insert(db, team, placed, member, context), context);
 }
 
 /** Refresh or restore presence; the caller owns its write transaction. */
@@ -104,7 +124,11 @@ export function saveMember(
 	context?: agentEvents.LifecycleContext,
 ): boolean {
 	const placed = memberPlacement(workspace, member);
-	return agents.refresh(db, member, placed, context) || agents.insert(db, team, placed, member, context);
+	return located(
+		db,
+		agents.refresh(db, member, placed, context) || agents.insert(db, team, placed, member, context),
+		context,
+	);
 }
 
 /** Retires `id` unless its row now names another process than `owner` (`TeamStore.remove`), with the leaver's `reason` when it knows one; whether it did. */

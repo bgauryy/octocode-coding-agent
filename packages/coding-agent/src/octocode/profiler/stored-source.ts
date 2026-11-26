@@ -6,6 +6,8 @@ import { toTraffic } from "../team/model.ts";
 import type { DepartedAgent, EndpointDirectory } from "../team/endpoint.ts";
 import { departedLookup } from "../team/feed-read.ts";
 import { type AgentRun, correspondence, sessions, type Db } from "../../../../db/src/api.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
+import { registeredWorkspaceDb } from "../../storage/workspace-database.ts";
 
 /** The coordinator's name when its session never registered with the team database (a session that worked alone). */
 const SOLO_ID = "main";
@@ -47,8 +49,19 @@ export function findSession(db: Db, cwd: string, wanted?: string): StoredSession
 
 /** The agent database to read and the stored session to rebuild the profiler's source for (`findSession` picks one). */
 export interface StoredProfilerOptions {
+	/** The file holding the session's runs, mail and agent events: its workspace's. */
 	db: Db;
+	/** The file holding session rows; `db` when they share one. */
+	machine?: Db;
 	session: StoredSession;
+}
+
+/** The stored source of `session`: its runs from its workspace's file, session rows from the machine file. */
+export function storedSessionSource(session: StoredSession, env: NodeJS.ProcessEnv = process.env): ProfilerSource {
+	const machine = sharedAgentDb(env).db;
+	const workspaceId = sessions.byId(machine, session.id)?.workspace_id;
+	const db = (workspaceId && registeredWorkspaceDb(workspaceId, env)?.agent.db) || machine;
+	return storedProfilerSource({ db, machine, session });
 }
 
 /** What a stored run says of its agent: the profile (`main` for the session's own), parent, session and where it worked. */
@@ -67,10 +80,10 @@ function runFacts(run: AgentRun, self: boolean): DepartedAgent {
  * session and its descendants, the messages that involve them, and the transcripts their session rows point at. Reads
  * only.
  */
-export function storedProfilerSource({ db, session }: StoredProfilerOptions): ProfilerSource {
+export function storedProfilerSource({ db, machine = db, session }: StoredProfilerOptions): ProfilerSource {
 	const { all: runs, coordinator, children: latest } = sessionRuns(db, session.id);
 	const children = [...latest.values()];
-	const files = catalogFiles(db);
+	const files = catalogFiles(machine);
 	const facts = new Map<string, DepartedAgent>(
 		runs.map((run) => [run.agentId, runFacts(run, run.agentId === coordinator?.agentId)]),
 	);
@@ -92,11 +105,17 @@ export function storedProfilerSource({ db, session }: StoredProfilerOptions): Pr
 				? correspondence.involving(db, ids, since).map(({ message, deliveries }) => toTraffic(message, deliveries))
 				: [];
 		},
-		silences: (ids) => storedSilences(db, ids, runs.length > 0 ? Math.min(...runs.map((run) => run.startedAt)) : 0),
+		silences: (ids) =>
+			storedSilences(
+				db,
+				ids,
+				{ workspaces: [...new Set(runs.map((run) => run.workspaceId))] },
+				runs.length > 0 ? Math.min(...runs.map((run) => run.startedAt)) : 0,
+			),
 		endpoints: () => endpoints,
 		transcript: (agentId) => {
 			const run = latest.get(agentId);
-			return run ? runTranscript(db, run, files) : undefined;
+			return run ? runTranscript(db, run, files, machine) : undefined;
 		},
 	};
 }

@@ -1,10 +1,16 @@
-import type {
-	SessionConfigOption,
-	SessionConfigSelectGroup,
-	SessionConfigSelectOption,
+import {
+	type AgentCapabilities,
+	type ClientConnection,
+	type ContentBlock,
+	methods,
+	type SetSessionConfigOptionResponse,
+	type SessionConfigOption,
+	type SessionConfigSelectGroup,
+	type SessionConfigSelectOption,
 } from "@agentclientprotocol/sdk";
 import type { ExternalModels } from "@octocodeai/octocode-contracts/external";
 import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import { untilAborted } from "@octocodeai/octocode-common/abort";
 
 /** The models an ACP agent reports, and the config option that selects one when the agent offers it. */
 export interface AcpModels extends ExternalModels {
@@ -51,4 +57,49 @@ export function modelRefusal(models: AcpModels | undefined, model: string): stri
 	const shown = models.available.slice(0, 20).join(", ");
 	const more = models.available.length > 20 ? `, and ${models.available.length - 20} more` : "";
 	return `ACP agent has no model "${model}"; it offers ${shown}${more}.`;
+}
+
+/** What an ACP agent says it accepts: images in a prompt, and MCP servers over HTTP (how Octocode serves its tools). */
+export interface AcpCapabilities {
+	image: boolean;
+	mcpHttp: boolean;
+}
+
+/** The prompt and MCP capabilities in an `initialize` answer; an agent that says nothing accepts neither. */
+export const acpCapabilities = (capabilities: AgentCapabilities | undefined): AcpCapabilities => ({
+	image: capabilities?.promptCapabilities?.image === true,
+	mcpHttp: capabilities?.mcpCapabilities?.http === true,
+});
+
+/** An image in a prompt: base64 data and its media type. */
+export interface AcpImage {
+	data: string;
+	mimeType: string;
+}
+
+/** A prompt's content blocks: the text (left out when empty, as for an image alone), then each image. */
+export const promptBlocks = (text: string, images: readonly AcpImage[] = []): ContentBlock[] => [
+	...(text.trim() ? [{ type: "text" as const, text }] : []),
+	...images.map((image) => ({ type: "image" as const, ...image })),
+];
+
+/** Selects `model` through the model config option, or the unstable `session/set_model` when the agent has none; the state after. */
+export async function selectModel(
+	connection: ClientConnection,
+	sessionId: string,
+	models: AcpModels,
+	model: string,
+	signal: AbortSignal,
+): Promise<AcpModels> {
+	const selected = await untilAborted<SetSessionConfigOptionResponse | Record<string, never>>(
+		models.configId
+			? connection.agent.request(methods.agent.session.setConfigOption, {
+					sessionId,
+					configId: models.configId,
+					value: model,
+				})
+			: connection.agent.request<Record<string, never>>("session/set_model", { sessionId, modelId: model }),
+		signal,
+	);
+	return acpModels(selected) ?? { ...models, current: model };
 }

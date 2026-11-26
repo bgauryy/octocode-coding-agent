@@ -6,7 +6,7 @@
 /**
  * The alerts the machine publisher (the sampler lease holder) raised: one row per tripped threshold with its culprits, so
  * every other session reads what was decided once instead of deciding again. Created with IF NOT EXISTS like the other
- * ensured objects (`COORDINATION_FILE.ensure`); pruned and purged with the samples.
+ * ensured objects (a version-10 file gains them in its upgrade, `schema-migrations.ts`); pruned and purged with the samples.
  */
 export const MACHINE_ALERTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS machine_alerts (

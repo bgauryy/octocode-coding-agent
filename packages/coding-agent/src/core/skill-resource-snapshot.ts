@@ -291,11 +291,15 @@ function selectSkills(
 		commands.filter((command) => command.source !== "skill"),
 	);
 	const selected = new Set<Skill>();
-	for (const name of names) {
+	for (const listed of names) {
+		// The skill listing shows `name/SKILL.md`; the command name is the part before it.
+		const name = listed.replace(/\/SKILL\.md$/i, "");
 		const actual = commands.filter((command) => command.source === "skill" && command.name === name);
 		const matches = skillCommands.filter((command) => command.name === name);
 		if (actual.length !== 1 || matches.length !== 1 || actual[0].sourceInfo.path !== matches[0].skill.sourceInfo.path)
-			throw new Error(`Unknown or ambiguous skill "${name}". Use a skill command name from the current session.`);
+			throw new Error(
+				`Unknown or ambiguous skill "${listed}". Use a skill command name (or name/SKILL.md) from the current session.`,
+			);
 		// The child's model never lists such a skill, so selecting it would silently do nothing.
 		if (matches[0].skill.disableModelInvocation)
 			throw new Error(

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import path from "node:path";
 import { atomicWriteFile, sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
@@ -114,25 +115,52 @@ export async function persistSettingsWrite(
 	}
 }
 
-export function readPolicy(file: string): { text?: string; error?: boolean } {
+const POLICY_LIMIT = 1024 * 1024;
+const POLICY_FLAGS = fs.constants.O_RDONLY | fs.constants.O_NONBLOCK;
+
+/** The text of a policy file, or why it is unusable: not a regular file, over 1 MiB or not UTF-8 is an error; a missing file is neither. */
+function decodePolicy(bytes: Buffer, count: number): { text?: string; error?: boolean } {
+	if (count > POLICY_LIMIT) return { error: true };
+	return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, count)) };
+}
+
+function readPolicy(file: string): { text?: string; error?: boolean } {
 	let fd: number | undefined;
 	try {
-		fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK);
+		fd = fs.openSync(file, POLICY_FLAGS);
 		if (!fs.fstatSync(fd).isFile()) return { error: true };
-		const bytes = Buffer.alloc(1024 * 1024 + 1);
+		const bytes = Buffer.alloc(POLICY_LIMIT + 1);
 		let count = 0;
 		while (count < bytes.length) {
 			const read = fs.readSync(fd, bytes, count, bytes.length - count, null);
 			if (!read) break;
 			count += read;
 		}
-		if (count === bytes.length) return { error: true };
-		return {
-			text: new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, count)),
-		};
+		return decodePolicy(bytes, count);
 	} catch (error) {
 		return { error: (error as NodeJS.ErrnoException).code !== "ENOENT" };
 	} finally {
 		if (fd !== undefined) fs.closeSync(fd);
+	}
+}
+
+/** `readPolicy` on the thread pool, for the per-turn reload: the open and read do not block the event loop. */
+export async function readPolicyAsync(file: string): Promise<{ text?: string; error?: boolean }> {
+	let handle: fsp.FileHandle | undefined;
+	try {
+		handle = await fsp.open(file, POLICY_FLAGS);
+		if (!(await handle.stat()).isFile()) return { error: true };
+		const bytes = Buffer.alloc(POLICY_LIMIT + 1);
+		let count = 0;
+		while (count < bytes.length) {
+			const { bytesRead } = await handle.read(bytes, count, bytes.length - count, null);
+			if (!bytesRead) break;
+			count += bytesRead;
+		}
+		return decodePolicy(bytes, count);
+	} catch (error) {
+		return { error: (error as NodeJS.ErrnoException).code !== "ENOENT" };
+	} finally {
+		await handle?.close();
 	}
 }

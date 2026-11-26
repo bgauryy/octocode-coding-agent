@@ -4,6 +4,7 @@ import path from "node:path";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, closeSharedAgentDb, sessions } from "../../../db/src/api.ts";
+import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
 import { registerArchiveTool } from "../../src/octocode/native/tools/archive/tool.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
@@ -46,7 +47,7 @@ const transcript = (name: string, lines: string[]): string => {
 	fs.writeFileSync(file, lines.join("\n") + "\n");
 	return file;
 };
-const stored = (id: string, file: string, lastActive: number, cwd = root) =>
+const stored = (id: string, file: string, lastActive: number, cwd = root) => {
 	sessions.saveCatalog(db.db, id, {
 		title: null,
 		titleSource: null,
@@ -59,6 +60,10 @@ const stored = (id: string, file: string, lastActive: number, cwd = root) =>
 		firstPrompt: null,
 		fileMtime: null,
 	});
+	// The row names its workspace, which says where the session's runs are stored.
+	fs.mkdirSync(cwd, { recursive: true });
+	sessions.bind(db.db, id, registeredWorkspace(cwd, db).id);
+};
 const member = (id: string, extra: Partial<Member> = {}): Member => ({
 	id,
 	role: "main",

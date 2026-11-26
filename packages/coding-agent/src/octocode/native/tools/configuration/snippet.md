@@ -1,1 +1,1 @@
-Read or change settings; each change asks the user
+Read or change settings

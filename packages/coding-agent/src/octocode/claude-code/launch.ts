@@ -1,11 +1,13 @@
-import { AcpBackend, type AcpConnectInput, type AcpPermission } from "../../../../acp/src/client/client.ts";
+import type { AcpPermission } from "../../../../acp/src/client/client.ts";
 import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
-import { acpClientHost } from "../external/acp-host.ts";
+import type { CliModelRoute } from "../cli-models/route.ts";
+import { TOOL_SERVER } from "../cli-models/route.ts";
+import { octocodeToolsOnly } from "../cli-models/permission.ts";
 import { agentEnv } from "../external/runner-env.ts";
 import { claudeIsolationOptions } from "../external/runner-isolation.ts";
 import { isConnected, type RunnerState } from "../external/runner-status.ts";
 import { adapterArgs, runnerSpec } from "../external/runners.ts";
-import { CLAUDE_CODE_RUNNER, TOOL_SERVER } from "./models.ts";
+import { CLAUDE_CODE_MODELS, CLAUDE_CODE_PLAN, CLAUDE_CODE_PROVIDER, CLAUDE_CODE_RUNNER } from "./models.ts";
 
 /** How Claude Code's ACP adapter starts: the adapter, its arguments, and the user's own `claude` it runs. */
 export interface ClaudeCodeLaunch {
@@ -59,32 +61,30 @@ export const sessionMeta = (append: string): Record<string, unknown> => ({
 	},
 });
 
-type PermissionRequest = Parameters<AcpPermission>[0];
-
-/** The tool an ACP permission request is about, by Claude Code's name for it. */
-function toolOf(request: PermissionRequest): string {
-	const meta = request.toolCall._meta as { claudeCode?: { toolName?: unknown } } | undefined;
-	const name = meta?.claudeCode?.toolName;
-	return typeof name === "string" ? name : (request.toolCall.title ?? "");
-}
-
 /**
  * Claude Code's own permission requests. It should send none (its tools are off and Octocode's are allowed); one for an
- * Octocode tool is allowed, since Octocode's gate decides inside the call, and any other is refused.
+ * Octocode tool, by its `_meta.claudeCode` identity, is allowed, since Octocode's gate decides inside the call, and any
+ * other is refused.
  */
-export const claudeCodePermission: AcpPermission = async (request) => {
-	const ours = toolOf(request).startsWith(`mcp__${TOOL_SERVER}__`);
-	const option = request.options.find((entry) => entry.kind === (ours ? "allow_once" : "reject_once"));
-	return option
-		? { outcome: { outcome: "selected", optionId: option.optionId } }
-		: { outcome: { outcome: "cancelled" } };
-};
+export const claudeCodePermission: AcpPermission = octocodeToolsOnly;
 
-/** Connects to the adapter with `env` as its whole environment; tests pass a scripted peer's command. */
-export function connectClaudeCode(
-	input: AcpConnectInput,
-	env: NodeJS.ProcessEnv,
-	signal?: AbortSignal,
-): Promise<AcpBackend> {
-	return AcpBackend.connect({ ...acpClientHost, childEnv: () => env }, input, claudeCodePermission, signal);
+/** Claude Code as a route of the shared backend; tests pass a scripted peer's command as the launch. */
+export function claudeCodeRoute(launch: ClaudeCodeLaunch, signedOut?: () => void | Promise<void>): CliModelRoute {
+	return {
+		provider: CLAUDE_CODE_PROVIDER,
+		name: "Claude Code",
+		vendor: CLAUDE_CODE_RUNNER,
+		kind: "acp",
+		command: launch.command,
+		args: launch.args,
+		source: "built-in",
+		models: CLAUDE_CODE_MODELS,
+		plan: CLAUDE_CODE_PLAN,
+		env: (model) => adapterEnv(launch, model),
+		permission: claudeCodePermission,
+		sessionMeta,
+		modelInEnv: true,
+		instruction: "system/external-acp.md",
+		...(signedOut ? { signedOut } : {}),
+	};
 }

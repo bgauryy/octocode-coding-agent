@@ -4,7 +4,7 @@ import { nativeHost } from "../shared/host-api.ts";
 import { claudeSettingsSources } from "../shared/home.ts";
 import { say } from "../shared/commands.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
-import { parseSourcePolicy, type SourcePolicy } from "./source-policy/rules.ts";
+import { parseSourcePolicy, type PolicySource, type SourcePolicy } from "./source-policy/rules.ts";
 import { initializeBashSyntax } from "./bash-syntax.ts";
 import { evaluateSourcePolicy, unprojectedSourcePolicy, sourceToolDenied } from "./source-policy.ts";
 import {
@@ -13,7 +13,7 @@ import {
 	type SourcePermissionUpdate,
 	type SourceRuleArrays,
 } from "../shared/permission-updates.ts";
-import { readPolicy, stageSettingsWrite, persistSettingsWrite } from "./source-policy-storage.ts";
+import { readPolicyAsync, stageSettingsWrite, persistSettingsWrite } from "./source-policy-storage.ts";
 
 /** `home`: the user's home for user-level settings (the OS home by default); `onChange`: runs after each new policy. */
 export function registerSourcePolicy(
@@ -55,16 +55,11 @@ export function registerSourcePolicy(
 		}
 		// Read the policy only after initialization, so the bytes parsed are the bytes captured.
 		const allSources = claudeSettingsSources(ctx.cwd, true, home);
-		const captured = allSources.map((source) => ({
-			source,
-			...readPolicy(source.path),
-		}));
+		const read = (source: PolicySource) => readPolicyAsync(source.path).then((entry) => ({ source, ...entry }));
+		const captured = await Promise.all(allSources.map(read));
 		// The session's folder is trusted (the startup gate decides); project settings may then allow as well as restrict.
 		const trusted = ctx.isProjectTrusted();
-		const current = allSources.map((source) => ({
-			source,
-			...readPolicy(source.path),
-		}));
+		const current = await Promise.all(allSources.map(read));
 		const stable = JSON.stringify(captured) === JSON.stringify(current);
 		const contents = captured.map((entry) =>
 			stable || entry.source === allSources[0] ? entry : { source: entry.source, error: true },

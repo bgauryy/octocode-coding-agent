@@ -1,7 +1,13 @@
 import { type AnyModel, type Api, isModelType, type Model, type Provider } from "@octocodeai/octocode-ai";
 import { withCacheEndpoint } from "@octocodeai/octocode-ai/utils/cache-capabilities";
 import { inferThinkingLevelMap } from "@octocodeai/octocode-ai/utils/thinking-level-rules";
-import type { ModelsJsonModel, ModelsJsonModelOverride, ModelsJsonProvider } from "../model-config.ts";
+import type {
+	ModelsJsonModel,
+	ModelsJsonModelOverride,
+	ModelsJsonProvider,
+	ModelsJsonProviderDefaults,
+} from "../model-config.ts";
+import { mergeCost, mergeInputLimits, mergeSamplingParamsByThinkingLevel } from "./override-merge.ts";
 import type { KnownModelLookup } from "./known-models.ts";
 import type { ProviderConfigInput, ProviderModelConfig } from "./types.ts";
 
@@ -53,67 +59,6 @@ function mergeCompat(
 	return merged;
 }
 
-function mergeInputLimits(
-	base: Model<Api>["inputLimits"],
-	override: ModelsJsonModelOverride["inputLimits"],
-): Model<Api>["inputLimits"] {
-	if (!override) return base;
-	return {
-		...base,
-		...override,
-		images: override.images
-			? {
-					...base?.images,
-					...override.images,
-					resize: override.images.resize
-						? { ...base?.images?.resize, ...override.images.resize }
-						: base?.images?.resize,
-				}
-			: base?.images,
-	};
-}
-
-function mergeSamplingParamsByThinkingLevel(
-	base: Model<Api>["samplingParamsByThinkingLevel"],
-	override: Model<Api>["samplingParamsByThinkingLevel"],
-): Model<Api>["samplingParamsByThinkingLevel"] {
-	if (!override) return base;
-	const merged = { ...base };
-	for (const level of ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const) {
-		const params = override[level];
-		if (params) merged[level] = { ...base?.[level], ...params };
-	}
-	return merged;
-}
-
-/**
- * A price override replaces the rates it names. Rates and a dated price window belong together: when the override
- * sets any rate (or tiers), the built-in `until`/`after` describe a price the user replaced, so they are dropped
- * unless the override declares its own. An override with no rate (nothing, or only a window) keeps the built-in
- * rates and window, with its declared `until`/`after` on top.
- */
-function mergeCost(base: Model<Api>["cost"], override: ModelsJsonModelOverride["cost"]): Model<Api>["cost"] {
-	if (!override) return base;
-	const setsRates =
-		override.input !== undefined ||
-		override.output !== undefined ||
-		override.cacheRead !== undefined ||
-		override.cacheWrite !== undefined ||
-		override.tiers !== undefined;
-	const inherited = setsRates ? undefined : base;
-	const until = override.until ?? inherited?.until;
-	const after = override.after ?? inherited?.after;
-	return {
-		input: override.input ?? base.input,
-		output: override.output ?? base.output,
-		cacheRead: override.cacheRead ?? base.cacheRead,
-		cacheWrite: override.cacheWrite ?? base.cacheWrite,
-		tiers: override.tiers ?? base.tiers,
-		...(until !== undefined ? { until } : {}),
-		...(after !== undefined ? { after } : {}),
-	};
-}
-
 export function applyModelOverride(model: Model<Api>, override: ModelsJsonModelOverride): Model<Api> {
 	const key = `${model.provider}/${model.id}`;
 	const assumed = defaultedFields.get(key);
@@ -145,6 +90,52 @@ export function applyModelOverride(model: Model<Api>, override: ModelsJsonModelO
 		),
 		compat: mergeCompat(model.compat, override.compat),
 	};
+}
+
+/** A models.json model entry with the provider's defaults beneath it: each field the entry sets wins. */
+function withProviderDefaults(
+	definition: ModelsJsonModel,
+	defaults: ModelsJsonProviderDefaults | undefined,
+): ModelsJsonModel {
+	if (!defaults) return definition;
+	return {
+		...definition,
+		reasoning: definition.reasoning ?? defaults.reasoning,
+		thinkingLevelMap:
+			defaults.thinkingLevelMap || definition.thinkingLevelMap
+				? { ...defaults.thinkingLevelMap, ...definition.thinkingLevelMap }
+				: undefined,
+		input: definition.input ?? defaults.input,
+		inputLimits: mergeInputLimits(defaults.inputLimits, definition.inputLimits),
+		cost: definition.cost ?? defaults.cost,
+		promptCache:
+			defaults.promptCache || definition.promptCache
+				? { ...defaults.promptCache, ...definition.promptCache }
+				: undefined,
+		contextWindow: definition.contextWindow ?? defaults.contextWindow,
+		maxTokens: definition.maxTokens ?? defaults.maxTokens,
+		samplingParams:
+			defaults.samplingParams || definition.samplingParams
+				? { ...defaults.samplingParams, ...definition.samplingParams }
+				: undefined,
+		samplingParamsByThinkingLevel: mergeSamplingParamsByThinkingLevel(
+			defaults.samplingParamsByThinkingLevel,
+			definition.samplingParamsByThinkingLevel,
+		),
+		compat: mergeCompat(defaults.compat, definition.compat),
+	};
+}
+
+/**
+ * The model with its provider's defaults and then its own `modelOverrides` entry on top. A model models.json defines
+ * took the defaults when it was built (`withProviderDefaults`), where its own fields beat them, so only the override
+ * applies again.
+ */
+export function applyModelDefaultsAndOverride(model: Model<Api>, config: ModelsJsonProvider | undefined): Model<Api> {
+	const defined = config?.models?.some((entry) => entry.id === model.id) ?? false;
+	const withDefaults = config?.defaults && !defined ? applyModelOverride(model, config.defaults) : model;
+	const override = config?.modelOverrides?.[model.id];
+	return override ? applyModelOverride(withDefaults, override) : withDefaults;
 }
 
 function modelFromJson(
@@ -181,7 +172,15 @@ function modelFromJson(
 		known?.thinkingLevelMap ??
 		(knownBase
 			? undefined
-			: inferThinkingLevelMap({ id: definition.id, provider: providerId, api, reasoning, compat }));
+			: inferThinkingLevelMap({
+					id: definition.id,
+					provider: providerId,
+					baseUrl,
+					api,
+					reasoning,
+					compat,
+					profile: providerConfig.profile,
+				}));
 	const defaulted: DefaultedField[] = [];
 	if (!definition.cost && !known?.cost) defaulted.push("cost");
 	if (!definition.input && !known?.input) defaulted.push("input");
@@ -206,6 +205,7 @@ function modelFromJson(
 		samplingParams: definition.samplingParams ?? known?.samplingParams,
 		samplingParamsByThinkingLevel: definition.samplingParamsByThinkingLevel ?? known?.samplingParamsByThinkingLevel,
 		headers: undefined,
+		...(providerConfig.profile ? { profile: providerConfig.profile } : {}),
 		compat,
 	};
 }
@@ -273,8 +273,14 @@ export function applyModelsJson(
 		!config.baseUrl &&
 		!config.headers &&
 		!config.compat &&
+		!config.defaults &&
+		!config.profile &&
+		config.requestsPerMinute === undefined &&
+		config.tokensPerMinute === undefined &&
 		!hasOverrides &&
 		!config.apiKey &&
+		!config.auth &&
+		!config.env &&
 		config.cacheRetention === undefined &&
 		config.instructionCacheRetention === undefined &&
 		config.authHeader === undefined
@@ -288,7 +294,11 @@ export function applyModelsJson(
 		const baseUrl = config.baseUrl ?? model.baseUrl;
 		if (!isModelType(model, "chat")) return { ...model, baseUrl };
 		const endpointModel = withCacheEndpoint(model, baseUrl);
-		return { ...endpointModel, compat: mergeCompat(endpointModel.compat, config.compat) };
+		return {
+			...endpointModel,
+			...(config.profile ? { profile: config.profile } : {}),
+			compat: mergeCompat(endpointModel.compat, config.compat),
+		};
 	});
 	for (const definition of config.models ?? []) {
 		const existingIndex = models.findIndex((model) => isModelType(model, "chat") && model.id === definition.id);
@@ -301,7 +311,13 @@ export function applyModelsJson(
 				: api
 					? known?.(api, definition.id, definition.baseUrl ?? config.baseUrl ?? defaults?.baseUrl)
 					: undefined;
-		const model = modelFromJson(providerId, definition, config, defaults, knownBase);
+		const model = modelFromJson(
+			providerId,
+			withProviderDefaults(definition, config.defaults),
+			config,
+			defaults,
+			knownBase,
+		);
 		if (existingIndex >= 0) models[existingIndex] = model;
 		else models.push(model);
 	}

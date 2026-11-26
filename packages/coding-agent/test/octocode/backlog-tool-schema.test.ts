@@ -2,14 +2,14 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
 import { entryAccepted, planAccepted, planParameters } from "../../src/octocode/backlog/plan-schema.ts";
-import { completionField, legacyEntityFields, linkInput } from "../../src/octocode/backlog/tool-schema.ts";
+import { completionField, undeclaredEntityFields, linkInput } from "../../src/octocode/backlog/tool-schema.ts";
 
 // `backlog` declares the completion (its `done`); `backlogPlan` declares the item fields and no completion.
 const declared = { completion: completionField("done: the result") };
 const parameters = Type.Object(declared, { additionalProperties: false });
 const plan = planParameters("ops");
 // What a call may carry: the declaration plus the older forms (a stored-shape completion, a version, link objects).
-const validation = Type.Object({ ...declared, ...legacyEntityFields }, { additionalProperties: false });
+const validation = Type.Object({ ...declared, ...undeclaredEntityFields }, { additionalProperties: false });
 const planValidation = planAccepted(plan);
 const completion = {
 	summary: "Done",

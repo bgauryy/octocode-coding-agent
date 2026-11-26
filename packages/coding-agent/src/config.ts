@@ -229,7 +229,7 @@ export function getAgentDir(): string {
 }
 
 /** Read-only Pi fallback roots. Explicit homes and SDK directories stay isolated. */
-export function getLegacyConfigDirs(agentDir = getAgentDir()): string[] {
+export function getPiConfigDirs(agentDir = getAgentDir()): string[] {
 	if (process.env[ENV_AGENT_DIR]?.trim() || process.env.OCTOCODE_HOME?.trim()) return [];
 	if (resolve(agentDir) !== resolve(getOctocodeHome())) return [];
 	return [join(homedir(), ".pi", "agent"), join(homedir(), ".pi")];

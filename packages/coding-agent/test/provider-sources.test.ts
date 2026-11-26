@@ -115,7 +115,13 @@ describe("Pi source", () => {
 				.getAll()
 				.filter((model) => model.provider === "default-shared")
 				.map(({ id, baseUrl }) => ({ id, baseUrl })),
-		).toEqual([{ id: "octocode-model", baseUrl: "https://octocode.invalid/v1" }]);
+			// One provider in several files merges field by field; each file's models join by id, the narrower file's fields winning.
+		).toEqual(
+			["pi-root", "pi-agent", "legacy-root", "legacy-agent", "octocode"].map((id) => ({
+				id: `${id}-model`,
+				baseUrl: "https://octocode.invalid/v1",
+			})),
+		);
 
 		await applyProviderSources(runtime, { pi: false });
 		expect(providers(registry)).toContain("default-octocode");

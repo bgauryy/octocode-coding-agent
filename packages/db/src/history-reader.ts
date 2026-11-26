@@ -5,7 +5,7 @@ import { auditSelection } from "./history-selection.ts";
 
 /** Stream archive months in the worker; malformed months contribute no partial result. Cancellation still propagates. */
 export async function readArchivedAudits(
-	agent: Pick<AgentDb, "file" | "archiveDir">,
+	agent: Pick<AgentDb, "historySource" | "archiveDir">,
 	query: ArchiveAuditQuery,
 	assertActive: () => void,
 ): Promise<ArchiveRow[]> {

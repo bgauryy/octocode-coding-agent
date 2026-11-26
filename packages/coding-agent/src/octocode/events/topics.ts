@@ -34,6 +34,8 @@ interface EventPayloads {
 	"item.ready": { ref: string; prerequisites: string[] };
 	/** A peer's change to an item related to one this session holds or waits on (`backlog/peer-notify.ts`); `id` is its audit row. */
 	"item.peer": { ref: string; change: string; by: string; relation: string; id: number };
+	/** A QA review the gate owes because no reviewer could start (`backlog/qa-owed.ts`): the item and the cause. */
+	"qa.unavailable": { item: string; cause: string };
 	/** The host's load per core met a `machine` wait (`wait on machine.load`); published once per wait, from the sampler's samples. */
 	"machine.load": { timerId: number; perCore: number; samples: number };
 	/**
@@ -81,6 +83,7 @@ const TOPIC_SET: Record<Topic, true> = {
 	"job.exit": true,
 	"item.ready": true,
 	"item.peer": true,
+	"qa.unavailable": true,
 	"machine.load": true,
 	"monitor.alert": true,
 	"check.result": true,

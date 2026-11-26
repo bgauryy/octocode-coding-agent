@@ -22,6 +22,11 @@ const runtime = {
 	getAvailable: async () => [model("faux", "faux-1")],
 	getProviders: () => [{ id: "faux" }, { id: "anthropic" }],
 	getDefinedProviderIds: () => ["faux"],
+	getProviderDefinitionFile: (id: string) => (id === "faux" ? "/home/u/.octocode/models.json" : undefined),
+	getModelsDiagnostics: () => ({
+		describeFile: () => ({ scope: "global", product: "Octocode" }),
+		untrustedHint: () => undefined,
+	}),
 } as unknown as ModelRuntime;
 
 const output = () => {
@@ -55,11 +60,19 @@ describe("--list-models", () => {
 		);
 	});
 
+	it("shows where each provider is defined", async () => {
+		const out = output();
+		expect(await listModels(runtime)).toBe(0);
+		const lines = out.stdout().split("\n");
+		expect(lines[0]).toMatch(/images {2}source$/);
+		expect(lines[1]).toMatch(/\(global, Octocode\)$/);
+	});
+
 	it("explains an access cell it could not check", async () => {
 		const out = output();
 		expect(await listModels(runtime, undefined, undefined, { checkAccess: true })).toBe(0);
 		const lines = out.stdout().split("\n");
-		expect(lines[1]).toMatch(/faux-1 .* not Bedrock$/);
+		expect(lines[1]).toMatch(/faux-1 .* not Bedrock$/s);
 		expect(lines.at(-1)).toBe("not Bedrock: only Amazon Bedrock access can be checked without a request.");
 	});
 });

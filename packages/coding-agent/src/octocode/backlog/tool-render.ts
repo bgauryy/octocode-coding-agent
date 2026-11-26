@@ -29,7 +29,8 @@ function target(call: Record<string, unknown>, limit?: number): string {
 	return [
 		args.op,
 		args.id,
-		items.length > 1 ? `${items.length} items` : "",
+		items.length > 1 ? entryNames(items) : "",
+
 		args.state ? `${GLYPH.arrow} ${shown(args.state, 20)}` : "",
 		origin ? `from ${shown(origin, 20)}` : "",
 		args.title ? `"${shown(args.title, 80)}"` : "",
@@ -37,6 +38,15 @@ function target(call: Record<string, unknown>, limit?: number): string {
 	]
 		.filter(Boolean)
 		.join(" ");
+}
+
+/** Several entries by their ids (the first few), else by their count. */
+function entryNames(items: readonly unknown[]): string {
+	const ids = items.map((entry) =>
+		entry !== null && typeof entry === "object" ? (entry as { id?: unknown }).id : undefined,
+	);
+	if (!ids.every((id): id is string => typeof id === "string" && id !== "")) return `${items.length} items`;
+	return ids.length > 4 ? `${ids.slice(0, 4).join(", ")} +${ids.length - 4}` : ids.join(", ");
 }
 
 /**
@@ -75,6 +85,8 @@ export function backlogRenderers(title: string): Renderers {
 			const text = contentText(result.content);
 			const details = (result.details ?? {}) as BacklogToolDetails;
 			const op = (context.args as { op?: unknown } | undefined)?.op;
+			// A progress line (a review running) is not the outcome: show it as is, without a headline.
+			if (context.isPartial) return resultBlock(theme, context, { summary: text.split("\n", 1)[0] ?? "" });
 			const plain = context.isError ? undefined : backlogSummary(op, details, text);
 			const styledSummary = plain === undefined ? undefined : styleBacklogSummary(theme, plain);
 			const parts = plain === undefined ? undefined : styleBacklogHeadline(theme, plain);

@@ -6,7 +6,8 @@ import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import { type Api, type AuthOperationOptions, type Model, modelsAreEqual } from "@octocodeai/octocode-ai";
 import { cliStyle } from "../utils/cli-style.ts";
 import { minimatch } from "minimatch";
-import { buildFallbackModel, resolveModelReference, splitThinkingSuffix } from "./model-resolver/reference.ts";
+import { hasGlob, splitThinkingSuffix } from "./model-reference.ts";
+import { buildFallbackModel, resolveModelReference } from "./model-resolver/reference.ts";
 import type { ScopedModel } from "./model-resolver/scoped-model.ts";
 import { didYouMean, nearestModelIds } from "./model-resolver/suggestions.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
@@ -62,8 +63,7 @@ export function resolveModelScopeFromModels(
 	};
 
 	for (const pattern of patterns) {
-		// Check if pattern contains glob characters
-		if (pattern.includes("*") || pattern.includes("?") || pattern.includes("[")) {
+		if (hasGlob(pattern)) {
 			// Extract optional thinking level suffix (e.g., "provider/*:high")
 			const thinking = splitThinkingSuffix(pattern);
 			const globPattern = thinking?.base ?? pattern;
@@ -141,6 +141,19 @@ export interface ResolveCliModelResult {
 	error: string | undefined;
 }
 
+const withTrustHint = (message: string, hint: string | undefined): string => (hint ? `${message} ${hint}` : message);
+
+/** The trust hint for `--model` text, which may be `provider/model`, when only an untrusted workspace file defines it. */
+function untrustedModelHint(runtime: ModelRuntime, cliProvider: string | undefined, text: string): string | undefined {
+	const slash = text.indexOf("/");
+	return (
+		runtime.getModelsDiagnostics().untrustedHint(cliProvider, text) ??
+		(slash > 0 && !cliProvider
+			? runtime.getModelsDiagnostics().untrustedHint(text.slice(0, slash), text.slice(slash + 1))
+			: undefined)
+	);
+}
+
 /**
  * Resolve a single model from CLI flags.
  *
@@ -184,7 +197,10 @@ export function resolveCliModel(options: {
 		return {
 			model: undefined,
 			warning: undefined,
-			error: `Unknown provider "${cliProvider}". Use --list-models to see available providers/models.`,
+			error: withTrustHint(
+				`Unknown provider "${cliProvider}". Use --list-models to see available providers/models.`,
+				modelRuntime.getModelsDiagnostics().untrustedHint(cliProvider),
+			),
 		};
 	}
 
@@ -219,7 +235,10 @@ export function resolveCliModel(options: {
 		return {
 			model: undefined,
 			warning: undefined,
-			error: `Model "${cliModel}" not found. Use --list-models to see available models.`,
+			error: withTrustHint(
+				`Model "${cliModel}" not found. Use --list-models to see available models.`,
+				untrustedModelHint(modelRuntime, cliProvider, cliModel),
+			),
 		};
 	}
 

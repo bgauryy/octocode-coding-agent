@@ -3,12 +3,25 @@ import path from "node:path";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { atomicWriteFileSync } from "@octocodeai/octocode-common/atomic-file";
 import { getOctocodeHome } from "../../config.ts";
+import { repoKey, workspaceGit } from "../../utils/git-repository.ts";
 import { EXCLUDE_WORKSPACE_STATE, rejectTrackedWorkspaceState, git, gitQuiet, NO_HOOKS } from "../../utils/git-run.ts";
 import { approveWorktree, type WorktreeTrustAsk } from "../worktrees/approval.ts";
 import { linkDependencies } from "../worktrees/dependencies.ts";
 import { copyIncluded } from "../worktrees/include.ts";
+import { refuseFromLinkedWorktree } from "../worktrees/proxy.ts";
 import { ID_PATTERN, owner, repoRoot, type Worktree, worktreesDir } from "./worktree-base.ts";
 import { snapshotWorkingCopy } from "./worktree-snapshot.ts";
+
+/** Throws, naming the orchestrator, when `cwd` is a linked worktree: a proxy session may not start an isolated child. */
+export function refuseLinkedIsolation(cwd: string): void {
+	const git = workspaceGit(cwd);
+	if (!git?.linkedWorktree) return;
+	// Read without a git process, so the calls of one batch still claim in order (no await before the claim).
+	refuseFromLinkedWorktree(
+		{ checkout: repoKey(cwd).root, main: path.dirname(git.commonDir) },
+		"starting an isolated subagent (isolate: true)",
+	);
+}
 
 /**
  * Creates a detached worktree at HEAD, or at an explicit snapshot of the current working files, under the repository's
@@ -25,6 +38,7 @@ export async function createWorktree(
 ): Promise<Worktree> {
 	if (!ID_PATTERN.test(agentId)) throw new Error(`Invalid agent id "${agentId}"`);
 	const repo = repoRoot(cwd);
+	refuseLinkedIsolation(cwd);
 	const base = await gitQuiet(repo, ["rev-parse", "--verify", "HEAD"]);
 	if (!base) throw new Error("isolate needs at least one commit to start the worktree from.");
 	await rejectTrackedWorkspaceState(repo, base);

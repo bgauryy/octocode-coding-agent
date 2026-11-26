@@ -6,7 +6,7 @@ import { detachScrollViews } from "./layout/detach.ts";
 import type { Terminal } from "./terminal.ts";
 import { registerTerminalRestore, unregisterAfterOutput } from "./terminal/exit-restore.ts";
 import { BEGIN_SYNCHRONIZED_OUTPUT, END_SYNCHRONIZED_OUTPUT, OSC133_ZONE_PREFIX } from "./terminal/sequences.ts";
-import { clipLinesToWidth, FinishedLines, finishScreenRow } from "./tui/clip.ts";
+import { clipLinesToWidth } from "./tui/clip.ts";
 import { readChildren } from "./tui/container-state.ts";
 import {
 	type Component,
@@ -17,22 +17,15 @@ import {
 	VIEWPORT_TUI,
 	type ViewportTUI,
 } from "./tui.ts";
-import { compositeFlashLines } from "./tui-alt-screen/compose.ts";
+import { type AltScreenComposeParts, composeAltScreen } from "./tui-alt-screen/pipeline.ts";
 import { ENTER_ALT_SCREEN, EXIT_ALT_SCREEN } from "./tui-alt-screen/constants.ts";
-import {
-	buildAltScreenExit,
-	buildAltScreenForcedExit,
-	buildAltScreenStop,
-	FrameCursorMemo,
-	ImageRowsMemo,
-	renderAltScreenOutput,
-} from "./tui-alt-screen/frame.ts";
-import { AltScreenImages, budgetImageRows } from "./tui-alt-screen/images.ts";
+import { buildAltScreenExit, buildAltScreenForcedExit, buildAltScreenStop } from "./tui-alt-screen/frame.ts";
+import { AltScreenPainter } from "./tui-alt-screen/painter.ts";
+import { AltScreenImages } from "./tui-alt-screen/images.ts";
 import { MOUSE_CAPTURE_FLASH_MS, mouseCaptureMessage, TerminalSelectionHint } from "./tui-alt-screen/mouse-capture.ts";
 import { AltScreenMouseGesture, type AltScreenMouseGestureHost } from "./tui-alt-screen/mouse-gesture.ts";
 import { type AltScreenPointerHost, handlePointerInput, stopPointerGestures } from "./tui-alt-screen/pointer-input.ts";
 import { AltScreenScrollbar, type AltScreenScrollbarHost } from "./tui-alt-screen/scrollbar-controller.ts";
-import { TrimmedRowsMemo } from "./tui-alt-screen/scroll-shift.ts";
 import { AltScreenSearchController, type AltScreenSearchHost } from "./tui-alt-screen/search-controller.ts";
 import { AltScreenSelection, type AltScreenSelectionHost } from "./tui-alt-screen/selection-controller.ts";
 import { AltScreenTerminalModes } from "./tui-alt-screen/terminal-modes.ts";
@@ -47,9 +40,6 @@ import { WheelScrollAccelerator, type WheelScrollLines } from "./wheel-scroll.ts
 export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	readonly mode = "fullscreen" as const;
 	readonly [VIEWPORT_TUI] = true as const;
-	private previousScreen: string[] = [];
-	private previousScreenWidth = 0;
-	private previousScreenHeight = 0;
 	private layoutRoot: Component | undefined;
 	private currentLayout: LayoutFrame | undefined;
 	private readonly implicitDocument: Component;
@@ -58,10 +48,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private altScreenActive = false;
 	private disposeExitRestore?: () => void;
 	private readonly images = new AltScreenImages();
-	private readonly trimmedRows = new TrimmedRowsMemo();
-	private readonly imageRows = new ImageRowsMemo();
-	private readonly cursorMemo = new FrameCursorMemo();
-	private readonly finishedLines = new FinishedLines(finishScreenRow);
+	private readonly painter = new AltScreenPainter();
 	private readonly search: AltScreenSearchController;
 	private readonly selection: AltScreenSelection;
 	private readonly scrollbar: AltScreenScrollbar;
@@ -71,9 +58,15 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	private readonly viewport: AltScreenViewportKeysHost & AltScreenPointerHost;
 	private readonly wheelScroll: WheelScrollAccelerator;
 	private readonly mouseEnabled: boolean;
-	private readonly modes: AltScreenTerminalModes;
+	private readonly selectionEnabled: boolean;
+	private readonly hoverTrackingEnabled: boolean;
+	/** Mouse and autowrap modes; `hoverTracking` tells diagnostics whether bare motion is tracked. */
+	readonly modes: AltScreenTerminalModes;
 	private readonly endIndicator: ScrollToEndIndicator;
+	private readonly composeParts: AltScreenComposeParts;
 	private copyOnSelect: boolean;
+	/** The width the selection's rows were wrapped at. */
+	private selectionColumns: number;
 	constructor(
 		terminal: Terminal,
 		showHardwareCursor?: boolean,
@@ -92,6 +85,9 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		this.flashes = new AltScreenFlashContainer(() => this.requestRender());
 		this.wheelScroll = new WheelScrollAccelerator(options.wheelScrollLines ?? 1);
 		this.mouseEnabled = options.mouse ?? true;
+		this.selectionColumns = terminal.columns;
+		this.selectionEnabled = options.selection ?? true;
+		this.hoverTrackingEnabled = options.hoverTracking ?? true;
 		this.modes = new AltScreenTerminalModes({
 			terminal: () => this.terminal,
 			isActive: () => !this.stopped && this.altScreenActive,
@@ -104,7 +100,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			implicitScrollView: this.implicitScrollView,
 			getTerminal: () => this.terminal,
 			getCurrentLayout: () => this.currentLayout,
-			getPreviousScreen: () => this.previousScreen,
+			getPreviousScreen: () => this.painter.screen,
 			getPrimaryScrollView: () => this.getPrimaryScrollView(),
 			requestRender: () => this.scheduler.requestInteractive(),
 			hasOverlay: () => this.hasOverlay(),
@@ -138,6 +134,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			getFocusedComponent: () => this.getFocusedComponent(),
 			arrowBurst: new ArrowBurstScroll(this.wheelScroll, this.scrollBy.bind(this), this.deliverInput.bind(this)),
 			selection: this.selection,
+			selectionEnabled: this.selectionEnabled,
 			scrollbar: this.scrollbar,
 			mouse: this.mouse,
 			wheelScroll: this.wheelScroll,
@@ -146,13 +143,30 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 			getPrimaryScrollView: host.getPrimaryScrollView,
 			getScrollToEndIndicatorRect: () => this.endIndicator.rect,
 			reassertModes: () => this.modes.reassert(),
+			noteMouseButton: (down) => this.modes.noteButton(down),
 			dispatchMouseToOverlay: host.dispatchMouseToOverlay,
 			shouldDeferViewportInputToOverlay: () => this.shouldDeferViewportInputToOverlay(),
 			requestRender: host.requestRender,
 			scrollBy: (lines) => this.scrollBy(lines),
 			scrollToTop: () => this.scrollToTop(),
 			scrollToBottom: () => this.scrollToBottom(),
+			wheelMayBeArrows: () => this.modes.wheelMayBeArrows,
 			toggleMouseCapture: () => this.setMouseCapture(),
+			clearVisibleSelection: () => this.selectionEnabled && this.selection.clearVisibleSelection(),
+		};
+		this.composeParts = {
+			resolveFakeCursors: (lines) => this.resolveFakeCursors(lines),
+			compositeOverlays: (lines, w, h) => this.compositeOverlays(lines, w, h),
+			extractCursorPosition: (lines, h) => this.extractCursorPosition(lines, h),
+			search: this.search,
+			endIndicator: this.endIndicator,
+			implicitScrollView: this.implicitScrollView,
+			selection: this.selectionEnabled ? this.selection : undefined,
+			flashLines: (w) => this.flashes.render(w),
+			finishedLines: this.painter.finishedLines,
+			get frameOutputCap() {
+				return terminal.frameOutputCap;
+			},
 		};
 		this.addInputListener((data) => this.handleViewportInput(data));
 	}
@@ -160,23 +174,18 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 	get viewportTop(): number {
 		return this.getPrimaryScrollView().scrollTop;
 	}
-
 	get isFollowingOutput(): boolean {
 		return this.getPrimaryScrollView().isFollowingEnd;
 	}
-
 	setWheelScrollLines(lines: WheelScrollLines): void {
 		this.wheelScroll.setLines(lines);
 	}
-
 	getCopyOnSelect(): boolean {
 		return this.copyOnSelect;
 	}
-
 	setCopyOnSelect(enabled: boolean): void {
 		this.copyOnSelect = enabled;
 	}
-
 	/** Give the mouse to the terminal's own selection, or take it back; no argument toggles. The notice says which. */
 	setMouseCapture(captured = !this.modes.mouseCaptured): void {
 		if (!this.mouseEnabled) return;
@@ -186,32 +195,22 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		}
 		this.flash(mouseCaptureMessage(captured), MOUSE_CAPTURE_FLASH_MS);
 	}
-
-	/** Whether the fullscreen viewport has a non-empty active text selection. */
 	hasActiveSelection(): boolean {
 		return this.selection.hasActiveSelection();
 	}
-
-	/** Copy the active fullscreen text selection, if any, using the configured selection clipboard path. */
 	async copyActiveSelectionToClipboard(): Promise<boolean> {
 		return this.selection.copySelectionToClipboard();
 	}
-
-	/** Drop the text selection and multi-click history, e.g. before the host replaces the transcript. */
 	resetTextSelection(): void {
 		this.selection.clearTextSelection();
 		this.selection.lastClick = undefined;
 	}
-
-	/** The lines of the last rendered frame, one per terminal row, as written to the terminal. */
 	getScreenLines(): string[] {
-		return [...this.previousScreen];
+		return [...this.painter.screen];
 	}
-
 	protected override renderedLines(): readonly string[] {
-		return this.previousScreen;
+		return this.painter.screen;
 	}
-
 	openSearch(): void {
 		this.search.openSearch();
 	}
@@ -275,6 +274,9 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 
 	protected override onTerminalResized(): void {
 		this.modes.reassert();
+		// A new width wraps the rows anew, so a selection's rows and columns would name other text.
+		if (this.terminal.columns !== this.selectionColumns) this.resetTextSelection();
+		this.selectionColumns = this.terminal.columns;
 	}
 
 	protected override beforeTerminalStop(_options: TuiStopOptions): void {
@@ -306,11 +308,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 
 	/** Paint the next frame whole. The last layout stays: it describes the screen until then, so the wheel scrolls it. */
 	protected override resetRenderState(): void {
-		this.previousScreen = [];
-		this.previousScreenWidth = 0;
-		this.previousScreenHeight = 0;
-		this.cursorMemo.reset();
-		this.finishedLines.reset();
+		this.painter.reset();
 	}
 
 	// Scrolling follows a key or the pointer: its frame takes the scheduler's interactive path, not the streaming cadence.
@@ -347,54 +345,31 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		if (this.stopped || !this.altScreenActive) return;
 		// While a resize waits for its settled frame, paint at the size of the last frame: a size change repaints the
 		// whole screen, so a window drag repaints once when it pauses, not at every frame a spinner or stream asks.
-		const holdSize = this.resizePending && this.previousScreenWidth > 0 && this.previousScreenHeight > 0;
-		const width = holdSize ? this.previousScreenWidth : Math.max(1, this.terminal.columns);
-		const height = holdSize ? this.previousScreenHeight : Math.max(1, this.terminal.rows);
-		if (this.previousScreenWidth !== 0 && this.previousScreenWidth !== width) clearWidthCache();
+		const holdSize = this.resizePending && this.painter.width > 0 && this.painter.height > 0;
+		const width = holdSize ? this.painter.width : Math.max(1, this.terminal.columns);
+		const height = holdSize ? this.painter.height : Math.max(1, this.terminal.rows);
+		if (this.painter.width !== 0 && this.painter.width !== width) clearWidthCache();
 		const root = this.layoutRoot ?? this.implicitScrollView;
 		let nextLayout = renderLayoutFrame(root, width, height, () => this.requestRender());
 		if (this.search.refreshSearch(nextLayout))
 			nextLayout = renderLayoutFrame(root, width, height, () => this.requestRender());
-		const rawLines = nextLayout.lines.some((line) => line.includes("\x1b]133;"))
-			? nextLayout.lines.map((line) => line.replace(OSC133_ZONE_PREFIX, ""))
-			: nextLayout.lines;
-		let screen = this.resolveFakeCursors(rawLines);
-		screen = this.search.highlight(screen, nextLayout, width);
-		screen = this.endIndicator.composite(screen, nextLayout, width, this.implicitScrollView);
-		screen = this.compositeOverlays(screen, width, height);
-		if (screen.length > height) screen = screen.slice(screen.length - height);
-		screen = this.selection.applySelection(screen, nextLayout);
-		screen = compositeFlashLines(screen, this.flashes.render(width).slice(-height), width, height);
-		const cursorPos = this.extractCursorPosition(screen, height);
-		screen = this.finishedLines.apply(screen, width);
-		screen = budgetImageRows(screen, width, this.terminal.frameOutputCap);
-		const { buffer, fullRedraw } = renderAltScreenOutput({
+		const { screen, cursorPos } = composeAltScreen(this.composeParts, nextLayout, width, height);
+		const { buffer, fullRedraw, imagesRedrawn } = this.painter.paint(
 			screen,
-			previousScreen: this.previousScreen,
-			previousScreenWidth: this.previousScreenWidth,
-			previousScreenHeight: this.previousScreenHeight,
+			cursorPos,
 			width,
 			height,
-			imageProtocol: this.images.protocol,
-			uploadedKittyImages: this.images.uploaded,
-			cursorPos,
-			showHardwareCursor: this.getShowHardwareCursor(),
-			trimmedRows: this.trimmedRows,
-			imageRowsMemo: this.imageRows,
-			cursorMemo: this.cursorMemo,
-			synchronized: this.terminal.synchronizedOutput === true,
-		});
+			this.terminal,
+			this.images,
+			this.getShowHardwareCursor(),
+		);
 		if (fullRedraw) this.fullRedrawCount += 1;
 		if (buffer) {
 			this.terminal.write(buffer, "frame");
-			this.ledger.counters.written += 1;
+			this.ledger.wrote(buffer.length, fullRedraw ? "fullRedraw" : imagesRedrawn ? "images" : "rows");
 		}
-
-		this.previousScreen = screen;
-		this.previousScreenWidth = width;
-		this.previousScreenHeight = height;
 		this.currentLayout = nextLayout;
-		const scrollbarShown = nextLayout.primaryScrollView?.isScrollbarVisible === true;
-		this.modes.setHoverTracking(this.scrollbar.hovering || scrollbarShown || this.search.activeSearch !== undefined);
+		const hover = this.scrollbar.wantsHover(nextLayout.primaryScrollView) || this.search.activeSearch !== undefined;
+		if (this.hoverTrackingEnabled) this.modes.setHoverTracking(hover);
 	}
 }

@@ -65,17 +65,21 @@ describe("reservation gate: hidden arithmetic", () => {
 		return { team, lock, gate };
 	}
 
-	it("refuses arithmetic on an unseen value while a peer holds a reservation, and lets counting loops run", async () => {
+	it("lets the reservation gate ignore hidden arithmetic, which the permission policy still treats as not read-only", async () => {
 		const db = path.join(tmp(), "team.sqlite");
 		const cwd = tmp();
 		const owner = await member(db, cwd);
 		const peer = await member(db, cwd);
 		await owner.lock(["src/a.ts"]);
-		for (const command of ['x="$1"; echo $((x))', "read n; echo ${a[n]}"])
-			expect(await peer.gate(command), command).toMatchObject({
-				block: true,
-				reason: expect.stringContaining(`reserved by ${owner.team.id}`),
-			});
+		for (const command of ['x="$1"; echo $((x))', "echo ${a[n]}"]) {
+			expect(await peer.gate(command), command).toBeUndefined();
+			expect(readOnlyCommand(command), command).toBe(false);
+		}
+		// The arithmetic is no longer the cause, but a stage that is no reader (`read` assigns) still is.
+		expect(await peer.gate("read n; echo ${a[n]}")).toMatchObject({
+			block: true,
+			reason: expect.stringContaining(`reserved by ${owner.team.id}`),
+		});
 		for (const command of ["i=0; while [ $i -lt 3 ]; do i=$((i+1)); done", "echo $((1 + 2))"])
 			expect(await peer.gate(command), command).toBeUndefined();
 	});

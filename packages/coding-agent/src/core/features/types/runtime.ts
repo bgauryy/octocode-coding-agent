@@ -13,6 +13,7 @@ import type { FeatureOwner, SourceInfo } from "../../source-info.ts";
 import type { BuildSystemPromptOptions } from "../../system-prompt.ts";
 import type { FeatureSetup } from "./api.ts";
 import type {
+	BoundaryCompactionOptions,
 	CompactOptions,
 	ContextUsage,
 	ExecuteToolOptions,
@@ -178,6 +179,7 @@ export interface ContextActions {
 	/** The Cache Warming section of `/status` (`cacheWarmingReport`); without it, `/status` has no such section. */
 	getCacheWarmingReport?: () => string[];
 	compact: (options?: CompactOptions) => void;
+	requestBoundaryCompaction?: (options?: BoundaryCompactionOptions) => void;
 	getSystemPrompt: () => string;
 	getSystemPromptOptions?: () => BuildSystemPromptOptions;
 	/** Backs `ToolContext.executeTool()`. Without it, nested calls fail. */

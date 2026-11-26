@@ -15,12 +15,12 @@ import type { ToolDefinition } from "../../src/core/features/index.ts";
 import { wrapToolDefinition } from "../../src/core/tools/tool-definition-wrapper.ts";
 import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { renameReasoning } from "../../src/octocode/files/tool/queries.ts";
+import { prepareChangeArguments } from "../../src/octocode/files/tool/queries.ts";
 import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
 type FileTool = ToolDefinition<any, { outcomes: { ok: boolean }[] }> & {
-	prepareArguments: typeof renameReasoning;
+	prepareArguments: typeof prepareChangeArguments;
 };
 
 function fileTool(): FileTool {
@@ -58,7 +58,7 @@ describe("file tool: a single flat change", () => {
 		const cwd = tmp();
 		const result = await call(
 			fileTool(),
-			{ type: "write", path: "a.txt", content: "x", reasoning: "Create the file" },
+			{ type: "write", path: "a.txt", content: "x", reason: "Create the file" },
 			cwd,
 		);
 		expect(result.details.outcomes).toMatchObject([{ ok: true }]);
@@ -135,7 +135,7 @@ describe("file tool: a single flat change", () => {
 			{
 				queries: [
 					{ type: "write", path: "a.txt", content: "a", reason: "Add a" },
-					{ type: "write", path: "b.txt", content: "b", reasoning: "Add b" },
+					{ type: "write", path: "b.txt", content: "b", reason: "Add b" },
 				],
 			},
 			cwd,
@@ -287,7 +287,7 @@ it.each(Object.keys(fileRoutes) as KnownApi[])(
 		const fromAttachment = "a".repeat(64);
 		// The wire schema is one flat object (strict tool calling takes no object unions): it takes every valid operation,
 		// and which operands go with which `type` is refused when the arguments are prepared, before validation.
-		const prepared = (query: JsonObject) => renameReasoning({ reason: "Fix links", queries: [query] });
+		const prepared = (query: JsonObject) => prepareChangeArguments({ reason: "Fix links", queries: [query] });
 		expect(() => accepts({ type: "edit", path: "r.md", edits })).not.toThrow();
 		expect(() => prepared({ type: "edit", path: "r.md", fromAttachment, edits })).toThrow(/edits.*oldText.*newText/s);
 		expect(() => accepts({ type: "write", path: "r.md", fromAttachment })).not.toThrow();

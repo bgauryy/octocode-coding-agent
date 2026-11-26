@@ -286,7 +286,7 @@ describe("F: epics", () => {
 
 	it("closes from plain state done once its items are done or closed", async () => {
 		const { text } = await epicWithItems();
-		await expect(text({ op: "done", id: "B4" })).rejects.toThrow(/Done needs completion/);
+		await expect(text({ op: "done", id: "B4" })).rejects.toThrow(/epic with items that are not done/);
 		await finish(text, "B1");
 		await text({ op: "close", id: "B2", close: { kind: "obsolete", text: "not needed" } });
 		expect(await text({ op: "done", id: "B4" })).toMatch(/^Updated B4 \[done/);
@@ -303,7 +303,7 @@ describe("F: epics", () => {
 				id: "B4",
 				completion: { summary: "Dropped the rest", verification: "Not applicable" },
 			}),
-		).rejects.toThrow(/Finish child items before completing their parent/);
+		).rejects.toThrow(/epic with items that are not done/);
 	});
 
 	it("explains how an epic with open items moves", async () => {

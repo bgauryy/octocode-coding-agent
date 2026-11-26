@@ -3,8 +3,8 @@ import { ITEM_TYPES } from "@octocodeai/octocode-contracts/backlogs";
 import { STATES } from "@octocodeai/octocode-contracts/snapshot";
 import { type TSchema, Type } from "typebox";
 import { PRIORITIES } from "./store.ts";
-import { legacyEntityFields, linksField } from "./tool-schema.ts";
-import { legacyListFields, listFields } from "./tool-list.ts";
+import { undeclaredEntityFields, linksField } from "./tool-schema.ts";
+import { undeclaredListFields, listFields } from "./tool-list.ts";
 
 /** The states `add` and `edit` set. `done` takes a completion, which is `backlog`'s `done`. */
 const PLAN_STATES = ["backlog", "todo", "ongoing"] as const;
@@ -84,14 +84,14 @@ export function planAccepted(parameters: ReturnType<typeof planParameters>) {
 		{
 			...parameters.properties,
 			items: Type.Optional(Type.Unsafe<Array<Record<string, unknown>>>({ type: "array", items: { type: "object" } })),
-			...legacyListFields,
+			...undeclaredListFields,
 		},
 		{ additionalProperties: true },
 	);
 }
 
 /**
- * What one entry may carry: the declared fields, the older link forms (`legacyEntityFields`), a `state`
+ * What one entry may carry: the declared fields, the older link forms (`undeclaredEntityFields`), a `state`
  * of done and the fields of finishing and closing, which the tool refuses with the `backlog` operation to use.
  */
 export const entryAccepted = Type.Object(
@@ -102,8 +102,8 @@ export const entryAccepted = Type.Object(
 		state: Type.Optional(StringEnum(STATES)),
 		// Any text: the tool names the item types in its own refusal.
 		type: Type.Optional(Type.String()),
-		links: legacyEntityFields.links,
-		version: legacyEntityFields.version,
+		links: undeclaredEntityFields.links,
+		version: undeclaredEntityFields.version,
 		completion: Type.Optional(Type.Unsafe<unknown>({})),
 		close: Type.Optional(Type.Unsafe<unknown>({})),
 	},

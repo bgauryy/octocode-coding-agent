@@ -8,6 +8,7 @@ import type { CacheWarmingStatus } from "../cache-warmer/types.ts";
 import type { Agent, AgentMessage, ThinkingLevel } from "@octocodeai/octocode-agent-core";
 import type { AssistantMessage, ImageContent, Model, TextContent } from "@octocodeai/octocode-ai/compat";
 import type { CompactionResult } from "../compaction/index.ts";
+import type { SummaryFocus } from "../compaction/summary-focus.ts";
 import type { ManualCompactionOptions } from "../compaction/manual-options.ts";
 import type { ContextUsage, FeatureHost, ToolInfo } from "../features/index.ts";
 import type { CustomMessage } from "../messages.ts";
@@ -16,6 +17,7 @@ import type { PromptTemplate } from "../prompt-templates.ts";
 import type { ResourceLoader } from "../resource-loader/types.ts";
 import type { SessionManager, SessionNameSource } from "../session-manager.ts";
 import type { SettingsManager } from "../settings-manager.ts";
+import { type AttemptCommit, createAttemptCommit } from "./replay-safety.ts";
 import { createRunOutcome, type RunOutcome } from "./run-outcome.ts";
 import type { AgentSessionEvent, ModelMutationOptions, PromptOptions } from "./types.ts";
 
@@ -54,8 +56,12 @@ export interface SessionRunState {
 	/** Consecutive turns whose tool calls were cut off at the output limit. */
 	truncatedToolTurns: number;
 	lastAssistantMessage: AssistantMessage | undefined;
+	/** What the latest model request committed (text shown, tool run); a failed one is replayed only when it is clean. */
+	attempt: AttemptCommit;
 	/** How the current or latest run ended so far; replaced when a run starts, and when it settles. */
 	outcome: RunOutcome;
+	/** A compaction a feature asked for at the next request boundary (`requestBoundaryCompaction`); dropped when the run starts, is aborted or settles. */
+	boundaryCompaction: { focus?: SummaryFocus } | undefined;
 	/** Whether any run has started, so `lastRunOutcome` does not report one that never happened. */
 	hasRun: boolean;
 	turnIndex: number;
@@ -83,7 +89,9 @@ export function createRunState(): SessionRunState {
 		lengthContinuations: 0,
 		truncatedToolTurns: 0,
 		lastAssistantMessage: undefined,
+		attempt: createAttemptCommit(),
 		outcome: createRunOutcome(),
+		boundaryCompaction: undefined,
 		hasRun: false,
 		turnIndex: 0,
 		isBeforeSettle: false,

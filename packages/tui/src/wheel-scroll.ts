@@ -1,3 +1,5 @@
+import { detectIde } from "@octocodeai/octocode-common/terminal-host";
+
 /** Lines moved per mouse-wheel event, or `"auto"` to accelerate fast wheel spins. */
 export type WheelScrollLines = number | "auto";
 
@@ -39,19 +41,27 @@ const FLICK_BASE_LINES = 1.5;
 const FLICK_SUSTAIN_EVENTS = 60;
 const MAX_FLICK_LINES = 8;
 
+export type WheelModel = "per-line" | "per-notch";
+
 /**
- * Local macOS terminals receive wheel and trackpad deltas that the OS has already accelerated,
- * and they emit one event per line. Other platforms, and SSH sessions where the client platform
- * is unknown, usually send one event per wheel notch.
+ * The wheel model a terminal reports, decided from the environment alone: `per-line` for native macOS terminals that
+ * receive OS-accelerated deltas and emit one event per line, `per-notch` for xterm.js hosts (VS Code, Cursor, Windsurf)
+ * that emit one wheel report per DOM wheel event however many lines it represents, and for Linux, Windows and SSH
+ * terminals that send one event per notch. Exposed so `/debug terminal` can name the model a session is using.
  */
-function terminalAcceleratesWheel(): boolean {
-	const env = process.env;
-	return (
+export function terminalWheelModel(env = process.env): WheelModel {
+	// The reports carry no delta, so xterm.js hosts are recognized by the IDE signals `detectIde` reads.
+	if (detectIde(env) !== undefined) return "per-notch";
+	const localMacos =
 		process.platform === "darwin" &&
 		env.SSH_CONNECTION === undefined &&
 		env.SSH_CLIENT === undefined &&
-		env.SSH_TTY === undefined
-	);
+		env.SSH_TTY === undefined;
+	return localMacos ? "per-line" : "per-notch";
+}
+
+function terminalAcceleratesWheel(): boolean {
+	return terminalWheelModel() === "per-line";
 }
 
 /**

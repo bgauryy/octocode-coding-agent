@@ -5,7 +5,7 @@ import * as apiReceipts from "./api-receipts.ts";
 import * as itemHandoffs from "./item-handoffs.ts";
 import * as openings from "./openings.ts";
 import * as processSamples from "./process-samples.ts";
-import { eraseMirror, eraseRows } from "./sessions.ts";
+import { eraseMirror, eraseRows, processes } from "./sessions.ts";
 import { inTransaction } from "./transaction.ts";
 import * as transcripts from "./transcripts.ts";
 
@@ -62,15 +62,19 @@ export interface PurgeOptions {
 	 * planned the purge keeps its rows.
 	 */
 	isLive?: (pid: number, pidStarted: string | null) => boolean;
+	/**
+	 * The workspace files holding workspace-owned rows apart from `db` (the machine file, which holds the sessions):
+	 * each loses its rows in a transaction of its own, after `db`'s, and keeps its `workspaces` rows, which only anchor
+	 * the rows of kept sessions there.
+	 */
+	workspaceFiles?: readonly DatabaseSync[];
 }
 
 /** `keepSessions` plus the sessions whose recorded process runs now. */
 function keptSessions(db: DatabaseSync, options: PurgeOptions): string[] {
 	const keep = new Set(options.keepSessions);
 	const { isLive } = options;
-	if (isLive)
-		for (const row of db.prepare("SELECT id, pid, pid_started FROM sessions WHERE pid IS NOT NULL").all())
-			if (isLive(Number(row.pid), row.pid_started === null ? null : String(row.pid_started))) keep.add(String(row.id));
+	if (isLive) for (const row of processes(db)) if (isLive(row.pid, row.pid_started)) keep.add(row.id);
 	return [...keep];
 }
 
@@ -145,10 +149,16 @@ export function workspace(
 		...eraseMirror(mirror, ids()),
 		compaction_summaries: compactions.purgeWorkspace(mirror, workspaceId, keep),
 	}));
+	const erased = ids();
 	inTransaction(db, () => {
-		for (const [table, n] of Object.entries(eraseRows(db, ids()))) counts[table] = n;
+		for (const [table, n] of Object.entries(eraseRows(db, erased))) counts[table] = n;
 		withoutAuditGuards(db, () => run(db, WORKSPACE, counts, workspaceId, kept));
 	});
+	for (const file of options.workspaceFiles ?? [])
+		inTransaction(file, () => {
+			for (const [table, n] of Object.entries(eraseRows(file, erased))) counts[table] = (counts[table] ?? 0) + n;
+			withoutAuditGuards(file, () => run(file, WORKSPACE.slice(0, -1), counts, workspaceId, kept));
+		});
 	return counts;
 }
 
@@ -231,5 +241,11 @@ export function all(db: DatabaseSync, mirror: DatabaseSync, options: PurgeOption
 		counts.api_message_receipts = apiReceipts.clear(db);
 		counts.item_handoffs = itemHandoffs.clear(db);
 	});
+	// A workspace file keeps its `workspaces` rows and lease links: they name no session there to check against.
+	for (const file of options.workspaceFiles ?? [])
+		inTransaction(file, () => {
+			withoutAuditGuards(file, () => run(file, ALL.slice(0, -2), counts, kept));
+			counts.item_handoffs += itemHandoffs.clear(file);
+		});
 	return counts;
 }

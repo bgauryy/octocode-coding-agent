@@ -5,9 +5,14 @@ import { createMcpToolName } from "../../../mcp/src/tool-names.ts";
 import { setMcpReadOnlyTools } from "../../src/octocode/permission/mcp-reads.ts";
 import { readOnlyRoleRefusal } from "../../src/octocode/permission/read-only-role.ts";
 
-const preset = JSON.parse(
-	readFileSync(new URL("../../../mcp/src/recommended/octocode.json", import.meta.url), "utf8"),
-) as { name: string; roles: { reader: string[]; search: string[]; readOnly: string[] } };
+const preset = {
+	name: "octocode",
+	...(
+		JSON.parse(readFileSync(new URL("../../../mcp/src/default_mcp_config.json", import.meta.url), "utf8")) as {
+			servers: { octocode: { roles: { reader: string[]; search: string[]; readOnly: string[] } } };
+		}
+	).servers.octocode,
+};
 const roles = resolveToolRoles([{ name: preset.name, config: preset as never }]);
 const READ_ONLY_CHILD = { OCTOCODE_SUBAGENT: "1", OCTOCODE_READ_ONLY: "1" };
 const refusal = (tool: string) => readOnlyRoleRefusal({ toolName: tool, input: {} }, process.cwd(), READ_ONLY_CHILD);

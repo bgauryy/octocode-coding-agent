@@ -1,14 +1,13 @@
 import { Worker } from "node:worker_threads";
 import { canonicalPath } from "../../../common/src/canonical-path.ts";
-import { closeSharedConnections, sharedDatabase } from "../db.ts";
+import { closeSharedConnections, sharedDatabase } from "../db-shared.ts";
 import { isBusy } from "../sqlite.ts";
 import {
-	DB_WRITER_WORKER,
 	type DbWriterLocations,
 	type DbWriterRole,
 	type DbWriterMessage,
 	type DbWriterRequest,
-	type DbWriterWorkerData,
+	writerWorkerData,
 } from "./protocol.ts";
 import { type DbWriterCommand, type DbWriterResult, type DerivedCommand, runWriterCommandWithin } from "./derived.ts";
 import type { TranscriptCommand, TranscriptResult } from "./transcript-mirror.ts";
@@ -235,12 +234,7 @@ export class DbWriter {
 		let worker: Worker;
 		try {
 			this.stopping = new Int32Array(new SharedArrayBuffer(4));
-			const workerData: DbWriterWorkerData = {
-				worker: DB_WRITER_WORKER,
-				locations: this.locations,
-				role: this.role,
-				stopping: this.stopping.buffer,
-			};
+			const workerData = writerWorkerData(this.locations, this.role, this.stopping.buffer);
 			// Its own output streams: the writer prints nothing, and a piped worker adds `error` listeners to this
 			// process's stdout and stderr for as long as it lives.
 			worker = new Worker(this.entry, { workerData, stdout: true, stderr: true });
@@ -377,7 +371,8 @@ export function sharedMirrorWriter(locations: DbWriterLocations): DbWriter {
 }
 
 function shared(locations: DbWriterLocations, role: DbWriterRole, file: string): DbWriter {
-	const key = canonicalPath(file);
+	// A raw hit is the stored canonical key itself, so skipping the filesystem walk skips no symlink resolution.
+	const key = writers.has(file) ? file : canonicalPath(file);
 	let writer = writers.get(key);
 	if (!writer) {
 		writer = new DbWriter(locations, { role });

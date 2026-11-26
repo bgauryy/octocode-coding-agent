@@ -20,6 +20,7 @@ export interface EarlyRun {
 	toolCall: AgentToolCall;
 	preparation: Promise<PreparedToolCall | ImmediateToolCallOutcome | DeferredToolCall>;
 	executed: Promise<ExecutedToolCallOutcome | undefined>;
+	settledKind?: "prepared" | "immediate" | "deferred";
 	/** Forward buffered then live updates to `sink`, in order; resolves once the buffered ones were delivered. */
 	attach(sink: ToolUpdateSink): Promise<void>;
 }
@@ -67,7 +68,9 @@ export class EarlyToolCalls {
 
 	private consider(toolCall: AgentToolCall, partial: AssistantMessage): void {
 		if (this.closed) return;
-		const tool = this.context.tools?.find((candidate) => candidate.name === toolCall.name);
+		const tool =
+			this.context.tools?.find((candidate) => candidate.name === toolCall.name) ??
+			this.config.resolveUndeclaredTool?.(toolCall.name);
 		if (
 			!tool ||
 			resolveToolConcurrency(tool, toolCall.arguments) !== "shared" ||
@@ -78,10 +81,15 @@ export class EarlyToolCalls {
 		}
 		const signal = this.controller.signal;
 		const message = { ...partial, content: [...partial.content] };
+		let settledKind: EarlyRun["settledKind"];
 		const preparation = this.preparing.then(async (previous) => {
 			// A deferred check also withdraws calls already queued behind it before the check settled.
-			if (previous?.kind === "deferred") return previous;
+			if (previous?.kind === "deferred") {
+				settledKind = "deferred";
+				return previous;
+			}
 			const prepared = await prepareEarlyToolCall(this.context, message, toolCall, this.config, signal);
+			settledKind = prepared.kind;
 			if (prepared.kind === "deferred") this.closed = true;
 			return prepared;
 		});
@@ -99,10 +107,13 @@ export class EarlyToolCalls {
 				: undefined,
 		);
 		void executed.catch(() => {});
-		this.runs.push({
+		const entry: EarlyRun = {
 			toolCall,
 			preparation,
 			executed,
+			get settledKind() {
+				return settledKind;
+			},
 			attach: (sink) => {
 				let delivered = Promise.resolve();
 				const send = (update: AgentToolResult<any>) => {
@@ -119,7 +130,8 @@ export class EarlyToolCalls {
 				forward = send;
 				return delivered;
 			},
-		});
+		};
+		this.runs.push(entry);
 	}
 
 	/**
@@ -146,6 +158,8 @@ export class EarlyToolCalls {
 		this.unlink();
 		if (this.runs.length === 0) return;
 		this.controller.abort(new Error("Assistant message did not complete"));
-		for (const run of this.runs.splice(0)) this.policy.onDiscarded?.(run.toolCall.id);
+		for (const run of this.runs.splice(0)) {
+			if (run.settledKind !== "deferred") this.policy.onDiscarded?.(run.toolCall.id);
+		}
 	}
 }

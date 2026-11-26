@@ -30,14 +30,13 @@ describe("ApplicationProjection", () => {
 		expect(new Set(events.map((event) => event.at))).toEqual(new Set([10]));
 	});
 
-	it("retains user messages and skips legacy assistant messages with no visible content", () => {
+	it("retains user messages and skips assistant messages with no visible content", () => {
 		const events = new ApplicationProjection().update(
 			session({
 				streaming: true,
 				messages: [
 					{ id: "u", role: "user", text: "question", complete: true },
 					{ id: "a1", role: "assistant", text: "   ", complete: true },
-					{ id: "a2", role: "assistant", text: "[Tool call: read]", complete: true },
 					{ id: "a3", role: "assistant", text: "answer", complete: false },
 				],
 			}),
@@ -46,23 +45,6 @@ describe("ApplicationProjection", () => {
 		expect(events.map((item) => [item.type, item.text, (item.details as { status: string }).status])).toEqual([
 			["message", "question", "completed"],
 			["message", "answer", "streaming"],
-		]);
-	});
-
-	it("drops tool-call and hidden-content placeholders that the feed already shows as tool events", () => {
-		const events = new ApplicationProjection().update(
-			session({
-				messages: [
-					{ id: "a", role: "assistant", text: "[Content available in the session][Tool call: write]", complete: true },
-					{ id: "b", role: "assistant", text: "Let me check.[Tool call: read]", complete: true },
-					{ id: "c", role: "assistant", text: "See [Image attachment: open the session to view]", complete: true },
-				],
-			}),
-			1,
-		);
-		expect(events.map((event) => event.text)).toEqual([
-			"Let me check.",
-			"See [Image attachment: open the session to view]",
 		]);
 	});
 

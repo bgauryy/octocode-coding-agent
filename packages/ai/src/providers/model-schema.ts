@@ -1,4 +1,5 @@
 import { type Static, type TSchemaOptions, Type } from "typebox";
+import { PROVIDER_PROFILE_IDS } from "../types/profile.ts";
 
 const THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const MODEL_THINKING_LEVELS = ["off", ...THINKING_LEVELS] as const;
@@ -7,6 +8,11 @@ export const CACHE_RETENTIONS = ["none", "short", "long"] as const;
 const MODEL_PROMPT_CACHE_RETENTIONS = ["short", "long"] as const;
 
 const ThinkingLevelSchema = Type.Enum(THINKING_LEVELS);
+/** The provider profile a models.json provider names: the cache facts and request-format quirks its models follow. */
+export const ProviderProfileSchema = Type.Enum(PROVIDER_PROFILE_IDS, {
+	description:
+		"The provider family whose cache markers, cache lifetimes and request quirks this provider's models follow: use it for a gateway that serves another provider's models (a Claude gateway takes \"anthropic\"). Unset: detected from the provider id and host. An explicit compat value still wins.",
+});
 export const ModelThinkingLevelSchema = Type.Enum(MODEL_THINKING_LEVELS);
 export const ModelInputModalitySchema = Type.Enum(MODEL_INPUT_MODALITIES);
 const CacheRetentionSchema = Type.Enum(CACHE_RETENTIONS);

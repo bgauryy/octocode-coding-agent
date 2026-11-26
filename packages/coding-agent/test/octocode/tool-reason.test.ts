@@ -8,7 +8,7 @@ import { wrapToolDefinition } from "../../src/core/tools/tool-definition-wrapper
 import { agentModes } from "../../src/octocode/native/tools/agent/tool.ts";
 import { registerFileTool } from "../../src/octocode/native/tools/file/tool.ts";
 import { FileGuard } from "../../src/octocode/files/tool/guard.ts";
-import { Params, renameReasoning } from "../../src/octocode/files/tool/queries.ts";
+import { Params, prepareChangeArguments } from "../../src/octocode/files/tool/queries.ts";
 import { isNativeTool, withNativePermissionOwners } from "../../src/octocode/permission/native-tools.ts";
 import { callReason, withoutReason, withReason } from "../../src/octocode/shared/reason.ts";
 import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
@@ -163,26 +163,26 @@ describe("the required reason on native tools", () => {
 });
 
 describe("the file tool's renamed reason", () => {
-	it("reads the old reasoning name, top level and per query, when no reason is given", () => {
+	it("gives a query without a reason the call's", () => {
 		expect(
-			renameReasoning({
-				reasoning: "patch",
+			prepareChangeArguments({
+				reason: "patch",
 				queries: [
-					{ type: "write", path: "a", content: "first", reasoning: "old name" },
-					{ type: "write", path: "b", content: "second", reason: "new name", reasoning: "ignored" },
+					{ type: "write", path: "a", content: "first" },
+					{ type: "write", path: "b", content: "second", reason: "new name" },
 					{ type: "delete", path: "c", reason: "kept" },
 				],
 			}),
 		).toEqual({
 			reason: "patch",
 			queries: [
-				{ type: "write", path: "a", content: "first", reason: "old name" },
+				{ type: "write", path: "a", content: "first", reason: "patch" },
 				{ type: "write", path: "b", content: "second", reason: "new name" },
 				{ type: "delete", path: "c", reason: "kept" },
 			],
 		});
-		expect(renameReasoning("not an object")).toBe("not an object");
-		expect(renameReasoning({ patch: "x" })).toEqual({ patch: "x" });
+		expect(prepareChangeArguments("not an object")).toBe("not an object");
+		expect(prepareChangeArguments({ patch: "x" })).toEqual({ patch: "x" });
 	});
 
 	it("still requires a call goal when neither level supplies one", () => {
@@ -196,7 +196,7 @@ describe("the file tool's renamed reason", () => {
 
 	it("lets a change leave its reason out and reuses the call's", () => {
 		const file = { name: "file", parameters: Params };
-		const prepared = renameReasoning({
+		const prepared = prepareChangeArguments({
 			reason: "clean up",
 			queries: [
 				{ type: "delete", path: "a" },
@@ -206,10 +206,12 @@ describe("the file tool's renamed reason", () => {
 		expect(prepared.queries?.map((query) => query.reason)).toEqual(["clean up", "own"]);
 		expect(() => validate(file, prepared)).not.toThrow();
 		// Without a call reason there is nothing to reuse, and the call is refused as before.
-		expect(() => validate(file, renameReasoning({ queries: [{ type: "delete", path: "a" }] }))).toThrow(/reason/);
+		expect(() => validate(file, prepareChangeArguments({ queries: [{ type: "delete", path: "a" }] }))).toThrow(
+			/reason/,
+		);
 	});
 
-	it.each(["reason", "reasoning"])("writes a file using the query's %s as the call reason", async (field) => {
+	it("writes a file using the query's reason as the call reason", async () => {
 		const fake = fakeHost();
 		const cwd = tmp();
 		registerFileTool(withNativePermissionOwners(fake.api), new FileGuard(), fakePermission());
@@ -219,7 +221,7 @@ describe("the file tool's renamed reason", () => {
 		const reason = "Add the crash and resume tests";
 		const outcome = await run(
 			tool,
-			{ queries: [{ type: "write", path: "nested.txt", content: "covered", [field]: reason }] },
+			{ queries: [{ type: "write", path: "nested.txt", content: "covered", reason }] },
 			beforeToolCall,
 		);
 		expect(outcome).toMatchObject({ isError: false });

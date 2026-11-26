@@ -70,6 +70,18 @@ describe("a desktop task's apps list", () => {
 			expect(await call("click", { pid: 7 }, "Maps.app")).toMatch(/Maps.app is outside the apps.*calculator/i);
 		});
 
+		it("declares both desktop and browser control for its dual-MCP profile", () => {
+			expect(profiles().get("desktop")?.permissions).toEqual(["desktop.control", "browser.control"]);
+		});
+
+		it("matches a multi-word app name at a bundle id's suffix, not just its last segment", async () => {
+			process.env[DESKTOP_APPS_ENV] = "Google Chrome,Microsoft Edge";
+			expect(await call("launch_app", { bundle_id: "com.google.Chrome" })).toBeUndefined();
+			expect(await call("launch_app", { bundle_id: "com.microsoft.Edge" })).toBeUndefined();
+			expect(await call("launch_app", { bundle_id: "com.google.ChromeHelper" })).toMatch(/outside the apps/);
+			expect(await call("launch_app", { bundle_id: "com.notgoogle.Chrome" })).toMatch(/outside the apps/);
+		});
+
 		it("does not refuse a pid it cannot resolve", async () => {
 			process.env[DESKTOP_APPS_ENV] = "Calculator";
 			expect(await call("click", { pid: 7 }, undefined)).toBeUndefined();

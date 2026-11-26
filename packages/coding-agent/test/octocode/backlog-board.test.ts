@@ -1,4 +1,4 @@
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { itemCounts } from "./counts-fixture.ts";
 import fs from "node:fs";
 import os from "node:os";
@@ -6,7 +6,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
 import { showBoard } from "../../src/octocode/backlog/board.ts";
 import { boardText, countsText, openTaskCount } from "../../src/octocode/backlog/format.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
@@ -41,7 +40,7 @@ afterEach(() => {
 	fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-const store = () => new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
+const store = () => new BacklogStore(() => workspaceDb(cwd).agent, workspaceDb(cwd).workspace.id);
 
 /** One epic with two items (one with two open tasks), a done item and a session task of this session. */
 function seed(s: BacklogStore) {
@@ -268,12 +267,11 @@ describe("counts, headless board and resume brief carry the tasks", () => {
 		s.tasks.add({ goal: "own step", reason: "the footer  miscounts", session: "sess-brief" }, { id: "sess-brief" });
 		const done = s.tasks.add({ goal: "finished step", session: "sess-brief" }, { id: "sess-brief" });
 		s.tasks.update(done.ref, { state: "done" }, USER);
-		const agent = sharedAgentDb();
-		const text = resumeBrief(agent, {
+		const text = resumeBrief(workspaceDb(cwd).agent, {
 			previous: { branch: null, head: null },
 			lastActive: Date.now() - 3 * 3_600_000,
 			sessionId: "sess-brief",
-			repoKey: registeredWorkspace(cwd).id,
+			repoKey: workspaceDb(cwd).workspace.id,
 			git: { dirty: 0 },
 		})!;
 		// The header counts the open steps per item, then the session's own, and says how to list them.

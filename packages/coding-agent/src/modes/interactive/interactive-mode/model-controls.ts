@@ -9,6 +9,7 @@ import type { Model } from "@octocodeai/octocode-ai/compat";
 import { getApplicationPort } from "../../../core/application/index.ts";
 import { DEFAULT_THINKING_LEVEL } from "../../../core/defaults.ts";
 import { findExactModelReferenceMatch, resolveModelScopeFromModels } from "../../../core/model-resolver.ts";
+import { switchCacheNotice } from "../../../core/switch-cache-cost.ts";
 import { showModelSelector } from "../model-picker.ts";
 import { ScopedModelsSelectorComponent } from "../components/scoped-models-selector.ts";
 import { ThinkingSelectorComponent } from "../components/thinking-selector.ts";
@@ -157,12 +158,18 @@ export async function handleModelCommand(host: ModelControlsHost, searchTerm?: s
 				const warning = await preflightBedrockSelection(session.modelRuntime, model);
 				if (warning) host.showWarning(warning);
 			}
+			const rewrite = switchCacheNotice(
+				session.messages.findLast((message) => message.role === "assistant"),
+				session.model,
+				model,
+			);
 			await getApplicationPort(session).invoke("setModel", model, {
 				persist: setDefault,
 				scope: setDefault ? "global" : undefined,
 			});
 			host.updateEditorBorderColor();
 			host.showStatus(setDefault ? `Default model: ${model.id}` : `Model: ${model.id}`);
+			if (rewrite) host.showWarning(rewrite);
 			void host.maybeWarnAboutAnthropicSubscriptionAuth(model);
 		} catch (error) {
 			host.showError(errorMessage(error));

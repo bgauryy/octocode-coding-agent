@@ -15,8 +15,13 @@ beforeEach(() => {
 	const home = tmp();
 	process.env.OCTOCODE_HOME = home;
 	process.env[ENV_AGENT_DIR] = home;
-	// The agent tool declares its external type only with this opt-in setting.
-	fs.writeFileSync(path.join(home, "settings.json"), JSON.stringify({ externalAgents: true }));
+	// The agent tool declares its external type only with this opt-in setting. A settings file of an earlier version:
+	// no selection, so its own ACP agent `fixture` stays selected when the file is converted.
+	const fixture = { id: "fixture", kind: "acp", command: process.execPath };
+	fs.writeFileSync(
+		path.join(home, "settings.json"),
+		JSON.stringify({ externalAgents: true, externalModels: [fixture] }),
+	);
 });
 afterEach(() => {
 	process.env = saved;
@@ -51,6 +56,8 @@ async function decide(
 describe("leaving a session with running work", () => {
 	it("asks before switching or forking while a timed-out ACP peer still works", async () => {
 		process.env.OCTOCODE_PERMISSION = "full";
+		// No vendor CLI on PATH: the configured agent alone makes the external type reachable.
+		process.env.PATH = tmp();
 		const { fake, ctx, cwd } = setup();
 		Object.assign(ctx, { mode: "rpc" });
 		await fake.fire("session_start", { type: "session_start", reason: "startup" }, ctx);

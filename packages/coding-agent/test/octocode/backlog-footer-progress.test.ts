@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb, meta } from "../../../db/src/api.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { registeredWorkspace, workspaceDb } from "../../src/storage/workspace-database.ts";
 import { sessionTaskTally } from "../../src/octocode/backlog/format.ts";
 import { currentStep, progressText } from "../../src/octocode/backlog/progress.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
@@ -44,7 +44,7 @@ function setup(hasUI = true) {
 	hosts.push(host);
 	registerBacklog(host.api, { commands: new Subcommands(), isSubagent: false });
 	const ctx = fakeCtx({ cwd, hasUI });
-	const store = new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
+	const store = new BacklogStore(() => workspaceDb(cwd).agent, registeredWorkspace(cwd).id);
 	return { ...host, ctx, store };
 }
 

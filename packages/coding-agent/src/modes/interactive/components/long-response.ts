@@ -13,9 +13,9 @@ import {
 import { theme } from "../../../theme/theme.ts";
 import { expandHint } from "../../../octocode/shared/text.ts";
 
-export const RESPONSE_FOLD_THRESHOLD = 120;
-export const RESPONSE_HEAD_LINES = 40;
-export const RESPONSE_TAIL_LINES = 20;
+export const RESPONSE_FOLD_THRESHOLD = 30;
+export const RESPONSE_HEAD_LINES = 12;
+export const RESPONSE_TAIL_LINES = 6;
 
 /** Fold rendered rows, never Markdown source: fences and their terminal styling stay intact. */
 export class LongResponse implements Component {
@@ -26,6 +26,7 @@ export class LongResponse implements Component {
 	private readonly changed?: (expanded: boolean) => void;
 	private readonly streaming: boolean;
 	private readonly collapsing?: () => void;
+	private readonly foldThreshold: number;
 	private folded?: { rows: string[]; width: number; hint: string; lines: string[] };
 
 	/** `collapsing` runs before a real expanded-to-collapsed change (the screen's `keepScrollbackOnCollapse`). */
@@ -35,12 +36,14 @@ export class LongResponse implements Component {
 		changed?: (expanded: boolean) => void,
 		streaming = false,
 		collapsing?: () => void,
+		foldThreshold = RESPONSE_FOLD_THRESHOLD,
 	) {
 		this.content = content;
 		this.collapsing = collapsing;
 		this.expanded = expanded;
 		this.changed = changed;
 		this.streaming = streaming;
+		this.foldThreshold = foldThreshold;
 		this.region = new MouseRegion(content, (event) => this.toggle(event));
 		linkRenderChild(this, content);
 	}
@@ -74,7 +77,7 @@ export class LongResponse implements Component {
 		const before = renderSerial();
 		const rows = this.content.render(width);
 		settleRender(this, isRenderStable(this.content, before));
-		this.foldable = !this.streaming && rows.length > RESPONSE_FOLD_THRESHOLD;
+		this.foldable = !this.streaming && rows.length > this.foldThreshold;
 		if (!this.foldable || this.expanded) return rows;
 		const hint = expandHint();
 		// Preserve row identity so scrolling does not re-flatten every ancestor of an unchanged reply.

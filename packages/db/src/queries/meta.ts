@@ -5,6 +5,10 @@ export function read(db: DatabaseSync, key: string): string | undefined {
 	return (db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as { value: string } | undefined)?.value;
 }
 
+export function remove(db: DatabaseSync, key: string): void {
+	db.prepare("DELETE FROM meta WHERE key = ?").run(key);
+}
+
 export function write(db: DatabaseSync, key: string, value: string): void {
 	db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
 		key,

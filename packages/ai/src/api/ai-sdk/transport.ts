@@ -4,6 +4,7 @@ import { combineAbortSignals } from "../../utils/abort-signals.ts";
 import { retryProviderRequest } from "../../utils/provider-retry.ts";
 import { headersToRecord } from "../../utils/headers.ts";
 import { assertImageRequestPayload } from "../../utils/image-input.ts";
+import { bodyAfterRejection, withoutRejectedCapabilities } from "../../utils/rejected-capabilities.ts";
 import type { Api, Model, StreamOptions } from "../../types.ts";
 import { readWithIdleTimeout, resolveStreamIdleTimeoutMs, streamIdleError } from "./stream-idle.ts";
 import { iterateSseMessages, throwOnSseErrorEvent } from "../../utils/server-sent-events.ts";
@@ -49,6 +50,11 @@ export async function prepareSdkRequest(
 	return { ...init, body: JSON.stringify(payload) };
 }
 
+/**
+ * Sends the prepared request. An endpoint that rejected a field before (cache markers, strict tools, effort) gets the
+ * request without it; a 400 that names such a field for the first time is resent once without it, and the rejection is
+ * remembered for the process.
+ */
 export async function fetchSdkResponse(
 	model: Model<Api>,
 	options: StreamOptions,
@@ -57,8 +63,30 @@ export async function fetchSdkResponse(
 	augmentRequest?: (body: Record<string, unknown>) => void,
 	finalizeRequest?: (body: unknown) => void,
 ): Promise<Response> {
+	const prepared = await prepareSdkRequest(model, options, input, init, augmentRequest, finalizeRequest);
+	const request =
+		typeof prepared?.body === "string"
+			? { ...prepared, body: withoutRejectedCapabilities(model, prepared.body) }
+			: prepared;
+	try {
+		return await sendSdkRequest(model, options, input, init, request);
+	} catch (error) {
+		const signal = init?.signal ?? options.signal;
+		if (!APICallError.isInstance(error) || signal?.aborted || typeof request?.body !== "string") throw error;
+		const body = bodyAfterRejection(model, request.body, error.statusCode, error.responseBody ?? "");
+		if (body === undefined) throw error;
+		return sendSdkRequest(model, options, input, init, { ...request, body });
+	}
+}
+
+async function sendSdkRequest(
+	model: Model<Api>,
+	options: StreamOptions,
+	input: Parameters<typeof fetch>[0],
+	init: RequestInit | undefined,
+	request: RequestInit | undefined,
+): Promise<Response> {
 	const url = input instanceof Request ? input.url : input.toString();
-	const request = await prepareSdkRequest(model, options, input, init, augmentRequest, finalizeRequest);
 	return retryProviderRequest(async () => {
 		const deadline = new AbortController();
 		const combined = combineAbortSignals([init?.signal ?? options.signal, deadline.signal]);

@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { getLegacyConfigDirs } from "../../config.ts";
+import { getPiConfigDirs } from "../../config.ts";
 import { applyPrecedence } from "./precedence.ts";
 import type { ConfigItem, ConfigKind, DiscoverInput, DiscoverySource } from "./types.ts";
 import { VENDOR_SOURCES } from "./vendors/registry.ts";
@@ -75,9 +75,9 @@ class ConfigDiscovery {
 
 export const configDiscovery = new ConfigDiscovery();
 
-/** The input for a session: Pi roots come from the same rule as the rest of the Pi fallback (`getLegacyConfigDirs`). */
+/** The input for a session: Pi roots come from the same rule as the rest of the Pi fallback (`getPiConfigDirs`). */
 export function discoveryInput(
 	options: Pick<DiscoverInput, "cwd" | "agentDir" | "projectTrusted"> & Partial<DiscoverInput>,
 ): DiscoverInput {
-	return { home: homedir(), piRoots: getLegacyConfigDirs(options.agentDir), ...options };
+	return { home: homedir(), piRoots: getPiConfigDirs(options.agentDir), ...options };
 }

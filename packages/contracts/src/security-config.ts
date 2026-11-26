@@ -8,7 +8,7 @@ import { StringEnum } from "./schema.ts";
  * them (`DAEMON_ROUTES.configSecurity` is under `/api/admin/`).
  */
 
-export const SECURITY_KINDS = ["hook", "mcp", "skill"] as const;
+export const SECURITY_KINDS = ["hook", "mcp", "skill", "agent"] as const;
 export const SECURITY_RATINGS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 export const SECURITY_STATES = ["not checked", "approved", "denied"] as const;
 export const SECURITY_ACTIONS = ["approve", "deny", "forget"] as const;

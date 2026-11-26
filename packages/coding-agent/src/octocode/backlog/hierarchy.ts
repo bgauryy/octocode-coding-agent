@@ -50,14 +50,15 @@ export function checkWaitingCycle(db: Db, repo: string): void {
 
 /**
  * An epic with items takes its state from them (`deriveEpicState`), so a direct move between backlog, todo and ongoing is
- * refused, as the board does. Closing it (state done: the tool supplies the completion once its items are done, see
- * `closingEpic`) and reopening a closed one stay: the stored state matters only then.
+ * refused, as the board does. Finishing it (state done: the tool supplies the completion once its items are done, see
+ * `closingEpic`) is refused while an item is open; reopening a done one stays: the stored state matters only then.
  */
 export function checkEpicState(db: Db, repo: string, item: Item, input: { state?: string }): void {
 	if (item.type !== "epic" || input.state === undefined || input.state === item.state) return;
 	const children = backlog.childStates(db, item.rowId);
-	if (input.state === "done" || item.state === "done" || !children.length) return;
+	if (item.state === "done" || !children.length) return;
 	const open = children.filter((state) => state !== "done").length;
+	if (input.state === "done" && !open) return;
 	const items = open ? `${open} of its ${children.length} items are not done` : `all ${children.length} items are done`;
 	const names = open
 		? list(db, repo, { parentId: item.ref, states: ["backlog", "todo", "ongoing", "closed"] }).items.map(
@@ -68,7 +69,9 @@ export function checkEpicState(db: Db, repo: string, item: Item, input: { state?
 		? ` (open: ${names.slice(0, 5).join(", ")}${names.length > 5 ? `, +${names.length - 5} more` : ""})`
 		: "";
 	throw new BacklogError(
-		`${item.ref} is an epic with items: its state follows them (${items})${named}. Claim or edit its items (backlogPlan list underEpic ${item.ref}); once they are done, finish the epic with backlog done.`,
+		input.state === "done"
+			? `${item.ref} is an epic with items that are not done (${items})${named}: finish or close them first, then finish the epic with backlog done.`
+			: `${item.ref} is an epic with items: its state follows them (${items})${named}. Claim or edit its items (backlogPlan list underEpic ${item.ref}); once they are done, finish the epic with backlog done.`,
 	);
 }
 

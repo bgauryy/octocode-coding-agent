@@ -207,7 +207,7 @@ describe("auth check command", () => {
 			});
 			await started.promise;
 			controller.abort();
-			await expect(checking).resolves.toEqual({
+			await expect(checking).resolves.toMatchObject({
 				status: "invalid",
 				provider: "openai",
 				reason: "invalid_state",
@@ -241,6 +241,7 @@ describe("auth check command", () => {
 			status: "invalid",
 			provider: "openai",
 			reason: "invalid_state",
+			detail: expect.stringContaining("Invalid auth.json"),
 			verified: false,
 		});
 	});

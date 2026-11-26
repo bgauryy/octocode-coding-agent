@@ -17,18 +17,37 @@ export interface WorkspaceGit {
 
 interface Workspace extends WorkspaceIdentity {
 	git?: WorkspaceGit;
+	/** The key of the workspace file holding its rows (machine file); unset until `claimDbKey`. */
+	dbKey?: string;
 }
 
 interface WorkspaceRow extends WorkspaceIdentity {
 	git_common_dir: string | null;
 	linked_worktree: 0 | 1 | null;
+	db_key: string | null;
 }
-const COLUMNS = "id, root, name, binding, git_common_dir, linked_worktree";
+const COLUMNS = "id, root, name, binding, git_common_dir, linked_worktree, db_key";
 
-function decode({ git_common_dir, linked_worktree, ...stored }: WorkspaceRow): Workspace {
+function decode({ git_common_dir, linked_worktree, db_key, ...stored }: WorkspaceRow): Workspace {
+	const workspace: Workspace = db_key === null ? stored : { ...stored, dbKey: db_key };
 	return git_common_dir === null
-		? stored
-		: { ...stored, git: { commonDir: git_common_dir, linkedWorktree: linked_worktree === 1 } };
+		? workspace
+		: { ...workspace, git: { commonDir: git_common_dir, linkedWorktree: linked_worktree === 1 } };
+}
+
+/**
+ * The workspace file key of registered workspace `id`, set now when it has none: the key another workspace of the same
+ * Git repository (common dir) already has, else `candidate`. One statement, so two first checkouts of a repository
+ * racing still share one key. Undefined when `id` is not registered.
+ */
+export function claimDbKey(db: DatabaseSync, id: string, candidate: string): string | undefined {
+	keptStatement(
+		db,
+		`UPDATE workspaces SET db_key = COALESCE((SELECT s.db_key FROM workspaces s
+			WHERE s.git_common_dir = workspaces.git_common_dir AND s.db_key IS NOT NULL ORDER BY s.root, s.id LIMIT 1), ?)
+		WHERE id = ? AND db_key IS NULL`,
+	).run(candidate, id);
+	return byId(db, id)?.dbKey;
 }
 
 /** An omitted Git association leaves the last observation intact. Null records a verified non-Git checkout. */

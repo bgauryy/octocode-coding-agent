@@ -49,47 +49,38 @@ export interface FileQuery {
 	fromAttachment?: string;
 }
 
-/** `reason` replaced `reasoning`; a call recorded with the old name (a resumed session) still validates. */
-const aliased = <T extends Record<string, unknown>>(value: T): T => {
-	if (!("reasoning" in value)) return value;
-	const { reasoning, ...rest } = value;
-	return { ...rest, reason: rest.reason ?? reasoning } as unknown as T;
-};
-
 const CHANGE_TYPES: readonly unknown[] = ["edit", "write", "delete"];
 
 /** A call that is one change itself (`{type, path, edits|content}`) with neither `queries` nor `patch`: the change moves into `queries`; its reason stays the call's. */
 function wrapSingleChange(args: Record<string, unknown>): Record<string, unknown> {
 	if (args.queries !== undefined || args.patch !== undefined) return args;
 	if (!CHANGE_TYPES.includes(args.type) || typeof args.path !== "string") return args;
-	const { reason, reasoning, ...change } = args;
+	const { reason, ...change } = args;
 	return {
 		...(reason !== undefined ? { reason } : {}),
-		...(reasoning !== undefined ? { reasoning } : {}),
 		queries: [change],
 	};
 }
 
 /**
- * The call's arguments with `reasoning` (top level and per query) read as `reason`; a change without one takes the
- * call's. A single flat change becomes a one-item `queries`. A call with no `reason` of its own whose every change has
+ * The call's arguments with a change that has no `reason` taking the call's. A single flat change becomes a one-item `queries`. A call with no `reason` of its own whose every change has
  * one takes theirs, joined, instead of failing validation: the reasons were given, only one level lower.
  */
-export function renameReasoning(args: unknown): Static<typeof Params> {
+export function prepareChangeArguments(args: unknown): Static<typeof Params> {
 	if (!isRecord(args)) return args as Static<typeof Params>;
-	let renamed = aliased(wrapSingleChange(args));
+	let renamed = wrapSingleChange(args);
 	const shapeError = fileShapeError(renamed);
 	if (shapeError) throw shapeError;
 	const sent: unknown = renamed.queries;
 	if (!Array.isArray(sent)) return renamed as Static<typeof Params>;
 	if (renamed.reason === undefined && sent.length > 0) {
-		const given = sent.map((query: unknown) => (isRecord(query) ? aliased(query).reason : undefined));
+		const given = sent.map((query: unknown) => (isRecord(query) ? query.reason : undefined));
 		if (given.every((reason) => typeof reason === "string" && reason.trim()))
 			renamed = { ...renamed, reason: [...new Set(given as string[])].join("; ") };
 	}
 	const queries = sent.map((query: unknown) => {
 		if (!isRecord(query)) return query;
-		const named = aliased(query);
+		const named = query;
 		return named.reason === undefined && typeof renamed.reason === "string"
 			? { ...named, reason: renamed.reason }
 			: named;

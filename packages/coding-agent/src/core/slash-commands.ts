@@ -70,8 +70,8 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{
 		name: "realm",
 		requiresNative: true,
-		description: "See the checkout, worktrees and sessions",
-		argumentHint: "[<name> [switch|resume]]",
+		description: "See this session, its place and its child agents",
+		argumentHint: "[places [<name> [switch|resume]]]",
 	},
 	{
 		name: "plan",

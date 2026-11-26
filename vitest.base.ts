@@ -62,6 +62,15 @@ export default defineConfig({
 			{ find: /^@octocodeai\/octocode-ai$/, replacement: workspaceSourcePaths.aiIndex },
 			{ find: /^@octocodeai\/octocode-ai\/compat$/, replacement: workspaceSourcePaths.aiCompat },
 			{ find: /^@octocodeai\/octocode-ai\/oauth$/, replacement: workspaceSourcePaths.aiOAuth },
+			// Root-level modules and the operations index, which the package exports from `dist`: a test must read the source.
+			{
+				find: /^@octocodeai\/octocode-ai\/(bedrock-provider|bun-oauth|vertex-node-provider|models)$/,
+				replacement: fileURLToPath(new URL("./packages/ai/src/", import.meta.url)) + "$1.ts",
+			},
+			{
+				find: /^@octocodeai\/octocode-ai\/operations$/,
+				replacement: fileURLToPath(new URL("./packages/ai/src/operations/index.ts", import.meta.url)),
+			},
 			{
 				find: /^@octocodeai\/octocode-ai\/utils\/(.+)$/,
 				replacement: `${workspaceSourcePaths.aiUtils}/$1.ts`,
@@ -69,6 +78,10 @@ export default defineConfig({
 			{
 				find: /^@octocodeai\/octocode-ai\/api\/(.+)$/,
 				replacement: `${workspaceSourcePaths.aiApi}/$1.ts`,
+			},
+			{
+				find: /^@octocodeai\/octocode-ai\/models\/(.+)$/,
+				replacement: fileURLToPath(new URL("./packages/ai/src/models/", import.meta.url)) + "$1.ts",
 			},
 			{
 				find: /^@octocodeai\/octocode-ai\/catalog\/(.+)$/,

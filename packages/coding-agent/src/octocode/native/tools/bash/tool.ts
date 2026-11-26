@@ -38,6 +38,7 @@ import { reapOrphanJobs } from "../../../files/bash-jobs/records.ts";
 import { type JobLinks, registerJobsCommand, reloadNotice } from "../../../files/bash-jobs/command.ts";
 import { type ShellSettings, shellSettings, shellScript } from "../../../files/bash-jobs/shell.ts";
 import { backgroundJoined, backgroundStarted } from "../../../files/bash/background.ts";
+import { soleOngoingItem } from "../../../backlog/inferred-item.ts";
 import { backgroundJoins } from "./background-joins.ts";
 import { jobWorkRows } from "./work-rows.ts";
 import { bashDescription, bashOutputSchema, bashParameters } from "../../../files/bash/declaration.ts";
@@ -226,8 +227,9 @@ export function registerBashTool(
 				// The field is declared for background jobs: a foreground call (which may still move to the background) ignores a non-ref.
 				if (params.background && params.item !== undefined && !item)
 					throw new Error(`item must be a backlog item ref like B12, not "${params.item}"`);
-				// Shared resources the command takes (the full-run lock) name this owner.
-				const owner = runOwner(agentNameOf(api).get(), item);
+				// A background call without `item` serves the session's only ongoing item; the full-run lock names this owner.
+				const inferred = params.background && !item ? soleOngoingItem(ctx) : undefined;
+				const owner = runOwner(agentNameOf(api).get(), item ?? inferred);
 				if (params.background) {
 					const joined = rows.join({
 						command: params.command,
@@ -241,7 +243,7 @@ export function registerBashTool(
 						shell: settings,
 						verification,
 						reason: params.reason,
-						item,
+						item: item ?? inferred,
 						unsandboxed: params.sandbox === false,
 					});
 					if (verification) verification.startedAt = job.startedAt;
@@ -254,7 +256,7 @@ export function registerBashTool(
 						throw error;
 					}
 					showJobs();
-					return backgroundStarted(job, ctx.cwd, verification);
+					return backgroundStarted(job, ctx.cwd, verification, inferred);
 				}
 				const plan = foregroundPlan(params, settings.backgroundAfterSeconds, process.env, settings.longCommands);
 				const { timeout, clamped, movable, auto, deliberate, capped } = plan;

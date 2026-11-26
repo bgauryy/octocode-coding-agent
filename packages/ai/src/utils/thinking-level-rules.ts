@@ -1,5 +1,6 @@
 import type { ReasoningOption as ModelsDevReasoningOption } from "@opencode-ai/models";
 import type { Api, Model, ThinkingLevel, ThinkingLevelMap } from "../types.ts";
+import { hasProviderProfile, type ProfiledModel } from "./provider-profile.ts";
 
 /**
  * Which effort levels a model accepts, by provider and model id. The model generator applies these rules to the
@@ -120,7 +121,8 @@ const GITHUB_COPILOT_THINKING_LEVEL_OVERRIDES: Readonly<
 export type ThinkingRuleModel = Pick<
 	Model<Api>,
 	"id" | "provider" | "api" | "reasoning" | "thinkingLevelMap" | "compat"
->;
+> &
+	Pick<ProfiledModel, "baseUrl" | "profile">;
 
 /** Merges every rule that matches `model` into its `thinkingLevelMap`, keeping levels a rule does not name. */
 export function applyThinkingLevelRules(model: ThinkingRuleModel): void {
@@ -150,14 +152,14 @@ export function applyThinkingLevelRules(model: ThinkingRuleModel): void {
 	}
 	if (
 		model.api === "openai-responses" &&
-		model.provider === "openai" &&
+		hasProviderProfile(model, "openai") &&
 		OPENAI_RESPONSES_NONE_REASONING_MODELS.has(model.id)
 	) {
 		mergeThinkingLevelMap(model, { off: "none" });
 	}
 	// xAI models without verified effort options must not send the undocumented
 	// "none"/"minimal" efforts.
-	if (model.provider === "xai" && model.api === "openai-responses" && model.thinkingLevelMap === undefined) {
+	if (hasProviderProfile(model, "xai") && model.api === "openai-responses" && model.thinkingLevelMap === undefined) {
 		mergeThinkingLevelMap(model, { off: null, minimal: null });
 	}
 	if (supportsOpenAiXhigh(model.id)) {
@@ -166,7 +168,7 @@ export function applyThinkingLevelRules(model: ThinkingRuleModel): void {
 	if (supportsOpenAiMax(model)) {
 		mergeThinkingLevelMap(model, { max: "max" });
 	}
-	if (model.provider === "openai" && model.id === "gpt-5.5") {
+	if (hasProviderProfile(model, "openai") && model.id === "gpt-5.5") {
 		mergeThinkingLevelMap(model, { minimal: null });
 	}
 	if (model.id.endsWith("gpt-5.5-pro")) {
@@ -203,7 +205,7 @@ export function applyThinkingLevelRules(model: ThinkingRuleModel): void {
 	if (model.api === "openai-completions" && model.id.includes("deepseek-v4") && model.thinkingLevelMap === undefined) {
 		mergeThinkingLevelMap(
 			model,
-			model.provider === "openrouter"
+			hasProviderProfile(model, "openrouter")
 				? { ...DEEPSEEK_V4_THINKING_LEVEL_MAP, xhigh: "xhigh", max: null }
 				: model.provider === "azure"
 					? AZURE_DEEPSEEK_V4_THINKING_LEVEL_MAP
@@ -213,7 +215,7 @@ export function applyThinkingLevelRules(model: ThinkingRuleModel): void {
 						: DEEPSEEK_V4_THINKING_LEVEL_MAP,
 		);
 	}
-	if (model.provider === "groq" && model.id === "qwen/qwen3.6-27b") {
+	if (hasProviderProfile(model, "groq") && model.id === "qwen/qwen3.6-27b") {
 		mergeThinkingLevelMap(model, { minimal: null, low: null, medium: null, high: "default" });
 	}
 	if (
@@ -225,14 +227,14 @@ export function applyThinkingLevelRules(model: ThinkingRuleModel): void {
 		// the thinking parameter to use the enabled default.
 		mergeThinkingLevelMap(model, { off: null });
 	}
-	if (model.provider === "openrouter" && model.id.startsWith("inception/mercury-2")) {
+	if (hasProviderProfile(model, "openrouter") && model.id.startsWith("inception/mercury-2")) {
 		// Mercury 2 in instant mode (reasoning_effort: "none") disables tool calling.
 		// Mark "off" unsupported so the openai-completions provider omits the reasoning param
 		// instead of defaulting to {reasoning:{effort:"none"}} (see openai-completions.ts:575).
 		// Octocode's low/medium/high pass through verbatim; OpenRouter normalizes to Mercury's vocabulary.
 		mergeThinkingLevelMap(model, { off: null });
 	}
-	if (model.provider === "openrouter" && model.id === "z-ai/glm-5.2") {
+	if (hasProviderProfile(model, "openrouter") && model.id === "z-ai/glm-5.2") {
 		mergeThinkingLevelMap(model, { xhigh: "xhigh" });
 	}
 	if (model.provider === "fireworks") {
@@ -271,7 +273,7 @@ export function applyThinkingLevelRules(model: ThinkingRuleModel): void {
 		// OpenCode Zen Grok Build reasons by default but rejects explicit reasoningEffort.
 		mergeThinkingLevelMap(model, { off: null, minimal: null, low: null, medium: null });
 	}
-	if (model.provider === "ant-ling" && model.reasoning) {
+	if (hasProviderProfile(model, "ant-ling") && model.reasoning) {
 		// Ring reasons by default. Only high/xhigh have documented explicit effort controls.
 		mergeThinkingLevelMap(model, ANT_LING_RING_THINKING_LEVEL_MAP);
 	}

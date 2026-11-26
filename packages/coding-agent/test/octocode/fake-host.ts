@@ -110,6 +110,9 @@ export function asSetup<T extends object>(flat: T): T & FeatureSetup {
 	for (const [name, place] of Object.entries(SETUP_MEMBERS)) {
 		const [slice, member] = place.split(".");
 		if (!member) {
+			// A fake without a channel bus gets one that hears and delivers nothing.
+			if (slice === "channels" && !(slice in record) && !(name in record))
+				record[slice] = { on: () => () => undefined, emit: () => undefined };
 			if (!(slice in record) && name in record) {
 				Object.defineProperty(record, slice, {
 					get: () => record[name],
@@ -149,6 +152,7 @@ export function fakeHost(settings: Record<string, unknown> = {}) {
 	const entries: Array<{ customType: string; data: unknown }> = [];
 	let activeTools: string[] | undefined;
 	const registerToolBatches: string[][] = [];
+	const providers = new Map<string, unknown>();
 	const api = {
 		getSettings: (): Record<string, unknown> => settings,
 		getThinkingLevel: () => "off",
@@ -159,6 +163,8 @@ export function fakeHost(settings: Record<string, unknown> = {}) {
 			for (const tool of batch) tools.set(tool.name, tool);
 		},
 		registerCommand: (name: string, command: unknown) => commands.set(name, command),
+		// External CLI routes found on PATH register as providers, as on the real host.
+		registerProvider: (provider: { id: string }) => providers.set(provider.id, provider),
 		registerMessageRenderer: (type: string, renderer: unknown) => renderers.set(type, renderer),
 		registerEntryRenderer: (type: string, renderer: unknown) => renderers.set(type, renderer),
 		// The tool display resolver (octocode/ui/tool-display.ts) registers here; the fake draws nothing.
@@ -209,6 +215,7 @@ export function fakeHost(settings: Record<string, unknown> = {}) {
 		flat: api as Record<string, unknown>,
 		tools,
 		commands,
+		providers,
 		handlers,
 		renderers,
 		sent,

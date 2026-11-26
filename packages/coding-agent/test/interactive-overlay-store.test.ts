@@ -1,7 +1,6 @@
 import { Container, Text, type TUI } from "@octocodeai/octocode-tui";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { disposeActiveSelector, showSelector } from "../src/modes/interactive/interactive-mode/view-state.ts";
-import { bindRender } from "../src/modes/interactive/state/bind-render.ts";
 import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { initTheme } from "../src/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
@@ -21,7 +20,6 @@ function setup() {
 		editorContainer,
 		activeSelectorDispose: undefined,
 	});
-	bindRender(uiStore, ui);
 	const screen = () => stripAnsi(editorContainer.render(40).join("\n"));
 	return { host, uiStore, requestRender, screen };
 }

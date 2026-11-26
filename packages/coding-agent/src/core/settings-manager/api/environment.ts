@@ -1,5 +1,6 @@
 import type { SandboxMode } from "../../settings-defaults.ts";
 import type { QuietStartup } from "../../settings-schema.ts";
+import type { ExternalModelEntry } from "../../settings-schema/external-models.ts";
 
 /** Session storage, shell and external commands, startup, telemetry and installation identity. */
 export interface EnvironmentSettingsApi {
@@ -35,6 +36,10 @@ export interface EnvironmentSettingsApi {
 	/** Explicit global runner selection; undefined preserves the legacy all-runners choice. */
 	getEnabledExternalAgents(): string[] | undefined;
 	setEnabledExternalAgents(ids: readonly string[] | undefined): void;
+	/** The global file's own CLI or ACP agents (`externalModels`). */
+	getExternalModels(): ExternalModelEntry[];
+	/** Adds an entry to the global file's `externalModels`; one with the same id is replaced. Applies after a reload. */
+	addExternalModel(entry: ExternalModelEntry): void;
 	getNpmCommand(): string[] | undefined;
 	setNpmCommand(command: string[] | undefined): void;
 	getCollapseChangelog(): boolean;

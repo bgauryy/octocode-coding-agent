@@ -5,7 +5,7 @@ description: "Use for code, history or packages outside this checkout: GitHub fi
 
 # GitHub and package research
 
-Use the Octocode GitHub tools instead of `gh`, `curl` or `npm view`. Carry `owner`, `repo` and the resolved commit from one call into the next, and cite `owner/repo@commitSha:path:line`.
+The research server's tool set can change: where a named tool is missing, use the one it lists for that job, or skip the step. Use its GitHub tools instead of `gh`, `curl` or `npm view`. Carry `owner`, `repo` and the resolved commit from one call into the next, and cite `owner/repo@commitSha:path:line`.
 
 ## Route
 

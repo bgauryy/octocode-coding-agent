@@ -1,6 +1,6 @@
 import { agentEvents, agents, compactions, type Db } from "../../../../db/src/api.ts";
 import { sharedAgentDb } from "../../storage/database.ts";
-import { registeredWorkspace } from "../../storage/workspace-database.ts";
+import { workspaceDb } from "../../storage/workspace-database.ts";
 import { matchTexts, HISTORY_BYTES } from "../history/search.ts";
 import { ownArchives } from "../history/archive.ts";
 import { historyScope } from "../history/transcripts.ts";
@@ -69,9 +69,10 @@ function summaryText(row: compactions.SummaryRow): string {
 
 export function getRecord(cwd: string, id: string): string {
 	const agent = sharedAgentDb();
-	const workspace = registeredWorkspace(cwd, agent).id;
+	const { agent: events, workspace: bound } = workspaceDb(cwd);
+	const workspace = bound.id;
 	if (id.startsWith("event:")) {
-		const event = agentEvents.get(agent.db, workspace, id.slice(6));
+		const event = agentEvents.get(events.db, workspace, id.slice(6));
 		if (event) return JSON.stringify(event, null, 2);
 	} else if (id.startsWith("compaction:")) {
 		const [, sessionId, entryId] = id.split(":");
@@ -100,7 +101,7 @@ export function getRecord(cwd: string, id: string): string {
 				2,
 			);
 	} else if (id.startsWith("agent:")) {
-		const row = agents.inWorkspace(agent.db, workspace).find((entry) => entry.id === id.slice(6));
+		const row = agents.inWorkspace(events.db, workspace).find((entry) => entry.id === id.slice(6));
 		// The agent's transcript is a session record: name its id so the caller can read it next.
 		const session = typeof row?.session_id === "string" && row.session_id ? `session:${row.session_id}` : undefined;
 		if (row) return JSON.stringify({ ...(session ? { session } : {}), ...row }, null, 2);
@@ -241,10 +242,11 @@ export async function readRecords(
 		Math.max(1, Math.floor(params.limit ?? (all && listing ? OVERVIEW_RECORDS : DEFAULT_RECORDS))),
 	);
 	const agent = sharedAgentDb();
+	const bound = workspaceDb(cwd);
 	const scope = {
-		db: agent.db,
+		db: bound.agent.db,
 		mirror: agent.mirror.db,
-		workspace: registeredWorkspace(cwd, agent).id,
+		workspace: bound.workspace.id,
 		own: ownArchives().map((folder) => path.basename(path.dirname(folder))),
 		sessionIds:
 			params.sessionId?.trim() && selected.some((source) => source === "compactions" || source === "sessions")

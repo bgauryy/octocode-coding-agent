@@ -72,4 +72,34 @@ describe("transcript streaming", () => {
 		// Whole-text assets are written whole only when a block first needs one or a delta splits a character.
 		expect(puts.mock.calls.filter(([, mime]) => mime === "text/plain").length).toBeLessThan(10);
 	});
+
+	it("keeps an earlier streamed snapshot unchanged by later deltas (structural sharing is immutable)", () => {
+		const transcript = new ApplicationTranscript(createApplicationState("s"));
+		const published: ApplicationEvent[] = [];
+		const p = provider(transcript, published);
+		p.start();
+		p.open("thinking");
+		p.open("text");
+		const id = published[0].type === "message.started" ? published[0].message.id : "";
+		const pieces = Array.from({ length: 2000 }, (_, i) => `w${i} `);
+		for (const [i, piece] of pieces.entries()) p.delta(i % 3 === 0 ? 0 : 1, piece);
+		// Retain the whole displayed snapshot and its content array at this point.
+		const early = transcript.messages.get(id)!;
+		const earlyContent = early.content;
+		const earlyExpected = normalizeApplicationMessage(
+			{ ...p.partial, stopReason: "pending" },
+			id,
+			new ApplicationAssets({ memory: true }),
+		);
+		const frozen = structuredClone(early);
+		// Many more deltas on the same blocks; only the changed block's tail should differ in the live message.
+		for (const i of pieces.keys()) p.delta(i % 3 === 0 ? 0 : 1, `x${i} `);
+		const live = transcript.messages.get(id)!;
+		expect(live).not.toBe(early);
+		expect(live.content).not.toBe(earlyContent);
+		// The retained snapshot is byte-for-byte what it was before the later deltas: structural sharing built new
+		// objects and never mutated the earlier message in place.
+		expect(early).toEqual(frozen);
+		expect(early).toEqual({ ...earlyExpected, complete: false, status: "streaming", order: early.order });
+	});
 });

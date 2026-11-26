@@ -3,8 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { agents, closeSharedAgentDb } from "../../../db/src/api.ts";
 import { registerArchiveTool } from "../../src/octocode/native/tools/archive/tool.ts";
 import { setCurrentSession } from "../../src/octocode/shared/home.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -22,11 +21,11 @@ afterEach(() => {
 });
 
 function insert(id: string, sessionId?: string) {
-	const agent = sharedAgentDb();
+	const { agent, workspace } = workspaceDb(cwd);
 	agents.insert(
 		agent.db,
 		"session-test",
-		{ id: registeredWorkspace(cwd, agent).id },
+		{ id: workspace.id },
 		{
 			id,
 			role: "implementer",

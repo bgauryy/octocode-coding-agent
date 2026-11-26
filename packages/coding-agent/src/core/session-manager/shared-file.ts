@@ -12,6 +12,18 @@ import type { SessionState } from "./state.ts";
 import { indexSessionEntry } from "./tree.ts";
 import type { SessionEntry } from "./types.ts";
 
+/** Canonical session files, stable once created, so a repeated lock skips the realpath walk; bounded by files. */
+const fileCanonical = new Map<string, string>();
+const FILE_CANONICAL_MAX = 64;
+function canonicalFile(file: string): string {
+	const known = fileCanonical.get(file);
+	if (known !== undefined) return known;
+	const value = canonicalPath(file);
+	if (fileCanonical.size >= FILE_CANONICAL_MAX) fileCanonical.delete(fileCanonical.keys().next().value!);
+	fileCanonical.set(file, value);
+	return value;
+}
+
 // Another octocode process can continue the same session file. Every write runs under a short lock on the file,
 // and foreign records appended since this state's last write are merged into memory first. A file that shrank or
 // ends in a partial record is never written to.
@@ -82,12 +94,14 @@ export function isSessionLockTimeout(error: unknown): boolean {
 export function lockSessionFile(file: string, waitMs = LOCK_WAIT_MS): () => void {
 	let release: () => void;
 	try {
-		release = acquireSessionLock(canonicalPath(file), waitMs);
+		release = acquireSessionLock(canonicalFile(file), waitMs);
 	} catch (error) {
 		if ((error as { code?: unknown } | null)?.code !== "ENOENT") throw error;
 		// A new session may belong to a folder that does not exist yet: created only then, not on every write.
 		mkdirSync(dirname(file), { recursive: true });
-		release = acquireSessionLock(canonicalPath(file), waitMs);
+		// The folder now exists, so the canonical path resolves further; drop the stale memo and resolve again.
+		fileCanonical.delete(file);
+		release = acquireSessionLock(canonicalFile(file), waitMs);
 	}
 	return () => {
 		try {

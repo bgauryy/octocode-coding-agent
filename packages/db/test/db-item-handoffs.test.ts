@@ -31,8 +31,8 @@ describe("itemHandoffs", () => {
 		expect(itemHandoffs.holds(agent.db, "other", 3)).toBe(true);
 	});
 
-	it("creates its table in a file made without it", () => {
-		agent.db.exec("DROP TABLE item_handoffs");
+	it("creates its table when a version-10 file made without it is upgraded", () => {
+		agent.db.exec("DROP TABLE item_handoffs; PRAGMA user_version=10");
 		const again = openDatabase({
 			file: agent.file,
 			mirrorFile: path.join(path.dirname(agent.file), "transcripts.db"),

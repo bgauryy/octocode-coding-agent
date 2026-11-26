@@ -25,10 +25,7 @@ import { ChainQueue } from "./chain.ts";
 import { PrerequisiteGate } from "./prerequisites.ts";
 import { AGENT_CHAIN_CHANNEL, BACKLOG_ENDED_CHANNEL, type BacklogEnded } from "../shared/agent-chain.ts";
 import { GRAPH_NOTICE_TYPE } from "../shared/messages.ts";
-import { DatabaseFollower } from "../shared/database-follower.ts";
-import { dbStamp, isBusy } from "../../../../db/src/api.ts";
-import { gateHost } from "./gate-host.ts";
-import { sharedAgentDb } from "../../storage/database.ts";
+import { boardFollower, gateHost } from "./gate-host.ts";
 import { type Backlog, openBacklog } from "../backlog/context.ts";
 import { runSubagent } from "./process.ts";
 import { SUBAGENT_STOP_GRACE_MS } from "./process/outcome.ts";
@@ -42,10 +39,12 @@ import { startNotices } from "./start-notices.ts";
 import { agentToolSpec } from "../native/tools/agent/spec.ts";
 import type { Runners } from "./runner-port.ts";
 import { FORK_NOTE_TYPE, forkNote, resumedChildren } from "./children.ts";
-import { type MergeResult, mergeChild } from "./merge-child.ts";
+import { discardByAgent, type MergeResult, mergeChild } from "./merge-child.ts";
 import type { Handoff } from "../team/tools/hand.ts";
 import { type ChildContext, contextOf, handItem } from "./hand-item.ts";
-import { HandedItems } from "./handed-items.ts";
+import { HandedItems, servedItems } from "./handed-items.ts";
+import { Isolation } from "./isolation.ts";
+import { createChildFinish } from "./run-finish.ts";
 import { CHILD_EXPOSURE_EVENT, type ChildExposure } from "../permission/provenance/exposure.ts";
 import { PERMISSION_STOP } from "./report-text.ts";
 import { startBackground } from "./run-execution.ts";
@@ -59,34 +58,21 @@ import { qaReviewer } from "./qa-review.ts";
 
 /** What the rest of the feature may do with the subagents this session started. */
 export interface AgentControl {
-	/** Reviews an item's completion on the small tier before `done` writes it (`backlog.qa`). */
 	review: QaReviewer;
-	/** Stops a background subagent this session started; the refusal text when there is none by that id. */
 	stop(id: string, by: string): string | undefined;
-	/** Resolves once every background subagent has finished and sent its report. */
 	settle(): Promise<unknown>;
-	/** Resolves once the next background subagent has finished and sent its report (`session-lifecycle.ts` retries a failed run then). */
 	nextReport(): Promise<unknown>;
-	/** Lands an isolated child's saved ref in this tree (`coordinate merge`). */
-	merge(id: string, ctx: FeatureContext, signal?: AbortSignal): Promise<MergeResult>;
-	/** The request budgets of the children running now (`coordinate` `grant` and `list`). */
+	/** `discard`: delete the child's unmerged change instead, after the user allows it. */
+	merge(id: string, ctx: FeatureContext, signal?: AbortSignal, discard?: boolean): Promise<MergeResult>;
 	budgets: RunningBudgets;
-	/** The children queued behind prerequisites, one row each: what they wait on, or why they are held. */
 	queued(): string[];
-	/** Background subagents running now (a session switch would stop them). */
 	background(): number;
-	/** Names of the subagents running now, foreground and background (a narrowing permission change stops them). */
 	running(): string[];
-	/** The backlog item each running child works on, by child name (`done` waits for them). */
-	serving(): Map<string, string>;
-	/** Hands an item to a running child (`agent` `message` with `item`), and reads a running child's context fill. */
+	serving(): Iterable<readonly [string, string]>;
 	handItem(child: string, ref: string, ctx: FeatureContext): Handoff;
 	context(id: string): ChildContext | undefined;
-	/** Stop background agents and wait for their reports before shutdown. */
 	stopAll(reason?: string): Promise<void>;
-	/** Follow-up windows any session holds open for finished children (they live in session folders, not in memory). */
 	parked: typeof Lingering.parkedChildren;
-	/** `/agents`: list agents, tell, kill, merge; `index.ts` registers it and its `/agents` shortcut. */
 	command: Subcommand;
 }
 
@@ -118,6 +104,7 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 	const budgets = new RunningBudgets();
 	let current: FeatureContext | undefined; // The current session, for graph wakes and the graph watch.
 	let backlog: Backlog | undefined;
+	const board = () => (backlog ??= current ? openBacklog(current, { isSubagent: false }) : undefined);
 	const items = new Map<string, string>(); // The backlog item each child works on, by child id (`AgentRuns.items`).
 	const runs: AgentRuns = {
 		api,
@@ -150,15 +137,16 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 			team.wakePace,
 		),
 	};
-	const follower = new DatabaseFollower(() => dbStamp(sharedAgentDb().file), isBusy);
+	const follower = boardFollower(board);
 	// The prerequisites of queued children: items read from the backlog on each event, agents from the lifecycle channel and the parent's own record of each run's end.
 	runs.chain = new ChainQueue(
 		new PrerequisiteGate(
 			gateHost({
 				api,
 				follower,
-				item: (ref) => (backlog ??= current ? openBacklog(current, { isSubagent: false }) : undefined)?.store.get(ref),
+				board,
 				session: () => current?.sessionManager.getSessionId(),
+				ownRunning: (id) => runs.running.has(id),
 			}),
 		),
 		(notice) => api.channels.emit(AGENT_CHAIN_CHANNEL, notice),
@@ -172,7 +160,7 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 	});
 	const watch = new GraphWatch({
 		queued: () => runs.chain?.items() ?? new Set(),
-		backlog: () => (backlog ??= current ? openBacklog(current, { isSubagent: false }) : undefined),
+		backlog: board,
 		linked: (ref) => linkedWhileWorking(runs.items, (id) => runs.running.has(id) || runs.background.has(id), ref),
 		tell: (notice) => runs.graph?.tell(notice),
 		subscribe: (poke) => follower.subscribe(poke),
@@ -220,12 +208,13 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 		(run, ctx, { text, message }) => {
 			const session = childSession(run.identity);
 			const details = runDetails(run, session);
+			const generation = runs.session;
+			runs.live.set(run.identity.id, details);
 			const tracking = tracker(run.identity, details, modelLookup(ctx), ctx);
 			const args = buildRouteArgs(run.profile, run.route, session, run.identity.mcpNamed);
 			const host = relayHost(ctx);
 			const onProgress = tracking(undefined);
 			const child = { task: message, args, cwd: ctx.cwd, profile: run.profile, identity: run.identity, host };
-			// Answered at once, its slot held: the child starts once its provider is not cooling down (`rate-gate.ts`).
 			const launch = (signal: AbortSignal) =>
 				record(
 					run,
@@ -235,13 +224,21 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 						startGate.wait(run.route, signal).then(() => runSubagent({ ...child, signal, onProgress })),
 					),
 				);
+			const finish = createChildFinish({
+				ctx,
+				runs,
+				run,
+				isolation: new Isolation(run.identity.id, run.identity.item),
+				current: () => generation === runs.session,
+				isBackground: () => true,
+			});
 			startBackground(
 				runs,
 				run,
 				details,
 				text,
 				launch,
-				() => Promise.resolve("").finally(run.release),
+				finish,
 				ctx.sessionManager.getSessionId(),
 				lingering.window(run, ctx),
 			);
@@ -384,13 +381,14 @@ export function registerAgentTool(api: FeatureSetup, options: AgentToolOptions):
 		settle: () => Promise.all([...background.values()].map((entry) => entry.done)).then(() => runs.reports.flush()),
 		nextReport: () =>
 			Promise.race([...background.values()].map((entry) => entry.done)).then(() => runs.reports.flush()),
-		merge: (id, ctx, signal) => mergeChild(team, permission, id, ctx, signal),
+		merge: (id, ctx, signal, discard) =>
+			discard ? discardByAgent(team, permission, id, ctx, signal) : mergeChild(team, permission, id, ctx, signal),
 		review: qaReviewer(spawnEnv),
 		budgets,
 		queued: () => runs.chain?.rows() ?? [],
 		background: () => background.size,
 		running: () => [...runs.foreground.keys(), ...background.keys()],
-		serving: () => new Map([...runs.items].filter(([id]) => runs.running.has(id))),
+		serving: () => [...servedItems(runs)],
 		handItem: (child, ref, ctx) => handItem(runs, lingering, child, ref, ctx),
 		context: (id) => contextOf(runs, id),
 		stopAll,

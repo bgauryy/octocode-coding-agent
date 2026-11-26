@@ -1,6 +1,6 @@
 import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { onlyAllowedReaders } from "../../src/octocode/team/reservation-readers.ts";
+import { onlyAllowedReaders, refusedStage } from "../../src/octocode/team/reservation-readers.ts";
 import { parsedShell } from "../../src/octocode/permission/shell/commands.ts";
 import { reservationTargets, shellParserReady } from "../../src/octocode/permission/shell/mutation.ts";
 import { readOnlyCommand } from "../../src/octocode/permission/shell/read-only.ts";
@@ -56,6 +56,12 @@ const ALLOWED = [
 	"cat <(rg -l foo src | sort)",
 	'echo "$(basename "$f")"',
 	'rg pat "$(cd "$dir" && pwd)"',
+	// Arithmetic on a variable the line does not show is no write for the gate (the permission policy still treats it as opaque).
+	'for f in a b; do echo "$((n-h)) $f"; done',
+	'echo "$((n-h))"',
+	'n=$(ls | wc -l); echo "$((n-1))"',
+	'n=$(ls | wc -l src); echo "$((n-1))"',
+	'n=$(wc -c f); echo "$((n*2))"',
 ];
 const KEPT = [
 	// A redirection to a file.
@@ -131,6 +137,9 @@ const KEPT = [
 	'fd -x rm "$dir"',
 	'fd --exec rm -- "$dir"',
 	'fd -X "$CMD" . "$dir"',
+	// Arithmetic does not excuse a write-capable stage.
+	'for f in a; do echo "$((n-h))"; sed -i s/x/y/ "$f"; done',
+	'echo "$((n-h))" > out.txt',
 ];
 
 beforeAll(() => shellParserReady());
@@ -148,6 +157,20 @@ describe("the readers the reservation gate allows with a computed word", () => {
 	});
 	it("does not allow a line that defines a function, which may rename a reader", async () => {
 		expect(onlyAllowedReaders(await parsedShell('rg() { rm -rf "$1"; }; rg "$dir"'))).toBe(false);
+	});
+});
+
+describe("hidden arithmetic and the reservation gate", () => {
+	it("is tagged for the gate yet stays opaque for the permission policy", async () => {
+		const parsed = await parsedShell('echo "$((n-h))"');
+		const tagged = parsed?.commands.find((command) => command.hiddenArithmetic);
+		expect(tagged).toMatchObject({ opaque: true });
+		expect(readOnlyCommand('echo "$((n-h))"')).toBe(false);
+	});
+	it("names the stage that refused, not the arithmetic", async () => {
+		const parsed = await parsedShell('for f in a; do echo "$((n-h))"; sed -i s/x/y/ "$f"; done');
+		expect(refusedStage(parsed)?.cause).toContain("sed -i");
+		expect(refusedStage(await parsedShell('echo "$((n-h))"'))).toBeUndefined();
 	});
 });
 

@@ -9,6 +9,7 @@ import type { ShellMutation } from "./mutation-types.ts";
 import { programSwap } from "./environment.ts";
 import { gitRefMove, gitRoleGlobal, gitUnread } from "./git-forms.ts";
 import { programSetting } from "./git-programs.ts";
+import { inlineInterpreter } from "./inline-interpreter.ts";
 import { destinations, gitDestinations, literalCommand, optionValues, withoutLocations } from "./destinations.ts";
 import {
 	ALL_OPERANDS,
@@ -72,6 +73,7 @@ function merge(into: ShellMutation, other: ShellMutation, dirs: string[] | undef
 	for (const file of other.directories) place(into, file, dirs, moved, "directories");
 	for (const area of other.areas) place(into, area, dirs, moved, "areas");
 	into.opaque.push(...other.opaque);
+	into.inlineCode.push(...other.inlineCode);
 	into.refMoves.push(...other.refMoves);
 	into.unread.push(...other.unread);
 	for (const area of other.unreadAreas) place(into, area, dirs, moved, "unreadAreas");
@@ -283,6 +285,10 @@ function inspect(command: BashCommand, found: ShellMutation, depth: number, move
 					unsure(found, `\`${name} ${sub}\` runs a command the guard cannot read`);
 				else inspect(literalCommand(payload, command.dirs), found, depth + 1, moved);
 			}
+		} else if (inlineInterpreter(name, rest)) {
+			// Code on the command line or stdin: the parse cannot read what it writes, and it skips `file`'s checkpoints.
+			found.inlineCode.push(`${name} running inline code`);
+			place(found, ".", command.dirs, moved, "areas");
 		} else if (name === "sqlite3") {
 			if (operands[0] !== undefined && !rest.includes("-readonly"))
 				place(found, operands[0], command.dirs, moved, "databases");
@@ -310,6 +316,7 @@ export function shellMutation(command: string, depth = 0, env: NodeJS.ProcessEnv
 		directories: [],
 		areas: [],
 		opaque: [],
+		inlineCode: [],
 		unread: [],
 		unreadAreas: [],
 		refMoves: [],

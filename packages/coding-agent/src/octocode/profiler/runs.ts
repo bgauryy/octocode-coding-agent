@@ -33,10 +33,15 @@ export function sessionRuns(db: Db, sessionId: string): SessionRuns {
 }
 
 /** The run's transcript: its session's catalog file, else what the team database records for the agent. */
-export function runTranscript(db: Db, run: AgentRun, files: ReadonlyMap<string, string>): string | undefined {
+export function runTranscript(
+	db: Db,
+	run: AgentRun,
+	files: ReadonlyMap<string, string>,
+	machine: Db = db,
+): string | undefined {
 	const file = run.sessionId ? files.get(run.sessionId) : undefined;
 	if (file && fs.existsSync(file)) return file;
-	return memberTranscript(db, { id: run.agentId, ...(run.sessionId ? { sessionId: run.sessionId } : {}) });
+	return memberTranscript(db, { id: run.agentId, ...(run.sessionId ? { sessionId: run.sessionId } : {}) }, machine);
 }
 
 export const catalogFiles = (db: Db): Map<string, string> =>
@@ -45,8 +50,13 @@ export const catalogFiles = (db: Db): Map<string, string> =>
 /**
  * The ended agents of a session tree for the live profiler. The recursive run query and the catalog read run once per
  * database state (`dbStamp`: every writer moves it), not once per 1 s poll; between writes a poll costs two stats.
+ * `database` holds the runs, `machine` the session rows (the same file while they share one).
  */
-export function endedRuns(database: () => { db: Db; file: string }, sessionId: string) {
+export function endedRuns(
+	database: () => { db: Db; file: string },
+	sessionId: string,
+	machine: () => { db: Db } = database,
+) {
 	let cached: { stamp: string; runs: SessionRuns; files?: Map<string, string> } | undefined;
 	const current = () => {
 		const { db, file } = database();
@@ -65,8 +75,8 @@ export function endedRuns(database: () => { db: Db; file: string }, sessionId: s
 			const { db, state } = current();
 			const run = state.runs.children.get(agentId);
 			if (!run) return undefined;
-			state.files ??= catalogFiles(db);
-			return runTranscript(db, run, state.files);
+			state.files ??= catalogFiles(machine().db);
+			return runTranscript(db, run, state.files, machine().db);
 		},
 	};
 }

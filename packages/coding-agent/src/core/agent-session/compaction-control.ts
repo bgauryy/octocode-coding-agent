@@ -1,3 +1,4 @@
+import type { SummaryFocus } from "../compaction/summary-focus.ts";
 import { type ManualCompactionOptions, validateCompactionInstructions } from "../compaction/manual-options.ts";
 /**
  * Manual and automatic compaction of a session: their abort controllers, events and failure
@@ -18,11 +19,11 @@ import {
 import type { SessionCompactFailedEvent } from "../features/index.ts";
 import { type CompactionHost, runCompaction } from "../session-compaction.ts";
 import type { SessionInternals } from "./host.ts";
-import { AutoCompactionLimit } from "./auto-compaction-limit.ts";
+import { AutoCompactionLimit, compactionAttemptKey } from "./auto-compaction-limit.ts";
 import { markCompactionCancelled } from "./compaction-check.ts";
 import { CompactionPrewarm, type DetachedPlan } from "./compaction-prewarm.ts";
 import { summaryRequestPolicy } from "./compaction-summary-request.ts";
-import { emitCompactFailed, reportRecoveryNotStarted } from "./compaction-failed.ts";
+import { emitCompactFailed, reportAutoCompactionStopped, reportRecoveryNotStarted } from "./compaction-failed.ts";
 import { recordRunFailure } from "./run-outcome.ts";
 
 /** A manual compaction had nothing to summarize. The message stays the SDK/RPC error text; interactive mode shows it as a status. */
@@ -101,7 +102,8 @@ export class SessionCompaction {
 		const customInstructions = validateCompactionInstructions(options?.customInstructions);
 		// The agent's own request (its `compact` tool, at a task boundary) runs the plan made ahead of the threshold, whose
 		// summary is ready or being written: taken out before the abort, which drops plans, and ended once this is done.
-		const held = options?.requestedBy === "agent" ? this._prewarm.detach() : undefined;
+		const held =
+			options?.requestedBy === "agent" || options?.requestedBy === "item" ? this._prewarm.detach() : undefined;
 		try {
 			return await this._compactManually(customInstructions, options?.requestedBy, held);
 		} finally {
@@ -175,7 +177,7 @@ export class SessionCompaction {
 				},
 				outcome,
 			});
-			this._autoCompactionLimit.succeeded();
+			this._autoCompactionLimit.succeeded(compactionAttemptKey(session.sessionManager.getSessionId(), model));
 			this._prewarm.reset();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -260,6 +262,7 @@ export class SessionCompaction {
 		targetModel?: Model<any>,
 		targetThinking?: ThinkingLevel,
 		incomingTokens?: number,
+		focus?: SummaryFocus,
 	): Promise<boolean> {
 		const { session } = this.host;
 		const model = targetModel ?? session.model;
@@ -267,31 +270,11 @@ export class SessionCompaction {
 			model,
 			targetThinking ?? session.routedModel?.thinkingLevel ?? session.thinkingLevel,
 		);
-		const failureKey = JSON.stringify([session.sessionManager.getSessionId(), model?.provider, model?.id]);
+		const failureKey = compactionAttemptKey(session.sessionManager.getSessionId(), model);
 		const limit = this._autoCompactionLimit.check(failureKey, reason);
 		if (limit === "quiet") return false;
 		if (limit === "notice") {
-			const errorMessage =
-				"Automatic compaction stopped after three consecutive failures. Resolve the error and run /compact, or start a new session.";
-			this.host.emit({
-				type: "compaction_end",
-				reason,
-				result: undefined,
-				aborted: false,
-				willRetry: false,
-				errorMessage,
-			});
-			// An overflow's failed reply is already out of the context: features hear that it was not recovered. The run
-			// keeps the failure the provider reported for it.
-			if (reason === "overflow") {
-				await this.emitSessionCompactFailed({
-					reason,
-					errorMessage,
-					aborted: false,
-					willRetry: false,
-					fromFeature: false,
-				});
-			}
+			await reportAutoCompactionStopped(this.host, reason);
 			return false;
 		}
 		let abortController: AbortController | undefined;
@@ -336,11 +319,12 @@ export class SessionCompaction {
 				preparation,
 				branchEntries: pathEntries,
 				incomingTokens,
+				...(focus ? { customInstructions: focus.text, requestedBy: focus.source } : {}),
 				signal,
 				checkAbort: () => signal.throwIfAborted(),
 				outcome,
 			});
-			this._autoCompactionLimit.succeeded();
+			this._autoCompactionLimit.succeeded(failureKey);
 			this._prewarm.reset();
 			const stoppedAfterCompaction = abortController.signal.aborted || this.host.run.agentRunAbortRequested;
 			this.host.emit({
@@ -364,7 +348,7 @@ export class SessionCompaction {
 			const aborted = abortController?.signal.aborted === true || outcome.cancelledByFeature;
 			// A cancel (Esc, abort) holds for the request it was for: no automatic compaction runs again until a reply.
 			if (abortController?.signal.aborted === true) markCompactionCancelled(this.host.run, session.sessionManager);
-			if (!aborted && started) this._autoCompactionLimit.failed();
+			if (!aborted && started) this._autoCompactionLimit.failed(failureKey);
 			if (started) {
 				const errorMessage = aborted
 					? undefined

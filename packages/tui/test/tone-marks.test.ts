@@ -12,7 +12,7 @@ describe("tone marks", () => {
 		for (const mark of marks) {
 			assert.strictEqual(cells(mark), 1, mark);
 			assert.doesNotMatch(mark, /\p{Extended_Pictographic}\uFE0F?/u, mark);
-			assert.ok(!Object.values(GLYPH).includes(mark as never), `${mark} is a state mark`);
+			assert.ok(!Object.values(GLYPH).includes(mark), `${mark} is a state mark`);
 		}
 		assert.strictEqual(new Set(marks).size, marks.length);
 	});

@@ -6,8 +6,11 @@ import { runnerTurn, runnerTurnDeps } from "../../src/octocode/external/runner-s
 import * as status from "../../src/octocode/external/runner-status.ts";
 import { fakeCtx } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
+import { RUNNERS } from "../../src/octocode/external/runners.ts";
 
 const permission = () => async () => ({ outcome: { outcome: "cancelled" as const } });
+/** Every runner selected, so the installed fixtures alone decide what is listed. */
+const ALL = RUNNERS.map((runner) => runner.id);
 afterEach(() => {
 	vi.restoreAllMocks();
 	vi.unstubAllEnvs();
@@ -47,11 +50,11 @@ console.log(${JSON.stringify(name)}==='claude' ? JSON.stringify({loggedIn:state=
 describe("lazy installed runners", () => {
 	it("declares runnable installed CLIs without status commands and honors disable", () => {
 		const fx = fixture();
-		const runners = connectedRunners(true, permission);
+		const runners = connectedRunners(true, permission, ALL);
 		expect(runners.ids).toEqual(["claude-code", "codex", "opencode"]);
 		expect(runners.states.every((state) => state.auth === undefined)).toBe(true);
 		expect(runnerRows(runners.states).join("\n")).toContain("sign-in checked when used");
-		expect(connectedRunners(false, permission).ids).toEqual([]);
+		expect(connectedRunners(false, permission, ALL).ids).toEqual([]);
 		expect(fx.calls()).toEqual([]);
 	});
 
@@ -63,7 +66,7 @@ describe("lazy installed runners", () => {
 		expect(fx.calls()).toEqual(["claude:--version", "claude:auth status --json"]);
 		expect(await deps.launch("claude-code", signal)).toMatchObject({ billing: "plan" });
 		expect(fx.calls()).toHaveLength(2);
-		expect(runnerRows(connectedRunners(true, permission).states).join("\n")).toContain("claude.ai · plan");
+		expect(runnerRows(connectedRunners(true, permission, ALL).states).join("\n")).toContain("claude.ai · plan");
 	});
 
 	it.each(["unknown", "signedout"])(
@@ -76,7 +79,7 @@ describe("lazy installed runners", () => {
 			await expect(deps.launch("claude-code", signal)).rejects.toThrow(
 				state === "unknown" ? /could not be confirmed/ : /is signed out/,
 			);
-			const rows = runnerRows(connectedRunners(true, permission).states).join("\n");
+			const rows = runnerRows(connectedRunners(true, permission, ALL).states).join("\n");
 			expect(rows).toContain(state === "unknown" ? "sign-in unknown" : "signed out");
 			if (state === "unknown") expect(rows).not.toContain("signed out");
 			fs.writeFileSync(fx.login, "plan");

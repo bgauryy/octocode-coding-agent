@@ -73,10 +73,13 @@ const ALLOWED: Record<string, string[]> = {
 	// `worktrees`: a worktree session's message to its coordinator looks up the repository's main checkout.
 	external: ["activity", "shared", "api", "worktrees", "ask", "child-sessions", "jobs"],
 	// Claude Code as the model backend: the connected runner, its cleaned environment and the ACP host come from `external`.
-	"claude-code": ["external"],
+	// Vendor and user CLIs as session models: one route factory over the ACP host and runner state, gated by guard.
+	"cli-models": ["shared", "external", "guard"],
+	"claude-code": ["external", "cli-models"],
 	ask: ["shared", "render"],
 	// `cli`: the bash guide names the research CLI only when its shim is installed. `ask`: the file review is an approval question.
-	files: ["shared", "permission", "cli", "ask", "render", "tool-input", "wake"],
+	// `events`: harness notices carry their source header (`events/source.ts`, a leaf).
+	files: ["shared", "permission", "cli", "ask", "render", "tool-input", "wake", "events"],
 	// `monitor`: the check-in and child-silence rules are told through the monitor's `attend`.
 	team: ["shared", "render", "tool-input", "worktree-paths", "wake", "events", "monitor"],
 	discovery: ["shared"],
@@ -114,6 +117,7 @@ const ALLOWED: Record<string, string[]> = {
 	subagents: [
 		"activity",
 		"shared",
+		"events",
 		"jobs",
 		"discovery",
 		"team",
@@ -145,10 +149,11 @@ const ALLOWED: Record<string, string[]> = {
 	"native/tools/archive": ["shared", "render", "archive", "history"],
 	"native/tools/ask-user": ["shared", "render", "ask"],
 	"native/tools/render": ["shared", "render", "ask", "native/tools/ask-user"],
-	"native/tools/backlog": ["shared", "render", "backlog"],
+	"native/tools/backlog": ["shared", "render", "backlog", "history"],
 	"native/tools/backlog-plan": ["shared", "render", "backlog"],
 	// `team`: a joined job's watch hears other processes' writes through the team database's follower.
-	"native/tools/bash": ["shared", "render", "files", "wake", "team"],
+	// `backlog`: a background job without an `item` links to the session's only ongoing item.
+	"native/tools/bash": ["shared", "render", "files", "wake", "team", "backlog"],
 	"native/tools/compact": ["shared", "render", "compaction"],
 	"native/tools/configuration": ["shared", "render", "permission"],
 	"native/tools/coordinate": ["shared", "render", "team", "permission"],
@@ -158,10 +163,22 @@ const ALLOWED: Record<string, string[]> = {
 	"native/tools/skill": ["shared", "render", "skill"],
 	"native/tools/notify": ["shared", "render", "timer"],
 	"native/tools/web": ["shared", "render", "permission", "web", "jobs"],
-	sessions: ["activity", "shared", "files", "subagents", "backlog", "archive", "child-sessions"],
+	// `events`: the post-compaction notice carries its source header (`events/source.ts`, a leaf).
+	sessions: ["activity", "shared", "files", "subagents", "backlog", "archive", "child-sessions", "events"],
 	// `graph`: the board's ready list and `octocode backlog graph` read the work graph over its items.
 	// `files`: a completion cites a shell receipt (`files/bash/verification.ts`) and checks it against later edits.
-	backlog: ["shared", "render", "browser", "native/tools/backlog", "native/tools/backlog-plan", "graph", "files"],
+	backlog: [
+		"shared",
+		"render",
+		"browser",
+		"native/tools/backlog",
+		"native/tools/backlog-plan",
+		"graph",
+		"files",
+		"events",
+		// `inferred-item.ts` keys an item the way the wake gate does.
+		"wake",
+	],
 	// The derived work graph (items, steps, agents, jobs, resources, waits), its ready order and stall tracking; its
 	// readers of the backlog live in `backlog/`.
 	graph: ["shared"],
@@ -198,10 +215,11 @@ const ALLOWED: Record<string, string[]> = {
 	// `history`: a `query` is tested in the regex worker that bounds a search (`history/search.ts`).
 	// `backlog`: start recall also searches the active item's goal (`memory/active-goal.ts`).
 	// `trust`: a linked worktree's workspace MEMORY.md lives in the main checkout, read only when that folder is trusted.
-	memory: ["shared", "permission", "render", "history", "backlog", "trust", "native/tools/memory"],
-	plan: ["shared"],
+	// `events`: the injected message carries its source header (`events/source.ts`, a leaf).
+	memory: ["shared", "permission", "render", "history", "backlog", "trust", "native/tools/memory", "events"],
+	plan: ["shared", "events"],
 	// Every question to a person goes through `ask/` (one Question type); permission, external and subagents ask there.
-	permission: ["shared", "plan", "ask", "child-sessions", "tool-input", "worktree-paths"],
+	permission: ["shared", "plan", "ask", "child-sessions", "tool-input", "worktree-paths", "events"],
 	skill: ["shared", "render", "child-sessions", "compaction"],
 	"context-optimization": ["shared", "skill"],
 	// `/optimize`: its helper call is the small-tier route `subagents/` owns.
@@ -218,9 +236,9 @@ const ALLOWED: Record<string, string[]> = {
 	"terminal-launch": [],
 	// `processes`: the process table names other vendors' agent CLIs working in a worktree.
 	worktrees: ["shared", "terminal-launch", "trust", "worktree-paths", "processes"],
-	// `/realm`: the checkout, worktrees, agents and saved sessions of the repository in one view; it reads each, owns none.
+	// `/realm`: this process's session, place and children (`subagents`: unmerged isolated results), and `places`: the checkout, worktrees, agents and saved sessions of the repository; it reads each, owns none.
 	// `activity`: each live session's light, as the session records it (`liveActivityOf`).
-	realm: ["shared", "worktrees", "worktree-paths", "sessions", "activity"],
+	realm: ["shared", "worktrees", "worktree-paths", "sessions", "activity", "subagents"],
 	// An until-command runs on the bash foreground path (`files`) after the plan-mode and read-only-role checks a bash call meets.
 	// `graph`: the `unlocked full-run` wait reads the lock's owner record.
 	timer: ["shared", "files", "permission", "plan", "render", "wake", "events", "native/tools/notify", "graph"],

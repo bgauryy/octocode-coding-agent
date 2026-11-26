@@ -3,6 +3,8 @@ import { estimateTokens } from "../../src/core/compaction/index.ts";
 import {
 	contextTokens,
 	needsDownshiftCompaction,
+	RECOVERY_BAND,
+	recoveredBelowBand,
 	THRASH_MESSAGE,
 	THRASH_STREAK,
 	THRASH_TURNS,
@@ -54,6 +56,44 @@ describe("thrash breaker", () => {
 		refill(breaker, THRASH_TURNS + 1);
 		breaker.compacted(false);
 		refill(breaker, 1);
+		expect(breaker.tripped()).toBe(false);
+	});
+});
+
+describe("recovery band", () => {
+	it(`counts a compaction as recovered only when the context ends at or below ${RECOVERY_BAND} of the trigger`, () => {
+		expect(recoveredBelowBand(79_000, 100_000)).toBe(true);
+		expect(recoveredBelowBand(80_000, 100_000)).toBe(true);
+		expect(recoveredBelowBand(81_000, 100_000)).toBe(false);
+		expect(recoveredBelowBand(undefined, 100_000)).toBe(true);
+	});
+
+	it("refuses the next automatic compaction right after one that left the context above the band", () => {
+		const breaker = new ThrashBreaker();
+		breaker.compacted(false, false, false);
+		expect(breaker.tripped()).toBe(true);
+		breaker.turnEnded();
+		expect(breaker.tripped()).toBe(true);
+		for (let i = 0; i < THRASH_TURNS; i++) breaker.turnEnded();
+		expect(breaker.tripped()).toBe(false);
+	});
+
+	it("never refuses an overflow compaction for a poor recovery", () => {
+		const breaker = new ThrashBreaker();
+		breaker.compacted(false, false, false);
+		expect(breaker.tripped(true)).toBe(false);
+		expect(breaker.tripped()).toBe(true);
+	});
+
+	it("does not refuse after a recovered compaction, and a manual or later recovered one clears the refusal", () => {
+		const breaker = new ThrashBreaker();
+		breaker.compacted(false, false, true);
+		expect(breaker.tripped()).toBe(false);
+		breaker.compacted(false, false, false);
+		breaker.compacted(false, false, true);
+		expect(breaker.tripped()).toBe(false);
+		breaker.compacted(false, false, false);
+		breaker.compacted(true, false, false);
 		expect(breaker.tripped()).toBe(false);
 	});
 });

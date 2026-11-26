@@ -66,12 +66,26 @@ describe("file restore after compaction", () => {
 		});
 		const ctx = { cwd: dir, sessionManager: session };
 		const candidates = [{ file, workedAt: 3, line: 1 }];
-		const first = (await deliverRestoredFiles({ session: api }, candidates, ctx, RESTORE_TOTAL_CHARS))!;
+		const first = (await deliverRestoredFiles(
+			{ session: api, settings: { get: () => undefined } } as never,
+			candidates,
+			ctx,
+			RESTORE_TOTAL_CHARS,
+		))!;
 		expect(first.files[0].whole).toBe(false);
 		const prefix = JSON.stringify(session.buildSessionProjection().messages);
 		session.appendCompaction("Newest checkpoint", kept, 50_000);
 		const checkpoint = JSON.stringify(session.buildSessionProjection().messages);
-		expect((await deliverRestoredFiles({ session: api }, candidates, ctx, RESTORE_TOTAL_CHARS))?.id).toBe(first.id);
+		expect(
+			(
+				await deliverRestoredFiles(
+					{ session: api, settings: { get: () => undefined } } as never,
+					candidates,
+					ctx,
+					RESTORE_TOTAL_CHARS,
+				)
+			)?.id,
+		).toBe(first.id);
 		expect(sent).toHaveLength(1);
 		expect(JSON.stringify(session.buildSessionProjection().messages)).toBe(checkpoint);
 		const guard = new FileGuard();
@@ -83,9 +97,16 @@ describe("file restore after compaction", () => {
 		).toBe(true);
 		expect(prefix).toContain("item0");
 		fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("item0", "changedItem0"));
-		expect((await deliverRestoredFiles({ session: api }, candidates, ctx, RESTORE_TOTAL_CHARS))?.files[0].whole).toBe(
-			false,
-		);
+		expect(
+			(
+				await deliverRestoredFiles(
+					{ session: api, settings: { get: () => undefined } } as never,
+					candidates,
+					ctx,
+					RESTORE_TOTAL_CHARS,
+				)
+			)?.files[0].whole,
+		).toBe(false);
 		expect(sent).toHaveLength(2);
 		expect(sent[1].content).toContain("changedItem0");
 	});
@@ -113,12 +134,22 @@ describe("file restore after compaction", () => {
 			},
 		});
 		const ctx = { cwd: dir, sessionManager: session };
-		const first = (await deliverRestoredFiles({ session: api }, plain(file), ctx, RESTORE_TOTAL_CHARS))!;
+		const first = (await deliverRestoredFiles(
+			{ session: api, settings: { get: () => undefined } } as never,
+			plain(file),
+			ctx,
+			RESTORE_TOTAL_CHARS,
+		))!;
 		fs.writeFileSync(file, text.replace("value", "other"));
 		const guard = new FileGuard();
 		guard.restore(contextReads(ctx));
 		expect(guard.inspect(file, "edit", "outline.ts").stale).toBe(true);
-		const pending = (await deliverRestoredFiles({ session: api }, plain(file), ctx, RESTORE_TOTAL_CHARS))!;
+		const pending = (await deliverRestoredFiles(
+			{ session: api, settings: { get: () => undefined } } as never,
+			plain(file),
+			ctx,
+			RESTORE_TOTAL_CHARS,
+		))!;
 		expect(pending.id).toBe(first.id);
 		expect(sent).toHaveLength(1);
 		expect(settleRestoredFiles(session.buildSessionProjection().messages, pending, guard)).toBe(true);
@@ -144,7 +175,12 @@ describe("file restore after compaction", () => {
 			},
 		};
 		expect(
-			await deliverRestoredFiles({ session: { sendMessage } }, plain(file), ctx as never, RESTORE_TOTAL_CHARS),
+			await deliverRestoredFiles(
+				{ session: { sendMessage }, settings: { get: () => ({}) } },
+				plain(file),
+				ctx as never,
+				RESTORE_TOTAL_CHARS,
+			),
 		).toBeUndefined();
 		expect(sendMessage).not.toHaveBeenCalled();
 		expect(fs.readFileSync(file, "utf8")).toBe(original);
@@ -636,7 +672,12 @@ describe("restored message framing budget", () => {
 		const total = 5_000;
 		const sendMessage = vi.fn();
 		const ctx = { cwd, sessionManager: { getBranch: () => [], buildSessionProjection: () => ({ entries: [] }) } };
-		const pending = await deliverRestoredFiles({ session: { sendMessage } }, plain(file), ctx as never, total);
+		const pending = await deliverRestoredFiles(
+			{ session: { sendMessage }, settings: { get: () => ({}) } },
+			plain(file),
+			ctx as never,
+			total,
+		);
 		expect(pending?.files).toHaveLength(1);
 		expect(sendMessage).toHaveBeenCalledOnce();
 		expect(sendMessage.mock.calls[0][0].content.length).toBeLessThanOrEqual(total);

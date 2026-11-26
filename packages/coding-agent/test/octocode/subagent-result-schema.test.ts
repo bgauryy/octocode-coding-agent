@@ -61,14 +61,14 @@ describe("caller-defined subagent result schema", () => {
 		expect(() => admitResultSchema(cyclic)).toThrow();
 	});
 
-	it("rejects missing, duplicated, trailing, malformed and schema-invalid payload without data", () => {
+	it("rejects missing, duplicated, malformed and schema-invalid payload without data", () => {
 		const contract = admitResultSchema(schema);
 		const good = 'done\nStructured result:\n```json\n{"verdict":"pass"}\n```';
 		expect(validateResultAnswer(good, contract).status).toBe("valid");
 		for (const bad of [
 			"done no block",
 			`${good}\nStructured result:\n\`\`\`json\n{}\n\`\`\``,
-			`${good}\ntrailing`,
+			'done\nStructured result:\n```json\n{"verdict":"pass"}',
 			'done\nStructured result:\n```json\n{"verdict":}\n```',
 			'done\nStructured result:\n```json\n{"verdict":"other"}\n```',
 		]) {
@@ -76,6 +76,19 @@ describe("caller-defined subagent result schema", () => {
 			expect(result.status).toBe("invalid");
 			expect(result).not.toHaveProperty("data");
 		}
+	});
+	it("accepts a complete block followed by stray prose, keeping the prose as notes, never as data", () => {
+		const contract = admitResultSchema(schema);
+		const answer = 'done\nStructured result:\n```json\n{"verdict":"pass"}\n```\nLet me know if you need more.';
+		const result = validateResultAnswer(answer, contract);
+		expect(result.status).toBe("valid");
+		expect(result.data).toEqual({ verdict: "pass" });
+		expect(result.notes).toBe("Let me know if you need more.");
+		expect(validateStoredStructuredResult(result)).toEqual(result);
+		const fenced = validateResultAnswer(`${answer}\n\`\`\`sh\nyarn test\n\`\`\``, contract);
+		expect(fenced.status).toBe("valid");
+		expect(fenced.data).toEqual({ verdict: "pass" });
+		expect(fenced.notes).toContain("yarn test");
 	});
 	it("only the latest completed answer can satisfy the contract", () => {
 		const contract = admitResultSchema(schema);

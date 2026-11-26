@@ -11,7 +11,7 @@ import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { findOnPath } from "@octocodeai/octocode-common/find-on-path";
 import { agentEnv } from "../../../octocode/external/runner-env.ts";
 import { runnerRoute } from "../../../octocode/external/runner-headless.ts";
-import { setRunnerEnabled as setRunnerSelection } from "../../../octocode/external/runner-selection.ts";
+import { isRunnerActive, setRunnerEnabled as setRunnerSelection } from "../../../octocode/external/runner-selection.ts";
 import { checkRunners, isConnected, listRunners, type RunnerState } from "../../../octocode/external/runner-status.ts";
 import { RUNNERS, runnerSpec } from "../../../octocode/external/runners.ts";
 import { holdTerminalForChild } from "../../../utils/foreground-child.ts";
@@ -164,7 +164,7 @@ export function runnerSection(
 ): PageSection {
 	return {
 		heading: "External agents",
-		rows: states.map((state) => row(state, enabled && (selected === undefined || selected.includes(state.id)))),
+		rows: states.map((state) => row(state, enabled && (selected?.includes(state.id) ?? false))),
 		empty: enabled ? "no vendor CLI found" : "off (externalAgents)",
 	};
 }
@@ -172,7 +172,7 @@ export function runnerSection(
 /** What a runner's page uses of the interactive host. */
 type RunnerPageHost = Pick<ProviderManagerHost, "session" | "ui" | "showStatus" | "showError" | "showSelector">;
 
-/** A fresh selection opts in one CLI; an explicit legacy all-runners setting keeps the other known CLIs. */
+/** Opts one CLI in or out of agent tasks and says so. */
 export function setRunnerEnabled(page: RunnerPageHost, id: string, enabled: boolean): void {
 	setRunnerSelection(page.session.settingsManager, id, enabled);
 	page.showStatus(
@@ -208,7 +208,7 @@ export async function showRunnerDetail(
 	const settings = page.session.settingsManager;
 	const enabled = settings.getExternalAgents();
 	const selected = settings.getEnabledExternalAgents();
-	const active = enabled && (selected === undefined || selected.includes(id));
+	const active = isRunnerActive(settings, id);
 	const actions = new Map<string, () => Promise<void> | void>();
 	const env = runnerEnvironment(options.source);
 	const cli = findOnPath(spec.cli, env);

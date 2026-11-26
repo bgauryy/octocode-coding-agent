@@ -6,6 +6,7 @@ import { rejectTrackedWorkspaceState, git, gitQuiet } from "../../utils/git-run.
 import { approveWorktree, type WorktreeTrustAsk } from "./approval.ts";
 import { copyIncluded, type IncludeResult } from "./include.ts";
 import { worktreeBranch, worktreeNameProblem } from "./name.ts";
+import { refuseFromLinkedWorktree } from "./proxy.ts";
 import { branchExists, entryAt, locateRepo, worktreePath } from "./repo.ts";
 
 export interface WorktreeInfo {
@@ -47,6 +48,7 @@ export async function ensureWorktree(cwd: string, name: string, ask?: WorktreeTr
 			created: false,
 			include: none,
 		};
+	refuseFromLinkedWorktree(repo, `creating worktree "${name}"`);
 	if (!(await gitQuiet(repo.checkout, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])))
 		throw new Error("This repository has no commits yet: commit once so the worktree has something to start from.");
 	if (existing) await git(repo.main, ["worktree", "prune"]); // registered, but its folder is gone

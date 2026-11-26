@@ -1,8 +1,7 @@
 import { renderPrompt } from "../../core/prompt-template.ts";
 import type { FeatureContext } from "../../core/features/index.ts";
-import { backlog, timers } from "../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../storage/database.ts";
-import { registeredWorkspace } from "../../storage/workspace-database.ts";
+import { type AgentDb, backlog, timers } from "../../../../db/src/api.ts";
+import { workspaceDb } from "../../storage/workspace-database.ts";
 import { shownLine } from "../sessions/store.ts";
 import { runningWorkBrief } from "../sessions/compaction-brief.ts";
 import { hadReportedWork, unreportedWork } from "../sessions/work.ts";
@@ -30,9 +29,11 @@ export function liveStateLines(
 	since: number,
 ): string[] {
 	const lines: string[] = [];
+	let agent: AgentDb | undefined;
 	try {
-		const agent = sharedAgentDb();
-		const repoKey = registeredWorkspace(ctx.cwd, agent).id;
+		const bound = workspaceDb(ctx.cwd);
+		agent = bound.agent;
+		const repoKey = bound.workspace.id;
 		const rows = backlog.ongoingItems(agent.db, repoKey, ctx.sessionManager.getSessionId());
 		// Held items are listed once, with their goals, by the session-state brief sent after the compaction
 		// (`sessions/brief.ts`, read from the same table later); this block only states that there are none.
@@ -44,15 +45,15 @@ export function liveStateLines(
 	if (work.length > 0) lines.push(renderPrompt("notices/recovery/live-work.md", { work: work.join("; ") }));
 	else if (hadReportedWork(entries) && unreportedWork(entries).length === 0)
 		lines.push(renderPrompt("notices/recovery/live-none.md"));
-	const active = activeTimers(ctx);
+	const active = agent ? activeTimers(agent, ctx) : [];
 	if (active.length > 0) lines.push(renderPrompt("notices/recovery/live-timers.md", { timers: active.join("; ") }));
 	return lines;
 }
 
 /** The session's active timers as `#3 until command exits 0 (note), due 2026-…Z`, read from the timer table. */
-function activeTimers(ctx: Pick<FeatureContext, "sessionManager">): string[] {
+function activeTimers(agent: AgentDb, ctx: Pick<FeatureContext, "sessionManager">): string[] {
 	try {
-		const rows = timers.forSession(sharedAgentDb().db, ctx.sessionManager.getSessionId());
+		const rows = timers.forSession(agent.db, ctx.sessionManager.getSessionId());
 		return timerWorkRows(rows).map((row) => {
 			const note = row.detail ? ` (${shownLine(row.detail, TITLE_CHARS)})` : "";
 			const due = row.dueAt === undefined ? "" : `, due ${new Date(row.dueAt).toISOString()}`;

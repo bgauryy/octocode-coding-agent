@@ -72,7 +72,7 @@ flowchart LR
 - Other agents' stores: Claude Code, Codex, OpenCode and the Copilot CLI ([below](#credential-files)).
 - Destructive shell: wiping `/`, home or a system folder, `git reset --hard`, `git clean -f`, `git checkout .`, `git restore .`, forced `git push`, `rm -r` at or above the checkout root, changes under `~/.ssh`.
 - Tool output reaches the model unredacted; add a `tool_result` [hook](hooks.md) to redact.
-- `workspace` mode does not defend against code an agent hides (`python -c`, `node -e`, computed options, programs a git line names): use `manual` to review every command. Plan mode and peer reservations refuse these.
+- `workspace` mode does not defend against code an agent hides (`python -c`, `node -e`, computed options, programs a git line names): use `manual` to review every command. Shell write detection reports inline interpreter code (`python3 -c`, `python3 - <<EOF`, `node -e`, `perl -e`, `ruby -e`, `php -r`, `lua -e`) as an unnamed change in the command's directory: write checks, receipts and command ordering count it, and plan mode and peer reservations refuse it. Read-only roles run it (the script often only parses output) and still check its redirections; edit files with the `file` tool, which keeps restore points.
 - A `notify` command (`on` `check.result`) runs unattended, so setting it is decided as the `bash` call it is. Claude rules see two operations, `notify` and `Bash`: a deny or ask on either applies, an allow needs both.
 
 ### Project trust
@@ -284,7 +284,6 @@ flowchart LR
 | Code the parse cannot read                                                   | `bash -c "$X"`, `eval $X`, `source <(…)`                           | Spell the command out                              |
 | Computed program name, unreadable wrapper                                    | `$PY -c …`, `timeout $T make`                                      | Spell the program                                  |
 | `xargs`/`parallel` whose input could pick the written file                   | `ls \| xargs tee a.ts`                                             | Name program and files                             |
-| Arithmetic on a value the line does not show                                 | `echo $((x))`, `let`, `declare -i`                                 | Use literals                                       |
 | A variable the shell or programs read, or one already exported, set anywhere | `PATH=/tmp/x; cat f`, `export X=1`, `unset PATH`, `NODE_OPTIONS=…` | Use a name of your own (`D=/tmp/out`), or a number |
 | A `-v` test of a subscript the line does not spell out                       | `[[ -v 'a[$(cmd)]' ]]`, `[ -v a[$i] ]`                             | Test a plain name (`-v a[0]`)                      |
 | Reader with a writing option and a computed word                             | `sort $X in`, `rg "$PAT" src`                                      | Start with a literal, or `--` first                |

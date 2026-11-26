@@ -170,6 +170,29 @@ describe("early compaction summary", () => {
 		expect(user.notes).toContainEqual(expect.stringMatching(/discarded .*the user's compaction has its own focus/));
 	});
 
+	it("is used by a compaction at a finished item, with the items appended as the harness's record", async () => {
+		const { calls, api, ctx, prewarm, compaction } = setup();
+		startEarlySummary(api, prewarm, ctx, false);
+		const written = await writeSummary(
+			api,
+			compaction({ requestedBy: "item", customInstructions: "B1: Shipped the parser" }),
+			ctx,
+		);
+		// No second request: the early summary is taken and the focus joins its text, before the file lists.
+		expect(calls).toHaveLength(1);
+		const summary = summaryOf(written);
+		expect(summary).toContain("summary 1");
+		expect(summary).toContain("recorded by the harness");
+		expect(summary).toContain("B1: Shipped the parser");
+		expect(summary).not.toContain("written with its `compact` tool");
+		expect(summary.indexOf("B1: Shipped the parser")).toBeLessThan(summary.indexOf("src/a.ts"));
+		if (!written || !("compaction" in written) || !written.compaction) throw new Error("no compaction");
+		expect(written.compaction.details).toMatchObject({
+			[SUMMARY_METHOD_DETAILS]: { method: "cache-shared", early: { waitedMs: expect.any(Number) } },
+			focus: { delivery: "summary" },
+		});
+	});
+
 	it("notes an early summary a newer plan replaced, so its spend is counted", async () => {
 		const { notes, api, ctx, prewarm } = setup();
 		startEarlySummary(api, prewarm, ctx, false);

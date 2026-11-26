@@ -57,6 +57,21 @@ export function measureLayers(context: AgentContext): Layers {
 	};
 }
 
+/**
+ * What Octocode itself writes into a first request: `system`, `skills` and `nativeTools` bytes, `own` their sum, and `loads`,
+ * how many native tools a first use loads. The MCP servers' instructions and tool declarations are the servers' text, which
+ * drifts with their releases: they are reported, never capped here.
+ */
+export type OwnCeilings = Pick<Layers, "system" | "skills" | "nativeTools"> & { own: number; loads: number };
+
+/** Octocode-owned bytes of a first request, and the tools it loads on first use, leaving out every MCP tool. */
+export function ownLayers(context: AgentContext): Omit<OwnCeilings, "loads"> & { loads: number } {
+	const layers = measureLayers(context);
+	const nativeLoads = (context.deferred ?? []).filter((tool) => !isMcpTool(tool.name)).length;
+	const { system, skills, nativeTools } = layers;
+	return { system, skills, nativeTools, own: system + skills + nativeTools, loads: nativeLoads };
+}
+
 /** What a first use must still load (`AgentContext.deferred`): how many tools, and the bytes their full declarations add. */
 export interface Loads {
 	/** Tools declared thin: the full schema arrives with a refused call or an `mcp` read. */

@@ -10,9 +10,34 @@ function toggleKey(): string | undefined {
 	return key === undefined ? undefined : formatKeyText(key);
 }
 
+/**
+ * The modifier that makes the terminal select while the screen holds the mouse. Most terminals take Shift; on macOS
+ * iTerm2 and VS Code take Option (VS Code only with `terminal.integrated.macOptionClickForcesSelection`) and
+ * Terminal.app takes Fn. Inside a multiplexer the outer terminal is unknown, so it is Shift.
+ */
+export function nativeSelectionModifier(
+	env: NodeJS.ProcessEnv = process.env,
+	platform: NodeJS.Platform = process.platform,
+): "shift" | "option" | "fn" {
+	if (platform !== "darwin") return "shift";
+	const program = env.TERM_PROGRAM;
+	if (program === "iTerm.app" || program === "vscode") return "option";
+	if (program === "Apple_Terminal") return "fn";
+	return "shift";
+}
+
 /** The notice after the mouse was taken from the terminal or handed back to it. */
-export function mouseCaptureMessage(captured: boolean): string {
-	if (captured) return "Mouse on: the wheel scrolls here, dragging selects and copies";
+export function mouseCaptureMessage(
+	captured: boolean,
+	env: NodeJS.ProcessEnv = process.env,
+	platform: NodeJS.Platform = process.platform,
+): string {
+	if (captured) {
+		const modifier = nativeSelectionModifier(env, platform);
+		const needs =
+			platform === "darwin" && env.TERM_PROGRAM === "vscode" ? " (needs macOptionClickForcesSelection)" : "";
+		return `Mouse on: the wheel scrolls here, dragging selects and copies · ${modifier}+drag${needs} selects with your terminal`;
+	}
 	const key = toggleKey();
 	return `Mouse off: select, copy and scroll with your terminal${key ? ` · ${key} turns it back on` : ""}`;
 }
@@ -34,10 +59,17 @@ export class TerminalSelectionHint {
 }
 
 /**
- * The hint the first copy of a screen carries: how to select with the terminal instead. Most terminals bypass mouse
- * reporting while Shift is held; the toggle works in every terminal.
+ * The hint the first copy of a screen carries: how to select with the terminal instead. The modifier bypasses mouse
+ * reporting where the terminal supports it; the toggle works in every terminal.
  */
-function terminalSelectionHint(): string {
+export function terminalSelectionHint(
+	env: NodeJS.ProcessEnv = process.env,
+	platform: NodeJS.Platform = process.platform,
+): string {
 	const key = toggleKey();
-	return `${key ? `${key} or ` : ""}shift+drag: select with your terminal`;
+	// VS Code on macOS ignores Option unless macOptionClickForcesSelection is on, so the toggle is the sure way.
+	if (platform === "darwin" && env.TERM_PROGRAM === "vscode") {
+		return `${key ?? "Mouse toggle"} or option+drag (needs macOptionClickForcesSelection): select with your terminal`;
+	}
+	return `${key ? `${key} or ` : ""}${nativeSelectionModifier(env, platform)}+drag: select with your terminal`;
 }

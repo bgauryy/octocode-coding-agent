@@ -67,7 +67,8 @@ async function compacted(entries: unknown[], team: TeamNotes | undefined, compac
 		{ type: "session_compact", ...(compactionEntry === undefined ? {} : { compactionEntry }) },
 		ctx,
 	);
-	return fake.sent.map((sent) => (sent.message as { content: string }).content);
+	// The notice sits under its source header; these tests read the note itself.
+	return fake.sent.map((sent) => (sent.message as { content: string }).content.replace(/^\[src [^\n]*\n/, ""));
 }
 
 describe("running work note after a compaction", () => {

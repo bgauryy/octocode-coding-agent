@@ -63,6 +63,12 @@ async function mergeHeldRef(repo: string, ref: string, assertHeld: () => void): 
 		return { ok: false, text: `Merging ${ref} failed: ${errorMessage(error)}` };
 	}
 	assertHeld();
+	const staged = (await gitQuiet(repo, ["diff", "--cached", "--name-only"]))?.split("\n").filter(Boolean) ?? [];
+	if (staged.length > 0)
+		return {
+			ok: false,
+			text: `Merging ${ref} refused: ${staged.length} file${staged.length === 1 ? " is" : "s are"} staged in ${repo}: ${staged.slice(0, 8).join(", ")}${staged.length > 8 ? ", …" : ""}. The merge would commit them with it. Commit them or unstage them (\`git restore --staged\`), then merge again; ${ref} is kept.`,
+		};
 	try {
 		await git(repo, [...NO_HOOKS, "merge", "--no-ff", "--no-edit", ref]);
 	} catch (error) {

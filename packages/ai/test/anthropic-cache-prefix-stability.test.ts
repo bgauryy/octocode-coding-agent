@@ -58,7 +58,7 @@ function session(toolAddition: Tool[] | undefined): Turn[] {
 			user("next"),
 		],
 		(model) => [
-			// A reply from another model: its signed thinking is dropped on every request alike.
+			// A reply from another Claude model on the same provider: its signed thinking replays on every request alike.
 			assistant(model, [signed("foreign", "sig-x"), { type: "text", text: "other model" }], {
 				model: "claude-sonnet-5",
 			}),
@@ -146,7 +146,10 @@ describe("Anthropic cached prefix stability across requests", () => {
 			{ type: "redacted_thinking", data: "opaque" },
 			{ type: "text", text: "unsigned" },
 		]);
-		expect(foreign).toEqual([{ type: "text", text: "other model" }]);
+		expect(foreign).toEqual([
+			{ type: "thinking", thinking: "foreign", signature: "sig-x" },
+			{ type: "text", text: "other model" },
+		]);
 	});
 
 	it("budget-thinking collapse-path model keeps system and history through a text update", async () => {

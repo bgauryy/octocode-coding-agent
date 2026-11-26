@@ -54,7 +54,7 @@ export const PRIORITY = {
 	quotaAlarm: 96,
 	sigma: 97,
 	chipFloor: 98,
-	/** Past the alarm point (80% of the auto-compact point) the context gauge holds its bar and percent through every other step. */
+	/** Past the alarm point (90% of the auto-compact point) the context gauge holds its bar and percent through every other step. */
 	ctxAlarm: 99,
 } as const;
 
@@ -63,16 +63,21 @@ export const plainRow = (text: string) => styledLine(sanitizeTerminalText(text))
 
 const BAR_CELLS = 8;
 
-/** Where the gauge turns red: 80% of the auto-compact point, as a percent of the window (80% of the window without one). */
+/** The share of the auto-compact point where the gauge turns red: where the context notice tells the model. */
+const ALARM_SHARE = 0.9;
+/** The alarm without a known auto-compact point: 90% of a point at 90% of the window. */
+const DEFAULT_ALARM_PERCENT = 81;
+
+/** Where the gauge turns red, as a percent of the window. */
 function alarmPercent(context: { window: number; compactAt?: number }): number {
-	return context.compactAt ? ((context.compactAt * 0.8) / context.window) * 100 : 80;
+	return context.compactAt ? ((context.compactAt * ALARM_SHARE) / context.window) * 100 : DEFAULT_ALARM_PERCENT;
 }
 
 /**
  * An 8-cell gauge of the window and its colour: green under half of the window, yellow after, red above `alarmAt`
  * (a percent of the window), judged on the rounded percent the label shows. Any use fills at least one cell.
  */
-export function contextBar(percent: number, alarmAt = 80): { bar: string; color: Color } {
+export function contextBar(percent: number, alarmAt = DEFAULT_ALARM_PERCENT): { bar: string; color: Color } {
 	const shown = Math.round(percent);
 	const filled = usageCells(percent, BAR_CELLS);
 	return {

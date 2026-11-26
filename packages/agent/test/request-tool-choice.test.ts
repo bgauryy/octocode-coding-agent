@@ -94,7 +94,7 @@ describe("a request's tool choice", () => {
 		};
 		const config = createAgentLoopConfig(
 			host,
-			{ model, thinkingLevel: "off" },
+			{ model, thinkingLevel: "off", tools: [] },
 			new PendingMessageQueue("one-at-a-time"),
 			new PendingMessageQueue("one-at-a-time"),
 		);
@@ -128,7 +128,7 @@ describe("a request's tool choice", () => {
 			};
 			const config = createAgentLoopConfig(
 				host,
-				{ model, thinkingLevel: "off" },
+				{ model, thinkingLevel: "off", tools: [probe] },
 				steering,
 				new PendingMessageQueue("one-at-a-time"),
 				{ skipInitialSteeringPoll: true },

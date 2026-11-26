@@ -53,8 +53,11 @@ const userConfig = path.join(run, "user-config");
 const agentDir = path.join(run, "agent");
 const octocodeHome = path.join(run, "octocode");
 for (const dir of [workspace, userConfig, agentDir, octocodeHome]) fs.mkdirSync(dir);
-// The agent tool declares its external type only with this opt-in setting.
-fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({ externalAgents: true }));
+// The agent tool declares its external type only with this opt-in setting; the fixture vendor is no shipped runner, so it is selected.
+fs.writeFileSync(
+	path.join(agentDir, "settings.json"),
+	JSON.stringify({ externalAgents: true, enabledExternalAgents: ["test-fixture"] }),
+);
 assert.equal(spawnSync("git", ["init", "-q"], { cwd: workspace, stdio: "pipe" }).status, 0);
 const originalHome = process.env.HOME;
 os.homedir = () => userConfig;

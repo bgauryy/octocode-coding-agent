@@ -18,17 +18,24 @@ import {
 export class Presence {
 	private readonly agent: AgentDb;
 	private readonly db: Db;
+	/** The team whose events this side reads (`teamScope`). */
+	private readonly team: string;
 
-	constructor(agent: AgentDb) {
+	/** The machine file: session rows. */
+	private readonly machine: Db;
+
+	constructor(agent: AgentDb, team: string, machine: Db = agent.db) {
 		this.agent = agent;
 		this.db = agent.db;
+		this.team = team;
+		this.machine = machine;
 	}
 
 	/** The newest presence event now. */
 	head = (): number => agentEvents.head(this.db);
 
-	/** Presence events after `after`, oldest first. */
-	since = (after: number): agentEvents.EventRow[] => agentEvents.since(this.db, after);
+	/** This team's presence events after `after`, oldest first. */
+	since = (after: number): agentEvents.EventRow[] => agentEvents.since(this.db, after, { team: this.team });
 
 	/** Calls `listener` with the sequences each transaction of this connection appended; the returned function stops it. */
 	onWrite = (listener: (from: number, to: number) => void): (() => void) => this.agent.onEvents(listener);
@@ -65,8 +72,9 @@ export class Presence {
 
 	/** Each member's backlog item, transcript and shell-log folders (`details.ts`), read from `workspaceId`. */
 	details = (members: readonly Member[], workspaceId: string): Map<string, MemberDetails> =>
-		memberDetails(this.db, workspaceId, members);
+		memberDetails(this.db, this.machine, workspaceId, members);
 
 	/** The agent `ref` names, live or past (`resolveAgent`), read from `workspaceId`. */
-	resolve = (ref: string, workspaceId: string): ResolvedAgent | undefined => resolveAgent(this.db, ref, workspaceId);
+	resolve = (ref: string, workspaceId: string): ResolvedAgent | undefined =>
+		resolveAgent(this.db, ref, workspaceId, this.machine);
 }

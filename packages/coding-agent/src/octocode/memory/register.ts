@@ -10,7 +10,7 @@ import { registerMemoryReflection } from "./file/reflect.ts";
 import { registerMemorySection } from "./file/section.ts";
 import { memorySettings } from "./file/settings.ts";
 import { fileMemberIds, type MemoryFileSync, repeatsOf } from "./file/sync.ts";
-import { type Injection, MEMORY_MESSAGE_TYPE, selectInjection, sessionInjections, unchangedIds } from "./inject.ts";
+import { type Injection, MEMORY_MESSAGE_TYPE, memoryMessageText, selectInjection, sessionInjections, unchangedIds } from "./inject.ts";
 import { memoryLabel } from "./query.ts";
 import { noteOnlyInjection, sessionNoteLead } from "./session-notes-inject.ts";
 import { sessionNotes } from "./session-notes.ts";
@@ -78,14 +78,14 @@ export function registerMemory(
 		env,
 	};
 	let failedSession: string | undefined;
-	const section = registerMemorySection(api, { isSubagent: options.isSubagent, env });
+	const section = registerMemorySection(api, { isSubagent: options.isSubagent, env, store: storeFor });
 
 	/** Memories' recall, with the session's notes the model cannot see in front; either alone makes a message. */
 	const hiddenMessage = (injection: Injection | undefined) =>
 		injection && {
 			message: {
 				customType: MEMORY_MESSAGE_TYPE,
-				content: injection.content,
+				content: memoryMessageText(injection.content),
 				display: false,
 				// Counted as used once the message is committed (`message_end`), not when it is offered: a prompt that never runs
 				// does not use its memories.

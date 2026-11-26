@@ -46,8 +46,8 @@ describe("providerCooldowns", () => {
 		expect(providerCooldowns.read(agent.db, "anthropic")).toEqual({ until: 7_000, pauseMs: 2_000 });
 	});
 
-	it("creates its table in a file made without it", () => {
-		agent.db.exec("DROP TABLE provider_cooldowns");
+	it("creates its table when a version-10 file made without it is upgraded", () => {
+		agent.db.exec("DROP TABLE provider_cooldowns; PRAGMA user_version=10");
 		agent.close();
 		agent = openDatabase(locations);
 		providerCooldowns.record(agent.db, "anthropic", { until: 1, pauseMs: 0 });

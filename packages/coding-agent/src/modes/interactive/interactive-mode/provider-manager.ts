@@ -10,6 +10,7 @@ import { showProviderDetail } from "./provider-detail.ts";
 import { chooseProviderModels } from "./provider-models-page.ts";
 import type { ProviderManagerHost } from "./provider-manager-host.ts";
 import { showPiProviders } from "./provider-pi.ts";
+import { addExternalModel, OWN_AGENT_LABEL } from "./provider-external-model.ts";
 import {
 	externalAgentSignIns,
 	listedRunners,
@@ -18,6 +19,7 @@ import {
 	showRunnerDetail,
 } from "./provider-runners.ts";
 import { type PageContext, showSignIn } from "./provider-signin.ts";
+import { isRunnerActive } from "../../../octocode/external/runner-selection.ts";
 import { showProviderTemplates } from "./provider-template.ts";
 import { loadModelFiles, modelFileRows, showSourcesPage } from "./provider-sources-page.ts";
 import { providerRows } from "./provider-rows.ts";
@@ -209,10 +211,11 @@ export async function showProviderManager(
 				result = (await showProviderTemplates(host, ctx.reopen, snapshot.saved)) ? "stop" : "again";
 			else if (choice.id === EXTERNAL_ROW) {
 				const entries = externalAgentSignIns();
-				const labels = entries.map((entry) => `${entry.name} — ${entry.detail}`);
+				const labels = [...entries.map((entry) => `${entry.name} — ${entry.detail}`), OWN_AGENT_LABEL];
 				const picked = await host.showSelectorDialog("Add an external agent CLI", labels);
 				const entry = picked ? entries[labels.indexOf(picked)] : undefined;
 				if (entry) result = await openRunner(entry.id);
+				else if (picked === OWN_AGENT_LABEL) await addExternalModel(host);
 			} else if (choice.id === TEST_ALL_ROW) {
 				await testAllProviders(host);
 			} else if (choice.id === ADVANCED_ROW)
@@ -229,12 +232,7 @@ export async function showProviderManager(
 				}
 			} else if (kind === "runner") {
 				if (choice.key) {
-					const selected = settingsManager.getEnabledExternalAgents();
-					setRunnerEnabled(
-						host,
-						key,
-						!(settingsManager.getExternalAgents() && (selected === undefined || selected.includes(key))),
-					);
+					setRunnerEnabled(host, key, !isRunnerActive(settingsManager, key));
 				} else result = await showRunnerDetail(host, key, runners, { source: options.sourceEnvironment });
 			}
 			if (result === "stop") return;

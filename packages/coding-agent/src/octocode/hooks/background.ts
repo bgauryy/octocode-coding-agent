@@ -1,9 +1,9 @@
-import { renderPrompt } from "../../core/prompt-template.ts";
 import type { FeatureSetup } from "../../core/features/index.ts";
 import { parseJson } from "../shared/util.ts";
 import { visibleControls } from "@octocodeai/octocode-common/sanitize";
 import type { HookEvent } from "./catalog.ts";
 import type { HookCommand, HookRun } from "./contracts.ts";
+import { hookContext } from "./context-message.ts";
 import { capContext, failureOf, interpret } from "./runner.ts";
 import { sendHookFeedback } from "../wake/senders.ts";
 import { validateCodexOutput } from "./codex-output.ts";
@@ -63,7 +63,7 @@ export function registerBackgroundHooks(api: FeatureSetup) {
 	api.bus.on("session_shutdown", async () => reset(true));
 	const takeContext = () => {
 		if (!pending.length) return undefined;
-		const content = capContext(renderPrompt("hooks/context.md", { source: "background", text: pending.join("\n\n") }));
+		const content = hookContext("background", pending.join("\n\n"));
 		pending = [];
 		return { customType: "octocode-hook-context", content, display: false };
 	};

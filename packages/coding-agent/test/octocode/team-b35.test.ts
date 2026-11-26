@@ -1,11 +1,13 @@
-import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { describeMembers } from "../../src/octocode/team/member-list.ts";
 import type { ReferenceHost } from "../../src/octocode/team/session/references.ts";
 import { sendMessage } from "../../src/octocode/team/session/send.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
+import { openAgentDb } from "../../src/storage/database.ts";
+import { openWorkspaceDb } from "../../src/storage/workspace-database.ts";
 import { tmp } from "./helpers.ts";
+import type { AgentDb } from "../../../db/src/api.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
 
 const member = (id: string, parentId?: string, over: Partial<Member> = {}): Member => ({
@@ -27,6 +29,18 @@ const member = (id: string, parentId?: string, over: Partial<Member> = {}): Memb
 
 const cwd = tmp();
 const open = (file: string) => TeamStore.open(cwd, file);
+
+/** Runs `use` on the connection holding this checkout's workspace rows in the machine file `file` (the file itself while workspace files are off). */
+function withWorkspaceRows<T>(file: string, use: (db: AgentDb["db"]) => T): T {
+	const machine = openAgentDb(file);
+	const rows = openWorkspaceDb(machine, cwd).agent;
+	try {
+		return use(rows.db);
+	} finally {
+		if (rows !== machine) rows.close();
+		machine.close();
+	}
+}
 
 function child(store: TeamStore, me: string): ReferenceHost {
 	const self = store.list().find((each) => each.id === me);
@@ -72,11 +86,11 @@ describe("B35 team mail and liveness", () => {
 			store.close();
 		}
 		// The recipient's row went some way other than retiring it, and the delivery was marked completed.
-		const raw = new DatabaseSync(file);
-		raw.prepare("DELETE FROM agents WHERE id = 'a-1'").run();
-		raw.prepare("UPDATE deliveries SET completed_at = 5 WHERE message = ?").run(id);
-		raw.prepare("UPDATE messages SET created_at = created_at - 120000 WHERE id = ?").run(id);
-		raw.close();
+		withWorkspaceRows(file, (raw) => {
+			raw.prepare("DELETE FROM agents WHERE id = 'a-1'").run();
+			raw.prepare("UPDATE deliveries SET completed_at = 5 WHERE message = ?").run(id);
+			raw.prepare("UPDATE messages SET created_at = created_at - 120000 WHERE id = ?").run(id);
+		});
 		const again = open(file);
 		try {
 			expect(again.deadLetters("p-1")).toEqual([{ id, recipients: ["a-1"], text: "fyi" }]);
@@ -117,9 +131,10 @@ describe("B35 team mail and liveness", () => {
 				dir: "/home/sessions/x",
 			};
 			store.join(member("a-1", "p-1"));
-			const row = new DatabaseSync(file, { readOnly: true })
-				.prepare("SELECT cwd, dir, file FROM sessions WHERE id = 'child-session'")
-				.get();
+			// Session rows live in the machine file, with workspace files on or off.
+			const machine = openAgentDb(file);
+			const row = machine.db.prepare("SELECT cwd, dir, file FROM sessions WHERE id = 'child-session'").get();
+			machine.close();
 			expect(row).toMatchObject({ cwd: "/work/repo", dir: "/home/sessions/x", file: null });
 		} finally {
 			store.close();

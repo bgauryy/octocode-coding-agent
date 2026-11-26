@@ -121,6 +121,8 @@ const providerThroughput = new ProviderThroughput(() => agentDbThroughputStore()
 export interface ThroughputRequestOptions extends CooldownRequestOptions {
 	maxTokens?: number;
 	requestPriority?: RequestPriority;
+	/** The models.json token budget for a model; the `OCTOCODE_BEDROCK_KIMI_TPM` environment variable still wins. */
+	tokensPerMinute?: (model: Model<Api>) => number | undefined;
 }
 
 type Hooks = Pick<ProviderRequestOptions, "onPayload" | "onResponse" | "onTransportRetry" | "onRateLimit">;
@@ -211,9 +213,11 @@ export function throughputStep(
 	return {
 		hooks(upstream, requestModel, env) {
 			metrics.model = requestModel.id;
-			metrics.region = throughputPolicy(requestModel, env)?.region ?? bedrockRegion(requestModel, env);
+			metrics.region =
+				throughputPolicy(requestModel, env, options?.tokensPerMinute?.(requestModel))?.region ??
+				bedrockRegion(requestModel, env);
 			const admit = async () => {
-				const policy = throughputPolicy(sentModel, env);
+				const policy = throughputPolicy(sentModel, env, options?.tokensPerMinute?.(sentModel));
 				if (!policy || metrics.maxTokens === undefined) return;
 				metrics.region = policy.region;
 				// The local cap counts final tokens per minute, so an in-flight request holds its worst-case final charge

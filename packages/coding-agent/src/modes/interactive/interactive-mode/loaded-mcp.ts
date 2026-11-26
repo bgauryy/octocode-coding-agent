@@ -4,7 +4,7 @@ import { ELLIPSIS, GLYPH, SEPARATOR, type StateSource, type UiState } from "@oct
 import type { EventBus } from "@octocodeai/octocode-agent-core";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { getMcpSessionStatus, MCP_STATUS_EVENT, mcpServerMayRun } from "../../../../../mcp/src/api.ts";
-import { getAgentDir, getLegacyConfigDirs } from "../../../config.ts";
+import { getAgentDir, getPiConfigDirs } from "../../../config.ts";
 import { buildContextView, sourceSummary } from "../../../core/discovery/context-view.ts";
 import { STATE_COLOR } from "../../../theme/status.ts";
 import { theme } from "../../../theme/theme.ts";
@@ -45,7 +45,7 @@ export function mcpRow(events: EventBus): LoadedRowSpec {
 
 /** `builtin 1 · octocode global 2 · pi project 1`: where the MCP servers are defined (their names are in the row). */
 function mcpSources(servers: readonly McpStatus[]): string {
-	const view = buildContextView({ discovery: new Map(), mcp: servers, piRoots: getLegacyConfigDirs(getAgentDir()) });
+	const view = buildContextView({ discovery: new Map(), mcp: servers, piRoots: getPiConfigDirs(getAgentDir()) });
 	return view.groups.map((group) => sourceSummary(group, { counted: true })).join(SEPARATOR);
 }
 

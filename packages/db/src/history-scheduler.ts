@@ -41,6 +41,9 @@ export function scheduleHistoryArchive(
 				mirrorFile: target.mirrorFile,
 				archiveDir: target.archiveDir,
 				privateParent: false,
+				workspace: target.workspace,
+				historySource: target.historySource,
+				workspaceDir: target.workspaceDir,
 			});
 			if ((await writer.archive(now(), typeof windows === "function" ? windows() : windows)).skipped)
 				due.set(file, now() + HOUR_MS);

@@ -14,6 +14,7 @@ import {
 	exceedsContextWindow,
 	shouldStopForCompaction,
 } from "../compaction/index.ts";
+import type { SummaryFocus } from "../compaction/summary-focus.ts";
 import { withoutHiddenDeclarations } from "../hidden-declarations.ts";
 import { projectForcedSystemPrompt, type RequestSystemOverride } from "../forced-system-prompt.ts";
 import { convertToLlm } from "../messages.ts";
@@ -39,9 +40,18 @@ export interface AgentHooksHost extends Pick<SessionInternals, "session" | "run"
 		willRetry: boolean,
 		targetModel?: Model<any>,
 		targetThinking?: ThinkingLevel,
+		incomingTokens?: number,
+		focus?: SummaryFocus,
 	): Promise<boolean>;
 	/** Requests the coming compaction's summary ahead when the context nears the threshold (`compaction-prewarm.ts`). */
 	prewarmCompaction(tokens: number, model: Model<any>, thinking?: ThinkingLevel): void;
+}
+
+/** The compaction a feature asked for before this request, taken once (`FeatureContext.requestBoundaryCompaction`). */
+function takeBoundary(host: AgentHooksHost): { focus?: SummaryFocus } | undefined {
+	const boundary = host.run.boundaryCompaction;
+	host.run.boundaryCompaction = undefined;
+	return boundary;
 }
 
 /**
@@ -104,6 +114,7 @@ export function installAgentInputPreparation(host: AgentHooksHost): void {
 	const previousInputSelected = agent.onInputSelected;
 	agent.onInputSelected = (batch) => {
 		inputs.deliverSelected(batch.messages);
+		if (batch.messages.length > 0 && (batch.kind === "steer" || batch.kind === "followUp")) run.lengthContinuations = 0;
 		if (batch.kind === "followUp" && batch.messages.length > 0) run.logicalTurnId = randomUUID();
 		previousInputSelected?.(batch);
 	};
@@ -210,10 +221,11 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 			let refreshInput = previous?.refreshInput;
 			// Input gates and turn_prompt updates have committed. A late update can cross the threshold,
 			// but a declined or insufficient early compaction must not be retried in the same request.
-			if (!thresholdAttempted && needsCompaction(host, model, projection, thinkingLevel)) {
+			const boundary = takeBoundary(host);
+			if (!thresholdAttempted && (boundary !== undefined || needsCompaction(host, model, projection, thinkingLevel))) {
 				thresholdAttempted = true;
 				refreshInput = true;
-				await host.runAutoCompaction("threshold", false, model, thinkingLevel);
+				await host.runAutoCompaction("threshold", false, model, thinkingLevel, undefined, boundary?.focus);
 				// Compaction handlers can queue input that belongs in this same request.
 				host.inputs.flushDuringRun(host.run.outcome);
 				({ previous, context } = await prepare());
@@ -256,9 +268,15 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 		// One attempt per request, as for a model that is not virtual: a declined or futile one is not retried when the
 		// request is prepared again.
 		let thresholdAttempted = attempted.has(request.context);
-		if (!thresholdAttempted && needsCompaction(host, route.model, projection, routeThinking)) {
+		let refreshInput = previous?.refreshInput;
+		const boundary = takeBoundary(host);
+		if (
+			!thresholdAttempted &&
+			(boundary !== undefined || needsCompaction(host, route.model, projection, routeThinking))
+		) {
 			thresholdAttempted = true;
-			await host.runAutoCompaction("threshold", false, route.model, routeThinking);
+			refreshInput = true;
+			await host.runAutoCompaction("threshold", false, route.model, routeThinking, undefined, boundary?.focus);
 			host.inputs.flushDuringRun(host.run.outcome);
 			// The compaction changed the projection, so the request is prepared again: a `prepareRequest` hook this session
 			// wraps runs twice for this request and must give the same answer for the same input.
@@ -272,7 +290,8 @@ function installAgentRequestProjection(host: AgentHooksHost, attempted: WeakSet<
 			...previous,
 			context,
 			model: route.model,
-			thinkingLevel: route.thinkingLevel,
+			thinkingLevel: routeThinking,
+			refreshInput,
 		};
 	};
 }
@@ -284,9 +303,11 @@ function installAgentNextTurnRefresh(host: AgentHooksHost, attempted: WeakSet<Ag
 	agent.prepareNextTurnWithContext = async (turn, signal) => {
 		let projection = session.sessionManager.readSessionProjection();
 		const model = session.model;
-		const compactEarly = model && !isVirtualModel(model) && needsCompaction(host, model, projection);
+		const early = model && !isVirtualModel(model);
+		const boundary = early ? takeBoundary(host) : undefined;
+		const compactEarly = early && (boundary !== undefined || needsCompaction(host, model, projection));
 		if (compactEarly) {
-			await host.runAutoCompaction("threshold", false);
+			await host.runAutoCompaction("threshold", false, undefined, undefined, undefined, boundary?.focus);
 			host.inputs.flushDuringRun(host.run.outcome);
 			projection = session.sessionManager.readSessionProjection();
 		}

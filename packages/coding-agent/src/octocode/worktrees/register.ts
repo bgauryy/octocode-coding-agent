@@ -3,12 +3,13 @@ import type { Subcommands } from "../shared/commands.ts";
 import { registerWorktreeCommand, type WorktreeCommandDependencies } from "./command.ts";
 import type { ParkedResident } from "./occupants.ts";
 import { registerWorktreeFooter, type WorktreeTeam } from "./footer.ts";
+import { type NoticeTeam, registerOrchestratorNotice } from "./orchestrator-notice.ts";
 
-/** The `/worktree` command and the footer line that shows the worktree and the agents in the others. */
+/** The `/worktree` command, the footer line that shows the worktree and the agents in the others, and a linked session's done notice. */
 export function registerWorktrees(
 	api: FeatureSetup,
 	commands: Subcommands,
-	team: WorktreeTeam,
+	team: WorktreeTeam & NoticeTeam & { notice(text: string): unknown },
 	parked?: () => ParkedResident[],
 	merge?: WorktreeCommandDependencies["merge"],
 ): void {
@@ -23,4 +24,6 @@ export function registerWorktrees(
 		agentId: () => team.id,
 	});
 	registerWorktreeFooter(api, team);
+	// A linked worktree session is a proxy: it tells its orchestrator when an item is done.
+	registerOrchestratorNotice(api, team, (text) => void team.notice(text));
 }

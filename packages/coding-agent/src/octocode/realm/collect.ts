@@ -6,20 +6,20 @@ import type { CommandContext } from "../../core/features/index.ts";
 import { worktreesDir } from "../worktree-paths/own-worktree.ts";
 import { canonical } from "../worktrees/repo.ts";
 import { worktreeStatuses, type WorktreeStatus } from "../worktrees/status.ts";
-import { buildRealms, type RealmFolder, type RealmKind, type RealmSession, type RealmView } from "./model.ts";
+import { buildPlaces, type PlaceFolder, type PlaceKind, type PlaceSession, type PlaceView } from "./model.ts";
 import type { SessionSource } from "./sessions.ts";
 
-/** What the realm view reads besides git: the team's live agents and the saved sessions. */
-export interface RealmDependencies {
+/** What the place view reads besides git: the team's live agents and the saved sessions. */
+export interface PlaceDependencies {
 	/** Live agents of this repository's team, every worktree included. */
 	members: () => Member[];
 	sessions: SessionSource;
 }
 
-function folderOf(status: WorktreeStatus, isolatedDir: string): RealmFolder {
+function folderOf(status: WorktreeStatus, isolatedDir: string): PlaceFolder {
 	const { entry } = status;
 	const gone = entry.prunable || !fs.existsSync(entry.path);
-	const kind: RealmKind = status.main
+	const kind: PlaceKind = status.main
 		? "checkout"
 		: status.name
 			? "worktree"
@@ -38,17 +38,17 @@ function folderOf(status: WorktreeStatus, isolatedDir: string): RealmFolder {
 }
 
 /**
- * The repository's realms with their agents and sessions. Rejects when the session's folder is not in a git repository;
- * when only the session list fails, the realms still come back, with `sessionsProblem` saying why they show none.
+ * The repository's places with their agents and sessions. Rejects when the session's folder is not in a git repository;
+ * when only the session list fails, the places still come back, with `sessionsProblem` saying why they show none.
  */
-export async function collectRealms(
+export async function collectPlaces(
 	ctx: CommandContext,
-	deps: RealmDependencies,
-): Promise<{ view: RealmView; sessionsProblem?: string }> {
+	deps: PlaceDependencies,
+): Promise<{ view: PlaceView; sessionsProblem?: string }> {
 	const { main, statuses } = await worktreeStatuses(ctx.cwd);
 	const isolatedDir = canonical(worktreesDir(ctx.cwd));
 	const folders = statuses.map((status) => folderOf(status, isolatedDir));
-	let sessions: RealmSession[] = [];
+	let sessions: PlaceSession[] = [];
 	let sessionsProblem: string | undefined;
 	try {
 		sessions = await deps.sessions(
@@ -58,6 +58,6 @@ export async function collectRealms(
 	} catch (error) {
 		sessionsProblem = errorMessage(error);
 	}
-	const view = buildRealms({ main, folders, members: deps.members(), sessions, here: ctx.cwd });
+	const view = buildPlaces({ main, folders, members: deps.members(), sessions, here: ctx.cwd });
 	return { view, ...(sessionsProblem ? { sessionsProblem } : {}) };
 }

@@ -36,6 +36,21 @@ export function workerForeignModules(moduleIds) {
 	return moduleIds.filter((id) => WORKER_FOREIGN.some((pattern) => pattern.test(id)));
 }
 
+/** The oldest Node the package supports (`engines.node` in the coding agent's package.json). */
+export const MIN_NODE = [24, 15, 0];
+
+/**
+ * Runs before the bundle is imported, in syntax any Node accepts: an older Node would otherwise fail inside the bundle
+ * with a syntax or missing-API error.
+ */
+const NODE_GUARD_LINES = [
+	`const [major, minor] = process.versions.node.split(".").map(Number);`,
+	`if (major < ${MIN_NODE[0]} || (major === ${MIN_NODE[0]} && minor < ${MIN_NODE[1]})) {`,
+	`\tconsole.error(\`Octocode needs Node >= ${MIN_NODE.join(".")} (found \${process.version}). Install the current LTS from https://nodejs.org\`);`,
+	"\tprocess.exit(1);",
+	"}",
+];
+
 /**
  * A launcher: it turns on the compile cache, then imports the bundle and calls `run`. With `fast`, a fast command given
  * alone loads only its own file. The bundle uses top-level await, which require() cannot load.
@@ -45,6 +60,7 @@ export function launcherSource(run, fast = []) {
 		"#!/usr/bin/env node",
 		'import { enableCompileCache } from "node:module";',
 		"",
+		...NODE_GUARD_LINES,
 		"enableCompileCache();",
 	];
 	if (fast.length === 0)

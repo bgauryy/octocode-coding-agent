@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../../db/src/api.ts";
 import { SettingsSchema } from "../../../src/core/settings-schema.ts";
+import { MONITOR_DEFAULTS } from "../../../src/core/settings-schema/monitor.ts";
 import { openBacklog } from "../../../src/octocode/backlog/context.ts";
 import { CheckIn, checkInConfig, checkInSeconds } from "../../../src/octocode/monitor/attention/check-in.ts";
 import {
@@ -71,9 +72,10 @@ describe("context bands", () => {
 
 	it("tells each band once, as a hidden note that starts no turn, and records it", async () => {
 		const s = session();
+		const bands = [0.5, 0.75, 0.9];
 		// The limit before automatic compaction is below the window; 100k of 200k is past half of it.
-		for (const tokens of [10_000, 100_000, 100_000, 140_000, 175_000, 175_000]) s.at(tokens);
-		expect(s.bands()).toEqual([0.5, 0.75, 0.9]);
+		for (const tokens of [10_000, 100_000, 100_000, 140_000, 175_000, 175_000]) s.at(tokens, bands);
+		expect(s.bands()).toEqual(bands);
 		for (const { message, options } of s.sent) {
 			expect(message).toMatchObject({ customType: CONTEXT_NOTICE_TYPE, display: false });
 			expect(options).toEqual({ triggerTurn: false });
@@ -89,13 +91,21 @@ describe("context bands", () => {
 
 	it("does not repeat a band after a resume, and starts over after a compaction", () => {
 		const first = session();
-		first.at(100_000, undefined, "c-1");
+		first.at(180_000, undefined, "c-1");
 		const resumed = session();
-		resumed.at(100_000, undefined, "c-1", first.entries);
+		resumed.at(180_000, undefined, "c-1", first.entries);
 		expect(resumed.sent).toEqual([]);
-		resumed.at(100_000, undefined, "c-2", first.entries);
-		expect(resumed.bands()).toEqual([0.5]);
+		resumed.at(180_000, undefined, "c-2", first.entries);
+		expect(resumed.bands()).toEqual([0.9]);
 		expect(resumed.sent[0].message.details).toMatchObject({ compactionId: "c-2" });
+	});
+
+	it("tells the model only once automatic compaction is near, by default", () => {
+		const s = session();
+		for (const tokens of [100_000, 140_000]) s.at(tokens);
+		expect(s.sent).toEqual([]);
+		s.at(180_000);
+		expect(s.bands()).toEqual([0.9]);
 	});
 
 	it("sends nothing with no bands, sorts unsorted ones, and falls back on invalid ones", () => {
@@ -104,8 +114,8 @@ describe("context bands", () => {
 		expect(off.sent).toEqual([]);
 		expect(contextBands({ monitor: { contextBands: [0.9, 0.6] } })).toEqual([0.6, 0.9]);
 		for (const invalid of [[0.5, 1], [0], [-0.2], [Number.NaN], "0.5"])
-			expect(contextBands({ monitor: { contextBands: invalid as never } })).toEqual([0.5, 0.75, 0.9]);
-		expect(contextBands(undefined)).toEqual([0.5, 0.75, 0.9]);
+			expect(contextBands({ monitor: { contextBands: invalid as never } })).toEqual(MONITOR_DEFAULTS.contextBands);
+		expect(contextBands(undefined)).toEqual(MONITOR_DEFAULTS.contextBands);
 		const custom = session();
 		custom.at(130_000, contextBands({ monitor: { contextBands: [0.9, 0.6] } }));
 		expect(custom.bands()).toEqual([0.6]);

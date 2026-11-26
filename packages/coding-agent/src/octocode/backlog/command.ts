@@ -224,7 +224,6 @@ export function backlogCommand(api: FeatureSetup, deps: CommandDeps): Subcommand
 			const tail = line.slice(word.length).trim();
 			try {
 				if (word === "") {
-					if (ctx.hasUI) return await doWeb(ctx, backlog);
 					return say(ctx, boardText(backlog.store, backlog.session));
 				}
 				const command = Object.hasOwn(verbs, word) ? verbs[word] : undefined;

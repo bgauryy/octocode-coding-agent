@@ -2,8 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { EditLog } from "../../src/octocode/team/edits.ts";
 import { teamWorkspace } from "../../src/octocode/team/store/workspace.ts";
 import { tmp } from "./helpers.ts";
@@ -123,8 +122,8 @@ describe("the compaction's modified-file ledger", () => {
 describe("the ledger's edit log", () => {
 	it("reads a subagent's changes from this checkout's edit log", async () => {
 		const cwd = tmp();
-		const db = sharedAgentDb();
-		const log = new EditLog(db.db, registeredWorkspace(teamWorkspace(cwd), db).id);
+		const { agent, workspace } = workspaceDb(teamWorkspace(cwd));
+		const log = new EditLog(agent.db, workspace.id);
 		const root = log.workspace;
 		log.record("worker-1", "bash", [path.join(root, "src", "child.ts")], 1_500);
 		log.record("someone-else", "file", [path.join(root, "src", "other.ts")], 1_500);

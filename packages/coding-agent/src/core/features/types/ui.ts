@@ -146,6 +146,9 @@ export interface SessionUI {
 	/** Show a text input dialog. */
 	input(title: string, placeholder?: string, opts?: DialogOptions): Promise<string | undefined>;
 
+	/** The live terminal renderer's diagnostics (`/debug terminal`), one line each; only a terminal host has them. */
+	terminalDiagnostics?(): string[];
+
 	/**
 	 * Show a batch of typed questions together and return one `Reply` per question, in order (`Question` and `Reply` are
 	 * the contracts' own). Optional: a host that draws questions itself provides it (an RPC client that declared `ask`

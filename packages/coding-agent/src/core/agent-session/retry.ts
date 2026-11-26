@@ -22,6 +22,7 @@ import {
 import { createAbortError, sleepUnlessAborted } from "@octocodeai/octocode-ai/utils/abort";
 import type { CustomMessage } from "../messages.ts";
 import { formatDuration } from "../../utils/duration.ts";
+import { committedBy } from "./replay-safety.ts";
 import { RETRY_CANCELLED_ENTRY } from "./types.ts";
 import type { SessionInternals } from "./host.ts";
 import type { AgentSessionEvent } from "./types.ts";
@@ -156,6 +157,11 @@ export class SessionRetry {
 		return isRetryableAssistantError(message);
 	}
 
+	/** A retryable failure whose request committed no shown text and ran no tool, so sending it again repeats nothing. */
+	mayReplay(message: AssistantMessage): boolean {
+		return this.isRetryableError(message) && committedBy(this.host.run.attempt, message) === undefined;
+	}
+
 	willRetryAfterAgentEnd(event: Extract<AgentEvent, { type: "agent_end" }>): boolean {
 		if (this.host.run.agentRunAbortRequested) return false;
 		const settings = this.host.session.settingsManager.getRetrySettings();
@@ -176,7 +182,7 @@ export class SessionRetry {
 								this.sinceFirstFailureMs(),
 								this.sinceFirstRequestMs(message),
 							))) &&
-					this.isRetryableError(message)
+					this.mayReplay(message)
 				);
 			}
 		}

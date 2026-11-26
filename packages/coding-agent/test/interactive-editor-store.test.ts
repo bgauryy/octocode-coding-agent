@@ -2,7 +2,6 @@ import { animationClock, Container, type TUI } from "@octocodeai/octocode-tui";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { updateEditorBorderColor } from "../src/modes/interactive/interactive-mode/view-state.ts";
 import { bindEditorState } from "../src/modes/interactive/state/bind-editor.ts";
-import { bindRender } from "../src/modes/interactive/state/bind-render.ts";
 import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { initTheme, theme } from "../src/theme/theme.ts";
 import { createFakeHost } from "./interactive-mode-host.ts";
@@ -23,7 +22,6 @@ function setup(thinkingLevel: string = "off") {
 		session,
 	});
 	bindEditorState(host);
-	bindRender(uiStore, host.ui);
 	return { host, uiStore, requestRender, invalidate, session };
 }
 

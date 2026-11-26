@@ -9,8 +9,7 @@ import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
 import { ChainQueue, openPrerequisites, type AfterHost } from "../../src/octocode/subagents/chain.ts";
 import { parsePrerequisite, PrerequisiteGate, type GateHost } from "../../src/octocode/subagents/prerequisites.ts";
 import { unlockedSpec } from "../../src/octocode/timer/conditions/unlocked.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 
@@ -119,8 +118,8 @@ describe.runIf(process.platform !== "win32")("the board's blocked mark", () => {
 				undefined,
 				ctx,
 			);
-		const agent = sharedAgentDb();
-		const repo = registeredWorkspace(ctx.cwd, agent).id;
+		const { agent, workspace } = workspaceDb(ctx.cwd);
+		const repo = workspace.id;
 		const marks = () => itemMarks(agent.db, repo, [getItem(agent.db, repo, added.ref)!]).get(added.ref);
 		expect(marks()?.blockedBy).toEqual(["bash-1"]);
 		jobs.stop("bash-1", "user");

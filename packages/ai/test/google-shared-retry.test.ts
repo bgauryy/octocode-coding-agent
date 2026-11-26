@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { stream } from "../src/api/google-generative-ai.ts";
 import { googleContext, googleFrames, googleModel } from "./google-fetch-fixture.ts";
 
@@ -10,6 +10,13 @@ const success = () =>
 	]);
 
 describe("google request retries", () => {
+	// The request loads the SDK and the thinking helpers on first use, real I/O that fake timers cannot advance: load
+	// them first, so the retry wait is already scheduled when the test moves the clock.
+	beforeAll(async () => {
+		await import("@ai-sdk/google");
+		await import("../src/api/ai-sdk/google-thinking.ts");
+	});
+
 	afterEach(() => {
 		vi.useRealTimers();
 	});

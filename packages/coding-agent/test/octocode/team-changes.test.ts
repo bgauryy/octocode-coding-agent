@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -159,9 +160,35 @@ describe("recent changes by agent", () => {
 		expect(limited).toContain("lib/three.ts");
 		expect(limited).toMatch(/2 more; raise limit/);
 		await expect(changes(b, { paths: ["../elsewhere/"] })).rejects.toThrow(/outside it: \.\.\/elsewhere\//);
-		expect(text(await changes(b, { paths: ["nothing/"] }))).toBe(
-			"No agent changed files under nothing/ in the last 60m. Files changed outside agents (you, git, scripts, bash commands whose writes cannot be named) are not tracked: search files by modification time for those.",
-		);
+		const empty = text(await changes(b, { paths: ["nothing/"] }));
+		expect(empty).toContain("No agent changed files under nothing/ in the last 60m.");
+		expect(empty).not.toContain("unattributed (outside agents)");
+	});
+
+	it("lists a path git reports changed that no agent recorded as unattributed, with its status", async () => {
+		const { a, b, cwd } = await pair();
+		a.team.join();
+		const git = (...args: string[]) => execFileSync("git", args, { cwd, stdio: "ignore" });
+		git("init", "-q");
+		fs.writeFileSync(path.join(cwd, "tracked.ts"), "one\n");
+		fs.writeFileSync(path.join(cwd, "agent.ts"), "one\n");
+		git("add", ".");
+		git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base");
+		// Modified and staged outside any tool, a new untracked file, and a file an agent recorded.
+		fs.writeFileSync(path.join(cwd, "tracked.ts"), "two\n");
+		git("add", "tracked.ts");
+		fs.writeFileSync(path.join(cwd, "fresh.ts"), "new\n");
+		fs.writeFileSync(path.join(cwd, "agent.ts"), "two\n");
+		await wrote(a, "agent.ts");
+		const listed = text(await changes(b));
+		const section = listed.slice(listed.indexOf("unattributed (outside agents)"));
+		expect(section).toMatch(/^- M tracked\.ts · \d+s ago$/m);
+		expect(section).toMatch(/^- untracked fresh\.ts · \d+s ago$/m);
+		expect(section).not.toContain("agent.ts");
+		// A path outside the window (mtime before it) is not listed.
+		const old = new Date(Date.now() - 3 * 3_600_000);
+		fs.utimesSync(path.join(cwd, "fresh.ts"), old, old);
+		expect(text(await changes(b))).not.toContain("fresh.ts");
 	});
 
 	it("says changes are kept a day when a longer window is asked for, and searches that day", async () => {

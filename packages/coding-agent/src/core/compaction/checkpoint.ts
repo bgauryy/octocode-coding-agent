@@ -3,7 +3,7 @@ import { renderPrompt } from "../prompt-template.ts";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { CHARS_PER_TOKEN, charsToTokens, type TokenModel } from "@octocodeai/octocode-ai/utils/estimate";
+import { charsPerToken, charsToTokens, type TokenModel } from "@octocodeai/octocode-ai/utils/estimate";
 import type { CompactionEntry, SessionEntry } from "../session-manager.ts";
 import { buildPathProjection, getCompactionBoundarySystem } from "../session-manager/context.ts";
 import type { CompactionResult } from "./types.ts";
@@ -180,6 +180,7 @@ type FinalizeOptions = {
 	contextWindow: number;
 	reserveTokens: number;
 	sessionFile?: string;
+	model?: TokenModel;
 };
 
 /**
@@ -230,7 +231,9 @@ function finalizeWithFiles(candidate: CompactionResult, options: FinalizeOptions
 		if (summary !== result.summary) result = { ...result, summary };
 	}
 	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return result;
-	const projectedTokens = projectAfterCompaction(branchEntries, result.firstKeptEntryId, result.tokensBefore);
+	const { model } = options;
+	const tokenRatio = charsPerToken(model);
+	const projectedTokens = projectAfterCompaction(branchEntries, result.firstKeptEntryId, result.tokensBefore, model);
 	const available = inputRoomTokens(contextWindow, reserveTokens, options.maxInputTokens);
 	const summaryBudget = Math.min(
 		reserveTokens > 0 ? inlineSummaryTokens(reserveTokens) : available,
@@ -241,23 +244,24 @@ function finalizeWithFiles(candidate: CompactionResult, options: FinalizeOptions
 			"Compaction cannot fit the retained context and a checkpoint in the target window.",
 		);
 	}
-	if (charsToTokens(result.summary.length) <= summaryBudget && projectedTokens(result.summary) <= available)
+	if (charsToTokens(result.summary.length, model) <= summaryBudget && projectedTokens(result.summary) <= available)
 		return result;
 	if (!sessionFile) {
 		// An in-memory session keeps nothing on disk: the summary stays inline, cut to fit, with a marker.
-		let keep = Math.min(result.summary.length, summaryBudget * CHARS_PER_TOKEN);
+		let keep = Math.floor(Math.min(result.summary.length, summaryBudget * tokenRatio));
 		for (let attempt = 0; attempt < 8 && keep > 0; attempt++) {
 			const summary = clipWithMarker(result.summary, keep);
 			const over = projectedTokens(summary) - available;
-			if (charsToTokens(summary.length) <= summaryBudget && over <= 0) return { ...result, summary };
-			keep -= Math.max(CHARS_PER_TOKEN, Math.max(over, 0) * CHARS_PER_TOKEN);
+			if (charsToTokens(summary.length, model) <= summaryBudget && over <= 0) return { ...result, summary };
+			keep -= Math.ceil(Math.max(tokenRatio, Math.max(over, 0) * tokenRatio));
 		}
 		throw new CheckpointPersistenceError(
 			"Compaction cannot fit the retained context and a shortened checkpoint in the target window.",
 		);
 	}
 	const file = persist(result.summary, sessionFile);
-	const fits = (text: string) => charsToTokens(text.length) <= summaryBudget && projectedTokens(text) <= available;
+	const fits = (text: string) =>
+		charsToTokens(text.length, model) <= summaryBudget && projectedTokens(text) <= available;
 	const summary = archivedView(result.summary, file, fits);
 	if (!fits(summary)) {
 		throw new CheckpointPersistenceError(

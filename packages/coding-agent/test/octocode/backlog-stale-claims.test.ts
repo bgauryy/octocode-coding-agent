@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { registeredWorkspace, workspaceDb } from "../../src/storage/workspace-database.ts";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
@@ -42,17 +42,18 @@ function setup() {
 	};
 	const start = (reason: string) => fake.fire("session_start", { type: "session_start", reason }, ctx);
 	const workspace = () => registeredWorkspace(cwd).id;
+	const rows = () => workspaceDb(cwd).agent.db;
 	/** An ongoing item held by `holder`, last touched `idleDays` ago. */
 	const held = (seq: number, title: string, holder: string, idleDays: number) =>
-		sharedAgentDb()
-			.db.prepare(
+		rows()
+			.prepare(
 				"INSERT INTO backlog (workspace_id, seq, title, state, assignee, created_by, created_at, updated_at) VALUES (?, ?, ?, 'ongoing', ?, 'user', 0, ?)",
 			)
 			.run(workspace(), seq, title, holder, Date.now() - idleDays * DAY);
 	/** A session whose recorded process runs: the parent of this test process. */
 	const liveSession = (id: string) =>
 		sharedAgentDb().db.prepare("INSERT INTO sessions (id, pid) VALUES (?, ?)").run(id, process.ppid);
-	return { backlog, held, liveSession, start, workspace };
+	return { backlog, held, liveSession, rows, start, workspace };
 }
 
 describe("claims of ended sessions", () => {
@@ -79,7 +80,7 @@ describe("claims of ended sessions", () => {
 	it("keeps the item of an ended holder while a child run on it is open", async () => {
 		const t = setup();
 		t.held(20, "Child still working", "ended-session", 30);
-		const db = sharedAgentDb().db;
+		const db = t.rows();
 		db.prepare(
 			"INSERT INTO agents (id, team, workspace_id, role, pid, status, joined_at, seen_at) VALUES ('kid-1', 't', ?, 'child', 1, 'idle', 0, 0)",
 		).run(t.workspace());

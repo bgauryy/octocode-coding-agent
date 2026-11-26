@@ -4,9 +4,10 @@ import { renderPrompt } from "../prompt-template.ts";
 /**
  * The focus a compaction's summary is asked to keep beside the required rules, labelled by who wrote it: the user (`/compact
  * <focus>`, RPC, SDK) or the agent itself (its `compact` tool). The agent's focus is its own notes on what it needs next,
- * so the summarizer must not record it as the user's words. A plain string is the user's.
+ * so the summarizer must not record it as the user's words. `item` is the harness's record of backlog items finished
+ * just before the compaction. A plain string is the user's.
  */
-export type FocusSource = "user" | "agent";
+export type FocusSource = "user" | "agent" | "item";
 
 export interface SummaryFocus {
 	text: string;
@@ -23,7 +24,11 @@ function summaryFocus(focus: string | SummaryFocus | undefined): SummaryFocus | 
 export function focusBlock(focus: string | SummaryFocus | undefined): string {
 	const labelled = summaryFocus(focus);
 	return labelled
-		? renderPrompt("workflows/compaction/extra-focus.md", { agent: labelled.source === "agent", text: labelled.text })
+		? renderPrompt("workflows/compaction/extra-focus.md", {
+				agent: labelled.source === "agent",
+				item: labelled.source === "item",
+				text: labelled.text,
+			})
 		: "";
 }
 

@@ -115,14 +115,20 @@ export class SendReceipts {
 		return this.preparing.size;
 	}
 
-	/** Refuses a keyed send when every receipt slot is taken; existing receipts are never evicted (a retry must still find its own). */
+	/** Refuses a keyed send when every slot holds a dispatched or active receipt; cancelled (never-sent) slots yield oldest first. */
 	assertRoom(key: string | undefined): void {
-		if (key && this.byKey.size >= SEND_RECEIPT_LIMIT)
-			throw new RpcError(
-				ERR.unavailable,
-				"This session has reached its message key capacity; existing receipts are retained",
-				{ execution: "not-sent" },
-			);
+		if (!key || this.byKey.has(key) || this.byKey.size < SEND_RECEIPT_LIMIT) return;
+		for (const [existingKey, existing] of this.byKey) {
+			if (existing.phase === "cancelled") {
+				this.byKey.delete(existingKey);
+				if (this.byKey.size < SEND_RECEIPT_LIMIT) return;
+			}
+		}
+		throw new RpcError(
+			ERR.unavailable,
+			"This session has reached its message key capacity; existing receipts are retained",
+			{ execution: "not-sent" },
+		);
 	}
 
 	/** Follows the session: a different one than before drops everything of the old one. */

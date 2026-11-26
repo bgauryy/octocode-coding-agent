@@ -1,5 +1,7 @@
 import { handleTerminalCommands } from "../workspace/terminal-commands.ts";
 import { randomBytes } from "node:crypto";
+import { closeIdleWorkspaceFiles } from "../../../../db/src/api.ts";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { Value } from "typebox/value";
@@ -143,6 +145,9 @@ function requestUrl(target: string | undefined, origin: string): URL | undefined
  * `Authorization` header or the socket hello, never from a URL; no cookies, no CORS headers, no OPTIONS answer;
  * every scoped route names a session or repository id the daemon itself indexed, never a path.
  */
+/** How long a workspace file's connection stays open unused in the daemon. */
+const WORKSPACE_IDLE_MS = 5 * 60_000;
+
 export async function startDaemonServer(options: DaemonServerOptions): Promise<DaemonServer> {
 	const page = options.page ?? daemonPage();
 	const token = randomBytes(32).toString("hex");
@@ -157,6 +162,10 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 	const launchCodes = new LaunchCodes();
 	const registry = new SessionRegistry(options.env, notify);
 	const catalog = new RepoCatalog(options.env, registry);
+	// The daemon serves every workspace: a workspace file's connection closes after a while unused, and reopens on demand.
+	const stopIdle = sharedClock.subscribe(() => closeIdleWorkspaceFiles(WORKSPACE_IDLE_MS), {
+		everyMs: WORKSPACE_IDLE_MS,
+	});
 	const state = { draining: false };
 	const tabs = new TabHub({
 		tokens,
@@ -367,6 +376,7 @@ export async function startDaemonServer(options: DaemonServerOptions): Promise<D
 		status,
 		close: () =>
 			new Promise<void>((resolve) => {
+				stopIdle();
 				registry.close();
 				tabs.closeAll();
 				server.close(() => resolve());

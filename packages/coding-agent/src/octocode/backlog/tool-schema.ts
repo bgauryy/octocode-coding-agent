@@ -30,7 +30,7 @@ export interface LinkArgument {
  * names the failing path).
  *
  * `version` is declared on `backlog` and on a `backlogPlan` entry: the version the caller read (`get` and the index
- * show it), refused when the item changed since. Accepted beyond the declaration (`legacyEntityFields`): the stored
+ * show it), refused when the item changed since. Accepted beyond the declaration (`undeclaredEntityFields`): the stored
  * form of `completion`, and the older forms of a link (a reference object as `target`, a null for the unused one of
  * `target` and `resource`).
  */
@@ -68,7 +68,7 @@ export const linksField = {
 	description: "references; replaces the current ones",
 };
 
-const LegacyLinkField = Type.Unsafe<LinkArgument[]>({
+const AcceptedLinkField = Type.Unsafe<LinkArgument[]>({
 	type: "array",
 	items: {
 		type: "object",
@@ -87,8 +87,8 @@ const LegacyLinkField = Type.Unsafe<LinkArgument[]>({
  * What a call may carry beyond the declaration: `links` in either form, `version` as an integer, and `completion` in either shape,
  * which `completionInput` checks so a missing key is named in plain words instead of a schema path.
  */
-export const legacyEntityFields = {
-	links: Type.Optional(LegacyLinkField),
+export const undeclaredEntityFields = {
+	links: Type.Optional(AcceptedLinkField),
 	version: Type.Optional(Type.Integer()),
 	completion: Type.Optional(Type.Unsafe<Record<string, unknown>>({ type: "object" })),
 };

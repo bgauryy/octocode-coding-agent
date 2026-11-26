@@ -132,6 +132,11 @@ export interface AuthResult {
 	env?: ProviderEnv;
 	/** Human-readable label for status UI: "ANTHROPIC_API_KEY", "OAuth", "~/.aws/credentials". */
 	source?: string;
+	/**
+	 * Forgets a cached credential (a command's printed key) so the next resolution reads it again. A chat request the
+	 * provider refuses before any output calls it once and retries.
+	 */
+	renew?: () => void;
 }
 
 export interface AuthCheck {

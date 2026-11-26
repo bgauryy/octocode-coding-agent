@@ -29,6 +29,12 @@ export interface ContextUsage {
 	percent: number | null;
 }
 
+/** What `requestBoundaryCompaction` takes: the summary focus and who wrote it (default `agent`). */
+export interface BoundaryCompactionOptions {
+	customInstructions?: string;
+	requestedBy?: CompactionRequester;
+}
+
 export interface CompactOptions {
 	customInstructions?: string;
 	/** Default `user`; the agent's own request (its `compact` tool) says `agent`. */
@@ -92,6 +98,12 @@ export interface FeatureContext {
 	getTurnId(): string | undefined;
 	/** Trigger compaction without awaiting completion. */
 	compact(options?: CompactOptions): void;
+	/**
+	 * Compacts once, before the run's next model request, with `customInstructions` as the summary focus. A later call
+	 * replaces an earlier one. The request is dropped when the run ends, is aborted or starts anew, so a run that ends
+	 * first needs its own fallback. Context-size limits and failure pacing of automatic compaction still apply.
+	 */
+	requestBoundaryCompaction(options?: BoundaryCompactionOptions): void;
 	/** Get the current effective system prompt. */
 	getSystemPrompt(): string;
 	/** Get the current base system-prompt construction options (read-only: context files, skills). */

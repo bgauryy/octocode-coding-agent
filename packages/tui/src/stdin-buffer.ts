@@ -26,10 +26,14 @@ import {
 	parseUnmodifiedKittyPrintableCodepoint,
 	TERMINAL_REPLY_HEADER_PATTERN,
 } from "./stdin-buffer/sequences.ts";
+import { DroppedMouseReport, MOUSE_TAIL_WINDOW_MS } from "./stdin-buffer/dropped-mouse.ts";
 import { isTypedCodePoint } from "./stdin-buffer/typed-run.ts";
 
 const DEFAULT_SEQUENCE_TIMEOUT_MS = 50;
 const DEFAULT_ESCAPE_TIMEOUT_MS = 10;
+const PARTIAL_MOUSE_REPORT_PATTERN = /^\x1b\[<[\d;]*$/;
+const ORPHAN_MOUSE_REPORT_PATTERN = /^\[<\d+;\d+;\d+[Mm]/;
+const ORPHAN_MOUSE_PREFIX_PATTERN = /^\[(?:<(?:\d+(?:;(?:\d+(?:;\d*)?)?)?)?)?$/;
 /**
  * A bracketed paste whose end marker has not arrived after this long without input is emitted as is, so a lost
  * marker cannot capture all later typing. Terminals send a paste in quick chunks, even over SSH.
@@ -102,7 +106,16 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		this.escapeTimeoutMs = options.escapeTimeout ?? DEFAULT_ESCAPE_TIMEOUT_MS;
 		this.pasteTimeoutMs = options.pasteTimeout ?? PASTE_IDLE_TIMEOUT_MS;
 		this.typedRuns = options.typedRuns ?? true;
+		this.droppedMouse = new DroppedMouseReport(this.timeoutMs, (held) => this.process(held));
 	}
+
+	private afterLoneEscape = false;
+	private loneEscapeAt = 0;
+	/** What the flush already emitted after the ESC: "" for a lone ESC, "[" for ESC [ (also Alt+[). */
+	private orphanLead = "";
+	private readonly droppedMouse: DroppedMouseReport;
+	private orphanMouse: string | undefined;
+	private orphanTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	public process(data: string | Buffer): void {
 		if (this.timeout) {
@@ -127,6 +140,13 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		if (str.length === 0 && this.buffer.length === 0) {
 			this.emitDataSequence("");
 			return;
+		}
+
+		if (this.afterLoneEscape && Date.now() - this.loneEscapeAt > MOUSE_TAIL_WINDOW_MS) this.afterLoneEscape = false;
+		str = this.droppedMouse.expire(Date.now()) + str;
+		if (this.orphanMouse !== undefined || this.afterLoneEscape || this.droppedMouse.active) {
+			str = this.filterOrphanMouse(str);
+			if (str.length === 0) return;
 		}
 
 		this.buffer += str;
@@ -165,6 +185,15 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 			// terminator into Ctrl+G (the external editor shortcut). Other input,
 			// including Alt+] followed by text, must retain bounded recovery.
 			if (TERMINAL_REPLY_HEADER_PATTERN.test(this.buffer)) return;
+			if (PARTIAL_MOUSE_REPORT_PATTERN.test(this.buffer)) {
+				// A cut SGR mouse report is not text: drop it if its tail never arrives.
+				this.timeout = setTimeout(() => {
+					this.timeout = null;
+					this.droppedMouse.begin(this.buffer, Date.now());
+					this.buffer = "";
+				}, this.timeoutMs);
+				return;
+			}
 			const timeoutMs =
 				this.buffer === ESC
 					? this.escapeTimeoutMs
@@ -173,6 +202,9 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 						: this.timeoutMs;
 			this.timeout = setTimeout(() => {
 				const flushed = this.flush();
+				this.afterLoneEscape = flushed.length === 1 && (flushed[0] === ESC || flushed[0] === `${ESC}[`);
+				this.orphanLead = flushed[0]?.slice(ESC.length) ?? "";
+				this.loneEscapeAt = Date.now();
 
 				for (const sequence of flushed) {
 					if (sequence.length > 2 && isControlString(sequence)) {
@@ -186,6 +218,44 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 				}
 			}, timeoutMs);
 		}
+	}
+
+	/**
+	 * A mouse report whose ESC was flushed alone arrives as `[<b;x;yM`. Drop it, including when it is cut again,
+	 * so it never becomes typed text. Held text that turns out not to be a report is released unchanged.
+	 */
+	private filterOrphanMouse(str: string): string {
+		if (this.droppedMouse.active) {
+			// The head of a report was dropped on timeout: a chunk that completes it is its tail, not text.
+			const fed = this.droppedMouse.feed(str);
+			if (fed.kind === "consumed") return fed.rest;
+			if (fed.kind === "held") return "";
+			str = fed.text;
+		}
+		const pending = (this.orphanMouse ?? "") + str;
+		this.orphanMouse = undefined;
+		if (this.orphanTimeout) clearTimeout(this.orphanTimeout);
+		this.orphanTimeout = null;
+		this.afterLoneEscape = false;
+		// The flush already emitted the lead (`[` after `ESC [`); match the report with it, drop only what follows.
+		const lead = this.orphanLead;
+		this.orphanLead = "";
+		const probe = lead + pending;
+		const complete = ORPHAN_MOUSE_REPORT_PATTERN.exec(probe);
+		if (complete) return pending.slice(complete[0].length - lead.length);
+		if (ORPHAN_MOUSE_PREFIX_PATTERN.test(probe)) {
+			this.orphanLead = lead;
+			this.orphanMouse = pending;
+			this.orphanTimeout = setTimeout(() => {
+				const held = this.orphanMouse;
+				this.orphanMouse = undefined;
+				this.orphanLead = "";
+				this.orphanTimeout = null;
+				if (held) this.process(held);
+			}, this.timeoutMs);
+			return "";
+		}
+		return pending;
 	}
 
 	/** Emit the paste once its end marker arrived, then process what followed; otherwise wait for more of it. */
@@ -289,6 +359,12 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		this.pasteTail = "";
 		this.pendingKittyPrintableCodepoint = undefined;
 		this.replyPrefix = undefined;
+		if (this.orphanTimeout) clearTimeout(this.orphanTimeout);
+		this.orphanTimeout = null;
+		this.orphanMouse = undefined;
+		this.orphanLead = "";
+		this.afterLoneEscape = false;
+		this.droppedMouse.clear();
 	}
 
 	getBuffer(): string {

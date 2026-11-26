@@ -16,16 +16,16 @@ import { globalPaths } from "../shared/home.ts";
 import { HOOK_MODES, type HookMode } from "../shared/hook-mode.ts";
 import { CORE_TOOLS, DEFAULT_CHILD_TOOLS, localResearchTools, MCP_ACCESS_TOOLS, SHELL_TOOLS } from "./core-tools.ts";
 import {
+	assignedMcp,
 	isRelative,
 	leanTools,
 	matchesTool,
-	mcpRequired,
 	refuseCoreRemoval,
 	selectedTools,
 	toolList,
 	withCoreTools,
 } from "./profile-tools.ts";
-import { MCP_DEFER_ROLES, type McpDeferRole } from "../../../../mcp/src/api.ts";
+import { type AgentMcp, defaultAgentMcp, MCP_DEFER_ROLES, type McpDeferRole } from "../../../../mcp/src/api.ts";
 import { BROWSER_SERVER, mcpNamespace } from "@octocodeai/octocode-common/mcp-names";
 
 export interface AgentProfile {
@@ -45,8 +45,6 @@ export interface AgentProfile {
 	linger?: number;
 	/** MCP tool roles (`readOnly`) whose tools the child defers instead of declaring: still callable, loaded through the `mcp` tool (`mcpDefer` front matter; the roles come from each server's `roles`). */
 	mcpDefer?: McpDeferRole[];
-	/** Legacy opt-out, rejected because specialists require local research. */
-	mcp?: false;
 	/**
 	 * How much of the user's hooks the child runs (`hooks:` front matter: `false`/`off`, `decisions`, `true`/`all`). Absent:
 	 * the task's `hooks` field decides, else none run. `off` forbids them whatever the task asks (`childHookMode`).
@@ -59,6 +57,8 @@ export interface AgentProfile {
 	 * the workspace. It is a policy, not a sandbox: a program that writes by itself (`node script.js`) is not seen.
 	 */
 	readOnly?: true;
+	/** Servers a bundled profile runs besides those its tools name (`servers` in the default MCP config). */
+	mcpServers?: readonly string[];
 	/** Classes the profile asks the user to allow its child (`permissions:` front matter, only the declarable ones); the spawn prompt lists them. */
 	permissions?: ActionClass[];
 	/** Names in `permissions:` that cannot be declared; ignored, and reported when the profiles load. */
@@ -122,7 +122,9 @@ export function loadProfiles(
 			const text = fs.readFileSync(file, "utf8");
 			const note = (keys: string[]) =>
 				options.onNote?.(`${scoped}: unsupported frontmatter ignored in ${file}: ${keys.join(", ")}`);
-			const profile = parseProfile(plugin ? scoped : profileFileName(file), text, plugin ? note : undefined);
+			// Only a bundled profile takes its MCP servers from the default MCP config; any other keeps its own `tools:`.
+			const assign = provenance.scope === "builtin" ? defaultAgentMcp : undefined;
+			const profile = parseProfile(plugin ? scoped : profileFileName(file), text, plugin ? note : undefined, assign);
 			const replaced = loadedFrom.get(profile.name);
 			if (replaced && !plugin && replaced === pluginFiles.get(profile.name))
 				options.onNote?.(`${profile.name}: the plugin agent ${replaced} is not used; ${file} has the same name`);
@@ -140,11 +142,12 @@ export function loadProfiles(
 /** The name a profile file answers to when its front matter names none: the file name without `.md`. */
 export const profileFileName = (file: string): string => path.basename(file, ".md");
 
-/** A profile from its file. With `onUnsupported` it is a Claude plugin agent named `fallbackName`: its frontmatter is translated (`core/plugin-agent-fields.ts`) and what has no equivalent is reported and ignored. */
+/** A profile from its file. With `onUnsupported` it is a Claude plugin agent named `fallbackName`: its frontmatter is translated (`core/plugin-agent-fields.ts`) and what has no equivalent is reported and ignored. `assign` gives a bundled profile its MCP assignment (`assignedMcp`). */
 export function parseProfile(
 	fallbackName: string,
 	text: string,
 	onUnsupported?: (unsupported: string[]) => void,
+	assign?: (name: string) => AgentMcp | undefined,
 ): AgentProfile {
 	const parsed = parseFrontmatter(text);
 	const translated = onUnsupported ? translateAgentFields(parsed.frontmatter) : undefined;
@@ -156,7 +159,6 @@ export function parseProfile(
 		if (frontmatter[key] !== undefined && frontmatter[key] !== null && typeof frontmatter[key] !== "string")
 			throw new Error(`${key} must be a comma-separated string`);
 	}
-	const tools = field("tools");
 	const excludeTools = field("excludeTools");
 	const model = field("model");
 	const mcpDefer = deferRoleNames(frontmatter.mcpDefer);
@@ -169,6 +171,8 @@ export function parseProfile(
 		throw new Error(`${key} must be true or false, not ${JSON.stringify(value)}`);
 	};
 	const lean = flag("lean") === true;
+	const assigned = assign?.(name);
+	const { tools, mcpServers } = assignedMcp(name, lean, field("tools"), assigned);
 	const hooks = hookModeOf(frontmatter.hooks);
 	const skills = skillNames(frontmatter.skills);
 	const catalog = skillNames(frontmatter.catalog);
@@ -182,7 +186,6 @@ export function parseProfile(
 	const linger = frontmatter.linger;
 	if (linger !== undefined && (typeof linger !== "number" || !Number.isInteger(linger) || linger < 0))
 		throw new Error(`linger must be a non-negative integer of seconds, not ${JSON.stringify(linger)}`);
-	if (flag("mcp") === false && !lean) throw new Error(mcpRequired(name));
 	const visibleBrowser = flag("visibleBrowser");
 	const headless = flag("headless") ?? (visibleBrowser === undefined ? undefined : !visibleBrowser);
 	return {
@@ -191,6 +194,7 @@ export function parseProfile(
 		prompt: body.trim(),
 		...(lean ? { lean: true as const, tools: leanTools(name, tools) } : {}),
 		...(tools && !lean ? { tools: withCoreTools(tools, selected) } : {}),
+		...(mcpServers ? { mcpServers } : {}),
 		...(skills ? { skills } : {}),
 		...(catalog ? { catalog } : {}),
 		...(excludeTools ? { excludeTools } : {}),
@@ -203,7 +207,7 @@ export function parseProfile(
 		...(flag("readOnly") === true ? { readOnly: true as const } : {}),
 		...(declared.length > 0 ? { permissions: declared } : {}),
 		...(ignored.length > 0 ? { ignoredPermissions: ignored } : {}),
-		hash: shortHash(text),
+		hash: shortHash(assigned ? `${text}\n${JSON.stringify(assigned)}` : text),
 	};
 }
 
@@ -243,7 +247,6 @@ export function profileTools(profile?: AgentProfile): string {
 	if (profile?.lean) return leanTools(profile.name, profile.tools);
 	const selected = selectedTools(profile?.tools);
 	refuseCoreRemoval(profile?.name ?? GENERAL_PROFILE, selected, profile?.excludeTools);
-	if (profile?.mcp === false) throw new Error(mcpRequired(profile.name));
 	return !selected || isRelative(selected)
 		? [
 				...(selected ?? []),

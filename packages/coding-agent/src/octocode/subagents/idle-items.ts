@@ -3,6 +3,7 @@ import type { FeatureSetup } from "../../core/features/index.ts";
 import type { BacklogStore } from "../backlog/store.ts";
 import type { Item } from "../backlog/item.ts";
 import { openBacklog } from "../backlog/context.ts";
+import { heldOngoingItems } from "../backlog/held.ts";
 import { attend } from "../monitor/attention/attend.ts";
 import { IDLE_ITEM_TYPE, IdleItems, idleItemsAttention, idleItemsText } from "../monitor/attention/idle-items.ts";
 import { runningWorkOf } from "../shared/running-work.ts";
@@ -12,9 +13,6 @@ import type { AgentRuns } from "./claim.ts";
 import { servedItems } from "./handed-items.ts";
 import type { Lingering } from "./linger.ts";
 import { registerStalledItems } from "./stalled-items.ts";
-
-/** Ongoing items read to find this session's; the board lists the most urgent first. */
-const SCAN = 50;
 
 /** The items a running child of this session works on, started for or handed since (an ended child's entry is dropped). */
 function linkedItems(runs: Pick<AgentRuns, "running" | "items" | "handed">): Set<string> {
@@ -77,11 +75,9 @@ export function registerIdleItems(
 			try {
 				const backlog = openBacklog(ctx, { isSubagent: false });
 				const served = withAncestors(backlog.store, [...linkedItems(runs), ...jobItems(api)]);
-				idle = backlog.store
-					.list({ states: ["ongoing"], limit: SCAN })
-					.items.filter(
+				idle = heldOngoingItems(backlog)
+					.filter(
 						(item) =>
-							item.assignee === backlog.session &&
 							!served.has(itemKey(item.ref) ?? item.ref) &&
 							lingering.onItem(item.ref) === undefined &&
 							!item.paths.some((entry) => team.reserved(path.resolve(ctx.cwd, entry), "tree")),

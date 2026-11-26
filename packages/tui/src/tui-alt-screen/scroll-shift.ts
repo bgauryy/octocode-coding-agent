@@ -1,4 +1,5 @@
 import { isImageLine } from "../terminal-image.ts";
+import { mapRowsReusing } from "../tui/row-arrays.ts";
 import { trimTrailingBlanks } from "../tui/trailing-blanks.ts";
 
 /** A block of rows the terminal can scroll in place instead of the frame rewriting them. */
@@ -22,7 +23,7 @@ export class TrimmedRowsMemo {
 
 /** `trimTrailingBlanks` of each row, reused for a row equal to the one at the same index in `knownRows`. */
 function trimRows(rows: readonly string[], knownRows: readonly string[], knownTrimmed: readonly string[]): string[] {
-	return rows.map((row, index) => (row === knownRows[index] ? knownTrimmed[index] : trimTrailingBlanks(row)));
+	return mapRowsReusing(rows, knownRows, knownTrimmed, trimTrailingBlanks);
 }
 
 /**

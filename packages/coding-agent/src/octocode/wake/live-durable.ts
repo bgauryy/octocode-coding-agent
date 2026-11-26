@@ -4,8 +4,8 @@ import { DbEventStore } from "../events/loop/db-store.ts";
 import { isDeduped, isDurable } from "../events/loop/cutover.ts";
 import type { EventStore } from "../events/loop/store.ts";
 import type { AgentEvent, PayloadEvent } from "../events/topics.ts";
-import { prepareAgentDb, sharedAgentDb } from "../../storage/database.ts";
-import { registeredWorkspaceWhenReady } from "../../storage/workspace-database.ts";
+import { prepareAgentDb } from "../../storage/database.ts";
+import { workspaceDbWhenReady } from "../../storage/workspace-database.ts";
 import { wakeCatalog } from "./loop-catalog.ts";
 import type { Held, Message, SendOptions } from "./gate-types.ts";
 
@@ -21,10 +21,10 @@ export interface SessionOf {
 /** The loop's store for a session: its events in the event log, its offset in a subscription of its own. */
 export async function sessionStore(ctx: SessionOf, env: NodeJS.ProcessEnv = process.env): Promise<EventStore> {
 	await prepareAgentDb(env);
-	const agent = sharedAgentDb(env);
+	const { agent, workspace } = await workspaceDbWhenReady(ctx.cwd, undefined, env);
 	const sessionId = ctx.sessionManager.getSessionId();
 	return DbEventStore.open(agent, {
-		workspaceId: (await registeredWorkspaceWhenReady(ctx.cwd, agent)).id,
+		workspaceId: workspace.id,
 		sessionId,
 		// The subscription is unique per workspace and subscriber, so each session's offset is its own.
 		subscriber: `loop:${sessionId}`,

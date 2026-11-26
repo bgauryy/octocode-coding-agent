@@ -254,7 +254,7 @@ describe("peer.landed", () => {
 		const SESSION = "holder-session";
 		add("Session work");
 		board.update("B1", { state: "ongoing" }, { id: SESSION });
-		const h = host({ agentEnd: (name) => peerEnd(agent.db, WS, name) });
+		const h = host({ agentEnd: (name) => peerEnd(agent.db, agent.db, WS, name) });
 		const condition = armed(h, "peer.landed", { ref: "B1" });
 		// Unknown to the session registry: not ended.
 		expect((await h.check(condition, run())).met).toBe(false);
@@ -270,7 +270,7 @@ describe("peer.landed", () => {
 		const SESSION = "reopened-session";
 		add("Session work");
 		board.update("B1", { state: "ongoing" }, { id: SESSION });
-		const h = host({ agentEnd: (name) => peerEnd(agent.db, WS, name) });
+		const h = host({ agentEnd: (name) => peerEnd(agent.db, agent.db, WS, name) });
 		const condition = armed(h, "peer.landed", { ref: "B1" });
 		sessions.start(agent.db, SESSION, process.pid, null, null);
 		sessions.clearPid(agent.db, SESSION, process.pid);

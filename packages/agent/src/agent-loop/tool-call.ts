@@ -28,6 +28,7 @@ export type ImmediateToolCallOutcome = {
 	result: AgentToolResult<any>;
 	isError: boolean;
 	prepareMs?: number;
+	halt?: boolean;
 };
 
 /** An early attempt whose `beforeToolCall` answered `defer`: nothing ran and nothing is reported. */
@@ -120,15 +121,16 @@ async function prepareCallUntimed(
 					isError: true,
 				};
 			}
-			if (beforeResult?.block) {
+			if (beforeResult?.block || beforeResult?.halt) {
 				const result = createErrorToolResult(beforeResult.reason || "Tool execution was blocked");
-				if (beforeResult.terminate === true) {
+				if (beforeResult.terminate === true || beforeResult.halt === true) {
 					result.terminate = true;
 				}
 				return {
 					kind: "immediate",
 					result,
 					isError: true,
+					...(beforeResult.halt ? { halt: true } : {}),
 				};
 			}
 			validatedArgs = validateToolArguments(tool, { ...toolCall, arguments: validatedArgs });

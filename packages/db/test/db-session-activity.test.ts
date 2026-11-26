@@ -94,7 +94,9 @@ describe("a session's activity light in the agent database", () => {
 		const where = locations();
 		openDatabase(where).close();
 		const raw = new DatabaseSync(where.file);
-		raw.exec("ALTER TABLE sessions DROP COLUMN activity_by; ALTER TABLE sessions DROP COLUMN activity");
+		raw.exec(
+			"ALTER TABLE sessions DROP COLUMN activity_by; ALTER TABLE sessions DROP COLUMN activity; PRAGMA user_version=10",
+		);
 		raw.prepare("INSERT INTO sessions (id, pid) VALUES ('old', 7)").run();
 		raw.close();
 		const first = openDatabase(where);

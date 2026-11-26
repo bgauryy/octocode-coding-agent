@@ -8,8 +8,7 @@ import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import type { QaReviewer } from "../../src/octocode/backlog/qa-gate.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { registeredWorkspace, workspaceDb } from "../../src/storage/workspace-database.ts";
 import { backlogToolName } from "./backlog-fixture.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 
@@ -59,7 +58,7 @@ function host(child?: { item: string }, reviews: string[] = []) {
 				content: Array<{ text: string }>;
 			}
 		).content[0].text;
-	const store = () => new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
+	const store = () => new BacklogStore(() => workspaceDb(cwd).agent, registeredWorkspace(cwd).id);
 	return { call, store };
 }
 

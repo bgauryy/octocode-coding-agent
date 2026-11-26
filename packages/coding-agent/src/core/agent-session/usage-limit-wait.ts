@@ -68,6 +68,7 @@ export interface ResumeTimerHost {
 /** The one resume a session waits for after a usage limit; arming another replaces it. */
 export class ResumeTimer {
 	private timer: ReturnType<typeof setTimeout> | undefined;
+	private isArmed = false;
 	private release: Array<() => void> = [];
 
 	private readonly host: ResumeTimerHost;
@@ -77,13 +78,23 @@ export class ResumeTimer {
 	}
 
 	get armed(): boolean {
-		return this.timer !== undefined;
+		return this.isArmed;
 	}
 
 	/** Runs `fire` at `at`, unless a run starts or the session ends first; `label` is the waiting line meanwhile. */
 	arm(at: number, label: string, fire: () => void): void {
 		this.cancel();
 		const sessionId = this.host.sessionId();
+		this.isArmed = true;
+		this.release.push(
+			this.host.agent.subscribe((event) => {
+				if (event.type === "agent_start") this.cancel();
+			}),
+			registerSessionResourceCleanup((ended) => {
+				if (ended === undefined || ended === sessionId) this.cancel();
+			}),
+		);
+		this.host.status(label);
 		const step = () => {
 			const left = at - Date.now();
 			if (left > 0) {
@@ -94,22 +105,17 @@ export class ResumeTimer {
 			this.cancel();
 			fire();
 		};
-		step();
-		this.release.push(
-			this.host.agent.subscribe((event) => {
-				if (event.type === "agent_start") this.cancel();
-			}),
-			registerSessionResourceCleanup((ended) => {
-				if (ended === undefined || ended === sessionId) this.cancel();
-			}),
-		);
-		this.host.status(label);
+		this.timer = setTimeout(step, Math.max(0, Math.min(at - Date.now(), MAX_TIMER_MS)));
+		this.timer.unref();
 	}
 
 	cancel(): void {
-		if (this.timer === undefined) return;
-		clearTimeout(this.timer);
-		this.timer = undefined;
+		if (!this.isArmed) return;
+		this.isArmed = false;
+		if (this.timer !== undefined) {
+			clearTimeout(this.timer);
+			this.timer = undefined;
+		}
 		for (const release of this.release.splice(0)) release();
 		this.host.status(undefined);
 	}

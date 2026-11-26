@@ -326,7 +326,7 @@ describe("resultBlock", () => {
 
 	it("skips blank lines in the collapsed preview but keeps them when expanded", () => {
 		const text = "# Title\n\nSource: x\n\n\npara\nmore";
-		expect(rendered(resultBlock(theme, { isPartial: true }, { summary: "page", body: text }))).toBe(
+		expect(rendered(resultBlock(theme, { isPartial: true }, { summary: "page", body: text, max: 5 }))).toBe(
 			"  ⎿  page\n     # Title\n     Source: x\n     para\n     more",
 		);
 		expect(rendered(resultBlock(theme, { expanded: true }, { summary: "page", body: text })).split("\n")).toHaveLength(
@@ -334,8 +334,11 @@ describe("resultBlock", () => {
 		);
 	});
 
-	it("closes a finished row to its summary line, keeping a lone line that has no summary", () => {
+	it("closes running and finished rows to their summary line, keeping failure previews and explicit max", () => {
 		expect(rendered(resultBlock(theme, row({ isPartial: false }), { summary: "10 lines", body }))).toBe(
+			`  ⎿  10 lines (${expandKey()} to expand)`,
+		);
+		expect(rendered(resultBlock(theme, row({ isPartial: true }), { summary: "10 lines", body }))).toBe(
 			`  ⎿  10 lines (${expandKey()} to expand)`,
 		);
 		expect(rendered(resultBlock(theme, row({ isPartial: false }), { summary: "", body: "only" }))).toBe("  ⎿  only");
@@ -344,15 +347,15 @@ describe("resultBlock", () => {
 		expect(rendered(resultBlock(theme, row({ isPartial: false }), { summary: "x", body, max: 2 }))).toContain("line 1");
 	});
 
-	it("shows a running body of up to twelve lines whole, without an expand hint", () => {
-		const text = rendered(resultBlock(theme, row({ isPartial: true }), { summary: "10 lines", body }));
+	it("shows a previewed body of up to twelve lines whole when max is set, without an expand hint", () => {
+		const text = rendered(resultBlock(theme, row({ isPartial: true }), { summary: "10 lines", body, max: 5 }));
 		expect(text.split("\n")).toHaveLength(11);
 		expect(text).not.toContain("to expand");
 	});
 
-	it("collapses a longer running body to the summary, five lines and an expand hint", () => {
+	it("collapses a longer previewed body to the summary, five lines and an expand hint", () => {
 		const long = Array.from({ length: 20 }, (_, index) => `line ${index}`).join("\n");
-		expect(rendered(resultBlock(theme, row({ isPartial: true }), { summary: "20 lines", body: long }))).toBe(
+		expect(rendered(resultBlock(theme, row({ isPartial: true }), { summary: "20 lines", body: long, max: 5 }))).toBe(
 			[
 				"  ⎿  20 lines",
 				"     line 0",
@@ -471,10 +474,14 @@ describe("resultBlock", () => {
 	});
 
 	it("strips escape sequences from the body and keeps pre-styled lines as given", () => {
-		expect(rendered(resultBlock(theme, row(), { summary: "ok", body: "\u001b[31mred\u001b[0m\n\u202eevil" }))).toBe(
-			"  ⎿  ok\n     red\n     evil",
+		expect(
+			rendered(
+				resultBlock(theme, row({ expanded: true }), { summary: "ok", body: "\u001b[31mred\u001b[0m\n\u202eevil" }),
+			),
+		).toBe("  ⎿  ok\n     red\n     evil");
+		expect(rendered(resultBlock(theme, row({ expanded: true }), { summary: "", lines: ["+ a", "- b"] }))).toBe(
+			"  ⎿  + a\n     - b",
 		);
-		expect(rendered(resultBlock(theme, row(), { summary: "", lines: ["+ a", "- b"] }))).toBe("  ⎿  + a\n     - b");
 	});
 });
 
@@ -518,7 +525,9 @@ describe("resultBlock colouring", () => {
 			},
 		} as never;
 		const body = Array.from({ length: 1_000 }, (_, index) => `line ${index}`).join("\n");
-		const text = rendered(resultBlock(counting, row({ isPartial: true }), { summary: "exit 0", body, tail: true }));
+		const text = rendered(
+			resultBlock(counting, row({ isPartial: true }), { summary: "exit 0", body, tail: true, max: 5 }),
+		);
 		expect(text).toContain("… +995 earlier lines");
 		expect(painted).toBeLessThan(10);
 		expect(
@@ -528,6 +537,7 @@ describe("resultBlock colouring", () => {
 					body: "a\nb",
 					totalLines: 50,
 					tail: true,
+					max: 5,
 				}),
 			),
 		).toContain("… +48 earlier lines");
@@ -674,7 +684,7 @@ describe("interrupted rows and expandable prefaces", () => {
 			resultBlock(
 				theme,
 				{ isPartial: true, isError: false },
-				{ summary: "Done", body: "a\nb", preface, prefaceLabel: "prompt" },
+				{ summary: "Done", body: "a\nb", preface, prefaceLabel: "prompt", max: 5 },
 			),
 		);
 		expect(collapsed).toBe("  ⎿  Done\n     a\n     b\n     … prompt (ctrl+o to expand)");
@@ -682,7 +692,7 @@ describe("interrupted rows and expandable prefaces", () => {
 			resultBlock(
 				theme,
 				{ isPartial: true, isError: false },
-				{ summary: "Done", body: "1\n2\n3\n4\n5\n6\n7", preface, prefaceLabel: "prompt" },
+				{ summary: "Done", body: "1\n2\n3\n4\n5\n6\n7", preface, prefaceLabel: "prompt", max: 5 },
 			),
 		);
 		expect(more).toContain("… +2 lines · prompt (ctrl+o to expand)");

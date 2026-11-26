@@ -236,7 +236,7 @@ export async function writeSummary(
 		};
 		// The agent's own focus is its notes on what it needs next, never the user's words.
 		const focus: SummaryFocus | undefined = event.customInstructions
-			? { text: event.customInstructions, source: event.requestedBy === "agent" ? "agent" : "user" }
+			? { text: event.customInstructions, source: event.requestedBy ?? "user" }
 			: undefined;
 		// The standalone request's view of the messages: long tool results are saved whole and shown as references. Only
 		// that request reads it (the shared one reads the session's own messages), so it is built only when it is sent.
@@ -348,7 +348,7 @@ export async function writeSummary(
 			...(skills.length > 0 ? { [LOADED_SKILLS_DETAILS]: skills } : {}),
 			[SUMMARY_METHOD_DETAILS]: { ...method, ms: Date.now() - startedAt },
 			// An early summary was written without this focus: the agent gets it back after the compaction (`compact` tool).
-			...(focus ? { focus: { delivery: method.early ? "follow-up" : "summary" } } : {}),
+			...(focus ? { focus: { delivery: method.early && focus.source !== "item" ? "follow-up" : "summary" } } : {}),
 		};
 		return {
 			compaction: {

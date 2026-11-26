@@ -14,7 +14,7 @@ const NEXT_STEPS: Readonly<Record<string, NextStep>> = {
 	agents: ["/agents stats", "see usage per agent"],
 	cron: ["/help cron", "see how to schedule"],
 	loop: ["/help loop", "see how to repeat a prompt"],
-	realm: ["/help realm", "see the options"],
+	realm: ["/realm places", "see the repository's checkouts and worktrees"],
 	plan: ["/plan <description>", "draft a plan"],
 	btw: ["/btw <question>", "ask a side question"],
 	context: ["/compact", "free context"],
@@ -76,7 +76,7 @@ export const NO_NEXT_STEP: Readonly<Record<string, string>> = {
 	quit: "leaves the app",
 	// Bare, these open a page or picker; typed with arguments they print a result and get their entry.
 	permissions: "bare, opens a page with its own key bar",
-	realm: "bare, opens a picker with its own key bar",
+	"realm places": "opens a picker with its own key bar",
 	modelsettings: "bare, opens a menu with its own choices",
 	// Native feature commands.
 	messages: "opens a page with its own key bar",

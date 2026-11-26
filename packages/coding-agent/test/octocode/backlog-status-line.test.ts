@@ -3,8 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { registeredWorkspace, workspaceDb } from "../../src/storage/workspace-database.ts";
 import { BACKLOG_LINE_TYPE, lineText, statusLine } from "../../src/octocode/backlog/status-line.ts";
 import { startBacklogFeed } from "../../src/octocode/backlog/peers.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
@@ -90,7 +89,7 @@ describe("the feed writes a line for each state change, and only a line", () => 
 		const pokes: Array<() => void> = [];
 		const follower = { subscribe: (poke: () => void) => (pokes.push(poke), () => undefined) };
 		const feed = startBacklogFeed(fake.api, ctx, { isSubagent: false }, follower as never);
-		const store = new BacklogStore(() => sharedAgentDb(), registeredWorkspace(cwd).id);
+		const store = new BacklogStore(() => workspaceDb(cwd).agent, registeredWorkspace(cwd).id);
 		const web = { id: "user", surface: "web" as const };
 		const mine = { id: "session-test", surface: "tool" as const };
 		const add = (title: string) =>

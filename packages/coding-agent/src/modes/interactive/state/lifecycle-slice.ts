@@ -1,7 +1,7 @@
 /**
  * Lifecycle slice of the interactive UI store: whether the terminal UI is mounted, whether the host is shutting down,
- * and whether a feature asked for a shutdown that waits for the run to settle. Nothing draws it, so `bindRender` asks
- * for no frame when it changes.
+ * and whether a feature asked for a shutdown that waits for the run to settle. Nothing draws it, so no binder asks
+ * for a frame when it changes.
  */
 
 import type { StoreApi } from "zustand/vanilla";

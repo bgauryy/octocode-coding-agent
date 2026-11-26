@@ -26,6 +26,15 @@ describe("pooled idle continuation", () => {
 		expect(pool.probability(3.6 * MIN, 4 * MIN)).toBeCloseTo(131 / 316, 6);
 	});
 
+	it("lowers the seed's q for idle ages beyond one lifetime and keeps it at 0.9 lifetimes", () => {
+		const pool = new IdleContinuationPool();
+		const seed = pool.probability(4.5 * MIN, 5 * MIN);
+		expect(seed).toBeCloseTo(131 / 316, 6);
+		expect(pool.probability(5 * MIN, 5 * MIN)).toBeCloseTo(seed, 6);
+		expect(pool.probability(25 * MIN, 5 * MIN)).toBeLessThan(seed);
+		expect(pool.probability(25 * MIN, 5 * MIN)).toBeCloseTo((131 / 316) * 0.2, 6);
+	});
+
 	it("moves toward the gaps it pools, the seed counting as twenty of them", () => {
 		const pool = new IdleContinuationPool();
 		// Gaps that end just after a 5m entry would have expired: every idle refresh at 4.5m is used.

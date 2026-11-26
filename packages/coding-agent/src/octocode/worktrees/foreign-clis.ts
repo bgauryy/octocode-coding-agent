@@ -1,7 +1,9 @@
 import { execFile } from "node:child_process";
 import { readlink } from "node:fs/promises";
+import path from "node:path";
 import { promisify } from "node:util";
 import { type ProcessRow, readProcessTable } from "../processes/table.ts";
+import { canonical, worktreesFolder } from "./repo.ts";
 
 /** Another vendor's agent CLI running on this machine: it cannot receive `message`. */
 export interface ForeignCli {
@@ -99,4 +101,29 @@ export async function foreignClis(sources: ForeignCliSources = {}): Promise<Fore
 		const cwd = cwds.get(pid);
 		return cwd ? [{ pid, name, cwd }] : [];
 	});
+}
+
+/** How long a scan of the process table stays good for the permission gate, which asks before each discarding command. */
+const SCAN_TTL_MS = 5000;
+
+/**
+ * A lookup of the other vendor's agent CLI working in a checkout, for a gate that runs before each command: the
+ * process scan behind it is shared for a few seconds. Folders under the checkout's worktrees folder belong to their own
+ * worktree, not to this checkout.
+ */
+export function foreignCliInCheckout(
+	sources: ForeignCliSources = {},
+	now: () => number = Date.now,
+): (checkout: string) => Promise<ForeignCli | undefined> {
+	let scan: { at: number; clis: Promise<ForeignCli[]> } | undefined;
+	return async (checkout) => {
+		if (!scan || now() - scan.at > SCAN_TTL_MS) scan = { at: now(), clis: foreignClis(sources) };
+		const root = canonical(checkout);
+		const worktrees = worktreesFolder(root);
+		const inside = (folder: string, parent: string) => {
+			const rel = path.relative(parent, canonical(folder));
+			return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+		};
+		return (await scan.clis).find((cli) => inside(cli.cwd, root) && !inside(cli.cwd, worktrees));
+	};
 }

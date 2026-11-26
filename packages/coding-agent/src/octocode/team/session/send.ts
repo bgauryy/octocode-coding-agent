@@ -193,13 +193,18 @@ export async function sendMessage(
 		return {
 			error: `No message #${options.replyTo} in this repository to reply to; omit replyTo or use the number from the message you answer. Nothing was sent.`,
 		};
+	const trimmedRecipient = recipient?.trim() || undefined;
 	// A reply goes to the sender of the message it answers unless the caller says otherwise.
-	const to = recipient ?? answered?.from;
-	if (to === undefined)
+	const rawTo = trimmedRecipient ?? answered?.from;
+	if (rawTo === undefined)
 		return {
 			error:
 				'Say who to send to: `to` (an agent id, role, "parent" (your coordinator) or "all"), or `replyTo` (the message you answer). Nothing was sent.',
 		};
+	const members = db.list();
+	const stalled = db.list(Date.now(), true);
+	const exactMember = [...members, ...stalled].some((m) => m.id !== from && m.id === rawTo);
+	const to = !exactMember && /^(?:parent|all)$/i.test(rawTo) ? rawTo.toLowerCase() : rawTo;
 	// A broadcast stays in the sender's session tree; the user's and an API client's in this session's tree.
 	const scope = outside(from) ? host.me()?.id : from;
 	if (to === "all" && !scope) return { error: "No agents in this session yet: nothing to broadcast to." };
@@ -209,29 +214,28 @@ export async function sendMessage(
 			error:
 				'`wake` starts an idle agent\'s turn, so it needs a named recipient (an id, role or "parent", your coordinator), not "all". Nothing was sent.',
 		};
-	const members = db.list();
-	// A stalled member (process running, silent for `STALE_MS`) is hidden but still reads its mail: its name reaches it.
-	const stalled = db.list(Date.now(), true);
 	// Only a message this sender received opens a route back to its author: an id alone (any message in the repository) does not.
 	const answering =
 		answered && options.replyTo !== undefined && db.refs.received(options.replyTo, from) ? answered.from : undefined;
 	const targets = resolveTarget(members, from, to, host.parentId(), scope, stalled, answering);
+	// Auto-bind replyTo when answering a single recipient from whom this sender holds exactly one open delivered question.
+	const autoQuestion =
+		options.replyTo === undefined && !options.replyRequired && Array.isArray(targets) && targets.length === 1
+			? db.refs.openQuestions().filter((q) => q.recipient === from && q.from === targets[0].id)
+			: [];
+	const effectiveReplyTo = options.replyTo ?? (autoQuestion.length === 1 ? autoQuestion[0].id : undefined);
 	// A broadcast reaches joined members only: a child between `agent` naming it and its join has no row to deliver to.
 	const known = new Set([...members, ...stalled].map((member) => member.id));
 	const starting = to === "all" ? (host.starting?.() ?? []).filter((id) => id !== from && !known.has(id)) : [];
 	// A message is FYI unless the sender says it needs an answer: a default that asked for answers made two agents wake each other forever.
 	const replyRequired = options.replyRequired ?? false;
-	// A new message to a named agent starts its turn when idle (paced on its side), so evidence it must act on does not sit
-	// unread. Replies wake only an asker still waiting on them (`insertMessage`), so an acknowledgement starts no turn; a
-	// broadcast would start every idle agent, and `wake: false` leaves the message for the recipient's next turn.
-	const wakes = outside(from) || (options.wake ?? (to !== "all" && options.replyTo === undefined));
-	// What a PreMessageSend hook sees: the question, the wake (a question wakes, and so does `wake`) and the interrupt.
+	const wakes = outside(from) || (options.wake ?? (to !== "all" && effectiveReplyTo === undefined));
 	const hookFlags = {
 		replyRequired,
 		wake: wakes || replyRequired,
 		interrupt: options.interrupt === true,
 	};
-	const reply = options.replyTo !== undefined ? { replyTo: options.replyTo } : {};
+	const reply = effectiveReplyTo !== undefined ? { replyTo: effectiveReplyTo } : {};
 	const callbacks = sendCallbacks(db, from, options, replyRequired, text);
 	// Stored with controls shown as escapes: every reader (the model, the panel, other processes) gets text that cannot steer a terminal, and the evidence stays.
 	const stored = () => spilledMessage(visibleControls(text), from);

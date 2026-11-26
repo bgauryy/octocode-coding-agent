@@ -1,8 +1,7 @@
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { backlog, closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { registerBacklogTool } from "../../src/octocode/native/tools/backlog/tool.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
@@ -23,8 +22,9 @@ describe("the prerequisites an `until item ... ready` timer reads", () => {
 			fake.tools.get(backlogToolName(params.op)).execute("call", params, undefined, undefined, ctx);
 		for (const title of ["a", "b", "c"]) await call({ op: "add", items: [{ title, goal: "g", why: "w" }] });
 		await call({ op: "edit", items: [{ id: "B3", dependsOn: ["B1", "B2"] }] });
-		const db = sharedAgentDb(env).db;
-		const repo = registeredWorkspace(cwd, sharedAgentDb(env)).id;
+		const { agent, workspace } = workspaceDb(cwd, env);
+		const db = agent.db;
+		const repo = workspace.id;
 		expect(backlog.openPrerequisites(db, repo, 3)).toEqual(["B1", "B2"]);
 		expect(backlog.openPrerequisites(db, repo, 1)).toEqual([]);
 		await call({ op: "claim", id: "B1", why: "w", goal: "g" });

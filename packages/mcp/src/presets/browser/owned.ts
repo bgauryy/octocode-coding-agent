@@ -41,10 +41,21 @@ export function recordedProxyPort(cwd: string, port: string): number | undefined
 	return typeof value === "number" && Number.isInteger(value) && value > 0 && value < 65536 ? value : undefined;
 }
 
-/** Records the Chrome's proxy port and that this process's session owns it; a session that reuses a Chrome takes it over. */
+/** The sessions a record names as users of its Chrome (a record from before sessions shared a Chrome names one `owner`). */
+function recordOwners(record: Record<string, unknown> | undefined): number[] {
+	const listed = Array.isArray(record?.owners) ? record.owners : [record?.owner];
+	return listed.filter((pid): pid is number => typeof pid === "number" && Number.isInteger(pid) && pid > 0);
+}
+
+/**
+ * Records the Chrome's proxy port and that this process's session uses it. A session that reuses a Chrome joins the
+ * sessions still running that already use it, so one's exit does not stop the Chrome under the others.
+ */
 export function recordBrowser(cwd: string, port: string, proxyPort: number): void {
 	mkdirSync(browserStateDir(cwd), { recursive: true });
-	writeFileSync(proxyRecord(cwd, port), JSON.stringify({ proxyPort, owner: browserOwner() }), { mode: 0o600 });
+	const self = browserOwner();
+	const others = recordOwners(readJson(proxyRecord(cwd, port))).filter((pid) => pid !== self && running(pid));
+	writeFileSync(proxyRecord(cwd, port), JSON.stringify({ proxyPort, owners: [...others, self] }), { mode: 0o600 });
 }
 
 const running = (pid: number): boolean => {
@@ -114,7 +125,17 @@ export async function stopOwnedBrowsers(
 	}
 	for (const file of files) {
 		const port = RECORD.exec(file)?.[1];
-		if (!port || readJson(join(browserStateDir(cwd), file))?.owner !== process.pid) continue;
+		if (!port) continue;
+		const recordFile = join(browserStateDir(cwd), file);
+		const record = readJson(recordFile);
+		const owners = recordOwners(record);
+		if (!owners.includes(process.pid)) continue;
+		const remaining = owners.filter((pid) => pid !== process.pid && running(pid));
+		if (remaining.length > 0) {
+			// Another running session still uses this Chrome: leave it and drop only this session's claim.
+			writeFileSync(recordFile, JSON.stringify({ proxyPort: record?.proxyPort, owners: remaining }), { mode: 0o600 });
+			continue;
+		}
 		const sessionFile = join(browserStateDir(cwd), `cdp-session-${port}.json`);
 		const session = readJson(sessionFile);
 		if (session?.headless !== true || session.isolated !== true || typeof session.pid !== "number") continue;
@@ -122,7 +143,7 @@ export async function stopOwnedBrowsers(
 			if (isChromeOn(session.pid, port)) await stopChrome(session.pid);
 			if (typeof session.profileDir === "string") removeProfile(session.profileDir);
 			rmSync(sessionFile, { force: true });
-			rmSync(join(browserStateDir(cwd), file), { force: true });
+			rmSync(recordFile, { force: true });
 		} catch (error) {
 			// Shutdown goes on: the Chrome stays listed in `/processes`, and `cleanup` still reaches it.
 			report(

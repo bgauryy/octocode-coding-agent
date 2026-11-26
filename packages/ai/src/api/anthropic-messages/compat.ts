@@ -1,9 +1,8 @@
 import type { CacheControlEphemeral } from "./shapes.ts";
 import type { CacheRetention, Model, ProviderEnv } from "../../types.ts";
-import { ANTHROPIC_LONG_CACHE_HOSTS, OPENROUTER_LONG_CACHE_MODEL_PREFIX } from "../../utils/cache-capability-data.ts";
 import { CACHE_PROFILES } from "../../utils/cache-profiles.ts";
 import { resolveCacheRetention } from "../../utils/cache-policy.ts";
-import { isOpenRouterModel, matchesHost } from "../../utils/provider-host.ts";
+import { profileCacheFacts } from "../../utils/provider-profile.ts";
 
 function getCacheControl(
 	model: Model<"anthropic-messages">,
@@ -44,20 +43,21 @@ export function getLayeredCacheControl(
 
 /**
  * The 1h tier follows `compat.supportsLongCacheRetention` when a model sets it (catalog entries for hosts that differ
- * from the default, or a custom provider). Otherwise it is host-bound, not model-bound: the hosts in
- * `ANTHROPIC_LONG_CACHE_HOSTS` verify it, and OpenRouter for its Claude models, so a model moved to another baseUrl falls
+ * from the default, or a custom provider). Otherwise it is host-bound, not model-bound: the provider
+ * profile's `longRetention` fact says (Anthropic's API, OpenCode, OpenRouter's Claude models), so a model moved to another baseUrl falls
  * back to the 5-minute tier.
  */
 export function getAnthropicCompat(model: Model<"anthropic-messages">) {
-	const isOpenRouter = isOpenRouterModel(model);
+	const cache = profileCacheFacts(model);
+	const long = cache.longRetention;
+	const affinity = cache.sessionAffinity;
 	return {
 		supportsEagerToolInputStreaming: model.compat?.supportsEagerToolInputStreaming ?? true,
 		supportsLongCacheRetention:
 			model.compat?.supportsLongCacheRetention ??
-			(ANTHROPIC_LONG_CACHE_HOSTS.some((host) => matchesHost(model.baseUrl, host)) ||
-				(isOpenRouter && model.id.startsWith(OPENROUTER_LONG_CACHE_MODEL_PREFIX))),
-		sendSessionAffinityHeaders: model.compat?.sendSessionAffinityHeaders ?? isOpenRouter,
-		sessionAffinityFormat: model.compat?.sessionAffinityFormat ?? (isOpenRouter ? "openrouter" : undefined),
+			(long === true || (typeof long === "object" && model.id.startsWith(long.modelPrefix))),
+		sendSessionAffinityHeaders: model.compat?.sendSessionAffinityHeaders ?? affinity !== undefined,
+		sessionAffinityFormat: model.compat?.sessionAffinityFormat ?? affinity,
 		supportsCacheControlOnTools: model.compat?.supportsCacheControlOnTools ?? true,
 		supportsTemperature: model.compat?.supportsTemperature ?? true,
 		allowEmptySignature: model.compat?.allowEmptySignature ?? false,

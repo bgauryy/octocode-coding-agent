@@ -65,15 +65,16 @@ export * as usageDaily from "./queries/usage-daily.ts";
 export type { UsageBilling, UsageDailyRow, UsageTotalRow } from "./queries/usage-daily.ts";
 export {
 	type AgentDb,
+	type DatabaseLocations,
 	type Db,
 	dbStamp,
 	type MirrorDb,
 	openDatabase,
 	openArchiveIndex,
 	type ArchiveIndexDb,
-	prepareSharedDatabase,
-	sharedDatabase,
 } from "./db.ts";
+export { closeIdleWorkspaceFiles, prepareSharedDatabase, sharedDatabase } from "./db-shared.ts";
+export { WORKSPACE_TABLES } from "./schema-split.ts";
 export { isBusy, withoutWaiting } from "./sqlite.ts";
 export { transactionWhenReady } from "./transaction-ready.ts";
 export {
@@ -101,6 +102,7 @@ export type {
 	TranscriptResult,
 } from "./writer/transcript-mirror.ts";
 export { AgentDbError } from "./schema.ts";
+export { splitEvidence } from "./backlog-evidence.ts";
 export { fileReport, type FileReport } from "./file-report.ts";
 export { USER_AUTHOR } from "./author.ts";
 export { allRows, num, type Row } from "./rows.ts";

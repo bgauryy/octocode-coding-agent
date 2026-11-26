@@ -58,7 +58,7 @@ async function forwardStream(
 		if (event.type === "done") result = event.message;
 		else if (event.type === "error") result = event.error;
 	}
-	if (hasResult(source)) result = await source.result();
+	if (hasResult(source)) result = (await source.result()) ?? result;
 	target.end(result);
 	observeResult(result);
 }

@@ -99,12 +99,14 @@ export function registerRunBudget(api: FeatureSetup, isSubagent: boolean): Gate 
 		if (event.parentToolCallId) return undefined;
 		const max = limits(ctx).cost.max;
 		if (max !== undefined && spent >= max) {
+			if (event.early) return { defer: true };
 			const line = `Run stopped: this session has spent $${dollars(spent)}, past limits.cost.max ($${dollars(max)}). Raise it to go on.`;
 			tellOnce(ctx, `max=${max}`, line);
 			say(ctx, line, "error");
 			ctx.failRun("Stopped by the spend limit.");
 			return {
 				block: true,
+				halt: true,
 				terminate: true,
 				reason: renderPrompt("notices/run-budget/spent.md", { spent: dollars(spent), max: dollars(max) }),
 			};
@@ -112,6 +114,7 @@ export function registerRunBudget(api: FeatureSetup, isSubagent: boolean): Gate 
 		const limit = soft(ctx);
 		const hard = hardLimit(limit) + granted;
 		if (limit <= 0 || requests < hard) return undefined;
+		if (event.early) return { defer: true };
 		const goOn =
 			ctx.hasUI &&
 			(await ctx.ui.confirm(
@@ -127,6 +130,7 @@ export function registerRunBudget(api: FeatureSetup, isSubagent: boolean): Gate 
 		ctx.failRun("Stopped by the request budget.");
 		return {
 			block: true,
+			halt: true,
 			terminate: true,
 			reason: renderPrompt("notices/run-budget/stopped.md", { requests, hard }),
 		};

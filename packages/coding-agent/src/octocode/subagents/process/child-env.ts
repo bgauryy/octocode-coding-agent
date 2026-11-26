@@ -85,8 +85,8 @@ export const CHILD_OWNED_ENV: readonly string[] = [
  * from above, so this is what still counts the chain.
  */
 export const NESTING_ENV = "OCTOCODE_AGENT_NESTING";
-/** How deep a task may start: a child, and a child of the one session that child's shell may start. */
-const MAX_NESTING = 2;
+/** How deep a task may start: one level. A child, or a session its shell started, cannot start another task. */
+const MAX_NESTING = 1;
 
 export const nestingOf = (env: NodeJS.ProcessEnv): number => {
 	const depth = Number(env[NESTING_ENV]);

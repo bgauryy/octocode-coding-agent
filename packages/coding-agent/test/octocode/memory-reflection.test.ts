@@ -6,6 +6,10 @@ import type { SessionEntry } from "../../src/core/session-manager.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
 import { CANDIDATE_TAG, isCandidate, isQuarantined } from "../../src/octocode/memory/file/candidate-tags.ts";
 import { listCandidates, noticedLines, queueCandidates } from "../../src/octocode/memory/file/candidates.ts";
+import { BacklogStore } from "../../src/octocode/backlog/store.ts";
+import { signaturesOf } from "../../src/octocode/backlog/signature.ts";
+import { fixChecker, proposeDefect } from "../../src/octocode/memory/file/defects.ts";
+import { toolFieldMap } from "../../src/octocode/memory/file/stale.ts";
 import { consolidateDue } from "../../src/octocode/memory/file/consolidation.ts";
 import { countedLines, parseMemoryFile, serializeMemoryFile } from "../../src/octocode/memory/file/format.ts";
 import { claimConsolidation } from "../../src/octocode/memory/file/lease.ts";
@@ -22,7 +26,8 @@ import { memoryStore } from "../../src/octocode/memory/store.ts";
 import { CHILD_EXPOSURE_EVENT } from "../../src/octocode/permission/provenance/exposure.ts";
 import { BACKGROUND_RETRY } from "../../src/octocode/shared/side-retry.ts";
 import { emptyUsage } from "../../src/octocode/shared/util.ts";
-import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { fakeCtx, fakeHost, fakePermission } from "./fake-host.ts";
+import { writeMemory } from "../../src/octocode/memory/write.ts";
 import { tmp } from "./helpers.ts";
 
 let root: string;
@@ -341,6 +346,62 @@ describe("reflection at session end", () => {
 		});
 	});
 
+	it("files a tool defect as a proposed item, tags its workaround line, and drops the line once the item is done", async () => {
+		const small = scripted(
+			JSON.stringify({
+				workspace: [],
+				defects: [
+					{
+						title: "ghSearchHistory refuses keywords with path",
+						trigger: "the call was refused twice with both fields set",
+						signature: "keywords and path cannot be combined",
+						line: "When calling ghSearchHistory: send keywords or path, never both",
+					},
+				],
+			}),
+		);
+		await setup({ small }).fire("session_shutdown", { reason: "quit" }, ctxWith(correction()));
+		const board = new BacklogStore(() => sharedAgentDb(), memoryStore(cwd).workspaceId!);
+		const item = board.list({ states: ["backlog"] }).items[0];
+		expect(item).toMatchObject({ title: "ghSearchHistory refuses keywords with path", state: "backlog" });
+		expect(signaturesOf(item)).toEqual(["keywords and path cannot be combined"]);
+		const text = `When calling ghSearchHistory: send keywords or path, never both (fix ${item.ref})`;
+		expect(parseMemoryFile(readWorkspace()).lines.map((line) => line.text)).toEqual([text]);
+		// A second reflection about the same defect files nothing new.
+		await setup({ small: scripted(JSON.stringify({ workspace: [], defects: [{ title: item.title, trigger: "refused again" }] })) }).fire(
+			"session_shutdown",
+			{ reason: "quit" },
+			ctxWith(correction(), "s2"),
+		);
+		expect(board.list({}).total).toBe(1);
+	});
+
+	it("backs a reflection's line with a note the memory tool finds and deletes, and the line leaves the file", async () => {
+		writeWorkspace("## Preferences\n- Spend money only when I ask (user 2026-11-18)\n");
+		const line = "When installing packages: use yarn; npm rewrites the lockfile";
+		const small = scripted(
+			JSON.stringify({ workspace: [{ op: "add", section: "Gotchas", text: line, source: "reflection" }] }),
+		);
+		await setup({ small }).fire("session_shutdown", { reason: "quit" }, ctxWith(correction()));
+		expect(readWorkspace()).toContain(line);
+		const store = memoryStore(cwd);
+		const found = store.search("lockfile yarn", "all", 5).find((memory) => memory.title === line);
+		expect(found).toMatchObject({ author: "reflection", kind: "gotcha" });
+		await writeMemory({
+			toolCallId: "t",
+			id: found!.id,
+			params: { op: "delete" },
+			store,
+			permission: fakePermission(),
+			ctx: fakeCtx({ cwd }),
+			signal: undefined,
+			files: sync(),
+		});
+		expect(store.get(found!.id)).toBeUndefined();
+		expect(readWorkspace()).not.toContain(line);
+		expect(readWorkspace()).toContain("Spend money only when I ask");
+	});
+
 	it("says what a pass changed in one line, keeps it in the pass entry, and announces memory_update only on a change", async () => {
 		writeWorkspace(
 			"## Gotchas\n- The cache dir fills up on CI (agent 2026-11-01)\n- The CI cache fills the disk (agent 2026-11-02)\n",
@@ -467,10 +528,14 @@ describe("reflection at session end", () => {
 		const after = parseMemoryFile(readWorkspace()).lines;
 		expect(countedLines(after)).toBeLessThanOrEqual(40);
 		expect(after.filter((line) => line.section === "Gotchas")).toHaveLength(2);
-		const archived = memoryStore(cwd)
-			.list("all", 50)
-			.filter((memory) => memory.title.startsWith("Pointer "));
-		expect(archived.map((memory) => memory.title).sort()).toEqual([text(0), text(1)]);
+		// Every line of the file has a note, and the two the file lost stay in the database.
+		const titles = new Set(
+			memoryStore(cwd)
+				.list("all", 100)
+				.map((memory) => memory.title),
+		);
+		expect(titles.has(text(0)) && titles.has(text(1))).toBe(true);
+		for (const line of after) expect(titles.has(line.text)).toBe(true);
 	});
 });
 
@@ -598,5 +663,33 @@ describe("consolidation", () => {
 		]);
 		// Only the candidate that restated a line did its work; the other waits for a model.
 		expect(listCandidates(memoryStore(cwd)).map((memory) => memory.keywords.split(" ")[0])).toEqual([CANDIDATE_TAG]);
+	});
+	it("keeps a workaround line while its fix item is open and evicts it, whoever wrote it, once the item is done", async () => {
+		const store = memoryStore(cwd);
+		const filed = proposeDefect(
+			store,
+			{ title: "notify refuses a job filter", trigger: "the filter was refused" },
+			{ session: "s1", env: process.env },
+		);
+		const ref = (filed as { ref: string }).ref;
+		writeWorkspace(`## Gotchas\n- Omit the job filter of notify (user 2026-11-23) (fix ${ref})\n- Keep unrelated lines\n`);
+		const fixed = fixChecker(store, process.env);
+		const day = Date.now();
+		await consolidateDue(ctxWith([]), { ...deps(undefined), fixed, now: () => day }, "end");
+		expect(parseMemoryFile(readWorkspace()).lines).toHaveLength(2);
+		new BacklogStore(() => sharedAgentDb(), store.workspaceId!).update(
+			ref,
+			{ close: { kind: "obsolete", text: "fixed elsewhere" } },
+			{ id: "s1" },
+		);
+		await consolidateDue(ctxWith([]), { ...deps(undefined), fixed, now: () => day + 2 * 86_400_000 }, "end");
+		expect(parseMemoryFile(readWorkspace()).lines.map((line) => line.text)).toEqual(["Keep unrelated lines"]);
+	});
+
+	it("marks a line that says a tool field is refused when the tool takes it now, with no candidate pending", async () => {
+		writeWorkspace("## Gotchas\n- When calling notify: the filter does not accept a job property (reflection 2026-11-23)\n");
+		const tools = toolFieldMap([{ name: "notify", parameters: { properties: { filter: { properties: { job: {} } } } } }]);
+		await consolidateDue(ctxWith([]), { ...deps(undefined), toolFields: () => tools }, "end");
+		expect(parseMemoryFile(readWorkspace()).lines.map((line) => line.note)).toEqual(["recheck"]);
 	});
 });

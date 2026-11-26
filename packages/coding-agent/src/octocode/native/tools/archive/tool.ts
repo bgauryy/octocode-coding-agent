@@ -74,7 +74,7 @@ const historyCall = (args: object): Parameters<ReturnType<typeof createHistoryTo
 	args as Parameters<ReturnType<typeof createHistoryTool>["execute"]>[1];
 
 /** The diagnostic sources; lifecycle events remain coordinator-only. */
-const DIAGNOSTIC_SOURCES = ["events", "profile"] as const;
+const DIAGNOSTIC_SOURCES = ["events", "profile", "terminal"] as const;
 
 /**
  * Session history, compaction summaries and diagnostics. Memories have their own tool (`native/tools/memory/tool.ts`). A subagent
@@ -197,6 +197,14 @@ export function registerArchiveTool(api: FeatureSetup, options: { isSubagent?: b
 					});
 				};
 
+				if (input.source === "terminal") {
+					const lines = ctx.ui.terminalDiagnostics?.();
+					if (!lines)
+						throw new Error(
+							"This session has no terminal renderer (print, RPC, web): terminal diagnostics are unavailable.",
+						);
+					return textResult(lines.join("\n"), { mode: "terminal", reason: input.reason });
+				}
 				if (input.source === "profile") {
 					const profile = readProfile(ctx.cwd, { ...input, page, request: input.request ?? input.line });
 					const where = profile.pages > 1 ? `Page ${profile.page} of ${profile.pages}.` : "";

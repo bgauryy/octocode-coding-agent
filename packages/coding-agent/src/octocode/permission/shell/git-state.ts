@@ -47,6 +47,7 @@ function mutationOf(tokens: string[]): string | undefined {
 	const dry = rest.some((token) => DRY_RUN.has(token));
 	if (TREE_CHANGES.has(sub) && !dry) return `git ${sub}`;
 	if (HISTORY_CHANGES.has(sub)) return `git ${sub}`;
+	if (sub === "worktree" && rest[0] === "add") return "git worktree add";
 	if (sub === "stash") {
 		const verb = rest.find((token) => !token.startsWith("-"));
 		return verb !== undefined && STASH_READS.has(verb) ? undefined : `git stash${verb ? ` ${verb}` : ""}`;

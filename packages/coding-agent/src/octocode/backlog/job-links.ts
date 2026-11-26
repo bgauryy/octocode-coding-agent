@@ -1,7 +1,6 @@
 import type { CommandContext } from "../../core/features/index.ts";
 import { jobs } from "../../../../db/src/api.ts";
-import { sharedAgentDb } from "../../storage/database.ts";
-import { workspaceIdentity } from "../../storage/workspace.ts";
+import { workspaceDb } from "../../storage/workspace-database.ts";
 import { BacklogStore } from "./store.ts";
 import { jobsOfRows, jobsOfRunningWork, linkRows } from "../graph/running.ts";
 import { workGraph } from "../graph/model.ts";
@@ -14,8 +13,7 @@ import type { RunningWork } from "../shared/running-work.ts";
  * and ` · holds full-run`. A job the graph knows nothing of has no entry.
  */
 export function jobLinks(ctx: CommandContext, work: RunningWork, now: number): Map<string, string> {
-	const agentDb = sharedAgentDb();
-	const workspace = workspaceIdentity(ctx.cwd);
+	const { agent: agentDb, workspace } = workspaceDb(ctx.cwd);
 	const own = ctx.sessionManager.getSessionId();
 	const graph = workGraph(
 		readGraphSources({

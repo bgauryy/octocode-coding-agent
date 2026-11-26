@@ -58,12 +58,12 @@ describe("compact tool row", () => {
 
 	it("wraps a long refusal at a narrow width instead of cutting it", () => {
 		const long = text(
-			"Compaction refused: the context is 12% of the room before automatic compaction, under 50%, so a summary would free little. Continue the task.",
+			"Compaction refused: the context is 12% of the room before automatic compaction, under 90%; only the user's /compact compacts. Continue the task.",
 		);
 		const lines = tool()
 			.renderResult(long, { expanded: false }, theme, context({ isError: true }))
 			.render(40) as string[];
 		expect(lines.length).toBeGreaterThan(2);
-		expect(lines.join(" ")).toContain("would free little");
+		expect(lines.join(" ")).toContain("/compact compacts.");
 	});
 });

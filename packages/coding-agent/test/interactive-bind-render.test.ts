@@ -2,7 +2,6 @@ import type { AssistantMessage } from "@octocodeai/octocode-ai";
 import { Container, type TUI } from "@octocodeai/octocode-tui";
 import { describe, expect, it, vi } from "vitest";
 import { AssistantMessageComponent } from "../src/modes/interactive/components/assistant-message.ts";
-import { bindRender } from "../src/modes/interactive/state/bind-render.ts";
 import { bindViewState } from "../src/modes/interactive/state/bind-view.ts";
 import { createUiStore } from "../src/modes/interactive/state/store.ts";
 import { initTheme } from "../src/theme/theme.ts";
@@ -41,27 +40,7 @@ function viewHost(messages: AssistantMessage[]) {
 	return { store: host.uiStore.getState(), requestRender, stop };
 }
 
-describe("bindRender", () => {
-	it("requests one frame per change of the editor slot and none for the slices other binders apply", () => {
-		const store = createUiStore();
-		const requestRender = vi.fn();
-		const stop = bindRender(store, { requestRender });
-		const actions = store.getState();
-
-		actions.setHideThinking(true);
-		actions.setBashMode(true);
-		expect(requestRender).not.toHaveBeenCalled();
-
-		const token = {};
-		actions.takeSlot(token);
-		actions.takeSlot(token);
-		expect(requestRender).toHaveBeenCalledTimes(1);
-
-		stop();
-		actions.clearSlot();
-		expect(requestRender).toHaveBeenCalledTimes(1);
-	});
-
+describe("frame requests", () => {
 	it("toggling thinking visibility paints nothing without thinking rows and repaints with them", () => {
 		const plain = viewHost([assistant([{ type: "text", text: "answer" }])]);
 		plain.store.setHideThinking(true);
@@ -83,10 +62,7 @@ describe("bindRender", () => {
 	});
 
 	it("requests no frame for the key timing nothing draws", () => {
-		const store = createUiStore();
-		const requestRender = vi.fn();
-		bindRender(store, { requestRender });
-		const actions = store.getState();
+		const { store: actions, requestRender, stop } = viewHost([]);
 
 		actions.quietEscapes(1_000, true);
 		actions.doubleEscape(2_000);
@@ -95,6 +71,7 @@ describe("bindRender", () => {
 
 		// A notice is drawn by the view binder's status line, which asks for its own frame.
 		actions.showNotice("Output: expanded");
-		expect(requestRender).not.toHaveBeenCalled();
+		expect(requestRender).toHaveBeenCalledTimes(1);
+		stop();
 	});
 });

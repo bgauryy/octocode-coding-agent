@@ -11,6 +11,7 @@ import { newMember } from "../../src/octocode/team/identity.ts";
 import { PARENT_ID_ENV } from "../../src/octocode/team/store/env.ts";
 import { describeMembers } from "../../src/octocode/team/member-list.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
+import { openWorkspaceDb } from "../../src/storage/workspace-database.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { teamScope } from "../../src/octocode/team/store/workspace.ts";
 import { tmp } from "./helpers.ts";
@@ -199,14 +200,16 @@ describe("team across the worktrees of one repository", () => {
 		expect(reopened.workspaceId).toBe(parent.workspaceId);
 		expect(reopened.list().map((agent) => agent.checkout)).toEqual([moved, moved]);
 		const db = openAgentDb(file);
+		const rows = openWorkspaceDb(db, moved).agent;
 		try {
-			expect(agents.inWorkspace(db.db, parent.workspaceId)).toMatchObject([
+			expect(agents.inWorkspace(rows.db, parent.workspaceId)).toMatchObject([
 				{ id: "auth-cccccc", lease_workspace_id: null, checkout: moved },
 			]);
-			expect(agents.inWorkspace(db.db, child.workspaceId)).toMatchObject([
+			expect(agents.inWorkspace(rows.db, child.workspaceId)).toMatchObject([
 				{ id: "worker-dddddd", lease_workspace_id: parent.workspaceId, checkout: moved },
 			]);
 		} finally {
+			if (rows !== db) rows.close();
 			db.close();
 		}
 		expect(child.workspace).toBe(moved);

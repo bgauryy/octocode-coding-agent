@@ -99,6 +99,8 @@ describe("interactive render errors", () => {
 				getFullscreenCopyOnSelect: () => false,
 				getFullscreenWheelScrollLines: () => "auto",
 				getReplayRows: () => 5000,
+				isLatencyFenceActive: () => false,
+				getFullscreenFrameQueueLimitBytes: () => 1 << 20,
 			},
 			themeController: { rebindTui: () => {} },
 			fullscreenLayoutRoot: screen.chatContainer,

@@ -6,6 +6,7 @@ Terminal UI framework: components, input handling and a differential renderer wi
 | ------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
 | [Core API](docs/core-api.md)                                 | `TUI` and renderers, colors, alternate-screen layouts, overlays, mouse, focus, IME |
 | [Components](docs/components.md)                             | Built-in components and their key bindings                                         |
+| [Screen modes](docs/screen-modes.md)                         | What the main and alternate screens share and where they differ                    |
 | [Input, rendering and terminals](docs/input-and-terminal.md) | Input flow, render loop, pacing, `Terminal`, tmux, utilities                       |
 
 ## Quick start

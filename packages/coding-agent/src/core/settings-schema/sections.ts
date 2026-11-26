@@ -82,6 +82,34 @@ export const RetrySettingsSchema = Type.Object({
 			default: SETTINGS_DEFAULTS.retry.fallbackModels,
 		}),
 	),
+	fallbackChains: Type.Optional(
+		Type.Record(
+			Type.String(),
+			Type.Array(Type.String(), {
+				description: "Models to continue on, in order, each as `provider/id` with an optional `:thinking` level.",
+			}),
+			{
+				description:
+					'Ordered fallback models per model that fails, instead of `fallbackModels` for that model: the key is the failing model as `provider/id` (glob characters `*`, `?`, `[` match several), the value its list, for example `{"anthropic/claude-sonnet-4-5": ["openai/gpt-5", "openrouter/some-model:high"]}`. A listed model that fails in turn continues down its own chain, skipping models that failed within `fallbackCooldownMs`. Each model gets a fresh retry budget. A model with no chain uses `fallbackModels`. Which failures switch is `fallbackOn`.',
+			},
+		),
+	),
+	fallbackOn: Type.Optional(
+		Type.Array(
+			Type.Union([
+				Type.Literal("usage"),
+				Type.Literal("credential"),
+				Type.Literal("model"),
+				Type.Literal("outage"),
+				Type.Literal("rate-limit"),
+			]),
+			{
+				description:
+					'Failure classes that move the turn to the next fallback model: `usage` (quota, plan or billing limit), `credential` (refused key or sign-in), `model` (unavailable for the account or endpoint), `outage` (a transient failure that outlasted its retries), `rate-limit` (a rate limit that outlasted its retries; normally only waited out). Default: `["usage", "credential", "model", "outage"]`. A usage limit with no fallback still asks you (or waits) as usual.',
+				default: SETTINGS_DEFAULTS.retry.fallbackOn,
+			},
+		),
+	),
 });
 
 export const ToolExecutionSettingsSchema = Type.Object(

@@ -21,11 +21,6 @@ export function matchesDomain(baseUrl: string, ...domains: string[]): boolean {
 	return domains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
 }
 
-/** OpenRouter itself, by provider id or by its API host. The one definition every adapter and host attribution shares. */
-export function isOpenRouterModel(model: { provider: string; baseUrl: string }): boolean {
-	return model.provider === "openrouter" || matchesHost(model.baseUrl, "openrouter.ai");
-}
-
 /** Bedrock Runtime's public endpoints, whose model-specific token burndown does not apply to Mantle. */
 export function isBedrockRuntimeHost(baseUrl: string): boolean {
 	if (!URL.canParse(baseUrl)) return false;

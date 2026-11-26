@@ -23,6 +23,7 @@ const SENSITIVE_SETTINGS: readonly string[] = [
 	"sessionApiTurnPermission",
 	"externalAgents",
 	"enabledExternalAgents",
+	"externalModels",
 	"shellPath",
 	"shellCommandPrefix",
 	"npmCommand",

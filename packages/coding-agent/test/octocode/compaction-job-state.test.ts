@@ -4,8 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionManager } from "../../src/core/session-manager.ts";
 import { closeSharedAgentDb, timers } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { liveStateLines } from "../../src/octocode/compaction/live-state.ts";
 import { compactionRequestBrief } from "../../src/octocode/sessions/compaction-brief.ts";
 import { registerSessions } from "../../src/octocode/sessions/register.ts";
@@ -53,8 +52,8 @@ const job = (id: string, args: Record<string, unknown>, log: string) => [
 
 describe("active timers in the compaction live state (A)", () => {
 	it("names each active timer with what it waits for, its note and when it is due, and not an ended one", () => {
-		const agent = sharedAgentDb();
-		const workspaceId = registeredWorkspace(cwd(), agent).id;
+		const { agent, workspace } = workspaceDb(cwd());
+		const workspaceId = workspace.id;
 		const at = Date.UTC(2026, 10, 15, 12, 0, 0);
 		timers.insert(agent.db, {
 			workspaceId,

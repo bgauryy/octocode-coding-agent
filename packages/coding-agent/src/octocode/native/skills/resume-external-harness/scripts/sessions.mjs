@@ -1,14 +1,16 @@
 #!/usr/bin/env node
-// Lists and shows Claude Code, Codex and Cursor sessions recorded for a repository and its worktrees, and
+// Lists and shows Claude Code, Codex, Cursor, Antigravity (agy) and Octocode sessions recorded for a repository and its worktrees, and
 // reports the worktrees themselves. Read-only: it never writes to the other harnesses' folders, opens their
 // SQLite files immutable, and only suggests git commands.
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { agyLocations, listAgy, readAgy } from "./lib/antigravity.mjs";
 import { claudeLocations, listClaude, readClaude } from "./lib/claude.mjs";
 import { codexLocations, listCodex, readCodex } from "./lib/codex.mjs";
 import { clip, digest, real, redact, repoRoot } from "./lib/common.mjs";
 import { cursorLocations, listCursor, readCursor } from "./lib/cursor.mjs";
+import { listOctocode, octocodeLocations, readOctocode } from "./lib/octocode.mjs";
 import { printList, printLocations, printShow, printWorktrees, timing } from "./lib/render.mjs";
 import { baseRef, inspectWorktree, worktrees } from "./lib/worktrees.mjs";
 
@@ -16,6 +18,8 @@ const HARNESSES = {
 	claude: { list: listClaude, read: readClaude, locations: claudeLocations },
 	codex: { list: listCodex, read: readCodex, locations: codexLocations },
 	cursor: { list: listCursor, read: readCursor, locations: cursorLocations },
+	agy: { list: listAgy, read: readAgy, locations: agyLocations },
+	octocode: { list: listOctocode, read: readOctocode, locations: octocodeLocations },
 };
 
 const USAGE = `Usage:
@@ -24,7 +28,7 @@ const USAGE = `Usage:
   sessions.mjs worktrees [common options]
   sessions.mjs locations [common options]
 
-Common options: --cwd DIR (default: here), --harness claude,codex,cursor, --root-only, --json
+Common options: --cwd DIR (default: here), --harness claude,codex,cursor,agy,octocode, --root-only, --json
 
 list       sessions whose directory is the repository of --cwd, a folder in it, or one of its worktrees;
            newest first, with timing (last activity, run length, LIVE? when written in the last 2 minutes)
@@ -110,7 +114,7 @@ async function resolveRef(ctx, names, ref) {
 
 function showResult(found, values) {
 	const { session } = found;
-	const { turns, summaries, files } = digest(found.events);
+	const { turns, summaries, files, errors } = digest(found.events);
 	const keep = Math.max(1, Number(values.turns ?? 8));
 	const chars = Math.max(100, Number(values.chars ?? 800));
 	const first = turns.length - Math.min(keep, turns.length);
@@ -131,6 +135,7 @@ function showResult(found, values) {
 			assistant: redact(clip(turn.assistant.join("\n\n"), chars)),
 			tools: turn.tools.map((tool) => redact(tool)),
 		})),
+		lastError: errors.length ? redact(clip(errors.at(-1), 1000)) : null,
 		lastAssistantMessage: lastReply ? redact(clip(lastReply, 4000)) : null,
 	};
 }

@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeedCursor, Member, Traffic } from "@octocodeai/octocode-contracts/team";
 import type { AgentDb } from "../../../db/src/api.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { involvedHistory, readHistory } from "../../src/octocode/workspace/team-history.ts";
@@ -64,7 +65,7 @@ function send(): number[] {
 }
 
 function pages(limit: number, maxScan?: number): Array<{ ids: number[]; next?: FeedCursor }> {
-	const read = readHistory(db.db, store.team);
+	const read = readHistory(workspaceDb(root).agent.db, store.team);
 	const out: Array<{ ids: number[]; next?: FeedCursor }> = [];
 	let before: FeedCursor | undefined;
 	for (let guard = 0; guard < 200; guard++) {
@@ -99,7 +100,7 @@ describe("this session's messages paged from the team database", () => {
 
 	it("returns no cursor when the history is exhausted inside one page", () => {
 		const expected = send();
-		const page = involvedHistory(readHistory(db.db, store.team), involved, 500);
+		const page = involvedHistory(readHistory(workspaceDb(root).agent.db, store.team), involved, 500);
 		expect(page.traffic.map((message) => message.id)).toEqual(expected);
 		expect(page.next).toBeUndefined();
 	});

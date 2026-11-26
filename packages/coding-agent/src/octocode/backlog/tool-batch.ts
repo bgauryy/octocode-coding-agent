@@ -40,26 +40,28 @@ export async function batchUpdate(
 	entries: readonly Record<string, unknown>[],
 	allowed: readonly string[],
 	name: string,
-	one: (entry: Record<string, unknown>) => Result | Promise<Result>,
+	one: (entry: Record<string, unknown>, index: number) => Result | Promise<Result>,
 	shown?: readonly string[],
 	signal?: AbortSignal,
+	/** What the batch does, for its receipt and head line: `done` and `Done`, not the generic `edit` and `Updated`. */
+	words: { operation: string; verb: string } = { operation: "edit", verb: "Updated" },
 ): Promise<Batch> {
 	const rows: EntryOutcome[] = [];
 	for (const [index, entry] of entries.entries()) {
 		const label = typeof entry.id === "string" && entry.id.trim() ? entry.id : `${name}[${index}]`;
 		await appendWrite(
 			rows,
-			"edit",
+			words.operation,
 			entries.length,
 			label,
 			() => {
 				refuseUnknown(entry, allowed, name, shown);
-				return one(entry);
+				return one(entry, index);
 			},
 			signal,
 		);
 	}
-	return batchSummary("Updated", rows);
+	return batchSummary(words.verb, rows);
 }
 
 /**

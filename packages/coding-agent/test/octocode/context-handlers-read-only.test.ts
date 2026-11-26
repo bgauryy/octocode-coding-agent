@@ -2,7 +2,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { onlyReadsMessages } from "../../src/core/features/runner/clone-messages.ts";
-import { attachBackend } from "../../src/octocode/claude-code/register.ts";
+import { attachBackend } from "../../src/octocode/cli-models/attach.ts";
 import octocode from "../../src/octocode/index.ts";
 import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
 import { IDENTITY_REMINDER_TYPE } from "../../src/octocode/shared/reminder-view.ts";

@@ -9,10 +9,10 @@ import { tmp } from "./helpers.ts";
 const NOW = Date.UTC(2026, 10, 15);
 const AT = Date.UTC(2026, 9, 25);
 const windows = { archiveAfterDays: 14, keepDays: 0 };
-let agent: { file: string; archiveDir: string };
+let agent: { historySource: string; archiveDir: string };
 beforeEach(() => {
 	const root = tmp();
-	agent = { file: path.join(root, "agent.db"), archiveDir: path.join(root, "archive") };
+	agent = { historySource: path.join(root, "agent.db"), archiveDir: path.join(root, "archive") };
 	fs.mkdirSync(agent.archiveDir);
 });
 afterEach(() => vi.restoreAllMocks());

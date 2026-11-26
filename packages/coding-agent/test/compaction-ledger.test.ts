@@ -70,7 +70,7 @@ describe("compaction ledger", () => {
 	});
 
 	it("lifts a carried bullet only when the model names its id, and never reuses a live id", () => {
-		const ledger = ledgerOf(applyLedger(previous, { constraints: [], decisions: [] }).text);
+		const ledger = ledgerOf(applyLedger(previous, { constraints: [], decisions: [], goal: [] }).text);
 		const { text, lifted } = applyLedger(
 			[
 				"## Constraints & Preferences",
@@ -94,6 +94,9 @@ describe("compaction ledger", () => {
 		]);
 		expect(text).toBe(
 			[
+				"## Goal",
+				"ship the parser",
+				"",
 				"## Constraints & Preferences",
 				"- [C1] Never reset or switch branches in the shared checkout",
 				"",
@@ -221,5 +224,19 @@ describe("split turn context", () => {
 		expect(withTurnContext("No prior history.", "### Original Request\n- y")).toBe(
 			`No prior history.\n\n${TURN_CONTEXT_HEADING}\n\n### Original Request\n- y`,
 		);
+	});
+
+	it("carries the previous goal when the new summary has none or an empty one, and lets a written goal win", () => {
+		const ledger = ledgerOf(previous);
+		const text = (goal: string[]) => [...goal, "## TL;DR", "More."].join("\n");
+		expect(applyLedger(text([]), ledger).text.startsWith("## Goal\nship the parser\n")).toBe(true);
+		const emptied = applyLedger(text(["## Goal", "(none)", ""]), ledger).text;
+		expect(emptied.match(/## Goal/g)).toHaveLength(1);
+		expect(emptied).toContain("ship the parser");
+		const changed = applyLedger(text(["## Goal", "ship the lexer", ""]), ledger).text;
+		expect(changed).toContain("ship the lexer");
+		expect(changed).not.toContain("ship the parser");
+		// Nothing to carry from a summary without a goal.
+		expect(applyLedger(text([]), ledgerOf("## TL;DR\nx")).text).not.toContain("## Goal");
 	});
 });

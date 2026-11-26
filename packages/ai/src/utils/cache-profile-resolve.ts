@@ -1,6 +1,6 @@
 import type { Model, OpenAIResponsesCompat } from "../types.ts";
 import { getCompat as getCompletionsCompat } from "../api/openai-completions/compat.ts";
-import { isBedrockInferenceHost, matchesHost } from "./provider-host.ts";
+import { profileCacheFacts } from "./provider-profile.ts";
 import { CACHE_PROFILES, type CacheProfile } from "./cache-profiles.ts";
 
 /**
@@ -12,13 +12,11 @@ export function completionsCacheProfile(model: Model<"openai-completions">): Cac
 	// Bedrock's OpenAI-compatible endpoints (runtime `/openai/v1`, mantle): AWS documents `prompt_cache_key` and explicit
 	// caching for OpenAI models only; every other model (Qwen, Kimi, GLM, ...) is cached, if at all, by the host with no
 	// request field, so none is sent.
-	if (isBedrockInferenceHost(model.baseUrl) && !model.id.startsWith("openai.")) return CACHE_PROFILES.implicit;
+	const facts = profileCacheFacts(model);
+	if (facts.explicitCacheModelPrefix !== undefined && !model.id.startsWith(facts.explicitCacheModelPrefix))
+		return CACHE_PROFILES.implicit;
 	const compat = getCompletionsCompat(model);
-	const key = matchesHost(model.baseUrl, "api.openai.com")
-		? "cached"
-		: compat.supportsLongCacheRetention
-			? "long"
-			: "never";
+	const key = facts.keyWhenCached ? "cached" : compat.supportsLongCacheRetention ? "long" : "never";
 	const base = compat.cacheControlFormat === "anthropic" ? CACHE_PROFILES.completionsMarkers : CACHE_PROFILES.openaiKey;
 	return { ...base, key };
 }

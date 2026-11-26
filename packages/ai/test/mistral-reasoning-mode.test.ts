@@ -125,10 +125,10 @@ describe("Mistral reasoning mode selection", () => {
 			expect(payload.prompt_mode).toBeUndefined();
 		});
 
-		it("maps medium to high", async () => {
+		it("clamps an unsupported medium to the nearest lower level", async () => {
 			const payload = await capturePayload(makeModel("zai-glm-5-3", true, GLM_5_3_LEVELS), { reasoning: "medium" });
 
-			expect(payload.reasoning_effort).toBe("high");
+			expect(payload.reasoning_effort).toBe("low");
 		});
 	});
 

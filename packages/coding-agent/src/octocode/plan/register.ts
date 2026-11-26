@@ -10,6 +10,7 @@ import { getMcpSessionStatus } from "../../../../mcp/src/api.ts";
 import { planStartupRequested } from "./startup.ts";
 import { PLAN_ENTRY, readPlan, bindPlanConstraint, type PlanOptions, type PlanState } from "../../core/plan-state.ts";
 import { approvedPlanPrompt, PLAN_REMINDER_TYPE, planReminder, PLANNING_INSTRUCTIONS } from "./prompts.ts";
+import { harnessSource, sourcedText } from "../events/source.ts";
 
 /** User controls are commands, never model tools. Plan text lives in branch-aware custom entries. */
 export function registerPlanning(api: FeatureSetup, commands: Subcommands, stopWork: () => Promise<void>) {
@@ -57,7 +58,11 @@ export function registerPlanning(api: FeatureSetup, commands: Subcommands, stopW
 		if (!state.active || !state.text) return;
 		try {
 			await api.session.sendMessage(
-				{ customType: PLAN_REMINDER_TYPE, content: planReminder(state), display: false },
+				{
+					customType: PLAN_REMINDER_TYPE,
+					content: sourcedText(planReminder(state), harnessSource("plan")),
+					display: false,
+				},
 				{ triggerTurn: false },
 			);
 		} catch (error) {

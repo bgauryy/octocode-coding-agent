@@ -258,7 +258,7 @@ describe("design tokens", () => {
 		assert.strictEqual(new Set(states).size, states.length);
 		assert.strictEqual(GLYPH.running, "⏺");
 		assert.ok(!(SPINNER.braille as readonly string[]).includes(GLYPH.running));
-		assert.ok(!(states as string[]).includes(GLYPH.live));
+		assert.ok(!states.includes(GLYPH.live));
 	});
 
 	it("gives each state one state light: a distinct one-cell circle, none a spinner frame", () => {

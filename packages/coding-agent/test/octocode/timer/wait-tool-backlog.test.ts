@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { type AgentDb, backlog as queries, openDatabase, timers } from "../../../../db/src/api.ts";
-import { registeredWorkspace } from "../../../src/storage/workspace-database.ts";
+import { type AgentDb, backlog as queries, timers } from "../../../../db/src/api.ts";
+import { openAgentDb } from "../../../src/storage/database.ts";
+import { openWorkspaceDb } from "../../../src/storage/workspace-database.ts";
 import { classify } from "../../../src/octocode/shared/backlog-classify.ts";
 import { BACKLOG_CHANGE_CHANNEL } from "../../../src/octocode/shared/backlog-change.ts";
 import { registerTimers } from "../../../src/octocode/timer/register.ts";
@@ -12,21 +13,20 @@ import { backlogFixtureFor } from "./backlog-wait-fixture.ts";
 
 const PEER = { id: "peer-agent" };
 let root: string;
+let machine: AgentDb;
 let agent: AgentDb;
 let workspaceId: string;
 
 beforeEach(() => {
 	root = tmp();
-	agent = openDatabase({
-		file: path.join(root, "workspaces.db"),
-		mirrorFile: path.join(root, "transcripts.db"),
-		archiveDir: path.join(root, "archive"),
-		privateParent: false,
-	});
-	workspaceId = registeredWorkspace(root, agent).id;
+	machine = openAgentDb(path.join(root, "workspaces.db"));
+	const rows = openWorkspaceDb(machine, root);
+	agent = rows.agent;
+	workspaceId = rows.workspace.id;
 });
 afterEach(() => {
-	agent.close();
+	if (agent !== machine) agent.close();
+	machine.close();
 	fs.rmSync(root, { recursive: true, force: true });
 });
 

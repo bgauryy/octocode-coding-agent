@@ -12,7 +12,7 @@ import { type AgentEvent, type AgentTool } from "@octocodeai/octocode-agent-core
 import { agentLoop } from "../../../agent/src/agent-loop.ts";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { registerBacklogPlanTool } from "../../src/octocode/native/tools/backlog-plan/tool.ts";
@@ -56,7 +56,7 @@ function fixture(changed = vi.fn(), fullRegistration = false) {
 	if (fullRegistration) registerBacklog(fake.api, options);
 	else registerBacklogPlanTool(fake.api, options);
 	const store = openBacklog(ctx, options).store;
-	const agent = sharedAgentDb(env);
+	const agent = workspaceDb(cwd, env).agent;
 	const tool = fake.tools.get("backlogPlan");
 	return { ctx, tool, store, agent, changed };
 }

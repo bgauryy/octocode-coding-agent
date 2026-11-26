@@ -36,10 +36,17 @@ type AgentLoopHost = Pick<
 	readonly signal: AbortSignal | undefined;
 };
 
+const sameTools = (
+	left: readonly AgentState["tools"][number][] | undefined,
+	right: readonly AgentState["tools"][number][] | undefined,
+): boolean =>
+	left === right ||
+	(!!left && !!right && left.length === right.length && left.every((tool, index) => tool === right[index]));
+
 /** Build the low-level loop config for one run from the agent's current state, settings and queues. */
 export function createAgentLoopConfig(
 	agent: AgentLoopHost,
-	state: Pick<AgentState, "model" | "thinkingLevel">,
+	state: Pick<AgentState, "model" | "thinkingLevel" | "tools">,
 	steeringQueue: PendingMessageQueue,
 	followUpQueue: PendingMessageQueue,
 	options: { skipInitialSteeringPoll?: boolean } = {},
@@ -71,9 +78,14 @@ export function createAgentLoopConfig(
 		},
 		prepareInput: agent.prepareInput,
 		onInputSelected: agent.onInputSelected,
-		prepareNextTurn: agent.prepareNextTurnWithContext
-			? async (context) => agent.prepareNextTurnWithContext?.(context, agent.signal)
-			: undefined,
+		prepareNextTurn: async (context) => {
+			const update = await agent.prepareNextTurnWithContext?.(context, agent.signal);
+			const target = update?.context ?? context.context;
+			// Refresh only inherited stale tools. A hook that deliberately returned a different tool set owns that replacement.
+			if (update?.context && !sameTools(target.tools, context.context.tools)) return update;
+			if (sameTools(target.tools, state.tools)) return update ?? undefined;
+			return { ...update, context: { ...target, tools: state.tools.slice() } };
+		},
 		convertToLlm: agent.convertToLlm,
 		transformContext: agent.transformContext,
 		getApiKey: agent.getApiKey,

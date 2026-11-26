@@ -4,14 +4,14 @@ import { Text } from "@octocodeai/octocode-tui";
 import { sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
 import { sessions as sessionRows } from "../../../../db/src/api.ts";
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
-import { sharedAgentDb, sharedAgentDbWriter } from "../../storage/database.ts";
+import { deferredSplit, sharedAgentDb, sharedAgentDbWriter } from "../../storage/database.ts";
 import type { Subcommands } from "../shared/commands.ts";
 import { notify } from "../shared/commands.ts";
 import { recordProblem } from "../../core/diagnostics-log.ts";
 import { reportSweep } from "./sweep-report.ts";
 import { SpendScan } from "../shared/spend.ts";
 import { currentSessionId } from "../shared/home.ts";
-import { registeredWorkspace } from "../../storage/workspace-database.ts";
+import { workspaceDb } from "../../storage/workspace-database.ts";
 import { expandHint, plural } from "../shared/text.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import {
@@ -54,6 +54,7 @@ import {
 } from "./session-scan.ts";
 import { danglingChildren, describeWork, unansweredCalls, unreportedWork } from "./work.ts";
 import { compactionRequestBrief, keptAfterCompaction, lastReplyBrief } from "./compaction-brief.ts";
+import { harnessSource, sourcedText } from "../events/source.ts";
 import { backlogIndex } from "../backlog/task-source.ts";
 
 /** Custom message type of the resume brief. */
@@ -89,13 +90,14 @@ function registerRunningWork(api: FeatureSetup, team?: TeamNotes): void {
 		const source = ctx.sessionManager.getSessionFile();
 		let ongoing: string[] = [];
 		try {
-			const agent = sharedAgentDb();
-			const repo = registeredWorkspace(ctx.cwd, agent).id;
+			const { agent, workspace } = workspaceDb(ctx.cwd);
+			const repo = workspace.id;
 			const session = ctx.sessionManager.getSessionId();
 			const index = backlogIndex(agent, repo, session);
 			ongoing = [...(index ? [index] : []), ...openTasksBrief(agent, repo, session)];
 		} catch {
-			// The agent database is unavailable: the running work and the request alone still help.
+			// The agent database is unavailable: say so, as the summary's recovery lines do; a missing list reads as "holds nothing".
+			ongoing = [renderPrompt("notices/recovery/live-unreadable.md")];
 		}
 		const held = team ? teamBrief(team) : [];
 		// The native summary keeps user messages within a budget; test for the actual copy before skipping this reminder.
@@ -111,7 +113,7 @@ function registerRunningWork(api: FeatureSetup, team?: TeamNotes): void {
 			await api.session.sendMessage(
 				{
 					customType: RUNNING_WORK_TYPE,
-					content,
+					content: sourcedText(content, harnessSource("session")),
 					display: false,
 					details: { compactionId: event.compactionEntry?.id ?? null },
 				},
@@ -218,6 +220,9 @@ export function registerSessions(api: FeatureSetup, options: SessionsOptions): v
 	});
 
 	api.bus.on("session_start", async (event, ctx) => {
+		const putOff = deferredSplit();
+		if (putOff && ctx.hasUI)
+			notify(ctx.ui, `Workspace files: split put off, rows stay in the shared file. ${putOff}`, "warning");
 		gitRevision++;
 		titler.cancel();
 		pending = undefined;
@@ -242,12 +247,13 @@ export function registerSessions(api: FeatureSetup, options: SessionsOptions): v
 				const recorded = { branch: previous?.branch ?? null, head: previous?.head ?? null };
 				const request = latestRequest(branchOf(ctx));
 				const unanswered = unansweredCalls(branchOf(ctx));
-				const children = unanswered.length > 0 ? danglingChildren(sessions.agent, id, branchOf(ctx)) : [];
+				const board = workspaceDb(ctx.cwd);
+				const children = unanswered.length > 0 ? danglingChildren(board.agent, id, branchOf(ctx)) : [];
 				pending = {
 					previous: recorded,
 					lastActive: at,
 					sessionId: id,
-					repoKey: registeredWorkspace(ctx.cwd, sessions.agent).id,
+					repoKey: board.workspace.id,
 					...(unreported.length > 0 ? { unreported } : {}),
 					...(unanswered.length > 0 ? { unanswered } : {}),
 					...(children.length > 0 ? { children } : {}),
@@ -258,7 +264,7 @@ export function registerSessions(api: FeatureSetup, options: SessionsOptions): v
 			const sessionDir = ctx.sessionManager.getSessionDir?.();
 			const dir = sessionDir ? path.resolve(sessionDir) : undefined;
 			// One transaction: a bind that succeeds with no start would leave a row without the pid that marks it running.
-			const workspaceId = registeredWorkspace(ctx.cwd, sessions.agent).id;
+			const workspaceId = workspaceDb(ctx.cwd).workspace.id;
 			sessions.agent.transaction(() => {
 				sessionRows.bind(sessions.agent.db, id, workspaceId);
 				sessions.start(id, dir);
@@ -311,8 +317,8 @@ export function registerSessions(api: FeatureSetup, options: SessionsOptions): v
 		const commitsSince =
 			from && now.head && from !== now.head ? await gitCommitsBetween(ctx.cwd, from, now.head) : undefined;
 		let content: string | undefined;
-		safely(ctx, (sessions) => {
-			content = resumeBrief(sessions.agent, {
+		safely(ctx, () => {
+			content = resumeBrief(workspaceDb(ctx.cwd).agent, {
 				...input,
 				// Handler messages follow the message that starts the run (`prepareRun`), so a new prompt comes before this note.
 				newPrompt: event.messageType !== "custom",

@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { getAgentDir, getLegacyConfigDirs, getOctocodeHome } from "../../config.ts";
+import { getAgentDir, getPiConfigDirs, getOctocodeHome } from "../../config.ts";
 import { shellPath, homeSpelling } from "./file-access.ts";
 import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
 import { canonicalPaths } from "@octocodeai/octocode-common/canonical-path-set";
@@ -61,7 +61,7 @@ const key = (file: string): string => canonicalPath(file).toLowerCase();
 
 /** The `auth.json` paths a session reads, and the folders whose read can reach one: each store's folder, and its parent when that is an Octocode or Pi root folder. */
 function credentialPaths(cwd: string): { files: Set<string>; models: Set<string>; folders: Set<string> } {
-	const homes = new Set([getAgentDir(), getOctocodeHome(), ...getLegacyConfigDirs()]);
+	const homes = new Set([getAgentDir(), getOctocodeHome(), ...getPiConfigDirs()]);
 	const spelled: Array<["files" | "models" | "folders", string]> = [];
 	for (const home of homes) {
 		for (const name of STORE_FILES) spelled.push(["files", path.join(home, name)]);

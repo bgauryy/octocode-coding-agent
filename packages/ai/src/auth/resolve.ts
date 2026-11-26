@@ -252,7 +252,11 @@ async function resolveApiKey(
 			? { ...resolved, auth: { ...resolved.auth, baseUrl: normalizeEndpointHost(saved) } }
 			: resolved;
 	} catch (error) {
-		throw new ModelsError("auth", `API key auth failed for provider ${providerId}`, { cause: error });
+		// The cause's first line says why (a command's exit status, the variable that is not set): the wrapper keeps it.
+		const why = error instanceof Error ? error.message.split("\n")[0] : "";
+		throw new ModelsError("auth", `API key auth failed for provider ${providerId}${why ? `: ${why}` : ""}`, {
+			cause: error,
+		});
 	}
 }
 

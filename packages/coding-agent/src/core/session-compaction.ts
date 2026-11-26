@@ -4,12 +4,11 @@
  * `runCompaction()` for the part in between.
  */
 
-import type { AgentMessage } from "@octocodeai/octocode-agent-core";
 import type { Model, Usage } from "@octocodeai/octocode-ai";
 import {
 	type CompactionPreparation,
 	type CompactionResult,
-	estimateTokens,
+	estimateProjectedContextTokens,
 	finalizeCompactionResult,
 	fitCompactionToWindow,
 	projectionAfterCompaction,
@@ -65,18 +64,6 @@ export interface CompactionRun {
 }
 
 /**
- * The tokens `messages` take on `model`, at its tokenizer family's ratio (`charsPerToken`), so a GPT model's context is
- * not read as Claude's denser count.
- */
-function estimateMessagesTokens(messages: readonly AgentMessage[], model: Pick<Model<any>, "id" | "provider">): number {
-	let tokens = 0;
-	for (const message of messages) {
-		tokens += estimateTokens(message, model);
-	}
-	return tokens;
-}
-
-/**
  * Fit the kept tail to the target window, ask `session_before_compact` features, summarize (theirs or the default),
  * save the compaction entry with its outcome (`compaction/outcome.ts`), refresh the context and announce
  * `session_compact`. Throws "Compaction cancelled" when an feature cancels, and `CompactionFitError` before any request
@@ -92,7 +79,8 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 		summarizeFailedTurn: !willRetry,
 	});
 	const startedAt = new Date().toISOString();
-	const requestedBy = reason === "manual" ? (run.requestedBy ?? "user") : undefined;
+	// An automatic compaction the agent asked for at a task boundary carries its own focus.
+	const requestedBy = run.requestedBy ?? (reason === "manual" ? "user" : undefined);
 	const focus: SummaryFocus | undefined = run.customInstructions
 		? { text: run.customInstructions, source: requestedBy ?? "user" }
 		: undefined;
@@ -148,16 +136,19 @@ export async function runCompaction(host: CompactionHost, run: CompactionRun): P
 			maxInputTokens: preparation.settings.maxInputTokens,
 			reserveTokens: run.reserveTokens,
 			sessionFile: host.sessionManager.getSessionFile(),
+			model: run.model,
 		},
 	);
 	const { summary } = finalized;
 	const branch = host.sessionManager.getBranch();
-	// Estimated before the entry is saved, from the context the entry will leave, so the entry can record it: for the
+	// Estimated before the entry is saved, from the full projected context (including system prompt and tool state), for the
 	// model the next request goes to.
-	const estimatedTokensAfter = estimateMessagesTokens(
-		projectionAfterCompaction(branch, firstKeptEntryId, tokensBefore)(summary).projection.messages,
+	const projected = projectionAfterCompaction(branch, firstKeptEntryId, tokensBefore)(summary);
+	const estimatedTokensAfter = estimateProjectedContextTokens(
+		projected.projection,
+		projected.entries,
 		run.model,
-	);
+	).tokens;
 	// The entry's own timestamp is its save time; `startedAt` makes the run's wall time measurable.
 	const timed =
 		finalized.details === undefined || isRecord(finalized.details)

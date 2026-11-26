@@ -1,9 +1,8 @@
 import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
-import { defineTool } from "../../core/features/types/tools.ts";
 import { formatCost } from "../shared/format.ts";
 import { errorMessage } from "@octocodeai/octocode-contracts/guards";
 import { sharedAgentDb } from "../../storage/database.ts";
-import { registeredWorkspace } from "../../storage/workspace-database.ts";
+import { type WorkspaceDb, workspaceDb } from "../../storage/workspace-database.ts";
 import { backlog, dbStamp, isBusy, machineSamples, timers, type TimerRow } from "../../../../db/src/api.ts";
 import { BACKLOG_CHANGE_CHANNEL, type BacklogChange, type BacklogChangeNotice } from "../shared/backlog-change.ts";
 import { backlogDeps } from "./backlog-deps.ts";
@@ -31,9 +30,6 @@ import { timerWorkRows } from "./work.ts";
 import { TimerScheduler } from "./scheduler.ts";
 import type { LiveJob } from "./job-poll.ts";
 import { timerTool } from "../native/tools/notify/tool.ts";
-
-/** The tool's name before it became `notify`; only saved sessions still carry it. */
-const LEGACY_TOOL_NAME = "wait";
 
 /** `timer.check.enabled` from the global settings; unreadable settings keep it off. */
 function checkEnabledSetting(agentDir: string = getAgentDir()): boolean {
@@ -88,7 +84,12 @@ export function registerTimers(
 ): { settle(): Promise<unknown>; endOwn(): number } {
 	const env = options.env ?? process.env;
 	const now = options.now ?? Date.now;
-	const db = () => sharedAgentDb(env);
+	const machine = () => sharedAgentDb(env);
+	/** The session's workspace and the file holding its timers, backlog and agent events. */
+	let last: { cwd: string; found: WorkspaceDb } | undefined;
+	const bound = (cwd = current?.cwd ?? process.cwd()): WorkspaceDb =>
+		last?.cwd === cwd && last.found.agent.db.isOpen ? last.found : (last = { cwd, found: workspaceDb(cwd, env) }).found;
+	const db = () => bound().agent;
 	let current: FeatureContext | undefined;
 	let scheduler: TimerScheduler | undefined;
 	/** The user said yes to judging once this session, with `timer.check.enabled` off. */
@@ -100,8 +101,9 @@ export function registerTimers(
 	const queuedRuns = new Set<number>();
 	/** Read from the global settings only, as `bash.inheritProviderKeys` is: a project file must not start paid calls. */
 	const checkAllowed = () => approved || checkEnabledSetting(options.agentDir);
-	const follower = new DatabaseFollower(() => dbStamp(db().file), isBusy);
-	const workspace = () => registeredWorkspace(current?.cwd ?? process.cwd(), db()).id;
+	// Both files: a peer's end is an agent event in the workspace file or a session row in the machine file.
+	const follower = new DatabaseFollower(() => `${dbStamp(db().file)}|${dbStamp(machine().file)}`, isBusy);
+	const workspace = () => bound().workspace.id;
 	const small = options.small ?? NO_SMALL_MODEL;
 	const judge = new Judge({
 		ctx: () => current,
@@ -142,8 +144,8 @@ export function registerTimers(
 			const seq = itemSeq(ref);
 			return seq === undefined ? undefined : backlog.openPrerequisites(db().db, workspace(), seq);
 		},
-		agentEnd: (name) => peerEnd(db().db, workspace(), name),
-		machine: (count) => machineSamples.recentLoads(db().db, count),
+		agentEnd: (name) => peerEnd(db().db, machine().db, workspace(), name),
+		machine: (count) => machineSamples.recentLoads(machine().db, count),
 		watchDatabase: (poke) => follower.subscribe(poke),
 		judge: (request) => judge.judge(request),
 	};
@@ -309,11 +311,12 @@ export function registerTimers(
 	);
 	const notify = timerTool({
 		db,
-		workspaceId: (ctx) => registeredWorkspace(ctx.cwd, db()).id,
+		workspaceId: (ctx) => bound(ctx.cwd).workspace.id,
 		agent: options.agent,
 		now,
 		deps,
 		jobs: options.jobs ?? (() => []),
+		children: () => work.background(),
 		implicit: () => {
 			const children = work.background();
 			const jobs = work.all().filter((row) => row.kind === "bash");
@@ -332,12 +335,9 @@ export function registerTimers(
 		},
 	});
 	api.tools.register(notify);
-	// Sessions saved before the rename hold `wait` calls: their rows keep rendering with the same renderers.
-	const legacyRenderers = defineTool(notify);
-	api.renderers.tool((name, next) => (name === LEGACY_TOOL_NAME ? legacyRenderers : next()));
 	const commandHost = {
 		db,
-		workspaceId: (ctx: { cwd: string }) => registeredWorkspace(ctx.cwd, db()).id,
+		workspaceId: (ctx: { cwd: string }) => bound(ctx.cwd).workspace.id,
 		agent: options.agent,
 		now,
 		sessionUsd,

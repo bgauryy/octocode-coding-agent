@@ -30,6 +30,8 @@ octocode --trust -p "..."                                 # headless runs need a
 
 For machine-readable progress use `--mode json`; for a persistent worker use `--mode rpc`. The [external-agent guide](docs/external-agents.md) explains safe spawning, model and permission selection, configuration and completion checks.
 
+Something not working? See [troubleshooting](docs/troubleshooting.md).
+
 The package installs `octocode` and `octocode-api`. If the separate `octocode` research package is installed globally, npm reports `EEXIST` for the shared command name: remove that package first, or install with `--force`. `octocode --version` shows which one runs.
 
 ## How a turn works

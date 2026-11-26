@@ -35,6 +35,9 @@ export interface AltScreenTerminalModesHost {
 export class AltScreenTerminalModes {
 	private readonly host: AltScreenTerminalModesHost;
 	private anyMotion = false;
+	private buttonDown = false;
+	/** The hover mode a frame asked for while a button was down; applied on release. */
+	private deferredHover: boolean | undefined;
 	private captured = true;
 	private sigcont: (() => void) | undefined;
 
@@ -45,6 +48,14 @@ export class AltScreenTerminalModes {
 	/** Whether mouse reports reach the screen: tracking is on and has not been released to the terminal. */
 	get tracksMouse(): boolean {
 		return this.host.mouse && this.captured;
+	}
+
+	/**
+	 * Whether the terminal may turn the wheel into Up and Down keys (alternate scroll). It does so only while mouse
+	 * reports are off; with them on, the wheel arrives as reports and arrow keys are keys.
+	 */
+	get wheelMayBeArrows(): boolean {
+		return !this.tracksMouse;
 	}
 
 	get mouseCaptured(): boolean {
@@ -91,14 +102,34 @@ export class AltScreenTerminalModes {
 		if (this.host.isActive()) this.host.terminal().write(this.sequence());
 	}
 
+	/** Whether bare pointer movement is tracked now. */
+	get hoverTracking(): boolean {
+		return this.anyMotion;
+	}
+
 	/** Track bare pointer movement while `needed`; a change writes one mode switch. */
 	setHoverTracking(needed: boolean): void {
+		// Switching 1002/1003 mid-gesture makes some terminals drop the drag or the release.
+		if (this.buttonDown) {
+			this.deferredHover = needed;
+			return;
+		}
 		if (needed === this.anyMotion || !this.host.isActive()) return;
 		const next = needed && this.tracksMouse && detectMultiplexer() === null;
 		if (next === this.anyMotion) return;
 		this.anyMotion = next;
 		// xterm treats the tracking modes as exclusive. Resetting 1003 alone also disables wheel and drag reports.
 		this.host.terminal().write(next ? ENABLE_ANY_MOTION_MOUSE : DISABLE_ANY_MOTION_MOUSE + ENABLE_BUTTON_MOTION_MOUSE);
+	}
+
+	/** Record whether a mouse button is held; a hover change requested meanwhile is applied on release. */
+	noteButton(down: boolean): void {
+		if (down === this.buttonDown) return;
+		this.buttonDown = down;
+		if (down || this.deferredHover === undefined) return;
+		const needed = this.deferredHover;
+		this.deferredHover = undefined;
+		this.setHoverTracking(needed);
 	}
 
 	get tracksHover(): boolean {

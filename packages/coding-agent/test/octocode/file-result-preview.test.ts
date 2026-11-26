@@ -32,12 +32,10 @@ describe("file result preview", () => {
 		expect(expanded.length).toBeGreaterThanOrEqual(total);
 	});
 
-	it("colours only the start of a long diff while collapsed, and none of it for several changes", () => {
+	it("skips colouring diffs while collapsed for both single and multi-file changes", () => {
 		const render = vi.spyOn(diffModule, "renderDiff");
 		rows(1, false);
-		expect(render).toHaveBeenCalledTimes(1);
-		expect(render.mock.calls[0][0].split("\n").length).toBeLessThan(diff.split("\n").length / 2);
-		render.mockClear();
+		expect(render).not.toHaveBeenCalled();
 		const several = rows(3, false);
 		expect(render).not.toHaveBeenCalled();
 		expect(several.join("\n")).toContain(`+${3 * diff.split("\n").length} diff lines`);

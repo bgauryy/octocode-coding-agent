@@ -8,7 +8,7 @@ import {
 	resolveModelCapabilities,
 } from "@octocodeai/octocode-ai";
 import { splitSystemMessageIntoBlocks } from "@octocodeai/octocode-ai/utils/instruction-split";
-import { matchesHost } from "@octocodeai/octocode-ai/utils/provider-host";
+import { profileCacheFacts } from "@octocodeai/octocode-ai/utils/provider-profile";
 import { PROMPT_CACHE_KEY_ENV } from "@octocodeai/octocode-ai/utils/cache-policy";
 import { sha256 } from "@octocodeai/octocode-common/atomic-file";
 import { findInstructionCacheBoundary } from "./model-runtime/instruction-boundary.ts";
@@ -43,10 +43,10 @@ const ACTIVE_MS = 5 * 60_000;
 const FORGET_MS = 24 * 3_600_000;
 
 /** Where `prompt_cache_key` means OpenAI's documented cache group: OpenAI's own API. */
-export function groupsByPrefix(model: Pick<Model<Api>, "api" | "baseUrl">): boolean {
+export function groupsByPrefix(model: Pick<Model<Api>, "api" | "baseUrl" | "provider" | "profile">): boolean {
 	return (
 		(model.api === "openai-responses" || model.api === "openai-completions") &&
-		matchesHost(model.baseUrl, "api.openai.com")
+		profileCacheFacts(model).groupsByPrefix === true
 	);
 }
 

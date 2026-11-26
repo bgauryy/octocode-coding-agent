@@ -9,7 +9,8 @@ import { prepareCompaction } from "../src/core/compaction/index.ts";
 const model = { provider: "p", id: "m", contextWindow: 100_000 } as never;
 const settings = { enabled: true, reserveTokens: 1_000, keepRecentTokens: 500 };
 const policy = { watch: (stream: never) => stream, retry: {} as never, callbacks: {} };
-const threshold = Math.ceil(0.95 * (100_000 - settings.reserveTokens));
+// The loop stops at a step boundary at 90% of the window, or at the compaction threshold when that is lower.
+const threshold = Math.min(100_000 - settings.reserveTokens, Math.ceil(0.9 * 100_000));
 
 function setup(handlers = true) {
 	const manager = SessionManager.inMemory();
@@ -48,10 +49,10 @@ describe("compaction prewarm", () => {
 		const large = { provider: "p", id: "large", contextWindow: 1_000_000 } as never;
 		for (const triggerTokens of [999_000, 300_000]) {
 			const policy = { ...settings, triggerTokens };
-			const stop = Math.ceil(0.95 * triggerTokens);
+			const stop = Math.min(triggerTokens, Math.ceil(0.9 * 1_000_000));
 			expect(prewarm.due(stop - 10_000, large, policy)).toBe(true);
 			expect(prewarm.due(stop, large, policy)).toBe(false);
-			expect(prewarm.due(triggerTokens - 1, large, policy)).toBe(false);
+			expect(prewarm.due(triggerTokens, large, policy)).toBe(false);
 		}
 	});
 

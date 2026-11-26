@@ -5,6 +5,7 @@ import { renderPrompt } from "../../core/prompt-template.ts";
 import { resetClock } from "@octocodeai/octocode-common/time";
 import { QUOTA_HIGH } from "./models-quota.ts";
 import { providerHealth } from "./provider-health.ts";
+import { harnessSource, sourcedText } from "../events/source.ts";
 
 /** The custom message type of the quota notice. */
 export const QUOTA_NOTICE_ID = "octocode-quota-high";
@@ -84,14 +85,22 @@ export function registerQuotaNotice(api: FeatureSetup, watch: QuotaWatch = new Q
 	api.bus.on("session_start", () => watch.reset());
 	api.bus.on("before_agent_start", (_event, ctx) => {
 		const notice = watch.notice(ctx);
-		return notice ? { message: { customType: QUOTA_NOTICE_ID, content: notice, display: false } } : undefined;
+		return notice
+			? {
+					message: {
+						customType: QUOTA_NOTICE_ID,
+						content: sourcedText(notice, harnessSource("models")),
+						display: false,
+					},
+				}
+			: undefined;
 	});
 	api.bus.on("turn_end", async (_event, ctx) => {
 		const notice = watch.notice(ctx);
 		// It starts no turn, so it settles at once; a failure reaches the bus's error report.
 		if (notice)
 			await api.session.sendMessage(
-				{ customType: QUOTA_NOTICE_ID, content: notice, display: false },
+				{ customType: QUOTA_NOTICE_ID, content: sourcedText(notice, harnessSource("models")), display: false },
 				{ triggerTurn: false },
 			);
 	});

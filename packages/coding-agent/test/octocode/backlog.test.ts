@@ -1,4 +1,4 @@
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { backlogToolName, fixtureBacklog, planEntryFields } from "./backlog-fixture.ts";
 import { itemCounts } from "./counts-fixture.ts";
 import fs from "node:fs";
@@ -49,8 +49,8 @@ function storeFor(repo: string, db: AgentDb = sharedAgentDb()): BacklogStore {
 }
 
 function workspaceStore(cwd: string): BacklogStore {
-	const agent = sharedAgentDb();
-	return new BacklogStore(() => agent, registeredWorkspace(cwd, agent).id);
+	const { agent, workspace } = workspaceDb(cwd);
+	return new BacklogStore(() => agent, workspace.id);
 }
 
 /** Record a session row, as the sessions feature does at session_start. */
@@ -423,7 +423,9 @@ describe("backlog tool", () => {
 				completion: completed(),
 				note: "fixed; yarn test passes",
 			}),
-		).toMatch(/^Updated B1 \[done p2\] v\d+$/);
+		).toMatch(
+			/^Updated B1 \[done p2\] v\d+\nSummary: Implemented\nVerification: passed: Focused check passed\nQA: not run$/,
+		);
 		expect(t.tool.executionMode).toBeUndefined();
 		expect(t.tool.parameters.properties.op.enum).toEqual(["get", "claim", "note", "done", "close", "step"]);
 		expect(t.plan.parameters.properties.op.enum).toEqual(["add", "edit", "list", "stat"]);

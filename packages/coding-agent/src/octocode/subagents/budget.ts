@@ -113,7 +113,7 @@ export class RequestBudget {
 	private finalGiven = false;
 	private stopRequested = false;
 	private readonly previous: number;
-	private readonly canAsk: boolean;
+	private canAsk: boolean;
 	/** This run continues a child that was at or past its soft limit. */
 	private readonly continued: boolean;
 
@@ -162,6 +162,11 @@ export class RequestBudget {
 	prompt(task: string): string {
 		if (!this.continued) return task;
 		return `${task}\n\n${steerMessage(this.previous, this.soft, this.hard, { continued: true })}`;
+	}
+
+	/** Enables asking the parent on the soft-limit steer once a foreground run hands over to the background. */
+	enableAsk(): void {
+		this.canAsk = true;
 	}
 
 	/** Adds `requests` to both limits of this run. A new soft limit still ahead gets its own steer, so the child can ask again. */
@@ -227,6 +232,10 @@ export class RunningBudgets {
 
 	usage(id: string): BudgetStanding | undefined {
 		return this.running.get(id)?.usage;
+	}
+
+	enableAsk(id: string): void {
+		this.running.get(id)?.enableAsk();
 	}
 
 	/** Adds `requests` to child `id`'s limits for this run; the new standing, or the refusal. */

@@ -232,7 +232,7 @@ Model A`;
 		expect(refused).toMatchObject({ block: true, terminate: true });
 	});
 
-	it("restarts the streak after any other call, exempt ones included", async () => {
+	it("restarts a successful streak after any other call, exempt ones included", async () => {
 		const { call } = guard();
 		await call("web", { url: "u" });
 		await call("web", { url: "u" });

@@ -72,7 +72,7 @@ export class ApplicationProjection {
 				messages.set(message.id, previous);
 				continue;
 			}
-			const text = message.content ? message.text : visibleLegacyText(message.text);
+			const text = message.text;
 			if (!text.trim() && !message.content?.length && !message.errorMessage && !isInterrupted(message.status)) continue;
 			for (const tool of tools) linked.add(tool.toolCallId);
 			const status = message.status ?? (message.complete ? "completed" : "streaming");
@@ -262,9 +262,4 @@ function relatedTools(graph: ToolGraph, ids: ReadonlySet<string>): ApplicationTo
 		}
 	}
 	return [...found].sort((a, b) => a - b).map((index) => graph.tools[index]);
-}
-
-/** Strips the placeholders `applicationContentText` writes into a text-only message. Rich blocks never pass through it. */
-function visibleLegacyText(text: string): string {
-	return text.replace(/\[Tool call: [^\]\n]*\]|\[Content available in the session\]/g, "");
 }

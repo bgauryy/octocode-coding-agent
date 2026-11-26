@@ -91,10 +91,8 @@ export interface HarnessOptions {
 interface Internals {
 	doRender(): void;
 	currentLayout: LayoutFrame | undefined;
-	previousScreen: string[];
-	previousScreenWidth: number;
-	previousScreenHeight: number;
-	trimmedRows: never;
+	/** What the terminal shows after the last frame, and the diff's memos. */
+	painter: { screen: string[]; width: number; height: number; trimmedRows: never };
 	images: { protocol: never; uploaded: never };
 	search: { activeSearch?: unknown };
 }
@@ -136,9 +134,9 @@ export function createHarness(options: HarnessOptions) {
 	const frame = (name = step): FrameSample => {
 		step = name;
 		const previous = {
-			screen: internals.previousScreen,
-			width: internals.previousScreenWidth,
-			height: internals.previousScreenHeight,
+			screen: internals.painter.screen,
+			width: internals.painter.width,
+			height: internals.painter.height,
 		};
 		TimedMarkdown.ms = 0;
 		terminal.writeMs = 0;
@@ -146,20 +144,20 @@ export function createHarness(options: HarnessOptions) {
 		internals.doRender();
 		const renderMs = cpuNowMs() - start;
 		const box = internals.currentLayout && getScrollViewBox(internals.currentLayout, transcript);
-		const screen = internals.previousScreen;
+		const screen = internals.painter.screen;
 		const diffStart = cpuNowMs();
 		renderAltScreenOutput({
 			screen,
 			previousScreen: previous.screen,
 			previousScreenWidth: previous.width,
 			previousScreenHeight: previous.height,
-			width: internals.previousScreenWidth,
-			height: internals.previousScreenHeight,
+			width: internals.painter.width,
+			height: internals.painter.height,
 			imageProtocol: internals.images.protocol,
 			uploadedKittyImages: internals.images.uploaded,
 			cursorPos: null,
 			showHardwareCursor: false,
-			trimmedRows: internals.trimmedRows,
+			trimmedRows: internals.painter.trimmedRows,
 			imageRowsMemo: new ImageRowsMemo(),
 		});
 		const diffMs = cpuNowMs() - diffStart;
@@ -187,7 +185,7 @@ export function createHarness(options: HarnessOptions) {
 		width,
 		height,
 		/** The screen as last painted. */
-		screen: (): readonly string[] => internals.previousScreen.map(normalizeRow),
+		screen: (): readonly string[] => internals.painter.screen.map(normalizeRow),
 		searchOpen: () => internals.search.activeSearch !== undefined,
 		/** Run `change` (timed as the application update), then paint one frame. */
 		update(name: string, change: () => void): FrameSample {

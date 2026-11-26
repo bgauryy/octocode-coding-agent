@@ -10,12 +10,12 @@ export interface SessionSignals {
 	/** A step of the run ended; `final` is a reply with no tool calls, where the run would stop. */
 	stepEnded(final: boolean): void | Promise<void>;
 	/** A turn began. */
-	turnStarted(): void;
+	turnStarted(): void | Promise<void>;
 	/**
 	 * The run settled; `continues` is whether the session holds a message it runs next, `aborted` whether the run was
 	 * stopped rather than finished.
 	 */
-	settled(continues: boolean, aborted?: boolean): void;
+	settled(continues: boolean, aborted?: boolean): void | Promise<void>;
 	/** Compaction took the lock. */
 	compactionStarted(): void;
 	/** Compaction ended, failed or was cancelled. */

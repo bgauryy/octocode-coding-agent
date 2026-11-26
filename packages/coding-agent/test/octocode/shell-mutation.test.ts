@@ -9,6 +9,7 @@ const NOTHING = {
 	directories: [],
 	areas: [],
 	opaque: [],
+	inlineCode: [],
 	unread: [],
 	unreadAreas: [],
 	refMoves: [],

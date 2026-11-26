@@ -32,7 +32,7 @@ import {
 	type Provider,
 } from "@octocodeai/octocode-ai";
 import type { ModelConfig } from "./model-config.ts";
-import type { ModelsProject } from "./model-config/project.ts";
+import type { ModelsDiagnostics, ModelsProject } from "./model-config/project.ts";
 import { missingCredentialWarning } from "./model-runtime/missing-credentials.ts";
 import { ProviderPins } from "./model-runtime/provider-pins.ts";
 import { loadSettledConfig } from "./model-runtime/settled-config.ts";
@@ -174,6 +174,11 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		return this.layers.config.getProviderFile(providerId);
 	}
 
+	/** Where models.json files sit, which definitions were replaced, and the trust hint for untrusted ones. */
+	getModelsDiagnostics(): ModelsDiagnostics {
+		return this.layers.config.diagnostics;
+	}
+
 	/** Where the model's facts come from (see `ProviderLayers.modelOrigin`). */
 	getModelOrigin(model: Pick<Model<Api>, "provider" | "id" | "api">): ModelOrigin {
 		return this.layers.modelOrigin(model.provider, model.id, model.api);
@@ -188,10 +193,7 @@ export class ModelRuntime extends ModelCatalog implements Models {
 		return this.layers.config.getWarnings();
 	}
 
-	/**
-	 * One warning per enabled models.json provider that adds models but has no credential from any source (its `apiKey`,
-	 * a stored key or sign-in, the environment), so none of its models can run. Read after an availability pass.
-	 */
+	/** One warning per enabled models.json provider with models but no credential from any source. Read after an availability pass. */
 	getMissingCredentialWarnings(): string[] {
 		return this.layers.config
 			.getProviderIds()

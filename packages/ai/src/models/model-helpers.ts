@@ -71,7 +71,7 @@ export function calculateCost(model: AnyModel, usage: Usage, now: Date | number 
 	return usage.cost;
 }
 
-export { clampThinkingLevel, getSupportedThinkingLevels } from "./thinking.ts";
+export { clampThinkingLevel, effortLevel, effortValue, getSupportedThinkingLevels } from "./thinking.ts";
 
 /**
  * Check if two models are equal by comparing their type, id, and provider.

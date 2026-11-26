@@ -40,7 +40,7 @@ const FILE_LIST_BLOCKS = /\n\n<(read-files|modified-files)>\n[\s\S]*?\n<\/\1>/g;
 export function splitSummary(summary: string): SplitSummary {
 	const recovered = summary.replace(new RegExp(`\\n\\n${RECOVERY_HEADING}\\n(?:- [^\\n]*(?:\\n|$))+$`), "");
 	const modelPart = (text: string) => withoutSavedResults(text).replace(FILE_LIST_BLOCKS, "");
-	const at = recovered.lastIndexOf(`\n\n${USER_HEADING}\n`);
+	const at = Math.max(recovered.lastIndexOf(`\n\n${USER_HEADING}\n`), recovered.lastIndexOf("\n\n## User Messages\n"));
 	if (at < 0) return { body: modelPart(recovered), messages: [], omitted: 0 };
 	const section = recovered.slice(at);
 	const body = modelPart(recovered.slice(0, at));

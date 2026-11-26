@@ -26,6 +26,7 @@ For a large board, have read-only researcher children check batches in parallel 
 							"done",
 							"obsolete",
 							"duplicate",
+							"merge",
 							"promote",
 							"reprioritize",
 							"split",
@@ -44,4 +45,4 @@ For a large board, have read-only researcher children check batches in parallel 
 }
 ```
 
-5. Start all batches together in the background and wait for their reports. Then spot-check every non-keep verdict before you write it (SKILL.md step 3). When a child kept an item without a deep check, report that item as unchecked; do not count it as verified.
+5. Start all batches together in the background and wait for their reports. Then spot-check every non-keep verdict before you write it (grooming step 3). When a child kept an item without a deep check, report that item as unchecked; do not count it as verified.

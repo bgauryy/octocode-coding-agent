@@ -820,7 +820,7 @@ describe("bash rendering", () => {
 				),
 			),
 		).toBe("  ⎿  exit 0 · 20 lines (ctrl+o to expand)");
-		// While it runs, the row shows the last lines.
+		// Running output also stays folded until it is expanded.
 		const lines = rendered(
 			tool.renderResult(
 				{ content: [{ type: "text", text }] },
@@ -829,15 +829,7 @@ describe("bash rendering", () => {
 				done({ isPartial: true, executionStarted: true }),
 			),
 		).split("\n");
-		expect(lines).toEqual([
-			"  ⎿  running · 20 lines",
-			"     … +15 earlier lines (ctrl+o to expand)",
-			"     line 16",
-			"     line 17",
-			"     line 18",
-			"     line 19",
-			"     line 20",
-		]);
+		expect(lines).toEqual(["  ⎿  running · 20 lines (ctrl+o to expand)"]);
 		const expanded = rendered(
 			tool.renderResult({ content: [{ type: "text", text }] }, { expanded: true, isPartial: false }, theme, done()),
 		);
@@ -854,7 +846,7 @@ describe("bash rendering", () => {
 		).toBe("  ⎿  exit 0 · no output");
 	});
 
-	it("reads only the tail of a collapsed output, with the same counts as the whole", () => {
+	it("keeps collapsed output summary-only, with the same counts as the whole", () => {
 		const { tool } = setup();
 		const many = Array.from({ length: 500 }, (_, index) => `line ${index + 1}`).join("\n");
 		const texts = [
@@ -878,20 +870,7 @@ describe("bash rendering", () => {
 				const collapsed = view(false);
 				const expanded = view(true);
 				expect(collapsed[0].replace(" (ctrl+o to expand)", "")).toBe(expanded[0]);
-				if (!isPartial) {
-					// A finished command closes to its summary line.
-					expect(collapsed).toHaveLength(1);
-					continue;
-				}
-				const body = expanded.slice(1).filter((line) => !line.trimStart().startsWith("saved:"));
-				if (!/to expand/.test(collapsed[1] ?? "")) {
-					// A short output is shown whole, without its blank lines.
-					expect(collapsed.slice(1)).toEqual(body.filter((line) => line.trim() !== ""));
-					continue;
-				}
-				const hidden = Number(/\+(\d+) earlier lines?/.exec(collapsed[1])?.[1] ?? 0);
-				expect(hidden + collapsed.slice(2).length).toBe(body.length);
-				expect(collapsed.slice(-3)).toEqual(body.filter((line) => line.trim() !== "").slice(-3));
+				expect(collapsed).toHaveLength(1);
 			}
 		}
 	});
@@ -955,7 +934,7 @@ describe("bash rendering", () => {
 		).toBe("  ⎿  Error: Working directory does not exist");
 	});
 
-	it("shows a started job and a running tail", () => {
+	it("shows a started job and folds running output", () => {
 		const { tool, renderers } = setup();
 		expect(
 			rendered(
@@ -999,7 +978,7 @@ describe("bash rendering", () => {
 					{ lastComponent: undefined, isPartial: true, executionStarted: true, state: {} },
 				),
 			),
-		).toBe("  ⎿  running · 2 lines\n     one\n     two");
+		).toBe("  ⎿  running · 2 lines (ctrl+o to expand)");
 		const job = [...renderers.values()][0];
 		const message = {
 			content: "[exit 0 · 3s · log: /tmp/j.log]\nBackground bash bash-1 finished after 3s: yarn build\nok",

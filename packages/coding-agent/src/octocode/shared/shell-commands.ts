@@ -19,6 +19,8 @@ export interface ParsedCommand {
 	opaque?: true;
 	/** Why the command is opaque when the generic reason does not fit: a reader given a computed word that may become a writing option (`sort $X in`). */
 	opaqueBecause?: string;
+	/** The synthetic command standing for arithmetic on a variable the line does not show (`$((n-h))`): it names no program and writes no file, so only the permission policy treats it as opaque. */
+	hiddenArithmetic?: true;
 }
 
 export interface ParsedShell {

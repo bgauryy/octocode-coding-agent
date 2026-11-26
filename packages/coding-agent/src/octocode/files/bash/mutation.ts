@@ -18,7 +18,7 @@ async function changesWorkspace(command: string, cwd: string, powershell: boolea
 	// PowerShell is not parsed: anything that is not plainly a read may write.
 	if (powershell) return !readOnlyCommand(command, "powershell");
 	const effect = shellMutation(command);
-	if (effect.opaque.length > 0 || effect.uncertain) return true;
+	if (effect.opaque.length > 0 || effect.inlineCode.length > 0 || effect.uncertain) return true;
 	const { root, temp } = workspacePaths(cwd);
 	const [base, scratch] = [canonicalPath(path.resolve(root)), canonicalPath(temp)];
 	return effect.writes.some((file) => {
@@ -53,6 +53,7 @@ export function bashConcurrency(args: Record<string, unknown>): "shared" | "excl
 		effect.uncertain ||
 		effect.unparsed ||
 		effect.opaque.length > 0 ||
+		effect.inlineCode.length > 0 ||
 		effect.programSwap !== undefined ||
 		effect.writes.length > 0 ||
 		effect.directories.length > 0 ||

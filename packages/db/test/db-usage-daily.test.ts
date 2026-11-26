@@ -96,8 +96,8 @@ describe("usageDaily", () => {
 		expect(() => usageDaily.add(agent.db, [row({ billing: "free" as never })])).toThrow(/CHECK constraint/);
 	});
 
-	it("creates its table in a file made without it", () => {
-		agent.db.exec("DROP TABLE usage_daily");
+	it("creates its table when a version-10 file made without it is upgraded", () => {
+		agent.db.exec("DROP TABLE usage_daily; PRAGMA user_version=10");
 		agent.close();
 		agent = openDatabase(locations);
 		usageDaily.add(agent.db, [row()]);

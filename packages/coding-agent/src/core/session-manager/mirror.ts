@@ -29,6 +29,18 @@ import { continueOpenedMirror } from "./mirror-open.ts";
 import { strictJsonLine } from "./json-line.ts";
 import { mirrorsSessionFile } from "./mirror-scope.ts";
 
+/** Canonical session-file paths, stable once created, so a repeated append skips the realpath walk; bounded by files. */
+const sessionCanonical = new Map<string, string>();
+const SESSION_CANONICAL_MAX = 64;
+function canonicalSession(file: string): string {
+	const known = sessionCanonical.get(file);
+	if (known !== undefined) return known;
+	const value = canonicalPath(file);
+	if (sessionCanonical.size >= SESSION_CANONICAL_MAX) sessionCanonical.delete(sessionCanonical.keys().next().value!);
+	sessionCanonical.set(file, value);
+	return value;
+}
+
 /**
  * The session's database mirror: header and entries copied to the agent database after the session file, by the
  * database writer (`mirror-writes.ts` sends the commands). The file stays the record; the copy follows within
@@ -125,7 +137,7 @@ export function mirrorReplaced(
 	stamp: FileStamp,
 	lines?: readonly string[],
 ): void {
-	const file = canonicalPath(sessionFile);
+	const file = canonicalSession(sessionFile);
 	if (mirrorsSessionFile(file, state)) save(transcriptOf(state, file), "replace", stamp, state.fileEntries, lines);
 }
 
@@ -142,7 +154,7 @@ export function mirrorAppended(
 	written: readonly { entry: SessionEntry; line: string }[],
 	stamp: FileStamp,
 ): void {
-	const file = canonicalPath(sessionFile);
+	const file = canonicalSession(sessionFile);
 	if (written.length === 0 || !mirrorsSessionFile(file, state)) return;
 	const t = transcriptOf(state, file);
 	// Its index among the entries, past the header (not always the last: held entries are written in a row).

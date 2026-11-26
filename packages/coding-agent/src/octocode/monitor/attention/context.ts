@@ -68,8 +68,11 @@ export function contextNoticeText(tokens: number, limit: number, window: number,
 	});
 }
 
-/** The band of the last notice in the context, if any. */
-export function lastNoticedBand(messages: readonly { message: unknown }[], compactionId?: string): number | undefined {
+/** The band and compact-hint state of the last notice in the context, if any. */
+function lastNoticeState(
+	messages: readonly { message: unknown }[],
+	compactionId?: string,
+): { band: number; compactHint: boolean } | undefined {
 	for (let index = messages.length - 1; index >= 0; index--) {
 		const message = messages[index].message;
 		if (!isRecord(message) || message.role !== "custom" || message.customType !== CONTEXT_NOTICE_TYPE) continue;
@@ -77,15 +80,24 @@ export function lastNoticedBand(messages: readonly { message: unknown }[], compa
 		// A legacy notice cannot establish occupancy in this new checkpoint; one fresh append upgrades its provenance.
 		if (compactionId && (!isRecord(message.details) || message.details.compactionId === undefined)) continue;
 		const band = isRecord(message.details) ? message.details.band : undefined;
-		return typeof band === "number" ? band : undefined;
+		if (typeof band !== "number") return undefined;
+		const compactHint =
+			(isRecord(message.details) && message.details.compactHint === true) ||
+			(typeof message.content === "string" && message.content.includes("`compact`"));
+		return { band, compactHint };
 	}
 	return undefined;
 }
 
+/** The band of the last notice in the context, if any. */
+export function lastNoticedBand(messages: readonly { message: unknown }[], compactionId?: string): number | undefined {
+	return lastNoticeState(messages, compactionId)?.band;
+}
+
 /**
- * After a turn: sends a notice when the context reached a band higher than the last one noticed. It never starts a
- * turn; during a run it joins the context at the end of the turn, before the next request. Returns the send, or undefined
- * when nothing is due.
+ * After a turn: sends a notice when the context reached a band higher than the last one noticed, or entered the prewarm
+ * lead where `compact` becomes actionable after an earlier 0.9 notice on a large window. It never starts a turn; during
+ * a run it joins the context at the end of the turn, before the next request. Returns the send, or undefined when nothing is due.
  */
 export function noticeContextUsage(
 	api: SetupPick<"session", "sendMessage">,
@@ -106,15 +118,16 @@ export function noticeContextUsage(
 	if (limit <= 0) return undefined;
 	const band = noticeBand(tokens, limit, bands);
 	if (band === undefined) return undefined;
-	const last = lastNoticedBand(messages, compactionId);
-	if (last !== undefined && last >= band) return undefined;
+	const hint = compactTool && compactHintDue(band, tokens, limit, window);
+	const last = lastNoticeState(messages, compactionId);
+	if (last !== undefined && last.band >= band && (!hint || last.compactHint)) return undefined;
 	return attend(
 		api,
 		{ rule: "context", value: Math.round((tokens / limit) * 100), threshold: Math.round(band * 100) },
 		{
 			customType: CONTEXT_NOTICE_TYPE,
-			content: contextNoticeText(tokens, limit, window, compactTool && compactHintDue(band, tokens, limit, window)),
-			details: { band, tokens, limit, compactionId: compactionId ?? null },
+			content: contextNoticeText(tokens, limit, window, hint),
+			details: { band, tokens, limit, compactHint: hint, compactionId: compactionId ?? null },
 		},
 		{ how: "note" },
 	);

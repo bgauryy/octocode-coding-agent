@@ -2,8 +2,10 @@ import { resetCapabilitiesCache, setCapabilities, stripTerminalSequences } from 
 import { afterEach, expect, it, vi } from "vitest";
 import {
 	describeLatencyFence,
+	describeTerminalProgram,
 	describeTerminalStalls,
 	showTerminalDiagnostics,
+	terminalDiagnosticLines,
 } from "../src/modes/interactive/terminal-diagnostics.ts";
 import { createUiStore } from "../src/modes/interactive/state/store.ts";
 
@@ -128,4 +130,28 @@ it("describes the latency fence for every state", () => {
 	expect(text).toContain("OCTOCODE_LATENCY_FENCE=1");
 	expect(text).toContain("behind; last RTT 42 ms; floor 12 ms; held frames 7");
 	expect(describeLatencyFence({ ...fence, supported: false }, true, true, undefined)).toContain("unsupported");
+});
+
+it("reports the terminal program, synchronized output and mouse capture", () => {
+	expect(describeTerminalProgram({ TERM_PROGRAM: "vscode", TERM_PROGRAM_VERSION: "1.95.0" }, true)).toBe(
+		"Terminal program: vscode 1.95.0; synchronized output: in use (terminal confirmed mode 2026)",
+	);
+	expect(describeTerminalProgram({}, false)).toContain("unknown (TERM_PROGRAM unset); synchronized output: not in use");
+	expect(describeTerminalProgram({}, undefined)).toContain("synchronized output: n/a");
+	const lines = terminalDiagnosticLines({
+		renderer: {
+			setRenderPacing: vi.fn(),
+			getRenderPacingStats: () => ({ maxPendingOutputBytes: 0, paintedFrames: 0, deferredFrames: 0, lastFrameCostMs: 0, maxFrameCostMs: 0, maxInputToPaintMs: 0, maxTimerLagMs: 0 }),
+		},
+		ui: { mode: "fullscreen", terminal: { columns: 80, rows: 24, synchronizedOutput: true }, modes: { mouseCaptured: true, hoverTracking: false }, requestRender: vi.fn() },
+		settingsManager: {
+			getTerminalCapabilityOverrides: () => ({}),
+			isReduceMotionActive: () => false,
+			getFullscreenCopyOnSelect: () => false,
+			getLatencyFence: () => "auto",
+			isLatencyFenceActive: () => false,
+		},
+	} as unknown as Parameters<typeof terminalDiagnosticLines>[0]).join("\n");
+	expect(lines).toContain("synchronized output: in use");
+	expect(lines).toContain("mouse capture: on; pointer motion tracking: off");
 });

@@ -6,6 +6,7 @@ import { getWordSegmenter, visibleWidth } from "../utils/width.ts";
 import { getGraphemeCellRange, sliceByColumn } from "../utils/columns.ts";
 import { extractAnsiCode } from "../utils/ansi-codes.ts";
 import { stripTerminalSequences } from "../utils.ts";
+import { stripRowFrame } from "../utils/row-frame.ts";
 import { rowContinuation } from "../utils/row-marks.ts";
 import { dedentSelectedLines, joinWrappedRow, leadingSpaces, type SelectedLine } from "./selection-lines.ts";
 import type { SelectionPoint, SelectionRange } from "./types.ts";
@@ -186,6 +187,26 @@ function isWholeRow(plain: string, row: number, selection: { start: SelectionPoi
 	return row > selection.start.row && row < selection.end.row && !COPY_NEEDS_COLUMNS.test(plain.slice(-2));
 }
 
+/**
+ * The copied text of a row that starts a line, without the box border at an end the selection reaches: borders are
+ * frame, not text. `framedPlain` is the plain row minus that frame, for measuring the indent copied text keeps.
+ */
+function ownRowText(
+	line: string,
+	row: number,
+	selection: { start: SelectionPoint; end: SelectionPoint },
+): { text: string; framedPlain: string; columns: { start: number; end: number } } {
+	const plain = stripTerminalSequences(line);
+	const columns = getSelectionColumns(line, row, selection);
+	const edges = { start: columns.start <= 0, end: columns.end >= visibleWidth(line) };
+	const text = isWholeRow(plain, row, selection) ? plain.trimEnd() : rowText(line, row, selection);
+	return {
+		text: stripRowFrame(text, edges),
+		framedPlain: stripRowFrame(plain, { start: edges.start, end: false }),
+		columns,
+	};
+}
+
 /** The selected rows as drawn (marks included), with the selection in the rows they are read from. */
 function* selectedRows(
 	bounds: { start: SelectionPoint; end: SelectionPoint } | undefined,
@@ -237,10 +258,9 @@ export function* selectedLines(
 			continue;
 		}
 		if (pending) yield pending;
-		const plain = stripTerminalSequences(line);
-		const startCol = row === selection.start.row ? getSelectionColumns(line, row, selection).start : 0;
-		const text = isWholeRow(plain, row, selection) ? plain.trimEnd() : rowText(line, row, selection);
-		pending = { text, rowIndent: leadingSpaces(plain), startCol };
+		const own = ownRowText(line, row, selection);
+		const startCol = row === selection.start.row ? own.columns.start : 0;
+		pending = { text: own.text, rowIndent: leadingSpaces(own.framedPlain), startCol };
 	}
 	if (pending) yield pending;
 }
@@ -252,8 +272,7 @@ export function* selectedTextLines(
 	currentLayout: LayoutFrame | undefined,
 ): Generator<string> {
 	for (const { line, row, selection } of selectedRows(bounds, previousScreen, currentLayout)) {
-		const plain = stripTerminalSequences(line);
-		yield isWholeRow(plain, row, selection) ? plain.trimEnd() : rowText(line, row, selection);
+		yield ownRowText(line, row, selection).text;
 	}
 }
 

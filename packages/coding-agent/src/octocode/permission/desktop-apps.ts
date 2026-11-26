@@ -82,16 +82,25 @@ const taskApps = (env: NodeJS.ProcessEnv): string[] | undefined => {
 	return raw === undefined ? undefined : raw.split(",").map(normalize).filter(Boolean);
 };
 
-/** Whether a name or bundle id (`com.apple.calculator`) is in `apps`: by name, or a bundle id by its last segment. */
+/**
+ * Whether a name or bundle id is in `apps`: by exact name, or by the bundle id's dot-separated suffix matching the
+ * app's whitespace-separated name (`com.apple.Calculator` → Calculator, `com.google.Chrome` → Google Chrome).
+ */
 const inApps = (identifier: string, apps: readonly string[]): boolean => {
 	const id = normalize(identifier);
-	return apps.includes(id) || apps.includes(id.slice(id.lastIndexOf(".") + 1));
+	const bundleParts = id.split(".");
+	return apps.some((app) => {
+		if (app === id) return true;
+		const nameParts = app.split(/\s+/).filter(Boolean);
+		const offset = bundleParts.length - nameParts.length;
+		return offset >= 0 && nameParts.every((part, index) => part === bundleParts[offset + index]);
+	});
 };
 
 /**
  * The refusal for an app outside the list this task may control (`OCTOCODE_DESKTOP_APPS`), naming the app and the list,
- * or undefined when no list is set or the app is on it. The match ignores case and `.app`; a bundle id matches by its
- * last segment. This never lifts the denylist: `deniedAppRefusal` still applies.
+ * or undefined when no list is set or the app is on it. The match ignores case and `.app`; a bundle id matches the
+ * app's full name at its dot-separated suffix. This never lifts the denylist: `deniedAppRefusal` still applies.
  */
 export function outsideAppsRefusal(identifier: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
 	const apps = taskApps(env);

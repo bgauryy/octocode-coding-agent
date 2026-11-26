@@ -12,6 +12,7 @@ import type { RunDetails } from "./run-types.ts";
 import { resetText } from "../../core/agent-session/usage-limit-facts.ts";
 import type { Usage } from "@octocodeai/octocode-ai";
 import { runFooter } from "./tracking.ts";
+import { referenceProvider } from "../../core/model-reference.ts";
 
 /** Who stopped the runs of a permission change: their reports say so, so the model asks before starting them again. */
 export const PERMISSION_STOP = "a permission change";
@@ -78,7 +79,7 @@ function refusalKind(error: string, nothingSpent: boolean): "billing" | "credent
 	return undefined;
 }
 
-const providerOf = (model: string) => model.slice(0, Math.max(0, model.indexOf("/")));
+const providerOf = (model: string) => referenceProvider(model) ?? "";
 
 /**
  * What the parent does after a failed subagent, then the model it ran on and what chose it. When the provider refused

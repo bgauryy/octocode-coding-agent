@@ -10,6 +10,8 @@ import { storeUnavailable } from "../errors.ts";
 import type { MemoryStore } from "../store.ts";
 import { type CandidateInput, checkpointCandidates, noticedLines, queueCandidates } from "./candidates.ts";
 import { consolidateDue } from "./consolidation.ts";
+import { fixChecker } from "./defects.ts";
+import { toolFieldMap } from "./stale.ts";
 import type { SmallModel } from "./passes.ts";
 import { globalMemoryFile, workspaceMemoryFile } from "../../permission/memory-files.ts";
 import { NO_TAINT, quarantineReason, sessionTaint, type Taint } from "./quarantine.ts";
@@ -149,6 +151,8 @@ export function registerMemoryReflection(api: FeatureSetup, options: MemoryRefle
 					repeats: files.repeats(),
 					env,
 					small: modelFor(ctx),
+					fixed: fixChecker(options.store(ctx), env),
+					toolFields: () => toolFieldMap(api.tools.getAll()),
 					taint,
 					timeoutMs,
 					...(signal ? { signal } : {}),

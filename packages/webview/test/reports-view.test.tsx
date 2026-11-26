@@ -224,3 +224,24 @@ it("cancels the retry's request, not only the first one, when the tab unmounts",
 	unmount();
 	expect(signals[1].aborted).toBe(true);
 });
+
+it.each(["skipped", "owed"] as const)("shows a completion's qa: %s in the item detail", (qa) => {
+	const item: SnapshotItem = snapshotItem("B1", {
+		completions: [
+			{
+				id: "c1",
+				actor: { id: "a", kind: "agent" },
+				at: 1,
+				version: 2,
+				goal: "g",
+				summary: "Done it",
+				files: [],
+				verification: { status: "passed", summary: "ok" },
+				operationKey: "k",
+				qa,
+			},
+		],
+	} as never);
+	render(<ItemDetail item={item} index={index} onClose={() => {}} />);
+	expect(screen.getByText(`qa: ${qa}`)).toBeInTheDocument();
+});

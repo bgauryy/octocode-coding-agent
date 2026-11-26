@@ -19,6 +19,26 @@ export const QA_SKILL = "octocode-code-review";
 export const QA_PR_SKILL = "octocode-pr-review";
 /** The thinking level of the small reviewer: a bounded read of a bounded diff. */
 const QA_THINKING = "low";
+/**
+ * The wall-clock limit of one review, both attempts together. Measured reviews take 23-100 s (median about 45 s, two
+ * attempts at most about 200 s); 5 min leaves headroom for a slow provider and cuts the 550-1174 s stalls.
+ */
+export const QA_TIMEOUT_MS = 5 * 60_000;
+
+/** Why an answer was rejected, in words the reviewer can act on when it is asked again. */
+const REJECTIONS: Record<string, string> = {
+	missing: 'no line "Structured result:" was found',
+	duplicate: 'the line "Structured result:" appeared more than once',
+	framing:
+		'"Structured result:" must be followed by one ```json block with its closing fence',
+	json: "the block was not valid JSON",
+	schema: "the block did not match the schema",
+	oversize: "the block was too large",
+	shape: "verdict, summary and findings must be present",
+};
+
+/** Longest rejection text kept in the owed note. */
+const MAX_REJECTION_CHARS = 300;
 
 /** The verdict the reviewer returns, validated by the host (`result-schema.ts`). */
 export const QA_RESULT_SCHEMA = {
@@ -103,11 +123,12 @@ const isVerdict = (value: unknown): value is (typeof QA_VERDICTS)[number] =>
 /**
  * The QA reviewer: a read-only `reviewer` child on the small tier with the code-review skill, started through the
  * ordinary `agent` path (permissions, slots, cost counted in the session). The caller waits for its verdict. Whatever stops
- * a review from completing (no priced small model, a refused start, a child that failed or answered off the schema) is a
- * `skipped` reason, never a refusal of `done`.
+ * a review from completing is a reason, never a refusal of `done`: `skipped` when QA is not configured (no priced small
+ * model); `unavailable` (the review is owed) when the reviewer could not start, timed out, or answered off the schema twice.
  */
-export function qaReviewer(env: SpawnEnv): QaReviewer {
-	return async (request: QaRequest, ctx: FeatureContext, signal?: AbortSignal): Promise<QaReview> => {
+export function qaReviewer(env: SpawnEnv, options: { timeoutMs?: number } = {}): QaReviewer {
+	const limit = options.timeoutMs ?? QA_TIMEOUT_MS;
+	return async (request: QaRequest, ctx: FeatureContext, outer?: AbortSignal): Promise<QaReview> => {
 		const small = smallModelLabel(ctx);
 		if (!small) return { skipped: "no priced small model is connected" };
 		const { diff, note, unreported, sinceClaim } = await diffOf(ctx.cwd, request.files, request.baseline);
@@ -129,49 +150,71 @@ export function qaReviewer(env: SpawnEnv): QaReviewer {
 			pullRequest: request.pullRequest ? ` and its pull request ${request.pullRequest}` : "",
 		});
 		const model = `${small}:${QA_THINKING}`;
-		// An answer off the schema is retried once; a second one leaves the review skipped (the completion then shows as unverified).
+		// The limit stops the child (the signal reaches `spawnAgent`) and ends the review without a retry.
+		const timer = new AbortController();
+		let timedOut = false;
+		const clock = setTimeout(() => {
+			timedOut = true;
+			timer.abort();
+		}, limit);
+		const signal = outer ? AbortSignal.any([outer, timer.signal]) : timer.signal;
+		const timeout = { unavailable: `the review timed out after ${Math.round(limit / 1000)} s` };
+		// An answer off the schema is retried once, told why it was rejected; a second one leaves the review owed.
 		let result: Awaited<ReturnType<typeof spawnAgent>> | undefined;
 		let data: Record<string, unknown> | undefined;
-		let status: string | undefined;
+		let notes: string | undefined;
+		let rejected: string | undefined;
 		let spent = 0;
-		for (let attempt = 0; attempt < 2 && !data; attempt++) {
-			try {
-				result = await spawnAgent(
-					env,
-					`qa-${request.ref}${attempt ? "-retry" : ""}`,
-					{
-						profile: "reviewer",
-						model,
-						skills: [skill],
-						goal: `QA review of ${request.ref}: ${request.goal}`,
-						task,
-						resultSchema: QA_RESULT_SCHEMA,
-						background: false,
-					},
-					signal,
-					undefined,
-					ctx,
-					false,
-					true,
-				);
-			} catch (error) {
-				if (signal?.aborted) throw error;
-				return { skipped: `the reviewer could not start: ${errorMessage(error)}` };
+		try {
+			for (let attempt = 0; attempt < 2 && !data; attempt++) {
+				try {
+					result = await spawnAgent(
+						env,
+						`qa-${request.ref}${attempt ? "-retry" : ""}`,
+						{
+							profile: "reviewer",
+							model,
+							skills: [skill],
+							goal: `QA review of ${request.ref}: ${request.goal}`,
+							task: rejected ? `${task}\n\nYour last answer was rejected: ${rejected}. Answer again.` : task,
+							resultSchema: QA_RESULT_SCHEMA,
+							background: false,
+						},
+						signal,
+						undefined,
+						ctx,
+						false,
+						true,
+					);
+				} catch (error) {
+					if (outer?.aborted) throw error;
+					if (timedOut) return timeout;
+					return { unavailable: `the reviewer could not start: ${errorMessage(error)}` };
+				}
+				if (timedOut) return timeout;
+				spent += spentOf(result.usage?.cost);
+				const structured = result.details?.structured;
+				const candidate =
+					structured?.status === "valid" ? (structured.data as Record<string, unknown> | undefined) : undefined;
+				if (
+					candidate &&
+					isVerdict(candidate.verdict) &&
+					typeof candidate.summary === "string" &&
+					Array.isArray(candidate.findings)
+				) {
+					data = candidate;
+					notes = structured?.notes;
+				} else {
+					const code = structured?.error?.code ?? (candidate ? "shape" : (structured?.status ?? "no result"));
+					const where = structured?.error?.path ? ` at ${structured.error.path}` : "";
+					rejected = `${code}${where}${REJECTIONS[code] ? `: ${REJECTIONS[code]}` : ""}`;
+				}
 			}
-			spent += spentOf(result.usage?.cost);
-			const structured = result.details?.structured;
-			status = structured?.status;
-			const candidate =
-				structured?.status === "valid" ? (structured.data as Record<string, unknown> | undefined) : undefined;
-			if (
-				candidate &&
-				isVerdict(candidate.verdict) &&
-				typeof candidate.summary === "string" &&
-				Array.isArray(candidate.findings)
-			)
-				data = candidate;
+		} finally {
+			clearTimeout(clock);
 		}
-		if (!data) return { skipped: `the reviewer gave no valid verdict twice (${status ?? "no result"})` };
+		// The reviewer ran but its answers were unusable: the review is owed, so a later start retries it instead of leaving the item on the holder's word.
+		if (!data) return { unavailable: `the reviewer gave no valid verdict twice (${(rejected ?? "no result").slice(0, MAX_REJECTION_CHARS)})` };
 		const context = Array.isArray(data.context)
 			? data.context.filter((line): line is string => typeof line === "string")
 			: [];
@@ -183,6 +226,7 @@ export function qaReviewer(env: SpawnEnv): QaReviewer {
 				summary: data.summary as string,
 				findings,
 				...(context.length ? { context } : {}),
+				...(notes ? { notes } : {}),
 			},
 			model: small,
 			cost: spent,

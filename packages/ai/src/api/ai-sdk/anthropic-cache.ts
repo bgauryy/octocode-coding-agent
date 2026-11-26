@@ -60,7 +60,8 @@ export function anthropicSdkCache(
 		workspaceBlock: split?.workspace === true,
 		instructions: instructions !== undefined,
 		history: history !== undefined,
-		historyTurns: countHistoryTurns(messages),
+		// The empty system messages that carry only an effort update are not turns a marker can sit on.
+		historyTurns: countHistoryTurns(messages.filter((message) => message.role !== "system" || message.content !== "")),
 		tools: compat.supportsCacheControlOnTools ? names.length : 0,
 		toolBoundary: sharedEnd > 0,
 	});

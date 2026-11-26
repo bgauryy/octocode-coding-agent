@@ -90,6 +90,8 @@ export interface ToolCallEventResult {
 	 * Early termination only happens when every finalized tool result in the batch sets this to true.
 	 */
 	terminate?: boolean;
+	/** Hard-halt the batch and run at once: skip remaining tool calls and do not poll queued turns. */
+	halt?: boolean;
 	/** Only for an `early` call that would need a dialog: withdraw it from the early set; it is judged again, normally, after its message ended. */
 	defer?: boolean;
 	/**

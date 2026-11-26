@@ -126,11 +126,12 @@ export class LiveLoop<C> implements SessionSignals {
 		return this.handoff;
 	}
 
-	turnStarted(): void {
+	turnStarted(): void | Promise<void> {
 		this.signals.turnStarted();
+		if (this.handoff) return this.joinHandoffs();
 	}
 
-	settled(continues: boolean, aborted = false): void {
+	settled(continues: boolean, aborted = false): void | Promise<void> {
 		// A run the loop stopped itself (an urgent entry) settles like any other: what stopped it starts the next turn.
 		// A run someone else stopped (the user's Stop, a guard) is not answered with a new one.
 		const interrupted = this.loop.takeInterrupt();
@@ -146,6 +147,7 @@ export class LiveLoop<C> implements SessionSignals {
 			return;
 		}
 		this.signals.settled(continues);
+		if (this.handoff) return this.joinHandoffs();
 	}
 
 	compactionStarted(): void {

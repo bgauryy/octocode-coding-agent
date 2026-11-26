@@ -55,30 +55,20 @@ afterEach(() => {
 });
 
 describe("subagent worktrees of a repository with linked worktrees", () => {
-	it("keeps one folder for every checkout, and a prune from the main checkout saves an orphan made in a linked one", async () => {
+	it("keeps one folder for every checkout, and refuses to start an isolated worktree from a linked one", async () => {
 		const main = repo();
 		const home = tmp();
 		const linked = path.join(fs.realpathSync(tmp("octocode-wt-linked-")), "feature");
 		git(main, "worktree", "add", "-q", "-b", "feature", linked);
 
-		const worktree = await createWorktree(linked, "from-linked", home);
-		expect(worktree.repo).toBe(fs.realpathSync(linked));
 		expect(worktreesDir(linked, home)).toBe(worktreesDir(main, home));
-		expect(path.dirname(worktree.path)).toBe(worktreesDir(main, home));
-		fs.writeFileSync(path.join(worktree.path, "a.txt"), "one\nfrom the linked checkout\n");
-		orphan(worktree.path);
-
-		expect(await pruneWorktrees(main, home)).toEqual({
-			saved: [{ agentId: "from-linked", ref: "refs/octocode/from-linked" }],
-			kept: [],
-		});
-		expect(git(main, "show", "refs/octocode/from-linked:a.txt")).toBe("one\nfrom the linked checkout");
-		expect(fs.existsSync(worktree.path)).toBe(false);
-		expect(fs.existsSync(`${worktree.path}.json`)).toBe(false);
-		expect(git(main, "worktree", "list")).not.toContain(worktree.path);
+		await expect(createWorktree(linked, "from-linked", home)).rejects.toThrow(
+			/linked worktree.*proxy of its orchestrator.*main-checkout session/s,
+		);
+		expect(fs.existsSync(path.join(worktreesDir(main, home), "from-linked"))).toBe(false);
 	});
 
-	it("prunes from a linked checkout an orphan made in the main one, even after its creating checkout is gone", async () => {
+	it("prunes from a linked checkout an orphan made in the main one, even after a linked checkout is gone", async () => {
 		const main = repo();
 		const home = tmp();
 		const linked = path.join(fs.realpathSync(tmp("octocode-wt-linked-")), "feature");
@@ -93,7 +83,7 @@ describe("subagent worktrees of a repository with linked worktrees", () => {
 		expect(git(main, "show", "refs/octocode/from-main:b.txt")).toBe("main work");
 
 		// A record whose checkout was deleted still belongs to the repository's folder.
-		const gone = await createWorktree(linked, "from-gone", home);
+		const gone = await createWorktree(main, "from-gone", home);
 		orphan(gone.path);
 		git(main, "worktree", "remove", "--force", linked);
 		expect((await pruneWorktrees(main, home)).saved).toEqual([{ agentId: "from-gone" }]);

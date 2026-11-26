@@ -1,8 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import type { Member } from "@octocodeai/octocode-contracts/team";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
 import { BUSY_MS } from "../../src/octocode/team/store/limits.ts";
 import { patiently } from "../../src/octocode/team/store/patient.ts";
@@ -23,6 +25,12 @@ const member = (id: string): Member => ({
 	unpriced: false,
 });
 
+/** The file holding `cwd`'s team rows under the machine file `file`: the workspace file, or `file` while they are off. */
+const workspaceFile = (cwd: string, file: string): string =>
+	workspaceDb(cwd, { ...process.env, OCTOCODE_AGENT_DB: file }).agent.file;
+
+afterEach(() => closeSharedAgentDb());
+
 describe("team store on a busy database", () => {
 	it("opens without waiting for housekeeping while another process holds the write lock, and prunes at the next heartbeat", () => {
 		const cwd = tmp();
@@ -32,7 +40,7 @@ describe("team store on a busy database", () => {
 		const workspaceId = initial.workspaceId;
 		initial.close();
 		// Another process mid-write: an expired lease is left for the prune to remove.
-		const other = new DatabaseSync(file);
+		const other = new DatabaseSync(workspaceFile(cwd, file));
 		other.exec("PRAGMA busy_timeout=5000");
 		other
 			.prepare(
@@ -64,7 +72,7 @@ describe("team store on a busy database", () => {
 		fs.mkdirSync(path.join(cwd, ".git"));
 		const file = path.join(tmp(), "team.sqlite");
 		const store = TeamStore.open(cwd, file);
-		const other = new DatabaseSync(file);
+		const other = new DatabaseSync(workspaceFile(cwd, file));
 		try {
 			store.save(member("inky"));
 			other.exec("BEGIN IMMEDIATE");
@@ -86,7 +94,7 @@ describe("team store on a busy database", () => {
 		fs.mkdirSync(path.join(cwd, ".git"));
 		const file = path.join(tmp(), "team.sqlite");
 		const store = TeamStore.open(cwd, file);
-		const other = new DatabaseSync(file);
+		const other = new DatabaseSync(workspaceFile(cwd, file));
 		try {
 			store.save(member("inky"));
 			other.exec("BEGIN IMMEDIATE");
@@ -138,7 +146,7 @@ describe("team store on a busy database", () => {
 		fs.mkdirSync(path.join(cwd, ".git"));
 		const file = path.join(tmp(), "team.sqlite");
 		const store = TeamStore.open(cwd, file);
-		const other = new DatabaseSync(file);
+		const other = new DatabaseSync(workspaceFile(cwd, file));
 		try {
 			other.exec("BEGIN IMMEDIATE");
 			const abort = new AbortController();

@@ -12,6 +12,17 @@ export interface BacklogEnded {
 	queued: Set<string>;
 }
 
+/** Channel a successful backlog `done` announces itself on, after its write committed (the compaction domain listens). */
+export const BACKLOG_DONE_CHANNEL = "octocode:backlog-done";
+
+/** `ref` was completed with `summary`; `remaining` items assigned to this session are left, and `open` says there are some (the run goes on). */
+export interface BacklogDone {
+	ref: string;
+	summary: string;
+	open: boolean;
+	remaining: number;
+}
+
 export const AGENT_CHAIN_CHANNEL = "octocode:agent-chain";
 
 /** What a listener on `AGENT_CHAIN_CHANNEL` receives. `after`: the prerequisites by name (`B12`, `agent:sly-mantle`). */

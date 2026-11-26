@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getAgentDir, getLegacyConfigDirs, getModelsPath, getOctocodeHome, getSessionsDir } from "../src/config.ts";
+import { getAgentDir, getPiConfigDirs, getModelsPath, getOctocodeHome, getSessionsDir } from "../src/config.ts";
 import { ModelConfig } from "../src/core/model-config.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import { createModelRegistry } from "./model-runtime-test-utils.ts";
@@ -39,10 +39,10 @@ describe("Octocode home and Pi configuration fallback", () => {
 		expect(globalPaths().home).toBe(native);
 		expect(getSessionsDir()).toBe(join(native, "sessions"));
 		expect(getOctocodeHome({ OCTOCODE_HOME: "~/custom" }, home)).toBe(join(home, "custom"));
-		expect(getLegacyConfigDirs()).toEqual([join(home, ".pi", "agent"), join(home, ".pi")]);
+		expect(getPiConfigDirs()).toEqual([join(home, ".pi", "agent"), join(home, ".pi")]);
 		vi.stubEnv("OCTOCODE_HOME", join(home, "isolated"));
 		expect(getAgentDir()).toBe(join(home, "isolated"));
-		expect(getLegacyConfigDirs()).toEqual([]);
+		expect(getPiConfigDirs()).toEqual([]);
 		vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", join(home, "sdk"));
 		expect(getAgentDir()).toBe(join(home, "sdk"));
 	});
@@ -65,7 +65,8 @@ describe("Octocode home and Pi configuration fallback", () => {
 		const config = await ModelConfig.load(getModelsPath());
 		expect(config.getError()).toBeUndefined();
 		expect([...config.getProviderIds()].sort()).toEqual(["legacy", "root", "shared"]);
-		expect(config.getProvider("shared")).toEqual({ baseUrl: "https://native.invalid" });
+		// Definitions of one provider merge field by field, Octocode's file winning each field it names (configuration.md, models.json).
+		expect(config.getProvider("shared")).toEqual({ apiKey: "legacy-key", baseUrl: "https://native.invalid" });
 		write(getModelsPath(), JSON.stringify({ providers: { changed: { baseUrl: "https://changed.invalid" } } }));
 		expect((await ModelConfig.load(getModelsPath())).getProvider("changed")).toBeDefined();
 		expect((await ModelConfig.load(join(home, "custom-models.json"))).getProviderIds()).toEqual([]);

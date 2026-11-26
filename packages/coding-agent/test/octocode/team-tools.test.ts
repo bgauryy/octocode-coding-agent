@@ -305,6 +305,7 @@ describe("team tools on a fake Octocode", () => {
 			"unlock",
 			"stop",
 			"merge",
+			"discard",
 			"grant",
 			"changes",
 		]);

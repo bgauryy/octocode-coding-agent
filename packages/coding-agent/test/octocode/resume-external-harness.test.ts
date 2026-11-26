@@ -22,6 +22,7 @@ const CODEX_ID = "01a1ba84-cc23-7af0-aa1d-44efce643218";
 const CODEX_ZST_ID = "01a1ba84-dddd-7af0-aa1d-44efce643218";
 const CODEX_GONE_ID = "01a1ba84-eeee-7af0-aa1d-44efce643218";
 const CODEX_OTHER_ID = "01a1ba84-ffff-7af0-aa1d-44efce643218";
+const OCTO_ID = "01a21320-0000-7000-8000-000000000001";
 
 describe("resume-external-harness sessions script", () => {
 	let home: string;
@@ -36,7 +37,14 @@ describe("resume-external-harness sessions script", () => {
 	const run = (...args: string[]) => {
 		const result = spawnSync(process.execPath, [script, ...args, "--cwd", repo], {
 			encoding: "utf8",
-			env: { ...process.env, HOME: home, CLAUDE_CONFIG_DIR: "", CODEX_HOME: "", XDG_CONFIG_HOME: "" },
+			env: {
+				...process.env,
+				HOME: home,
+				CLAUDE_CONFIG_DIR: "",
+				CODEX_HOME: "",
+				XDG_CONFIG_HOME: "",
+				OCTOCODE_SESSION_ID: OCTO_ID,
+			},
 		});
 		return { ...result, json: () => JSON.parse(result.stdout) };
 	};
@@ -340,4 +348,136 @@ describe("resume-external-harness sessions script", () => {
 			{ turn: 1, user: "Ship it", assistant: "Shipped.", tools: [] },
 		]);
 	});
+
+	it("reads Octocode sessions of the workspace and marks the one running the script", () => {
+		const at = (second: number) => `2026-01-01T10:00:${String(second).padStart(2, "0")}.000Z`;
+		const message = (second: number, role: string, content: unknown) => ({
+			type: "message",
+			timestamp: at(second),
+			message: { role, content },
+		});
+		write(
+			path.join(repo, ".octocode", "agent", "sessions", `2026-01-01T10-00-00-000Z_${OCTO_ID}.jsonl`),
+			jsonl([
+				{ type: "session", version: 3, id: OCTO_ID, timestamp: at(0), cwd: repo },
+				{ type: "custom_message", timestamp: at(1), customType: "backlog-digest", content: "Backlog: 3 open" },
+				message(2, "user", [{ type: "text", text: "[src terminal:terminal ✓proven via terminal] t4\nAdd a flag" }]),
+				message(3, "assistant", [
+					{ type: "text", text: "Adding it." },
+					{ type: "toolCall", name: "file", arguments: { queries: [{ type: "edit", path: "src/cli.ts" }] } },
+				]),
+				{ type: "compaction", timestamp: at(4), summary: "## Goal\nAdd a flag" },
+				{ type: "session_info", timestamp: at(5), name: "CLI flag" },
+			]),
+		);
+		const [listed] = run("list", "--json", "--harness", "octocode").json().sessions;
+		expect(listed).toMatchObject({
+			id: OCTO_ID,
+			title: "CLI flag",
+			userTurns: 1,
+			source: "this session",
+			startedAt: at(0),
+			updatedAt: at(5),
+			resume: { command: `octocode --resume ${OCTO_ID}`, cwd: repo },
+		});
+		const shown = run("show", `octocode:${OCTO_ID}`, "--json").json();
+		expect(shown).toMatchObject({ filesEdited: ["src/cli.ts"], latestSummary: "## Goal\nAdd a flag" });
+		expect(shown.turns).toEqual([{ turn: 1, user: "Add a flag", assistant: "Adding it.", tools: ["file src/cli.ts"] }]);
+	});
+
+	it.skipIf(!hasSqlite)("reads Antigravity conversations, skips subagents and appends prompts not yet indexed", () => {
+		const agy = path.join(home, ".gemini", "antigravity-cli");
+		fs.mkdirSync(agy, { recursive: true });
+		const first = "Fix ✓ bug";
+		const at = "2026-01-01 10:00:00+00:00";
+		const sql = [
+			"create table conversation_summaries (conversation_id text, title text, preview text, workspace_uris text, last_modified_time text, last_user_input_time text, parent_conversation_id text);",
+			"create table conversations_fts (conversation_id text, chunk_index integer, user_body text, agent_body text, user_step_byte_offsets text, agent_step_byte_offsets text);",
+			`insert into conversation_summaries values ('agy-1', 'Bug fix', '', '["file://${repo}"]', '${at}', '${at}', '');`,
+			`insert into conversation_summaries values ('agy-child', '', '', '["file://${repo}"]', '${at}', '', 'agy-1');`,
+			`insert into conversation_summaries values ('agy-away', 'Away', '', '["file://${path.join(home, "elsewhere")}"]', '${at}', '${at}', '');`,
+			`insert into conversations_fts values ('agy-1', -1, '', '', '', '');`,
+			`insert into conversations_fts values ('agy-1', 0, '${first}Then docs', 'Looking.Fixed.', '[[0,0],[2,${Buffer.byteLength(first)}]]', '[[1,0],[3,8]]');`,
+		].join("\n");
+		expect(spawnSync("sqlite3", [path.join(agy, "conversation_summaries.db")], { input: sql }).status).toBe(0);
+		const prompt = (display: string, minute: number) => ({
+			display,
+			timestamp: Date.parse(`2026-01-01T09:${minute}:00Z`),
+			workspace: repo,
+			conversationId: "agy-1",
+		});
+		write(
+			path.join(agy, "history.jsonl"),
+			jsonl([prompt(first, 10), prompt("/model", 20), prompt("Then docs", 30), prompt("Add tests", 40)]),
+		);
+		const listed = run("list", "--json", "--harness", "agy").json().sessions;
+		expect(listed).toHaveLength(1);
+		expect(listed[0]).toMatchObject({
+			id: "agy-1",
+			title: "Bug fix",
+			userTurns: 3,
+			startedAt: "2026-01-01T09:10:00.000Z",
+			updatedAt: "2026-01-01T10:00:00.000Z",
+			resume: { command: "agy --conversation agy-1", cwd: repo },
+		});
+		expect(run("show", "agy:agy-1", "--json").json().turns).toEqual([
+			{ turn: 1, user: first, assistant: "Looking.", tools: [] },
+			{ turn: 2, user: "Then docs", assistant: "Fixed.", tools: [] },
+			{ turn: 3, user: "Add tests", assistant: "", tools: [] },
+		]);
+	});
+
+	it.skipIf(!hasSqlite)(
+		"shows an Antigravity conversation by id from outside the repository, with tools and the error it stopped on",
+		() => {
+			const agy = path.join(home, ".gemini", "antigravity-cli");
+			const id = "agy-away";
+			const away = path.join(home, "elsewhere");
+			const hex = (text: string) => Buffer.from(`\u0004\u0008${text}\u0001HTTP 429 Too Many Requests`).toString("hex");
+			const sql = [
+				"create table steps (idx integer primary key, step_type integer, status integer, error_details blob, step_payload blob);",
+				"insert into steps values (0, 14, 3, null, x'00');",
+				`insert into steps values (1, 17, 3, null, x'${hex("RESOURCE_EXHAUSTED (code 429): Individual quota reached. Resets in 5m.")}');`,
+			].join("\n");
+			write(path.join(agy, "conversations", `${id}.db`), "");
+			expect(spawnSync("sqlite3", [path.join(agy, "conversations", `${id}.db`)], { input: sql }).status).toBe(0);
+			write(
+				path.join(agy, "brain", id, ".system_generated", "logs", "transcript.jsonl"),
+				jsonl([
+					{
+						step_index: 0,
+						type: "USER_INPUT",
+						source: "USER_EXPLICIT",
+						content: "<USER_REQUEST>\nAudit caching\n</USER_REQUEST>\n<ADDITIONAL_METADATA>x</ADDITIONAL_METADATA>",
+					},
+					{
+						step_index: 1,
+						type: "PLANNER_RESPONSE",
+						source: "MODEL",
+						content: null,
+						tool_calls: [{ name: "read_file", args: { Path: JSON.stringify("/x/a.rs") } }],
+					},
+					{ step_index: 2, type: "GENERIC", source: "MODEL", content: "Created At: result text" },
+					{ step_index: 3, type: "PLANNER_RESPONSE", source: "MODEL", content: "Found two leaks." },
+					{ step_index: 4, type: "SYSTEM_MESSAGE", source: "SYSTEM", content: "notice" },
+				]),
+			);
+			const shown = run("show", `agy:${id}`, "--json").json();
+			expect(shown.session).toMatchObject({ id, cwd: away, outside: true });
+			expect(shown.totalTurns).toBe(1);
+			expect(shown.turns).toEqual([
+				{ turn: 1, user: "Audit caching", assistant: "Found two leaks.", tools: ["read_file /x/a.rs"] },
+			]);
+			expect(shown.lastAssistantMessage).toBe("Found two leaks.");
+			expect(shown.lastError).toBe("RESOURCE_EXHAUSTED (code 429): Individual quota reached. Resets in 5m.");
+			const text = run("show", `agy:${id}`).stdout;
+			expect(text).toContain(`workspace ${away} (outside this repository)`);
+			expect(text).toContain("## Run ended with an error");
+			expect(
+				run("list", "--json", "--harness", "agy")
+					.json()
+					.sessions.map((s: { id: string }) => s.id),
+			).not.toContain(id);
+		},
+	);
 });
