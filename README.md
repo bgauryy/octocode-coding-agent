@@ -1,4 +1,7 @@
-# Octocode Agent
+# Octocode Agent (beta)
+
+> [!WARNING]
+> **Still a work in progress (beta).** Expect breaking changes, rough edges and docs that lag behind the code. Report problems as issues.
 
 A terminal coding agent that researches code before it changes it, and splits big work across a team of subagents and git worktrees.
 
