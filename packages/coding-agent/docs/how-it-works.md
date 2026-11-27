@@ -510,6 +510,32 @@ The provenance check is separate: text from untrusted sources (MCP results and r
 
 ## Context window and compaction
 
+### How the agent compacts by context size and task
+
+Three things can compact a session; only the first is always on.
+
+| Who | Decides by | When |
+|---|---|---|
+| Harness, automatic | Context size | The context passes the [threshold](#thresholds); runs before the next model request. No off switch. |
+| The agent (`compact` tool) | Context size **and** task boundary | Usage notices tell it how full the context is (50%, 75%, 90% of the room before automatic compaction). From 90% it may call `compact` at a task or item boundary, with a `focus` naming what to keep. Refused below 90%, within two turns of the last compaction, or when recent compactions kept refilling. |
+| Harness, at item done | Task boundary and cost | After `backlog done`, if history fills at least `backlog.compactOnDone` (default half) of the room and the work still expected would save more than the summary costs ([details](#compaction-at-item-done)). |
+
+```mermaid
+flowchart TD
+  A[Turn ends] --> B{Context vs room before auto compaction}
+  B -- "under 50%" --> Z[Continue]
+  B -- "50/75/90%" --> N[Usage notice to the agent]
+  N --> C{"≥90% and at a task or item boundary?"}
+  C -- yes --> T[Agent calls compact with focus]
+  C -- no --> Z
+  D[backlog done] --> E{"History ≥ compactOnDone and it pays?"}
+  E -- yes --> F[Harness compacts at the item boundary]
+  E -- no --> Z
+  G[Context past threshold] --> H[Automatic compaction]
+```
+
+You can always run `/compact [focus]` yourself ([when to compact](#when-to-compact)).
+
 ### The window
 
 The working window is `contextBudget` (default 300,000 tokens), capped at 90% of the model's capacity; `"full"` uses all of it (`core/agent-session/context-capacity.ts`). `/context` overrides it for one session. Token counts use the provider's usage receipts where they apply and estimates elsewhere (characters per token: 2.5 for Claude and unknown models, 3.3 for DeepSeek, 3.5 for OpenAI).
