@@ -8,7 +8,15 @@ describe("messages sent to the model carry a source header", () => {
 	it("stamps a user `!` command with the terminal header", () => {
 		expect(userBashHeader()).toBe(renderSourceHeader(userSource("terminal")));
 		const [message] = convertToLlm([
-			{ role: "bashExecution", command: "ls", output: "a", exitCode: 0, cancelled: false, truncated: false, timestamp: 1 },
+			{
+				role: "bashExecution",
+				command: "ls",
+				output: "a",
+				exitCode: 0,
+				cancelled: false,
+				truncated: false,
+				timestamp: 1,
+			},
 		]);
 		const text = (message.content as Array<{ text: string }>)[0].text;
 		expect(text.startsWith(`${userBashHeader()}\nRan \`ls\``)).toBe(true);

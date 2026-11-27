@@ -7,8 +7,7 @@ import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { VOLATILE_SECTIONS } from "../../src/core/system-prompt-spec.ts";
 import { findToolCacheBoundary } from "../../src/core/tool-roles.ts";
 import { memoryStore } from "../../src/octocode/memory/store.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { captureChild } from "./agent-context/capture.ts";
 import { instructionBlocks, toolsText } from "./agent-context/fingerprint.ts";
 import { disposeSessions, headless, restoreEnv, say } from "./e2e-headless.ts";
@@ -61,15 +60,16 @@ const sessionEnv = (root: string, home: string): NodeJS.ProcessEnv => ({
 
 function seedBoard(env: NodeJS.ProcessEnv, cwd: string): void {
 	Object.assign(process.env, env);
-	const { db } = sharedAgentDb(env);
-	const workspace = registeredWorkspace(cwd).id;
+	const { agent, workspace } = workspaceDb(cwd, env);
 	for (const [seq, title] of [
 		[1, "Prefix audit open item one"],
 		[2, "Prefix audit open item two"],
 	] as const)
-		db.prepare(
-			"INSERT INTO backlog (workspace_id, seq, title, state, created_by, created_at, updated_at, priority) VALUES (?, ?, ?, 'todo', 'user', 0, ?, 0)",
-		).run(workspace, seq, title, Date.now());
+		agent.db
+			.prepare(
+				"INSERT INTO backlog (workspace_id, seq, title, state, created_by, created_at, updated_at, priority) VALUES (?, ?, ?, 'todo', 'user', 0, ?, 0)",
+			)
+			.run(workspace.id, seq, title, Date.now());
 	memoryStore(cwd, env).set({ title: MEMORY_TITLE, scope: "global", pinned: true, author: "user" });
 	closeSharedAgentDb();
 }

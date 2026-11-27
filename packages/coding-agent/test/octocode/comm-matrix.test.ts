@@ -33,8 +33,8 @@ describe("team mail routes", () => {
 		if ("error" in result) throw new Error(result.error);
 		return result.id;
 	};
-	const holds = (recipient: string, id: number) =>
-		expect(store.pending(recipient).map((message) => message.id)).toContain(id);
+	const holds = (recipient: string, id: number, at: TeamStore = store) =>
+		expect(at.pending(recipient).map((message) => message.id)).toContain(id);
 
 	beforeEach(() => {
 		cwd = tmp("comm-matrix-team-");
@@ -75,12 +75,15 @@ describe("team mail routes", () => {
 		closers.push(async () => repo.cleanup());
 		const linked = path.join(repo.root, ".octocode", "agent", "worktrees", "kid-iso");
 		sh(repo.root, "worktree", "add", "-q", "-b", "kid-iso", linked);
+		// The repository's team rows live in its own workspace file, which the linked worktree shares.
+		const repoStore = TeamStore.open(repo.root, db);
+		closers.push(async () => repoStore.close());
 		const parent = open({}, repo.root);
 		const parentId = parent.join().id;
 		const child = open({ OCTOCODE_AGENT_ID: "kid-iso", OCTOCODE_PARENT_ID: parentId }, linked);
 		child.join();
-		holds("kid-iso", sentId(await parent.send("kid-iso", "into the worktree")));
-		holds(parentId, sentId(await child.send("parent", "out of the worktree")));
+		holds("kid-iso", sentId(await parent.send("kid-iso", "into the worktree")), repoStore);
+		holds(parentId, sentId(await child.send("parent", "out of the worktree")), repoStore);
 	});
 
 	it("external runner: mail waits in its pull inbox; a wake it cannot honour is refused", async () => {

@@ -6,8 +6,7 @@ import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
 import { registerHooks } from "../../src/octocode/hooks/register.ts";
 import { failureOf } from "../../src/octocode/hooks/runner.ts";
 import { events } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
 import { tmp } from "./helpers.ts";
 import { approveFixtureHooks } from "./guard-helpers.ts";
@@ -56,8 +55,8 @@ const TIMEOUT: Hook = { type: "command", command: "sleep 5", timeout: 0.2 };
 
 describe("durable hook dispatch", () => {
 	const rows = (cwd: string, id: string, event: string) =>
-		events.read(sharedAgentDb().db, {
-			workspaceId: registeredWorkspace(cwd).id,
+		events.read(workspaceDb(cwd).agent.db, {
+			workspaceId: workspaceDb(cwd).workspace.id,
 			sessionId: `hooks:${id}`,
 			topic: `hook.${event}`,
 			after: 0,

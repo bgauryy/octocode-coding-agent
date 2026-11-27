@@ -31,10 +31,7 @@ export function isCapabilityRejected(
 	return rejected.get(endpointKey(model))?.has(capability) ?? false;
 }
 
-export function rememberRejectedCapability(
-	model: Pick<Model<Api>, "baseUrl" | "id">,
-	capability: RejectableCapability,
-): void {
+function rememberRejectedCapability(model: Pick<Model<Api>, "baseUrl" | "id">, capability: RejectableCapability): void {
 	const key = endpointKey(model);
 	const known = rejected.get(key) ?? new Set<RejectableCapability>();
 	known.add(capability);
@@ -160,7 +157,7 @@ function withoutThinking(body: Entry): boolean {
 }
 
 /** Removes the capability's fields from a parsed request body in place; false when the body carried none of them. */
-export function stripCapability(body: Entry, capability: RejectableCapability): boolean {
+function stripCapability(body: Entry, capability: RejectableCapability): boolean {
 	switch (capability) {
 		case "cache_control":
 			return withoutKey(body, "cache_control") || withoutCachePoints(body);

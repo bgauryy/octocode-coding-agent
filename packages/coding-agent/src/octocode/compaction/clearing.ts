@@ -219,10 +219,7 @@ export function clearStaleResults(
 	const alreadyCleared = sessionCleared(ctx.sessionManager);
 	const calls = toolCallArguments(messages);
 	const counted = olderCandidates(
-		[
-			...clearableResults(messages, supersededReads(messages, calls, ctx.cwd, alreadyCleared)),
-			...fileInputs(messages),
-		],
+		[...clearableResults(messages, supersededReads(messages, calls, ctx.cwd, alreadyCleared)), ...fileInputs(messages)],
 		alreadyCleared,
 		new Set(view.inputs.keys()),
 	);

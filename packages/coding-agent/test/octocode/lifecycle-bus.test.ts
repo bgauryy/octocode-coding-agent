@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, agentEvents, closeSharedAgentDb } from "../../../db/src/api.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { AgentLifecycleBus, type LifecycleEvent } from "../../src/octocode/team/lifecycle-bus.ts";
 import { STALLED_LISTED_MS } from "../../src/octocode/team/store/limits.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
@@ -12,6 +13,8 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 
 let root: string;
 let db: AgentDb;
+/** The file holding the team rows and their events: the machine file while workspace files are off. */
+let rows: AgentDb;
 /** The first Octocode process, and a second one on its own connection to the same file. */
 let mine: TeamStore;
 let peer: TeamStore;
@@ -47,6 +50,7 @@ beforeEach(() => {
 	mine.lifecycle = { activationId: "mine", sessionId: "session-mine" };
 	peer = TeamStore.open(root, db.file);
 	peer.lifecycle = { activationId: "peer", sessionId: "session-peer" };
+	rows = workspaceDb(root).agent;
 });
 afterEach(() => {
 	peer.close();
@@ -146,7 +150,7 @@ describe("the lifecycle bus", () => {
 		const ticker = new TeamTicker({
 			joined: () => false,
 			beat: () => undefined,
-			dbFile: () => db.file,
+			dbFile: () => rows.file,
 			read: () => ({ members: [], traffic: [] }),
 			resumed: () => undefined,
 			following: () => bus.listening,
@@ -175,7 +179,7 @@ describe("the lifecycle bus", () => {
 describe("stalled episodes", () => {
 	const stalledEvents = () =>
 		agentEvents
-			.since(db.db, 0, { team: mine.team })
+			.since(rows.db, 0, { team: mine.team })
 			.filter((event) => event.type === "update" && event.data.state === "stalled");
 	const prune = (store: TeamStore, at: number) => (store as unknown as { prune(at: number): void }).prune(at);
 	// The stores prune at most once a minute from their opening: the test's clock starts a minute after it.

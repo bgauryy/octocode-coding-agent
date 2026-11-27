@@ -13,7 +13,7 @@ import {
 	transcripts,
 	workspaces,
 } from "../../../db/src/api.ts";
-import { openAgentDb } from "../../src/storage/database.ts";
+import { openAgentDb, workspaceFilesDir } from "../../src/storage/database.ts";
 import { DAY_MS } from "../../src/octocode/shared/util.ts";
 import { tmp } from "./helpers.ts";
 
@@ -378,7 +378,8 @@ describe("purge", () => {
 		).map((row) => row.name);
 		const left = Object.fromEntries(tables.map((name) => [name, count(name)]).filter(([, n]) => n !== 0));
 		// `meta` keeps its settings (`memory_auto`); `schema_meta` keeps the file's `min_reader` stamp, which describes the file, not its data.
-		expect(left).toEqual({ meta: 1, schema_meta: 1, trusted_folders: 1 });
+		// A split machine file also keeps its two split rows (marker and token): they describe the file too.
+		expect(left).toEqual({ meta: workspaceFilesDir(file) === undefined ? 1 : 3, schema_meta: 1, trusted_folders: 1 });
 		expect([...MIRROR_TABLES].map((table) => count(table))).toEqual([0, 0, 0]);
 		expect(objects()).toEqual(schema);
 		agent.close();

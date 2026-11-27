@@ -4,7 +4,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { timers } from "../../../../db/src/api.ts";
 import { registerTimers } from "../../../src/octocode/timer/register.ts";
-import { sharedAgentDb } from "../../../src/storage/database.ts";
+import { workspaceDb } from "../../../src/storage/workspace-database.ts";
 import { tmp } from "../helpers.ts";
 import { backlogRig, completion, restoreBacklogEnv } from "./backlog-rig.ts";
 import { count, createRig, quiet, sleep, type Rig } from "./rig.ts";
@@ -50,7 +50,7 @@ const toolTexts = (rig: Rig) =>
 
 /** The session's timer rows, ended ones too: what the scheduler has left to check, and what its last check found. */
 const timerRows = (rig: Rig) =>
-	timers.forSession(sharedAgentDb(process.env).db, rig.ctx.sessionManager.getSessionId(), true);
+	timers.forSession(workspaceDb(rig.ctx.cwd).agent.db, rig.ctx.sessionManager.getSessionId(), true);
 
 const armed = async (rig: Rig, call: Record<string, unknown>, answer = "armed") => {
 	rig.harness.setResponses([on(call), fauxAssistantMessage(answer), rig.reply("woken by the condition")]);

@@ -8,7 +8,7 @@ const loopback = (host) =>
 	host === "" ||
 	host === "localhost" ||
 	host === "::1" ||
-	/^127\./.test(host) ||
+	host.startsWith("127.") ||
 	/^\[?::ffff:127\./.test(host);
 
 const original = net.Socket.prototype.connect;

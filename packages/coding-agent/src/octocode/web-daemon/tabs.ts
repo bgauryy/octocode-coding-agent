@@ -5,8 +5,7 @@ import type { ApplicationConnection, ApplicationCursor } from "@octocodeai/octoc
 import type { WorkspaceServerEvent } from "@octocodeai/octocode-contracts/protocol";
 import { sharedClock } from "@octocodeai/octocode-common/clock";
 import { redactData } from "@octocodeai/octocode-common/sanitize";
-import { dbStamp } from "../../../../db/src/api.ts";
-import { agentDbPath } from "../shared/home.ts";
+import { agentDbStamp } from "../../storage/database.ts";
 import { backlogSnapshot } from "../backlog/snapshot.ts";
 import { pumpApplicationFrames } from "../workspace/application-stream.ts";
 import { ownOrigin, readHello } from "../workspace/page-access.ts";
@@ -50,7 +49,7 @@ interface WorkspaceRefresh {
 /**
  * The browser tabs of the daemon. One authenticated hello per socket (token, protocol, optional cursor), then the
  * repository's board and, for a session scope, that session's workspace and application stream. One timer per daemon
- * watches the database stamp (a stat of two files); a snapshot is built only after the stamp moved.
+ * watches the database stamp (a stat of each database file); a snapshot is built only after the stamp moved.
  */
 export class TabHub {
 	private readonly sockets = new WebSocketServer({ noServer: true, maxPayload: 1024, perMessageDeflate: false });
@@ -82,7 +81,7 @@ export class TabHub {
 		this.env = options.env;
 		this.activity = options.activity;
 		this.accepting = options.accepting;
-		this.stamp = dbStamp(agentDbPath(this.env));
+		this.stamp = agentDbStamp(this.env);
 	}
 
 	get count(): number {
@@ -168,7 +167,7 @@ export class TabHub {
 
 	private async begin(tab: Tab, cursor: ApplicationCursor | undefined): Promise<void> {
 		// Nothing watched the database while no tab was open: the first tab's snapshot is the new baseline.
-		if (this.tabs.size <= 1) this.stamp = dbStamp(agentDbPath(this.env));
+		if (this.tabs.size <= 1) this.stamp = agentDbStamp(this.env);
 		const cache = new Map<string, string>();
 		for (const other of this.tabs)
 			if (this.backlogKey(other.scope) === this.backlogKey(tab.scope)) this.sendBacklog(other, cache);
@@ -284,7 +283,7 @@ export class TabHub {
 
 	private check(): void {
 		if (this.tabs.size === 0) return;
-		const stamp = dbStamp(agentDbPath(this.env));
+		const stamp = agentDbStamp(this.env);
 		if (stamp !== this.stamp) {
 			this.stamp = stamp;
 			const cache = new Map<string, string>();

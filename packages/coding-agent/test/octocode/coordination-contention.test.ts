@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ApplicationCommand } from "@octocodeai/octocode-contracts";
 import { afterEach, describe, expect, it } from "vitest";
-import { holdWrite } from "../../../db/test/hold-write.ts";
+import { type HeldFile, holdWorkspaceWrite, workspaceFileOf } from "./hold-workspace-write.ts";
 import type { AgentDb } from "../../../db/src/api.ts";
 import type { AgentSession } from "../../src/core/agent-session.ts";
 import { getApplicationPort } from "../../src/core/application/index.ts";
@@ -29,8 +29,8 @@ afterEach(async () => {
  * thread (which only fires if the thread is free); `work`'s result, and the longest gap between this thread's ticks
  * until the release.
  */
-async function underForeignLock<T>(file: string, work: () => Promise<T>): Promise<{ result: T; stallMs: number }> {
-	const holder = await holdWrite(file);
+async function underForeignLock<T>(file: HeldFile, work: () => Promise<T>): Promise<{ result: T; stallMs: number }> {
+	const holder = await holdWorkspaceWrite(file);
 	cleanup.push(() => holder.close());
 	let last = performance.now();
 	let stallMs = 0;
@@ -78,7 +78,7 @@ describe("application receipts while another process holds the database", () => 
 		const { file, open } = receiptDb();
 		const first = new ApplicationCommands(open(), "repo");
 		const second = new ApplicationCommands(open(), "repo");
-		const { result, stallMs } = await underForeignLock(file, () =>
+		const { result, stallMs } = await underForeignLock({ file }, () =>
 			Promise.all([first.begin(command("session-one")), second.begin(command("session-one"))]),
 		);
 		expect(stallMs).toBeLessThan(MAX_STALL_MS);
@@ -90,7 +90,7 @@ describe("application receipts while another process holds the database", () => 
 			status: "accepted",
 		});
 
-		const { stallMs: finishStall } = await underForeignLock(file, () =>
+		const { stallMs: finishStall } = await underForeignLock({ file }, () =>
 			(result[0].fresh ? first : second).finish("request-one", "completed"),
 		);
 		expect(finishStall).toBeLessThan(MAX_STALL_MS);
@@ -118,7 +118,7 @@ describe("application receipts while another process holds the database", () => 
 		cleanup.push(() => service.dispose());
 		const receipts = new ApplicationCommands(open(), "repo");
 		service.setReceiptStore(receipts);
-		const { result, stallMs } = await underForeignLock(file, () =>
+		const { result, stallMs } = await underForeignLock({ file }, () =>
 			Promise.all([service.execute(command("session-two")), service.execute(command("session-two"))]),
 		);
 		expect(stallMs).toBeLessThan(MAX_STALL_MS);
@@ -143,7 +143,7 @@ describe("child reservations while another process holds the database", () => {
 		cleanup.push(() => team.stop());
 		team.join();
 
-		const { result, stallMs } = await underForeignLock(file, () =>
+		const { result, stallMs } = await underForeignLock(workspaceFileOf(cwd, file), () =>
 			Promise.all([
 				team.childLeases.reserve({ id: "kid-one", role: "general", goal: "edit a" }, ["a.ts"]),
 				team.childLeases.reserve({ id: "kid-two", role: "general", goal: "edit a too" }, ["a.ts"]),
@@ -167,7 +167,7 @@ describe("child reservations while another process holds the database", () => {
 		team.start(fakeCtx({ cwd, hasUI: true, idle: true }));
 		cleanup.push(() => team.stop());
 		team.join();
-		const holder = await holdWrite(file);
+		const holder = await holdWorkspaceWrite(workspaceFileOf(cwd, file));
 		cleanup.push(() => holder.close());
 		const cancel = new AbortController();
 		const reserving = team.childLeases.reserve(

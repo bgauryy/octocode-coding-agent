@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import {
 	type AgentDb,
@@ -5,6 +6,7 @@ import {
 	type DbWriter,
 	openDatabase,
 	prepareSharedDatabase,
+	dbStamp,
 	isBusy,
 	sharedDatabase,
 	sharedDbWriter,
@@ -117,4 +119,22 @@ export function agentDbWriter(agent: AgentDb): DbWriter {
 /** The process's writer for the configured database's transcript mirror (`transcripts.db`): off the main thread. */
 export function sharedTranscriptWriter(env: NodeJS.ProcessEnv = process.env): DbWriter {
 	return sharedMirrorWriter(locations(agentDbPath(env), env));
+}
+
+/**
+ * A change marker for everything the configured machine file keeps: it and each workspace file beside it, so a write to
+ * any workspace's rows moves it (`dbStamp` of one file sees only that file).
+ */
+export function agentDbStamp(env: NodeJS.ProcessEnv = process.env): string {
+	const file = agentDbPath(env);
+	const dir = workspaceFilesDir(file);
+	const files = [file];
+	if (dir !== undefined) {
+		try {
+			for (const name of fs.readdirSync(dir).sort()) if (name.endsWith(".db")) files.push(path.join(dir, name));
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		}
+	}
+	return files.map(dbStamp).join("#");
 }

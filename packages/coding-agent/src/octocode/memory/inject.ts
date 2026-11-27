@@ -24,7 +24,8 @@ export const MEMORY_HEADER = renderPrompt("notices/memory-header.md", { again: f
 export const memoryMessageText = (content: string): string => sourcedText(content, harnessSource("memory"));
 
 /** Whether an injection's message text opens with the whole caveat (after its source header). */
-const opensWhole = (text: string): boolean => text.startsWith(MEMORY_HEADER) || text.startsWith(memoryMessageText(MEMORY_HEADER));
+const opensWhole = (text: string): boolean =>
+	text.startsWith(MEMORY_HEADER) || text.startsWith(memoryMessageText(MEMORY_HEADER));
 
 /** The header of a later injection, while one with the whole caveat is still in context (`headerInContext`). */
 export const MEMORY_HEADER_AGAIN = renderPrompt("notices/memory-header.md", { again: true });

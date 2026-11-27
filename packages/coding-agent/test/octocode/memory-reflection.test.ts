@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import type { SessionEntry } from "../../src/core/session-manager.ts";
 import { sharedAgentDb } from "../../src/storage/database.ts";
+import { registeredWorkspaceAgent } from "../../src/storage/workspace-database.ts";
 import { CANDIDATE_TAG, isCandidate, isQuarantined } from "../../src/octocode/memory/file/candidate-tags.ts";
 import { listCandidates, noticedLines, queueCandidates } from "../../src/octocode/memory/file/candidates.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
@@ -361,18 +362,19 @@ describe("reflection at session end", () => {
 			}),
 		);
 		await setup({ small }).fire("session_shutdown", { reason: "quit" }, ctxWith(correction()));
-		const board = new BacklogStore(() => sharedAgentDb(), memoryStore(cwd).workspaceId!);
+		const board = new BacklogStore(
+			() => registeredWorkspaceAgent(memoryStore(cwd).workspaceId!),
+			memoryStore(cwd).workspaceId!,
+		);
 		const item = board.list({ states: ["backlog"] }).items[0];
 		expect(item).toMatchObject({ title: "ghSearchHistory refuses keywords with path", state: "backlog" });
 		expect(signaturesOf(item)).toEqual(["keywords and path cannot be combined"]);
 		const text = `When calling ghSearchHistory: send keywords or path, never both (fix ${item.ref})`;
 		expect(parseMemoryFile(readWorkspace()).lines.map((line) => line.text)).toEqual([text]);
 		// A second reflection about the same defect files nothing new.
-		await setup({ small: scripted(JSON.stringify({ workspace: [], defects: [{ title: item.title, trigger: "refused again" }] })) }).fire(
-			"session_shutdown",
-			{ reason: "quit" },
-			ctxWith(correction(), "s2"),
-		);
+		await setup({
+			small: scripted(JSON.stringify({ workspace: [], defects: [{ title: item.title, trigger: "refused again" }] })),
+		}).fire("session_shutdown", { reason: "quit" }, ctxWith(correction(), "s2"));
 		expect(board.list({}).total).toBe(1);
 	});
 
@@ -672,12 +674,14 @@ describe("consolidation", () => {
 			{ session: "s1", env: process.env },
 		);
 		const ref = (filed as { ref: string }).ref;
-		writeWorkspace(`## Gotchas\n- Omit the job filter of notify (user 2026-11-23) (fix ${ref})\n- Keep unrelated lines\n`);
+		writeWorkspace(
+			`## Gotchas\n- Omit the job filter of notify (user 2026-11-23) (fix ${ref})\n- Keep unrelated lines\n`,
+		);
 		const fixed = fixChecker(store, process.env);
 		const day = Date.now();
 		await consolidateDue(ctxWith([]), { ...deps(undefined), fixed, now: () => day }, "end");
 		expect(parseMemoryFile(readWorkspace()).lines).toHaveLength(2);
-		new BacklogStore(() => sharedAgentDb(), store.workspaceId!).update(
+		new BacklogStore(() => registeredWorkspaceAgent(store.workspaceId!), store.workspaceId!).update(
 			ref,
 			{ close: { kind: "obsolete", text: "fixed elsewhere" } },
 			{ id: "s1" },
@@ -687,8 +691,12 @@ describe("consolidation", () => {
 	});
 
 	it("marks a line that says a tool field is refused when the tool takes it now, with no candidate pending", async () => {
-		writeWorkspace("## Gotchas\n- When calling notify: the filter does not accept a job property (reflection 2026-11-23)\n");
-		const tools = toolFieldMap([{ name: "notify", parameters: { properties: { filter: { properties: { job: {} } } } } }]);
+		writeWorkspace(
+			"## Gotchas\n- When calling notify: the filter does not accept a job property (reflection 2026-11-23)\n",
+		);
+		const tools = toolFieldMap([
+			{ name: "notify", parameters: { properties: { filter: { properties: { job: {} } } } } },
+		]);
 		await consolidateDue(ctxWith([]), { ...deps(undefined), toolFields: () => tools }, "end");
 		expect(parseMemoryFile(readWorkspace()).lines.map((line) => line.note)).toEqual(["recheck"]);
 	});

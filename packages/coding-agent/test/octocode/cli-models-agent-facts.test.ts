@@ -50,7 +50,7 @@ describe("what an ACP agent advertises", () => {
 	});
 
 	it("starts a built-in CLI with the models its sign-in check found", () => {
-		const env = { PATH: bin({ "gemini": "exit 0" }) };
+		const env = { PATH: bin({ gemini: "exit 0" }) };
 		const state = { ...runner("gemini"), models: ["flash", "pro"], acceptsImages: true, acceptsMcpHttp: false };
 		const [route] = externalRoutes({ states: [state], cwd: setup({}).cwd, agentDir: setup({}).agentDir, env }).routes;
 		expect(route.models.map((model) => model.id)).toEqual(["default", "flash", "pro"]);
@@ -144,11 +144,10 @@ describe("a follow-up sent while the agent works", () => {
 				: [];
 		const start = (messages: Message[], signal?: AbortSignal) => {
 			backend.markTurn();
-			return backend.provider.streamSimple(
-				route.models[0],
-				normalizeContext({ systemPrompt: "", messages }),
-				{ sessionId: "s1", ...(signal ? { signal } : {}) },
-			);
+			return backend.provider.streamSimple(route.models[0], normalizeContext({ systemPrompt: "", messages }), {
+				sessionId: "s1",
+				...(signal ? { signal } : {}),
+			});
 		};
 		const first = new AbortController();
 		const opening = start([{ role: "user", content: "first", timestamp: 1 }], first.signal);

@@ -121,7 +121,9 @@ describe("backlog composition", () => {
 		expect(() => store.update(api.ref, { dependsOn: [epic.ref] }, actor)).toThrow(/cycle/);
 		expect(store.get(api.ref)?.dependsOn).toEqual([]);
 		expect(() => store.update(ui.ref, { state: "ongoing" }, actor)).toThrow(/Blocked by/);
-		expect(() => store.update(epic.ref, { state: "done", completion: result() }, actor)).toThrow(/epic with items that are not done/);
+		expect(() => store.update(epic.ref, { state: "done", completion: result() }, actor)).toThrow(
+			/epic with items that are not done/,
+		);
 		store.update(api.ref, { state: "done", completion: result() }, actor);
 		expect(store.update(ui.ref, { state: "ongoing" }, actor).state).toBe("ongoing");
 	});

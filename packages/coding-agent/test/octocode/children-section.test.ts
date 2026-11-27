@@ -122,7 +122,11 @@ describe("the children section", () => {
 		expect(loadable.children).toBeTruthy();
 		expect(loadable.children).not.toContain(rule);
 		expect(fs.readFileSync(path.join(getNativeDir(), "skills", SUBAGENTS_SKILL, "SKILL.md"), "utf8")).toContain(rule);
-		for (const catalog of [catalogWith(true), new SkillCatalog(() => ({ version: 1, explicitSkills: [], resources: [] }) as never), undefined])
+		for (const catalog of [
+			catalogWith(true),
+			new SkillCatalog(() => ({ version: 1, explicitSkills: [], resources: [] }) as never),
+			undefined,
+		])
 			expect((await session(false, catalog).start()).children).toContain(rule);
 	});
 

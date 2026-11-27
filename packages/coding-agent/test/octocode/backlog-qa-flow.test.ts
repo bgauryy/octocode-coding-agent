@@ -160,21 +160,24 @@ describe("done through the backlog tool", () => {
 		let running = 0;
 		let peak = 0;
 		const order: string[] = [];
+		const gate = Promise.withResolvers<void>();
 		const t = setup(async (request: QaRequest) => {
 			running++;
 			peak = Math.max(peak, running);
-			await new Promise((resolve) => setTimeout(resolve, 60));
+			await gate.promise;
 			running--;
 			order.push(request.ref);
 			return ready;
 		});
 		await t.open(5);
-		const started = Date.now();
-		const text = await t.call({
+		const pending = t.call({
 			op: "done",
 			items: [1, 2, 3, 4, 5].map((n) => ({ id: `B${n}`, completion: DONE(n) })),
 		});
-		expect(Date.now() - started).toBeLessThan(5 * 60);
+		// Three reviews are held open together: they run in parallel, and a fourth does not start.
+		await vi.waitFor(() => expect(running).toBe(3));
+		gate.resolve();
+		const text = await pending;
 		expect(peak).toBe(3);
 		expect(text.split("\n")[0]).toBe("Done 5 of 5.");
 		expect([...text.matchAll(/^Updated B(\d) /gm)].map((m) => m[1])).toEqual(["1", "2", "3", "4", "5"]);

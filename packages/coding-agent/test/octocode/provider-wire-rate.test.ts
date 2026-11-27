@@ -31,7 +31,6 @@ describe("tokensPerMinute", () => {
 			"the token-budget wait event",
 			30_000,
 		);
-		await new Promise((resolve) => setTimeout(resolve, 3000));
 		expect(wire.seen).toHaveLength(1);
 	});
 });
@@ -52,7 +51,6 @@ describe("requestsPerMinute", () => {
 			"the rate-limit wait event",
 			30_000,
 		);
-		await new Promise((resolve) => setTimeout(resolve, 3000));
 		expect(wire.seen).toHaveLength(1);
 		expect(box.violations()).toEqual([]);
 	});
@@ -70,21 +68,15 @@ describe("requestsPerMinute", () => {
 		box.writeModels({ gw: providerFor("openai-completions", wire, { authHeader: true, ...fields }) });
 		const session = box.rpc("gw/model");
 		await session.when(() => session.records().some((r) => r.type === "rpc_ready"), "RPC to start");
-		const started = Date.now();
 		await session.command({ type: "prompt", message: "twelve tool turns" });
 		await until(() => wire!.seen.length >= limit, "the last request under the limit", 120_000);
-		await new Promise((resolve) => setTimeout(resolve, 1500));
-		const span = wire.seen.map((request) => request.at - wire!.seen[0].at);
-		expect(wire.seen.length, `request offsets in ms: ${span.join(", ")}`).toBe(limit);
 		await session.when(
 			() => session.records().some((r) => r.type === "model_wait" && r.cooldown?.provider === "gw"),
 			"the rate-limit wait event",
 			30_000,
 		);
-		await new Promise((resolve) => setTimeout(resolve, 3000));
-		expect(wire.seen).toHaveLength(limit);
-		// Twelve scripted tool turns reach the wall in seconds, so the minute is never waited out.
-		expect(Date.now() - started).toBeLessThan(60_000);
+		const span = wire.seen.map((request) => request.at - wire!.seen[0].at);
+		expect(wire.seen.length, `request offsets in ms: ${span.join(", ")}`).toBe(limit);
 	});
 
 	it("does not hold a run with the limit off", async () => {

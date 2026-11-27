@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentDb, agentEvents, agents, closeSharedAgentDb } from "../../../db/src/api.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { registeredWorkspace, workspaceDb } from "../../src/storage/workspace-database.ts";
 import { settleReason } from "../../src/octocode/team/session/end-reason.ts";
 import { endWithParent } from "../../src/octocode/team/session/parent.ts";
 import { TeamStore } from "../../src/octocode/team/store.ts";
@@ -12,6 +12,8 @@ import type { Member } from "@octocodeai/octocode-contracts/team";
 
 let root: string;
 let db: AgentDb;
+/** The machine file; `db` is the file holding the workspace rows (the same file while workspace files are off). */
+let machine: AgentDb;
 let store: TeamStore;
 const member = (id = "amber-otter", extra: Partial<Member> = {}): Member => ({
 	id,
@@ -38,13 +40,15 @@ beforeEach(() => {
 	root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "lifecycle-end-")));
 	vi.stubEnv("OCTOCODE_HOME", path.join(root, "home"));
 	vi.stubEnv("OCTOCODE_AGENT_DB", path.join(root, "agent.db"));
-	db = openAgentDb();
-	store = TeamStore.open(root, db.file);
+	machine = openAgentDb();
+	store = TeamStore.open(root, machine.file);
+	db = workspaceDb(root).agent;
 	store.lifecycle = { activationId: "start", sessionId: "session" };
 });
 afterEach(() => {
 	store.close();
-	db.close();
+	machine.close();
+	closeSharedAgentDb();
 	closeSharedAgentDb();
 	vi.unstubAllEnvs();
 	fs.rmSync(root, { recursive: true, force: true });

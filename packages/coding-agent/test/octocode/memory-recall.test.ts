@@ -4,7 +4,13 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { parseTemplate } from "../../src/octocode/memory/command.ts";
-import { MEMORY_HEADER, memoryMessageText, PINNED_BUDGET, selectInjection, TOTAL_BUDGET } from "../../src/octocode/memory/inject.ts";
+import {
+	MEMORY_HEADER,
+	memoryMessageText,
+	PINNED_BUDGET,
+	selectInjection,
+	TOTAL_BUDGET,
+} from "../../src/octocode/memory/inject.ts";
 import { registerMemory } from "../../src/octocode/memory/register.ts";
 import { memoryStore } from "../../src/octocode/memory/store.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";

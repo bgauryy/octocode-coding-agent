@@ -141,9 +141,22 @@ it("reports the terminal program, synchronized output and mouse capture", () => 
 	const lines = terminalDiagnosticLines({
 		renderer: {
 			setRenderPacing: vi.fn(),
-			getRenderPacingStats: () => ({ maxPendingOutputBytes: 0, paintedFrames: 0, deferredFrames: 0, lastFrameCostMs: 0, maxFrameCostMs: 0, maxInputToPaintMs: 0, maxTimerLagMs: 0 }),
+			getRenderPacingStats: () => ({
+				maxPendingOutputBytes: 0,
+				paintedFrames: 0,
+				deferredFrames: 0,
+				lastFrameCostMs: 0,
+				maxFrameCostMs: 0,
+				maxInputToPaintMs: 0,
+				maxTimerLagMs: 0,
+			}),
 		},
-		ui: { mode: "fullscreen", terminal: { columns: 80, rows: 24, synchronizedOutput: true }, modes: { mouseCaptured: true, hoverTracking: false }, requestRender: vi.fn() },
+		ui: {
+			mode: "fullscreen",
+			terminal: { columns: 80, rows: 24, synchronizedOutput: true },
+			modes: { mouseCaptured: true, hoverTracking: false },
+			requestRender: vi.fn(),
+		},
 		settingsManager: {
 			getTerminalCapabilityOverrides: () => ({}),
 			isReduceMotionActive: () => false,

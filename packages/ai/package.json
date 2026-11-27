@@ -232,8 +232,8 @@
 	],
 	"scripts": {
 		"clean": "shx rm -rf dist",
-		"generate-models": "node scripts/generate-models.ts --strict",
-		"hydrate-model-data": "node scripts/generate-models.ts --strict --data-only",
+		"generate-models": "node --import ../coding-agent/scripts/source-resolver.ts scripts/generate-models.ts --strict",
+		"hydrate-model-data": "node --import ../coding-agent/scripts/source-resolver.ts scripts/generate-models.ts --strict --data-only",
 		"check:model-data": "node scripts/check-model-data.ts",
 		"build": "node scripts/check-model-data.ts && shx rm -rf dist && tsc -p tsconfig.build.json && shx cp -r src/providers/data dist/providers/data",
 		"test": "vitest --run",

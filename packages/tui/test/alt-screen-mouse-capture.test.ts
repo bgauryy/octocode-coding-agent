@@ -93,11 +93,7 @@ describe("fullscreen mouse capture", () => {
 			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 		assert.deepEqual(copied, ["alpha\nbeta", "alpha\nbeta"]);
-		assert.deepEqual(flashes, [
-			"Copied 2 lines · 10 chars",
-			terminalSelectionHint(),
-			"Copied 2 lines · 10 chars",
-		]);
+		assert.deepEqual(flashes, ["Copied 2 lines · 10 chars", terminalSelectionHint(), "Copied 2 lines · 10 chars"]);
 		tui.stop();
 	});
 });

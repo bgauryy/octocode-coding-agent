@@ -47,7 +47,7 @@ export function minReaderAfter(stored: number, steps: readonly Migration[]): num
 }
 
 /** Where the copy of a file taken before upgrading it from `version` lives: beside it, one per from-version. */
-export const backupPath = (file: string, version: number): string => `${file}.v${version}.bak`;
+const backupPath = (file: string, version: number): string => `${file}.v${version}.bak`;
 
 /** The newest backup beside `file` taken before an upgrade from a version below `below`, if one exists. */
 export function newestBackup(file: string, below: number): string | undefined {

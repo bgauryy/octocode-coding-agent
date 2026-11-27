@@ -18,7 +18,7 @@ import { WakeGate } from "../../../src/octocode/wake/gate.ts";
 import { makeSource } from "../../../src/octocode/events/source.ts";
 import type { PayloadEvent, Subscription } from "../../../src/octocode/events/topics.ts";
 import { agents, events } from "../../../../db/src/api.ts";
-import { holdWrite } from "../../../../db/test/hold-write.ts";
+import { holdWorkspaceWrite } from "../hold-workspace-write.ts";
 import { registerFixtureWorkspace } from "../backlog-fixture.ts";
 import { tmp } from "../helpers.ts";
 import { fakeCtx, fakeHost } from "../fake-host.ts";
@@ -91,7 +91,7 @@ describe("the durable event store", () => {
 			agents.setBusyTimeout(agent.db, 500);
 			const store = stage === "subscribe" ? undefined : await open();
 			const queued = stage === "commit" ? await store!.append(newEvent("first")) : undefined;
-			const holder = await holdWrite(agent.file);
+			const holder = await holdWorkspaceWrite(agent);
 			let released = false;
 			const timer = setTimeout(() => {
 				released = true;
@@ -197,7 +197,7 @@ describe("the durable event store", () => {
 				throw error;
 			},
 		});
-		const holder = await holdWrite(agent.file);
+		const holder = await holdWorkspaceWrite(agent);
 		try {
 			const save = loop.publish({
 				event: report("pending"),

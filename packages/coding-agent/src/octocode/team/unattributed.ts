@@ -20,7 +20,7 @@ const code = (xy: string): string => (xy === "??" ? "untracked" : xy[0] !== " " 
  * (workspace-relative paths with an `edits` row in the window), narrowed to `prefixes` when given. One `git status` per
  * call; a deleted path has no mtime and is listed whenever git reports it. Rejects when git cannot read the workspace.
  */
-export async function unattributedChanges(
+async function unattributedChanges(
 	workspace: string,
 	options: { since: number; recorded: ReadonlySet<string>; prefixes?: string[] },
 ): Promise<Unattributed[]> {

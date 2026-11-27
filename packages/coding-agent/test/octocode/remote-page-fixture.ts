@@ -1,7 +1,7 @@
 import { fixtureBacklog } from "./backlog-fixture.ts";
 import type { WebSocket } from "ws";
 import { afterEach, expect, vi } from "vitest";
-import { sharedAgentDb } from "../../src/storage/database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { roomOf } from "../../src/octocode/web-daemon/remote/seal.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";
 import { startRelayFixture } from "./remote-relay-fixture.ts";
@@ -31,7 +31,8 @@ export async function daemon() {
 			headers: { Authorization: `Bearer ${token}`, ...(body ? { "content-type": "application/json" } : {}) },
 			...(body ? { body: JSON.stringify(body) } : {}),
 		});
-	fixtureBacklog(() => sharedAgentDb(env), REPO_KEY).add(
+	const { agent } = workspaceDb({ id: REPO_KEY, name: "demo", root: "/work/demo", binding: "mock" }, env);
+	fixtureBacklog(() => agent, REPO_KEY).add(
 		{ title: "Daemon item", goal: "Seen remotely", createdBy: "tester" },
 		{ id: "tester" },
 	);

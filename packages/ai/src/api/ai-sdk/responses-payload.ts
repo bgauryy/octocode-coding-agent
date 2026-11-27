@@ -84,7 +84,10 @@ export function responsesPayload(model: ResponsesModel, context: TranscriptConte
 						const differentModel =
 							message.provider === model.provider && message.api === model.api && message.model !== model.id;
 						const sameModel = !differentModel && message.provider === model.provider && message.api === model.api;
-						calls.push({ id: !differentModel ? itemId : undefined, namespace: sameModel ? block.namespace : undefined });
+						calls.push({
+							id: !differentModel ? itemId : undefined,
+							namespace: sameModel ? block.namespace : undefined,
+						});
 					}
 				}
 			}
@@ -103,7 +106,8 @@ export function responsesPayload(model: ResponsesModel, context: TranscriptConte
 					const prefix = item.type === "function_call" ? "fc_" : "ctc_";
 					if (metadata?.id?.startsWith(prefix)) item.id = metadata.id;
 					// The SDK writes a namespace on function calls only.
-					if (item.type === "custom_tool_call" && metadata?.namespace !== undefined) item.namespace = metadata.namespace;
+					if (item.type === "custom_tool_call" && metadata?.namespace !== undefined)
+						item.namespace = metadata.namespace;
 				}
 			}
 		}

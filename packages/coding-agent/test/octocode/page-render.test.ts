@@ -4,13 +4,12 @@ import { setKeybindings, type TUI } from "@octocodeai/octocode-tui";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { closeSharedAgentDb } from "../../../db/src/api.ts";
 import { KeybindingsManager } from "../../src/core/keybindings.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
 import { registerBacklog } from "../../src/octocode/backlog/index.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { HarnessPicker } from "../../src/octocode/harness/picker.ts";
 import type { InventoryItem } from "../../src/octocode/harness/inventory.ts";
 import { Subcommands } from "../../src/octocode/shared/commands.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { initTheme, theme } from "../../src/theme/theme.ts";
 import { stripAnsi } from "../../src/utils/ansi.ts";
 import { fakeCtx, fakeHost } from "./fake-host.ts";
@@ -71,7 +70,8 @@ describe("/backlog item page", () => {
 		const fake = fakeHost();
 		const commands = new Subcommands();
 		registerBacklog(fake.api, { commands, isSubagent: false, env });
-		const store = new BacklogStore(() => sharedAgentDb(env), registeredWorkspace(cwd, sharedAgentDb(env)).id);
+		const { agent, workspace } = workspaceDb(cwd, env);
+		const store = new BacklogStore(() => agent, workspace.id);
 		store.add({
 			goal: "Expected result",
 			why: "Required work",

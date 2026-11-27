@@ -54,14 +54,17 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("queued arrow keys while the mouse is captured", () => {
 	it("recall history, since the wheel then arrives as mouse reports", async () => {
-		await withChat(async ({ terminal, editor }) => {
-			editor.addToHistory("NEWER-PROMPT");
-			const before = top(terminal);
-			for (let i = 0; i < 3; i++) terminal.sendInput("\x1b[A");
-			await delay(20);
-			assert.equal(editor.getText(), PROMPT);
-			assert.equal(top(terminal), before);
-		}, { mouseCaptured: true });
+		await withChat(
+			async ({ terminal, editor }) => {
+				editor.addToHistory("NEWER-PROMPT");
+				const before = top(terminal);
+				for (let i = 0; i < 3; i++) terminal.sendInput("\x1b[A");
+				await delay(20);
+				assert.equal(editor.getText(), PROMPT);
+				assert.equal(top(terminal), before);
+			},
+			{ mouseCaptured: true },
+		);
 	});
 });
 

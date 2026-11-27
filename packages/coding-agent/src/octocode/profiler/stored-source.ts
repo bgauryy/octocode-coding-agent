@@ -48,7 +48,7 @@ export function findSession(db: Db, cwd: string, wanted?: string): StoredSession
 }
 
 /** The agent database to read and the stored session to rebuild the profiler's source for (`findSession` picks one). */
-export interface StoredProfilerOptions {
+interface StoredProfilerOptions {
 	/** The file holding the session's runs, mail and agent events: its workspace's. */
 	db: Db;
 	/** The file holding session rows; `db` when they share one. */
@@ -80,7 +80,7 @@ function runFacts(run: AgentRun, self: boolean): DepartedAgent {
  * session and its descendants, the messages that involve them, and the transcripts their session rows point at. Reads
  * only.
  */
-export function storedProfilerSource({ db, machine = db, session }: StoredProfilerOptions): ProfilerSource {
+function storedProfilerSource({ db, machine = db, session }: StoredProfilerOptions): ProfilerSource {
 	const { all: runs, coordinator, children: latest } = sessionRuns(db, session.id);
 	const children = [...latest.values()];
 	const files = catalogFiles(machine);

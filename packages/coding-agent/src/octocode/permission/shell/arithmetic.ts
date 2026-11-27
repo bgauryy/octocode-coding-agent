@@ -64,7 +64,8 @@ function contexts(root: Node): string[] {
  * `date +%s`, `nproc`, `id -u`, and `wc -l` with or without a plain file operand (`N file` fails in arithmetic instead of
  * evaluating), also as the last stage of a pipeline (`ls | wc -l`).
  */
-const NUMERIC_COMMAND = /^(?:date(?:\s+-u)?\s+(['"]?)\+(?:%s|%N|%\dN)+\1|nproc|id\s+-[ug]|wc\s+-[lcmw]+(?:\s+[\w./-]+)?)$/;
+const NUMERIC_COMMAND =
+	/^(?:date(?:\s+-u)?\s+(['"]?)\+(?:%s|%N|%\dN)+\1|nproc|id\s+-[ug]|wc\s+-[lcmw]+(?:\s+[\w./-]+)?)$/;
 
 /** Whether `value` is `$(…)` (bare or alone in double quotes) of one numeric command or a pipeline ending in one. */
 function numericSubstitution(value: Node): boolean {

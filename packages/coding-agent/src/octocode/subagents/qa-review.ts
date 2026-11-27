@@ -23,14 +23,13 @@ const QA_THINKING = "low";
  * The wall-clock limit of one review, both attempts together. Measured reviews take 23-100 s (median about 45 s, two
  * attempts at most about 200 s); 5 min leaves headroom for a slow provider and cuts the 550-1174 s stalls.
  */
-export const QA_TIMEOUT_MS = 5 * 60_000;
+const QA_TIMEOUT_MS = 5 * 60_000;
 
 /** Why an answer was rejected, in words the reviewer can act on when it is asked again. */
 const REJECTIONS: Record<string, string> = {
 	missing: 'no line "Structured result:" was found',
 	duplicate: 'the line "Structured result:" appeared more than once',
-	framing:
-		'"Structured result:" must be followed by one ```json block with its closing fence',
+	framing: '"Structured result:" must be followed by one ```json block with its closing fence',
 	json: "the block was not valid JSON",
 	schema: "the block did not match the schema",
 	oversize: "the block was too large",
@@ -214,7 +213,10 @@ export function qaReviewer(env: SpawnEnv, options: { timeoutMs?: number } = {}):
 			clearTimeout(clock);
 		}
 		// The reviewer ran but its answers were unusable: the review is owed, so a later start retries it instead of leaving the item on the holder's word.
-		if (!data) return { unavailable: `the reviewer gave no valid verdict twice (${(rejected ?? "no result").slice(0, MAX_REJECTION_CHARS)})` };
+		if (!data)
+			return {
+				unavailable: `the reviewer gave no valid verdict twice (${(rejected ?? "no result").slice(0, MAX_REJECTION_CHARS)})`,
+			};
 		const context = Array.isArray(data.context)
 			? data.context.filter((line): line is string => typeof line === "string")
 			: [];

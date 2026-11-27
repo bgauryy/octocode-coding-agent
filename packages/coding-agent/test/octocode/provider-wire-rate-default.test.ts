@@ -27,12 +27,11 @@ describe("the default request rate", () => {
 		await session.when(() => session.records().some((r) => r.type === "rpc_ready"), "RPC to start");
 		await session.command({ type: "prompt", message: "twelve tool turns" });
 		await until(() => wire!.seen.length >= 12, "the twelfth request", 120_000);
-		await new Promise((resolve) => setTimeout(resolve, 1500));
-		expect(wire.seen).toHaveLength(12);
 		await session.when(
 			() => session.records().some((r) => r.type === "model_wait" && r.cooldown?.provider === "gw"),
 			"the rate-limit wait event",
 			30_000,
 		);
+		expect(wire.seen).toHaveLength(12);
 	});
 });

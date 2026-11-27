@@ -41,7 +41,7 @@ export interface FileKind {
 }
 
 /** The `PRAGMA application_id` of a workspace file ("OcWS"). */
-export const WORKSPACE_APPLICATION_ID = 0x4f635753;
+const WORKSPACE_APPLICATION_ID = 0x4f635753;
 
 /** The shared DDL with the optional full-text index over memories; returns whether FTS5 was available. */
 function createSchema(db: DatabaseSync): { fts: boolean } {

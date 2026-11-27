@@ -135,11 +135,13 @@ export class AcpModelSession {
 				if (this.queued.length > 0) {
 					const next = this.queued.splice(0);
 					this.start(
-						next.map((entry) => entry.text).filter((text) => text.trim()).join("\n\n"),
+						next
+							.map((entry) => entry.text)
+							.filter((text) => text.trim())
+							.join("\n\n"),
 						next.flatMap((entry) => entry.images),
 					);
-				}
-				else return out.done("stop", this.withContext(usage), this.acpSession!, item.reply?.stopReason);
+				} else return out.done("stop", this.withContext(usage), this.acpSession!, item.reply?.stopReason);
 			}
 		}
 	}

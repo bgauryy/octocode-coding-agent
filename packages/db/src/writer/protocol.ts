@@ -1,7 +1,7 @@
 import type { DbWriterCommand, DbWriterResult } from "./derived.ts";
 
 /** `workerData.worker` of a database writer: its worker checks it before it opens a connection (`worker.ts`). */
-export const DB_WRITER_WORKER = "octocode:db-writer";
+const DB_WRITER_WORKER = "octocode:db-writer";
 
 /** Where the writer's own connection opens: the same locations `sharedDatabase` takes. */
 export interface DbWriterLocations {

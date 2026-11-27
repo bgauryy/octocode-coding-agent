@@ -3,8 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { type AgentDb, agentRuns, archiveHistory } from "../../../db/src/api.ts";
+import { type AgentDb, agentRuns, archiveHistory, closeSharedAgentDb } from "../../../db/src/api.ts";
 import { openAgentDb } from "../../src/storage/database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { processStartTime } from "../../src/octocode/shared/process.ts";
 import { Team } from "../../src/octocode/team/session.ts";
 import type { LifecycleEvent } from "../../src/octocode/team/lifecycle-bus.ts";
@@ -16,6 +17,8 @@ const SOURCE_RESOLVER = path.join(import.meta.dirname, "..", "..", "scripts", "s
 const WORKER = path.join(import.meta.dirname, "lifecycle-child-worker.ts");
 let root: string;
 let db: AgentDb;
+/** The machine file; `db` is the file holding the workspace rows (the same file while workspace files are off). */
+let machine: AgentDb;
 let store: TeamStore;
 const savedTitle = process.title;
 const member = (id: string, extra: Partial<Member> = {}): Member => ({
@@ -41,14 +44,16 @@ beforeEach(() => {
 	fs.writeFileSync(path.join(root, ".git", "HEAD"), "ref: refs/heads/feature/audit\n");
 	vi.stubEnv("OCTOCODE_HOME", path.join(root, "home"));
 	vi.stubEnv("OCTOCODE_AGENT_DB", path.join(root, "agent.db"));
-	db = openAgentDb();
-	store = TeamStore.open(root, db.file);
+	machine = openAgentDb();
+	store = TeamStore.open(root, machine.file);
+	db = workspaceDb(root).agent;
 	store.lifecycle = { activationId: "start", sessionId: "session-main" };
 });
 afterEach(() => {
 	process.title = savedTitle;
 	store.close();
-	db.close();
+	machine.close();
+	closeSharedAgentDb();
 	vi.unstubAllEnvs();
 	fs.rmSync(root, { recursive: true, force: true });
 });
@@ -214,7 +219,7 @@ describe("kill -9 of a parent", () => {
 		let child: ReturnType<typeof spawn> | undefined;
 		const heard: LifecycleEvent[] = [];
 		const fake = fakeHost();
-		const peer = new Team(fake.api, { OCTOCODE_AGENT_DB: db.file });
+		const peer = new Team(fake.api, { OCTOCODE_AGENT_DB: machine.file });
 		try {
 			const started = processStartTime(parentProc.pid!);
 			store.join(member("parent-main", { role: "main", pid: parentProc.pid!, ...(started ? { started } : {}) }));
@@ -222,7 +227,7 @@ describe("kill -9 of a parent", () => {
 				{ agentId: "kid", parentAgentId: "parent-main", profile: "researcher", goal: "wait for me" },
 				store.workspaceId,
 			);
-			child = spawn(process.execPath, ["--import", SOURCE_RESOLVER, WORKER, root, db.file, "kid", "parent-main"], {
+			child = spawn(process.execPath, ["--import", SOURCE_RESOLVER, WORKER, root, machine.file, "kid", "parent-main"], {
 				stdio: ["ignore", "pipe", "inherit"],
 				env: { ...process.env, OCTOCODE_PARENT_PID: `${parentProc.pid} ${started ?? ""}`.trim() },
 			});

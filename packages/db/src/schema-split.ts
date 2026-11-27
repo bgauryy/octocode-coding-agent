@@ -21,14 +21,14 @@ export { splitBackupPath } from "./split-files.ts";
  */
 
 /** The machine file's version and `min_reader` once its workspace rows live in workspace files (`schema.ts`). */
-export const SPLIT_VERSION = COORDINATION_FILE.version;
+const SPLIT_VERSION = COORDINATION_FILE.version;
 /** `meta` key of a workspace file: the key it was created for. A file stamped with another key is refused at open. */
 export const WORKSPACE_KEY = "workspace_key";
 /**
  * `meta` row of a machine file whose workspace rows moved out, written in the transaction that deletes them. The split
  * keys on it, not on `min_reader`, which is a reader-compatibility stamp: any other value, or none, means not split.
  */
-export const SPLIT_MARKER = { key: "workspace_split", done: "done" } as const;
+const SPLIT_MARKER = { key: "workspace_split", done: "done" } as const;
 /** `meta` key naming one split: the machine file and every workspace file that split copied carry the same value. */
 export const SPLIT_TOKEN = "workspace_split_token";
 
@@ -138,7 +138,7 @@ export type SplitCounts = Record<string, Record<string, number>>;
  * A connection on the workspace file at `file` for `key`: an empty file gets the schema and the key's stamp, a file
  * stamped for another key is refused. The split closes it.
  */
-export type OpenWorkspaceFile = (file: string, key: string) => { db: DatabaseSync; close(): void };
+type OpenWorkspaceFile = (file: string, key: string) => { db: DatabaseSync; close(): void };
 
 /**
  * Copies one group's rows from the machine file's committed state into a new private file `partial`, stamped with the

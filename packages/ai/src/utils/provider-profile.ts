@@ -6,7 +6,6 @@
 
 import type { Api, Model, ProviderProfileId } from "../types.ts";
 import { matchesDomain, matchesHost } from "./provider-host.ts";
-export { PROVIDER_PROFILE_IDS } from "../types/profile.ts";
 import {
 	PROVIDER_PROFILES,
 	type ProfileCacheFacts,

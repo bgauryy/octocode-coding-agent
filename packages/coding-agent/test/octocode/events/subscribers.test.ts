@@ -1,6 +1,6 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { holdWrite } from "../../../../db/test/hold-write.ts";
+import { holdWorkspaceWrite } from "../hold-workspace-write.ts";
 import { type AgentDb, agents, events, eventSubscriptions } from "../../../../db/src/api.ts";
 import { openAgentDb } from "../../../src/storage/database.ts";
 import { toNewEvent, type NewAgentEvent } from "../../../src/octocode/events/loop/rows.ts";
@@ -52,11 +52,11 @@ describe("hook subscribers", () => {
 		async (stage) => {
 			const subscribers = make();
 			agents.setBusyTimeout(agent.db, 500);
-			let holder: Awaited<ReturnType<typeof holdWrite>> | undefined;
+			let holder: Awaited<ReturnType<typeof holdWorkspaceWrite>> | undefined;
 			let timer: ReturnType<typeof setTimeout> | undefined;
 			let released = false;
 			const lock = async () => {
-				holder = await holdWrite(agent.file);
+				holder = await holdWorkspaceWrite(agent);
 				timer = setTimeout(() => {
 					released = true;
 					holder!.release();
@@ -89,7 +89,7 @@ describe("hook subscribers", () => {
 
 	it("finishes a pending publication before shutdown releases its database", async () => {
 		const subscribers = make();
-		const holder = await holdWrite(agent.file);
+		const holder = await holdWorkspaceWrite(agent);
 		let released = false;
 		const timer = setTimeout(() => {
 			released = true;
@@ -112,7 +112,7 @@ describe("hook subscribers", () => {
 	it("retries an offset that timed out without invoking the handler again", async () => {
 		const subscribers = make();
 		agents.setBusyTimeout(agent.db, 25);
-		let holder: Awaited<ReturnType<typeof holdWrite>> | undefined;
+		let holder: Awaited<ReturnType<typeof holdWorkspaceWrite>> | undefined;
 		const seen: AgentEvent[] = [];
 		try {
 			await subscribers.subscribe({
@@ -120,7 +120,7 @@ describe("hook subscribers", () => {
 				topic: "job.exit",
 				async handle(event) {
 					seen.push(event);
-					holder = await holdWrite(agent.file);
+					holder = await holdWorkspaceWrite(agent);
 				},
 			});
 			await expect(subscribers.publish(job("once"))).rejects.toThrow(/locked|busy/);

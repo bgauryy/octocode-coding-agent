@@ -10,7 +10,7 @@ import { qaVerification } from "./receipts.ts";
 /** The topic a review owed because no reviewer could start is recorded under. */
 const UNAVAILABLE_TOPIC = "qa.unavailable";
 /** How many owed reviews one successful reviewer start works through; the rest wait for the next start, so a `done` stays quick. */
-export const OWED_PER_START = 5;
+const OWED_PER_START = 5;
 /** The text an owed completion's JSON holds: the store's text search finds the candidates, the filter below confirms them. */
 const OWED_MARK = '"qa":"owed"';
 const OWED_SCAN = 500;
@@ -34,7 +34,7 @@ export function recordUnavailable(backlog: Backlog, item: Item, cause: string, s
 }
 
 /** Done items whose latest completion owes its review, oldest first. */
-export function owedItems(backlog: Backlog): Item[] {
+function owedItems(backlog: Backlog): Item[] {
 	return backlog.store
 		.list({ states: ["done"], query: OWED_MARK, limit: OWED_SCAN })
 		.items.filter((item) => item.completions.at(-1)?.qa === "owed")

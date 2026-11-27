@@ -46,8 +46,8 @@ export { addMcpServerConfig, removeMcpServerConfig, updateMcpServerConfig } from
 export { listVendorMcpServers } from "./file-servers.ts";
 export { globalMcpConfigPath, mcpConfigFiles, projectMcpConfigPath } from "./paths.ts";
 export { presetEntries } from "./preset.ts";
-export { builtinPreset, builtinPresets } from "./presets/index.ts";
-export { type AgentMcp, defaultAgentMcp, defaultServerNames } from "./presets/default-config.ts";
+export { builtinPresets } from "./presets/index.ts";
+export { type AgentMcp, defaultAgentMcp } from "./presets/default-config.ts";
 export { desktopAvailable } from "./presets/desktop/index.ts";
 export { desktopEnabled } from "./presets/desktop/enabled.ts";
 export { mcpGroupLabel } from "./group.ts";

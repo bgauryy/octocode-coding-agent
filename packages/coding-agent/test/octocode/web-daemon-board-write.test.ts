@@ -1,8 +1,7 @@
 import http from "node:http";
 import { TERMINAL_COMMAND_ROUTE } from "@octocodeai/octocode-contracts/protocol";
 import { afterEach, describe, expect, it } from "vitest";
-import { workspaces } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { startAttachServer } from "../../src/octocode/web-daemon/attach-server.ts";
 import { startDaemonServer, type DaemonServer } from "../../src/octocode/web-daemon/server.ts";
 import { fixtureBacklog } from "./backlog-fixture.ts";
@@ -32,8 +31,8 @@ async function daemon() {
 		onDrain: () => {},
 	});
 	cleanup.push(() => server.close());
-	workspaces.register(sharedAgentDb(env).db, { id: REPO_KEY, name: "demo", root: "/work/demo", binding: "mock" });
-	fixtureBacklog(() => sharedAgentDb(env), REPO_KEY).add(
+	const { agent } = workspaceDb({ id: REPO_KEY, name: "demo", root: "/work/demo", binding: "mock" }, env);
+	fixtureBacklog(() => agent, REPO_KEY).add(
 		{ title: "Daemon item", goal: "Written through the daemon", createdBy: "tester" },
 		{ id: "tester" },
 	);

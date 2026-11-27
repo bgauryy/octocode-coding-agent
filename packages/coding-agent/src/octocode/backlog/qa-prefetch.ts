@@ -4,7 +4,7 @@ import type { QaMode, QaReview, QaReviewer } from "./qa-gate.ts";
 import { coveredCompletion, requestReview } from "./qa-run.ts";
 
 /** How many reviews of one batch run at once: each is a child on the small tier, so the limit bounds cost and provider load. */
-export const QA_PARALLEL = 3;
+const QA_PARALLEL = 3;
 
 export interface StartedReviews {
 	/** Per entry: its review under way, or undefined when the entry needs none. */

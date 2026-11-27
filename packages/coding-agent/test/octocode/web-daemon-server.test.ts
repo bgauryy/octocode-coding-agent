@@ -1,5 +1,4 @@
-import { workspaces } from "../../../db/src/api.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { registeredWorkspace, registeredWorkspaceAgent, workspaceDb } from "../../src/storage/workspace-database.ts";
 import { fixtureBacklog } from "./backlog-fixture.ts";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -61,8 +60,8 @@ function rawRequest(
 }
 
 function seedBacklog(env: NodeJS.ProcessEnv) {
-	workspaces.register(sharedAgentDb(env).db, { id: REPO_KEY, name: "demo", root: "/work/demo", binding: "mock" });
-	const store = fixtureBacklog(() => sharedAgentDb(env), REPO_KEY);
+	const { agent } = workspaceDb({ id: REPO_KEY, name: "demo", root: "/work/demo", binding: "mock" }, env);
+	const store = fixtureBacklog(() => agent, REPO_KEY);
 	store.add({ title: "Daemon item", goal: "Seen in the daemon", createdBy: "tester" }, { id: "tester" });
 }
 
@@ -415,7 +414,7 @@ describe("daemon with attached sessions and repositories", () => {
 		await vi.waitFor(() => expect(packets.filter((packet) => packet.type === "snapshot")).toHaveLength(1));
 		await new Promise((resolve) => setTimeout(resolve, 1600));
 		expect(packets.filter((packet) => packet.type === "snapshot")).toHaveLength(1);
-		fixtureBacklog(() => sharedAgentDb(env), REPO_KEY).add(
+		fixtureBacklog(() => registeredWorkspaceAgent(REPO_KEY, env), REPO_KEY).add(
 			{ title: "Second", goal: "Seen later", createdBy: "t" },
 			{ id: "t" },
 		);

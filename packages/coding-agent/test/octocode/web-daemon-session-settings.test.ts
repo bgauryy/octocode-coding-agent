@@ -3,8 +3,7 @@ import path from "node:path";
 import type { AttachToolStates } from "@octocodeai/octocode-contracts/daemon";
 import type { ToolExposureList } from "@octocodeai/octocode-contracts/config";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { workspaces } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
+import { registeredWorkspaceAgent, workspaceDb } from "../../src/storage/workspace-database.ts";
 import { BacklogStore } from "../../src/octocode/backlog/store.ts";
 import { startAttachServer } from "../../src/octocode/web-daemon/attach-server.ts";
 import { createConfigRoutes } from "../../src/octocode/web-daemon/config-factory.ts";
@@ -45,8 +44,8 @@ async function setup(options: { tools?: boolean } = {}) {
 	const server: DaemonServer = await startDaemonServer({ env, onActivity: () => {}, onDrain: () => {}, ...routes });
 	cleanup.push(() => server.close());
 	cleanup.push(() => signIns.closeAll());
-	workspaces.register(sharedAgentDb(env).db, { id: REPO_KEY, name: "demo", root, binding: "mock" });
-	const store = new BacklogStore(() => sharedAgentDb(env), REPO_KEY);
+	const { agent } = workspaceDb({ id: REPO_KEY, name: "demo", root, binding: "mock" }, env);
+	const store = new BacklogStore(() => agent, REPO_KEY);
 	store.add({ title: "Shared item", goal: "Edited from both pages", createdBy: "tester" }, { id: "tester" });
 	const boardChanged = vi.fn();
 	const endpoint = await startAttachServer(
@@ -154,7 +153,7 @@ describe("board edits on the daemon page", () => {
 		};
 		const viaDaemon = await edit((body) => call(server.token, "/s/sess-1/api/backlogs", body), "Daemon title");
 		const own = await startWorkspaceWeb({
-			store: new BacklogStore(() => sharedAgentDb(env), REPO_KEY),
+			store: new BacklogStore(() => registeredWorkspaceAgent(REPO_KEY, env), REPO_KEY),
 			actor: { id: "sess-1", surface: "tool" },
 			session: "sess-1",
 			repoName: "demo",

@@ -86,7 +86,7 @@ describe("selection across a resize", () => {
 		await s.settle();
 		assert.equal(s.tui.hasActiveSelection(), true);
 		s.terminal.resize(60, 8);
-		await new Promise<void>((resolve) => setTimeout(resolve, 300));
+		await s.settle();
 		await s.settle();
 		assert.equal(s.tui.hasActiveSelection(), false);
 		s.tui.stop();
@@ -97,7 +97,7 @@ describe("selection across a resize", () => {
 		s.drag([1, 0], [7, 0]);
 		await s.settle();
 		s.terminal.resize(24, 10);
-		await new Promise<void>((resolve) => setTimeout(resolve, 300));
+		await s.settle();
 		await s.settle();
 		assert.equal(s.tui.hasActiveSelection(), true);
 		s.tui.stop();

@@ -1,8 +1,33 @@
 # Developing octocode-agent
 
-For contributors. To use Octocode, read the [README](README.md). Rules for changing code, owners and generated files: [AGENTS.md](AGENTS.md).
+For contributors. To use Octocode, read the [README](README.md). Package ownership and essential rules: [AGENTS.md](AGENTS.md).
 
 Octocode is a fork of [Pi](https://github.com/earendil-works/pi): Pi's agent loop, providers and terminal UI plus native Octocode features (code research, guarded edits, subagents, collaboration, browser work, memory, recovery). The native features live in `packages/coding-agent/src/octocode/` and load automatically.
+
+## Contributor rules
+
+### Change code
+
+- Read the implementation and its callers first. Fix behavior in its owner, a fact in its owning page; reuse existing types, schemas and helpers. Remove a helper or setting only after checking registration, exports, tests and consumers.
+- Modular code, one owner per unit, so agents work in parallel; clean architecture and code; script repeated steps, printing summaries, not logs.
+- **Optimal:** every change is reasoned and optimal. Algorithms: name the hot path's cost (time, memory, I/O, round trips) and take the cheapest correct design. Tokens: agents read and write the fewest that settle a step, and code adds model context only for a measured reason.
+- Stay in scope. Keep safety checks, cancellation, session cleanup and public contracts. Preserve user changes (untracked files too), license notices and changelogs.
+- **Errors:** fail loudly. Catch only the case you expect (a missing file, no credentials) and let the rest propagate or reach a log; never turn damage into an empty result. Every started promise has an owner that awaits or settles it.
+- **Database:** `prepare(...)`, `db.exec(...)` and `node:sqlite` imports (type imports too) live only in `packages/db/src/`, enforced by `check:db-boundary` and oxlint (only `team/peer-leases.ts` is exempt). Search `queries/` before adding a function; one statement in one place; delete a query with its last caller; features use `type Db`. In `db/src`, import sibling packages by relative path, never by package name: the writer worker runs on plain Node.
+- **Names:** no `@earendil-works/*`, `@mariozechner/*` or upstream Pi services. New code says Octocode; Pi stays only for compatibility, attribution or history.
+- **Instructions:** plain language, condition beside action; goals, constraints and decision rules, not mechanical steps or reply templates. Tool descriptions own tool mechanics; policy does not repeat them. Repeatable logic goes in code or a schema. Machine fields (report outcomes, `to: "parent"`, `parentId`) change only with all their consumers.
+- **Configuration:** use the existing path helpers and loaders; keep global/workspace precedence, project trust, and definitions apart from control-only MCP overrides. Update `coding-agent/docs/configuration.md`. Test mutations in isolated user directories, never the real home.
+- **Tools and commands:** check registration and RPC consumers separately. Reads use Octocode local tools, mutations `file`; `bash` is the only tool factory. Built-ins are one word; Claude Code names map to them in `COMMAND_ALIASES` (`core/slash-commands.ts`), hidden from `/`. The package root exports only the CLI and RPC. Document tool enablement, MCP exposure and browser routing in [native features](packages/coding-agent/docs/native-features.md).
+- **Lint:** strict; fix findings. Files stay within 400 lines (tests exempt): split by concern, never add an exception. `import/no-cycle` counts type-only cycles: move the shared type to a leaf. Silence a rule only on its line with a reason: `// oxlint-disable-next-line <rule> -- <reason>`.
+
+### Verification and generated files
+
+- Report failures and skipped checks. Never weaken assertions or thresholds; change a test only for an intended contract change. Test behavior, not instruction wording.
+- An MCP tool that refuses twice or disconnects: restart it with `mcp`, then fall back to bash and say so.
+- Shipped docs (`packages/coding-agent/docs/`, `docs/`) are for users: Mermaid for flows, tables for options, no repository paths or dated counts; verify commands and links. After browser source changes, run `yarn run generate:workspace` and the webview and contracts tests.
+- Change the generator, never its output (`yarn workspace @octocodeai/octocode-agent run <script>`): `generate:schemas`, `generate:references`, `generate:casefold`, `generate:vendor` (after bumping `marked` or `highlight.js-browser`), `yarn run install-lock:coding-agent`.
+- `generate:prompts` (every build runs it) writes each agent's prompt to `.octocode/agent/tmp/agent-prompts/`: read it after changing a prompt, tool description, MCP preset or the sibling `octocode-mcp`. Octocode ships no overrides: an external MCP server's descriptions, schemas and instructions are never rewritten.
+- Research with the session's Octocode MCP server. Fix the cause of each tool error, retry or wrong turn you hit in its owner, or file a backlog item with the trigger and evidence. A child puts the trigger and evidence in its report (Noticed) for its coordinator to file.
 
 ## Run from source
 

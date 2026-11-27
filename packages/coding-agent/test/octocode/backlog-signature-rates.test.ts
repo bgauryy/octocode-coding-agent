@@ -18,9 +18,9 @@ const DAY = 86_400_000;
 
 describe("error signature rates on a backlog item", () => {
 	it("reads signatures from evidence entries only", () => {
-		expect(signaturesOf({ evidence: ["src/a.ts:1 — x", "error signature: oldText not found", "error signature:  "] })).toEqual([
-			"oldText not found",
-		]);
+		expect(
+			signaturesOf({ evidence: ["src/a.ts:1 — x", "error signature: oldText not found", "error signature:  "] }),
+		).toEqual(["oldText not found"]);
 	});
 
 	it("says nothing for an item without a signature", async () => {
@@ -29,11 +29,15 @@ describe("error signature rates on a backlog item", () => {
 
 	it("shows an open item's last week, and a done item's rate before and since", async () => {
 		const evidence = ["error signature: oldText not found"];
-		expect(await signatureRates({ evidence, state: "todo" }, cwd)).toMatch(/^Error "oldText not found": 0 in 7d .* over the last week\.$/);
+		expect(await signatureRates({ evidence, state: "todo" }, cwd)).toMatch(
+			/^Error "oldText not found": 0 in 7d .* over the last week\.$/,
+		);
 		const now = Date.now();
 		expect(await signatureRates({ evidence, state: "done", doneAt: now - 3 * DAY }, cwd, undefined, now)).toMatch(
 			/before done 0 in 7d \(0\.0\/day\); since done 0 in 3d \(0\.0\/day\)\./,
 		);
-		expect(await signatureRates({ evidence, state: "done", doneAt: now }, cwd, undefined, now)).toMatch(/since done not measured yet/);
+		expect(await signatureRates({ evidence, state: "done", doneAt: now }, cwd, undefined, now)).toMatch(
+			/since done not measured yet/,
+		);
 	});
 });

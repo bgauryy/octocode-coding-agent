@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { holdWrite } from "../../../db/test/hold-write.ts";
+import { type HeldFile, holdWorkspaceWrite, workspaceFileOf } from "./hold-workspace-write.ts";
 import { USER_AUTHOR, closeSharedAgentDb } from "../../../db/src/api.ts";
 import { openBacklog } from "../../src/octocode/backlog/context.ts";
 import { itemLink } from "../../src/octocode/subagents/item-link.ts";
@@ -40,8 +40,8 @@ afterEach(async () => {
  * Starts `work` while another process holds `file`'s write lock, releasing it after `HOLD_MS` from a timer of this
  * thread (which only fires while the thread is free); `work`'s result and the longest gap between this thread's ticks.
  */
-async function underForeignLock<T>(file: string, work: () => Promise<T>): Promise<{ result: T; stallMs: number }> {
-	const holder = await holdWrite(file);
+async function underForeignLock<T>(file: HeldFile, work: () => Promise<T>): Promise<{ result: T; stallMs: number }> {
+	const holder = await holdWorkspaceWrite(file);
 	cleanup.push(() => holder.close());
 	let last = performance.now();
 	let stallMs = 0;
@@ -66,7 +66,13 @@ async function underForeignLock<T>(file: string, work: () => Promise<T>): Promis
 	}
 }
 
-function joinedTeam(): { team: Team; store: TeamStore; file: string; cwd: string } {
+function joinedTeam(): {
+	team: Team;
+	store: TeamStore;
+	file: string;
+	cwd: string;
+	lock: HeldFile;
+} {
 	const cwd = tmp();
 	fs.mkdirSync(path.join(cwd, ".git"));
 	const file = path.join(tmp(), "team.sqlite");
@@ -76,15 +82,15 @@ function joinedTeam(): { team: Team; store: TeamStore; file: string; cwd: string
 	team.start(fakeCtx({ cwd, hasUI: true, idle: true }));
 	cleanup.push(() => team.stop());
 	team.join();
-	return { team, store, file, cwd };
+	return { team, store, file, cwd, lock: workspaceFileOf(cwd, file) };
 }
 
 describe("coordination writes while another process holds the database", () => {
 	it("release a child's reservations without stalling, and a waiting sibling starts only after the rows are gone", async () => {
-		const { team, store, file } = joinedTeam();
+		const { team, store, lock } = joinedTeam();
 		const held = await team.childLeases.reserve({ id: "kid-one", role: "general", goal: "edit a" }, ["a.ts"]);
 		expect(held.ok).toBe(true);
-		const { stallMs } = await underForeignLock(file, async () => {
+		const { stallMs } = await underForeignLock(lock, async () => {
 			const releasing = team.childLeases.release("kid-one");
 			await team.childLeases.released(["kid-one"]);
 			expect(store.leases()).toEqual([]);
@@ -96,7 +102,7 @@ describe("coordination writes while another process holds the database", () => {
 	});
 
 	it("acknowledge a runner mailbox's messages without stalling", async () => {
-		const { team, store, file } = joinedTeam();
+		const { team, store, lock } = joinedTeam();
 		const host = (team as unknown as { sendHost(): SendHost }).sendHost();
 		const member = await RunnerMember.open(host, { id: "runner-one", runner: "codex", cwd: tmp() }, () => () => {});
 		cleanup.push(() => member.close());
@@ -104,7 +110,7 @@ describe("coordination writes while another process holds the database", () => {
 		store.send(parent, ["runner-one"], "first", { replyRequired: false });
 		const [first] = await member.inbox([]);
 		store.send(parent, ["runner-one"], "second", { replyRequired: false });
-		const { result, stallMs } = await underForeignLock(file, () => member.inbox([first.id]));
+		const { result, stallMs } = await underForeignLock(lock, () => member.inbox([first.id]));
 		expect(stallMs).toBeLessThan(MAX_STALL_MS);
 		expect(result.map((message) => message.id)).not.toContain(first.id);
 		expect(store.pending("runner-one").map((message) => message.id)).not.toContain(first.id);
@@ -117,10 +123,10 @@ describe("coordination writes while another process holds the database", () => {
 		registerFixtureWorkspace(db, "repo");
 		const commands = new WorkspaceCommands(db, "repo", "session-one");
 		const command = { id: "one", action: "message" as const, to: "worker", text: "Review this" };
-		const { result, stallMs } = await underForeignLock(file, () => commands.begin(command));
+		const { result, stallMs } = await underForeignLock({ file }, () => commands.begin(command));
 		expect(stallMs).toBeLessThan(MAX_STALL_MS);
 		expect(result.fresh).toBe(true);
-		const { result: done, stallMs: finishStall } = await underForeignLock(file, () =>
+		const { result: done, stallMs: finishStall } = await underForeignLock({ file }, () =>
 			commands.finish("one", "accepted", "Delivered"),
 		);
 		expect(finishStall).toBeLessThan(MAX_STALL_MS);
@@ -136,7 +142,7 @@ describe("coordination writes while another process holds the database", () => {
 		const human = { id: USER_AUTHOR, kind: "human" as const, surface: "web" as const };
 		const one = store.add({ title: "one", state: "todo", createdBy: USER_AUTHOR }, human);
 		const two = store.add({ title: "two", state: "todo", createdBy: USER_AUTHOR }, human);
-		const { result, stallMs } = await underForeignLock(file, () =>
+		const { result, stallMs } = await underForeignLock({ file }, () =>
 			applyBoardWrite(store, { command: "item.rank", id: two.ref, version: two.version, before: one.ref }, "s1"),
 		);
 		expect(stallMs).toBeLessThan(MAX_STALL_MS);
@@ -145,19 +151,19 @@ describe("coordination writes while another process holds the database", () => {
 	});
 
 	it("join at session start, refresh for a run and leave without stalling, in order", async () => {
-		const { team, store, file, cwd } = joinedTeam();
+		const { team, store, cwd, lock } = joinedTeam();
 		const me = team.join().id;
 		await team.leave();
 		expect(store.list().map((member) => member.id)).not.toContain(me);
 		// The same folder: a new one registers its workspace when the store opens, a write outside the join.
-		const started = await underForeignLock(file, () => team.start(fakeCtx({ cwd, hasUI: true, idle: true })));
+		const started = await underForeignLock(lock, () => team.start(fakeCtx({ cwd, hasUI: true, idle: true })));
 		expect(started.stallMs).toBeLessThan(MAX_STALL_MS);
 		const joined = team.join().id;
 		expect(store.list().map((member) => member.id)).toContain(joined);
-		const refreshed = await underForeignLock(file, () => joinTeamPatiently(team));
+		const refreshed = await underForeignLock(lock, () => joinTeamPatiently(team));
 		expect(refreshed.stallMs).toBeLessThan(MAX_STALL_MS);
 		expect(refreshed.result).toEqual({ parentId: joined, note: "" });
-		const left = await underForeignLock(file, () => team.leave());
+		const left = await underForeignLock(lock, () => team.leave());
 		expect(left.stallMs).toBeLessThan(MAX_STALL_MS);
 		expect(store.list().map((member) => member.id)).not.toContain(joined);
 	});
@@ -176,11 +182,11 @@ describe("coordination writes while another process holds the database", () => {
 		const backlog = openBacklog(ctx, { isSubagent: false });
 		backlog.store.add({ goal: "g", why: "w", title: "part", state: "todo", createdBy: "user" });
 		const link = itemLink(ctx, "B1")!;
-		const claimed = await underForeignLock(file, () => link.claim());
+		const claimed = await underForeignLock(workspaceFileOf(ctx.cwd, file), () => link.claim());
 		expect(claimed.stallMs).toBeLessThan(MAX_STALL_MS);
 		expect(backlog.store.get("B1")).toMatchObject({ state: "ongoing", assignee: "session-test" });
 		const report = { text: "done", outcome: "done", usage: {} } as never;
-		const attached = await underForeignLock(file, () => link.attach(report, "w1"));
+		const attached = await underForeignLock(workspaceFileOf(ctx.cwd, file), () => link.attach(report, "w1"));
 		expect(attached.stallMs).toBeLessThan(MAX_STALL_MS);
 		expect(attached.result).toContain("Claimed B1 for this session");
 		const notes = backlog.store.notes(backlog.store.get("B1")!, -1).map((note) => note.text);
@@ -188,9 +194,9 @@ describe("coordination writes while another process holds the database", () => {
 	});
 
 	it("open and close a child's run record without stalling, in call order", async () => {
-		const { store, file } = joinedTeam();
+		const { store, lock } = joinedTeam();
 		const audit = new RunAudit({ store: () => store, existing: () => store });
-		const { stallMs } = await underForeignLock(file, async () => {
+		const { stallMs } = await underForeignLock(lock, async () => {
 			audit.begin({ agentId: "kid-one", goal: "g" });
 			audit.finish("kid-one", { outcome: "done", endReason: "completed" });
 			await audit.settled();
@@ -200,7 +206,7 @@ describe("coordination writes while another process holds the database", () => {
 	});
 
 	it("settle a headless child whose parent holds its reservations without stalling", async () => {
-		const { team: parent, store, file, cwd } = joinedTeam();
+		const { team: parent, store, file, cwd, lock } = joinedTeam();
 		const me = parent.join().id;
 		expect((await parent.childLeases.reserve({ id: "kid-one", role: "general", goal: "g" }, ["a.ts"])).ok).toBe(true);
 		const child = new Team(fakeHost().api, {
@@ -214,7 +220,7 @@ describe("coordination writes while another process holds the database", () => {
 		await child.start(fakeCtx({ cwd, hasUI: false, idle: true }));
 		cleanup.push(() => child.stop());
 		expect(store.list().map((member) => member.id)).toContain("kid-one");
-		const { stallMs } = await underForeignLock(file, () => child.onAgentSettled("completed"));
+		const { stallMs } = await underForeignLock(lock, () => child.onAgentSettled("completed"));
 		expect(stallMs).toBeLessThan(MAX_STALL_MS);
 		expect(store.names()).toContain("kid-one");
 		expect(store.list().map((member) => member.id)).not.toContain("kid-one");
@@ -236,26 +242,26 @@ async function childTeam(file: string, cwd: string, parent: string, id: string):
  */
 describe("team references and member rows while another process holds the database", () => {
 	it("forward a stored message once the lock is released", async () => {
-		const { team: lead, store, file, cwd } = joinedTeam();
+		const { team: lead, store, file, cwd, lock } = joinedTeam();
 		const me = lead.join().id;
 		const asker = await childTeam(file, cwd, me, "kid-one");
 		await childTeam(file, cwd, me, "kid-two");
 		const sent = await asker.send("parent", "who owns routing?", { replyRequired: true });
 		if (!("id" in sent)) throw new Error(JSON.stringify(sent));
-		const { result } = await underForeignLock(file, () => lead.forwardMessage(sent.id, me, "kid-two", "you own it"));
+		const { result } = await underForeignLock(lock, () => lead.forwardMessage(sent.id, me, "kid-two", "you own it"));
 		expect(result).toMatchObject({ sent: ["kid-two"], id: sent.id });
 		expect(store.pending("kid-two").map((message) => message.id)).toContain(sent.id);
 	});
 
 	it("store a message for a finished child, then retract it when the resume does not start", async () => {
-		const { team, store, file } = joinedTeam();
+		const { team, store, lock } = joinedTeam();
 		const seen: number[] = [];
 		team.rememberFinished("done-aaaaaa", "done");
 		team.setResumer(async (_to, _text, _from, _signal, options) => {
 			if (options?.message) seen.push(options.message.id);
 			return undefined;
 		});
-		const { result } = await underForeignLock(file, () =>
+		const { result } = await underForeignLock(lock, () =>
 			team.send("done-aaaaaa", "more work", { replyRequired: true }),
 		);
 		expect(result).toEqual({ error: expect.stringContaining("done-aaaaaa has finished") });
@@ -267,7 +273,7 @@ describe("team references and member rows while another process holds the databa
 	});
 
 	it("close the questions a reported child answered once the lock is released", async () => {
-		const { team: lead, store, file, cwd } = joinedTeam();
+		const { team: lead, store, file, cwd, lock } = joinedTeam();
 		const me = lead.join().id;
 		await childTeam(file, cwd, me, "kid-one");
 		const asked = await lead.send("kid-one", "which file?", { replyRequired: true });
@@ -275,20 +281,20 @@ describe("team references and member rows while another process holds the databa
 		store.ack("kid-one", [asked.id]);
 		const open = () => store.refs.openQuestions().map((question) => question.recipient);
 		expect(open()).toContain("kid-one");
-		await underForeignLock(file, () => lead.closeQuestionsTo("kid-one"));
+		await underForeignLock(lock, () => lead.closeQuestionsTo("kid-one"));
 		expect(open()).not.toContain("kid-one");
 	});
 
 	it("join and remove a runner mailbox's member row once the lock is released", async () => {
-		const { team, store, file } = joinedTeam();
+		const { team, store, lock } = joinedTeam();
 		const host = (team as unknown as { sendHost(): SendHost }).sendHost();
 		const ids = () => store.list().map((member) => member.id);
-		const { result: member } = await underForeignLock(file, () =>
+		const { result: member } = await underForeignLock(lock, () =>
 			RunnerMember.open(host, { id: "runner-two", runner: "codex", cwd: tmp() }, () => () => {}),
 		);
 		cleanup.push(() => member.close());
 		expect(ids()).toContain("runner-two");
-		await underForeignLock(file, () => member.close());
+		await underForeignLock(lock, () => member.close());
 		expect(ids()).not.toContain("runner-two");
 	});
 });

@@ -225,14 +225,15 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 	 * so it never becomes typed text. Held text that turns out not to be a report is released unchanged.
 	 */
 	private filterOrphanMouse(str: string): string {
+		let chunk = str;
 		if (this.droppedMouse.active) {
 			// The head of a report was dropped on timeout: a chunk that completes it is its tail, not text.
-			const fed = this.droppedMouse.feed(str);
+			const fed = this.droppedMouse.feed(chunk);
 			if (fed.kind === "consumed") return fed.rest;
 			if (fed.kind === "held") return "";
-			str = fed.text;
+			chunk = fed.text;
 		}
-		const pending = (this.orphanMouse ?? "") + str;
+		const pending = (this.orphanMouse ?? "") + chunk;
 		this.orphanMouse = undefined;
 		if (this.orphanTimeout) clearTimeout(this.orphanTimeout);
 		this.orphanTimeout = null;

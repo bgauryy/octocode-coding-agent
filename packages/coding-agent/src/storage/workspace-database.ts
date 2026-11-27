@@ -43,17 +43,6 @@ async function registerWhenReady(agent: AgentDb, workspace: Registration, signal
 	}
 }
 
-export async function registeredWorkspaceWhenReady(
-	source: string | WorkspaceIdentity,
-	agent: AgentDb,
-	signal?: AbortSignal,
-): Promise<WorkspaceIdentity> {
-	signal?.throwIfAborted();
-	const workspace = registration(source);
-	await registerWhenReady(agent, workspace, signal);
-	return identityOf(workspace);
-}
-
 /** A workspace and the database holding its rows. */
 export interface WorkspaceDb {
 	agent: AgentDb;

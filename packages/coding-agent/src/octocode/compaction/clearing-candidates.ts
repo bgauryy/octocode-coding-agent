@@ -70,7 +70,10 @@ function readOnlyBash(args: Record<string, unknown> | undefined): boolean {
  * Successful results of clearable tools that show only text and are not placeholders or repeated-read notes, oldest
  * first. `superseded`: the ids of reads a newer read replaces.
  */
-export function clearableResults(messages: readonly MessageRef[], superseded: ReadonlySet<string> = new Set()): Candidate[] {
+export function clearableResults(
+	messages: readonly MessageRef[],
+	superseded: ReadonlySet<string> = new Set(),
+): Candidate[] {
 	const calls = toolCallArguments(messages);
 	return messages.flatMap(({ message }, index): Candidate[] => {
 		if (

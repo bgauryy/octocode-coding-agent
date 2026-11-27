@@ -115,7 +115,7 @@ export const sendBackState = (verdict: QaVerdictWord): "ongoing" | "backlog" =>
 	verdict === "Verification incomplete" ? "backlog" : "ongoing";
 
 /** The note of a review owed because no reviewer could start: says the cause and what happens next. */
-export const owedNote = (cause: string): string =>
+const owedNote = (cause: string): string =>
 	`${QA_OWED_PREFIX} the independent review did not run (${cause}); it reruns when a reviewer can start. The item is done on the holder's word until then.`;
 
 /** The write that sends an item back: a note, and for verification incomplete the backlog state (which also releases the claim). */

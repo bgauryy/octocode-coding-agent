@@ -47,7 +47,7 @@ const NO_TOOLS = "no Octocode tools";
  * name says where the route came from and, once known, that the agent takes no Octocode tools; the model takes images
  * when the agent does.
  */
-export function modelsOf(
+function modelsOf(
 	provider: string,
 	name: string,
 	source: RouteSource,

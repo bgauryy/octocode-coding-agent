@@ -10,7 +10,14 @@ import { registerMemoryReflection } from "./file/reflect.ts";
 import { registerMemorySection } from "./file/section.ts";
 import { memorySettings } from "./file/settings.ts";
 import { fileMemberIds, type MemoryFileSync, repeatsOf } from "./file/sync.ts";
-import { type Injection, MEMORY_MESSAGE_TYPE, memoryMessageText, selectInjection, sessionInjections, unchangedIds } from "./inject.ts";
+import {
+	type Injection,
+	MEMORY_MESSAGE_TYPE,
+	memoryMessageText,
+	selectInjection,
+	sessionInjections,
+	unchangedIds,
+} from "./inject.ts";
 import { memoryLabel } from "./query.ts";
 import { noteOnlyInjection, sessionNoteLead } from "./session-notes-inject.ts";
 import { sessionNotes } from "./session-notes.ts";

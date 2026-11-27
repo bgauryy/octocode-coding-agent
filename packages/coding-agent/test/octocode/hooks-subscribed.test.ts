@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { eventSubscriptions, events } from "../../../db/src/api.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
 import { HOOK_EVENTS } from "../../src/octocode/hooks/catalog.ts";
 import { makeSource } from "../../src/octocode/events/source.ts";
 import { HOOK_LIFECYCLE_EVENTS } from "../../src/octocode/events/hook-lifecycle.ts";
@@ -8,7 +7,7 @@ import { type MatchedHookRun, subscribedDispatch } from "../../src/octocode/hook
 import { closeHookSubscribers, hookSubscribersOf } from "../../src/octocode/hooks/register/subscribers.ts";
 import type { HookConfig, HookVerdict } from "../../src/octocode/hooks/contracts.ts";
 import type { HookSession } from "../../src/octocode/hooks/register/types.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { tmp } from "./helpers.ts";
 
 const allow: HookVerdict = {};
@@ -26,8 +25,9 @@ const rig = (cwd = tmp()) => ({
 	ctx: { cwd, sessionManager: { getSessionId: () => "hooks-session" } },
 });
 
-const workspaceOf = (cwd: string) => registeredWorkspace(cwd, sharedAgentDb()).id;
-const logged = (cwd: string) => events.lastSeq(sharedAgentDb().db, workspaceOf(cwd));
+const workspaceOf = (cwd: string) => workspaceDb(cwd).workspace.id;
+const dbOf = (cwd: string) => workspaceDb(cwd).agent.db;
+const logged = (cwd: string) => events.lastSeq(dbOf(cwd), workspaceOf(cwd));
 
 describe("hook runs as events", () => {
 	it("lists the same lifecycle events as the hook catalog", () => {
@@ -49,7 +49,7 @@ describe("hook runs as events", () => {
 		expect(calls).toBe(3);
 		const rows = (event: string) =>
 			eventSubscriptions.forSubscriber(
-				sharedAgentDb().db,
+				dbOf(cwd),
 				workspaceOf(cwd),
 				`hook:run:${event}:hooks:hooks-session`,
 				Date.now(),
@@ -78,7 +78,7 @@ describe("hook runs as events", () => {
 		await closeHookSubscribers(api);
 		const direct = vi.fn<MatchedHookRun>(async () => {
 			const [row] = eventSubscriptions.forSubscriber(
-				sharedAgentDb().db,
+				dbOf(ctx.cwd),
 				workspaceOf(ctx.cwd),
 				"hook:run:PreToolUse:hooks:hooks-session",
 				Date.now(),

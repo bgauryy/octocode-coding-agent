@@ -61,7 +61,9 @@ async function coldClearing(calls: Call[]) {
 				role: "toolResult",
 				toolCallId: call.id,
 				toolName: call.tool,
-				content: [{ type: "text", text: `${call.id} `.repeat(Math.ceil((call.chars ?? 18_000) / (call.id.length + 1))) }],
+				content: [
+					{ type: "text", text: `${call.id} `.repeat(Math.ceil((call.chars ?? 18_000) / (call.id.length + 1))) },
+				],
 				...(call.details ? { details: call.details } : {}),
 				isError: false,
 				timestamp: T0 + index,
@@ -96,7 +98,9 @@ async function coldClearing(calls: Call[]) {
 	const transcript = structuredClone(items.map((item) => item.message));
 	await fake.fire("context", { type: "context", messages: transcript, transcript }, ctx);
 	const cleared = fake.entries.flatMap((entry) =>
-		entry.customType === CLEARED_RESULTS_TYPE ? ((entry.data as { results: Array<{ id: string; saved: string }> }).results) : [],
+		entry.customType === CLEARED_RESULTS_TYPE
+			? (entry.data as { results: Array<{ id: string; saved: string }> }).results
+			: [],
 	);
 	return cleared;
 }
@@ -109,7 +113,11 @@ const read = (id: string, path: string, extra: Record<string, unknown> = {}): Ca
 
 describe("clearing a superseded read", () => {
 	it("clears an older read of a file that a newer read shows whole, keeps the newer, and saves the old text", async () => {
-		const cleared = await coldClearing([read("old", "a.ts"), read("other", "b.ts", { limit: 20 }), read("new", "a.ts")]);
+		const cleared = await coldClearing([
+			read("old", "a.ts"),
+			read("other", "b.ts", { limit: 20 }),
+			read("new", "a.ts"),
+		]);
 		expect(cleared.map((result) => result.id)).toEqual(["old"]);
 		expect(fs.readFileSync(cleared[0].saved.replace(/ \(sha256.*$/, ""), "utf8")).toContain("old ");
 	});

@@ -137,7 +137,8 @@ describe("retry replay safety and fallbackChains", () => {
 		const modelRegistry = await createModelRegistry(authStorage, tempDir);
 		for (const provider of ["anthropic", "openai"])
 			await authStorage.modify(provider, async () => ({ type: "api_key", key: "test-key" }));
-		settingsManager.applyOverrides({ retry: { enabled: true, maxRetries: 3, baseDelayMs: 1, ...retry },
+		settingsManager.applyOverrides({
+			retry: { enabled: true, maxRetries: 3, baseDelayMs: 1, ...retry },
 			toolExecution: { earlyStart: true },
 		});
 		session = new AgentSession({

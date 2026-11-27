@@ -129,7 +129,9 @@ describe("the QA reviewer child", () => {
 
 	it("keeps the rejection explanation and location in the owed note, bounded", async () => {
 		spawn.reply = {
-			details: { structured: { version: 1, schemaHash: "h", status: "invalid", error: { code: "schema", path: "$.findings" } } },
+			details: {
+				structured: { version: 1, schemaHash: "h", status: "invalid", error: { code: "schema", path: "$.findings" } },
+			},
 		};
 		const result = await review();
 		const reason = "unavailable" in result ? result.unavailable : "";
@@ -137,7 +139,14 @@ describe("the QA reviewer child", () => {
 		expect(reason).toContain("$.findings");
 		expect(reason).toContain("did not match");
 		spawn.reply = {
-			details: { structured: { version: 1, schemaHash: "h", status: "invalid", error: { code: "schema", path: `$.${"x".repeat(2000)}` } } },
+			details: {
+				structured: {
+					version: 1,
+					schemaHash: "h",
+					status: "invalid",
+					error: { code: "schema", path: `$.${"x".repeat(2000)}` },
+				},
+			},
 		};
 		const long = await review();
 		expect("unavailable" in long && long.unavailable.length).toBeLessThan(500);

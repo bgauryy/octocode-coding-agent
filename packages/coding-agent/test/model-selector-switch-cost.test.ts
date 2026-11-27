@@ -35,7 +35,7 @@ describe("model selector cache cost before a switch", () => {
 		});
 		const selector = new ModelSelectorComponent(
 			{ requestRender: () => {} } as unknown as TUI,
-			harness.getModel("current-model")!,
+			harness.getModel("current-model"),
 			harness.session.modelRuntime,
 			[],
 			() => {},

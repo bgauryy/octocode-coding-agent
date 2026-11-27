@@ -7,8 +7,7 @@ import { registerMonitorHooks, type MonitorHookOptions } from "../../src/octocod
 import type { HookSession } from "../../src/octocode/hooks/register/types.ts";
 import { ATTENTION_RULES } from "../../src/octocode/monitor/attention/rules.ts";
 import { monitorLedgerOf } from "../../src/octocode/monitor/ledger.ts";
-import { sharedAgentDb } from "../../src/storage/database.ts";
-import { registeredWorkspace } from "../../src/storage/workspace-database.ts";
+import { workspaceDb } from "../../src/storage/workspace-database.ts";
 import { tmp } from "./helpers.ts";
 
 /**
@@ -56,8 +55,9 @@ function harness(matcher: string | undefined | null, options: MonitorHookOptions
 		/** Resolves once the hook's subscription has read the whole log: every alert published so far reached its handler. */
 		handled: () =>
 			vi.waitFor(() => {
-				const { db } = sharedAgentDb();
-				const workspace = registeredWorkspace(cwd, sharedAgentDb()).id;
+				const { agent, workspace: found } = workspaceDb(cwd);
+				const { db } = agent;
+				const workspace = found.id;
 				const [row] = eventSubscriptions.forSubscriber(
 					db,
 					workspace,
