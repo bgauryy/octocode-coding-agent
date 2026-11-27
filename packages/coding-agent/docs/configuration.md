@@ -40,7 +40,7 @@ Text, JSON and RPC runs use the same configuration precedence as terminal sessio
 | Credentials                   | Provider environment variables or preconfigured global sign-in; never committed workspace secrets                                         |
 | Permission policy             | `--permission-mode workspace` for routine work with asks refused when nobody can answer; `full` is the broader default, not a sandbox     |
 | Per-run settings              | `--set <key>=<value>`, `--enable <id>`, `--disable <id>`; these do not save settings                                                      |
-| Tool restrictions             | `--tools`, `--exclude-tools`, `--no-mcp`; check subagent inheritance in [tool selection](native-features.md#tool-selection-and-migration) |
+| Tool restrictions             | `--tools`, `--exclude-tools`, `--no-mcp`; check subagent inheritance in [tool selection](tools.md#tool-selection-and-exposure) |
 | Conversation storage          | `--no-session` for an in-memory conversation, or a distinct `--session-id` for recoverable work; neither isolates tool side effects       |
 | Separate worker configuration | `OCTOCODE_HOME` and, when needed, `OCTOCODE_CODING_AGENT_DIR`; provision credentials and trust for that environment too                   |
 
@@ -48,7 +48,7 @@ Do not change global defaults for every delegated task. Prefer run flags, and ke
 
 Octocode configuration and the [Pi fallback](#pi-configuration-fallback) are available by default. Each native child can use a different enabled `provider/model`; it inherits the configuration sources, rather than being limited to the coordinator’s provider. A credential supplied only with `--api-key` is not forwarded to children: configure the provider in the shared user configuration instead.
 
-Installed [external runners](native-features.md#external-runners), including OpenCode, require opt-in. Open `/providers` → **External agents**, select a CLI and choose **Enable this CLI for agent tasks**, then `/reload`. Discovery starts no CLI processes; opening a runner's page or using it checks its own sign-in. Vendor CLIs keep their own configuration and credentials. A runner without its ACP adapter runs headless through its CLI where [a route exists](native-features.md#external-runners), and a Cursor task writes only in its own worktree.
+Installed [external runners](subagents.md#external-runners), including OpenCode, require opt-in. Open `/providers` → **External agents**, select a CLI and choose **Enable this CLI for agent tasks**, then `/reload`. Discovery starts no CLI processes; opening a runner's page or using it checks its own sign-in. Vendor CLIs keep their own configuration and credentials. A runner without its ACP adapter runs headless through its CLI where [a route exists](subagents.md#external-runners), and a Cursor task writes only in its own worktree.
 
 | Global setting                                                         | Meaning                                    |
 | ---------------------------------------------------------------------- | ------------------------------------------ |
@@ -206,7 +206,7 @@ The web Settings page saves or clears the startup provider and model as one pair
 
 `runtime.smartRouting` configures the explicitly selected `octocode/auto-code` virtual model; it does not make that router the startup default. Candidate filters, tier overrides, plan-only mode and cooldowns may come from global or trusted project settings. `allowPlanToMeteredEscalation` is global only: a project or per-run value cannot authorize a switch from a flat-rate plan to per-token spending. See [Smart routing](smart-routing.md).
 
-`/settings` in a session and `octocode configuration` in a shell are one mechanism over one catalog: tools, MCP servers, harnesses, plugins, hooks, skills, extensions, prompts, themes, providers, sources and every settings key. `/configuration` and `/config` open the same panel. The agent changes configuration through its `configuration` tool, which asks you before every change in every permission mode ([native features](native-features.md#the-configuration-tool)).
+`/settings` in a session and `octocode configuration` in a shell are one mechanism over one catalog: tools, MCP servers, harnesses, plugins, hooks, skills, extensions, prompts, themes, providers, sources and every settings key. `/configuration` and `/config` open the same panel. The agent changes configuration through its `configuration` tool, which asks you before every change in every permission mode ([native features](tools.md#configuration)).
 
 ```text
 /settings [list|get|enable|disable|set|unset|add mcp|remove] [--local] [--force]
@@ -258,7 +258,7 @@ A harness is one source of configuration. `/harness` opens on an **Overview** ta
 
 Changing section, scope, selection or filter clears an armed disable confirmation. Loading and failures appear in the selector, which remains cancellable.
 
-**Turning on a source.** Switching a source such as Claude Code, Codex or Cursor on first shows **Turn on `<source>`?** with every skill, MCP server and hook it would bring, each scanned by the [security review](#security-review) (static: nothing runs), worst rating first. Enter switches the source on; Esc writes nothing. The items stay off until you approve them in `/security`. `/settings enable harness:<id>` prints the same list and then switches.
+**Turning on a source.** Switching a source such as Claude Code, Codex or Cursor on first shows **Turn on `<source>`?** with every skill, MCP server and hook it would bring, each scanned by the [security review](permissions.md#security-review) (static: nothing runs), worst rating first. Enter switches the source on; Esc writes nothing. The items stay off until you approve them in `/security`. `/settings enable harness:<id>` prints the same list and then switches.
 
 **MCP servers.** In the **MCPs** section Space switches a server on or off. Enter or → on a server opens its tools:
 
@@ -371,46 +371,6 @@ flowchart TD
 
 Project resources need trust, except `AGENTS.md`-style instruction files, which load as text. Octocode hook files always load; Claude Code and Codex hook files load once that harness is on (`/settings enable harness:claude`), each under its own profile; `disableAllHooks: true` in a loaded hook file turns them all off; [Claude permission rules](permissions.md#claude-permission-rules) always apply. See [hooks](hooks.md).
 
-## Security review
-
-Trust lets a folder's configuration load; the security review decides each hook, MCP server and skill that Octocode did not ship. Such an item stays off until you have checked its report and approved its exact content. Octocode's own skills and MCP server always load, and a session never waits for a decision.
-
-```mermaid
-flowchart TD
-    L[A session loads a hook, MCP server or skill] --> S{Shipped with Octocode?}
-    S -- yes --> ON[loads]
-    S -- no --> D{Your decision for this exact content}
-    D -- approved --> ON
-    D -- "not checked, denied, or approved but changed since" --> OFF["off; counted in the start-up line and /security"]
-```
-
-| Rule            | Behavior                                                                                                                                                                                                                                                                                                                                                                                |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| States          | `not checked`, `approved`, `denied`; an approved item whose content changed shows `not checked · changed` and is off until you approve it again                                                                                                                                                                                                                                         |
-| Start-up line   | Counts what is off and names the first three by kind and name: `1 item is off until you check it in /security: MCP server demo`                                                                                                                                                                                                                                                         |
-| Changes         | The report of an item that changed since you approved it ends with what changed: files added or removed and the changed lines. Octocode keeps the approved files for this (text files up to 64 KB each, 512 KB per item); a binary or larger file is reported as changed without lines. Items approved before this was kept show no changed lines                                       |
-| What is pinned  | A hook: its definition and the script files its command names. An MCP server: command, arguments, URL, variable/header names, and digests of configured `NODE_OPTIONS` and `PATH` values; other literal values and resolved environment values are not pinned. A skill: every file of its folder, including linked files (up to 500 files, 8 MB); linked directories cannot be approved |
-| Rating          | `LOW` to `CRITICAL` from what the item can do and a static scan (download-and-run, decoded code, credential paths, edits to agent configuration, hidden characters, unpinned packages, plain HTTP). The report says what was checked; it never calls an item safe                                                                                                                       |
-| Upgrade         | The first run with the review records the global hooks, MCP servers and skills already present as approved and prints one line; repository items are never recorded this way                                                                                                                                                                                                            |
-| External models | A project's `externalModels` entry: kind, command, arguments and variable names. Always reviewed, whatever `security.enforce` says; global entries are yours and load as written                                                                                                                                                                                                        |
-| Scope           | A repository's items are decided once for all its worktrees; global items once for every folder                                                                                                                                                                                                                                                                                         |
-| Plugins         | Plugin MCP servers are reviewed when the plugin is installed; plugin hooks are reviewed here                                                                                                                                                                                                                                                                                            |
-| The agent       | Cannot approve: not through a tool, its shell, `--trust` or bypass mode                                                                                                                                                                                                                                                                                                                 |
-| Store fault     | If the decisions cannot be read, items load and a warning says so                                                                                                                                                                                                                                                                                                                       |
-
-| Setting            | Default                      | Does                                                                                                                                                      |
-| ------------------ | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `security.enforce` | `["hooks", "mcp", "skills"]` | The kinds that stay off until approved. A kind left out is still rated and listed but loads unchecked. Global only: a project settings file cannot set it |
-
-| Command                                              | Does                                                                                                                                     |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `/security`                                          | Page: not checked, approved and denied items; Enter opens a report with Approve and Deny. Decisions apply with one reload when you leave |
-| `/security list [text]`, `show <id>`, `check`        | List items, show one report, or list what is not approved with ratings and findings                                                      |
-| `/security approve <id>`, `deny <id>`, `forget <id>` | Record or remove a decision                                                                                                              |
-| `/security approve --all [--kind hooks,mcp,skills]`  | Approve every waiting item at its current content, except `CRITICAL` items and items not read in full                                    |
-| `octocode security ...`                              | The same verbs without a session. `approve`, `deny` and `forget` refuse inside a session's shell                                         |
-
-For a headless run, approve in a setup step on a checkout you trust, before the run: `octocode security approve --all`. Do not run it after checking out someone else's changes, which would approve their hooks and servers.
 
 ## Pi configuration fallback
 
@@ -689,26 +649,6 @@ The main session, its subagents, side calls and Octocode sessions in other termi
 
 `leanPrompt` decides how much policy the main session's system prompt carries. Under `"auto"`, the default, a model whose context window is at most 64k tokens (65,536), or the model `subagents.models.small` names, gets the lean policy: the working, safety and reporting rules only, without delegation, the rules for running subagents or the list of skills (a skill still loads by name). Every other model gets the full policy. `"on"` always uses the lean policy and `"off"` never does. The choice is made for each request, so switching models switches the policy. A lean main session also declares every MCP tool that its configuration leaves open as `deferred` (thin), whatever `mcpExposure` says; a `toolExposure` pin or a server's `exposure` still applies.
 
-## Compaction
-
-Automatic compaction runs at the context threshold (the window less the reply reserve). The event loop stops at a step boundary at 90% of the window, or at the threshold when the reserve leaves less than that. The agent's own `compact` tool runs only from 90% of the threshold, when the context notice tells it; below that only `/compact` compacts, except at a finished backlog item ([below](#compaction-at-item-done)). Octocode can request an early summary before either point. It makes one background attempt while the cache is warm and the provider is available; for a model that declares no cache lifetime, warm means within five minutes of a reply that read the cache. `/compact` runs compaction by hand. `limits.compaction` sets when it starts and how much recent conversation it keeps, for every model or for one ([limits](#limits)); nothing turns it off, and legacy `compaction` settings are ignored.
-
-| Part               | Rule                                                                                                                                                                                                                                                                                                                                           |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Kept               | A tenth of the window of the newest conversation, at least 20,000 tokens and at most a quarter of the window (`limits.compaction.keepRecent` changes it); the system prompt and its updates do not count toward it                                                                                                                             |
-| Reserve            | The larger of 24,576 tokens (room to write the summary inside the cached request) and the thinking budget plus 12,288, capped at a sixth of the window; a window whose sixth is under 20,485 keeps an eighth, at most 16,384. A 200,000-token window compacts at 175,424 tokens with thinking off, 171,328 at `high`                           |
-| Per request        | One per request; a compaction before a prompt leaves room for it. After one since the last reply, it runs again only if the context plus 12,288 tokens for the reply is past the window. One you cancel is not retried for that request                                                                                                        |
-| Failures           | Automatic compaction stops after three in a row; a successful manual one resets the count; cancelling is not a failure                                                                                                                                                                                                                         |
-| Summary cache      | Reuses the session transcript and cache preferences when the summary model is the session's and it is not an overflow. A cold cache, a physical-model switch since the last reply or an instruction or tool update sends it with `cacheRetention: "none"`                                                                                      |
-| Standalone summary | A downshift, overflow or unusable cached summary uses a standalone request. A final provider rate or usage limit ends the compaction. Standalone requests use no cache markers or routing id (OpenCode keeps its required `x-opencode-session` header)                                                                                         |
-| Old tool results   | Cleared when the cache is rewritten anyway or when re-sending them costs more than one cache rewrite, only when enough space is recovered, and only after saving a readable copy ([rule](native-features.md#clearing-old-tool-results))                                                                                                        |
-| Transcript         | Every original entry stays on disk; compaction also saves searchable Markdown archives for the `archive` tool                                                                                                                                                                                                                                  |
-| Summary output     | A standalone summary (compaction, split-turn prefix, branch summary) may write up to 32,768 tokens, or the model's own limit when lower; one that reaches it fails and saves nothing. The cache-shared summary can use up to 80% of the reserve. It keeps the cached transcript when the checkpoint prompt and its requested output target fit |
-| Summary thinking   | A standalone summary thinks at the session's level up to `low` (`off` and `minimal` stay). The cache-shared summary keeps the session's level, since changing it would discard the cached messages                                                                                                                                             |
-| Progress           | The status line shows how long the summary has been written and about how many tokens arrived, updated once a second                                                                                                                                                                                                                           |
-| Silent summary     | An attempt that receives nothing for `httpIdleTimeoutMs` (default 5 minutes; `0` disables) is cancelled and retried by the `retry` policy; a summary that keeps arriving is never cut off. The same limit ends a silent model stream as a retryable error                                                                                      |
-
-Context, output and thinking defaults follow the selected model. The session’s cache preferences are applied according to its endpoint’s capabilities. [Model defaults](models.md#model-defaults)
 
 ## Limits
 
@@ -730,7 +670,7 @@ Context, output and thinking defaults follow the selected model. The session’s
 
 | Key                               | Built-in                                   | Effect                                                                                                                                                                                                                     |
 | --------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `compaction.trigger`              | The window less the [reserve](#compaction) | Context size at which compaction starts: a share of the window (0.1 to 1) or a token count. It only compacts earlier than the built-in point, and never below twice the kept tail                                          |
+| `compaction.trigger`              | The window less the [reserve](how-it-works.md#thresholds) | Context size at which compaction starts: a share of the window (0.1 to 1) or a token count. It only compacts earlier than the built-in point, and never below twice the kept tail                                          |
 | `compaction.keepRecent`           | 10% of the window, at least 20,000 tokens  | Newest conversation kept word for word: a share of the window (up to 0.25) or a token count, capped at a quarter of the window                                                                                             |
 | `clearing.keepTurns`              | 10                                         | Assistant turns whose tool results are never cleared                                                                                                                                                                       |
 | `clearing.keepInUseTokens`        | 20,000                                     | Tokens of older tool results kept because a recent message names their path                                                                                                                                                |
@@ -750,251 +690,28 @@ A value at or below 1 for `trigger` and `keepRecent` is a share of the working w
 | Invalid values  | Reported at load, naming the key; that key alone falls back to the built-in                                                                                                           |
 | Spend bound     | Checked after each reply. Subagents still running are counted when they report                                                                                                        |
 
-## Prompt cache warming
+## Behavior owned by other pages
+
+These settings keep their explanation next to the feature they change; [settings](settings.md) lists every key.
+
+| Topic | Home |
+| --- | --- |
+| Security review | [permissions: security review](permissions.md#security-review): what stays off until you approve it, `/security`, `security.enforce` |
+| Compaction | [how it works: context window and compaction](how-it-works.md#context-window-and-compaction): thresholds, `limits.compaction.*`, `backlog.compactOnDone`, summary rules |
+| Long shell commands | [tools: foreground, background and jobs](tools.md#foreground-background-and-jobs): `bashBackgroundAfterSeconds`, `bash.longCommand*` |
+| Shell sandbox | [sandbox](sandbox.md#settings-and-fields): `sandbox.mode`, `sandbox.allowUnsandboxed` |
+| Queued messages | [how it works: queued messages](how-it-works.md#queued-messages): `steeringMode`, `followUpMode` |
+| Wake hold window | [how it works: wake window](how-it-works.md#background-completions-and-the-wake-window): `runtime.eventWindowSeconds` |
+| Backlog QA review and compaction at item done | [backlog and archive: QA review](backlog-and-archive.md#qa-review) and [compaction at item done](how-it-works.md#compaction-at-item-done): `backlog.qa`, `backlog.compactOnDone` |
+| Related-agent pings | [backlog and archive: related-agent pings](backlog-and-archive.md#related-agent-pings): `subagents.peerOverlapWake` |
+| Machine monitor and attention rules | [monitoring: machine monitor](monitoring.md#machine-monitor): `monitor.*` |
+| Memory | [memory: settings](memory.md#settings): `memory.*` |
+| Scheduled tasks | [tools: scheduled tasks](tools.md#scheduled-tasks): `timer.cron.*` |
+| Prompt cache warming (`cacheWarming`) | [prompt caching: warming](prompt-caching.md#warming-and-measurements) |
+| Long cache retention on custom hosts | [prompt caching](prompt-caching.md#long-retention-on-custom-hosts) |
+| Early tool start (`toolExecution.earlyStart`) | [how it works](how-it-works.md#turn-lifecycle) |
+| Agent labels on requests | [environment variables](environment-variables.md) (`OCTOCODE_REQUEST_AGENT_HEADERS`) |
 
-Global `cacheWarming`: `"off"`, `"streaming"` (refresh while the agent is active) or `"idle"` (default; also after it settles). Project settings cannot enable paid warming.
-
-```json
-{ "cacheWarming": "idle", "cacheRetention": "long" }
-```
-
-A refresh replays the request with a one-token cap, needs a known cache lifetime and a replay-safe request, and never runs returned tool calls. It stops when context changes, the deadline is missed, a refresh fails or the provider reports no cache read. Active warming ends one hour after the original request; idle warming after thirty minutes or one cache lifetime, whichever is later. `/status` shows usage. Savings are not guaranteed: [prompt caching](prompt-caching.md). How requests are built and kept small (tool exposure, clearing, compaction, fencing): [request flows](harness-flows.md).
-
-## Early tool start
-
-`toolExecution.earlyStart` (default `false`) lets a read-only call start while the model's reply is still streaming, as soon as the model has finished writing that call. Only a read that the current permission mode allows without asking qualifies: an MCP tool its server entry declares read-only, or a tool that declares itself read-only. Anything that could write or run a command waits for the reply to end, and so does a call a `PreToolUse` hook matches (the hook then runs once, and never for a call that is thrown away) or a read that turns out to need an answer (a source rule or hook that asks, untrusted text in its arguments, a credential read): no dialog opens while the reply streams, and the call is judged again normally once it ended. A call that was started early but never ran leaves no permission audit entry. If the reply is cut off by the output limit, the early calls are discarded and every call in it gets the output-limit error, so send them again.
-
-```json
-{ "toolExecution": { "earlyStart": true } }
-```
-
-## Long cache retention on custom hosts
-
-Long retention (`instructionCacheRetention`, long by default, and `cacheRetention: "long"`, which is short by default) sends Anthropic-compatible models one-hour cache points (`cache_control.ttl: "1h"`) only where the host's documentation verifies the tier: `api.anthropic.com`, `opencode.ai`, and OpenRouter for its `anthropic/*` models. Every other host (other gateways, a `models.json` provider on its own URL) stays on the five-minute tier. If your host passes the one-hour tier through, opt in per model in `models.json`:
-
-```json
-{
-	"providers": {
-		"my-gateway": {
-			"api": "anthropic-messages",
-			"baseUrl": "https://llm.example.com",
-			"models": [{ "id": "claude-sonnet-4-5", "compat": { "supportsLongCacheRetention": true } }]
-		}
-	}
-}
-```
-
-`false` forces the five-minute tier for a model or region that rejects `ttl`; an explicit value always wins over the host list. OpenAI-style models use the same field for 24h retention. Field reference: [models.json](models-configuration.md).
-
-## Agent labels on requests
-
-Set `OCTOCODE_REQUEST_AGENT_HEADERS=1` to label every model request of a custom provider (one from `models.json` or an extension) with the agent that sent it, so a gateway or test server can tell a subagent's requests from its parent's.
-
-| Header              | Value                                                    |
-| ------------------- | -------------------------------------------------------- |
-| `x-octocode-agent`  | The subagent's id, or `main` for the session itself      |
-| `x-octocode-role`   | The subagent's profile (sent only by a subagent)         |
-| `x-octocode-parent` | The id of the agent that started it (only by a subagent) |
-
-Subagents inherit the variable. Built-in providers never receive these headers, and a `headers` entry you set on the provider or model with the same name wins.
-
-## Long shell commands
-
-A foreground `bash` command moves to the background as a job after `bashBackgroundAfterSeconds` (default 90; `0` turns the move off). A command that is known to run long moves sooner, so the turn is not held. Recognised out of the box: test runners (`vitest`, `jest`, `pytest`, `cargo test`, `go test`), `yarn`/`npm`/`pnpm` `test`, `check`, `build`, `dev`, `serve` and `start`, `tsc -b`, and commands that follow a stream (`tail -f`).
-
-| Setting                        | Default | Effect                                                                                                                                                   |
-| ------------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bash.longCommandAfterSeconds` | `30`    | Seconds a recognised long command runs in the foreground before it moves; used only when shorter than `bashBackgroundAfterSeconds`                       |
-| `bash.longCommandPatterns`     | `[]`    | Regular expressions for more long commands, added to the built-in ones. A pattern matches where a command starts (the line, or after `;`, `&`, `         | `, `(`, `VAR=value`) and must end at a space or the end of a part; an invalid pattern is ignored |
-| `bash.deliberateMaxSeconds`    | `600`   | The longest a call that names its own `timeout` holds the turn before its command moves to the background; the command is still stopped at its `timeout` |
-
-```json
-{ "bash": { "longCommandPatterns": ["bazel\\s+(?:test|build)", "make\\s+(?:test|check)"] } }
-```
-
-A command the shell runs under another name (a wrapper script) is not recognised and keeps the `bashBackgroundAfterSeconds` threshold. Hints for GNU tools missing on macOS (`timeout`, `sed -i`) are shown only on macOS.
-
-## Shell sandbox
-
-By default the agent's shell commands run with your own rights, and permission modes only decide what asks first. The sandbox also confines what a command can do once it runs, with an operating-system sandbox around every command the agent starts: the `bash` tool and its background jobs. What runs inside it, how it works per platform and how to check it: [Sandbox](sandbox.md).
-
-| Setting                    | Default | Effect                                                                                                                                                                                                                                                                     |
-| -------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sandbox.mode`             | `"off"` | `"auto"` sandboxes agent shell commands in the `manual`, `workspace` and `full` permission modes and not in `bypass`; `"on"` sandboxes them in every mode; `"off"` leaves them as they are. Global settings only; a project file cannot change it. New sessions pick it up |
-| `sandbox.allowUnsandboxed` | `true`  | Whether the agent may ask to run a command outside the sandbox. `false` refuses `sandbox: false` and the question below without asking. Global settings only                                                                                                               |
-
-```json
-{ "sandbox": { "mode": "auto" } }
-```
-
-What a sandboxed command may write and read, how it asks about network hosts, the backend on each platform (Seatbelt on macOS, bubblewrap on Linux), what happens when it cannot start or starts weaker than it should, and how to check it yourself: [Sandbox](sandbox.md). Your own `!` commands are never sandboxed; hooks and stdio MCP servers are sandboxed only when their entry sets `sandbox: true` ([hooks](hooks.md), [MCP servers](mcp-reference.md)).
-
-## Queued messages
-
-Messages you send while the agent works wait in a queue: steering for the next turn, follow-ups for the end of the run. By default each queue is delivered whole, so five messages typed during a run cost one model request, not five that each resend the whole context.
-
-| Setting        | Default | `one-at-a-time`                                                                     |
-| -------------- | ------- | ----------------------------------------------------------------------------------- |
-| `steeringMode` | `"all"` | One steering message per turn; the rest wait for the next turn boundary             |
-| `followUpMode` | `"all"` | One follow-up per turn after the run would stop, each answered before the next goes |
-
-```json
-{ "followUpMode": "one-at-a-time" }
-```
-
-`/settings` and the RPC commands `set_steering_mode` and `set_follow_up_mode` change them too. Child reports and background job results that wait together are delivered together in either mode.
-
-## Wake hold window
-
-An idle session collects background wakes for `runtime.eventWindowSeconds` (default `2`, maximum `10`). The first completion opens the window. All completions that arrive within it share one model turn. Set the window to `0` for immediate delivery. A user prompt releases the window immediately and takes the queued events into its own turn. On resume, the session replays completed tasks whose results are missing from its transcript. If it saved part of a batch before stopping, only the missing results join the next turn.
-
-A tool that continues in the background returns a task ID. Its completion carries that ID and the result. During a run it joins the next model step after the current tool batch finishes. Background bash jobs use their `bash-N` ID and follow the same delivery rule for the session that started or joined them. Oversized text arrives as a preview with a path to the complete output. Image results include file paths that remain usable after a model switch. Switching models in the same session preserves pending completions. Stopping a task records its status quietly.
-
-Every woken batch also leaves one dim row in the transcript, `⚡ woke · report jolly-reef done (B526) · job bash-5 exit 0 · 4s`; expand it for one line per event. The row is not sent to the model. An idle-item nudge (an ongoing item you hold that nothing works on) is skipped when the run that just ended wrote that item (a note, completion, claim, close or step, or a delegation to it) or when a running background `bash` job names it with its `item`; the turn line counts the skipped nudges (`1 nudge dropped`). Being woken about an item does not skip it, and a skipped item is named after a later run that left it alone. Events with the same key in one batch show as one line.
-
-Each session uses one event loop to schedule user input, completions, and delivery after compaction. The window is `runtime.eventWindowSeconds`. The earlier keys `runtime.eventLoop` and `subagents.wakeHoldSeconds` are no longer read: an old settings file loads and reports them as ignored keys.
-
-Every message the loop delivers (a subagent's report, team mail, a finished job, a timer, hook feedback) has one of two priorities. The priority comes from what the message is, never from an instruction to the model.
-
-| Priority | Delivered                                                                                                                                                                                  | Applies to                                                                                                 |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| Regular  | As the next task: at the next step of a run in progress, in arrival order, after the tool calls already running finish; to an idle session after the window above. Nothing running is cut. | Everything by default                                                                                      |
-| Urgent   | At once: the step in progress is stopped (its running tool is cancelled) and the message is read first when the run resumes. An idle session takes it without the window.                  | A team message sent with `interrupt`, which only the agent that started the recipient or the user may send |
-
-```mermaid
-flowchart TD
-    M[Message arrives] --> P{Priority}
-    P -- regular --> B{Session busy?}
-    B -- yes --> S[Next step of the run]
-    B -- no --> W[After the idle window]
-    P -- urgent --> U{Session busy?}
-    U -- yes --> X[Stop the step, deliver when the run has stopped]
-    U -- no --> N[Deliver now]
-```
-
-After you stop a run with Escape, messages that were waiting are added to the conversation without starting a new turn.
-
-## Backlog QA review
-
-When an agent marks an important item done, a small reviewer model checks the work first: it gets the item's goal, the completion summary, the verification, the reported files and their diff, and runs read-only with the `octocode-code-review` skill. It needs a connected small model with known pricing; with none, or when the reviewer cannot start, the item still completes but its completion is marked `qa: owed` and the note says why. Each such item records a `qa.unavailable` event (`item`, `cause`; one per item version) that hooks, the web view and `wait` with `on` can follow. The owed reviews run by themselves, oldest first and at most five per start, the next time a reviewer starts for a later `done`; a Ready verdict records the review on the item, any other verdict reopens it like an ordinary failed review. A review whose reviewer answers off its format or schema twice is owed the same way, and the `qa.unavailable` cause then carries the rejection reason and where in the answer it failed (shortened). The `backlog.qa` setting chooses the items:
-
-| Value                 | Reviewed before `done`                                                       |
-| --------------------- | ---------------------------------------------------------------------------- |
-| `important` (default) | p0 and p1 features and bugs; never research items, epics, or p2 and p3 items |
-| `all`                 | every item except epics                                                      |
-| `off`                 | none                                                                         |
-
-| Verdict                 | Result                                                                                                        |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Ready                   | The item completes, with the verdict, model and cost noted on it.                                             |
-| Changes required        | The item stays ongoing with the findings noted, and the call that asked for `done` is refused with them.      |
-| Verification incomplete | The item returns to the backlog, its claim released and the findings noted, until the missing checks are run. |
-
-Each review is a small-model run; its cost is in the note and counts toward the session's spend. Subagents do not run reviews: the session that coordinates them does, when it completes the item. Headless and print runs review the same way, since the gate sits in the `backlog` tool, not in the interface.
-
-### Compaction at item done
-
-When the main session completes an item with `backlog done`, Octocode may compact the context at that item boundary, before the next model request, so a run over many items keeps its context small. Two checks decide. `backlog.compactOnDone` (default `0.5`; `0` turns it off) is a floor on the history's share of the room before automatic compaction (the context less the system prompt and tool declarations): it limits how often this runs. A gain check limits losses: the history a compaction frees (all but the recent part it keeps) is read again by every later request, so it runs only when the requests this session still expects, its average per finished item times its own open items (at most 50), save more than the summary costs at the model's prices (cached reads and the cache write of the kept part for a caching provider, plain input otherwise). Items assigned to this session count (ongoing, or todo with this session as assignee); other sessions' todo items never do. When nothing remains, the compaction runs when the reply ends, only when the context is nearly full (the compact tool's 90% floor), and the session stays idle afterwards. When the model already has a summary written ahead of the threshold for the same input, it is reused and the finished items follow it; the summary labels them as recorded by the harness. Several items finished in one turn are focused together. A run that is stopped drops the request. It is skipped while an agent `compact` request is queued, right after another compaction, or after repeated compactions that did not shrink the context; compactions at finished items do not count as refills for that last check. Each decision, with its measures and outcome, is recorded in the session as a `done-compaction` note. Subagents never compact this way; `close`, `claim` and refused completions do not trigger it.
-
-```json
-{ "backlog": { "compactOnDone": 0.5 } }
-```
-
-## Related-agent pings
-
-An agent hears of backlog changes to items related to the ones it holds or waits on, without polling. When a prerequisite of an item you hold is done or closed, or an item you wait on ends, you are woken. When another agent claims an item whose paths overlap the paths of an item you hold, or paths you reserve, you are woken once for that pair. Other changes (an epic sibling claimed or finished, a note on an item you wait on) join your next turn as a short line. A change is never reported to the agent that made it, and the same item wakes a session at most once in five minutes.
-
-`subagents.peerOverlapWake` (default `true`) controls the overlap wake; with `false` an overlapping claim is only a line at your next turn.
-
-```json
-{ "subagents": { "peerOverlapWake": false } }
-```
-
-## Machine monitor
-
-Once a minute one Octocode process on the machine samples the 1-minute load, available memory, swap, GPU use and the busiest processes, and keeps the samples for 24 hours. Every other session reads those samples instead of measuring again, and when the sampling process exits, another one takes over. A threshold alerts after it holds for `samples` samples in a row, then stays quiet for `cooldownMinutes`.
-
-Only the sampling session decides whether a threshold tripped; it files the alert with its culprits, and the other sessions read it. The session whose processes weigh most (CPU for load, memory for swap and memory) is woken with the reading and the busiest processes. A process counts for a session only when that session or one of its descendants started it; an editor or terminal host above the session (VS Code helpers, for example) is another process, and when such a process weighs more than the session's own, no session is blamed. Other root sessions get a short note at their next turn, and every root session shows the tripped readings in the footer until they clear. A subagent runs no rules and hears an alert only when it owns the culprit. The sampling session also sends one desktop notification through the `Notification` hook, with `notification_type` `monitor_alert`. A background `bash` job that writes no output and uses almost no CPU for `stuckJobMinutes` wakes the session that started it, once per silence.
-
-To be told when the load drops, an agent calls `notify` with `event: machine.load` and `filter: { perCoreBelow: 2, for: 3 }` (or `perCoreAbove`); it fires once, from the stored samples, with no command running. A full test suite or `yarn run check` waits before it takes the host's run lock while the load per core is above `OCTOCODE_RUN_LOCK_LOAD` (default `2`, `0` never waits), for at most `OCTOCODE_RUN_LOCK_LOAD_WAIT` seconds (default `300`), prints one line when it defers and one when it starts, and then runs.
-
-| Setting                          | Default | Range                                                                             |
-| -------------------------------- | ------- | --------------------------------------------------------------------------------- |
-| `monitor.enabled`                | `true`  | `false` stops sampling and alerts                                                 |
-| `monitor.sampleSeconds`          | `60`    | 10 to 3600                                                                        |
-| `monitor.samples`                | `3`     | 1 to 60 samples in a row before an alert                                          |
-| `monitor.cooldownMinutes`        | `15`    | minutes before the same threshold alerts again                                    |
-| `monitor.loadPerCore`            | `3`     | load average per logical CPU; `0` turns it off                                    |
-| `monitor.memoryAvailablePercent` | `10`    | alert at or below this share of memory free; `0` turns it off                     |
-| `monitor.swapPercent`            | `90`    | share of swap used; above `100` turns it off                                      |
-| `monitor.gpuPercent`             | `95`    | GPU utilization; above `100` turns it off                                         |
-| `monitor.stuckJobMinutes`        | `15`    | silent, idle background job; `0` turns it off                                     |
-| `monitor.contextBands`           | `[0.9]` | shares of the room before compaction, each above 0 and below 1; `[]` turns it off |
-| `monitor.checkInSeconds`         | `300`   | seconds without a message before a subagent is asked; `0` turns it off            |
-| `monitor.idleAgentMinutes`       | `5`     | minutes a working agent may make no progress; `0` turns it off                    |
-
-```json
-{ "monitor": { "loadPerCore": 4, "gpuPercent": 101 } }
-```
-
-GPU use is read on macOS and on Linux with `nvidia-smi`; elsewhere the GPU threshold never trips.
-
-### Attention rules
-
-The monitor also owns the nudges about a session's own work. A wake is listed as `monitor.alert` with its rule on the woken turn's row; a note joins the next request and starts no turn.
-
-| Rule                            | Checked                                         | Told as                                                                                        | Setting                                                                                              |
-| ------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `load`, `memory`, `swap`, `gpu` | each machine sample                             | wake for the session whose processes cause it; other sessions: footer mark and ledger only     | `monitor.loadPerCore`, `monitor.memoryAvailablePercent`, `monitor.swapPercent`, `monitor.gpuPercent` |
-| `job`                           | each machine sample                             | wake                                                                                           | `monitor.stuckJobMinutes`                                                                            |
-| `context`                       | turn end                                        | note, once per band until a compaction                                                         | `monitor.contextBands`                                                                               |
-| `check-in`                      | between a subagent's steps                      | note to the subagent                                                                           | `monitor.checkInSeconds`                                                                             |
-| `idle-agent`                    | once a minute, in the agent responsible for it  | parent: wake within the wake pace, else a note; main session: note to itself and a footer mark | `monitor.idleAgentMinutes`                                                                           |
-| `compaction-prewarm`            | each compaction cycle                           | ledger and one warning to the user; the model is not told                                      | none                                                                                                 |
-| `stalled-item`                  | once a minute while children run                | wake, once per stall; the second stall of an item asks for a re-plan, a third says nothing     | none                                                                                                 |
-| `idle-items`                    | when the main session settles with work running | wake                                                                                           | none                                                                                                 |
-
-`idle-agent` measures a working agent's last model or tool event: a subagent's parent tells it about the child, and a main session, which nobody is above, tells itself. Each silence is told once; the agent's next progress re-arms the rule. An agent waiting on the user's answer, on its own working agents or on its background jobs is not reported.
-
-`stalled-item` measures the work, not the agent: an ongoing item a running subagent was started for counts as stalled after 20 minutes with no note, step or claim on it, no file the subagent changed and no background job for it running. A busy subagent that moves none of these is reported here even when `idle-agent` stays quiet. A subagent holding several items works one at a time: while it made a model or tool event in the last 20 minutes, only its most recently moved item is measured. Done or closed items, and subagents whose process has ended, are never named. The check waits while the coordinator is in a turn, so the wake it sends is current when read. No model decides it.
-
-`compaction-prewarm` alerts at most once per compaction cycle (from one successful compaction to the next) when the summary requested ahead of the threshold was billed for nothing (its request failed, it was discarded or a newer one replaced it), when a threshold compaction still waited 10 seconds or more for it, or when the context reached the threshold with no early summary planned. The alert counts as delivered: it reaches the `MonitorAlert` hook, `/monitor` and one warning notice.
-
-## Memory
-
-Two `MEMORY.md` files, a global one in the Octocode home and one per repository (`.octocode/agent/MEMORY.md`, 40 lines; the global file holds 30), give every session your curated notes; the notes database stays the archive behind them ([memory](memory.md#memorymd-files)). Each setting works in the global or the project settings file; a project value wins.
-
-| Setting                     | Default        | Values                                                                                                                                                                                                               |
-| --------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `memory.file`               | `true`         | `false` stops reading and writing both files                                                                                                                                                                         |
-| `memory.autoUpdate`         | `"auto"`       | `"off"`: the files are only read; `"explicit"`: only saves made with `memory set` or `/memory`; `"auto"`: those plus the background lesson passes                                                                    |
-| `memory.subagents`          | `"workspace"`  | which files a subagent reads: `"workspace"`, `"all"` (the global one too) or `"none"`; a lean subagent reads none                                                                                                    |
-| `memory.recall`             | `"main"`       | pinned and word-matched notes from the database before each prompt: `"off"`, `"main"` (main session only) or `"all"` (subagents too)                                                                                 |
-| `memory.reflection`         | `true`         | lets the background passes call the cheaper model (`subagents.models.small`); `false` leaves consolidation to code; needs `autoUpdate` `"auto"`                                                                      |
-| `memory.subagentPinnedKind` | `"preference"` | the one kind of pinned note a subagent's recall includes (with `recall` `"all"`): `"preference"`, `"fact"`, `"decision"`, `"gotcha"`, `"procedure"` or `"reference"`; the main session always gets every pinned kind |
-
-```json
-{ "memory": { "recall": "off", "subagents": "none" } }
-```
-
-Background spend with `autoUpdate` `"auto"` and `reflection` on, in a session with a screen (terminal or RPC; print and JSON runs never spend): at most one small-model call when a main session of 5 or more user turns ends after a correction, a recovered check, a refused or reverted call or a repeated error, and at most one consolidation call a day per file while lesson candidates are pending. Quitting waits up to about 25 seconds for them. Without a cheaper model than the session's, neither call is made ([memory](memory.md#how-the-files-learn)).
-
-`OCTOCODE_MEMORY_AUTO=0` still turns recall off for one process. `/memory auto` says whether recall is on here. `memory.recall` replaces the database-wide switch that `/memory auto on|off` set.
-
-## Scheduled tasks
-
-`notify` with `cron`, and the `/loop` command, run a prompt on a schedule (see [Scheduled tasks](native-features.md#scheduled-tasks)). Each run is a model turn with nobody attending, so two global settings guard it. A project settings file cannot change either.
-
-| Setting                       | Default | Effect                                                                                                                                                                                                                                     |
-| ----------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `timer.cron.enabled`          | `false` | Lets the agent set a cron schedule in a session with no screen to ask on (print, JSON, RPC). A session with a screen asks once instead, and this setting skips that question. `/loop`, which you type, needs neither. Subagents never may. |
-| `timer.cron.maxUsdPerSession` | `2`     | The most a session may spend, in US dollars, since its first scheduled task was set. Past it the next due run does not happen and the task ends `failed`. `0` stops every run.                                                             |
-
-```json
-{ "timer": { "cron": { "enabled": true, "maxUsdPerSession": 5 } } }
-```
-
-A scheduled task lasts for its session: it survives a restart and resume, and ends with the session. It stops after 20 runs or 7 days unless `maxRuns` or `deadline` says otherwise.
 
 ## Other topics
 

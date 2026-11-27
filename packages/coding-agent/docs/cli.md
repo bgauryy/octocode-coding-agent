@@ -76,7 +76,7 @@ Every flag has one long name; the only short forms are `-p -c -r -n -t -h -v`. A
 | `--no-session`             | Keep the conversation in memory only                                                         |
 | `--name <name>`, `-n`      | Session display name                                                                         |
 | `--export <file> [output]` | Export a session file to HTML and exit                                                       |
-| `--worktree <name>`        | Start in git worktree `<name>` ([worktrees](native-features.md#worktrees))                   |
+| `--worktree <name>`        | Start in git worktree `<name>` ([worktrees](subagents.md#worktrees))                   |
 
 ```mermaid
 flowchart TD
@@ -98,7 +98,7 @@ flowchart TD
 | `--permission-mode manual\|workspace\|full` | Start mode (default `full`); subagents inherit it ([permissions](permissions.md#modes))                                                                                                                                                                                                                                |
 | `--dangerously-skip-permissions`            | Start in `bypass`: nothing asks, every call is still recorded, hook denies and invariants still refuse. Conflicts with a different `--permission-mode`                                                                                                                                                                 |
 | `--trust`                                   | Record your trust of this folder, then run; the grant stays, so later runs need no flag until `octocode trust remove`. A text, JSON or RPC run in an untrusted folder exits with an error without it, before it writes anything there; with no provider connected the error names that step too (not for `--mode acp`) |
-| `--plan`                                    | Start with the planning constraint on ([planning](native-features.md#native-planning-constraint))                                                                                                                                                                                                                      |
+| `--plan`                                    | Start with the planning constraint on ([planning](tools.md#planning-mode))                                                                                                                                                                                                                      |
 | `--offline`                                 | Skip the network work Octocode starts by itself: catalog refreshes, the version check, package refreshes and tool downloads (same as `OCTOCODE_OFFLINE=1`). MCP commands you run still connect (`mcp list --check`, `mcp login`); `update` and `models discover` stay offline                                          |
 
 ### Tools and configuration
@@ -114,7 +114,7 @@ flowchart TD
 | `--disable <id>`         | Disable one for this run (repeatable)                                                                                                                                                                                                                               |
 | `--set <key>=<value>`    | Set a settings key for this run (repeatable)                                                                                                                                                                                                                        |
 
-`--tools` is this session's allowlist; a subagent keeps its profile's tools. Tool selection: [native features](native-features.md#tool-selection-and-migration). Octocode has no extensions: `--extension`, `-e` and `--no-extensions` are unknown. MCP is always on unless `--no-mcp`.
+`--tools` is this session's allowlist; a subagent keeps its profile's tools. Tool selection: [native features](tools.md#tool-selection-and-exposure). Octocode has no extensions: `--extension`, `-e` and `--no-extensions` are unknown. MCP is always on unless `--no-mcp`.
 
 ### Resources and interface
 

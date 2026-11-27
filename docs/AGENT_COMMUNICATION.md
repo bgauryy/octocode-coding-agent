@@ -1,6 +1,6 @@
 # Agents: teams, messages and workers
 
-How a coordinator runs subagents, how agents talk, and what each channel guarantees. Commands and options: [native features](../packages/coding-agent/docs/native-features.md#communication-and-results). Terms: [glossary](../packages/coding-agent/docs/GLOSSARY.md).
+How a coordinator runs subagents, how agents talk, and what each channel guarantees. Commands and options: [native features](../packages/coding-agent/docs/subagents.md#communication-and-results). Terms: [glossary](../packages/coding-agent/docs/GLOSSARY.md).
 
 ## Who talks to whom
 
@@ -63,7 +63,7 @@ flowchart TD
   S -->|wrong premise, severe problem| N["Tell the coordinator at once"]
 ```
 
-A working child with no message to or from its coordinator for `monitor.checkInSeconds` (default 300) is asked the same question by its own harness. The check-in only joins a request the child was about to make, so it never wakes an idle child. See [check-in](../packages/coding-agent/docs/native-features.md#subagent-check-in).
+A working child with no message to or from its coordinator for `monitor.checkInSeconds` (default 300) is asked the same question by its own harness. The check-in only joins a request the child was about to make, so it never wakes an idle child. See [check-in](../packages/coding-agent/docs/subagents.md#subagent-check-in).
 
 ### Memory and subagents
 

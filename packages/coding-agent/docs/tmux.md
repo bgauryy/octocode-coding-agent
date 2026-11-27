@@ -62,7 +62,7 @@ After the conversation has at least one message:
 | `/fork pane down` | Split downward                             |
 | `/fork window`    | Open a new tmux window                     |
 
-The current session keeps running. Outside tmux the command reports an error and starts nothing. When typing, the first Enter may only accept the autocomplete suggestion; press Enter again. Launch details: [native features](native-features.md#opening-a-fork-in-a-tmux-pane-or-window).
+The current session keeps running. Outside tmux the command reports an error and starts nothing. When typing, the first Enter may only accept the autocomplete suggestion; press Enter again. Launch details: [native features](tmux.md#open-a-fork-in-a-pane-or-window).
 
 ## Images
 

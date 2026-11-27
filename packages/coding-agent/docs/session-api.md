@@ -29,7 +29,7 @@ flowchart LR
 
 From a source checkout use `yarn start` for the session and the same commands through the checkout's `octocode-api` entry.
 
-`--to` accepts an instance id (`oc-1a2b3c`), a process name (`octocode-agent-main-c0ea9f3e`, as in `ps` and `/processes`), a session id or a pid. Without it the CLI picks the only instance, or the unique one in the current folder, and rejects ambiguity: use `--to` in scripts. A session switch (`/new`, `/resume`) starts a new endpoint with a new id. `send` refuses the caller's own session. The same names work for `/agents external connect octocode`, the `agent` tool's `instanceId`, and `agent` type `message` ([protocol](native-features.md#communication-and-results)).
+`--to` accepts an instance id (`oc-1a2b3c`), a process name (`octocode-agent-main-c0ea9f3e`, as in `ps` and `/processes`), a session id or a pid. Without it the CLI picks the only instance, or the unique one in the current folder, and rejects ambiguity: use `--to` in scripts. A session switch (`/new`, `/resume`) starts a new endpoint with a new id. `send` refuses the caller's own session. The same names work for `/agents external connect octocode`, the `agent` tool's `instanceId`, and `agent` type `message` ([protocol](subagents.md#communication-and-results)).
 
 ## Turn it on or off
 

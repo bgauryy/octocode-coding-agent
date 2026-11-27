@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Start with `/status` in a session: it shows the model, the provider, quota windows and the recent errors. Run `octocode --version` to check the install.
+Start with `/status` in a session: it shows the model, the provider, quota windows and the recent errors. Run `octocode --version` to check the install. For slow or stuck work see [monitoring](monitoring.md); for how a turn and compaction behave, [how it works](how-it-works.md).
 
 ## Install and start
 

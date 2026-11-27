@@ -76,7 +76,28 @@ A proposed line is quarantined, kept as a candidate tagged `memory-quarantined` 
 
 Only sessions with a screen (the terminal, RPC clients such as the web workspace) make these calls; print and JSON runs never do. Quitting waits for them, about 10 seconds for the reflection and 15 for a consolidation. Other sessions see a changed file at their next compaction or start.
 
-Settings (global or project, see [configuration](configuration.md#memory)): `memory.file`, `memory.autoUpdate`, `memory.subagents`, `memory.recall`, `memory.reflection`.
+Settings ([below](#settings)): `memory.file`, `memory.autoUpdate`, `memory.subagents`, `memory.recall`, `memory.reflection`.
+
+## Settings
+
+Two `MEMORY.md` files, a global one in the Octocode home and one per repository (`.octocode/agent/MEMORY.md`, 40 lines; the global file holds 30), give every session your curated notes; the notes database stays the archive behind them ([memory](#memorymd-files)). Each setting works in the global or the project settings file; a project value wins.
+
+| Setting                     | Default        | Values                                                                                                                                                                                                               |
+| --------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `memory.file`               | `true`         | `false` stops reading and writing both files                                                                                                                                                                         |
+| `memory.autoUpdate`         | `"auto"`       | `"off"`: the files are only read; `"explicit"`: only saves made with `memory set` or `/memory`; `"auto"`: those plus the background lesson passes                                                                    |
+| `memory.subagents`          | `"workspace"`  | which files a subagent reads: `"workspace"`, `"all"` (the global one too) or `"none"`; a lean subagent reads none                                                                                                    |
+| `memory.recall`             | `"main"`       | pinned and word-matched notes from the database before each prompt: `"off"`, `"main"` (main session only) or `"all"` (subagents too)                                                                                 |
+| `memory.reflection`         | `true`         | lets the background passes call the cheaper model (`subagents.models.small`); `false` leaves consolidation to code; needs `autoUpdate` `"auto"`                                                                      |
+| `memory.subagentPinnedKind` | `"preference"` | the one kind of pinned note a subagent's recall includes (with `recall` `"all"`): `"preference"`, `"fact"`, `"decision"`, `"gotcha"`, `"procedure"` or `"reference"`; the main session always gets every pinned kind |
+
+```json
+{ "memory": { "recall": "off", "subagents": "none" } }
+```
+
+Background spend with `autoUpdate` `"auto"` and `reflection` on, in a session with a screen (terminal or RPC; print and JSON runs never spend): at most one small-model call when a main session of 5 or more user turns ends after a correction, a recovered check, a refused or reverted call or a repeated error, and at most one consolidation call a day per file while lesson candidates are pending. Quitting waits up to about 25 seconds for them. Without a cheaper model than the session's, neither call is made ([memory](#how-the-files-learn)).
+
+`OCTOCODE_MEMORY_AUTO=0` still turns recall off for one process. `/memory auto` says whether recall is on here. `memory.recall` replaces the database-wide switch that `/memory auto on|off` set.
 
 ## Notes
 
@@ -115,6 +136,7 @@ Every call includes `reason` and an `op`.
 | `pinned`   | set               | Injects the note before every prompt while recall is on, and pins its MEMORY.md line                                     |
 | `limit`    | search, list      | 1 to 50 notes per call (default 10)                                                                                      |
 | `cursor`   | search, list      | Continues the same search or list after the last note read                                                               |
+| `items`    | set, delete       | Main session only: a batch. Each entry carries the single call's fields (`id`, `scope`, `title`, `body`, ...), and each is written as its own call |
 
 ```json
 {

@@ -1,6 +1,6 @@
 # Context management
 
-What a native Octocode session sends the model on each request, how changes reach it, and how history stays inside the window. Related: [prompt caching](../packages/coding-agent/docs/prompt-caching.md) (providers, retention, warming, miss diagnostics), [agent context](../packages/coding-agent/docs/agent-context.md) (each source and its switch), [agent instructions](../packages/coding-agent/docs/prompts.md), [MCP](../packages/coding-agent/docs/mcp.md).
+What a native Octocode session sends the model on each request, how changes reach it, and how history stays inside the window. Related: [prompt caching](../packages/coding-agent/docs/prompt-caching.md) (providers, retention, warming, miss diagnostics), [agent context](../packages/coding-agent/docs/how-it-works.md#what-the-model-reads) (each source and its switch), [agent instructions](../packages/coding-agent/docs/prompts.md), [MCP](../packages/coding-agent/docs/mcp.md).
 
 ## What the model sees
 
@@ -38,13 +38,12 @@ In prompt order; an empty section is left out. `SYSTEM.md` replaces `preamble` a
 | `subagent`                                                  | A writable child's policy, in place of `delegation`                                                                            |
 | `project_context`                                           | [Project context](#project-context)                                                                                            |
 | `memory`                                                    | Global and repository `MEMORY.md`, read at start ([memory](../packages/coding-agent/docs/memory.md))                           |
-| `skills`                                                    | Name, description, path per skill; body loads on `skill`                                                                       |
 | `hooks`                                                     | One line per event and matcher; never a command, URL or prompt                                                                 |
 | `role`                                                      | Subagent profile                                                                                                               |
 | `harnesses`                                                 | Other agent products Octocode reads; main session                                                                              |
 | `cwd`, `environment`, `planning`, `mcp_status`              | Directory; platform, shell, date, surface, render capabilities; plan mode; servers not ready                                   |
 
-Recalled notes (up to 2,400 characters per notice) and a child's task arrive in history, not as sections; notices accumulate until compaction. `mcps` never includes raw `mcp.json`, launch commands, environment values or credentials; server instructions, tool descriptions and results are model-visible.
+The skills listing (name, description, path per skill) lives in the `skill` tool's description, not a section; a body loads on `skill`. Recalled notes (up to 2,400 characters per notice) and a child's task arrive in history, not as sections; notices accumulate until compaction. `mcps` never includes raw `mcp.json`, launch commands, environment values or credentials; server instructions, tool descriptions and results are model-visible.
 
 ### Project context
 
@@ -116,9 +115,9 @@ The window is `contextBudget` (default 300,000 tokens) capped at 90% of the mode
 | ----------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
 | Reserve     | At least 24,576, raised for thinking plus answer room, at most window/6 (`min(16,384, window/8)` when window/6 < 20,485) | 24,576                    |
 | Trigger     | Context > window − reserve                                                                                               | > 175,424                 |
-| Kept recent | `min(20,000, window/4)` newest tokens, verbatim, excluding the system prompt                                             | 20,000                    |
+| Kept recent | A tenth of the window (at least 20,000, at most window/4) newest tokens, verbatim, excluding the system prompt                                             | 20,000                    |
 
-Automatic compaction pauses after three consecutive failures for a session and model, or after the context refilled within 3 turns of compacting 3 times in a row. `/compact` resets both; an hour after the last failure one more attempt runs.
+Automatic compaction pauses after three consecutive failures for a session and model, or after the context refilled within 3 turns of compacting 3 times in a row. `/compact` resets both; otherwise retries back off 1, 5, 15, then 60 minutes until one succeeds.
 
 ## The compaction pipeline
 

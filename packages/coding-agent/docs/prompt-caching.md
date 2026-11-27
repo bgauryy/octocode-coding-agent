@@ -1,6 +1,6 @@
 # Prompt caching
 
-Octocode keeps reusable instructions cached longer than the growing history when the API has separate cache boundaries. What the request contains and what changes it: [Context management](../../../docs/CONTEXT.md); each optimization with its saving, cost and setting: [request flows](harness-flows.md). A hit needs a matching eligible prefix and the provider's minimum length. A byte-identical prefix only enables reuse; only the provider's cached-token usage fields prove a hit.
+Octocode keeps reusable instructions cached longer than the growing history when the API has separate cache boundaries. What the request contains and what changes it: [Context management](../../../docs/CONTEXT.md); how a request is assembled, the tool loadout and trimming: [how it works](how-it-works.md#what-the-model-reads). A hit needs a matching eligible prefix and the provider's minimum length. A byte-identical prefix only enables reuse; only the provider's cached-token usage fields prove a hit.
 
 ```mermaid
 flowchart LR
@@ -235,15 +235,86 @@ Octocode sends the start of block 2 as the `instructionCacheBoundary` request op
 
 A forced prompt (an extension's `before_agent_start`) has no sections and is never split. `OCTOCODE_INSTRUCTION_CACHE_SPLIT=off` sends one block and no shared-tools marker; a request that already carries `instructionCacheBoundary`, `instructionWorkspaceBoundary`, `instructionVolatileBoundary` or `toolCacheBoundary` keeps that value. MCP connections also cache validated server instructions and tool metadata in memory, separate from provider caching: [MCP catalog caching](mcp.md#catalog-caching).
 
+## What each event does to the cache
+
+How each provider is asked to cache decides what a change costs.
+
+| Provider               | What Octocode sends                                                                                        | Routing                                                  |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Anthropic              | Up to four explicit cache markers: tools, instruction blocks, the last message and the previous tail       | Session-affinity header on gateways that take one        |
+| OpenAI Responses       | A cache key; 24-hour retention or explicit mode on models that support them                                | `session_id` and `x-client-request-id` carry the session id (`sessionAffinityFormat: "openai"`; `openai-nosession` omits `session_id`) |
+| Codex                  | A cache key                                                                                                | As OpenAI Responses                                      |
+| OpenRouter and similar | A cache key where the model allows it; Anthropic-style markers on models that need them                    | `x-session-id` carries the session id                    |
+| xAI                    | The Responses cache key                                                                                    | `x-grok-conv-id` and `x-client-request-id` carry the session id |
+| Google and Vertex      | Nothing: the provider caches a stable prefix implicitly, so keeping the prefix identical is the only lever | None                                                     |
+
+"Kept" below means the request opens with the previous one, so the cached part is read again; "rewritten once" means the history is billed again once and the next request appends.
+
+| Event                         | Anthropic                                         | OpenAI Responses | Codex          | OpenRouter        | xAI            | Google, Vertex    |
+| ----------------------------- | ------------------------------------------------- | ---------------- | -------------- | ----------------- | -------------- | ----------------- |
+| Next turn                     | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Deferred tool loaded          | Kept                                              | Kept             | Kept           | Kept: tool result | Kept           | Kept: tool result |
+| Refused call returns a schema | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Skill loaded                  | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Images in history             | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Fork                          | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Child agent                   | Kept: tools, instructions and marker places match | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Model switch                  | Rewritten once                                    | Rewritten once   | Rewritten once | Rewritten once    | Rewritten once | Rewritten once    |
+| Provider switch               | Rewritten once                                    | Rewritten once   | Rewritten once | Rewritten once    | Rewritten once | Rewritten once    |
+| Compaction                    | Rewritten once, tools and instructions kept       | Same             | Same           | Same              | Same           | Same              |
+
+No event rewrites the request on every turn. The deferred-tool row says "kept" for every provider because loading never changes the tools that were sent: a model whose catalog entry allows in-place tool changes (Anthropic tool changes, OpenAI Responses and Codex additional tools, which xAI's endpoint can also carry) gets the definition appended after the breakpoint, and any other model gets the schema as a tool result. The table shows what the request bytes do; a provider's own routing, minimum length and expiry still decide a real hit.
+
+Which tools are `direct`, `deferred` or `onDemand` is decided when the session starts and kept: the set of tools in use is saved with the first prompt, so resume, reload and fork declare the same set. A tool you start using mid-session keeps its starting state, and its first call declares it in full where the model allows ([tool loadout](how-it-works.md#tool-loadout)). A child uses its parent's set, so siblings declare the same tools and share the cached tool prefix; a profile with `mcpDefer` shares only with agents that defer the same tools.
+
+### Forks and children share the parent's cache
+
+```mermaid
+flowchart TD
+    P["Parent session<br/>cache key = its id"] --> FK["Fork"]
+    P --> CH["Child agents"]
+    FK --> K1["Uses the first session of the fork chain as the key<br/>request body and routing headers match the parent's"]
+    CH --> K2["Siblings share one key<br/>same tools, instructions and marker places"]
+    K1 --> H["Same replica, same cached prefix"]
+    K2 --> H
+    K2 -.-> M["Mistral: siblings keep their own affinity;<br/>a fork pins to its parent's"]
+```
+
+A fork sends its parent's request byte for byte, and the routing headers above carry the parent's id, so the fork lands where the parent's prefix is cached. Children of one parent and profile build the same tools and instruction blocks and share one key, so a second child reads what the first wrote (details: [subagent prefixes](#subagent-prefixes)). Each child keeps its own transcript and cancellation. On Mistral a fork pins to its parent's replica, but sibling children keep their own affinity. Disabling caching omits the key and the routing headers.
+
 ## Provider-reported miss reasons
 
 Octocode asks the Anthropic API why a request could not reuse the previous prefix; `OCTOCODE_CACHE_DIAGNOSTICS=off` (also `0` or `false`) stops it. Each request carries `diagnostics.previous_message_id` (the previous Anthropic reply's id, `null` on the first), and the API reports the earliest divergence (`model_changed`, `system_changed`, `tools_changed` or `messages_changed`) with the approximate input tokens that would have been read. The reply records it as a `cache_miss` diagnostic, and a counted miss in the transcript and `/status` reads `History cache miss: provider reports tools changed` instead of an inferred cause. `previous_message_not_found`, `unavailable` and a pending comparison record nothing.
 
 The field goes only to `api.anthropic.com` with the `anthropic` provider (a gateway may reject an unknown field). It is on by default: the API charges nothing for it and never fails a request over it, and it keeps only a fingerprint of hashes and token-count estimates, briefly, never prompt text. The feature is eligible for zero data retention but not for HIPAA, so turn it off if your organization needs that. Verified against the SDK types and the [documented format](https://platform.claude.com/docs/en/build-with-claude/cache-diagnostics), not a live account. Fingerprints are kept briefly, so compare closely spaced requests. A miss after an idle gap longer than the cache lifetime reports no divergence: the entry had expired.
 
+### Long retention on custom hosts
+
+Long retention (`instructionCacheRetention`, long by default, and `cacheRetention: "long"`, which is short by default) sends Anthropic-compatible models one-hour cache points (`cache_control.ttl: "1h"`) only where the host's documentation verifies the tier: `api.anthropic.com`, `opencode.ai`, and OpenRouter for its `anthropic/*` models. Every other host (other gateways, a `models.json` provider on its own URL) stays on the five-minute tier. If your host passes the one-hour tier through, opt in per model in `models.json`:
+
+```json
+{
+	"providers": {
+		"my-gateway": {
+			"api": "anthropic-messages",
+			"baseUrl": "https://llm.example.com",
+			"models": [{ "id": "claude-sonnet-4-5", "compat": { "supportsLongCacheRetention": true } }]
+		}
+	}
+}
+```
+
+`false` forces the five-minute tier for a model or region that rejects `ttl`; an explicit value always wins over the host list. OpenAI-style models use the same field for 24h retention. Field reference: [models.json](models-configuration.md).
+
 ## Warming and measurements
 
-`cacheWarming` is `off`, `streaming` (during an active run) or `idle` (default; also while waiting for the user).
+`cacheWarming` is `off`, `streaming` (refresh while the agent is active) or `idle` (default; also after it settles). It is a global setting: project settings cannot enable paid warming.
+
+```json
+{ "cacheWarming": "idle", "cacheRetention": "long" }
+```
+
+A refresh replays the request with a one-token cap, needs a known cache lifetime and a replay-safe request, and never runs returned tool calls. It stops when context changes, the deadline is missed, a refresh fails or the provider reports no cache read. Active warming ends one hour after the original request; idle warming after thirty minutes or one cache lifetime, whichever is later. `/status` shows usage. Savings are not guaranteed: [prompt caching](prompt-caching.md). How requests are built and kept small (tool exposure, clearing, compaction, fencing): [how it works](how-it-works.md#what-the-model-reads).
 
 An idle refresh is sent only when its expected saving reaches $0.05: the chance of a real request before the history expires, times the miss cost, less the refresh cost (a read of the cached prompt).
 

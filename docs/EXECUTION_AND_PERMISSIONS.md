@@ -49,7 +49,7 @@ flowchart TD
   F --> G
 ```
 
-Agents read with Octocode research tools, change files with `file`, run checks with `bash`. Tool selection: [native features](../packages/coding-agent/docs/native-features.md#tool-selection-and-migration).
+Agents read with Octocode research tools, change files with `file`, run checks with `bash`. Tool selection: [native features](../packages/coding-agent/docs/tools.md#tool-selection-and-exposure).
 
 | Step    | Behavior                                                                                                                                                                                                                                  |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

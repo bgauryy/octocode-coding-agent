@@ -91,7 +91,7 @@ In step 3 an `.octocode/` copy beats a `.pi/` copy. In steps 6 and 7 the order i
 
 ### Add a skill folder
 
-In `/harness`, open **Skills** and choose **+ Add skill from a folder**. Enter the folder (relative paths resolve against the session folder). Octocode scans every skill in it with the [security review](configuration.md#security-review) and shows each rating, worst first, before anything is written; Enter then adds the folder to your user `skills` setting, Esc steps back and writes nothing. Run `/reload` to load it. The skills stay off until you approve them in `/security`.
+In `/harness`, open **Skills** and choose **+ Add skill from a folder**. Enter the folder (relative paths resolve against the session folder). Octocode scans every skill in it with the [security review](permissions.md#security-review) and shows each rating, worst first, before anything is written; Enter then adds the folder to your user `skills` setting, Esc steps back and writes nothing. Run `/reload` to load it. The skills stay off until you approve them in `/security`.
 
 ### Switch skills on and off
 
@@ -117,6 +117,11 @@ Two skills load themselves on first use, once per session, when the model has no
 | Skill                           | Use it to                                                                                                                                                                                                                                    |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `octocode-backlog` *            | File, split and close backlog items with a checkable goal and evidence; groom the board like a sprint review, closing done, obsolete or duplicate items on evidence                                                                          |
+| `octocode-clasify`              | Sort many unread files, hits, history rows or logs by a yes/no, label or score that needs no reasoning; not when exact search answers it |
+| `octocode-github-research`      | Research code, history or packages outside this checkout: GitHub files at a ref, who changed what and why, which repo and ref ship a package version |
+| `octocode-local-research`       | Trace code across this checkout with LSP: every caller or use, blast radius, a type, or proof a symbol is unused |
+| `octocode-maintenance` *        | Run a health sweep (dependencies, dead code, stale docs, lint drift, flaky tests, retention, worktrees, caches, MCP, memories, backlog); fixes or files findings |
+| `octocode-visual-browsing`      | Pick the lane (browser MCP, desktop agent, no UI) and the see-solve-act-verify loop before operating a browser, web page or desktop app |
 | `octocode-code-review`          | Review a diff, commit, branch, uncommitted edits, a subagent's worktree before merge, or a finished implementation against its request; evidenced findings and a Ready, Changes required or Verification incomplete verdict                  |
 | `octocode-context-optimization` | Rewrite skill descriptions concisely, keeping every point ([optimized descriptions](#optimized-descriptions))                                                                                                                                |
 | `octocode-critical-thinking`    | Stress-test a consequential decision, plan or claim with the mental models that apply (tail risks, inversion, second-order effects, Bayesian updating, Goodhart's Law), scaled to the stakes; ends with conclusion, key risks and confidence |
@@ -125,7 +130,7 @@ Two skills load themselves on first use, once per session, when the model has no
 | `octocode-subagents` *          | Decide whether to delegate, pick the child kind and model, plan waves of children, brief, integrate, recover, relay and merge; run multi-step workflows; design, debug and evaluate agent systems                                            |
 | `octocode-memory` *             | Decide whether a fact belongs in memory, a session note, AGENTS.md, a backlog item or nowhere, and word it as a rule                                                                                                                         |
 | `octocode-output`               | Shape a reply by its data: tables for comparisons and numbers, trees, diagrams, status marks, findings and recommendations                                                                                                                   |
-| `resume-external-harness`       | Find, read and resume Claude Code, Codex, Cursor, Antigravity and Octocode sessions of this repository ([details](native-features.md#resuming-other-tools-sessions))                                                                         |
+| `resume-external-harness`       | Find, read and resume Claude Code, Codex, Cursor, Antigravity and Octocode sessions of this repository ([details](tools.md#resuming-other-tools-sessions))                                                                         |
 
 ## Invoke a skill
 
@@ -162,7 +167,7 @@ sequenceDiagram
 
 - The `skill` tool is the one place skills are explained. Its description says what a skill is (a folder with `SKILL.md`, and optional `scripts/`, `references/` and `assets/`, resolved against that folder), that every skill whose description matches the work is loaded before the work starts, and that a skill's `.octocode/<path>` output means `<workspace>/.octocode/agent/<path>`. It then lists every enabled skill as `path: description`, grouped as core, Octocode, workspace and global. The system prompt carries none of this, and every agent, subagents included, declares the same list.
 - A call takes several skills: `names`, each a listed name or listed path. It returns one block per skill: `SKILL.md` without frontmatter, plus the folder. An entry that is not listed (unknown, or `disable-model-invocation`) is refused with close matches and does not stop the others. The terminal shows `Skill(a, b)` and, collapsed, one line (`2 skills · 120 lines · 1 not loaded`); expanded, each skill's name, description, file and line count, and each refusal. The web view shows the same.
-- When the list exceeds 1% of the model's context window in characters (8,000 on 200,000 tokens), startup warns `Skill listing over budget`; the list is unchanged. Shorten descriptions with [`octocode context`](#optimized-descriptions) or switch skills off.
+- When the list exceeds 1% of the model's context window, counted in characters at the model family's measured characters per token (5,000 on 200,000 tokens when no model is known), startup warns `Skill list too long: <n> chars, budget <m>`; the list is unchanged. Shorten descriptions with [`octocode context`](#optimized-descriptions) or switch skills off.
 - A profile can drop the tool with `excludeTools: skill`. The tool is left out while no skill allows model invocation. A task's `skills` still name which skills a child loads first.
 - Compaction may summarize a loaded skill; its name stays in the summary so the model can load it again.
 - The Octocode MCP server may read inside every loaded skill folder: the shipped skills folder whole while all its skills are on, or else only the folders of the shipped skills that are on. Switching a shipped skill off during a session restarts the server once without it. Folders you add (`research.allowedPaths` in global settings, `ALLOWED_PATHS` in the environment or `~/.octocode/.env`) extend that; `ALLOWED_PATHS` in the server entry's `env` replaces it ([MCP](mcp-reference.md)).

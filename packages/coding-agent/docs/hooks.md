@@ -27,7 +27,7 @@ Save this as `<repository-root>/.octocode/hooks.json`:
 }
 ```
 
-Run `/reload` (in a folder you have not trusted yet, `/trust` first), then `/harness hooks`. The command's stdout becomes hidden model context on the next prompt, not a terminal notice. The example needs Node on PATH.
+Run `/reload` (in a folder you have not trusted yet, `/trust` first), then approve the hook in `/security` (a hook Octocode did not ship stays off until you do; see [Security review](#security-review)) and reload once more, then run `/harness hooks`. The command's stdout becomes hidden model context on the next prompt, not a terminal notice. The example needs Node on PATH.
 
 ## Add a command hook
 
@@ -91,12 +91,20 @@ Octocode reads these files when a session starts, in this order; entries from al
 
 - Claude and Codex files load only while that harness is on in `/harness` (both off by default; a switched-off harness is not a warning, the startup Harness line counts its hooks as off). Cursor has no hook format Octocode reads.
 - Project paths use the repository root even when the session starts in a subdirectory. `OCTOCODE_HOME` moves the Octocode home; `OCTOCODE_CODING_AGENT_DIR` changes core configuration, not this path.
-- Project hooks load only when `/trust` (or `octocode trust add`) trusts the folder. Trust is per folder: it does not list hook commands, URLs or environment variables, and does not fingerprint the files, so later edits load without a new review. Read a project's hook files before trusting it. After editing user files use `/reload` or restart; there is no file watcher.
+- Project hooks load only when `/trust` (or `octocode trust add`) trusts the folder. Trust is per folder: it does not list hook commands, URLs or environment variables, so read a project's hook files before trusting it. Trust alone does not enable a hook: each handler also passes the [security review](#security-review), which pins its content, so a later edit turns it off until you approve it again. After editing user files use `/reload` or restart; there is no file watcher.
 - `CLAUDE_CONFIG_DIR` selects the directory with the user `settings.json` (absolute path; relative values resolve from the process working directory; no shell or tilde expansion; no fallback to the default file). It does not change project locations; skill discovery uses the same resolver.
 - A non-empty `CODEX_HOME` relocates Codex user JSON and TOML to that existing directory. An invalid value reports a diagnostic and skips Codex user sources (Codex itself aborts startup); project paths are unchanged.
 - Codex TOML: inline `[hooks]` and JSON hooks in one directory merge with a diagnostic. TOML accepts `command_windows` or `commandWindows`; JSON only `commandWindows`. `[features] hooks = false` disables Codex-profile hooks, plugin hooks included (`codex_hooks` is a deprecated alias); a trusted project value overrides the user value. Other Codex configuration, profile selection and managed requirements are not imported. Invalid TOML is reported without snippets that could expose values.
 - Missing files are normal; unreadable files, invalid JSON and malformed containers produce diagnostics. Ordinary settings files without a `hooks` key are fine. There is no recursive script search.
 - Any loaded file with `"disableAllHooks": true` disables all hooks, required gates included; a later `false` does not override it (more conservative than Claude's precedence). An untrusted project cannot supply it, because its files are not loaded. `/harness hooks` can show the subsystem enabled with zero commands and a disable diagnostic.
+
+### Plugin hooks
+
+A configured [plugin](plugins.md) contributes the hook declarations in its manifest or `hooks/hooks.json`, read with the profile of the plugin's format (Claude or Codex; `src/octocode/hooks/config.ts`). A plugin with `"enabled": false` contributes none; a hook file with `modules` or without an object `hooks` map is reported and none of that plugin's hooks load (`core/plugin-hooks.ts`). Plugin command hooks get `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA` (Codex ones also `PLUGIN_ROOT` and `PLUGIN_DATA`), and `mcp_tool` hooks call servers the plugin declares. Adding a plugin approves its declarations, not the scripts they run; each plugin handler is then also a [security review](#security-review) item, so its first load can wait for `/security`. Switches: `hook:<id>` and `hooks:<host>` apply to plugin handlers, `harness:<host>` does not, and `[features] hooks = false` in Codex TOML removes Codex-profile handlers, plugin ones included. `SessionEnd` treats plugin handlers like native and Claude ones.
+
+## Security review
+
+A hook Octocode did not ship stays off until you approve its exact content in `/security`; a changed one stays off until approved again, and `/harness hooks` marks it `not checked`. The review, its commands and `security.enforce`: [permissions](permissions.md#security-review).
 
 ## Profiles
 
@@ -110,7 +118,7 @@ A source decides the profile; handlers from different profiles are never merged,
 | `mcp_tool`                | No     | Yes                           | Yes, except on `SessionEnd` |
 | `agent`                   | No     | No                            | No                          |
 
-**Fields.** Every profile accepts `type`, `command`, `timeout`, `failClosed` and `sandbox` (local extensions) and `statusMessage` (presentation only). `sandbox: true` runs a command hook in the [shell sandbox](configuration.md#shell-sandbox) whatever `sandbox.mode` says; where that sandbox cannot start, or for a PowerShell hook, the hook is not run and counts as failed, so `failClosed` decides whether its call goes ahead. Claude adds `args`, `shell` (`bash` or `powershell`; ignored with `args`), `onFailure`, `async`, `asyncRewake`, `if` ([Claude `if` conditions](#claude-if-conditions)) and ignores `once` (honored upstream only for skill-scoped hooks, which Octocode does not activate). Codex adds `commandWindows` (Windows only), `async`, `additionalContextLimit` and rejects `once`, `asyncRewake`. Native rejects `args`, `if`, `async`, `command_windows`. Any other field rejects the handler. Timeouts are in seconds: native default 60, Claude and Codex 600 (exceptions below), never above 600.
+**Fields.** Every profile accepts `type`, `command`, `timeout`, `failClosed` and `sandbox` (local extensions) and `statusMessage` (presentation only). `sandbox: true` runs a command hook in the [shell sandbox](sandbox.md) whatever `sandbox.mode` says; where that sandbox cannot start, or for a PowerShell hook, the hook is not run and counts as failed, so `failClosed` decides whether its call goes ahead. Claude adds `args`, `shell` (`bash` or `powershell`; ignored with `args`), `onFailure`, `async`, `asyncRewake`, `if` ([Claude `if` conditions](#claude-if-conditions)) and ignores `once` (honored upstream only for skill-scoped hooks, which Octocode does not activate). Codex adds `commandWindows` (Windows only), `async`, `additionalContextLimit` and rejects `once`, `asyncRewake`. Native rejects `args`, `if`, `async`, `command_windows`. Any other field rejects the handler. Timeouts are in seconds: native default 60, Claude and Codex 600 (exceptions below), never above 600.
 
 **Matchers.** Native: whole-name regex; empty or `*` matches all; an invalid pattern matches nothing and is diagnosed. Aliases such as `Bash` and `Edit|Write` work, but an alias match does not mean a full upstream payload translation. Claude: exact names separated by `|` or `,`, otherwise an unanchored JavaScript regex. Codex: unanchored regex. Stop matchers are ignored by Claude and Codex; a native Stop matcher matches no names, so omit it.
 
@@ -155,7 +163,38 @@ Hooks are paused while plan mode is on, so `permission_mode` never reports `plan
 - **Stop aggregation:** explicit `continue: false` wins over `decision: "block"`, within one output or across commands. Exit 2 and block decisions otherwise request continuation, capped at eight continuations in a row (reset on a new prompt or tool execution) and 32 per prompt (reset only by a new prompt). Claude Stop `hookSpecificOutput.additionalContext` continues the run as feedback.
 - **Environment:** `CLAUDE_PROJECT_DIR` is added and the launching environment inherited; there is no `CLAUDE_ENV_FILE` mechanism.
 
-Native files never get Claude Mods, plugin manifests or skill-frontmatter hooks; there is no managed-policy import and no per-file approval.
+Native files never get Claude Mods, plugin manifests or skill-frontmatter hooks; there is no managed-policy import. Approval is per handler, in the [security review](#security-review), not per file.
+
+## Event reference
+
+Every event in the catalog ([hook-events](hook-events.md) lists which profile accepts it and with which handler types). All inputs start with `session_id`, `transcript_path`, `cwd` and `hook_event_name`; the table adds each event's own fields, what its matcher tests and how a hook answers. "Block" means exit 2 with a stderr reason, or JSON `decision: "block"` with a `reason`.
+
+| Event | Matcher tests | Event input | Answers |
+| --- | --- | --- | --- |
+| `PreToolUse` | Tool name (`Bash`, `Edit\|Write` aliases) | `tool_use_id`, `tool_name`, `tool_input` | Block or `permissionDecision` `deny`/`ask`/`allow` (an allow grants nothing), `updatedInput` (source profiles), context, `continue: false` ([tool hooks](#tool-hooks)) |
+| `PermissionRequest` | Tool name | `tool_name`, `tool_input` (no `tool_use_id`) | `decision.behavior` `allow`/`deny` with `message`, `interrupt`, `updatedInput`, `updatedPermissions` ([preview](#permission-request-preview)) |
+| `PostToolUse` | Tool name | `tool_use_id`, `tool_name`, `tool_input`, `tool_response` | Feedback via block or context; Codex can replace the result ([post-tool](#failed-tool-and-post-tool-behavior)) |
+| `PostToolUseFailure` | Tool name | `tool_use_id`, `tool_name`, `tool_input`, `error`, `is_interrupt` (only when the turn was aborted) | Context; cannot replace the error |
+| `PostToolBatch` | Ignored | `tool_calls`: `tool_use_id`, `tool_name`, `tool_input`, `tool_response` each | Block stops before the next request; context is kept |
+| `SessionStart` | `source` | `source`; on resume also the [resume fields](#output-and-input) | Stdout or `additionalContext` becomes hidden context |
+| `SubagentStart` | Profile name | `agent_id`, `agent_type`; Claude adds the parent `session_id` and `transcript_path` | Context for the child; cannot veto ([child agents](#child-agents)) |
+| `SubagentStop` | Profile name | The start fields plus `transcript_path`, `agent_transcript_path`, `stop_hook_active`, `last_assistant_message` | Block continues the child |
+| `Interrupt` (Codex) | Ignored | `session_id`, `transcript_path`, `turn_id`, `model` | Only `systemMessage`; observational |
+| `SessionEnd` | `reason` | `reason`: `clear`, `resume` or `other` | Observational ([session end](#session-start-and-end)) |
+| `UserPromptSubmit` | Ignored | `prompt` | Block prevents submission; context is kept ([prompt submission](#prompt-submission)) |
+| `PreCompact`, `PostCompact` | `trigger` (`manual`, `auto`) | `trigger` and the [compaction fields](#compaction) | Source-profile block cancels `PreCompact`; Codex `continue: false` stops after `PostCompact` |
+| `Stop` | Ignored (a native matcher matches nothing) | `stop_hook_active`, `last_assistant_message`, `background_tasks` (main session) | Block or exit 2 continues the run ([aggregation](#output-and-input)) |
+| `StopFailure` (Claude) | `unknown` | `error`, `error_details`, `last_assistant_message` | None ([failure events](#failure-and-stop-events)) |
+| `Notification` | `notification_type` | `message`, `title`, `notification_type` | None; runs in the background ([notifications](#notifications)) |
+| `PreMessageSend` | `internal`, `external`, or `<channel>.<direction>` such as `internal.outbound` | `message`: `channel`, `direction`, `from`, `to`, `text`, and when known `id`, `replyTo`, `replyRequired`, `wake`, `interrupt` | Block refuses the send with the reason; an ask asks you first ([message hooks](#message-hooks)) |
+| `PostMessageReceive` | As `PreMessageSend` | The same `message` | None: cannot rewrite or reply |
+| `TaskCreated`, `TaskCompleted`, `BacklogChange` | Change kind (`TaskCreated`: none) | [Backlog fields](#backlog-events-in-the-octocode-profile) | `TaskCompleted` blocks the write; the others observe |
+| `MonitorAlert` | Rule id | [Monitor fields](#monitor-alerts-in-the-octocode-profile) | None |
+| `AgentQueued`, `AgentOn`, `AgentOff` | Role; role; end reason | [Presence fields](#agent-presence-in-the-octocode-profile) | None |
+
+### Message hooks
+
+`PreMessageSend` and `PostMessageReceive` are Octocode's own events for the messages between agents and from external senders; they are written in the Octocode hooks file and rejected in Claude and Codex files. `PreMessageSend` runs before a send in the sending session and can deny it (the sender reads `Blocked by a PreMessageSend hook: <reason>`) or ask; a hook that fails lets the message go unless it is `failClosed`. `PostMessageReceive` runs once for each message that reaches the session (a resumed session's history does not replay them), never changes it and never starts a reply.
 
 ## Tool hooks
 
@@ -193,7 +232,7 @@ A Claude handler's `if` holds one permission rule, written as in [Claude permiss
 | Handler types                                                   | Command, prompt, HTTP and MCP                                                                                   |
 | A rule that does not parse, or `if` on another event            | The handler is skipped with a diagnostic; it never denies calls, even with `failClosed` or `onFailure: "block"` |
 
-A call any PreToolUse hook would see (after `if`) never starts early ([early tool start](configuration.md#early-tool-start)).
+A call any PreToolUse hook would see (after `if`) never starts early ([early tool start](how-it-works.md#turn-lifecycle)).
 
 ### Input rewrite
 
@@ -202,7 +241,7 @@ Source-profile PreToolUse `updatedInput` replaces Bash and generic tool argument
 | Tool   | Rewrite behavior                                                                                                                                                                                                                                                                                                               |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Bash   | Claude timeout in milliseconds maps to native seconds, `run_in_background` to `background`; advisory `description` is kept; a nonempty replacement drops omitted options; negative timeouts are rejected. Codex `tool_input` is only `command`; a rewrite changes that string and keeps native timeout and background options. |
-| `file` | Claude Write, Edit and MultiEdit projections reverse into native queries and the whole batch is validated; `replace_all` maps to `edits[].replaceAll`. Codex patch rewrites use [canonical patch mode](native-features.md#canonical-patch-mode).                                                                               |
+| `file` | Claude Write, Edit and MultiEdit projections reverse into native queries and the whole batch is validated; `replace_all` maps to `edits[].replaceAll`. Codex patch rewrites use [canonical patch mode](tools.md#canonical-patch-mode).                                                                               |
 | `notify` | A wait on `check.result` reaches PreToolUse as the `bash` call its command runs (`Bash` matcher; deny or ask apply, a rewrite is refused). A wait without one keeps its own name.                                                                                                                                              |
 
 Host timeout defaults and background lifetime stay native.
@@ -238,7 +277,7 @@ A supported native `file` batch produces one Codex `apply_patch` input, `{ "comm
 
 - Edit queries become `*** Update File` sections with whole-line context, built from the file's current bytes only while the file guard still holds a read of it (unchanged since); the section is kept only if applying it reproduces those bytes exactly. Native writes must be empty or LF-only with a trailing newline.
 - A batch the projection cannot reproduce (an edit of a file not read in this session, changed or evicted since, not UTF-8, without a final newline, with mixed line endings the edit would normalize, or changed by two queries) runs without its Codex hooks: a warning names the skipped hook, and only a matching `failClosed` hook denies the call. A post-only hook cannot prevent execution and reports the missing projection.
-- A valid Codex `updatedInput.command` selects canonical patch mode (Add, Delete, Update, Move, context chunks, EOF markers): the file owner prepares every operation before mutating, runs them in order and stops at the first failure ([guarantees](native-features.md#canonical-patch-mode)). The final input passes permissions, reservations, unread-file and stale-file checks; invalid or conflicting rewrites block without falling back. PostToolUse receives the accepted patch captured before execution (also after a delete); failed or partial patches do not invoke a successful post-hook.
+- A valid Codex `updatedInput.command` selects canonical patch mode (Add, Delete, Update, Move, context chunks, EOF markers): the file owner prepares every operation before mutating, runs them in order and stops at the first failure ([guarantees](tools.md#canonical-patch-mode)). The final input passes permissions, reservations, unread-file and stale-file checks; invalid or conflicting rewrites block without falling back. PostToolUse receives the accepted patch captured before execution (also after a delete); failed or partial patches do not invoke a successful post-hook.
 - A canonical Update or Move call with a possibly matching native or Claude pre-hook is refused, unless one of them is `failClosed` (the call then runs without those hooks), because per-query projection would hide a move destination from a Write gate; their post-hooks report the missing projection. Overlapping targets, unsupported path forms and remote routing are rejected.
 
 ### Claude MCP tool hooks
@@ -342,6 +381,7 @@ Both expose `prompt` and ignore the matcher. Exit 2 or a JSON block prevents sub
 | `memory_update`      | A memory pass changed a memory file; `message` is the line you are shown, such as `Memory reflection: workspace MEMORY.md +2 −1 lines, 1 merged.` |
 | `model_stalled`      | The model has been silent on a request for 20 seconds, once per request; `message` names the quiet time and the model                             |
 | `spend_limit`        | `subagents.maxCost` or `subagents.maxChildren` refused a new subagent, once per session for each limit and value; `message` names the limit       |
+| `monitor_alert`      | The machine monitor tripped a machine rule (`load`, `memory`, `swap`, `gpu`); sent only by the one process holding the sampler, with `title` `Octocode: …` and `message` the reading ([monitoring](monitoring.md#machine-monitor)) |
 
 Each fires once per occurrence, never per turn.
 
@@ -383,7 +423,7 @@ A `PermissionRequest` hook runs only when a call needs an approval, as in the ma
 
 ### Child agents
 
-`SubagentStart` and `SubagentStop` run inside a subagent whose hook mode is `all` (profile `hooks: true`, or the task's `hooks: all`); matchers use the profile name (such as `general`). `SubagentStart` runs once per subagent; its context is offered again only after a compaction removed it. Main-session SessionStart and Stop are not also sent for the child.
+`SubagentStart` and `SubagentStop` run inside a subagent whose hook mode is `all` (profile `hooks: true`, or the task's `hooks: all`); matchers use the profile name (such as `general`). `SubagentStart` runs once per subagent; its context is offered again only after a compaction removed it. Native-profile `SessionStart` and `Stop` handlers also run in such a child; Claude and Codex handlers see the child through `SubagentStart` and `SubagentStop` instead, not the main-session events.
 
 - **Start.** Codex runs for a new or forked child before its first request, not on reopening a saved session; Claude also runs on later child prompts. Start context belongs to the child and cannot veto creation. Claude suppresses identical startup context while an earlier copy is still in context.
 - **Stop.** Runs at successful settlement; a block reason continues the child through its loop with `stop_hook_active` (eight continuations in a row, a tool call resets it; 32 per prompt). Cancellation and provider failure emit nothing. Claude can return `additionalContext` as feedback; Codex has no such field.
@@ -392,7 +432,7 @@ A `PermissionRequest` hook runs only when a call needs an approval, as in the ma
 
 ### Session start and end
 
-`SessionEnd` runs for session replacement or quit (new session: `clear`, resume: `resume`, other: `other`); reload does not emit it, and there are no idle or archive events. It is observational with a fresh cancellation scope.
+`SessionEnd` (matcher and input `reason`) runs for session replacement or quit (new session: `clear`, resume: `resume`, other: `other`); reload does not emit it, and there are no idle or archive events. It is observational with a fresh cancellation scope.
 
 | Profile                | Per-command default | Shared budget                                                                                                                                                      |
 | ---------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -436,7 +476,7 @@ Codex `Interrupt` runs once after an explicit interruption cancels active work a
 
 ### Monitor alerts in the Octocode profile
 
-`MonitorAlert` is Octocode's own event: it runs your hook once for each alert the monitor raised, and only observes (it cannot block or add context). The matcher is the rule id, a regex over the rules in the [attention rules](configuration.md#attention-rules) table (`/monitor` lists them with their counts). The hook follows the monitor's own alerts, which are already paced per rule (cooldowns, one note per band), so it adds no repeats of its own.
+`MonitorAlert` is Octocode's own event: it runs your hook once for each alert the monitor raised, and only observes (it cannot block or add context). The matcher is the rule id, a regex over the rules in the [attention rules](monitoring.md#attention-rules) table (`/monitor` lists them with their counts). The hook follows the monitor's own alerts, which are already paced per rule (cooldowns, one note per band), so it adds no repeats of its own.
 
 The machine rules (`load`, `memory`, `swap`, `gpu`) describe the whole machine. Every session sees the same sample, so the hook runs only in the one process that holds the machine sampler, not in each open session. The other rules belong to the session they were raised in and run there.
 
@@ -483,6 +523,6 @@ The agent's folder is the common `cwd`.
 
 ## Troubleshoot
 
-If a hook does not run, check `/harness hooks` in this order: the harness is on, the file is discovered, the folder is trusted, `disableAllHooks` is unset, the profile supports the event, handler type and fields, the matcher matches, and the command exists. Configuration changes apply on `/reload` or a new session. Do not remove safety checks to make an unsupported configuration run.
+If a hook does not run, check `/harness hooks` in this order: the harness is on, the file is discovered, the folder is trusted, the handler is approved in `/security`, `disableAllHooks` is unset, the profile supports the event, handler type and fields, the matcher matches, and the command exists. Configuration changes apply on `/reload` or a new session. Do not remove safety checks to make an unsupported configuration run.
 
 Before relying on a gate when porting a hook from Claude Code or Codex: read the `/harness hooks` diagnostics, inspect the real input the script consumes (a matched tool name is not a translated schema), set an explicit timeout (native default is 60 s, upstream 600 s), and test allow, deny, error and timeout. Basic command entries migrate directly; managed policy, plugin manifests, skill-frontmatter hooks and inline TOML for native files are not imported. Unsupported reverse translations deny the rewritten call rather than run unsanitized input.

@@ -142,7 +142,7 @@ What a drop does: **In progress** checks the goal and reason and claims the item
 
 Tree view: an epic has **Add item**; an item has an **Epic** select and **Add task**; each task has a state select, **Edit** and move up/down (`Alt+ArrowUp` / `Alt+ArrowDown`). **Session tasks** groups tasks with no item, with **Promote to item** and **Move under item**.
 
-An agent can finish an existing checklist step with `backlog step`, giving its task reference and a result note. The board updates the task tally and shows the saved result beneath the step. Finishing a step leaves its item open; the item still needs its own completion and verification. Agents can update only steps their session or assigned item permits.
+An agent can finish an existing checklist step with `backlog step`, giving its task reference and a result note. The board updates the task tally and shows the saved result beneath the step. Finishing a step leaves its item open; the item still needs its own completion and verification. A dropped step must be reopened on the board before an agent can finish it.
 
 An agent's completion can cite a shell receipt from a `bash` call with `verify: true` (`receipt`: the id the result printed, or `latest`); a receipt from another session is refused. The item's text details then show **Evidence**: **Recorded check** (the command finished with exit 0 and nothing changed the workspace since), **Reported** (no receipt, or a nonzero exit), **Skipped** (the QA review did not run) or **Stale** (a later edit or another process moved the workspace on). A zero exit proves the command succeeded, not that the goal is met. The stored command has credentials redacted.
 

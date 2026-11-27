@@ -121,7 +121,7 @@ This is a process for a driver to control, not a one-shot command to feed with `
 | Task scope | Objective, relevant files or evidence, constraints, expected output and a command that proves completion |
 | Authority | Whether edits, network requests, subagents or destructive actions are allowed; enforce restrictions through tools and permissions, not task wording alone |
 | Context | Let Octocode read the project; send the specific failure or diff instead of duplicating an entire repository or conversation |
-| Tools | Use [tool selection](native-features.md#tool-selection-and-migration) to limit capabilities; `--tools` alone does not restrict a subagent's profile tools |
+| Tools | Use [tool selection](tools.md#tool-selection-and-exposure) to limit capabilities; `--tools` alone does not restrict a subagent's profile tools |
 | Parallel work | Separate sessions; separate worktrees for overlapping edits; never assume independent processes coordinate writes automatically |
 | Recovery | Preserve the session for follow-up; inspect changes and the last outcome before retrying a timed-out or interrupted task |
 | Acceptance | Validate the returned data, review the diff and run the agreed checks; the parent remains responsible for the result |

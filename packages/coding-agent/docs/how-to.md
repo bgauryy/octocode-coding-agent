@@ -1,6 +1,6 @@
 # How to
 
-Short recipes. Each links to the page that owns the details. Lines starting with `/` run inside a session; the others run in a shell. Every command is listed in [commands](commands.md).
+Short recipes. Each links to the page that owns the details. Lines starting with `/` run inside a session; the others run in a shell. Every command is listed in [commands](commands.md); every model tool in [tools](tools.md); delegation in [subagents](subagents.md).
 
 ## Resume a session, or find the one that worked on a backlog item
 
@@ -11,7 +11,7 @@ Short recipes. Each links to the page that owns the details. Lines starting with
 | A specific session                                                          | `octocode --resume <id>`; the command is printed when you quit |
 | Sessions that held or hold item B346                                        | `/resume B346` (`/resume all B346` searches every repository)  |
 
-In a worktree, `--continue` and `--resume` see only that folder's sessions: press Tab in the picker or use `octocode --resume <id>`. Details: [session commands](native-features.md#session-workflow-commands), [CLI sessions](cli.md#sessions).
+In a worktree, `--continue` and `--resume` see only that folder's sessions: press Tab in the picker or use `octocode --resume <id>`. Details: [session commands](commands.md#limits-of-session-commands), [CLI sessions](cli.md#sessions).
 
 ## Recover a saved conversation
 
@@ -70,7 +70,7 @@ Details: [Add an MCP server](mcp.md#add-a-server), [MCP precedence](configuratio
 | Every child with no thinking level named | `export OCTOCODE_SUBAGENT_THINKING=low`; otherwise such a child runs at `medium`. `defaultThinkingLevel` applies only to the main session                              |
 | Escalate a cheap child                   | Continue it with `resume` and a stronger `model`; its conversation is kept                                                                                             |
 
-`/modelsettings` shows what `small` and `medium` resolve to, the default thinking level and how each profile routes; each start result and report names the route a child ran on. Details: [the subagent model](native-features.md#the-subagent-model), [profile front matter](native-features.md#profile-front-matter).
+`/modelsettings` shows what `small` and `medium` resolve to, the default thinking level and how each profile routes; each start result and report names the route a child ran on. Details: [the subagent model](subagents.md#the-subagent-model), [profile front matter](subagents.md#profile-front-matter).
 
 ## Give the agent a durable rule for this repository
 
@@ -86,7 +86,7 @@ Details: [memory](memory.md).
 3. Ask for the task: "open Calculator, compute 6 × 7 and show me the screenshot". The main agent starts the `desktop` specialist and you are asked to approve it, in every permission mode.
 4. Read the report: the outcome, the app, the screenshot path. Cua Driver's telemetry is on by default; `cua-driver telemetry disable` turns it off.
 
-[Details](native-features.md#desktop-control), [permissions](permissions.md#desktop-control).
+[Details](browser-and-desktop.md#desktop-control), [permissions](permissions.md#desktop-control).
 
 ## Run two sessions in parallel on different branches
 
@@ -94,7 +94,7 @@ Details: [memory](memory.md).
 - Add `.octocode/agent/worktrees/` to `.gitignore`. List `.env`-style untracked files to copy in a `.worktreeinclude` file; dependencies are not installed.
 - `/worktree list` shows each worktree's branch and unsaved work. Each worktree has its own backlog and workspace memories; the agent team and project memories span the repository.
 
-Details: [worktrees](native-features.md#worktrees).
+Details: [worktrees](subagents.md#worktrees).
 
 ## Message a CLI session Octocode did not start
 
@@ -118,7 +118,7 @@ Leave out `--bare`: it breaks the login. When a tool's `--help` shows no way to 
 - `/archive` lists the compacted segments; `/archive <n>` prints the file path of segment `n` for you or the agent to read (not the content).
 - `/tree` navigates the session's branches.
 
-Details: [compaction and recovery](native-features.md#compaction-and-recovery).
+Details: [compaction and recovery](how-it-works.md#compaction-limits-and-recovery).
 
 ## Limit what the agent may run, and trust a project
 

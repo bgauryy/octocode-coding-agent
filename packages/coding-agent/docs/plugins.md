@@ -11,7 +11,7 @@ A plugin is a container with one identity that can carry skills, prompt commands
 | Share skills, prompts and themes through npm or git                      | [Package](packages.md)                      |
 | Give the model task instructions only                                    | [Skill](skills.md)                          |
 
-Octocode has no extensions: features register through an internal API, and `--extension` is an unknown flag ([native features](native-features.md#runtime-ownership)).
+Octocode has no extensions: features register through an internal API, and `--extension` is an unknown flag ([native features](native-features.md)).
 
 ## Format support
 
@@ -54,7 +54,7 @@ For a marketplace plugin use `octocode plugin install` ([Marketplaces](#marketpl
 
    Use `"protocol": "codex"` for `.codex-plugin/plugin.json` or a portable root `plugin.json`. Name the protocol explicitly when a directory holds both manifests. A Claude directory selected explicitly may omit its manifest (the directory name is the plugin name); a present invalid manifest never falls back. Relative roots are rejected, malformed entries are diagnosed and skipped.
 
-2. Read the plugin's hook and MCP declarations (`/harness` lists them). Adding or enabling a plugin approves its hooks, MCP servers and agents. Approval covers declarations, not the scripts or programs they run. Project plugins follow folder trust.
+2. Read the plugin's hook and MCP declarations (`/harness` lists them). Adding or enabling a plugin approves its hooks, MCP servers and agents. Approval covers declarations, not the scripts or programs they run. Each hook handler still passes the [security review](permissions.md#security-review) before it runs; approve it with `/security approve`. Project plugins follow folder trust.
 3. Run `/reload`. Skills (`/skill:<plugin>:<skill>`) and prompt commands (`/<plugin>:<command>`) work at once; hooks and MCP servers load as declared.
 
 Set `"enabled": false` and reload to remove a plugin's skills, commands, agents, hooks and MCP servers; its data directory is kept. `--no-skills` also disables plugin skills.

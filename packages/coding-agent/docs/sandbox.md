@@ -21,7 +21,7 @@ Never inside the sandbox:
 | Your own `!` commands, and the RPC `bash` command                           | They are yours, not the agent's                                                                  |
 | Octocode itself and its built-in tools (`file` writes, reads, web requests) | They run in the Octocode process; [permissions](permissions.md) decide them                      |
 | Hooks and stdio MCP servers without `"sandbox": true`                       | They run with your rights, as [hooks](hooks.md) and [MCP servers](mcp-reference.md) describe     |
-| External agents (Claude Code, Codex, Gemini, Cursor, OpenCode)              | Each runs under its own CLI's controls ([external runners](native-features.md#external-runners)) |
+| External agents (Claude Code, Codex, Gemini, Cursor, OpenCode)              | Each runs under its own CLI's controls ([external runners](subagents.md#external-runners)) |
 | The subagent processes themselves                                           | Only the commands they run are sandboxed                                                         |
 
 ## How it works
