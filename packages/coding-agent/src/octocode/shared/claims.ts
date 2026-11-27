@@ -1,0 +1,47 @@
+import fsp from "node:fs/promises";
+import path from "node:path";
+import { processStartTime, sameProcessAsync } from "./process.ts";
+
+/**
+ * Rename claims: a process takes a file by renaming it to `<file><marker><pid>-<start time>`, so two processes never
+ * both act on it. The name carries the claimer's start time as well as its pid: a claimer that crashed and whose pid the
+ * system gave to another process is not taken for a live one (the claim would stay unreleased for as long as that
+ * process runs). The start time is omitted where it is unknown, and a name with only a pid is judged by the pid.
+ */
+
+/** The suffix this process claims with: `<marker><pid>-<start time>`. */
+export function claimSuffix(marker: string): string {
+	const started = processStartTime(process.pid);
+	return `${marker}${process.pid}${started ? `-${started}` : ""}`;
+}
+
+/** The claim in `name`: the unclaimed name and its owner's identity; undefined when `name` is not a claim by `marker`. */
+function parseClaim(name: string, marker: string): { original: string; pid: number; started?: string } | undefined {
+	const at = name.lastIndexOf(marker);
+	if (at <= 0) return undefined;
+	const match = /^(\d+)(?:-(\d+))?$/.exec(name.slice(at + marker.length));
+	if (!match) return undefined;
+	return { original: name.slice(0, at), pid: Number(match[1]), started: match[2] };
+}
+
+/**
+ * Gives back the claims in `dir` (among `names`) whose claimer is gone (pid and start time), renaming each to its
+ * unclaimed name so the next take claims it again. `isOriginal` limits it to the unclaimed names the caller owns. A claim
+ * another process released first is skipped.
+ */
+export async function releaseDeadClaims(
+	dir: string,
+	names: readonly string[],
+	marker: string,
+	isOriginal: (original: string) => boolean = () => true,
+): Promise<void> {
+	for (const name of names) {
+		const claim = parseClaim(name, marker);
+		if (!claim || !isOriginal(claim.original) || (await sameProcessAsync(claim.pid, claim.started))) continue;
+		try {
+			await fsp.rename(path.join(dir, name), path.join(dir, claim.original));
+		} catch {
+			// Another process gave it back first.
+		}
+	}
+}

@@ -1,0 +1,105 @@
+{
+ "content": [
+  {
+   "text": "Found 5 window(s).",
+   "type": "text"
+  }
+ ],
+ "structuredContent": {
+  "current_space_id": 1,
+  "windows": [
+   {
+    "app_name": "Calculator",
+    "bounds": {
+     "height": 33,
+     "width": 1728,
+     "x": 0,
+     "y": 0
+    },
+    "current_space_id": null,
+    "is_on_screen": false,
+    "layer": 0,
+    "on_current_space": null,
+    "pid": 60161,
+    "space_ids": null,
+    "title": "",
+    "window_id": 9665,
+    "z_index": 126
+   },
+   {
+    "app_name": "Calculator",
+    "bounds": {
+     "height": 408,
+     "width": 230,
+     "x": 894,
+     "y": 445
+    },
+    "current_space_id": 1,
+    "is_on_screen": true,
+    "layer": 0,
+    "on_current_space": true,
+    "pid": 60161,
+    "space_ids": [
+     1
+    ],
+    "title": "Calculator",
+    "window_id": 9663,
+    "z_index": 125
+   },
+   {
+    "app_name": "Calculator",
+    "bounds": {
+     "height": 33,
+     "width": 1728,
+     "x": 0,
+     "y": 0
+    },
+    "current_space_id": null,
+    "is_on_screen": false,
+    "layer": 0,
+    "on_current_space": null,
+    "pid": 60161,
+    "space_ids": null,
+    "title": "",
+    "window_id": 9667,
+    "z_index": 95
+   },
+   {
+    "app_name": "Calculator",
+    "bounds": {
+     "height": 33,
+     "width": 1728,
+     "x": 0,
+     "y": 0
+    },
+    "current_space_id": null,
+    "is_on_screen": false,
+    "layer": 0,
+    "on_current_space": null,
+    "pid": 60161,
+    "space_ids": null,
+    "title": "",
+    "window_id": 9666,
+    "z_index": 93
+   },
+   {
+    "app_name": "Calculator",
+    "bounds": {
+     "height": 33,
+     "width": 1728,
+     "x": 0,
+     "y": 0
+    },
+    "current_space_id": null,
+    "is_on_screen": false,
+    "layer": 0,
+    "on_current_space": null,
+    "pid": 60161,
+    "space_ids": null,
+    "title": "",
+    "window_id": 9664,
+    "z_index": 91
+   }
+  ]
+ }
+}

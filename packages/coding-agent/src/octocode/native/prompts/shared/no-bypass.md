@@ -1,0 +1,1 @@
+- Never bypass a hook, a safety check (`--no-verify`), a permission refusal or a security review, also not through another tool.

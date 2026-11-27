@@ -1,0 +1,81 @@
+import fs from "node:fs";
+import path from "node:path";
+import { liveProcess } from "../shared/process.ts";
+
+/**
+ * The agents-communication package lists the non-default databases its live processes use (a session started with
+ * `--database <file>`) as one `<pid>.json` per process in `<Octocode home>/agents-communication/active-databases/`.
+ * The package writes it and owns the format (`docs/DB.md` of the package, "Active database registry"); this only reads it:
+ *
+ *   { "version": 1, "database": "/abs/file.sqlite", "pid": 123, "started": "1791187200" | null, "updatedAt": 1791187200000 }
+ *
+ * `started` is the process start time in `processStartTime`'s format, `updatedAt` the last write in Unix milliseconds.
+ */
+
+/** The `version` of the entry format this reads; an entry with another version is ignored. */
+export const PEER_REGISTRY_VERSION = 1;
+/**
+ * How long after its last write an entry of a process that is gone still counts: a lease lives at most 10 minutes past
+ * the write that took it (a one-shot CLI call exits at once, its lease stays) and the package refreshes an entry at
+ * most one minute behind its writes.
+ */
+export const PEER_REGISTRY_GRACE_MS = 600_000 + 60_000;
+/** An entry is a few hundred bytes; a larger file is not one. */
+const MAX_ENTRY_BYTES = 4096;
+
+interface Entry {
+	version: number;
+	database: string;
+	pid: number;
+	started: string | null;
+	updatedAt: number;
+}
+
+function parse(file: string): Entry | undefined {
+	try {
+		if (fs.statSync(file).size > MAX_ENTRY_BYTES) return undefined;
+		const entry = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<Entry> | null;
+		if (!entry || entry.version !== PEER_REGISTRY_VERSION) return undefined;
+		const { database, pid, started, updatedAt } = entry;
+		if (typeof database !== "string" || !path.isAbsolute(database)) return undefined;
+		if (
+			!Number.isInteger(pid) ||
+			pid! <= 0 ||
+			(started !== null && typeof started !== "string") ||
+			!Number.isFinite(updatedAt)
+		)
+			return undefined;
+		return { version: entry.version, database, pid: pid!, started: started ?? null, updatedAt: updatedAt! };
+	} catch {
+		return undefined;
+	}
+}
+
+export class PeerRegistry {
+	private readonly dir: string;
+	constructor(dir: string) {
+		this.dir = dir;
+	}
+
+	/**
+	 * The databases of live entries, sorted and without repeats: an entry is live while it was written within the lease
+	 * grace, or its process may still be the one that wrote it. A cold identity check shares the asynchronous process-table
+	 * refresh and conservatively keeps the entry until it completes. An unreadable or unknown registry lists nothing.
+	 */
+	databases(now: number): string[] {
+		let names: string[];
+		try {
+			names = fs.readdirSync(this.dir).filter((name) => name.endsWith(".json"));
+		} catch {
+			return [];
+		}
+		const databases = new Set<string>();
+		for (const name of names) {
+			const entry = parse(path.join(this.dir, name));
+			if (!entry) continue;
+			if (now - entry.updatedAt <= PEER_REGISTRY_GRACE_MS || liveProcess(entry.pid, entry.started, now))
+				databases.add(entry.database);
+		}
+		return [...databases].sort();
+	}
+}

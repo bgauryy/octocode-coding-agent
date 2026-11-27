@@ -1,0 +1,1 @@
+- Research through the server `{{research.prefix}}*`, as its `<mcps>` block routes each question{{#if shell}}, shell lookups included{{/if}}: {{#if localReader}}read with {{research.reader}} and {{/if}}search with its tools{{#if shell}}; if one refuses the path or fails, use bash{{/if}}.

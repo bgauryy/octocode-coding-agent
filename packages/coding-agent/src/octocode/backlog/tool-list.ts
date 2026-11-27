@@ -1,0 +1,267 @@
+import { StringEnum } from "@octocodeai/octocode-ai";
+import { type BacklogRef, ITEM_TYPES, type ItemType } from "@octocodeai/octocode-contracts/backlogs";
+import { LIST_STATES, type ListState } from "@octocodeai/octocode-contracts/snapshot";
+import path from "node:path";
+import { Type } from "typebox";
+import { visibleControls } from "@octocodeai/octocode-common/sanitize";
+import { backlog as queries } from "../../../../db/src/api.ts";
+import { textResult } from "../shared/util.ts";
+import type { Backlog } from "./context.ts";
+import { itemLine } from "./format.ts";
+import type { ListQuery } from "./inputs.ts";
+import type { ItemStats } from "./reads.ts";
+import { PRIORITIES } from "./store.ts";
+
+/** A path filter entry as a repository-relative path: an absolute path inside `root` is made relative; separators and `./` are the matcher's. */
+function repoRelative(entry: string, root: string): string {
+	const text = entry.trim();
+	if (!path.isAbsolute(text)) return text;
+	const relative = path.relative(root, text);
+	return relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)
+		? text
+		: relative || ".";
+}
+
+const DEFAULT_LIST_LIMIT = 20;
+export const MAX_LIST_LIMIT = 200;
+/** Rows a list without states, ids or limit shows: the open work (ongoing, todo and proposed), most important first. */
+const DEFAULT_OPEN_LIMIT = 15;
+const DEFAULT_LIST_STATES: ListState[] = ["ongoing", "todo", "backlog"];
+
+/**
+ * The filters `list` reads, each under its own name: none is a field `add` or `edit` writes (those live inside an
+ * `items` entry), so no field of `backlogPlan` has two meanings. `FILTER_FIELDS` names the item field each one reads.
+ * A filter whose name says what it matches has no description: the declaration is sent on every request.
+ */
+export const listFields = {
+	states: Type.Optional(Type.Array(StringEnum(LIST_STATES), { description: "default ongoing/todo/backlog" })),
+	query: Type.Optional(Type.String({ description: "text in any field, or a whole tag" })),
+	ids: Type.Optional(Type.Array(Type.String())),
+	inTitle: Type.Optional(Type.String()),
+	ofType: Type.Optional(StringEnum(ITEM_TYPES)),
+	underEpic: Type.Optional(Type.String()),
+	dependingOn: Type.Optional(Type.Array(Type.String())),
+	touchingPaths: Type.Optional(Type.Array(Type.String())),
+	priorityAtLeast: Type.Optional(StringEnum(PRIORITIES)),
+	anyTag: Type.Optional(Type.Array(Type.String())),
+	derivedFrom: Type.Optional(Type.String()),
+	blocked: Type.Optional(Type.Boolean()),
+	since: Type.Optional(Type.String({ description: "updated (sort created: created) since ISO time or age (2h, 7d)" })),
+	sort: Type.Optional(StringEnum(queries.ITEM_SORTS)),
+	limit: Type.Optional(Type.Integer({ description: `≤${MAX_LIST_LIMIT}, default 15` })),
+	offset: Type.Optional(Type.Integer()),
+};
+
+/** The item field each renamed filter reads (`ListParams` keeps the item's names; the store query is unchanged). */
+const FILTER_FIELDS = {
+	inTitle: "title",
+	ofType: "type",
+	underEpic: "parentId",
+	dependingOn: "dependsOn",
+	touchingPaths: "paths",
+	priorityAtLeast: "priority",
+	anyTag: "tags",
+	derivedFrom: "from",
+} as const;
+
+type Filter = keyof typeof FILTER_FIELDS;
+const FILTER_NAMES = Object.fromEntries(
+	Object.entries(FILTER_FIELDS).map(([filter, field]) => [field, filter]),
+) as Record<string, Filter>;
+
+/** The filter that reads item field `field` (`tags` → `anyTag`, `id` → `ids`), or undefined when `list` has none for it. */
+export const filterFor = (field: string): string | undefined => (field === "id" ? "ids" : FILTER_NAMES[field]);
+
+/** A `list` call as the model writes it. */
+export type ListArguments = Pick<
+	ListParams,
+	"states" | "query" | "ids" | "since" | "sort" | "limit" | "offset" | "assignee" | "blocked"
+> & {
+	inTitle?: string;
+	ofType?: ItemType;
+	underEpic?: string;
+	dependingOn?: string[];
+	touchingPaths?: string[];
+	priorityAtLeast?: string;
+	anyTag?: string[];
+	derivedFrom?: string;
+};
+
+/** A `list` call's arguments under the item's field names, as `runList` reads them. */
+export function listParams(args: ListArguments): ListParams {
+	const out: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(args))
+		if (value !== undefined) out[key in FILTER_FIELDS ? FILTER_FIELDS[key as Filter] : key] = value;
+	return out;
+}
+
+/** A list filter the declaration does not show, still accepted: `assignee` ("me" or a session id). */
+export const undeclaredListFields = {
+	assignee: Type.Optional(Type.String()),
+};
+
+/** A list call under the item's field names (`listParams` maps the tool's filters onto it). */
+interface ListParams {
+	states?: ListState[];
+	query?: string;
+	from?: string;
+	/** One id, or several separated by commas or spaces. */
+	id?: string;
+	ids?: string[];
+	title?: string;
+	parentId?: string | null;
+	type?: ItemType;
+	priority?: string;
+	tags?: string[];
+	paths?: string[];
+	dependsOn?: Array<string | BacklogRef>;
+	blocked?: boolean;
+	assignee?: string;
+	since?: string;
+	sort?: queries.ItemSort;
+	limit?: number;
+	offset?: number;
+}
+
+const AGE = /^(\d+)\s*([mhdw])$/;
+const UNIT_MS: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 };
+
+/** `since` as an ISO time: an age before `now` (`2h`) or a time `Date.parse` reads. */
+function sinceTime(since: string | undefined, now: number): string | undefined {
+	if (since === undefined) return undefined;
+	const age = AGE.exec(since.trim());
+	const at = age ? now - Number(age[1]) * UNIT_MS[age[2]] : Date.parse(since);
+	if (Number.isNaN(at))
+		throw new Error(`since needs an ISO time or an age like 2h or 7d, not ${visibleControls(since)}.`);
+	return new Date(at).toISOString();
+}
+
+/** A list argument with entries, else undefined: an empty list filters nothing, like an omitted one. */
+const entries = <T>(values: readonly T[] | undefined): T[] | undefined => (values?.length ? [...values] : undefined);
+
+/** The ids a call names: the `ids` list and `id` (comma- or space-separated). */
+function givenIds(params: ListParams): string[] | undefined {
+	return entries([...(params.id?.split(/[\s,]+/).filter(Boolean) ?? []), ...(params.ids ?? [])]);
+}
+
+/** The filters of a call as it may repeat them: empty lists dropped and an age made a fixed time, so Next pages the same set. */
+function givenFilters(params: ListParams, now: number): Partial<ListParams> {
+	if (params.parentId === null) throw new Error("list: underEpic takes an item id, e.g. B3.");
+	const filters: Partial<ListParams> = {
+		query: params.query || undefined,
+		from: params.from || undefined,
+		id: givenIds(params)?.join(","),
+		title: params.title?.trim() || undefined,
+		parentId: params.parentId,
+		type: params.type,
+		priority: params.priority,
+		tags: entries(params.tags),
+		paths: entries(params.paths),
+		dependsOn: entries(params.dependsOn),
+		blocked: params.blocked,
+		assignee: params.assignee?.trim() || undefined,
+		since: sinceTime(params.since, now),
+		sort: params.sort,
+	};
+	return Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== undefined));
+}
+
+/** The store query of a `list` or `stat` call, with the filters, states and page it was built from. */
+function listQuery({ actor, session, repoRoot }: Backlog, params: ListParams, now: number) {
+	const filters = givenFilters(params, now);
+	const ids = filters.id?.split(",");
+	const states = params.states?.length ? params.states : ids ? [...LIST_STATES] : DEFAULT_LIST_STATES;
+	// `since` follows the order: with sort created it bounds creation time.
+	const createdSince = filters.sort === "created" ? filters.since : undefined;
+	const updatedSince = filters.sort === "created" ? undefined : filters.since;
+	const defaultLimit = params.states?.length || ids ? DEFAULT_LIST_LIMIT : DEFAULT_OPEN_LIMIT;
+	const limit = Math.min(MAX_LIST_LIMIT, Math.max(1, Math.floor(params.limit ?? defaultLimit)));
+	const offset = Math.max(0, Math.floor(params.offset ?? 0));
+	// "me" is this session; a subagent never holds an item, so for it "me" is the parent session it works for.
+	const assignees =
+		filters.assignee === undefined
+			? undefined
+			: filters.assignee === "me"
+				? [...(actor.owners ?? [session])]
+				: [filters.assignee];
+	const query: ListQuery = {
+		states,
+		limit,
+		offset,
+		...(filters.query ? { query: filters.query } : {}),
+		...(filters.from ? { from: filters.from } : {}),
+		...(ids ? { ids } : {}),
+		...(filters.title ? { title: filters.title } : {}),
+		...(filters.parentId ? { parentId: filters.parentId } : {}),
+		...(filters.type ? { types: [filters.type] } : {}),
+		...(filters.priority ? { maxPriority: PRIORITIES.indexOf(filters.priority as (typeof PRIORITIES)[number]) } : {}),
+		...(filters.tags ? { tags: filters.tags } : {}),
+		...(filters.paths ? { paths: filters.paths.map((entry) => repoRelative(entry, repoRoot)) } : {}),
+		...(filters.dependsOn
+			? { dependsOn: filters.dependsOn.map((ref) => (typeof ref === "string" ? ref : ref.id)) }
+			: {}),
+		...(filters.blocked !== undefined ? { blocked: filters.blocked } : {}),
+		...(assignees ? { assignees } : {}),
+		...(updatedSince ? { updatedSince: Date.parse(updatedSince) } : {}),
+		...(createdSince ? { createdSince: Date.parse(createdSince) } : {}),
+		...(filters.sort ? { sort: filters.sort } : {}),
+	};
+	return { query, filters, states, ids, limit, offset };
+}
+
+/** `stat`: how many items every given filter matches, by state, priority and type, with no rows. */
+export function runStat(
+	backlog: Backlog,
+	params: ListParams,
+	now = Date.now(),
+): { content: Array<{ type: "text"; text: string }>; details: ItemStats } {
+	const { query, states } = listQuery(backlog, params, now);
+	const stats = backlog.store.stat(query);
+	const tally = (counts: Record<string, number>, name: (key: string) => string = (key) => key) =>
+		Object.entries(counts)
+			.sort(([, a], [, b]) => b - a)
+			.map(([key, n]) => `${name(key)} ${n}`)
+			.join(", ") || "none";
+	const text = [
+		`${stats.total} ${states.join("/")} item(s).`,
+		`States: ${tally(stats.states)}`,
+		`Priorities: ${tally(stats.priorities, (key) => PRIORITIES[Number(key)] ?? `p${key}`)}`,
+		`Types: ${tally(stats.types)}`,
+	].join("\n");
+	return textResult(text, stats);
+}
+
+/** `list`: one page of the items every given filter matches, with a Next call that repeats the filters. */
+export function runList(
+	backlog: Backlog,
+	params: ListParams,
+	now = Date.now(),
+): { content: Array<{ type: "text"; text: string }>; details: { shown: number; total: number } } {
+	const { store, actor } = backlog;
+	const { query, filters, states, ids, limit, offset } = listQuery(backlog, params, now);
+	const { items, total, pathMatches } = store.list(query);
+	const marks = store.marks(items, actor.id, actor.owners);
+	const lines = items.map((item) => {
+		const line = itemLine(item, actor.id, actor.owners, marks.get(item.ref));
+		const why = pathMatches?.get(item.ref)?.reason;
+		return why ? `${line} — matched: ${visibleControls(why)}` : line;
+	});
+	if (lines.length === 0) {
+		const others = Object.keys(filters)
+			.filter((key) => !["query", "from", "sort"].includes(key))
+			.map((key) => filterFor(key) ?? key);
+		lines.push(
+			`No ${states.join("/")} items${filters.query ? ` matching "${visibleControls(filters.query)}"` : ""}${filters.from ? ` from ${visibleControls(filters.from)}` : ""}${others.length ? ` (filters: ${others.join(", ")})` : ""}.`,
+		);
+	}
+	if (total > offset + items.length) {
+		lines.push(`${total - offset - items.length} more.`);
+		const { id: _ids, ...rest } = filters;
+		const named = Object.fromEntries(Object.entries(rest).map(([key, value]) => [filterFor(key) ?? key, value]));
+		const next = { op: "list", states, ...(ids ? { ids } : {}), ...named, limit, offset: offset + items.length };
+		lines.push(`Next: backlogPlan ${JSON.stringify(next)}`);
+	}
+	const triage = states.includes("backlog") ? 0 : store.counts().items.backlog;
+	if (triage > 0) lines.push(`${triage} proposed item(s) await triage (list with states: ["backlog"]).`);
+	return textResult(lines.join("\n"), { shown: items.length, total });
+}

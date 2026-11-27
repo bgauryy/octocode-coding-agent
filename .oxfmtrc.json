@@ -1,0 +1,27 @@
+{
+	"$schema": "./node_modules/oxfmt/configuration_schema.json",
+	"useTabs": true,
+	"printWidth": 120,
+	"singleQuote": false,
+	"trailingComma": "all",
+	"arrowParens": "always",
+	"sortPackageJson": false,
+	"ignorePatterns": [
+		"**/dist/",
+		"**/node_modules/",
+		"**/coverage/",
+		"**/*.generated.ts",
+		"packages/coding-agent/schemas/",
+		"packages/ai/src/providers/*.models.ts",
+		"packages/ai/src/providers/data/",
+		"packages/coding-agent/src/core/export-html/vendor/",
+		"packages/coding-agent/src/core/export-html/template.html",
+		"packages/coding-agent/src/core/export-html/template.css",
+		"**/fixtures/",
+		"**/__snapshots__/",
+		"packages/coding-agent/src/octocode/native/{prompts,tools,hooks,agents}/**/*.md",
+		"**/AGENTS.md",
+		".yarn/",
+		"yarn.lock"
+	]
+}

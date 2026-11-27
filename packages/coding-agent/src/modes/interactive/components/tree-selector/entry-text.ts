@@ -1,0 +1,282 @@
+import type { SessionTreeNode } from "../../../../core/session-manager.ts";
+import { theme } from "../../../../theme/theme.ts";
+import { ELLIPSIS } from "@octocodeai/octocode-tui";
+import { styledLine } from "@octocodeai/octocode-common/sanitize";
+import { plainText } from "../styled-line.ts";
+import type { ToolCallInfo } from "./types.ts";
+
+export { plainText };
+
+export function getSearchableText(node: SessionTreeNode): string {
+	const entry = node.entry;
+	const parts: string[] = [];
+
+	if (node.label) {
+		parts.push(node.label);
+	}
+
+	switch (entry.type) {
+		case "message": {
+			const msg = entry.message;
+			parts.push(msg.role);
+			if ("content" in msg && msg.content) {
+				parts.push(extractContent(msg.content));
+			}
+			if (msg.role === "bashExecution") {
+				const bashMsg = msg as { command?: string };
+				if (bashMsg.command) parts.push(bashMsg.command);
+			}
+			break;
+		}
+		case "custom_message": {
+			parts.push(entry.customType);
+			if (typeof entry.content === "string") {
+				parts.push(entry.content);
+			} else {
+				parts.push(extractContent(entry.content));
+			}
+			break;
+		}
+		case "compaction":
+			parts.push("compaction");
+			break;
+		case "branch_summary":
+			parts.push("branch summary", entry.summary);
+			break;
+		case "session_info":
+			parts.push("title");
+			if (entry.name) parts.push(entry.name);
+			break;
+		case "model_change":
+			parts.push("model", entry.modelId);
+			break;
+		case "thinking_level_change":
+			parts.push("thinking", entry.thinkingLevel);
+			break;
+		case "custom":
+			parts.push("custom", entry.customType);
+			break;
+		case "context_edit":
+			parts.push("context edit", entry.replacement === null ? "omit" : "replace", entry.targetId);
+			break;
+		case "label":
+			parts.push("label", entry.label ?? "");
+			break;
+		// Usage entries are filtered out of the tree (filter.ts).
+		case "usage":
+			break;
+	}
+
+	return parts.join(" ");
+}
+
+export function getEntryDisplayText(
+	node: SessionTreeNode,
+	isSelected: boolean,
+	toolCallMap: Map<string, ToolCallInfo>,
+): string {
+	const entry = node.entry;
+	let result: string;
+
+	const normalize = plainText;
+
+	switch (entry.type) {
+		case "message": {
+			const msg = entry.message;
+			const role = msg.role;
+			if (role === "user") {
+				const msgWithContent = msg as { content?: unknown };
+				const content = normalize(extractContent(msgWithContent.content));
+				result = theme.fg("accent", "user: ") + content;
+			} else if (role === "assistant") {
+				const msgWithContent = msg as { content?: unknown; stopReason?: string; errorMessage?: string };
+				const textContent = normalize(extractContent(msgWithContent.content));
+				if (textContent) {
+					result = theme.fg("success", "assistant: ") + textContent;
+				} else if (msgWithContent.stopReason === "aborted") {
+					result = theme.fg("success", "assistant: ") + theme.fg("muted", "(aborted)");
+				} else if (msgWithContent.errorMessage) {
+					const errMsg = normalize(msgWithContent.errorMessage).slice(0, 80);
+					result = theme.fg("success", "assistant: ") + theme.fg("error", errMsg);
+				} else {
+					result = theme.fg("success", "assistant: ") + theme.fg("muted", "(no content)");
+				}
+			} else if (role === "toolResult") {
+				const toolMsg = msg as { toolCallId?: string; toolName?: string };
+				const toolCall = toolMsg.toolCallId ? toolCallMap.get(toolMsg.toolCallId) : undefined;
+				if (toolCall) {
+					result = theme.fg("muted", formatToolCall(toolCall.name, toolCall.arguments));
+				} else {
+					result = theme.fg("muted", `[${toolMsg.toolName ?? "tool"}]`);
+				}
+			} else if (role === "bashExecution") {
+				const bashMsg = msg as { command?: string };
+				result = theme.fg("dim", `[bash]: ${normalize(bashMsg.command ?? "")}`);
+			} else {
+				result = theme.fg("dim", `[${role}]`);
+			}
+			break;
+		}
+		case "custom_message": {
+			const content =
+				typeof entry.content === "string"
+					? entry.content
+					: entry.content
+							.filter((c): c is { type: "text"; text: string } => c.type === "text")
+							.map((c) => c.text)
+							.join("");
+			result = theme.fg("customMessageLabel", `[${entry.customType}]: `) + normalize(content);
+			break;
+		}
+		case "compaction": {
+			const tokens = Math.round(entry.tokensBefore / 1000);
+			result = theme.fg("borderAccent", `[compaction: ${tokens}k tokens]`);
+			break;
+		}
+		case "branch_summary":
+			result = theme.fg("warning", `[branch summary]: `) + normalize(entry.summary);
+			break;
+		case "model_change":
+			result = theme.fg("dim", `[model: ${entry.modelId}]`);
+			break;
+		case "thinking_level_change":
+			result = theme.fg("dim", `[thinking: ${entry.thinkingLevel}]`);
+			break;
+		case "custom":
+			result = theme.fg("dim", `[custom: ${entry.customType}]`);
+			break;
+		case "context_edit":
+			result = theme.fg("dim", `[context ${entry.replacement === null ? "omit" : "replace"}: ${entry.targetId}]`);
+			break;
+		case "label":
+			result = theme.fg("dim", `[label: ${entry.label ?? "(cleared)"}]`);
+			break;
+		case "session_info":
+			result = entry.name
+				? [theme.fg("dim", "[title: "), theme.fg("dim", entry.name), theme.fg("dim", "]")].join("")
+				: [theme.fg("dim", "[title: "), theme.italic(theme.fg("dim", "empty")), theme.fg("dim", "]")].join("");
+			break;
+		default:
+			result = "";
+	}
+
+	// Names, ids and types come from the model, tools and features too: keep the theme's colours, drop every other control.
+	const line = styledLine(result);
+	return isSelected ? theme.bold(line) : line;
+}
+
+export function formatLabelTimestamp(timestamp: string): string {
+	const date = new Date(timestamp);
+	const now = new Date();
+	const hours = date.getHours().toString().padStart(2, "0");
+	const minutes = date.getMinutes().toString().padStart(2, "0");
+	const time = `${hours}:${minutes}`;
+
+	if (
+		date.getFullYear() === now.getFullYear() &&
+		date.getMonth() === now.getMonth() &&
+		date.getDate() === now.getDate()
+	) {
+		return time;
+	}
+
+	const month = date.getMonth() + 1;
+	const day = date.getDate();
+	if (date.getFullYear() === now.getFullYear()) {
+		return `${month}/${day} ${time}`;
+	}
+
+	const year = date.getFullYear().toString().slice(-2);
+	return `${year}/${month}/${day} ${time}`;
+}
+
+function extractContent(content: unknown): string {
+	return extractFullContent(content).slice(0, 200);
+}
+
+function extractFullContent(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+
+	let result = "";
+	for (const block of content) {
+		if (typeof block === "object" && block !== null && "type" in block && block.type === "text") {
+			result += (block as { text: string }).text;
+		}
+	}
+	return result;
+}
+
+export function getEntryCopyText(node: SessionTreeNode): string | undefined {
+	const entry = node.entry;
+	let text: string | undefined;
+
+	switch (entry.type) {
+		case "message":
+			if (entry.message.role === "bashExecution") {
+				text = entry.message.command;
+			} else if ("content" in entry.message) {
+				text = extractFullContent(entry.message.content);
+				if (!text && entry.message.role === "assistant") {
+					text = entry.message.errorMessage;
+				}
+			}
+			break;
+		case "custom_message":
+			text = extractFullContent(entry.content);
+			break;
+		case "compaction":
+			text = entry.summary;
+			break;
+		case "branch_summary":
+			text = entry.summary;
+			break;
+		// These entries carry no text worth copying.
+		case "context_edit":
+		case "custom":
+		case "label":
+		case "model_change":
+		case "session_info":
+		case "thinking_level_change":
+		case "usage":
+			break;
+	}
+
+	return text?.trim() ? text : undefined;
+}
+
+export function hasTextContent(content: unknown): boolean {
+	if (typeof content === "string") return content.trim().length > 0;
+	if (Array.isArray(content)) {
+		for (const c of content) {
+			if (typeof c === "object" && c !== null && "type" in c && c.type === "text") {
+				const text = (c as { text?: string }).text;
+				if (text && text.trim().length > 0) return true;
+			}
+		}
+	}
+	return false;
+}
+
+function formatToolCall(name: string, args: Record<string, unknown>): string {
+	const text = (...values: unknown[]): string => {
+		for (const value of values) if (typeof value === "string" && value) return value;
+		return "";
+	};
+
+	switch (name) {
+		case "bash": {
+			const rawCmd = text(args.command);
+			const cmd = rawCmd
+				.replace(/[\n\t]/g, " ")
+				.trim()
+				.slice(0, 50);
+			return `[bash: ${cmd}${rawCmd.length > 50 ? ELLIPSIS : ""}]`;
+		}
+		default: {
+			// Custom tool - show name and truncated JSON args
+			const argsStr = JSON.stringify(args).slice(0, 40);
+			return `[${name}: ${argsStr}${JSON.stringify(args).length > 40 ? ELLIPSIS : ""}]`;
+		}
+	}
+}

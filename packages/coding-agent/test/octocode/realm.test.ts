@@ -1,0 +1,496 @@
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import type { Member } from "@octocodeai/octocode-contracts/team";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CommandContext } from "../../src/core/features/index.ts";
+import { BUILTIN_SLASH_COMMANDS } from "../../src/core/slash-commands.ts";
+import { realmCommand, type RealmCommandDependencies } from "../../src/octocode/realm/command.ts";
+import { buildPlaces, findPlace, type PlaceFolder, type PlaceSession } from "../../src/octocode/realm/model.ts";
+import { placeSession } from "../../src/octocode/realm/sessions.ts";
+import type { SessionExtra } from "../../src/octocode/sessions/store.ts";
+import { worktreesDir } from "../../src/octocode/worktree-paths/own-worktree.ts";
+import { GIT_TEST_ENV, makeRepo, sh, type TestRepo } from "./worktree-fixture.ts";
+
+let repo: TestRepo;
+let home: string;
+let notices: Array<{ text: string; level: string }>;
+let stderr: string;
+const NOW = Date.UTC(2026, 10, 16, 12, 0, 0);
+const output = () => notices.map((notice) => notice.text).join("\n");
+
+function member(id: string, extra: Partial<Member> = {}): Member {
+	return {
+		id,
+		role: "implementer",
+		pid: 4000,
+		status: "working",
+		model: "opus-5-5",
+		joinedAt: NOW - 12 * 60_000,
+		updatedAt: NOW - 60_000,
+		toolCalls: 3,
+		input: 30_000,
+		cacheRead: 0,
+		output: 4_000,
+		cost: 0.4,
+		unpriced: false,
+		...extra,
+	};
+}
+
+const session = (id: string, cwd: string, extra: Partial<PlaceSession> = {}): PlaceSession => ({
+	id,
+	cwd,
+	modified: NOW - 5 * 60_000,
+	live: false,
+	current: false,
+	file: `/sessions/${id}.jsonl`,
+	...extra,
+});
+
+interface ContextOptions {
+	hasUI?: boolean;
+	idle?: boolean;
+	select?: (title: string, options: string[]) => Promise<string | undefined>;
+	pickSession?: NonNullable<CommandContext["ui"]["pickSession"]>;
+}
+
+function contextAt(cwd: string, options: ContextOptions = {}) {
+	const newSession = vi.fn(async () => ({ cancelled: false }));
+	const switchSession = vi.fn(async () => ({ cancelled: false }));
+	const select = vi.fn(options.select ?? (async () => undefined));
+	const confirm = vi.fn(async () => true);
+	const ctx = {
+		cwd,
+		hasUI: options.hasUI ?? false,
+		ui: {
+			notify: (text: string, level = "info") => void notices.push({ text, level }),
+			select,
+			confirm,
+			...(options.pickSession ? { pickSession: options.pickSession } : {}),
+		},
+		isIdle: () => options.idle ?? true,
+		newSession,
+		switchSession,
+	} as unknown as CommandContext;
+	return { ctx, newSession, switchSession, select, confirm };
+}
+
+/** `/realm places`, typed as `/realm` would take it, with a realm that has no children. */
+function placesOf(deps: Omit<RealmCommandDependencies, "realm">) {
+	const command = realmCommand({ realm: { id: () => undefined, members: () => [], serving: () => [] }, ...deps });
+	return { ...command, handler: (args: string, ctx: CommandContext) => command.handler(`places ${args}`.trim(), ctx) };
+}
+
+const worktreeFolder = (name: string) => path.join(repo.root, ".octocode", "agent", "worktrees", name);
+const addWorktree = (name: string) =>
+	sh(repo.root, "worktree", "add", "-q", "-b", `worktree-${name}`, worktreeFolder(name));
+
+beforeEach(() => {
+	for (const [name, value] of Object.entries(GIT_TEST_ENV)) vi.stubEnv(name, value);
+	home = mkdtempSync(path.join(tmpdir(), "octocode-place-home-"));
+	vi.stubEnv("OCTOCODE_HOME", home);
+	notices = [];
+	stderr = "";
+	vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+		stderr += String(chunk);
+		return true;
+	});
+	repo = makeRepo();
+});
+afterEach(() => {
+	vi.restoreAllMocks();
+	vi.unstubAllEnvs();
+	repo.cleanup();
+	rmSync(home, { recursive: true, force: true });
+});
+
+describe("/realm", () => {
+	const source = (members: Member[], id: string | undefined, serving: Array<[string, string]> = []) => ({
+		realm: { id: () => id, members: () => members, serving: () => serving },
+		members: () => members,
+		sessions: async () => [],
+		now: () => NOW,
+	});
+
+	it("shows this session, its place, live children with item and place, and refs to merge", async () => {
+		addWorktree("hotfix");
+		sh(repo.root, "update-ref", "refs/octocode/gone-ref", "HEAD");
+		const members = [
+			member("calm-prawn", { role: "main", status: "idle", cwd: repo.root, checkout: repo.root, branch: "main" }),
+			member("busy-eel", { parentId: "calm-prawn", cwd: repo.root, checkout: repo.root }),
+			member("iso-owl", {
+				role: "reviewer",
+				parentId: "calm-prawn",
+				checkout: repo.root,
+				cwd: path.join(worktreesDir(repo.root), "iso-owl"),
+			}),
+			member("done-elk", { parentId: "calm-prawn", status: "settled" }),
+			member("other-main", { role: "main", cwd: repo.root }),
+			member("their-child", { parentId: "other-main" }),
+		];
+		const { ctx } = contextAt(repo.root);
+		await realmCommand(source(members, "calm-prawn", [["busy-eel", "B12"]])).handler("", ctx);
+		const text = output();
+		expect(text).toContain("Session: calm-prawn · main · idle");
+		expect(text).toContain(`Place: main checkout ${repo.root}`);
+		expect(text).toContain("Children (2):");
+		expect(text).toMatch(/busy-eel · implementer · working · item B12 · in-tree · under calm-prawn/);
+		expect(text).toMatch(/iso-owl · reviewer · working · isolated worktree iso-owl/);
+		expect(text).not.toContain("done-elk");
+		expect(text).not.toContain("their-child");
+		expect(text).toContain("Isolated results to merge (1 ref): gone-ref");
+	});
+
+	it("names the orchestrator of a session in a linked worktree", async () => {
+		addWorktree("hotfix");
+		const { ctx } = contextAt(worktreeFolder("hotfix"));
+		await realmCommand(source([], undefined)).handler("", ctx);
+		const text = output();
+		expect(text).toContain(`Place: linked worktree ${worktreeFolder("hotfix")}`);
+		expect(text).toContain(`Orchestrator: the main-checkout session of ${repo.root}`);
+		expect(text).toContain("Children: none running.");
+		expect(text).toContain("not in the team yet");
+	});
+
+	it("takes only places as an argument", async () => {
+		const { ctx } = contextAt(repo.root);
+		await realmCommand(source([], undefined)).handler("hotfix", ctx);
+		expect(notices[0]?.level).toBe("warning");
+		expect(output()).toContain("Usage: /realm [places");
+	});
+});
+
+describe("/realm places listing", () => {
+	it("lists the checkout, a worktree, a gone worktree and a live session in no place", async () => {
+		addWorktree("hotfix");
+		addWorktree("old");
+		rmSync(worktreeFolder("old"), { recursive: true });
+		repo.write("a.txt", "changed\n");
+		const members = [
+			member("calm-prawn", { role: "main", checkout: repo.root, cwd: repo.root }),
+			member("busy-eel", { parentId: "calm-prawn", checkout: repo.root, cwd: worktreeFolder("hotfix") }),
+			member("lost-owl", { role: "main", status: "idle" }),
+		];
+		const sessions = [
+			session("s-main-1", repo.root, { live: true, current: true, name: "fixing things" }),
+			session("s-hot-1", worktreeFolder("hotfix"), { live: true }),
+			session("s-hot-2", worktreeFolder("hotfix")),
+			session("s-far-1", "/somewhere/else", { live: true }),
+		];
+		const { ctx } = contextAt(repo.root);
+		await placesOf({ members: () => members, sessions: async () => sessions, now: () => NOW }).handler("", ctx);
+
+		const text = output();
+		expect(text).toContain("main · this repository's main checkout · branch main · 1 changed");
+		expect(text).toContain("1 changed · 1 agent (1 working) · 1 live session");
+		expect(text).toMatch(
+			/hotfix · worktree · branch worktree-hotfix · clean · 1 agent \(1 working\) · 1 live session ·/,
+		);
+		expect(text).toContain("✗ broken  old · worktree (gone)");
+		expect(text).toContain("git worktree prune");
+		expect(text).toContain("current");
+		// Section (c): the agent with no folder and the live session whose folder is in no place.
+		expect(text).toContain("Other live agents and sessions in this repository");
+		expect(text).toContain("lost-owl");
+		expect(text).toContain("/somewhere/else");
+		// The legend names only the badge states shown.
+		expect(text).toContain("✓ ready  ✗ broken");
+		expect(text).not.toContain("∅ off");
+	});
+
+	it("prints text without a UI and opens no picker", async () => {
+		const { ctx, select } = contextAt(repo.root, { hasUI: false });
+		await placesOf({ members: () => [], sessions: async () => [], now: () => NOW }).handler("", ctx);
+		expect(select).not.toHaveBeenCalled();
+		expect(stderr).toContain("Places of repo:");
+		expect(stderr).toContain("main · this repository's main checkout");
+	});
+
+	it("still lists places when the session list fails, and says why", async () => {
+		const { ctx } = contextAt(repo.root);
+		const sessions = async (): Promise<PlaceSession[]> => {
+			throw new Error("database is locked");
+		};
+		await placesOf({ members: () => [], sessions, now: () => NOW }).handler("", ctx);
+		expect(output()).toContain("main · this repository's main checkout");
+		expect(output()).toContain("Sessions are not shown: database is locked");
+	});
+
+	it("shows one place with its agents (model, status, time, tokens) and sessions", async () => {
+		addWorktree("hotfix");
+		const members = [member("busy-eel", { checkout: repo.root, cwd: worktreeFolder("hotfix") })];
+		const sessions = [session("s-hot-2", worktreeFolder("hotfix"), { name: "old fix" })];
+		const { ctx } = contextAt(repo.root);
+		await placesOf({ members: () => members, sessions: async () => sessions, now: () => NOW }).handler("hotfix", ctx);
+		const text = output();
+		expect(text).toContain("Place hotfix — ✓ ready");
+		expect(text).toContain("busy-eel · implementer · working · opus-5-5 · 12m here · 34k tokens · ≈$0.40 · pid 4000");
+		expect(text).toContain("old fix · 5m ago");
+		expect(text).toContain("last activity: 1m ago");
+		expect(text).toContain("/realm hotfix switch moves this session here");
+	});
+
+	it("names the places when the name is unknown", async () => {
+		const { ctx } = contextAt(repo.root);
+		await placesOf({ members: () => [], sessions: async () => [], now: () => NOW }).handler("nope", ctx);
+		expect(notices[0]).toMatchObject({ level: "warning" });
+		expect(output()).toContain("No place named nope. Places: main");
+	});
+
+	it("is a built-in one-word command", () => {
+		const place = BUILTIN_SLASH_COMMANDS.find((command) => command.name === "realm");
+		expect(place?.requiresNative).toBe(true);
+		expect(place?.description.length).toBeLessThanOrEqual(50);
+	});
+});
+
+describe("member placement", () => {
+	const folder = (name: string, extra: Partial<PlaceFolder> = {}): PlaceFolder => ({
+		path: `/repo/${name}`,
+		kind: "worktree",
+		gone: false,
+		...extra,
+	});
+	const main = folder("", { path: "/repo", kind: "checkout" });
+
+	it("puts an agent where its folder is, the innermost worktree first, and an isolated child in its private one", () => {
+		const nested = folder(".octocode/agent/worktrees/a");
+		const isolated = folder("agent-x", { path: "/home/octocode/worktrees/k/agent-x", kind: "isolated" });
+		const view = buildPlaces({
+			main: "/repo",
+			folders: [main, nested, isolated],
+			members: [
+				member("in-main", { checkout: "/repo", cwd: "/repo/src" }),
+				member("in-a", { checkout: "/repo", cwd: "/repo/.octocode/agent/worktrees/a/src" }),
+				// An isolated child's checkout is its coordinator's; only its cwd names the private worktree.
+				member("child", { parentId: "in-main", checkout: "/repo", cwd: "/home/octocode/worktrees/k/agent-x" }),
+				// An older row with a checkout and no cwd.
+				member("old-row", { checkout: "/repo/.octocode/agent/worktrees/a" }),
+				member("nowhere"),
+			],
+			sessions: [],
+			here: "/repo",
+		});
+		const ids = (name: string) => findPlace(view, name)?.agents.map((agent) => agent.id);
+		expect(ids("main")).toEqual(["in-main"]);
+		expect(ids("a")).toEqual(["in-a", "old-row"]);
+		expect(ids("agent-x")).toEqual(["child"]);
+		expect(view.otherAgents.map((agent) => agent.id)).toEqual(["nowhere"]);
+	});
+
+	it("gives an agent working in a folder git no longer lists a place of its own, marked gone", () => {
+		const view = buildPlaces({
+			main: "/repo",
+			folders: [main],
+			members: [member("orphan", { checkout: "/vanished/tree", cwd: "/vanished/tree" })],
+			sessions: [],
+			here: "/repo",
+		});
+		const place = findPlace(view, "tree");
+		expect(place?.folder.gone).toBe(true);
+		expect(place?.agents.map((agent) => agent.id)).toEqual(["orphan"]);
+	});
+
+	it("keeps names unique and resolves a unique prefix", () => {
+		const view = buildPlaces({
+			main: "/repo",
+			folders: [
+				main,
+				folder(".octocode/agent/worktrees/main"),
+				folder("x/lint", { kind: "linked" }),
+				folder("y/lint", { kind: "linked" }),
+			],
+			members: [],
+			sessions: [],
+			here: "/repo",
+		});
+		expect(view.places.map((place) => place.name)).toEqual(["main", "main-2", "lint", "lint-2"]);
+		expect(findPlace(view, "main-2")?.folder.path).toBe("/repo/.octocode/agent/worktrees/main");
+		expect(findPlace(view, "lint")?.name).toBe("lint");
+		expect(findPlace(view, "li")).toBeUndefined();
+	});
+
+	it("lists an isolated agent worktree as its own kind", async () => {
+		const dir = worktreesDir(repo.root);
+		mkdirSync(dir, { recursive: true });
+		sh(repo.root, "worktree", "add", "-q", "--detach", path.join(dir, "agent-x"), "HEAD");
+		const members = [member("agent-x", { parentId: "boss", checkout: repo.root, cwd: path.join(dir, "agent-x") })];
+		const { ctx } = contextAt(repo.root);
+		await placesOf({ members: () => members, sessions: async () => [], now: () => NOW }).handler("", ctx);
+		expect(output()).toMatch(/agent-x · isolated agent worktree · detached · clean · 1 agent \(1 working\)/);
+	});
+});
+
+describe("/realm places switch and resume", () => {
+	const deps = (sessions: PlaceSession[] = []) => ({
+		members: () => [],
+		sessions: async () => sessions,
+		now: () => NOW,
+	});
+
+	it("switch hands the worktree to switchToWorktree", async () => {
+		addWorktree("hotfix");
+		const { ctx, newSession } = contextAt(repo.root);
+		await placesOf(deps()).handler("hotfix switch", ctx);
+		expect(newSession).toHaveBeenCalledTimes(1);
+		expect((newSession.mock.calls[0] as unknown[])[0]).toMatchObject({ cwd: worktreeFolder("hotfix") });
+	});
+
+	it("switch main from a worktree starts a session in the main checkout", async () => {
+		addWorktree("hotfix");
+		const { ctx, newSession } = contextAt(worktreeFolder("hotfix"));
+		await placesOf(deps()).handler("main switch", ctx);
+		expect((newSession.mock.calls[0] as unknown[])[0]).toMatchObject({ cwd: repo.root });
+	});
+
+	it("refuses while a turn runs and starts nothing", async () => {
+		addWorktree("hotfix");
+		const { ctx, newSession } = contextAt(repo.root, { idle: false });
+		await placesOf(deps()).handler("hotfix switch", ctx);
+		expect(newSession).not.toHaveBeenCalled();
+		expect(notices.at(-1)).toMatchObject({ level: "warning" });
+		expect(output()).toContain("A turn is running");
+	});
+
+	it("explains why a gone, isolated or linked place cannot be entered", async () => {
+		addWorktree("old");
+		rmSync(worktreeFolder("old"), { recursive: true });
+		const other = path.join(path.dirname(repo.root), "elsewhere");
+		sh(repo.root, "worktree", "add", "-q", "-b", "side", other);
+		const { ctx, newSession } = contextAt(repo.root);
+		const command = placesOf(deps());
+		await command.handler("old switch", ctx);
+		await command.handler("elsewhere switch", ctx);
+		await command.handler("main switch", ctx);
+		expect(newSession).not.toHaveBeenCalled();
+		expect(output()).toContain("Cannot switch to old. Its folder is gone");
+		expect(output()).toContain("Cannot switch to elsewhere. It was not made by /worktree new");
+		expect(output()).toContain("Cannot switch to main. This session is already here.");
+		rmSync(other, { recursive: true, force: true });
+	});
+
+	it("the page offers switch for an enterable place and runs it", async () => {
+		addWorktree("hotfix");
+		const choices: string[][] = [];
+		const select = async (_title: string, options: string[]) => {
+			choices.push(options);
+			return (
+				options.find((option) => option.startsWith("Switch")) ?? options.find((option) => option.includes("hotfix"))
+			);
+		};
+		const { ctx, newSession } = contextAt(repo.root, { hasUI: true, select });
+		await placesOf(deps()).handler("", ctx);
+		expect(choices[0]).toHaveLength(2);
+		expect(choices[1]).toEqual(["Switch this session to hotfix", "Back"]);
+		expect(newSession).toHaveBeenCalledTimes(1);
+		expect(stderr).toBe("");
+	});
+
+	it("resume opens the session picker scoped to the place's sessions and switches to the pick", async () => {
+		addWorktree("hotfix");
+		const sessions = [session("s-hot-1", worktreeFolder("hotfix")), session("s-main-1", repo.root)];
+		const pickSession = vi.fn(async (options: { onlySessions?: ReadonlySet<string> }) => ({
+			id: "s-hot-1",
+			path: "/sessions/s-hot-1.jsonl",
+			onlyKeys: [...(options.onlySessions ?? [])],
+		}));
+		const { ctx, switchSession } = contextAt(repo.root, {
+			hasUI: true,
+			pickSession: pickSession as unknown as ContextOptions["pickSession"],
+		});
+		await placesOf(deps(sessions)).handler("hotfix resume", ctx);
+		expect([...((pickSession.mock.calls[0] as unknown[])[0] as { onlySessions: Set<string> }).onlySessions]).toEqual([
+			"s-hot-1",
+		]);
+		expect(switchSession).toHaveBeenCalledWith("/sessions/s-hot-1.jsonl");
+	});
+
+	it("resume asks before taking a session another process has open", async () => {
+		addWorktree("hotfix");
+		const sessions = [session("s-hot-1", worktreeFolder("hotfix"), { live: true })];
+		const pickSession = async () => ({ id: "s-hot-1", path: "/sessions/s-hot-1.jsonl" });
+		const { ctx, switchSession, confirm } = contextAt(repo.root, {
+			hasUI: true,
+			pickSession: pickSession as unknown as ContextOptions["pickSession"],
+		});
+		confirm.mockResolvedValueOnce(false);
+		await placesOf(deps(sessions)).handler("hotfix resume", ctx);
+		expect(confirm).toHaveBeenCalledTimes(1);
+		expect(switchSession).not.toHaveBeenCalled();
+		expect(output()).toContain("Cancelled: nothing was resumed.");
+	});
+
+	it("resolves a picked id inside its place even if the picker returns another place's file", async () => {
+		addWorktree("hotfix");
+		const hotfix = session("s-hot", worktreeFolder("hotfix"));
+		const main = session("s-main", repo.root);
+		const pickSession = vi
+			.fn()
+			.mockResolvedValueOnce({ id: main.id, path: main.file })
+			.mockResolvedValueOnce({ id: hotfix.id, path: main.file });
+		const { ctx, switchSession } = contextAt(repo.root, { hasUI: true, pickSession });
+		const command = placesOf(deps([hotfix, main]));
+		await command.handler("hotfix resume", ctx);
+		expect(switchSession).not.toHaveBeenCalled();
+		expect(notices.at(-1)?.level).toBe("warning");
+		await command.handler("hotfix resume", ctx);
+		expect(switchSession).toHaveBeenCalledExactlyOnceWith(hotfix.file);
+	});
+
+	it("resume without a UI lists the place's session ids as text", async () => {
+		addWorktree("hotfix");
+		const sessions = [session("s-hot-1", worktreeFolder("hotfix"), { live: true, name: "fix" })];
+		const { ctx, switchSession } = contextAt(repo.root);
+		await placesOf(deps(sessions)).handler("hotfix resume", ctx);
+		expect(switchSession).not.toHaveBeenCalled();
+		// Before: "Sessions started in hotfix (open one with /resume all <id>):" then "  live fix · s-hot-1".
+		expect(stderr).toContain("Sessions started in hotfix:\n  live  fix · s-hot-1\n→ open one with /resume all <id>");
+	});
+
+	it("rejects an unknown action", async () => {
+		const { ctx } = contextAt(repo.root);
+		await placesOf(deps()).handler("main destroy", ctx);
+		expect(output()).toBe("Usage: /realm places [<name> [switch|resume]]");
+	});
+});
+
+describe("each live session's activity light in /realm", () => {
+	const deps = (sessions: PlaceSession[]) => ({ members: () => [], sessions: async () => sessions, now: () => NOW });
+	const extra = (fields: Partial<SessionExtra>): SessionExtra => ({
+		id: "s",
+		workspace_id: null,
+		branch: null,
+		head: null,
+		cost: 0,
+		tokens: 0,
+		files_changed: 0,
+		pid: null,
+		pid_started: null,
+		unpriced: 0,
+		dir: null,
+		activity: null,
+		...fields,
+	});
+	const info = { id: "s-hot-1", name: "fix", cwd: "", modified: new Date(NOW - 5 * 60_000), path: "/s/s-hot-1.jsonl" };
+
+	it("reads the light another live process wrote, never this session's own or a gone process's", () => {
+		const live = extra({ pid: process.pid, activity: "waiting" });
+		expect(placeSession(info, live, "cur", "/w")).toMatchObject({ live: true, activity: "waiting", cwd: "/w" });
+		expect(placeSession({ ...info, id: "cur" }, live, "cur", "/w")).not.toHaveProperty("activity");
+		const gone = placeSession(info, extra({ pid: 2147483646, activity: "waiting" }), "cur", "/w");
+		expect(gone).toMatchObject({ live: false });
+		expect(gone).not.toHaveProperty("activity");
+	});
+
+	it("shows it beside the live mark in the place page and in the resume list", async () => {
+		addWorktree("hotfix");
+		const sessions = [session("s-hot-1", worktreeFolder("hotfix"), { live: true, name: "fix", activity: "waiting" })];
+		const page = contextAt(repo.root);
+		await placesOf(deps(sessions)).handler("hotfix", page.ctx);
+		expect(output()).toContain("live (needs you) fix · 5m ago");
+		const { ctx } = contextAt(repo.root);
+		await placesOf(deps(sessions)).handler("hotfix resume", ctx);
+		expect(stderr).toContain("  live (needs you)  fix · s-hot-1");
+	});
+});

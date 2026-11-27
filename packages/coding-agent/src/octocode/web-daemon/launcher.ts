@@ -1,0 +1,306 @@
+import { createAbortError, sleepUnlessAborted } from "@octocodeai/octocode-ai/utils/abort";
+import { spawn } from "node:child_process";
+import http from "node:http";
+import semver from "semver";
+import { Value } from "typebox/value";
+import {
+	DAEMON_PROTOCOL_VERSION,
+	DaemonStatusSchema,
+	type DaemonRecord,
+	type DaemonStatus,
+} from "@octocodeai/octocode-contracts/daemon";
+import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
+import { getCliInvocation } from "../../config.ts";
+import { acquireRegistryLock } from "../backlog/shared-web-lock.ts";
+import { privateDir } from "../shared/home.ts";
+import { daemonPage } from "./build.ts";
+import { daemonSpawnOptions } from "./spawn-env.ts";
+import { webDaemonPaths } from "./paths.ts";
+import { readDaemonRecord, recordOrigin, recordProcessAlive, recordToken, removeRecord } from "./records.ts";
+
+/** The hidden CLI subcommand that runs the daemon (`cli.ts`). */
+const WEB_DAEMON_COMMAND = "__web-daemon";
+
+const PROBE_MS = 1000;
+const REQUEST_MS = 10_000;
+const START_TIMEOUT_MS = 10_000;
+const DRAIN_WAIT_MS = 5000;
+
+export interface LaunchOptions {
+	env?: NodeJS.ProcessEnv;
+	/** The build a daemon must have to be reused; the current page's by default. */
+	build?: string;
+	/** How to start the daemon process; the CLI's own entry by default. */
+	invocation?: { command: string; prefix: string[] };
+	/** Stops the wait for the daemon (a drain or a start); the launch then rejects with an `AbortError`. */
+	signal?: AbortSignal;
+}
+
+export interface LaunchedDaemon {
+	/** Loopback origin, e.g. `http://127.0.0.1:41234`. */
+	origin: string;
+	/** The launch capability for the page fragment. */
+	token: string;
+	record: DaemonRecord;
+	/** The daemon's idle limit in minutes, as its health answer reports it; absent from an older daemon. */
+	idleMinutes?: number;
+}
+
+interface Live {
+	record: DaemonRecord;
+	status: DaemonStatus;
+	origin: string;
+	token: string;
+}
+
+interface Answer {
+	status: number;
+	json(): unknown;
+}
+
+/**
+ * One request to the daemon over plain loopback HTTP. This deliberately avoids global `fetch`: a session installs a proxy-aware
+ * dispatcher for it (`HTTP_PROXY`), and the daemon token must never be handed to a proxy. `node:http` with its own agent
+ * connects straight to 127.0.0.1.
+ */
+function call(
+	origin: string,
+	route: string,
+	token: string,
+	method = "GET",
+	body?: unknown,
+	timeout = PROBE_MS,
+): Promise<Answer | undefined> {
+	return new Promise((resolve) => {
+		const target = new URL(route, origin);
+		const payload = body === undefined ? undefined : Buffer.from(JSON.stringify(body), "utf8");
+		const request = http.request(
+			{
+				host: "127.0.0.1",
+				port: Number(target.port),
+				path: target.pathname + target.search,
+				method,
+				headers: {
+					Authorization: `Bearer ${token}`,
+					...(payload ? { "content-type": "application/json", "content-length": String(payload.length) } : {}),
+				},
+				agent: new http.Agent({ keepAlive: false }),
+				timeout,
+			},
+			(response) => {
+				const chunks: Buffer[] = [];
+				response.on("data", (chunk: Buffer) => chunks.push(chunk));
+				response.on("error", () => resolve(undefined));
+				response.on("end", () =>
+					resolve({
+						status: response.statusCode ?? 0,
+						json: () => {
+							try {
+								return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+							} catch {
+								return undefined;
+							}
+						},
+					}),
+				);
+			},
+		);
+		request.on("timeout", () => request.destroy());
+		request.on("error", () => resolve(undefined));
+		if (payload) request.write(payload);
+		request.end();
+	});
+}
+
+/** One authenticated request to a daemon's own route; undefined when it did not answer. */
+export function daemonRequest(
+	daemon: Pick<LaunchedDaemon, "origin" | "token">,
+	route: string,
+	options: { method?: "GET" | "POST" | "DELETE"; body?: unknown } = {},
+): Promise<{ status: number; json(): unknown } | undefined> {
+	return call(daemon.origin, route, daemon.token, options.method ?? "GET", options.body, REQUEST_MS);
+}
+
+/** What a caller gets of a live daemon. */
+const launched = (daemon: Live): LaunchedDaemon => ({
+	origin: daemon.origin,
+	token: daemon.token,
+	record: daemon.record,
+	...(daemon.status.idleMinutes ? { idleMinutes: daemon.status.idleMinutes } : {}),
+});
+
+/** The daemon that is running now, if any; never starts one. */
+export async function findWebDaemon(env: NodeJS.ProcessEnv = process.env): Promise<LaunchedDaemon | undefined> {
+	const current = await live(webDaemonPaths(env).record);
+	return current && launched(current);
+}
+
+/**
+ * The daemon a record describes, when it is really that daemon: a loopback record, a process that may still be the
+ * writer, and an authenticated health answer with the record's own nonce (the token is in the owner-only record, so no
+ * stranger on the port can answer it; this also covers Windows, where pid start times are unknown).
+ */
+async function live(file: string): Promise<Live | undefined> {
+	const record = readDaemonRecord(file);
+	if (!record || !(await recordProcessAlive(record))) return undefined;
+	const origin = recordOrigin(record);
+	const token = recordToken(record);
+	if (!origin || !token) return undefined;
+	const response = await call(origin, DAEMON_ROUTES.health, token);
+	if (response?.status !== 200) return undefined;
+	const status: unknown = response.json();
+	if (!Value.Check(DaemonStatusSchema, status) || status.nonce !== record.nonce || status.pid !== record.pid)
+		return undefined;
+	return { record, status, origin, token };
+}
+
+/** The package version in a build identity (`1.3.0:<page hash>:<install hash>`). */
+const versionOf = (build: string): string | null => semver.valid(build.split(":")[0]);
+/** The install hash in a build identity; daemons from before it was added have none. */
+const installOf = (build: string): string | undefined => build.split(":")[2];
+
+/** Whether `launcher` is a newer package version than `daemon`; builds with no comparable version are never newer. */
+function isNewer(launcher: string, daemon: string): boolean {
+	const a = versionOf(launcher);
+	const b = versionOf(daemon);
+	return a !== null && b !== null && semver.gt(a, b);
+}
+
+/**
+ * Whether one install serves both builds with different pages: the same version from the same package directory (a
+ * daemon that names no install counts as this one). Then the launcher's page is the current one.
+ */
+function samePlaceOtherPage(launcher: string, daemon: string): boolean {
+	const version = versionOf(launcher);
+	const install = installOf(daemon);
+	return (
+		version !== null && version === versionOf(daemon) && (install === undefined || install === installOf(launcher))
+	);
+}
+
+/**
+ * Whether a launcher of `build` can use this daemon. A launcher drains a daemon of an older version, or one of its own
+ * install that serves another page (the source changed since it started). It uses every other daemon as it is, so two
+ * installs never drain each other in turn.
+ */
+export const usable = (daemon: Pick<Live, "status">, build: string): boolean =>
+	daemon.status.protocolVersion === DAEMON_PROTOCOL_VERSION &&
+	!daemon.status.draining &&
+	(daemon.status.build === build ||
+		(!isNewer(build, daemon.status.build) && !samePlaceOtherPage(build, daemon.status.build)));
+
+// The install can be updated in place after a terminal loaded its page. Remember the nonce of the live replacement
+// this launcher started, so subsequent opens from that terminal can reuse the page now on disk.
+let replacement: { requested: string; nonce: string } | undefined;
+
+/** Waits `ms`; rejects with an `AbortError` as soon as `signal` aborts, so a cancelled launch stops polling. */
+const sleep = (ms: number, signal?: AbortSignal) =>
+	sleepUnlessAborted(ms, signal, () => createAbortError("The web daemon launch was aborted."));
+
+/**
+ * Returns the running daemon, starting one if none runs. Launchers take `web/daemon.launch` so two racing launchers
+ * produce one daemon; a daemon of another build is asked to drain first, and a record whose process is gone is removed.
+ * The daemon is detached and outlives the process that launched it.
+ */
+export async function ensureWebDaemon(options: LaunchOptions = {}): Promise<LaunchedDaemon> {
+	const env = options.env ?? process.env;
+	const paths = webDaemonPaths(env);
+	const build = options.build ?? daemonPage().build;
+	const accepts = (current: Live) =>
+		usable(current, build) ||
+		(replacement?.requested === build &&
+			replacement.nonce === current.record.nonce &&
+			current.status.protocolVersion === DAEMON_PROTOCOL_VERSION &&
+			!current.status.draining);
+	const quick = await live(paths.record);
+	if (quick && accepts(quick)) return launched(quick);
+	privateDir(paths.dir);
+	const release = await acquireRegistryLock(paths.launchLock, START_TIMEOUT_MS + DRAIN_WAIT_MS + 5000);
+	try {
+		let current = await live(paths.record);
+		if (current && accepts(current)) return launched(current);
+		if (current) {
+			// Another build (or a draining one) holds the record: ask it to hand over, then wait for the record to go.
+			await call(current.origin, DAEMON_ROUTES.drain, current.token, "POST");
+			const deadline = Date.now() + DRAIN_WAIT_MS;
+			while (Date.now() < deadline && readDaemonRecord(paths.record)?.nonce === current.record.nonce)
+				await sleep(50, options.signal);
+			removeRecord(paths.record, (text) => text.includes(current!.record.nonce));
+		} else {
+			const stale = readDaemonRecord(paths.record);
+			if (stale && !(await recordProcessAlive(stale))) removeRecord(paths.record, (text) => text.includes(stale.nonce));
+		}
+		// A launcher that stalled past the lock's stale limit no longer excludes others: it must not spawn beside them.
+		release.assertHeld();
+		const invocation = options.invocation ?? getCliInvocation();
+		const { env: childEnv, cwd } = daemonSpawnOptions(env);
+		let failed: Error | undefined;
+		const child = spawn(invocation.command, [...invocation.prefix, WEB_DAEMON_COMMAND], {
+			detached: true,
+			stdio: "ignore",
+			windowsHide: true,
+			env: childEnv,
+			cwd,
+		});
+		child.once("error", (error) => (failed = error));
+		child.once("exit", (code) => (failed ??= new Error(`The web daemon exited with code ${code} before it started.`)));
+		child.unref();
+		const deadline = Date.now() + START_TIMEOUT_MS;
+		while (Date.now() < deadline) {
+			current = await live(paths.record);
+			if (
+				current &&
+				current.record.pid === child.pid &&
+				current.status.build !== build &&
+				samePlaceOtherPage(build, current.status.build)
+			) {
+				replacement = { requested: build, nonce: current.record.nonce };
+			}
+			if (current && accepts(current)) return launched(current);
+			// A daemon that found another one running exits quietly; its record then answers the next check.
+			if (failed) {
+				current = await live(paths.record);
+				if (current && accepts(current)) return launched(current);
+				throw failed;
+			}
+			await sleep(50, options.signal);
+		}
+		throw new Error("The web daemon did not start in time.");
+	} finally {
+		await release().catch(() => undefined);
+	}
+}
+
+/** Waits (up to `ms`) until the daemon lists `sessionId` as attached, so the page it opens finds the session. */
+export async function waitForSession(
+	daemon: LaunchedDaemon,
+	sessionId: string,
+	ms = 4000,
+	signal?: AbortSignal,
+): Promise<boolean> {
+	const deadline = Date.now() + ms;
+	while (Date.now() < deadline) {
+		const response = await call(daemon.origin, DAEMON_ROUTES.sessions, daemon.token);
+		const body = response?.json() as { sessions?: Array<{ id: string }> } | undefined;
+		if (body?.sessions?.some((session) => session.id === sessionId)) return true;
+		await sleep(100, signal);
+	}
+	return false;
+}
+
+/**
+ * Stops the running daemon (`/web stop`): asks it to drain and waits until it dropped its record, so the next `/web` or
+ * `remote list` no longer finds it; it exits once its open pages leave, after 30 seconds at most. Resolves to the pid it
+ * stopped, or undefined when none runs; rejects when the daemon refuses.
+ */
+export async function stopWebDaemon(env: NodeJS.ProcessEnv = process.env): Promise<number | undefined> {
+	const daemon = await findWebDaemon(env);
+	if (!daemon) return undefined;
+	const answer = await daemonRequest(daemon, DAEMON_ROUTES.drain, { method: "POST" });
+	if (answer?.status !== 200) throw new Error(`The web daemon answered ${answer?.status ?? "nothing"}.`);
+	// The answer can arrive before the daemon removed its record (another process): wait for that, as a launcher does.
+	const file = webDaemonPaths(env).record;
+	const deadline = Date.now() + DRAIN_WAIT_MS;
+	while (Date.now() < deadline && readDaemonRecord(file)?.nonce === daemon.record.nonce) await sleep(50);
+	return daemon.record.pid;
+}

@@ -1,0 +1,155 @@
+import { builtinDescription } from "../../core/slash-commands.ts";
+import type { registerPlanning } from "../plan/register.ts";
+import type { CommandContext, FeatureContext } from "../../core/features/index.ts";
+import { type Subcommands, say, wordCompletions } from "../shared/commands.ts";
+import { PERMISSION_ENV } from "@octocodeai/octocode-common/env";
+import { shortcutText } from "../shared/keys.ts";
+import { redactSecrets, sanitizeTerminalText } from "@octocodeai/octocode-common/sanitize";
+import { type Permission } from "./ask.ts";
+import type { AuditEntry } from "./audit.ts";
+import {
+	ACTION_CLASSES,
+	ASK_REASONS,
+	CHOOSABLE_MODES,
+	decide,
+	PERMISSION_CYCLE,
+	PERMISSION_ID,
+	type PermissionMode,
+	reasonAsks,
+} from "./mode.ts";
+import { modeSummary } from "./ask/text.ts";
+import { pickPermissionsAction } from "./page.ts";
+
+/** Audit entries `/permissions log` shows, newest last. */
+const LOG_ENTRIES = 50;
+const USAGE = `Usage: /permissions [${CHOOSABLE_MODES.join("|")}|plan [off]|grants [clear [messages]]|log]`;
+const BYPASS_AT_START =
+	"bypass is chosen only at start: run octocode --dangerously-skip-permissions. /permissions full is the widest mode a session can switch to.";
+const NOT_A_SANDBOX =
+	"Modes and reasons decide what Octocode asks about and records; they are not a sandbox (the OS user's rights stay as they are).";
+
+function status(permission: Permission, provenanceSize: number): string {
+	const grants = permission.grants();
+	return [
+		`Permission mode: ${permission.mode} — ${modeSummary(permission.mode)}`,
+		...ACTION_CLASSES.map((action) => `  ${action}: ${decide(permission.mode, action)}`),
+		...ASK_REASONS.map((reason) => `  ${reason}: ${reasonAsks(permission.mode, reason) ? "ask" : "allow"}`),
+		`Session grants: ${grants.length > 0 ? "" : "none"}`,
+		...grants.map((grant) => `  ${grant}`),
+		`Provenance index: ${provenanceSize} shingles`,
+		`${shortcutText("app.permission.cycle")} in the editor cycles ${PERMISSION_CYCLE.join(" → ")}; start mode: --permission-mode or ${PERMISSION_ENV}, else full (--dangerously-skip-permissions starts in bypass).`,
+		"Thinking level: /effort.",
+		NOT_A_SANDBOX,
+	].join("\n");
+}
+
+/** One audit entry as a log line: redacted again at display time, so an entry written by an older build cannot leak a secret. */
+function logLine(entry: AuditEntry): string {
+	const time = new Date(entry.at).toTimeString().slice(0, 8);
+	const what = entry.what.join(" | ");
+	const line =
+		entry.action === "mode" || entry.action === "rollup"
+			? `${time} ${entry.action} ${what}${entry.suppressed ? ` ${JSON.stringify(entry.suppressed)}` : ""}`
+			: `${time} ${entry.mode} ${entry.agent} ${entry.action} ${entry.allowed ? "allowed" : "denied"} (${entry.via}) ${what}${entry.reasons?.length ? ` [${entry.reasons.join(" ")}]` : ""}${entry.purpose ? ` — says: ${entry.purpose}` : ""}${entry.snapshot ? ` — snapshot: ${entry.snapshot}` : ""}${entry.note ? ` — note: ${entry.note}` : ""}`;
+	return sanitizeTerminalText(redactSecrets(line));
+}
+
+function logLines(ctx: FeatureContext, permission: Permission): string {
+	permission.flushAudit();
+	const all = ctx.sessionManager
+		.getEntries()
+		.flatMap((entry) =>
+			entry.type === "custom" &&
+			entry.customType === PERMISSION_ID &&
+			Array.isArray((entry.data as AuditEntry | undefined)?.what)
+				? [entry.data as AuditEntry]
+				: [],
+		);
+	if (all.length === 0) return "No permission decisions in this session yet.";
+	const entries = all.slice(-LOG_ENTRIES);
+	// The session file keeps every decision; say how many earlier ones the log leaves out.
+	const earlier = all.length - entries.length;
+	return [
+		...(earlier > 0 ? [`(${earlier} earlier decision(s) not shown; the session file keeps them all)`] : []),
+		...entries.map(logLine),
+	].join("\n");
+}
+
+/**
+ * `/permissions [manual|workspace|full|grants [clear]|log|plan [off]]`. The command works everywhere, RPC included; the
+ * editor shortcut lives in `ui/editor`.
+ */
+export function registerPermissionCommand(
+	commands: Subcommands,
+	permission: Permission,
+	provenanceSize: () => number,
+	planning?: ReturnType<typeof registerPlanning>,
+): void {
+	const select = async (mode: PermissionMode, ctx: FeatureContext): Promise<void> => {
+		if (!(await permission.chooseMode(mode, ctx))) return say(ctx, `Permission mode stays ${permission.mode}.`);
+		if (!ctx.hasUI) say(ctx, `Permission mode: ${mode} — ${modeSummary(mode)}`);
+	};
+
+	const handle = async (args: string, ctx: CommandContext): Promise<void> => {
+		const words = args.trim().toLowerCase().split(/\s+/).filter(Boolean);
+		const [word = "", rest] = words;
+		// The page is a terminal component; RPC hosts and print mode get the status text.
+		if (words.length === 0 && ctx.hasUI && ctx.mode === "tui") {
+			const picked = await pickPermissionsAction(
+				{
+					mode: permission.mode,
+					grants: permission.grants().length,
+					planning: planning?.blocked() ?? false,
+					canPlan: planning !== undefined,
+				},
+				ctx,
+			);
+			if (!picked) return;
+			if ("mode" in picked) return select(picked.mode, ctx);
+			if (picked.open === "grants") return handle("grants", ctx);
+			if (picked.open === "log") return handle("log", ctx);
+			if (picked.open === "plan") return handle("plan", ctx);
+			return handle("status", ctx);
+		}
+		if (words.length === 0 || args.trim() === "status")
+			return say(
+				ctx,
+				`${status(permission, provenanceSize())}\nPlanning: ${planning?.blocked() ? "active" : "off"}. /permissions plan [off] controls the independent constraint.`,
+			);
+		if (word === "plan" && planning && (words.length === 1 || (words.length === 2 && rest === "off"))) {
+			await planning.control({ action: rest === "off" ? "leave" : "enter" }, ctx);
+			return say(ctx, `Planning ${planning.blocked() ? "active" : "off"}; permission mode ${permission.mode}.`);
+		}
+		if ((CHOOSABLE_MODES as readonly string[]).includes(word) && words.length === 1)
+			return select(word as PermissionMode, ctx);
+		if (word === "bypass" && words.length === 1) return say(ctx, BYPASS_AT_START, "warning");
+		if (word === "grants" && rest === "clear" && words.length === 2) {
+			permission.clearGrants();
+			return say(ctx, "Session grants cleared.");
+		}
+		if (word === "grants" && rest === "clear" && words[2] === "messages" && words.length === 3)
+			return say(ctx, `External-message grants removed: ${permission.clearMessageGrants()}.`);
+		if (word === "grants" && words.length === 1) {
+			const grants = permission.grants();
+			return say(
+				ctx,
+				grants.length > 0
+					? `Session grants:\n${grants.map((grant) => `  ${grant}`).join("\n")}`
+					: "Session grants: none",
+			);
+		}
+		if (word === "log" && words.length === 1) return say(ctx, logLines(ctx, permission));
+		return say(ctx, USAGE, "warning");
+	};
+
+	commands.add("permissions", {
+		description: builtinDescription("permissions"),
+		argumentHint: "[manual|workspace|full|grants [clear [messages]]|log|plan [off]]",
+		complete: (prefix) =>
+			wordCompletions(
+				[...CHOOSABLE_MODES, "grants", "grants clear", "grants clear messages", "log", "status", "plan", "plan off"],
+				prefix,
+			),
+		handler: async (args, ctx) => handle(args, ctx),
+	});
+}

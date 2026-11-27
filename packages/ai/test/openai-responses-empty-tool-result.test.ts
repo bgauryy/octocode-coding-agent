@@ -1,0 +1,63 @@
+import { describe, expect, it } from "vitest";
+import { replayedResponsesInput } from "./capture-responses-payload.ts";
+import { normalizeContext } from "../src/compat.ts";
+import { getBuiltinModel } from "../src/providers/all.ts";
+import type { AssistantMessage, ToolResultMessage, Usage } from "../src/types.ts";
+
+const usage: Usage = {
+	input: 0,
+	output: 0,
+	cacheRead: 0,
+	cacheWrite: 0,
+	totalTokens: 0,
+	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+
+function buildEmptyToolResult(toolCallId: string, timestamp: number, text = ""): ToolResultMessage {
+	return {
+		role: "toolResult",
+		toolCallId,
+		toolName: "bash",
+		content: [{ type: "text", text }],
+		isError: false,
+		timestamp,
+	};
+}
+
+describe("OpenAI Responses replay of empty tool result", () => {
+	// Whitespace-only cases.
+	it.each(["", "\r\n", " \n\t"])(
+		"uses '(no tool output)' placeholder for tool result text %j without images",
+		async (text) => {
+			const model = getBuiltinModel("openai", "gpt-4o-mini");
+			const now = Date.now();
+			const assistant: AssistantMessage = {
+				role: "assistant",
+				content: [{ type: "toolCall", id: "tool-1", name: "bash", arguments: { command: "true" } }],
+				api: model.api,
+				provider: model.provider,
+				model: model.id,
+				usage,
+				stopReason: "toolUse",
+				timestamp: now,
+			};
+
+			const context = normalizeContext({
+				messages: [
+					{ role: "user", content: "Run the command", timestamp: now - 1 },
+					assistant,
+					buildEmptyToolResult("tool-1", now + 1, text),
+				],
+			});
+
+			const input = await replayedResponsesInput(model, context);
+			const functionCallOutput = input.find((item) => item.type === "function_call_output") as
+				| { type: "function_call_output"; output: string }
+				| undefined;
+
+			expect(functionCallOutput).toBeTruthy();
+			expect(functionCallOutput?.output).toBe("(no tool output)");
+			expect(functionCallOutput?.output).not.toContain("see attached image");
+		},
+	);
+});

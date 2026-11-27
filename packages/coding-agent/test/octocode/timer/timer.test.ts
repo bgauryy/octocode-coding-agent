@@ -1,0 +1,576 @@
+import fs from "node:fs";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { type AgentDb, expire, leases, openDatabase, sessions, timers } from "../../../../db/src/api.ts";
+import { openWorkspaceDb, registeredWorkspace } from "../../../src/storage/workspace-database.ts";
+import { TIMER_TYPE } from "../../../src/octocode/shared/messages.ts";
+import { runningWorkOf } from "../../../src/octocode/shared/running-work.ts";
+import { conditionChecker } from "../../../src/octocode/timer/condition.ts";
+import type { ConditionDeps } from "../../../src/octocode/timer/conditions/types.ts";
+import { type CheckOutcome, timerFields } from "../../../src/octocode/timer/model.ts";
+import { sendCustomMessage } from "../../../src/core/agent-session/prompting.ts";
+import { registerTimers } from "../../../src/octocode/timer/register.ts";
+import { renderTimerMessage } from "../../../src/octocode/timer/render.ts";
+import { TimerScheduler } from "../../../src/octocode/timer/scheduler.ts";
+import { fakeCtx, fakeHost, rendered } from "../fake-host.ts";
+import { tmp } from "../helpers.ts";
+
+/** Conditions' host with nothing to read: a test sets only what it exercises. */
+const deps = (own: Pick<ConditionDeps, "reservation" | "context">): ConditionDeps => ({
+	item: () => undefined,
+	blockers: () => undefined,
+	agentEnd: () => undefined,
+	watchDatabase: () => () => undefined,
+	judge: async () => ({ verdict: "skipped", reason: "no judge in this test" }),
+	...own,
+});
+
+const T0 = Date.UTC(2026, 10, 5, 12);
+let root: string;
+let file: string;
+let agent: AgentDb;
+let workspaceId: string;
+/** Schedulers a test started: the shared clock's interval must not outlive the fake timers it was made under. */
+const started: TimerScheduler[] = [];
+const open = () =>
+	openDatabase({
+		file,
+		mirrorFile: `${file}.transcripts`,
+		archiveDir: path.join(root, "archive"),
+		privateParent: false,
+	});
+const owner = (sessionId = "s1") => ({ workspaceId, sessionId, cwd: root });
+const add = (input: Parameters<typeof timerFields>[0], sessionId = "s1", now = Date.now()) =>
+	timers.insert(agent.db, timerFields(input, now, owner(sessionId)));
+
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"], now: T0 });
+	root = tmp();
+	file = path.join(root, "workspaces.db");
+	agent = open();
+	workspaceId = registeredWorkspace(root, agent).id;
+});
+afterEach(() => {
+	for (const instance of started.splice(0)) instance.stop();
+	vi.useRealTimers();
+	agent.close();
+	fs.rmSync(root, { recursive: true, force: true });
+});
+
+describe("timers queries", () => {
+	it("coalesces missed runs into one claim and moves to the next interval mark", () => {
+		const timer = add({ note: "look", every: 60 });
+		const now = T0 + 10.5 * 60_000;
+		const claimed = timers.claim(agent.db, timer.id, "s1", now)!;
+		expect(claimed.runs).toBe(1);
+		expect(claimed.due_at).toBe(T0 + 11 * 60_000);
+		expect(timers.claim(agent.db, timer.id, "s1", now)).toBeUndefined();
+		expect(timers.claim(agent.db, timer.id, "other", T0 + 11 * 60_000)).toBeUndefined();
+	});
+
+	it("lets only one of two connections claim a fire", () => {
+		const timer = add({ note: "once", after: 0 });
+		const second = open();
+		try {
+			const claims = [agent, second].map((db) => timers.claim(db.db, timer.id, "s1", T0));
+			expect(claims.filter(Boolean)).toHaveLength(1);
+			expect(timers.get(agent.db, timer.id)).toMatchObject({ status: "done", stop_reason: "fired", runs: 1 });
+		} finally {
+			second.close();
+		}
+	});
+
+	it("cancels only the owner's active timer, which then never fires", () => {
+		const timer = add({ note: "x", after: 0 });
+		expect(timers.cancel(agent.db, timer.id, "intruder", T0)).toBeUndefined();
+		expect(timers.cancel(agent.db, timer.id, "s1", T0)).toMatchObject({ status: "cancelled" });
+		expect(timers.claim(agent.db, timer.id, "s1", T0 + 1000)).toBeUndefined();
+	});
+
+	it("goes with its owner session: erased, or expired once the session's file is gone", () => {
+		add({ note: "a", after: 60 }, "gone");
+		add({ note: "b", after: 60 }, "stale");
+		add({ note: "c", after: 60 }, "kept");
+		expect(sessions.erase(agent.db, agent.mirror.db, ["gone"]).timers).toBe(1);
+		expect(expire.orphans(agent.db, agent.mirror.db, ["stale"], T0 + 1).timers).toBe(1);
+		expect(timers.forSession(agent.db, "kept")).toHaveLength(1);
+	});
+
+	it("retention drops ended and abandoned timers older than the cutoff", () => {
+		const ended = add({ note: "ended", after: 0 });
+		timers.cancel(agent.db, ended.id, "s1", T0);
+		add({ note: "abandoned", after: 0 });
+		const recent = add({ note: "recent", after: 0 }, "s1", T0 + 5000);
+		expect(timers.purgeBefore(agent.db, T0 + 1000)).toBe(2);
+		expect(timers.forSession(agent.db, "s1", true).map((row) => row.id)).toEqual([recent.id]);
+	});
+});
+
+function scheduler(check: (calls: number) => CheckOutcome = () => ({ met: false, exit: 1, output: "" }), db = agent) {
+	const woken: Array<ReturnType<typeof timers.get>> = [];
+	let calls = 0;
+	const instance = new TimerScheduler({
+		db: () => db,
+		sessionId: "s1",
+		check: async () => check(++calls),
+		wake: (row) => woken.push(row),
+	});
+	started.push(instance);
+	instance.refresh();
+	return { instance, woken, checks: () => calls };
+}
+
+describe("the timer scheduler", () => {
+	it("fires a later reminder while condition checks are pending, with bounded concurrency and no duplicate checks", async () => {
+		const rows = Array.from({ length: 7 }, () => add({ note: "condition", until: { command: "true" }, every: 5 }));
+		const releases: Array<() => void> = [];
+		const checked: number[] = [];
+		const woken: string[] = [];
+		let now = T0 + 5_000;
+		const instance = new TimerScheduler({
+			db: () => agent,
+			sessionId: "s1",
+			now: () => now,
+			check: async (_condition, input) => {
+				checked.push(input.row!.id);
+				await new Promise<void>((resolve) => releases.push(resolve));
+				return { met: true, exit: 0, output: "" };
+			},
+			wake: (row) => woken.push(row.note),
+		});
+		started.push(instance);
+		instance.refresh();
+		const first = instance.tick();
+		expect(checked).toHaveLength(4);
+		add({ note: "reminder", after: 0 }, "s1", now);
+		instance.refresh();
+		now += 1_000;
+		await instance.tick();
+		expect(woken).toEqual(["reminder"]);
+		expect(new Set(checked).size).toBe(4);
+		for (const release of releases.splice(0)) release();
+		await first;
+		const second = instance.tick();
+		expect(checked).toHaveLength(7);
+		for (const release of releases.splice(0)) release();
+		await second;
+		expect(new Set(checked).size).toBe(rows.length);
+		expect(woken.filter((note) => note === "condition")).toHaveLength(7);
+	});
+	it.each(["cancel", "shutdown"] as const)(
+		"wakes nobody and keeps no watcher or hold when a %s lands during an awaited condition check",
+		async (end) => {
+			const row = add({ note: "edit src/a.ts now", until: { unlocked: "src/a.ts" } });
+			const woken: string[] = [];
+			const signals: Array<AbortSignal | undefined> = [];
+			let release!: (outcome: CheckOutcome) => void;
+			let subscribed = 0;
+			let unsubscribed = 0;
+			let poke!: () => void;
+			const instance = new TimerScheduler({
+				db: () => agent,
+				sessionId: "s1",
+				check: async (_condition, input) => {
+					signals.push(input.signal);
+					return new Promise<CheckOutcome>((resolve) => (release = resolve));
+				},
+				watch: (_condition, _cwd, onPoke) => {
+					subscribed++;
+					poke = onPoke;
+					return () => void unsubscribed++;
+				},
+				wake: (fired) => woken.push(fired.note),
+			});
+			started.push(instance);
+			instance.hold(row.id);
+			instance.refresh();
+			expect(subscribed).toBe(1);
+			const held = instance.settle();
+			let settled = false;
+			void held.then(() => (settled = true));
+
+			poke();
+			await vi.advanceTimersByTimeAsync(200);
+			expect(signals).toHaveLength(1);
+
+			if (end === "cancel") {
+				expect(timers.cancel(agent.db, row.id, "s1", Date.now())).toMatchObject({ status: "cancelled" });
+				instance.refresh();
+			} else instance.stop();
+			expect(signals[0]?.aborted).toBe(true);
+			expect(unsubscribed).toBe(1);
+			await held;
+			expect(settled).toBe(true);
+
+			release({ met: true, exit: 0, output: "" });
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(woken).toEqual([]);
+			expect(unsubscribed).toBe(1);
+			expect(subscribed).toBe(1);
+			await instance.settle();
+			expect(timers.get(agent.db, row.id)).toMatchObject(
+				end === "cancel" ? { status: "cancelled" } : { status: "active" },
+			);
+			expect(vi.getTimerCount()).toBe(0);
+		},
+	);
+
+	it("fires a one-shot once with its note", async () => {
+		add({ note: "check the build", after: 5 });
+		const { instance, woken } = scheduler();
+		await vi.advanceTimersByTimeAsync(4000);
+		expect(woken).toHaveLength(0);
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(woken).toMatchObject([{ note: "check the build", status: "done" }]);
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(woken).toHaveLength(1);
+		instance.stop();
+	});
+
+	it("stops a repeating timer at maxRuns", async () => {
+		add({ note: "poll", every: 30, maxRuns: 3 });
+		const { woken } = scheduler();
+		await vi.advanceTimersByTimeAsync(200_000);
+		expect(woken.map((row) => [row!.runs, row!.status])).toEqual([
+			[1, "active"],
+			[2, "active"],
+			[3, "done"],
+		]);
+	});
+
+	it("ends a repeating timer at its deadline, waking once more to say so", async () => {
+		add({ note: "poll", every: 30, deadline: 70 });
+		const { woken } = scheduler();
+		await vi.advanceTimersByTimeAsync(200_000);
+		expect(woken.map((row) => [row!.runs, row!.status, row!.stop_reason])).toEqual([
+			[1, "active", null],
+			[2, "expired", "deadline"],
+		]);
+	});
+
+	it("checks an until condition silently and wakes once when it is met", async () => {
+		add({ note: "build is green", until: { command: "true" }, every: 5 });
+		const { woken, checks } = scheduler((n) => ({ met: n === 3, exit: n === 3 ? 0 : 1, output: `try ${n}` }));
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(checks()).toBe(3);
+		expect(woken).toMatchObject([{ status: "done", stop_reason: "met", last_exit: 0, last_output: "try 3" }]);
+	});
+
+	it.each([0, 100])("keeps an until timer active until its deadline when after is %ss", async (after) => {
+		const row = add({
+			note: "wait for build",
+			until: { command: "test -e build.done" },
+			every: 60,
+			deadline: 30,
+			after,
+		});
+		// A row saved by an earlier version may have its first check after its deadline.
+		if (after > 30) timers.reschedule(agent.db, row.id, T0 + after * 1000);
+		const { woken } = scheduler();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(timers.get(agent.db, row.id)!.status).toBe("active");
+		expect(woken).toHaveLength(0);
+		await vi.advanceTimersByTimeAsync(29_000);
+		expect(woken).toMatchObject([{ status: "expired", stop_reason: "deadline" }]);
+	});
+
+	it("fails a timer whose check is refused, waking once", async () => {
+		add({ note: "x", until: { command: "rm -rf build" }, every: 5 });
+		const { woken } = scheduler(() => ({ met: false, exit: null, output: "", refused: "plan mode" }));
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(woken).toMatchObject([{ status: "failed", stop_reason: "plan mode" }]);
+	});
+
+	it("fires a timer missed while no process held the session once on return", async () => {
+		add({ note: "poll", every: 60 });
+		const first = scheduler();
+		first.instance.stop();
+		vi.setSystemTime(T0 + 10 * 60_000 + 500);
+		const second = scheduler();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(second.woken).toMatchObject([{ runs: 1, due_at: T0 + 11 * 60_000 }]);
+		expect(first.woken).toHaveLength(0);
+	});
+
+	it("never fires a row twice from two processes on one session", async () => {
+		add({ note: "once", after: 3 });
+		const other = open();
+		try {
+			const a = scheduler(undefined, agent);
+			const b = scheduler(undefined, other);
+			await vi.advanceTimersByTimeAsync(10_000);
+			expect(a.woken.length + b.woken.length).toBe(1);
+		} finally {
+			other.close();
+		}
+	});
+
+	it("wakes B once when A unlocks the path B waits for", async () => {
+		const target = path.join(root, "src", "a.ts");
+		leases.insert(
+			agent.db,
+			workspaceId,
+			"agent-a",
+			{ path: "src/a.ts", pathKey: target, kind: "file", reason: "editing" },
+			T0,
+			T0 + 3_600_000,
+		);
+		const check = conditionChecker(
+			deps({
+				reservation: (absolute, display) =>
+					leases.conflicting(
+						agent.db,
+						registeredWorkspace(root, agent).root,
+						"agent-b",
+						Date.now(),
+						absolute,
+						[],
+						"file",
+					)
+						? `${display} is reserved by agent-a`
+						: undefined,
+				context: () => undefined,
+			}),
+		);
+		add({ note: "edit src/a.ts now", until: { unlocked: "src/a.ts" } });
+		const woken: unknown[] = [];
+		const waiting = new TimerScheduler({ db: () => agent, sessionId: "s1", check, wake: (row) => woken.push(row) });
+		started.push(waiting);
+		waiting.refresh();
+		await vi.advanceTimersByTimeAsync(40_000);
+		expect(woken).toHaveLength(0);
+		expect(timers.forSession(agent.db, "s1")[0]).toMatchObject({ last_output: "src/a.ts is reserved by agent-a" });
+		leases.releaseByOwner(agent.db, "agent-a");
+		await vi.advanceTimersByTimeAsync(40_000);
+		expect(woken).toMatchObject([{ note: "edit src/a.ts now", status: "done", stop_reason: "met" }]);
+	});
+});
+
+describe("timer conditions", () => {
+	it("runs an until-command on the bash path: exit 0 is met", async () => {
+		vi.useRealTimers();
+		const check = conditionChecker(deps({ reservation: () => undefined, context: () => undefined }));
+		const flag = path.join(root, "ready");
+		expect(await check({ kind: "command", command: `test -f ${flag}` }, root)).toMatchObject({ met: false, exit: 1 });
+		fs.writeFileSync(flag, "");
+		expect(await check({ kind: "command", command: `test -f ${flag} && echo ok` }, root)).toMatchObject({
+			met: true,
+			exit: 0,
+			output: "ok\n",
+		});
+	});
+});
+
+describe("the timer tool in a session", () => {
+	it("sets a timer that wakes the session with its note, and shows the count in the footer", async () => {
+		const host = fakeHost();
+		registerTimers(host.api, {
+			reservation: () => undefined,
+			agent: () => "me",
+			env: { ...process.env, OCTOCODE_AGENT_DB: file },
+		});
+		const ctx = { ...fakeCtx({ cwd: root }), sessionManager: { getSessionId: () => "s1", getBranch: () => [] } };
+		await host.fire("session_start", { reason: "startup" }, ctx);
+		const tool = host.tools.get("notify");
+		const set = await tool.execute(
+			"call-1",
+			{ op: "set", after: 2, note: "rerun the flaky test" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		expect(set.content[0].text).toMatch(/^Set \d+ · once/);
+		// A typed row with the timer's id, what it waits for, its note and its time left.
+		expect(runningWorkOf(host.api).all()).toEqual([
+			{
+				kind: "timer",
+				id: expect.stringMatching(/^#\d+$/),
+				title: "after 2s",
+				detail: "rerun the flaky test",
+				startedAt: expect.any(Number),
+				dueAt: expect.any(Number),
+			},
+		]);
+		await vi.advanceTimersByTimeAsync(3000);
+		expect(host.sent).toHaveLength(1);
+		const [{ message, options }] = host.sent;
+		expect(message.customType).toBe(TIMER_TYPE);
+		expect(message.content).toContain("Note: rerun the flaky test");
+		expect(options).toMatchObject({ triggerTurn: true, deliverAs: "steer" });
+		expect(runningWorkOf(host.api).all()).toEqual([]);
+		const list = await tool.execute("call-2", { op: "list", all: true }, undefined, undefined, ctx);
+		expect(list.content[0].text).toContain("done (fired)");
+		await host.fire("session_shutdown", {}, ctx);
+	});
+
+	it("delivers a wake as a steer while a turn runs and starts a turn when idle", async () => {
+		const host = fakeHost();
+		registerTimers(host.api, {
+			reservation: () => undefined,
+			agent: () => "me",
+			env: { ...process.env, OCTOCODE_AGENT_DB: file },
+		});
+		const ctx = { ...fakeCtx({ cwd: root }), sessionManager: { getSessionId: () => "s1", getBranch: () => [] } };
+		await host.fire("session_start", { reason: "startup" }, ctx);
+		await host.tools.get("notify").execute("c", { op: "set", after: 1, note: "wake me" }, undefined, undefined, ctx);
+		await vi.advanceTimersByTimeAsync(2000);
+		const [{ message, options }] = host.sent;
+		const steer = vi.fn();
+		const followUp = vi.fn();
+		const startRun = vi.fn(async () => undefined);
+		const session = (isStreaming: boolean) =>
+			({
+				session: { isStreaming, agent: { steer, followUp } },
+				run: { isEmittingAgentSettled: false, deferredSettledActions: [] },
+				inputs: { noteQueuedCustomMessage: vi.fn(), noteSteeredCustomMessage: vi.fn() },
+				compaction: { isManualRunning: false },
+				runLoop: { startRun },
+			}) as never;
+		await sendCustomMessage(session(true), message, options);
+		expect(steer).toHaveBeenCalledOnce();
+		expect(followUp).not.toHaveBeenCalled();
+		expect(startRun).not.toHaveBeenCalled();
+		await sendCustomMessage(session(false), message, options);
+		expect(startRun).toHaveBeenCalledOnce();
+		expect(steer).toHaveBeenCalledOnce();
+		await host.fire("session_shutdown", {}, ctx);
+	});
+
+	it("holds a headless exit only for a timer set in this run, never for one loaded from an earlier run", async () => {
+		add({ note: "from an earlier run", every: 60, maxRuns: 20 });
+		add({ note: "waiting for a lock", until: { unlocked: "src/a.ts" } });
+		const host = fakeHost();
+		const timersHost = registerTimers(host.api, {
+			reservation: () => "held",
+			agent: () => undefined,
+			env: { ...process.env, OCTOCODE_AGENT_DB: file },
+		});
+		const ctx = { ...fakeCtx({ cwd: root }), sessionManager: { getSessionId: () => "s1", getBranch: () => [] } };
+		await host.fire("session_start", { reason: "resume" }, ctx);
+		let settled = false;
+		void timersHost.settle().then(() => (settled = true));
+		await vi.advanceTimersByTimeAsync(0);
+		expect(settled).toBe(true);
+
+		const tool = host.tools.get("notify");
+		await tool.execute("c1", { op: "set", after: 20, note: "look again" }, undefined, undefined, ctx);
+		settled = false;
+		void timersHost.settle().then(() => (settled = true));
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(settled).toBe(false);
+		await vi.advanceTimersByTimeAsync(11_000);
+		expect(settled).toBe(true);
+		expect(host.sent.map(({ message }) => message.content)).toEqual([expect.stringContaining("Note: look again")]);
+
+		const set = await tool.execute("c2", { op: "set", after: 600, note: "later" }, undefined, undefined, ctx);
+		settled = false;
+		void timersHost.settle().then(() => (settled = true));
+		await tool.execute("c3", { op: "off", id: set.details.timer.id }, undefined, undefined, ctx);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(settled).toBe(true);
+		await host.fire("session_shutdown", {}, ctx);
+	});
+
+	it("cancels by the id set returned, as clearTimeout: no wake after, a second cancel is a no-op, all stops the rest", async () => {
+		add({ note: "another session's", after: 5 }, "s2");
+		const host = fakeHost();
+		registerTimers(host.api, {
+			reservation: () => undefined,
+			agent: () => undefined,
+			env: { ...process.env, OCTOCODE_AGENT_DB: file },
+		});
+		const ctx = { ...fakeCtx({ cwd: root }), sessionManager: { getSessionId: () => "s1", getBranch: () => [] } };
+		await host.fire("session_start", { reason: "startup" }, ctx);
+		const tool = host.tools.get("notify");
+		const run = (params: object) => tool.execute("c", params, undefined, undefined, ctx);
+		const text = (result: { content: { text: string }[] }) => result.content[0].text;
+
+		const once = await run({ op: "set", after: 5, note: "timeout" });
+		const id = once.details.timer.id as number;
+		expect(text(once)).toMatch(new RegExp(`^Set ${id} · once · next wake in 5s · timeout$`));
+		const every = await run({ op: "set", every: 30, note: "interval" });
+		const everyId = every.details.timer.id as number;
+		await run({ op: "set", after: 600, note: "later" });
+
+		expect(text(await run({ op: "off", id }))).toMatch(new RegExp(`^Cancelled ${id} · once · cancelled`));
+		expect(text(await run({ op: "off", id }))).toMatch(
+			new RegExp(`^Notification ${id} already ended, nothing to turn off: ${id} · once · cancelled`),
+		);
+		await vi.advanceTimersByTimeAsync(31_000);
+		// Only the interval woke the session; its wake says how to stop it.
+		expect(host.sent.map(({ message }) => message.content)).toEqual([
+			expect.stringContaining(`It repeats: off id ${everyId} to stop it.`),
+		]);
+
+		// The tool keeps its timers in the workspace file.
+		const rows = openWorkspaceDb(agent, root).agent;
+		const foreign = timers.forSession(rows.db, "s2")[0].id;
+		await expect(run({ op: "off", id: foreign })).rejects.toThrow(
+			new RegExp(`^No notification ${foreign} in this session\\. Active: \\d+, ${everyId}\\.$`),
+		);
+		await expect(run({ op: "off" })).rejects.toThrow(
+			/^off needs the id that set or on returned, or all: true\. Active: /,
+		);
+		await expect(run({ op: "off", id: everyId, all: true })).rejects.toThrow("off takes id or all, not both.");
+
+		const all = await run({ op: "off", all: true });
+		expect(text(all)).toMatch(/^Cancelled 2 notifications:\n/);
+		expect(text(all)).toContain("interval");
+		expect(text(all)).toContain("later");
+		expect(text(await run({ op: "list" }))).toBe("No active notifications.");
+		expect(text(await run({ op: "off", all: true }))).toBe("No active notifications to turn off.");
+		// Another session's timer is untouched.
+		expect(timers.get(rows.db, foreign)?.status).toBe("active");
+		if (rows !== agent) rows.close();
+		await vi.advanceTimersByTimeAsync(120_000);
+		expect(host.sent).toHaveLength(1);
+		await host.fire("session_shutdown", {}, ctx);
+	});
+
+	it("refuses a wait of more than 30 days instead of storing a time that is no integer", () => {
+		expect(() => timerFields({ note: "x", after: 1e20 }, T0, owner())).toThrow(/after is at most 2592000 seconds/);
+		expect(() => timerFields({ note: "x", every: 1e9 }, T0, owner())).toThrow(/every is at most/);
+		expect(timerFields({ note: "x", after: 2592000 }, T0, owner()).dueAt).toBe(T0 + 2592000_000);
+	});
+
+	it("refuses a repeating timer faster than the minimum and an eleventh active timer", async () => {
+		expect(() => timerFields({ note: "x", every: 5 }, T0, owner())).toThrow(/at least 30 seconds/);
+		for (let i = 0; i < 10; i++) add({ note: `t${i}`, after: 600 });
+		const host = fakeHost();
+		registerTimers(host.api, {
+			reservation: () => undefined,
+			agent: () => undefined,
+			env: { ...process.env, OCTOCODE_AGENT_DB: file },
+		});
+		const ctx = { ...fakeCtx({ cwd: root }), sessionManager: { getSessionId: () => "s1", getBranch: () => [] } };
+		await host.fire("session_start", { reason: "startup" }, ctx);
+		await expect(
+			host.tools.get("notify").execute("c", { op: "set", after: 1, note: "x" }, undefined, undefined, ctx),
+		).rejects.toThrow(/10 active notifications/);
+		await host.fire("session_shutdown", {}, ctx);
+	});
+});
+
+describe("the wake notice", () => {
+	it("is drawn in the theme's warning colour with why it fired and the last result", () => {
+		const colored = {
+			fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
+			bold: (text: string) => text,
+		} as never;
+		const details = {
+			id: 7,
+			kind: "until",
+			status: "done",
+			reason: "condition met: src/a.ts unlocked",
+			note: "edit src/a.ts now",
+			runs: 4,
+			maxRuns: null,
+			exit: null,
+			output: "src/a.ts is not reserved.",
+		};
+		const text = rendered(renderTimerMessage(details, "", false, colored));
+		expect(text).toContain("<warning>⏰ Notify 7: condition met: src/a.ts unlocked · done</warning>");
+		expect(text).toContain("<warning>  edit src/a.ts now</warning>");
+		expect(text).toContain("src/a.ts is not reserved.");
+	});
+});

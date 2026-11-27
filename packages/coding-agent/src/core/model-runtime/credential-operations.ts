@@ -1,0 +1,163 @@
+import type {
+	AuthInteraction,
+	AuthOperationOptions,
+	AuthType,
+	Credential,
+	LoginOptions,
+	MutableModels,
+} from "@octocodeai/octocode-ai";
+import { operationSignal, raceWithAbortSignal } from "@octocodeai/octocode-ai/utils/abort";
+import type { RuntimeCredentials } from "../runtime-credentials.ts";
+import type { ModelAvailability } from "./availability.ts";
+import type { ProviderLayers } from "./provider-layers.ts";
+import {
+	CredentialSynchronizationError,
+	type CredentialSynchronizationOperation,
+	type ModelRuntimeLoginOptions,
+} from "./types.ts";
+
+/** The runtime parts a credential change updates. */
+export interface CredentialOperationsHost {
+	readonly models: MutableModels;
+	readonly credentials: RuntimeCredentials;
+	readonly layers: ProviderLayers;
+	readonly availability: ModelAvailability;
+	readonly clearModelAccess: (providerId: string) => void;
+	/** Called once a login, import or runtime API key is saved and synchronized, never after a removal. */
+	readonly credentialSaved: (providerId: string) => void;
+}
+
+const credentialListeners = new Set<(providerId: string) => void>();
+
+/**
+ * Calls `listener` with the provider id after any `ModelRuntime` in this process saved, replaced or removed that
+ * provider's credential (login, logout, import, runtime API key). A token the runtime refreshes itself, or a change
+ * another process makes, is not announced. Listeners run inside the change and must not throw. Returns the stop function.
+ */
+export function onCredentialChange(listener: (providerId: string) => void): () => void {
+	credentialListeners.add(listener);
+	return () => void credentialListeners.delete(listener);
+}
+
+/**
+ * Credential changes (login, logout, runtime API keys), serialized per provider. Each change is followed by
+ * recomposing the provider and refreshing its models and availability.
+ */
+export class CredentialOperations {
+	private readonly host: CredentialOperationsHost;
+	private readonly credentialOperations = new Map<string, Promise<unknown>>();
+
+	constructor(host: CredentialOperationsHost) {
+		this.host = host;
+	}
+
+	private enqueueCredentialOperation<T>(providerId: string, signal: AbortSignal, task: () => Promise<T>): Promise<T> {
+		const previous = this.credentialOperations.get(providerId) ?? Promise.resolve();
+		let markStarted: (() => void) | undefined;
+		const started = new Promise<void>((resolve) => {
+			markStarted = resolve;
+		});
+		const operation = (async () => {
+			await previous.catch(() => {});
+			signal.throwIfAborted();
+			markStarted?.();
+			return task();
+		})();
+		const tail = operation.catch(() => {});
+		this.credentialOperations.set(providerId, tail);
+		void tail.then(() => {
+			if (this.credentialOperations.get(providerId) === tail) this.credentialOperations.delete(providerId);
+		});
+		return raceWithAbortSignal(started, signal).then(() => operation);
+	}
+
+	private async synchronizeCredentialState(
+		providerId: string,
+		operation: CredentialSynchronizationOperation,
+		credential: Credential | undefined,
+		signal: AbortSignal,
+	): Promise<void> {
+		const { models, layers, availability } = this.host;
+		this.host.clearModelAccess(providerId);
+		for (const listener of credentialListeners) listener(providerId);
+		try {
+			signal.throwIfAborted();
+			layers.recomposeProvider(providerId);
+			const compositionError = layers.compositionErrors.get(providerId);
+			if (compositionError) throw new Error(compositionError);
+			const result = await models.refresh({ allowNetwork: false, providers: [providerId], signal });
+			if (result.aborted) signal.throwIfAborted();
+			const refreshError = result.errors.get(providerId);
+			if (refreshError) throw refreshError;
+			availability.updateModelSnapshot();
+			await availability.refreshProviderAvailability(providerId, signal);
+		} catch (cause) {
+			throw new CredentialSynchronizationError(providerId, operation, credential, { cause });
+		}
+	}
+
+	setRuntimeApiKey(providerId: string, apiKey: string, options: AuthOperationOptions = {}): Promise<void> {
+		const signal = operationSignal(options.signal);
+		return this.enqueueCredentialOperation(providerId, signal, async () => {
+			this.host.credentials.setRuntimeApiKey(providerId, apiKey);
+			await this.synchronizeCredentialState(providerId, "setRuntimeApiKey", { type: "api_key", key: apiKey }, signal);
+			this.host.credentialSaved(providerId);
+		});
+	}
+
+	removeRuntimeApiKey(providerId: string, options: AuthOperationOptions = {}): Promise<void> {
+		const signal = operationSignal(options.signal);
+		return this.enqueueCredentialOperation(providerId, signal, async () => {
+			this.host.credentials.removeRuntimeApiKey(providerId);
+			await this.synchronizeCredentialState(providerId, "removeRuntimeApiKey", undefined, signal);
+		});
+	}
+
+	login(
+		providerId: string,
+		type: AuthType,
+		interaction: AuthInteraction,
+		options?: LoginOptions,
+		hostOptions: ModelRuntimeLoginOptions = {},
+	): Promise<Credential> {
+		const signal = operationSignal(interaction.signal);
+		return this.enqueueCredentialOperation(providerId, signal, async () => {
+			const login = () => this.host.models.login(providerId, type, { ...interaction, signal }, options);
+			const credential = hostOptions.transformCredential
+				? await this.host.credentials.withWriteTransform(providerId, hostOptions.transformCredential, login)
+				: await login();
+			await this.synchronizeCredentialState(providerId, "login", credential, signal);
+			this.host.credentialSaved(providerId);
+			return credential;
+		});
+	}
+
+	logout(providerId: string, options: AuthOperationOptions = {}): Promise<void> {
+		const signal = operationSignal(options.signal);
+		return this.enqueueCredentialOperation(providerId, signal, async () => {
+			try {
+				await this.host.models.logout(providerId, { signal });
+			} finally {
+				await this.synchronizeCredentialState(providerId, "logout", undefined, AbortSignal.timeout(15_000));
+			}
+		});
+	}
+
+	importCredential(
+		providerId: string,
+		credential: Credential,
+		options: AuthOperationOptions = {},
+		hostOptions: ModelRuntimeLoginOptions = {},
+	): Promise<void> {
+		const signal = operationSignal(options.signal);
+		return this.enqueueCredentialOperation(providerId, signal, async () => {
+			if (!this.host.models.getProvider(providerId)) throw new Error(`Unknown provider: ${providerId}`);
+			const write = () => this.host.credentials.modify(providerId, async () => structuredClone(credential), { signal });
+			const saved = hostOptions.transformCredential
+				? await this.host.credentials.withWriteTransform(providerId, hostOptions.transformCredential, write)
+				: await write();
+			await this.synchronizeCredentialState(providerId, "importCredential", saved, signal);
+			this.host.credentialSaved(providerId);
+		});
+	}
+}

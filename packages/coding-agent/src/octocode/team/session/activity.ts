@@ -1,0 +1,160 @@
+import { renderPrompt } from "../../../core/prompt-template.ts";
+import { storedText } from "@octocodeai/octocode-common/sanitize";
+import { addReply, emptyTotals, type TokenTotals } from "../../shared/util.ts";
+import { type HeldLeases, LEASE_IDLE_MS } from "../held.ts";
+import { LINE_MAX } from "../identity.ts";
+import type { Mail } from "../mail.ts";
+import type { Member } from "@octocodeai/octocode-contracts/team";
+import type { TeamStore } from "../store.ts";
+
+/** Refresh the agent's row at least this often so peers can tell it is alive (and its leases stay valid). */
+export const HEARTBEAT_MS = 5_000;
+
+/** A changed activity line reaches the row this soon at the earliest: the panel follows a child within about a second. */
+export const LINE_FLUSH_MS = 500;
+
+/** What activity accounting reads of the team (`Team`, `session.ts`): the current values each time. */
+interface ActivityHost {
+	me(): Member | undefined;
+	/** The open database, which `flush` writes to unless given another. */
+	db(): TeamStore | undefined;
+	readonly held: Pick<HeldLeases, "holding" | "lost">;
+	readonly mail: Pick<Mail, "notice">;
+	/** The model and level this session runs now (`modelRoute`), or undefined without a model. */
+	route(): string | undefined;
+	/** Keeps the reservations this agent holds for its children alive; those last as long as the child's run. */
+	renewChildren(db: TeamStore, now: number): void;
+}
+
+/** This agent's row as it works: status, tool counts and usage change in memory and reach the database on the heartbeat. */
+export class Activity {
+	private readonly host: ActivityHost;
+	/** A status or goal change waits for the next tick; activity, tool counts and usage ride the heartbeat. */
+	private statusChanged = false;
+	/** The activity line changed since the last write: the next heartbeat check writes it once `LINE_FLUSH_MS` passed. */
+	private lineChanged = false;
+	private savedAt = 0;
+	/** When this agent last worked (or joined): an idle owner's reservations lapse `LEASE_IDLE_MS` (`held.ts`) after it. */
+	private activeAt = 0;
+	/**
+	 * Replies of this session that finished before it joined (a resumed session's first reply can end before the join):
+	 * they belong to this agent's row too, so the panel and `coordinate list` add them on join.
+	 */
+	private early: { usage: TokenTotals; model?: string } = { usage: emptyTotals() };
+
+	constructor(host: ActivityHost) {
+		this.host = host;
+	}
+
+	/** A new session starts with no replies counted before its join. */
+	resetEarly(): void {
+		this.early = { usage: emptyTotals() };
+	}
+
+	/** The agent just joined as `me`: it counts as active from its join and takes the replies counted before it. */
+	joined(me: Member): void {
+		this.activeAt = me.joinedAt;
+		this.takeEarlyUsage(me);
+		// What it runs on at the join, the level included: a row would otherwise show the bare model id until the first reply.
+		const route = this.host.route();
+		if (route) me.model = storedText(route, LINE_MAX);
+	}
+
+	/** The model or thinking level changed: the row names the new route now, not with the next reply. */
+	setModel(route: string | undefined): void {
+		if (route) this.update((me) => void (me.model = storedText(route, LINE_MAX)));
+	}
+
+	/** One reply's usage; `model` wrote it (it changes when the user switches models); `unpriced`: that model has no pricing. */
+	onUsage(usage: unknown, model: string | undefined, unpriced: boolean): void {
+		if (!this.host.me()) {
+			if (model) this.early.model = storedText(model, LINE_MAX);
+			addReply(this.early.usage, usage, unpriced);
+			return;
+		}
+		this.update((me) => {
+			if (model) me.model = storedText(model, LINE_MAX);
+			addReply(me, usage, unpriced);
+		});
+	}
+
+	started(): void {
+		this.update((me) => void (me.status = "working"), true);
+	}
+
+	idle(): void {
+		this.update((me) => void (me.status = "idle"), true);
+	}
+
+	/** A top-level tool call started (parallel calls each count; calls a tool makes itself do not). */
+	toolStarted(): void {
+		this.update((me) => void (me.toolCalls += 1));
+	}
+
+	/** What the agent does now (the line src/ui/activity.ts describes), or undefined between steps and when idle. */
+	setLine(line: string | undefined): void {
+		this.update((me) => {
+			const next = line ? storedText(line, LINE_MAX) : undefined;
+			if (next === me.activity) return;
+			if (next) me.activity = next;
+			else delete me.activity;
+			this.lineChanged = true;
+		});
+	}
+
+	/** Moves the replies counted before the join onto the new row. */
+	private takeEarlyUsage(me: Member): void {
+		const { usage, model } = this.early;
+		me.input += usage.input;
+		me.cacheRead += usage.cacheRead;
+		me.cacheWrite = (me.cacheWrite ?? 0) + (usage.cacheWrite ?? 0);
+		me.output += usage.output;
+		me.cost += usage.cost;
+		if (usage.unpriced) me.unpriced = true;
+		if (model) me.model = model;
+		this.early = { usage: emptyTotals() };
+	}
+
+	/** Changes this agent's row in memory; `status` changes are written on the next tick, the rest with the heartbeat. */
+	update(change: (me: Member) => void, status = false): void {
+		const me = this.host.me();
+		if (!me) return;
+		change(me);
+		if (status) this.statusChanged = true;
+	}
+
+	flush(db: TeamStore | undefined = this.host.db()): void {
+		const me = this.host.me();
+		if (!me || !db) return;
+		const now = Date.now();
+		me.updatedAt = now;
+		if (me.status === "working") this.activeAt = now;
+		if (!db.save(me))
+			throw new Error(`The team name ${me.id} is held by another running agent; this agent's row cannot be refreshed.`);
+		// Reservations live while their owner works; an idle owner's lapse once it has been idle too long.
+		const idle = now - this.activeAt >= LEASE_IDLE_MS;
+		if (!idle) db.renew(me.id, now);
+		this.host.renewChildren(db, now);
+		this.savedAt = now;
+		this.statusChanged = false;
+		this.lineChanged = false;
+		if (!this.host.held.holding) return;
+		// A heartbeat stall can let a lease lapse (and a peer take the path): say so once, and refuse edits until re-locked.
+		const lost = this.host.held.lost(db.owned(me.id, now));
+		const why = idle ? ` after ${Math.round((now - this.activeAt) / 60_000)}m idle` : "";
+		if (lost.length > 0)
+			this.host.mail.notice(renderPrompt("notices/mail/reservation-lapsed.md", { paths: lost.join(", "), why }));
+	}
+
+	/**
+	 * Writes the row when a status changed, when the activity line changed and `LINE_FLUSH_MS` passed since the last write,
+	 * or when `HEARTBEAT_MS` passed; whether it did. No timer: the delivery tick asks.
+	 */
+	heartbeat(db: TeamStore): boolean {
+		const since = Date.now() - this.savedAt;
+		const lineDue = this.lineChanged && since >= LINE_FLUSH_MS;
+		if (!this.statusChanged && !lineDue && since < HEARTBEAT_MS) return false;
+		this.flush(db);
+		return true;
+	}
+}

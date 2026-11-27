@@ -1,0 +1,1 @@
+Record progress on {{ref}} with the backlog tool. For follow-ups, use backlogPlan (from: {{ref}}) if it is available. Otherwise report them to your coordinator to file. Mark it done only after you verify {{#if goal}}its goal{{else}}the result{{/if}}. {{guidance}} If blocked, record what is blocked, why, and what you need from whom.

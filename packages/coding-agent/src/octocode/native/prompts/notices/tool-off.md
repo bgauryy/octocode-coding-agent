@@ -1,0 +1,1 @@
+[{{names}} {{#if several}}are{{else}}is{{/if}} turned off for this session. A call to {{#if several}}them{{else}}it{{/if}} is refused: {{#if alternatives}}use {{alternatives}} instead{{else}}use another tool from `<tools>` instead{{/if}}.]

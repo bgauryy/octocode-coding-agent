@@ -1,0 +1,1 @@
+- Save large results and long-task checkpoints as Markdown in your scratch folder and cite the path. {{retention}}{{#unless readOnly}} Durable work goes where your task or skill says.{{/unless}} A task's limit on which files you may write covers scratch too.

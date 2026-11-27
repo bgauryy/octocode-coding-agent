@@ -1,0 +1,2 @@
+- Native tools: `reason` is one sentence of why.
+- After validation fails, change only the rejected input; if the same contract fails again, stop and diagnose it.

@@ -1,0 +1,31 @@
+--- a/packages/common/src/jsonl.ts
++++ b/packages/common/src/jsonl.ts
+@@ -11,6 +11,13 @@
+ 	}
+ }
+ 
++/** The parsed value of each well-formed line of `text`, in order; blank and malformed lines are skipped. */
++export function jsonlValues(text: string): unknown[] {
++	const values: unknown[] = [];
++	for (const line of jsonlLines(text)) if (line.ok) values.push(line.value);
++	return values;
++}
++
+ /**
+  * The non-blank lines of `text` in order, each parsed. What a malformed line means differs by file, so the caller
+  * decides: a transcript skips it (a torn write is not fatal), a foreign-writer merge refuses it, a journal skips it
+--- a/packages/common/test/jsonl.test.ts
++++ b/packages/common/test/jsonl.test.ts
+@@ -1,5 +1,11 @@
+ import { describe, expect, it } from "vitest";
+-import { jsonlLines, parseJsonlLine } from "../src/jsonl.ts";
++import { jsonlLines, jsonlValues, parseJsonlLine } from "../src/jsonl.ts";
++
++describe("jsonlValues", () => {
++	it("keeps well-formed values in order and skips the rest", () => {
++		expect(jsonlValues("1\n\nx\nnull")).toEqual([1, null]);
++	});
++});
+ 
+ describe("parseJsonlLine", () => {
+ 	it("parses a record and tolerates a trailing carriage return", () => {

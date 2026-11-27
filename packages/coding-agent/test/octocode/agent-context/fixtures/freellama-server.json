@@ -1,0 +1,1483 @@
+{
+  "version": "0.13.0",
+  "serverInfo": {
+    "name": "freellama",
+    "version": "0.13.0"
+  },
+  "instructions": "FreeLlama runs bounded work on local Ollama models so you spend fewer of your own tokens. Offload when what you send plus read back costs less than doing it yourself and the answer is cheap to check: 10 or more similar items, or an input over about 2,000 tokens you would otherwise read whole. Do it yourself: judgment you must stand behind (security review, design, merge decisions), edits across files, one short item.\n\nStart with models{view:\"catalog\", job} (cookbooks: freellama://docs/cookbooks/<job>) and pass its pick as model: without model, routing picks by capability only and may choose one that does not fit now. Or run_task{workflow} (fix-bug, write-tests, review-code, summarize-log, extract-json, read-fields, describe-screen...) or run_task{job}: FreeLlama picks the model and gives it step-by-step instructions (your fields win). Send one of workflow, job or task: a workflow implies its job and task, a conflicting job or task is refused. With no tested pick installed, a workflow or job runs on an installed model with the job's capability, marked untested by a check: line: verify more. Call doctor{view:\"status\"} when a call fails or before a large batch. Choose by the capabilities models reports, not a tag's name. Keep one model per batch when you can: each extra model is a load and may evict another.\n\nName inputs with files (paths or globs under the server's working directory, the temp directory or FREELLAMA_FILE_ROOTS); pasted text and base64 images cost your own output tokens. One task reads all its files together, so a glob gives one answer; for one answer per file send tasks:[{id, independent:true, task:{files:[path]}}] (up to 64). Large divisible check (code tree, logs, docs site): sweep. Files related to a text, or duplicate pairs: run_task{task:\"embedding\", files, nearest:{query}}, not a model call per chunk. Long calls or a large batch: defer:true, then task_jobs{action:\"get\", jobId} with the job_id (accepted_job_ids for tasks). Warming a model saves local time, not your tokens.\n\nYou own prompts, output format and verification: local answers are candidates, so check 3 to 5 (more where a mistake costs more) before relying on the rest, and treat low decision probabilities as unknown (a check: line marks p 0.35 to 0.65). check: lines also flag an answer cut at its output limit (raise options.num_predict) and invalid JSON.\nMemory: a refusal names the programs holding memory; tell the user, never stop their processes, retry once they free memory, or use a smaller installed model with the same capability.\nApproval: before ollama_pull, ask the user for one exact tag (name:tag) and its reported size, and pass that size as approvedSizeBytes; search results are not permission, and a user naming a tag has not yet approved its size. Unload only a model you warmed (when its burst ends) or one the user named; delete only a tag the user names.\nResults: check isError first, then the text: run_task and task_jobs answer with the text, check: lines and a closing response_file: line; read_response{file, section} opens a receipt field you need (receipt:\"full\" returns it inline). A server restart loses scopes, sessions and jobs; with FREELLAMA_DURABLE_JOBS=1 finished job receipts survive and an unfinished job reports an unknown outcome, never replayed. Docs: freellama://docs/index.",
+  "tools": [
+    {
+      "name": "doctor",
+      "description": "Use when: checking Ollama/FreeLlama health, live queues and limits, or token usage. Do not use when: choosing a model (models). Returns: by view, summary (default) versions, resident models, problems; full every check; status live memory, queues, holds, limits; usage tokens over `days`. endpoint is serve, ollamaEndpoint is Ollama.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ollamaEndpoint": {
+            "type": "string",
+            "minLength": 1
+          },
+          "endpoint": {
+            "type": "string",
+            "minLength": 1
+          },
+          "serveEndpoint": {
+            "description": "alias of endpoint",
+            "type": "string",
+            "minLength": 1
+          },
+          "view": {
+            "type": "string",
+            "enum": [
+              "summary",
+              "full",
+              "status",
+              "usage"
+            ]
+          },
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 366
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "session",
+      "description": "Use when: related run_task calls should stay on one model with a warm runner: create returns session_id for run_task sessionId; kill stops its running tasks; delete forgets it. Do not use when: cancelling one deferred job (task_jobs), keeping history (scope) or freeing memory (ollama_manage unload). Returns: a receipt.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "delete",
+              "kill"
+            ]
+          },
+          "sessionId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "endpoint": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "killed": {
+            "type": "boolean"
+          },
+          "runner_stop_confirmed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "models",
+      "description": "Use when: choosing a model (view:catalog: tested picks per job, installed, fits now), listing installed or loaded models, inspecting one, or searching ollama.com and Hugging Face GGUF repos (view:library). Do not use when: running work (run_task) or pulling (ollama_pull). Returns: models; library lists families, then one family's tags.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "view": {
+            "description": "installed: tags, capabilities, fit; resident: loaded now, GPU/CPU split; detail: one tag; raw: Ollama /api/tags, paged; library: search (query) or one family's tags; catalog: fits_now is a conservative preview (serve's memory gate measures the real need)",
+            "type": "string",
+            "enum": [
+              "catalog",
+              "installed",
+              "resident",
+              "detail",
+              "raw",
+              "library"
+            ]
+          },
+          "job": {
+            "description": "catalog: one job's measured picks that fit now",
+            "type": "string",
+            "enum": [
+              "classify",
+              "find-code",
+              "duplicates",
+              "ocr",
+              "image-recognition",
+              "image-search",
+              "speech-to-text",
+              "text-to-speech",
+              "coding",
+              "research-agent"
+            ]
+          },
+          "model": {
+            "description": "detail: the tag; library: a family or hf.co/owner/repo, to list its tags with sizeBytes",
+            "type": "string",
+            "minLength": 1
+          },
+          "includeVerbose": {
+            "type": "boolean"
+          },
+          "includeLibrary": {
+            "type": "boolean"
+          },
+          "includeReadme": {
+            "type": "boolean"
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1
+          },
+          "capabilities": {
+            "minItems": 1,
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z-]*$",
+              "description": "e.g. vision, tools, embedding, cloud"
+            }
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "popular",
+              "newest"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ollama",
+              "huggingface"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 50
+          },
+          "cursor": {
+            "description": "page.next_cursor from the previous page, unchanged",
+            "type": "string",
+            "minLength": 1
+          },
+          "endpoint": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ollamaEndpoint": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "page": {},
+          "knowledge": {},
+          "library": {}
+        },
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "scope",
+      "description": "Use when: a multi-turn local chat should keep its history on the server: create returns scope_id at revision 0; send run_task {scopeId, scopeRevision} (always together), then the next scopeRevision is the result's structuredContent.scope.revision; fork branches it. Do not use when: you only want one model kept warm (session) or a one-shot task. Returns: scope id and revision.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "get",
+              "fork",
+              "delete"
+            ]
+          },
+          "endpoint": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scopeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "revision": {
+            "description": "fork needs the scope's current revision; returns a new scope_id at revision 0 with the same history",
+            "type": "integer",
+            "minimum": 0
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "user",
+                    "assistant",
+                    "tool"
+                  ]
+                },
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "includeMessages": {
+            "description": "get: return the history too (otherwise only scope id and revision)",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "run_task",
+      "description": "Use when: bounded work for a local model: a workflow or job, decision (`state` + `questions`), embedding + `nearest`, vision, tools (returns tool_calls you run). Do not use when: you must stand behind the judgment or need edits across files. `tasks` = up to 64 independent items; `preview:true` routes only. Long work: `defer:true`, then poll task_jobs get. Returns: the answer text, its check: lines and response_file (read_response).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "minLength": 1
+          },
+          "task": {
+            "type": "string",
+            "enum": [
+              "completion",
+              "coding",
+              "code_repair",
+              "tools",
+              "browser",
+              "vision",
+              "embedding",
+              "long_context",
+              "decision"
+            ]
+          },
+          "job": {
+            "description": "picks the model that fits now, fills prompts and options; your fields win",
+            "type": "string",
+            "enum": [
+              "classify",
+              "find-code",
+              "duplicates",
+              "ocr",
+              "image-recognition",
+              "image-search",
+              "coding",
+              "summarize"
+            ]
+          },
+          "workflow": {
+            "description": "step-by-step local-model instructions; implies its job",
+            "type": "string",
+            "enum": [
+              "read-text",
+              "read-table",
+              "read-fields",
+              "answer-image",
+              "describe-screen",
+              "change-code",
+              "fix-bug",
+              "implement",
+              "write-tests",
+              "review-code",
+              "explain-code",
+              "summarize-log",
+              "summarize-text",
+              "summarize-diff",
+              "extract-json"
+            ]
+          },
+          "objective": {
+            "description": "quality needs a task policy or an explicit model",
+            "type": "string",
+            "enum": [
+              "fastest",
+              "balanced",
+              "quality"
+            ]
+          },
+          "model": {
+            "description": "exact tag; omitted, routing picks by capability only: name the catalog's pick",
+            "type": "string",
+            "minLength": 1
+          },
+          "fallbackModels": {
+            "description": "tried in order only if the previous model was refused before it ran (no room, input over its context, not installed, wrong capability), never after it started; the receipt's fallback lists each attempt",
+            "minItems": 1,
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "sessionId": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36
+          },
+          "scopeId": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36
+          },
+          "scopeRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "contextTokens": {
+            "description": "num_ctx",
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "executionPreference": {
+            "description": "CPU/GPU placement is operator-configured; this only chooses among eligible backends",
+            "type": "string",
+            "enum": [
+              "auto",
+              "prefer_cpu",
+              "prefer_gpu"
+            ]
+          },
+          "minPlacementEvidence": {
+            "type": "string",
+            "enum": [
+              "configured",
+              "observed"
+            ],
+            "description": "observed: refuse unless /api/ps proves where the model runs"
+          },
+          "requiredCapabilities": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "completion",
+                "tools",
+                "vision",
+                "audio",
+                "thinking",
+                "embedding",
+                "decision",
+                "speech"
+              ]
+            }
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1
+          },
+          "systemPrompt": {
+            "description": "Local model instructions, sent verbatim.",
+            "type": "string"
+          },
+          "images": {
+            "description": "base64 (prefer `files`). Needs an explicit vision `model`; text in images: the catalog's ocr pick",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "files": {
+            "description": "paths or globs the server reads (4 MiB per text file, 8 MiB per image, 32 MiB total): text under prompt, images as images; embedding: ~1.5 KB chunks; decision: the state",
+            "minItems": 1,
+            "maxItems": 2000,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "state": {
+            "description": "decision: the text or JSON the questions are about"
+          },
+          "questions": {
+            "description": "decision: {name:{type, instructions, criteria}}; choice: one criteria label, noul: probability of yes, score: a level from 2-10 descriptions",
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "noul",
+                    "choice",
+                    "score"
+                  ]
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "messages": {
+            "description": "Caller system prompts; no injected task instructions. Overrides prompt.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "input": {
+            "description": "embedding: text, or {text|image|audio} items"
+          },
+          "tools": {
+            "description": "check the returned tool_calls: small models call a tool when none is needed. With `tasks`: a shared default",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "function"
+                },
+                "function": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "parameters": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "type",
+                "function"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "keepAlive": {
+            "description": "\"0\" unloads, \"-1\" pins",
+            "type": "string",
+            "minLength": 1
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "json"
+              },
+              {
+                "type": "object",
+                "additionalProperties": true
+              }
+            ]
+          },
+          "think": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              }
+            ]
+          },
+          "options": {
+            "description": "num_ctx/num_gpu are routing-owned; num_predict caps output",
+            "type": "object",
+            "additionalProperties": true
+          },
+          "logprobs": {
+            "type": "boolean"
+          },
+          "topLogprobs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minConfidence": {
+            "description": "refuse a route graded lower; medium needs a task policy plus a benchmark",
+            "type": "string",
+            "enum": [
+              "low",
+              "medium"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "interactive",
+              "normal",
+              "background"
+            ]
+          },
+          "maxWaitSeconds": {
+            "description": "capped by the operator's max_queue_wait_seconds; lowered waits show as wait_limit",
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "stopOnRepetition": {
+            "description": "stop a repeating answer, keeping its text",
+            "type": "boolean"
+          },
+          "receipt": {
+            "description": "default compact",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full"
+            ]
+          },
+          "defer": {
+            "description": "with `tasks`, one job per item. run_task sends progress every 10 s; defer if your host still cuts long calls, or for a large batch",
+            "type": "boolean"
+          },
+          "idempotencyKey": {
+            "description": "with defer:true on a serve with durable jobs (FREELLAMA_DURABLE_JOBS=1): resubmitting the same key and input returns the original job, not a rerun",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "saveAs": {
+            "description": "save the answer as handoffs/<name>.md",
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,60}$"
+          },
+          "output": {
+            "description": "auto (default): inline up to 8,000 chars, else a summary plus output_file holding the rest; inline: the whole answer",
+            "type": "string",
+            "enum": [
+              "auto",
+              "inline",
+              "file"
+            ]
+          },
+          "outputPath": {
+            "description": "also write the answer here as Markdown (inside the readable roots)",
+            "type": "string",
+            "minLength": 1
+          },
+          "returnEmbeddings": {
+            "type": "boolean"
+          },
+          "dimensions": {
+            "description": "embedding: shorten vectors (models trained for it)",
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "nearest": {
+            "description": "embedding: {query?, top? (default 5, max 100), minScore?, documentPrefix?}: the items closest to `query`, or (no query) the most similar pairs; one embedding pass, no model call per chunk",
+            "type": "object",
+            "properties": {},
+            "additionalProperties": true
+          },
+          "preview": {
+            "description": "Routing only: payload fields and runtime controls are refused; never executes.",
+            "type": "boolean"
+          },
+          "tasks": {
+            "description": "per-item fields override top-level defaults (workflow and job apply to the whole batch); fields the items share (task, model, systemPrompt, questions, tools, format, options) go once at top level; one ## <id> section per item",
+            "minItems": 1,
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "independent": {
+                  "type": "boolean",
+                  "const": true
+                },
+                "task": {
+                  "type": "object",
+                  "properties": {
+                    "prompt": {},
+                    "messages": {},
+                    "state": {},
+                    "input": {},
+                    "files": {},
+                    "images": {},
+                    "model": {},
+                    "task": {},
+                    "questions": {},
+                    "options": {},
+                    "keepAlive": {},
+                    "format": {},
+                    "think": {},
+                    "systemPrompt": {
+                      "description": "Local model instructions, sent verbatim.",
+                      "type": "string"
+                    },
+                    "tools": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "function"
+                          },
+                          "function": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "description": {
+                                "type": "string"
+                              },
+                              "parameters": {
+                                "type": "object",
+                                "additionalProperties": true
+                              }
+                            },
+                            "required": [
+                              "name"
+                            ],
+                            "additionalProperties": true
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "function"
+                        ],
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "id",
+                "independent",
+                "task"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "maxParallelism": {
+            "description": "caps dispatch",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 64
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "task_jobs",
+      "description": "Use when: following run_task {defer:true} work (jobId is its job_id, or one of accepted_job_ids): list, get (result), cancel, or remove (cancels first) a job. Do not use when: submitting work or killing a session. Returns: the job's status, then its answer, ranking or error as text, then response_file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "list",
+              "get",
+              "cancel",
+              "remove"
+            ]
+          },
+          "jobId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "returnEmbeddings": {
+            "type": "boolean"
+          },
+          "output": {
+            "description": "get only; as run_task",
+            "type": "string",
+            "enum": [
+              "auto",
+              "inline",
+              "file"
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "ollama_pull",
+      "description": "Use when: the user approved downloading one exact tag at its reported size (models{view:\"library\", model:<family>} lists tags with sizeBytes); pass it as approvedSizeBytes. Do not use when: you only found or recommended a model, or the tag is installed. Returns: a receipt with status and progress.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "description": "exact tag, e.g. family:tag or hf.co/owner/repo:quant"
+          },
+          "approvedSizeBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "the download size the user approved, in bytes; the pull is refused when the tag is unknown or its current size differs by more than 5%"
+          },
+          "ollamaEndpoint": {
+            "type": "string",
+            "minLength": 1
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "model",
+          "approvedSizeBytes"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "progress": {}
+        },
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "ollama_manage",
+      "description": "Use when: loading or freeing a model: warm loads an installed one before a burst and evaluates an optional systemPrompt/messages into the prompt cache, which later run_task calls reuse only with the same model, contextTokens and an identical systemPrompt/messages prefix; unload frees memory (a model you warmed or the user named). Do not use when: downloading (ollama_pull; action pull is deprecated and refused), deleting (ollama_delete) or searching (models). Returns: a receipt with status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "pull",
+              "warm",
+              "unload"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "description": "exact tag"
+          },
+          "ollamaEndpoint": {
+            "type": "string",
+            "minLength": 1
+          },
+          "endpoint": {
+            "description": "serve endpoint (warm, unload)",
+            "type": "string",
+            "minLength": 1
+          },
+          "timeoutSeconds": {
+            "description": "warm",
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "task": {
+            "description": "warm: runner profile; embedding-only models need none, \"embedding\" for ones that also complete",
+            "type": "string",
+            "enum": [
+              "completion",
+              "coding",
+              "code_repair",
+              "tools",
+              "browser",
+              "vision",
+              "embedding",
+              "long_context"
+            ]
+          },
+          "contextTokens": {
+            "description": "warm: the num_ctx later calls use",
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "systemPrompt": {
+            "description": "Local model instructions, sent verbatim.",
+            "type": "string"
+          },
+          "messages": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "user",
+                    "assistant",
+                    "tool"
+                  ]
+                },
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "keepAlive": {
+            "description": "warm: \"-1\" pins; omitted: adaptive TTL",
+            "type": "string",
+            "minLength": 1
+          },
+          "executionPreference": {
+            "description": "CPU/GPU placement is operator-configured; this only chooses among eligible backends",
+            "type": "string",
+            "enum": [
+              "auto",
+              "prefer_cpu",
+              "prefer_gpu"
+            ]
+          },
+          "minPlacementEvidence": {
+            "type": "string",
+            "enum": [
+              "configured",
+              "observed"
+            ],
+            "description": "observed: refuse unless /api/ps proves where the model runs"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "interactive",
+              "normal",
+              "background"
+            ]
+          },
+          "maxWaitSeconds": {
+            "description": "capped by the operator's max_queue_wait_seconds (default 120); lowered waits show as wait_limit",
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "defer": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action",
+          "model"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "progress": {}
+        },
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "ollama_delete",
+      "description": "DESTRUCTIVE AND IRREVERSIBLE. Use when: a human explicitly names the exact installed tag to delete. Do not use when: you inferred the cleanup yourself, or only want to free memory (ollama_manage unload). Returns: the deleted tag.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ollamaEndpoint": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": true
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "delegate_research",
+      "description": "Use when: a read-only question about files under workspacePath (where is X, what calls Y) would take several searches; without `model`, the catalog's research-agent pick. Do not use when: editing (adapter:\"coder\" only), facts outside the workspace (GitHub excepted: adapter:\"github\"), final judgment, or a question one search answers (run_task embedding with `nearest` finds files faster). Up to 8 turns, killed after 180 s by default (more for large models; agent.timeoutSeconds sets it); no defer (a host that cuts calls near 60 s may drop it). Returns: citations/answer; discard verification.recommendation=escalate, otherwise verify citations. coder: review structuredContent.diff, then run structuredContent.applyCommand.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1
+          },
+          "workspacePath": {
+            "description": "directory under FREELLAMA_MCP_ALLOWED_ROOTS, absolute or relative to the server's working directory; required except for adapter github",
+            "type": "string",
+            "minLength": 1
+          },
+          "adapter": {
+            "description": "bash (default) or octocode search workspacePath; github searches GitHub; coder edits an isolated copy, only if the operator enabled it",
+            "type": "string",
+            "enum": [
+              "bash",
+              "octocode",
+              "github",
+              "coder"
+            ]
+          },
+          "model": {
+            "description": "omitted: the catalog's research-agent pick that is installed and fits now",
+            "type": "string",
+            "minLength": 1
+          },
+          "endpoint": {
+            "type": "string",
+            "minLength": 1
+          },
+          "agent": {
+            "type": "object",
+            "properties": {
+              "maxTurns": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "contextTokens": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "outputTokens": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "timeoutSeconds": {
+                "description": "overrides the default: 180 s plus 20 s per GB of model above 4 GB, at most 1,200 s; up to 1,800 s",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1800
+              },
+              "commands": {
+                "description": "exact commands coder may run",
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "receipt": {
+            "description": "compact (default): trail at response_file; full: inline",
+            "type": "string",
+            "enum": [
+              "compact",
+              "full"
+            ]
+          },
+          "output": {
+            "description": "auto (default): inline up to 8,000 chars, else a summary plus output_file holding the rest; inline: the whole answer",
+            "type": "string",
+            "enum": [
+              "auto",
+              "inline",
+              "file"
+            ]
+          },
+          "outputPath": {
+            "description": "also write the answer here as Markdown (inside the readable roots)",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "answer": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "citations": {},
+          "verification": {},
+          "usage": {},
+          "telemetry": {},
+          "diff": {
+            "type": "string"
+          },
+          "applyCommand": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "answer",
+          "summary",
+          "verification"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "audio",
+      "description": "Use when: a WAV recording must become text (transcribe, or translate into another language) or text into speech (speak). The model needs audio input (speech for speak): models{view:\"catalog\", job:\"speech-to-text\"} (\"text-to-speech\" for speak) finds one; none installed: ask the user to approve a pull. Do not use when: a yes/no about the audio is enough (run_task decision with the .wav in files). Returns: the text, or the WAV path written.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "transcribe",
+              "translate",
+              "speak"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "description": "exact tag"
+          },
+          "file": {
+            "description": "WAV path under the run_task files roots (transcribe, translate)",
+            "type": "string",
+            "minLength": 1
+          },
+          "text": {
+            "description": "speak",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "voice": {
+            "description": "speak",
+            "type": "string",
+            "minLength": 1
+          },
+          "language": {
+            "description": "spoken language, ISO 639-1",
+            "type": "string",
+            "minLength": 1
+          },
+          "toLanguage": {
+            "description": "translate; default en",
+            "type": "string",
+            "minLength": 1
+          },
+          "prompt": {
+            "description": "context words",
+            "type": "string",
+            "minLength": 1
+          },
+          "outputFile": {
+            "description": "speak: a new .wav under the readable roots; default temp dir",
+            "type": "string",
+            "minLength": 1
+          },
+          "endpoint": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "action",
+          "model"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "seconds": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "sweep",
+      "description": "Use when: a large divisible check (code tree, logs, docs site) should run chunk by chunk on a local model in the background; each result is saved and you read only flagged or changed chunks. results pages by `filter` (unsure: within 0.15 below a flag threshold). Clear chunks are screened, not proven clean: verify flagged ones and treat the rest as unaudited. Do not use when: a few items (run_task tasks), or finding related files (embedding + nearest). Returns: status; results cite path:Lstart-Lend or url#n.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "start",
+              "status",
+              "wait",
+              "results",
+              "cancel",
+              "resume",
+              "list"
+            ],
+            "description": "start returns at once; wait follows it for up to 50 s; resume continues after a restart"
+          },
+          "sweepId": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "files": {
+            "description": "paths or globs, as run_task files",
+            "minItems": 1,
+            "maxItems": 2000,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "urls": {
+            "description": "public pages; robots.txt honored",
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "crawl": {
+            "description": "defaults: true, 20 pages, depth 1; include is a link regex",
+            "type": "object",
+            "properties": {
+              "sameOrigin": {
+                "type": "boolean"
+              },
+              "maxPages": {
+                "type": "integer",
+                "maximum": 200
+              },
+              "maxDepth": {
+                "type": "integer",
+                "maximum": 5
+              },
+              "include": {
+                "type": "string"
+              }
+            }
+          },
+          "model": {
+            "description": "the catalog's classify pick",
+            "type": "string",
+            "minLength": 1
+          },
+          "questions": {
+            "description": "run_task decision questions, asked per chunk; noul flags at p>=0.5",
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "noul",
+                    "choice",
+                    "score"
+                  ]
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "flags": {
+            "description": "when: a choice option or \"true\"; atLeast: default 0.5",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string"
+                },
+                "when": {
+                  "type": "string"
+                },
+                "atLeast": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "question"
+              ]
+            }
+          },
+          "verifyModel": {
+            "description": "re-asks flagged and unsure chunks",
+            "type": "string",
+            "minLength": 1
+          },
+          "explainModel": {
+            "type": "string",
+            "minLength": 1
+          },
+          "explainPrompt": {
+            "description": "with explainModel: a note per confirmed flag",
+            "type": "string",
+            "minLength": 1
+          },
+          "chunkBytes": {
+            "description": "default 3000",
+            "type": "integer",
+            "minimum": 500,
+            "maximum": 16000
+          },
+          "maxParallelism": {
+            "description": "default 1",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 4
+          },
+          "baseline": {
+            "description": "an earlier sweepId: its results are reused for unchanged chunks",
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36
+          },
+          "filter": {
+            "type": "string",
+            "enum": [
+              "flagged",
+              "unsure",
+              "failed",
+              "changed",
+              "all"
+            ]
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1
+          },
+          "saveAs": {
+            "description": "results: all of filter to handoffs/<name>.md",
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,60}$"
+          },
+          "endpoint": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "read_response",
+      "description": "Use when: a result's response_file holds what the inline view lacks. Do not use when: the inline result answers. Returns: one section (a `sections` name, a structuredContent field or a JSON pointer such as /result/structuredContent/route), paged by offset/limit. An oversized record returns a preview and its record_section to page. Omit section for an outline.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "minLength": 1
+          },
+          "section": {
+            "type": "string",
+            "minLength": 1
+          },
+          "offset": {
+            "description": "next_offset from the previous page, unchanged",
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "description": "characters, array items or JSON text; array pages also cap serialized text",
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": true
+      }
+    }
+  ]
+}

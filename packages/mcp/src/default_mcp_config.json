@@ -1,0 +1,142 @@
+{
+	"servers": {
+		"octocode": {
+			"enabledEnv": "OCTOCODE_MCP",
+			"description": "Code search and read; each tool's description says when to use it.",
+			"command": "octocode-mcp",
+			"inheritEnv": true,
+			"env": {
+				"WORKSPACE_ROOT": "${workspace}",
+				"ALLOWED_PATHS": "${researchRoots}",
+				"OCTOCODE_TRUST_PROJECT_LSP_CONFIG": "${untrusted:false}"
+			},
+			"envDefaults": {
+				"OCTOCODE_ENABLE_LOCAL": "true",
+				"OCTOCODE_ENABLE_CLONE": "true"
+			},
+			"install": {
+				"npm": "octocode-mcp",
+				"version": "20.2.0",
+				"bin": "octocode-mcp",
+				"hostDependency": true
+			},
+			"roles": {
+				"reader": ["localFetch"],
+				"search": ["localSearch", "structureSearch", "astSearch", "lspSearch"],
+				"judge": ["clasify"],
+				"readOnly": [
+					"ghSearchRepo",
+					"ghSearchCode",
+					"ghStructure",
+					"ghGetFileContent",
+					"ghSearchHistory",
+					"ghGetHistoryItem",
+					"ghCloneRepo",
+					"artifactSearch",
+					"securityCheck"
+				]
+			}
+		},
+		"freellama": {
+			"enabledEnv": "OCTOCODE_MCP_FREELLAMA",
+			"enabledByDefault": false,
+			"description": "Local Ollama models: pick one that fits this machine, run or delegate tasks to it, and manage models.",
+			"command": "freellama-mcp-server",
+			"exposure": "onDemand",
+			"instructionsOnDemand": true,
+			"inheritEnv": true,
+			"install": { "npm": "@octocodeai/freellama-mcp-server", "version": "0.13.0", "bin": "freellama-mcp-server" }
+		},
+		"browser": {
+			"enabledEnv": "OCTOCODE_MCP_BROWSER",
+			"description": "Isolated Chrome for pages that need JavaScript, interaction, screenshots or saved evidence.",
+			"command": "octocode-chrome-devtools",
+			"inheritEnv": true,
+			"exposure": "onDemand",
+			"instructionsOnDemand": true
+		},
+		"desktop": {
+			"enabledEnv": "OCTOCODE_MCP_DESKTOP",
+			"description": "Native desktop apps on this computer: inspect and operate them, with screenshots.",
+			"command": "cua-driver",
+			"args": ["mcp"],
+			"inheritEnv": true,
+			"instructionsOnDemand": true,
+			"toolExposure": {
+				"list_apps": "onDemand",
+				"get_desktop_state": "onDemand",
+				"scroll": "onDemand",
+				"set_value": "onDemand",
+				"kill_app": "onDemand",
+				"bring_to_front": "onDemand",
+				"set_window_frame": "onDemand",
+				"double_click": "onDemand",
+				"right_click": "onDemand",
+				"drag": "onDemand",
+				"clipboard_read": "onDemand",
+				"clipboard_write": "onDemand",
+				"get_screen_size": "onDemand",
+				"get_cursor_position": "onDemand",
+				"move_cursor": "onDemand",
+				"set_agent_cursor_enabled": "onDemand",
+				"set_agent_cursor_motion": "onDemand",
+				"set_agent_cursor_theme": "onDemand",
+				"get_agent_cursor_state": "onDemand",
+				"check_permissions": "onDemand",
+				"health_report": "onDemand",
+				"get_config": "onDemand",
+				"get_accessibility_tree": "onDemand",
+				"zoom": "onDemand",
+				"get_browser_state": "onDemand",
+				"browser_prepare": "onDemand",
+				"browser_navigate": "onDemand",
+				"browser_click": "onDemand",
+				"browser_type": "onDemand",
+				"browser_dialog": "onDemand",
+				"browser_set_input_files": "onDemand",
+				"browser_download": "onDemand",
+				"browser_pointer": "onDemand",
+				"start_recording": "onDemand",
+				"stop_recording": "onDemand",
+				"get_recording_state": "onDemand",
+				"replay_trajectory": "onDemand",
+				"start_session": "onDemand",
+				"escalate_session": "onDemand",
+				"get_session": "onDemand",
+				"list_sessions": "onDemand",
+				"get_session_state": "onDemand",
+				"end_session": "onDemand",
+				"check_for_update": "onDemand",
+				"parse_visual_regions": "onDemand",
+				"install_extension": "hidden",
+				"install_ffmpeg": "hidden",
+				"set_config": "hidden",
+				"page": "hidden"
+			}
+		}
+	},
+	"agents": {
+		"main": { "servers": ["octocode", "freellama", "browser"] },
+		"general": { "servers": ["octocode"] },
+		"researcher": { "servers": ["octocode"] },
+		"reviewer": { "servers": ["octocode"] },
+		"implementer": { "servers": ["octocode"] },
+		"lean": { "servers": [] },
+		"browser": {
+			"tools": [
+				"mcp__browser__open",
+				"mcp__browser__group",
+				"mcp__browser__cleanup",
+				"mcp__browser__targets",
+				"mcp__browser__run",
+				"mcp__browser__cdp",
+				"mcp__browser__protocol",
+				"mcp__browser__schema",
+				"mcp__browser__query",
+				"mcp__browser__skill",
+				"octocode"
+			]
+		},
+		"desktop": { "tools": ["desktop", "browser", "octocode"] }
+	}
+}

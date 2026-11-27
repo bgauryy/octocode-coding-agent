@@ -1,0 +1,1 @@
+Your own changes{{#if agents}}, with `file`, `bash` or {{agents}} ({{files}}{{#if list}}; by subagent: {{list}}{{/if}}),{{else}}, with `file` or `bash`,{{/if}} are in `<modified-files>`: not another process's.

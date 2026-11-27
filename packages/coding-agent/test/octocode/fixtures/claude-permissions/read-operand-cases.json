@@ -1,0 +1,1318 @@
+[
+  {
+    "name": "cat-direct",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "cat secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "cat-dashdash",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "cat -- secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "cat-quoted",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "cat 'secret.txt'",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "cat-wrapper",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "command cat secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "cat-stdin",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "printf SAFE | cat -",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "head-direct",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "head secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "head-lines",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "head -n 1 secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "head-joined",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "head -n1 secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "head-byte",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "head -c 1 secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "head-value-control",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "head -n 1 safe.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "tail-direct",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "tail secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "tail-lines",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "tail -n 1 secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "tail-plus",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "tail -n +1 secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "tail-value-control",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "tail -n 1 safe.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "wc-direct",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "wc secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "wc-lines",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "wc -l secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "wc-dashdash",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "wc -- secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "wc-stdin",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "printf SAFE | wc -c",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "wc-files0",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "wc --files0-from=list.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "illegal option"
+  },
+  {
+    "name": "cat-safe",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "cat safe.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "cat-multiple",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "cat safe.txt secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "head-value-nonoperand",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./1)"
+      ]
+    },
+    "mode": "manual",
+    "command": "head -n 1 safe.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "tail-value-nonoperand",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./1)"
+      ]
+    },
+    "mode": "manual",
+    "command": "tail -n 1 safe.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "head-byte-nonoperand",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./1)"
+      ]
+    },
+    "mode": "manual",
+    "command": "head -c 1 safe.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "head-legacy-count",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "head -1 secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "tail-legacy-count",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "tail -1 secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "head-wrapper",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "command head -n 1 secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "tail-wrapper",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "command tail -n 1 secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "wc-wrapper",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "command wc -l secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "cat-interleaved",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "cat > original.txt secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "observe_files": [
+      "original.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": "SECRET_FIXTURE\nSECOND_SECRET\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "head-interleaved",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "head -n 1 > original.txt secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "observe_files": [
+      "original.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": "SECRET_FIXTURE\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "tail-interleaved",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "tail -n 1 > original.txt secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "observe_files": [
+      "original.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": "SECOND_SECRET\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "wc-interleaved",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "wc -l > original.txt secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "observe_files": [
+      "original.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": "       2 secret.txt\n"
+      }
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "read-dynamic",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "TARGET=secret.txt; cat \"$TARGET\"",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "observe_files": [
+      "original.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": null
+      }
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "head-target-grant",
+    "rules": {
+      "allow": [
+        "Bash(head *)",
+        "Read(./safe.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "head -n 1 safe.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "observe_files": [
+      "original.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": null
+      }
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "tail-target-grant",
+    "rules": {
+      "allow": [
+        "Bash(tail *)",
+        "Read(./safe.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "tail -n 1 safe.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "observe_files": [
+      "original.txt"
+    ],
+    "expected": {
+      "exit": 0,
+      "hook_count": 0,
+      "files": {
+        "original.txt": null
+      }
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "absolute-cat",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "command": "/bin/cat secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": false,
+    "result_contains": "SECRET"
+  },
+  {
+    "name": "absolute-head",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "command": "/usr/bin/head -n 1 secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": false,
+    "result_contains": "SECRET"
+  },
+  {
+    "name": "absolute-tail",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "command": "/usr/bin/tail -n 1 secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": false,
+    "result_contains": "SECRET"
+  },
+  {
+    "name": "absolute-wc",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./secret.txt)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "command": "/usr/bin/wc -l secret.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": false,
+    "result_contains": "2 secret.txt"
+  },
+  {
+    "name": "head-plus",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./+1)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "command": "head +1 safe.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "tail-plus-legacy",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./+1)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "command": "tail +1 safe.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "head-after-flag",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./-n)"
+      ]
+    },
+    "mode": "manual",
+    "command": "head safe.txt -n 1",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "head-after-value",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./1)"
+      ]
+    },
+    "mode": "manual",
+    "command": "head safe.txt -n 1",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "tail-after-flag",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./-n)"
+      ]
+    },
+    "mode": "manual",
+    "command": "tail safe.txt -n 1",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "tail-after-value",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./1)"
+      ]
+    },
+    "mode": "manual",
+    "command": "tail safe.txt -n 1",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "cat-after-flag",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./-n)"
+      ]
+    },
+    "mode": "manual",
+    "command": "cat safe.txt -n",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "wc-after-flag",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./-l)"
+      ]
+    },
+    "mode": "manual",
+    "command": "wc safe.txt -l",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "tail-plus-grant",
+    "rules": {
+      "allow": [
+        "Bash(tail *)",
+        "Read(./safe.txt)"
+      ]
+    },
+    "mode": "manual",
+    "command": "tail +1 safe.txt",
+    "files": {
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": false,
+    "result_contains": "SAFE"
+  },
+  {
+    "name": "head-dash",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./-)"
+      ]
+    },
+    "mode": "manual",
+    "command": "head -",
+    "files": {
+      "-": "DASH_SECRET\n",
+      "-n": "OPTION_SECRET\n",
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "tail-dash",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./-)"
+      ]
+    },
+    "mode": "manual",
+    "command": "tail -",
+    "files": {
+      "-": "DASH_SECRET\n",
+      "-n": "OPTION_SECRET\n",
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "wc-dash",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./-)"
+      ]
+    },
+    "mode": "manual",
+    "command": "wc -",
+    "files": {
+      "-": "DASH_SECRET\n",
+      "-n": "OPTION_SECRET\n",
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "cat-dash-option",
+    "rules": {
+      "allow": [
+        "Bash"
+      ],
+      "deny": [
+        "Read(./-n)"
+      ]
+    },
+    "mode": "manual",
+    "command": "printf STDIN | cat - -n",
+    "files": {
+      "-": "DASH_SECRET\n",
+      "-n": "OPTION_SECRET\n",
+      "secret.txt": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "safe.txt": "SAFE\n",
+      "list.txt": "secret.txt\u0000"
+    },
+    "expected": {
+      "exit": 0,
+      "hook_count": 0
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  }
+]

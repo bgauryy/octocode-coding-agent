@@ -1,0 +1,8 @@
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import test from "node:test";
+
+test("generated favicon constants match the committed PNG", () => {
+	const result = spawnSync(process.execPath, ["scripts/build/generate-favicon.mjs", "--check"], { encoding: "utf8" });
+	assert.equal(result.status, 0, result.stderr);
+});

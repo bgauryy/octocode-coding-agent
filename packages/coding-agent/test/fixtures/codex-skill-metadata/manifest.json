@@ -1,0 +1,23 @@
+{
+  "revision": "8eaf5fd115f036d207be236009938261758e30f2",
+  "sources": {
+    "codex-rs/skills/src/metadata.rs": "094357ff0dde43e58f6899d7644a7d46896d198564cb2ac06be421c04a8e7203",
+    "codex-rs/skills/src/interface.rs": {
+      "sha256": "78dc273c51397dbd5c0184923693036a6aef500aac27e230761f7932674bacb6",
+      "reproduced": "SkillInterfaceFile, lines 13-22"
+    },
+    "codex-rs/skills/src/model.rs": {
+      "sha256": "6c0336c8af3f9ec7e3fa95eaccab9f17cf64b59544842dfe3f980f8cf4468382",
+      "reproduced": "SkillPolicy and dependencies, lines 62-97"
+    },
+    "codex-rs/protocol/src/protocol.rs": {
+      "sha256": "2a76e3cf7bc91cad28e0e971ef70c6654e42d2780a8a1646f97f7244ad4ccc8f",
+      "reproduced": "Product serde enum, lines 3989-4000"
+    }
+  },
+  "adaptations": [
+    "Product import points to harness enum with identical serde names/aliases.",
+    "Tracing warning calls removed; validation and resolution unchanged.",
+    "Harness reproduces interface/model field types without filesystem/UI dependencies."
+  ]
+}

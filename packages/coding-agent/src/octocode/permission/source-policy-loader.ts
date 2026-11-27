@@ -1,0 +1,241 @@
+import os from "node:os";
+import type { FeatureSetup, FeatureContext, ToolInvocation } from "../../core/features/types.ts";
+import { nativeHost } from "../shared/host-api.ts";
+import { claudeSettingsSources } from "../shared/home.ts";
+import { say } from "../shared/commands.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { parseSourcePolicy, type PolicySource, type SourcePolicy } from "./source-policy/rules.ts";
+import { initializeBashSyntax } from "./bash-syntax.ts";
+import { evaluateSourcePolicy, unprojectedSourcePolicy, sourceToolDenied } from "./source-policy.ts";
+import {
+	applySessionRuleUpdates,
+	grantsAccess,
+	type SourcePermissionUpdate,
+	type SourceRuleArrays,
+} from "../shared/permission-updates.ts";
+import { readPolicyAsync, stageSettingsWrite, persistSettingsWrite } from "./source-policy-storage.ts";
+
+/** `home`: the user's home for user-level settings (the OS home by default); `onChange`: runs after each new policy. */
+export function registerSourcePolicy(
+	api: FeatureSetup,
+	{ home = os.homedir(), onChange }: { home?: string; onChange?: () => void } = {},
+) {
+	let policy: SourcePolicy = { rules: [], errors: [] };
+	let basePolicy: SourcePolicy = { rules: [], errors: [] };
+	let last = "";
+	let sessionId: string | undefined;
+	let sessionRules: SourceRuleArrays = { allow: [], deny: [], ask: [] };
+	let transient: SourcePolicy = { rules: [], errors: [] };
+	let revision = 0;
+	const sessionSource = (ctx: FeatureContext) => ({
+		path: "Claude session permission updates",
+		anchor: ctx.cwd,
+	});
+	const publish = (ctx: FeatureContext) => {
+		const overlay = parseSourcePolicy({ permissions: sessionRules }, sessionSource(ctx));
+		policy = {
+			rules: [...basePolicy.rules, ...transient.rules, ...overlay.rules],
+			errors: [...basePolicy.errors, ...transient.errors, ...overlay.errors],
+			defaultMode: overlay.defaultMode ?? transient.defaultMode ?? basePolicy.defaultMode,
+			additionalDirectories: [
+				...(basePolicy.additionalDirectories ?? []),
+				...(transient.additionalDirectories ?? []),
+				...(overlay.additionalDirectories ?? []),
+			],
+		};
+		revision++;
+		onChange?.();
+		nativeHost(api).tools.setPolicy?.((name) => !sourceToolDenied(policy, name));
+	};
+	const capture = async (ctx: FeatureContext) => {
+		try {
+			await initializeBashSyntax();
+		} catch {
+			say(ctx, "Bash syntax parser unavailable; shell file targets require explicit review", "warning");
+		}
+		// Read the policy only after initialization, so the bytes parsed are the bytes captured.
+		const allSources = claudeSettingsSources(ctx.cwd, true, home);
+		const read = (source: PolicySource) => readPolicyAsync(source.path).then((entry) => ({ source, ...entry }));
+		const captured = await Promise.all(allSources.map(read));
+		// The session's folder is trusted (the startup gate decides); project settings may then allow as well as restrict.
+		const trusted = ctx.isProjectTrusted();
+		const current = await Promise.all(allSources.map(read));
+		const stable = JSON.stringify(captured) === JSON.stringify(current);
+		const contents = captured.map((entry) =>
+			stable || entry.source === allSources[0] ? entry : { source: entry.source, error: true },
+		);
+		const id = ctx.sessionManager.getSessionId();
+		const fingerprint = JSON.stringify({
+			contents,
+			trusted,
+			sessionId: id,
+		});
+		const next: SourcePolicy = { rules: [], errors: [] };
+		for (const { source, text, error } of contents) {
+			if (text === undefined && !error) continue;
+			let loaded: SourcePolicy;
+			try {
+				loaded = parseSourcePolicy(JSON.parse(text!), source);
+			} catch {
+				loaded = parseSourcePolicy({ permissions: null }, source);
+			}
+			// What allows (allow rules, `acceptEdits`, extra directories) loads only from the user's own settings or a
+			// trusted project, local file included; what restricts loads from any source. An untrusted project's files
+			// never grant, whatever git says about them: the folder chose them, not the user.
+			const allowances = trusted || source.path === allSources[0].path;
+			next.rules.push(...loaded.rules.filter((rule) => allowances || rule.behavior !== "allow"));
+			next.errors.push(...loaded.errors);
+			if (loaded.defaultMode && (allowances || loaded.defaultMode !== "acceptEdits"))
+				next.defaultMode = loaded.defaultMode;
+			if (allowances)
+				next.additionalDirectories = [...(next.additionalDirectories ?? []), ...(loaded.additionalDirectories ?? [])];
+		}
+		return { fingerprint, next, id, contents };
+	};
+	let acceptedContents: Awaited<ReturnType<typeof capture>>["contents"] = [];
+	const install = (snapshot: Awaited<ReturnType<typeof capture>>) => {
+		if (sessionId !== snapshot.id) {
+			sessionId = snapshot.id;
+			sessionRules = { allow: [], deny: [], ask: [] };
+			transient = { rules: [], errors: [] };
+		}
+		basePolicy = snapshot.next;
+		last = snapshot.fingerprint;
+		acceptedContents = snapshot.contents;
+	};
+	const load = async (ctx: FeatureContext) => {
+		const snapshot = await capture(ctx);
+		if (snapshot.fingerprint === last) return;
+		install(snapshot);
+		publish(ctx);
+		if (policy.errors.length) say(ctx, policy.errors.join("\n"), "warning");
+	};
+	let pending: Promise<void> = Promise.resolve();
+	const refresh = (ctx: FeatureContext) => {
+		const current = pending.then(() => load(ctx));
+		pending = current.catch(() => {});
+		return current;
+	};
+	api.bus.on("session_start", async (_event, ctx) => refresh(ctx));
+	api.bus.on("before_agent_start", async (_event, ctx) => {
+		await refresh(ctx);
+	});
+	return {
+		prepareUpdates: (ctx: FeatureContext, updates: readonly SourcePermissionUpdate[]) => {
+			const nextSession = applySessionRuleUpdates(
+				sessionRules,
+				updates.filter((update) => update.destination === "session"),
+			);
+			const sessionParsed = parseSourcePolicy({ permissions: nextSession }, sessionSource(ctx));
+			if (sessionParsed.errors.length) throw new Error(sessionParsed.errors.join("\n"));
+			// An untrusted project's files grant nothing (see `capture`), so a granting update there would be saved and
+			// never apply. Refuse it before anything is written; restricting updates are still saved.
+			if (!ctx.isProjectTrusted()) {
+				const refused = updates.find(
+					(update) =>
+						(update.destination === "projectSettings" || update.destination === "localSettings") &&
+						grantsAccess(update),
+				);
+				if (refused)
+					throw new Error(
+						`Permission update to ${refused.destination} not saved: this project is not trusted, so its settings files grant nothing. Trust the folder with /trust, or use the userSettings or session destination; call not executed`,
+					);
+			}
+			const sources = claudeSettingsSources(ctx.cwd, true, home);
+			const destinations = {
+				userSettings: sources[0],
+				projectSettings: sources[1],
+				localSettings: sources[2],
+			};
+			const plans = (["userSettings", "projectSettings", "localSettings"] as const).flatMap((destination) => {
+				const selected = updates.filter((update) => update.destination === destination);
+				if (!selected.length) return [];
+				const plan = stageSettingsWrite(destinations[destination], destination, selected);
+				const parsed = parseSourcePolicy(plan.settings, plan.source);
+				if (parsed.errors.length) throw new Error(parsed.errors.join("\n"));
+				return [plan];
+			});
+			const expectedContents = acceptedContents.map((entry) => ({ ...entry }));
+			const expectedRevision = revision;
+			const expectedSession = ctx.sessionManager.getSessionId();
+			const assertCurrent = () => {
+				if (
+					revision !== expectedRevision ||
+					sessionId !== expectedSession ||
+					ctx.sessionManager.getSessionId() !== expectedSession
+				)
+					throw new Error("Permission policy changed before update commit");
+			};
+			return async (signal: AbortSignal, commit: (change: () => void) => void) => {
+				signal.throwIfAborted();
+				assertCurrent();
+				let written = 0;
+				const saved: string[] = [];
+				try {
+					for (const plan of plans) {
+						signal.throwIfAborted();
+						assertCurrent();
+						const result = await persistSettingsWrite(plan, signal);
+						if (result.written) {
+							written++;
+							saved.push(plan.source.path);
+						}
+						if (result.message) say(ctx, result.message, "warning");
+					}
+					signal.throwIfAborted();
+					assertCurrent();
+					const snapshot = plans.length ? await capture(ctx) : undefined;
+					signal.throwIfAborted();
+					assertCurrent();
+					if (snapshot) {
+						if (snapshot.id !== expectedSession)
+							throw new Error("Permission session changed before update publication");
+						const expected = expectedContents.map((entry) => {
+							const own = plans.find(
+								(plan) => plan.source.path === entry.source.path && saved.includes(plan.source.path),
+							);
+							return own
+								? {
+										source: entry.source,
+										text: `${JSON.stringify(own.settings, null, 2)}\n`,
+										error: undefined,
+									}
+								: entry;
+						});
+						if (JSON.stringify(snapshot.contents) !== JSON.stringify(expected))
+							throw new Error("External permission settings changed during update commit");
+					}
+					commit(() => {
+						if (snapshot) install(snapshot);
+						sessionRules = nextSession;
+						if (plans.length) {
+							transient = { rules: [], errors: [] };
+							if (!written) {
+								// Failed saves retain the attempted source rules for this process. A successful
+								// settings reload instead restores the normal per-source trust boundary.
+								for (const plan of plans) transient.rules.push(...parseSourcePolicy(plan.settings, plan.source).rules);
+								// The failed destination itself must not turn this approved update into a malformed-policy denial.
+								const failedPaths = new Set(plans.map((plan) => plan.source.path));
+								basePolicy = {
+									rules: basePolicy.rules.filter((rule) => !failedPaths.has(rule.source.path)),
+									errors: basePolicy.errors,
+								};
+							}
+						}
+						publish(ctx);
+					});
+				} catch (error) {
+					if (saved.length)
+						throw new Error(
+							`Permission updates saved to ${saved.join(", ")} before the operation stopped: ${errorMessage(error)}`,
+							{ cause: error },
+						);
+					throw error;
+				}
+			};
+		},
+		refresh,
+		unprojected: (toolName: string) => unprojectedSourcePolicy(policy, toolName),
+		evaluate: (invocation: ToolInvocation, cwd: string) => evaluateSourcePolicy(policy, invocation, cwd),
+	};
+}

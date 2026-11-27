@@ -1,0 +1,401 @@
+{
+  "revision": "8eaf5fd115f036d207be236009938261758e30f2",
+  "cases": [
+    {
+      "id": 0,
+      "text": "do $alpha now",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "alpha"
+        ]
+      }
+    },
+    {
+      "id": 1,
+      "text": "$beta $alpha $beta",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "alpha",
+          "beta"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "text": "$alpha:b_c-9",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "alpha:b_c-9"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "text": "$ALPHA $alpha",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "ALPHA",
+          "alpha"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "text": "`$alpha`",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "alpha"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "text": "```\n$alpha\n```",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "alpha"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "text": "\\$alpha",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "alpha"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "text": "${alpha}",
+      "expected": {
+        "paths": [],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 8,
+      "text": "$PATH $home $Temp $XDG_CONFIG_HOME $custom",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "custom"
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "text": "x$alpha",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "alpha"
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "text": "[$label](/tmp/alpha/SKILL.md)",
+      "expected": {
+        "paths": [
+          "/tmp/alpha/SKILL.md"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 11,
+      "text": "[$label] (skill:///tmp/a/SKILL.md)",
+      "expected": {
+        "paths": [
+          "skill:///tmp/a/SKILL.md"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 12,
+      "text": "[$label]\n\t(/tmp/a/SKILL.md)",
+      "expected": {
+        "paths": [
+          "/tmp/a/SKILL.md"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 13,
+      "text": "[$label]( /tmp/a/SKILL.md )",
+      "expected": {
+        "paths": [
+          "/tmp/a/SKILL.md"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 14,
+      "text": "[$label](/unknown)",
+      "expected": {
+        "paths": [
+          "/unknown"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 15,
+      "text": "[$alpha]()",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "alpha"
+        ]
+      }
+    },
+    {
+      "id": 16,
+      "text": "[$alpha](   )",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "alpha"
+        ]
+      }
+    },
+    {
+      "id": 17,
+      "text": "[$alpha](/unterminated",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "alpha"
+        ]
+      }
+    },
+    {
+      "id": 18,
+      "text": "[$alpha](/a(b)/SKILL.md)",
+      "expected": {
+        "paths": [
+          "/a(b"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 19,
+      "text": "[$name](app://a) [$name](mcp://b) [$name](plugin://c)",
+      "expected": {
+        "paths": [
+          "app://a",
+          "mcp://b",
+          "plugin://c"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 20,
+      "text": "$alpha [$alpha](/different)",
+      "expected": {
+        "paths": [
+          "/different"
+        ],
+        "plainNames": [
+          "alpha"
+        ]
+      }
+    },
+    {
+      "id": 21,
+      "text": "[$HOME](/a/SKILL.md)",
+      "expected": {
+        "paths": [],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 22,
+      "text": "[$a](file:///tmp/a/SKILL.md)",
+      "expected": {
+        "paths": [
+          "file:///tmp/a/SKILL.md"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 23,
+      "text": "[$a](skill://relative/SKILL.md)",
+      "expected": {
+        "paths": [
+          "skill://relative/SKILL.md"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 24,
+      "text": "[$a](https://example/SKILL.md)",
+      "expected": {
+        "paths": [
+          "https://example/SKILL.md"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 25,
+      "text": "$\u00e9clair $a\u00e9 $a\ud83d\ude00",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "a"
+        ]
+      }
+    },
+    {
+      "id": 26,
+      "text": "$a.b $a/b $a@b",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "a"
+        ]
+      }
+    },
+    {
+      "id": 27,
+      "text": "[$a]\u00a0(/a/SKILL.md)",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "a"
+        ]
+      }
+    },
+    {
+      "id": 28,
+      "text": "[$a](\ufeff/a/SKILL.md\ufeff)",
+      "expected": {
+        "paths": [
+          "\ufeff/a/SKILL.md\ufeff"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 29,
+      "text": "[$a](\u2003/a/SKILL.md\u2003)",
+      "expected": {
+        "paths": [
+          "/a/SKILL.md"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 30,
+      "text": "$9 $_ $- $:",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "-",
+          "9",
+          ":",
+          "_"
+        ]
+      }
+    },
+    {
+      "id": 31,
+      "text": "[$a](A)[$b](B)",
+      "expected": {
+        "paths": [
+          "A",
+          "B"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 32,
+      "text": "$",
+      "expected": {
+        "paths": [],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 33,
+      "text": "[$](/a)",
+      "expected": {
+        "paths": [],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 34,
+      "text": "[$a](/a) $b",
+      "expected": {
+        "paths": [
+          "/a"
+        ],
+        "plainNames": [
+          "b"
+        ]
+      }
+    },
+    {
+      "id": 35,
+      "text": "[$a]\u000b(/a/SKILL.md)",
+      "expected": {
+        "paths": [],
+        "plainNames": [
+          "a"
+        ]
+      }
+    },
+    {
+      "id": 36,
+      "text": "[$a](\u0085/a/SKILL.md\u0085)",
+      "expected": {
+        "paths": [
+          "/a/SKILL.md"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 37,
+      "text": "[$a]\f(/a/SKILL.md)",
+      "expected": {
+        "paths": [
+          "/a/SKILL.md"
+        ],
+        "plainNames": []
+      }
+    },
+    {
+      "id": 38,
+      "text": "[$a](app://demo) $a",
+      "expected": {
+        "paths": [
+          "app://demo"
+        ],
+        "plainNames": [
+          "a"
+        ]
+      }
+    }
+  ]
+}

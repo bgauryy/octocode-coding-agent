@@ -1,0 +1,1948 @@
+{
+  "identity": {
+    "executable": "/Users/bgaryy/.local/bin/claude",
+    "realpath": "/Users/bgaryy/.local/share/claude/versions/2.1.309",
+    "sha256": "5eadc0009cdcdbc0d06e58110d7b2baf88ced6088b1c33a60a21217fe410619c",
+    "version": "2.1.309 (Claude Code)"
+  },
+  "scope": "Isolated local provider, dummy credentials, executable hash guard. Shell effects are confined to owned temporary directories.",
+  "cases": [
+    {
+      "case": "cat-direct",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command cat secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "cat-dashdash",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command cat -- secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat -- secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "cat-quoted",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command cat 'secret.txt' has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat 'secret.txt'",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "cat-wrapper",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command command cat secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "command cat secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "cat-stdin",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"SAFE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf SAFE | cat -",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "head-direct",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command head secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "head secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "head-lines",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command head -n 1 secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "head -n 1 secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "head-joined",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command head -n1 secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "head -n1 secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "head-byte",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command head -c 1 secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "head -c 1 secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "head-value-control",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"SAFE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "head -n 1 safe.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "tail-direct",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command tail secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "tail secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "tail-lines",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command tail -n 1 secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "tail -n 1 secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "tail-plus",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command tail -n +1 secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "tail -n +1 secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "tail-value-control",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"SAFE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "tail -n 1 safe.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "wc-direct",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command wc secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "wc secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "wc-lines",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command wc -l secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "wc -l secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "wc-dashdash",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command wc -- secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "wc -- secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "wc-stdin",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"4\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf SAFE | wc -c",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "wc-files0",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Exit code 1\\nwc: illegal option -- -\\nusage: wc [-Lclmw] [file ...]\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "wc --files0-from=list.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "cat-safe",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"SAFE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat safe.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "cat-multiple",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command cat safe.txt secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat safe.txt secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "head-value-nonoperand",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./1)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command head -n 1 safe.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "head -n 1 safe.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "tail-value-nonoperand",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./1)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command tail -n 1 safe.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "tail -n 1 safe.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "head-byte-nonoperand",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./1)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command head -c 1 safe.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "head -c 1 safe.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "head-legacy-count",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command head -1 secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "head -1 secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "tail-legacy-count",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command tail -1 secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "tail -1 secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "head-wrapper",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command command head -n 1 secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "command head -n 1 secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "tail-wrapper",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command command tail -n 1 secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "command tail -n 1 secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "wc-wrapper",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command command wc -l secret.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "command wc -l secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "cat-interleaved",
+      "exit": 0,
+      "original": "SECRET_FIXTURE\nSECOND_SECRET\n",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": "SECRET_FIXTURE\nSECOND_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat > original.txt secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": "SECRET_FIXTURE\nSECOND_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "head-interleaved",
+      "exit": 0,
+      "original": "SECRET_FIXTURE\n",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": "SECRET_FIXTURE\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "head -n 1 > original.txt secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": "SECRET_FIXTURE\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "tail-interleaved",
+      "exit": 0,
+      "original": "SECOND_SECRET\n",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": "SECOND_SECRET\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "tail -n 1 > original.txt secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": "SECOND_SECRET\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "wc-interleaved",
+      "exit": 0,
+      "original": "       2 secret.txt\n",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": "       2 secret.txt\n"
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"(Bash completed with no output)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "wc -l > original.txt secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": "       2 secret.txt\n"
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "read-dynamic",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command TARGET=secret.txt; cat \\\"$TARGET\\\" has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "TARGET=secret.txt; cat \"$TARGET\"",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": null
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "head-target-grant",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(head *)",
+          "Read(./safe.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"SAFE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "head -n 1 safe.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": null
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "tail-target-grant",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(tail *)",
+          "Read(./safe.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {
+        "original.txt": null
+      },
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"SAFE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "tail -n 1 safe.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0,
+        "files": {
+          "original.txt": null
+        }
+      },
+      "passed": true
+    },
+    {
+      "case": "absolute-cat",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"SECRET_FIXTURE\\nSECOND_SECRET\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "/bin/cat secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "absolute-head",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"SECRET_FIXTURE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "/usr/bin/head -n 1 secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "absolute-tail",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"SECOND_SECRET\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "/usr/bin/tail -n 1 secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "absolute-wc",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./secret.txt)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"2 secret.txt\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "/usr/bin/wc -l secret.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "head-plus",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./+1)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command head +1 safe.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "head +1 safe.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "tail-plus-legacy",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./+1)"
+        ]
+      },
+      "mode": "bypassPermissions",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command tail +1 safe.txt has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "tail +1 safe.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "head-after-flag",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./-n)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command head safe.txt -n 1 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "head safe.txt -n 1",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "head-after-value",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./1)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command head safe.txt -n 1 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "head safe.txt -n 1",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "tail-after-flag",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./-n)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command tail safe.txt -n 1 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "tail safe.txt -n 1",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "tail-after-value",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./1)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command tail safe.txt -n 1 has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "tail safe.txt -n 1",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "cat-after-flag",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./-n)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command cat safe.txt -n has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "cat safe.txt -n",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "wc-after-flag",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./-l)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command wc safe.txt -l has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "wc safe.txt -l",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "tail-plus-grant",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash(tail *)",
+          "Read(./safe.txt)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"SAFE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "tail +1 safe.txt",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "head-dash",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./-)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command head - has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "head -",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "tail-dash",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./-)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command tail - has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "tail -",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "wc-dash",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./-)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command wc - has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "wc -",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    },
+    {
+      "case": "cat-dash-option",
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2,
+      "rule_config": {
+        "allow": [
+          "Bash"
+        ],
+        "deny": [
+          "Read(./-n)"
+        ]
+      },
+      "mode": "manual",
+      "replacement_supplied": false,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": true,
+          "content": "\"Permission to use Bash with command cat - -n has been denied.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "command_template": "printf STDIN | cat - -n",
+      "expected": {
+        "exit": 0,
+        "hook_count": 0
+      },
+      "passed": true
+    }
+  ]
+}

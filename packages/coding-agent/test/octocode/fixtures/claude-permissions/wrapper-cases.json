@@ -1,0 +1,1348 @@
+[
+  {
+    "name": "time",
+    "command": "time node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "nice",
+    "command": "nice node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "nice-options",
+    "command": "nice -n 3 node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "nohup",
+    "command": "nohup node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "command",
+    "command": "command node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "command-v",
+    "command": "command -v node",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "xargs",
+    "command": "xargs node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "xargs-flags",
+    "command": "xargs -n1 node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "xargs-double-dash",
+    "command": "xargs -- node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "stdbuf",
+    "command": "stdbuf -o L node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "nested",
+    "command": "nice nohup node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "safe-env",
+    "command": "NODE_ENV=test node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "unknown-env",
+    "command": "FOO=bar node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "env-wrapper",
+    "command": "env NODE_ENV=test node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "deny-safe-env",
+    "command": "NODE_ENV=test node -p 42",
+    "rules": {
+      "deny": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "deny-unknown-env",
+    "command": "FOO=bar node -p 42",
+    "rules": {
+      "deny": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "deny-builtin",
+    "command": "builtin printf BLOCK",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "ask-safe-env",
+    "command": "NODE_ENV=test node -p 42",
+    "rules": {
+      "ask": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "ask-unknown-env",
+    "command": "FOO=bar node -p 42",
+    "rules": {
+      "ask": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "ask-builtin",
+    "command": "builtin printf BLOCK",
+    "rules": {
+      "ask": [
+        "Bash(printf BLOCK)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "find-prefix",
+    "command": "find . -prune -exec node -p 42 \\;",
+    "rules": {
+      "allow": [
+        "Bash(find *)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "find-exact",
+    "command": "find . -prune -exec node -p 42 \\;",
+    "rules": {
+      "allow": [
+        "Bash(find . -prune -exec node -p 42 \\;)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "nice-joined",
+    "command": "nice -n3 node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "time-p",
+    "command": "time -p node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "time-f",
+    "command": "time -f %s node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "command not found"
+  },
+  {
+    "name": "stdbuf-joined",
+    "command": "stdbuf -oL node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "stdbuf-long",
+    "command": "stdbuf --output=L node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "illegal option"
+  },
+  {
+    "name": "timeout",
+    "command": "timeout 1s node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "command not found"
+  },
+  {
+    "name": "timeout-short",
+    "command": "timeout -s TERM 1s node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "command not found"
+  },
+  {
+    "name": "timeout-long",
+    "command": "timeout --signal=TERM 1s node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "command not found"
+  },
+  {
+    "name": "timeout-kill",
+    "command": "timeout --kill-after=1s 1s node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "command not found"
+  },
+  {
+    "name": "quoted-target",
+    "command": "nice \"node\" -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "escaped-target",
+    "command": "nice n\\ode -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "noglob",
+    "command": "noglob node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "command not found"
+  },
+  {
+    "name": "command-p-deny",
+    "command": "command -p printf BLOCK",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "command-V",
+    "command": "command -V node",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "xargs-input",
+    "command": "printf '42\\n' | xargs node -p",
+    "rules": {
+      "allow": [
+        "Bash(printf *)",
+        "Bash(node -p*)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "xargs-flag-input",
+    "command": "printf '42\\n' | xargs -n1 node -p",
+    "rules": {
+      "allow": [
+        "Bash(printf *)",
+        "Bash(node -p*)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "xargs-dash-input",
+    "command": "printf '42\\n' | xargs -- node -p",
+    "rules": {
+      "allow": [
+        "Bash(printf *)",
+        "Bash(node -p*)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "xargs-input-prefix",
+    "command": "printf '42\\n' | xargs node -p",
+    "rules": {
+      "allow": [
+        "Bash(printf *)",
+        "Bash(xargs *)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "xargs-input-exact",
+    "command": "printf '42\\n' | xargs node -p",
+    "rules": {
+      "allow": [
+        "Bash(printf '42\\n' | xargs node -p)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "find-prefix-FOO=bar",
+    "command": "FOO=bar find . -prune -exec node -p 42 \\;",
+    "rules": {
+      "allow": [
+        "Bash(FOO=*)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "find-prefix-NODE_ENV=test",
+    "command": "NODE_ENV=test find . -prune -exec node -p 42 \\;",
+    "rules": {
+      "allow": [
+        "Bash(NODE_ENV=*)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "bare-quoted",
+    "command": "'node' -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "bare-escaped",
+    "command": "n\\ode -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "wrapped-quoted-arg",
+    "command": "nice node -p \"42\"",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "bare-quoted-arg",
+    "command": "node -p \"42\"",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "wrapped-escaped-arg",
+    "command": "nice node -p 4\\2",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "bare-escaped-arg",
+    "command": "node -p 4\\2",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "xargs-pipeline-noallow",
+    "command": "printf '42\\n' | xargs node -p",
+    "rules": {},
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "wrapped-quoted-printf-deny",
+    "command": "nice printf 'BLOCK'",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "wrapped-escaped-printf-deny",
+    "command": "nice printf BL\\OCK",
+    "rules": {
+      "deny": [
+        "Bash(printf BLOCK)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "quoted-wrapper",
+    "command": "'nice' node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "plain-pipeline-none",
+    "command": "node -p 41 | cat",
+    "rules": {},
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "plain-pipeline-exact",
+    "command": "node -p 41 | cat",
+    "rules": {
+      "allow": [
+        "Bash(node -p 41 | cat)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "plain-pipeline-leaves",
+    "command": "node -p 41 | cat",
+    "rules": {
+      "allow": [
+        "Bash(node -p 41)",
+        "Bash(cat)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": null
+  },
+  {
+    "name": "and-chain-exact",
+    "command": "node -p 41 && node -p 42",
+    "rules": {
+      "allow": [
+        "Bash(node -p 41 && node -p 42)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "subshell-exact",
+    "command": "(node -p 42)",
+    "rules": {
+      "allow": [
+        "Bash((node -p 42))"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "deny-nice-joined",
+    "command": "nice -n3 node -p 42",
+    "rules": {
+      "deny": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "deny-time-p",
+    "command": "time -p node -p 42",
+    "rules": {
+      "deny": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "result_contains": "has been denied"
+  },
+  {
+    "name": "deny-stdbuf-spaced",
+    "command": "stdbuf -o L node -p 42",
+    "rules": {
+      "deny": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "ask-nice-joined",
+    "command": "nice -n3 node -p 42",
+    "rules": {
+      "ask": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "ask-time-p",
+    "command": "time -p node -p 42",
+    "rules": {
+      "ask": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "ask-stdbuf-spaced",
+    "command": "stdbuf -o L node -p 42",
+    "rules": {
+      "ask": [
+        "Bash(node -p 42)"
+      ]
+    },
+    "mode": "bypassPermissions",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "leading-find-prefix",
+    "command": " find . -prune -exec node -p 42 \\;",
+    "rules": {
+      "allow": [
+        "Bash( find *)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "leading-find-exact",
+    "command": " find . -prune -exec node -p 42 \\;",
+    "rules": {
+      "allow": [
+        "Bash( find . -prune -exec node -p 42 \\;)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "tab-find-prefix",
+    "command": "\tfind . -prune -exec node -p 42 \\;",
+    "rules": {
+      "allow": [
+        "Bash(\tfind *)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "quoted-nice-option-find",
+    "command": "nice \"-n\" 4 find . -prune -exec node -p 42 \\;",
+    "rules": {
+      "allow": [
+        "Bash(nice *)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "unquoted-nice-option-find",
+    "command": "nice -n 4 find . -prune -exec node -p 42 \\;",
+    "rules": {
+      "allow": [
+        "Bash(nice *)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "42"
+  },
+  {
+    "name": "quoted-command-option-find",
+    "command": "command \"-p\" find . -prune -exec node -p 42 \\;",
+    "rules": {
+      "allow": [
+        "Bash(command *)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "No such file"
+  },
+  {
+    "name": "quoted-command-option-find-printf",
+    "command": "command \"-p\" find . -prune -exec /usr/bin/printf BLOCK \\;",
+    "rules": {
+      "allow": [
+        "Bash(command *)"
+      ]
+    },
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "result_contains": "BLOCK"
+  }
+]

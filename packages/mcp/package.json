@@ -1,0 +1,45 @@
+{
+	"name": "@octocodeai/octocode-mcp",
+	"version": "1.3.0",
+	"private": true,
+	"type": "module",
+	"description": "Private MCP client and coding-agent host implementation",
+	"octocodeSource": {
+		"host": "coding-agent",
+		"mount": "mcp"
+	},
+	"exports": {
+		".": "./src/client/index.ts",
+		"./oauth": "./src/client/oauth/index.ts",
+		"./testing": "./src/client/testing/index.ts",
+		"./host": "./src/index.ts",
+		"./acp-session-servers": "./src/acp-session-servers.ts",
+		"./config": "./src/config.ts"
+	},
+	"scripts": {
+		"test": "vitest --run"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/client": "^2.4.0",
+		"@modelcontextprotocol/core": "^2.4.0",
+		"@octocodeai/octocode-agent-core": "1.3.0",
+		"@octocodeai/octocode-ai": "1.3.0",
+		"@octocodeai/octocode-common": "1.3.0",
+		"@octocodeai/octocode-contracts": "1.3.0",
+		"@octocodeai/octocode-tui": "1.3.0",
+		"chalk": "^6.0.1",
+		"cross-spawn": "^7.0.6",
+		"proper-lockfile": "^4.1.2",
+		"typebox": "^1.4.7"
+	},
+	"devDependencies": {
+		"@types/node": "^24.19.2",
+		"vite": "^8.3.8",
+		"vitest": "^5.1.1",
+		"zod": "^4.6.7"
+	},
+	"license": "MIT",
+	"engines": {
+		"node": ">=24.15.0"
+	}
+}

@@ -1,0 +1,129 @@
+import { animationClock, spinnerFrame } from "../tokens/clock.ts";
+import { isScreenReaderMode } from "../tokens/screen-reader.ts";
+import { ELLIPSIS, GLYPH, MOTION, SPINNER } from "../tokens/design.ts";
+import { trackRenderChanges } from "../tui/render-signal.ts";
+import type { TUI } from "../tui.ts";
+import { Text } from "./text.ts";
+
+export interface LoaderIndicatorOptions {
+	/** Animation frames. Use an empty array to hide the indicator. */
+	frames?: string[];
+	/** Frame interval in milliseconds for animated indicators. */
+	intervalMs?: number;
+}
+
+const DEFAULT_FRAMES: readonly string[] = SPINNER.braille;
+const DEFAULT_INTERVAL_MS: number = MOTION.spinnerMs;
+
+/**
+ * Loader component that updates with an optional spinning animation, driven by the shared animation clock: in reduced
+ * motion it does not animate: the default spinner shows the running state's static mark, custom frames their first.
+ */
+export class Loader extends Text {
+	private frames = [...DEFAULT_FRAMES];
+	private intervalMs: number = DEFAULT_INTERVAL_MS;
+	private unsubscribe: (() => void) | undefined;
+	protected ui: TUI | null = null;
+	private renderIndicatorVerbatim = false;
+	private defaultFrames = true;
+	private spinnerColorFn: (str: string) => string;
+	private messageColorFn: (str: string) => string;
+	private message: string = `Loading${ELLIPSIS}`;
+	private startedAt = 0;
+
+	constructor(
+		ui: TUI,
+		spinnerColorFn: (str: string) => string,
+		messageColorFn: (str: string) => string,
+		message: string = `Loading${ELLIPSIS}`,
+		indicator?: LoaderIndicatorOptions,
+	) {
+		super("", 1, 0);
+		this.ui = ui;
+		this.spinnerColorFn = spinnerColorFn;
+		this.messageColorFn = messageColorFn;
+		this.message = message;
+		this.setIndicator(indicator);
+	}
+
+	render(width: number): string[] {
+		return ["", ...super.render(width)];
+	}
+
+	start(): void {
+		this.startedAt = Date.now();
+		this.updateDisplay();
+		this.restartAnimation();
+	}
+
+	stop(): void {
+		this.unsubscribe?.();
+		this.unsubscribe = undefined;
+	}
+
+	setMessage(message: string): void {
+		this.message = message;
+		this.updateDisplay();
+	}
+
+	override invalidate(): void {
+		super.invalidate();
+		this.updateDisplay();
+	}
+
+	setIndicator(indicator?: LoaderIndicatorOptions): void {
+		this.renderIndicatorVerbatim = indicator !== undefined;
+		this.defaultFrames = indicator?.frames === undefined;
+		this.frames = this.defaultFrames ? [...DEFAULT_FRAMES] : [...indicator!.frames!];
+		this.intervalMs = indicator?.intervalMs && indicator.intervalMs > 0 ? indicator.intervalMs : DEFAULT_INTERVAL_MS;
+		this.start();
+	}
+
+	private restartAnimation(): void {
+		this.stop();
+		if (this.frames.length <= 1) {
+			return;
+		}
+		// The frame is read from the clock at paint (`spinnerFrame`): the tick only asks for the repaint.
+		this.unsubscribe = animationClock.subscribe(() => this.updateDisplay(), {
+			everyMs: this.intervalMs,
+			kind: "decor",
+		});
+	}
+
+	/**
+	 * Whether the indicator animates; a static one (a single frame, or none, or reduced motion) never schedules a redraw
+	 * of its own.
+	 */
+	protected isAnimated(): boolean {
+		return this.frames.length > 1 && !animationClock.isReducedMotion() && !isScreenReaderMode();
+	}
+
+	/** How long a moving indicator stays hidden after `start()`; a loader that wants a delay overrides this. */
+	protected startDelayMs(): number {
+		return 0;
+	}
+
+	protected getRenderedIndicator(): string {
+		// A clock stepped back (negative age) shows the spinner rather than hiding it for the length of the step.
+		const age = Date.now() - this.startedAt;
+		if (this.isAnimated() && age >= 0 && age < this.startDelayMs()) return "";
+		// A screen reader hears the message, not a glyph.
+		if (isScreenReaderMode()) return "";
+		const still = animationClock.isReducedMotion();
+		const moving = still ? this.frames[0] : spinnerFrame(this.frames, this.intervalMs);
+		const frame = still && this.defaultFrames ? GLYPH.running : (moving ?? "");
+		return this.renderIndicatorVerbatim ? frame : this.spinnerColorFn(frame);
+	}
+
+	protected updateDisplay(): void {
+		const renderedFrame = this.getRenderedIndicator();
+		const indicator = renderedFrame.length > 0 ? `${renderedFrame} ` : "";
+		this.setText(`${indicator}${this.messageColorFn(this.message)}`);
+		if (this.ui) {
+			this.ui.requestRender();
+		}
+	}
+}
+
+trackRenderChanges(Loader.prototype);

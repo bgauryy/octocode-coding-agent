@@ -1,0 +1,1439 @@
+import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { Type } from "typebox";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AuthStorage } from "../src/core/auth-storage.ts";
+import { FeatureHost } from "../src/core/features/runner.ts";
+import type { FeatureRegister, Feature } from "../src/core/features/types.ts";
+import { DefaultResourceLoader, loadProjectContextFiles } from "../src/core/resource-loader.ts";
+import { nestedContextFiles } from "../src/core/resource-loader/context-files.ts";
+import { SessionManager } from "../src/core/session-manager.ts";
+import { SettingsManager } from "../src/core/settings-manager.ts";
+import type { Skill } from "../src/core/skills.ts";
+import { createSyntheticSourceInfo } from "../src/core/source-info.ts";
+
+import { createModelRegistry } from "./model-runtime-test-utils.ts";
+import { approveFixtureSkillFiles } from "./octocode/guard-helpers.ts";
+import { knownReviews } from "../src/octocode/guard/registry.ts";
+import { testFeatures } from "./helpers/features.ts";
+
+/** A hidden built-in feature, as `defaultFeatures` lists them. */
+const builtin = (id: string, register: FeatureRegister): Feature => ({ id, owner: "builtin", hidden: true, register });
+
+describe("DefaultResourceLoader", () => {
+	let tempDir: string;
+	let agentDir: string;
+	let cwd: string;
+
+	beforeEach(() => {
+		tempDir = join(tmpdir(), `rl-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		agentDir = join(tempDir, "agent");
+		cwd = join(tempDir, "project");
+		mkdirSync(agentDir, { recursive: true });
+		mkdirSync(cwd, { recursive: true });
+	});
+
+	afterEach(() => {
+		rmSync(tempDir, { recursive: true, force: true });
+	});
+
+	describe("reload", () => {
+		it("should initialize with empty results before reload", () => {
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+
+			expect(loader.getFeatures().features).toEqual([]);
+			expect(loader.getSkills().skills).toEqual([]);
+			expect(loader.getPrompts().prompts).toEqual([]);
+			expect(loader.getThemes().themes).toEqual([]);
+		});
+
+		it("should discover skills from agentDir", async () => {
+			const skillsDir = join(agentDir, "skills");
+			mkdirSync(skillsDir, { recursive: true });
+			writeFileSync(
+				join(skillsDir, "test-skill.md"),
+				`---
+name: test-skill
+description: A test skill
+---
+Skill content here.`,
+			);
+			approveFixtureSkillFiles(
+				[{ name: "test-skill", filePath: join(skillsDir, "test-skill.md"), category: "global" }],
+				cwd,
+			);
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			const { skills } = loader.getSkills();
+			expect(skills.some((s) => s.name === "test-skill")).toBe(true);
+		});
+
+		it("should ignore extra markdown files in auto-discovered skill dirs", async () => {
+			const skillDir = join(agentDir, "skills", "octocode-skills", "browser-tools");
+			mkdirSync(skillDir, { recursive: true });
+			writeFileSync(
+				join(skillDir, "SKILL.md"),
+				`---
+name: browser-tools
+description: Browser tools
+---
+Skill content here.`,
+			);
+			writeFileSync(join(skillDir, "EFFICIENCY.md"), "No frontmatter here");
+			approveFixtureSkillFiles(
+				[{ name: "browser-tools", filePath: join(skillDir, "SKILL.md"), category: "global" }],
+				cwd,
+			);
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			const { skills, diagnostics } = loader.getSkills();
+			expect(skills.some((s) => s.name === "browser-tools")).toBe(true);
+			expect(diagnostics.some((d) => d.path?.endsWith("EFFICIENCY.md"))).toBe(false);
+		});
+
+		it("should discover prompts from agentDir", async () => {
+			const promptsDir = join(agentDir, "prompts");
+			mkdirSync(promptsDir, { recursive: true });
+			writeFileSync(
+				join(promptsDir, "test-prompt.md"),
+				`---
+description: A test prompt
+---
+Prompt content.`,
+			);
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			const { prompts } = loader.getPrompts();
+			expect(prompts.some((p) => p.name === "test-prompt")).toBe(true);
+		});
+
+		it("should report invalid prompt frontmatter while loading valid siblings", async () => {
+			const promptsDir = join(agentDir, "prompts");
+			const invalidPromptPath = join(promptsDir, "invalid.md");
+			mkdirSync(promptsDir, { recursive: true });
+			writeFileSync(invalidPromptPath, "---\ndescription: Broken: unquoted colon\n---\nDo something.\n");
+			writeFileSync(join(promptsDir, "valid.md"), "Valid prompt content.");
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			const { prompts, diagnostics } = loader.getPrompts();
+			expect(prompts.map((prompt) => prompt.name)).toEqual(["valid"]);
+			expect(diagnostics).toEqual([
+				expect.objectContaining({
+					type: "warning",
+					path: invalidPromptPath,
+					message: expect.stringContaining("line 1, column 14"),
+				}),
+			]);
+		});
+
+		it("should prefer project resources over user on name collisions", async () => {
+			const userPromptsDir = join(agentDir, "prompts");
+			const projectPromptsDir = join(cwd, ".octocode", "prompts");
+			mkdirSync(userPromptsDir, { recursive: true });
+			mkdirSync(projectPromptsDir, { recursive: true });
+			const userPromptPath = join(userPromptsDir, "commit.md");
+			const projectPromptPath = join(projectPromptsDir, "commit.md");
+			writeFileSync(userPromptPath, "User prompt");
+			writeFileSync(projectPromptPath, "Project prompt");
+
+			const userSkillDir = join(agentDir, "skills", "collision-skill");
+			const projectSkillDir = join(cwd, ".octocode", "skills", "collision-skill");
+			mkdirSync(userSkillDir, { recursive: true });
+			mkdirSync(projectSkillDir, { recursive: true });
+			const userSkillPath = join(userSkillDir, "SKILL.md");
+			const projectSkillPath = join(projectSkillDir, "SKILL.md");
+			writeFileSync(
+				userSkillPath,
+				`---
+name: collision-skill
+description: user
+---
+User skill`,
+			);
+			writeFileSync(
+				projectSkillPath,
+				`---
+name: collision-skill
+description: project
+---
+Project skill`,
+			);
+
+			const baseTheme = JSON.parse(readFileSync(join(process.cwd(), "src", "theme", "dark.json"), "utf-8")) as {
+				name: string;
+				vars?: Record<string, string>;
+			};
+			baseTheme.name = "collision-theme";
+			const userThemePath = join(agentDir, "themes", "collision.json");
+			const projectThemePath = join(cwd, ".octocode", "themes", "collision.json");
+			mkdirSync(join(agentDir, "themes"), { recursive: true });
+			mkdirSync(join(cwd, ".octocode", "themes"), { recursive: true });
+			writeFileSync(userThemePath, JSON.stringify(baseTheme, null, 2));
+			if (baseTheme.vars) {
+				baseTheme.vars.accent = "#ff00ff";
+			}
+			writeFileSync(projectThemePath, JSON.stringify(baseTheme, null, 2));
+			approveFixtureSkillFiles(
+				[
+					{ name: "collision-skill", filePath: userSkillPath, category: "global" },
+					{ name: "collision-skill", filePath: projectSkillPath, category: "workspace" },
+				],
+				cwd,
+			);
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			const prompt = loader.getPrompts().prompts.find((p) => p.name === "commit");
+			expect(prompt?.filePath).toBe(projectPromptPath);
+
+			const skill = loader.getSkills().skills.find((s) => s.name === "collision-skill");
+			expect(skill?.filePath).toBe(projectSkillPath);
+
+			const theme = loader.getThemes().themes.find((t) => t.name === "collision-theme");
+			expect(theme?.sourcePath).toBe(projectThemePath);
+		});
+
+		it("should keep both features loaded when command names collide", async () => {
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				features: testFeatures([
+					{
+						name: "project",
+						factory: (api) => {
+							api.commands.register("deploy", { description: "project deploy", handler: async () => {} });
+							api.commands.register("project-only", { description: "project only", handler: async () => {} });
+						},
+					},
+					{
+						name: "user",
+						factory: (api) => {
+							api.commands.register("deploy", { description: "user deploy", handler: async () => {} });
+							api.commands.register("user-only", { description: "user only", handler: async () => {} });
+						},
+					},
+				]),
+			});
+			await loader.reload();
+
+			const featuresResult = loader.getFeatures();
+			expect(featuresResult.features).toHaveLength(2);
+			expect(featuresResult.errors.some((e) => e.error.includes('Command "/deploy" conflicts'))).toBe(false);
+
+			const sessionManager = SessionManager.inMemory();
+			const authStorage = AuthStorage.create(join(tempDir, "auth.json"));
+			const modelRegistry = await createModelRegistry(authStorage);
+			const runner = new FeatureHost(
+				featuresResult.features,
+				featuresResult.runtime,
+				cwd,
+				sessionManager,
+				modelRegistry,
+			);
+
+			expect(runner.getCommand("deploy:1")?.description).toBe("project deploy");
+			expect(runner.getCommand("deploy:2")?.description).toBe("user deploy");
+			expect(runner.getCommand("project-only")?.description).toBe("project only");
+			expect(runner.getCommand("user-only")?.description).toBe("user only");
+
+			const commands = runner.getRegisteredCommands();
+			expect(commands.map((command) => command.invocationName)).toEqual([
+				"deploy:1",
+				"project-only",
+				"deploy:2",
+				"user-only",
+			]);
+		});
+
+		it("should honor overrides for auto-discovered resources", async () => {
+			const settingsManager = SettingsManager.inMemory({}, { projectTrusted: true });
+			settingsManager.setSkillPaths(["-skills/skip-skill"]);
+			settingsManager.setPromptTemplatePaths(["-prompts/skip.md"]);
+			settingsManager.setThemePaths(["-themes/skip.json"]);
+
+			const skillDir = join(agentDir, "skills", "skip-skill");
+			mkdirSync(skillDir, { recursive: true });
+			writeFileSync(
+				join(skillDir, "SKILL.md"),
+				`---
+name: skip-skill
+description: Skip me
+---
+Content`,
+			);
+
+			const promptsDir = join(agentDir, "prompts");
+			mkdirSync(promptsDir, { recursive: true });
+			writeFileSync(join(promptsDir, "skip.md"), "Skip prompt");
+
+			const themesDir = join(agentDir, "themes");
+			mkdirSync(themesDir, { recursive: true });
+			writeFileSync(join(themesDir, "skip.json"), "{}");
+
+			const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
+			await loader.reload();
+
+			const { skills } = loader.getSkills();
+			const { prompts } = loader.getPrompts();
+			const { themes } = loader.getThemes();
+
+			expect(skills.some((s) => s.name === "skip-skill")).toBe(false);
+			expect(prompts.some((p) => p.name === "skip")).toBe(false);
+			expect(themes.some((t) => t.sourcePath?.endsWith("skip.json"))).toBe(false);
+		});
+
+		it("should discover AGENTS.md context files", async () => {
+			writeFileSync(join(cwd, "AGENTS.md"), "# Project Guidelines\n\nBe helpful.");
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			const { agentsFiles } = loader.getAgentsFiles();
+			expect(agentsFiles.some((f) => f.path.includes("AGENTS.md"))).toBe(true);
+		});
+
+		it("should prefer AGENTS.override.md within each directory while preserving ancestor layering", async () => {
+			const nestedCwd = join(cwd, "service");
+			mkdirSync(nestedCwd);
+			writeFileSync(join(agentDir, "AGENTS.md"), "global instructions");
+			writeFileSync(join(agentDir, "AGENTS.override.md"), "global override");
+			writeFileSync(join(cwd, "AGENTS.md"), "project instructions");
+			writeFileSync(join(nestedCwd, "AGENTS.md"), "service instructions");
+			writeFileSync(join(nestedCwd, "AGENTS.override.md"), "service override");
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(nestedCwd, agentDir, { projectTrusted: true }),
+				cwd: nestedCwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			expect(loader.getAgentsFiles().agentsFiles).toEqual([
+				{ path: join(agentDir, "AGENTS.override.md"), content: "global override" },
+				{ path: join(cwd, "AGENTS.md"), content: "project instructions" },
+				{ path: join(nestedCwd, "AGENTS.override.md"), content: "service override" },
+			]);
+		});
+
+		it("falls back to CLAUDE.md in a folder with no AGENTS.override.md or AGENTS.md, folder by folder", async () => {
+			const nestedCwd = join(cwd, "service");
+			mkdirSync(nestedCwd);
+			writeFileSync(join(cwd, "AGENTS.md"), "project instructions");
+			writeFileSync(join(cwd, "CLAUDE.md"), "project claude instructions");
+			writeFileSync(join(nestedCwd, "CLAUDE.md"), "service claude instructions");
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(nestedCwd, agentDir, { projectTrusted: true }),
+				cwd: nestedCwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			expect(loader.getAgentsFiles().agentsFiles.filter((file) => file.path.startsWith(cwd))).toEqual([
+				{ path: join(cwd, "AGENTS.md"), content: "project instructions" },
+				{ path: join(nestedCwd, "CLAUDE.md"), content: "service claude instructions" },
+			]);
+		});
+
+		it("should ignore context file candidates that are directories", async () => {
+			mkdirSync(join(cwd, "AGENTS.override.md"));
+			mkdirSync(join(cwd, "AGENTS.md"));
+			writeFileSync(join(cwd, "CLAUDE.md"), "Fallback instructions");
+			const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			const paths = loader.getAgentsFiles().agentsFiles.map((file) => file.path);
+			// Both directories are skipped, so the folder's fallback file is its instructions.
+			expect(paths.filter((file) => file.startsWith(cwd))).toEqual([join(cwd, "CLAUDE.md")]);
+			expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining(join(cwd, "AGENTS.md")));
+			expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining(join(cwd, "AGENTS.override.md")));
+			consoleError.mockRestore();
+		});
+
+		it("should skip context file discovery when noContextFiles is true", async () => {
+			writeFileSync(join(cwd, "AGENTS.override.md"), "# Override Guidelines\n\nBe helpful.");
+			writeFileSync(join(cwd, "AGENTS.md"), "# Project Guidelines\n\nBe helpful.");
+			writeFileSync(join(cwd, "CLAUDE.md"), "# Claude Guidelines\n\nBe helpful.");
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				noContextFiles: true,
+			});
+			await loader.reload();
+
+			const { agentsFiles } = loader.getAgentsFiles();
+			expect(agentsFiles).toEqual([]);
+		});
+
+		it("should discover SYSTEM.md from cwd/.octocode", async () => {
+			const octocodeDir = join(cwd, ".octocode");
+			mkdirSync(octocodeDir, { recursive: true });
+			writeFileSync(join(octocodeDir, "SYSTEM.md"), "You are a helpful assistant.");
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			expect(loader.getSystemPrompt()).toBe("You are a helpful assistant.");
+		});
+
+		it("should skip project resources that require trust when project is not trusted", async () => {
+			const octocodeDir = join(cwd, ".octocode");
+			const featuresDir = join(octocodeDir, "extensions");
+			const skillDir = join(octocodeDir, "skills", "project-skill");
+			const promptsDir = join(octocodeDir, "prompts");
+			const themesDir = join(octocodeDir, "themes");
+			mkdirSync(featuresDir, { recursive: true });
+			mkdirSync(skillDir, { recursive: true });
+			mkdirSync(promptsDir, { recursive: true });
+			mkdirSync(themesDir, { recursive: true });
+			writeFileSync(join(octocodeDir, "SYSTEM.md"), "Project system prompt.");
+			writeFileSync(join(agentDir, "SYSTEM.md"), "Global system prompt.");
+			writeFileSync(join(agentDir, "AGENTS.md"), "Global instructions");
+			writeFileSync(join(cwd, "AGENTS.md"), "Project instructions");
+			writeFileSync(join(featuresDir, "project.ts"), `throw new Error("should not load");`);
+			writeFileSync(
+				join(skillDir, "SKILL.md"),
+				`---
+name: project-skill
+description: Project skill
+---
+Project skill content`,
+			);
+			writeFileSync(join(promptsDir, "project.md"), "Project prompt");
+			const themeData = JSON.parse(readFileSync(join(process.cwd(), "src", "theme", "dark.json"), "utf-8")) as {
+				name: string;
+			};
+			themeData.name = "project-theme";
+			writeFileSync(join(themesDir, "project.json"), JSON.stringify(themeData, null, 2));
+			const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
+
+			const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
+			await loader.reload();
+
+			expect(loader.getSystemPrompt()).toBe("Global system prompt.");
+			expect(loader.getAgentsFiles().agentsFiles.some((file) => file.path === join(agentDir, "AGENTS.md"))).toBe(true);
+			expect(loader.getAgentsFiles().agentsFiles.some((file) => file.path === join(cwd, "AGENTS.md"))).toBe(true);
+			expect(loader.getFeatures().features).toHaveLength(0);
+			expect(loader.getFeatures().errors).toEqual([]);
+			expect(loader.getSkills().skills.some((skill) => skill.name === "project-skill")).toBe(false);
+			expect(loader.getPrompts().prompts.some((prompt) => prompt.name === "project")).toBe(false);
+			expect(loader.getThemes().themes.some((theme) => theme.name === "project-theme")).toBe(false);
+		});
+
+		it("should discover APPEND_SYSTEM.md", async () => {
+			const octocodeDir = join(cwd, ".octocode");
+			mkdirSync(octocodeDir, { recursive: true });
+			writeFileSync(join(octocodeDir, "APPEND_SYSTEM.md"), "Additional instructions.");
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			expect(loader.getAppendSystemPrompt()).toContain("Additional instructions.");
+		});
+	});
+
+	describe("system prompt sources", () => {
+		it("exposes discovered project SYSTEM.md as the system prompt source", async () => {
+			const octocodeDir = join(cwd, ".octocode");
+			const systemPromptPath = join(octocodeDir, "SYSTEM.md");
+			mkdirSync(octocodeDir, { recursive: true });
+			writeFileSync(systemPromptPath, "Project system prompt.");
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			expect(loader.getSystemPrompt()).toBe("Project system prompt.");
+			expect(loader.getSystemPromptSource()).toEqual({ path: systemPromptPath });
+		});
+
+		it("exposes discovered global SYSTEM.md as the system prompt source", async () => {
+			const systemPromptPath = join(agentDir, "SYSTEM.md");
+			writeFileSync(systemPromptPath, "Global system prompt.");
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			expect(loader.getSystemPrompt()).toBe("Global system prompt.");
+			expect(loader.getSystemPromptSource()).toEqual({ path: systemPromptPath });
+		});
+
+		it("does not expose literal system prompt text as a source", async () => {
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				systemPrompt: "Literal system prompt.",
+			});
+			await loader.reload();
+
+			expect(loader.getSystemPrompt()).toBe("Literal system prompt.");
+			expect(loader.getSystemPromptSource()).toBeUndefined();
+		});
+
+		it("exposes file-backed system prompt options as a source", async () => {
+			const systemPromptPath = join(tempDir, "custom-system.md");
+			writeFileSync(systemPromptPath, "Custom system prompt.");
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				systemPrompt: systemPromptPath,
+			});
+			await loader.reload();
+
+			expect(loader.getSystemPrompt()).toBe("Custom system prompt.");
+			expect(loader.getSystemPromptSource()).toEqual({ path: systemPromptPath });
+		});
+
+		it("exposes discovered APPEND_SYSTEM.md as an append system prompt source", async () => {
+			const octocodeDir = join(cwd, ".octocode");
+			const appendSystemPromptPath = join(octocodeDir, "APPEND_SYSTEM.md");
+			mkdirSync(octocodeDir, { recursive: true });
+			writeFileSync(appendSystemPromptPath, "Project append prompt.");
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			expect(loader.getAppendSystemPrompt()).toEqual(["Project append prompt."]);
+			expect(loader.getAppendSystemPromptSources()).toEqual([{ path: appendSystemPromptPath }]);
+		});
+
+		it("does not expose literal append system prompt text as a source", async () => {
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				appendSystemPrompt: ["Literal append prompt."],
+			});
+			await loader.reload();
+
+			expect(loader.getAppendSystemPrompt()).toEqual(["Literal append prompt."]);
+			expect(loader.getAppendSystemPromptSources()).toEqual([]);
+		});
+
+		it("only exposes file-backed append system prompt options as sources", async () => {
+			const appendSystemPromptPath = join(tempDir, "custom-append.md");
+			writeFileSync(appendSystemPromptPath, "Custom append prompt.");
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				appendSystemPrompt: [appendSystemPromptPath, "Literal append prompt."],
+			});
+			await loader.reload();
+
+			expect(loader.getAppendSystemPrompt()).toEqual(["Custom append prompt.", "Literal append prompt."]);
+			expect(loader.getAppendSystemPromptSources()).toEqual([{ path: appendSystemPromptPath }]);
+		});
+	});
+
+	describe("extendResources", () => {
+		it("applies the skills setting's exclusions to folders an extension adds", async () => {
+			const host = join(tempDir, "host-skills");
+			for (const name of ["kept", "hidden"]) {
+				mkdirSync(join(host, name), { recursive: true });
+				writeFileSync(join(host, name, "SKILL.md"), `---\nname: ${name}\ndescription: Test skill\n---\nBody`);
+			}
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ skills: ["!hidden"] }));
+			approveFixtureSkillFiles([{ name: "kept", filePath: join(host, "kept", "SKILL.md"), category: "global" }], cwd);
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+			loader.extendResources({
+				skillPaths: [{ path: host, metadata: { source: "extension:test", scope: "temporary", origin: "top-level" } }],
+			});
+			expect(
+				knownReviews()
+					.filter((review) => review.item.kind === "skill")
+					.map((review) => review.item.label),
+			).not.toContain("hidden");
+			expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["kept"]);
+			expect(loader.getSkills().skills[0]?.sourceInfo.source).toBe("extension:test");
+		});
+		it("keeps explicit skills but ignores extension discovery when skills are disabled", async () => {
+			const explicit = join(tempDir, "explicit", "SKILL.md");
+			const discovered = join(tempDir, "discovered", "SKILL.md");
+			for (const [file, name] of [
+				[explicit, "explicit"],
+				[discovered, "discovered"],
+			]) {
+				mkdirSync(join(file, ".."), { recursive: true });
+				writeFileSync(file, `---\nname: ${name}\ndescription: Test skill\n---\nInstructions`);
+			}
+			approveFixtureSkillFiles([{ name: "explicit", filePath: explicit, category: "global" }], cwd);
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				noSkills: true,
+				additionalSkillPaths: [explicit],
+			});
+			await loader.reload();
+			const discover = () =>
+				loader.extendResources({
+					skillPaths: [
+						{ path: discovered, metadata: { source: "extension:test", scope: "temporary", origin: "top-level" } },
+					],
+				});
+			discover();
+			expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["explicit"]);
+			expect(
+				knownReviews()
+					.filter((review) => review.item.kind === "skill")
+					.map((review) => review.item.label),
+			).not.toContain("discovered");
+			await loader.reload();
+			discover();
+			expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["explicit"]);
+			expect(
+				knownReviews()
+					.filter((review) => review.item.kind === "skill")
+					.map((review) => review.item.label),
+			).not.toContain("discovered");
+		});
+
+		it("should load skills and prompts with extension metadata", async () => {
+			const extraSkillDir = join(tempDir, "extra-skills", "extra-skill");
+			mkdirSync(extraSkillDir, { recursive: true });
+			const skillPath = join(extraSkillDir, "SKILL.md");
+			writeFileSync(
+				skillPath,
+				`---
+name: extra-skill
+description: Extra skill
+---
+Extra content`,
+			);
+			approveFixtureSkillFiles([{ name: "extra-skill", filePath: skillPath, category: "global" }], cwd);
+
+			const extraPromptDir = join(tempDir, "extra-prompts");
+			mkdirSync(extraPromptDir, { recursive: true });
+			const promptPath = join(extraPromptDir, "extra.md");
+			writeFileSync(
+				promptPath,
+				`---
+description: Extra prompt
+---
+Extra prompt content`,
+			);
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			loader.extendResources({
+				skillPaths: [
+					{
+						path: extraSkillDir,
+						metadata: {
+							source: "extension:extra",
+							scope: "temporary",
+							origin: "top-level",
+							baseDir: extraSkillDir,
+						},
+					},
+				],
+				promptPaths: [
+					{
+						path: promptPath,
+						metadata: {
+							source: "extension:extra",
+							scope: "temporary",
+							origin: "top-level",
+							baseDir: extraPromptDir,
+						},
+					},
+				],
+			});
+
+			const { skills } = loader.getSkills();
+			const loadedSkill = skills.find((skill) => skill.name === "extra-skill");
+			expect(loadedSkill).toBeDefined();
+			expect(loadedSkill?.sourceInfo?.source).toBe("extension:extra");
+			expect(loadedSkill?.sourceInfo?.path).toBe(skillPath);
+
+			const { prompts } = loader.getPrompts();
+			const loadedPrompt = prompts.find((prompt) => prompt.name === "extra");
+			expect(loadedPrompt).toBeDefined();
+			expect(loadedPrompt?.sourceInfo?.source).toBe("extension:extra");
+			expect(loadedPrompt?.sourceInfo?.path).toBe(promptPath);
+		});
+
+		it("should load extension resources returned as file URLs", async () => {
+			const extraSkillDir = join(tempDir, "extra skills", "file-url-skill");
+			mkdirSync(extraSkillDir, { recursive: true });
+			const skillPath = join(extraSkillDir, "SKILL.md");
+			writeFileSync(
+				skillPath,
+				`---
+name: file-url-skill
+description: File URL skill
+---
+Extra content`,
+			);
+			approveFixtureSkillFiles([{ name: "file-url-skill", filePath: skillPath, category: "global" }], cwd);
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+
+			loader.extendResources({
+				skillPaths: [
+					{
+						path: pathToFileURL(extraSkillDir).href,
+						metadata: {
+							source: "extension:file-url",
+							scope: "temporary",
+							origin: "top-level",
+							baseDir: extraSkillDir,
+						},
+					},
+				],
+			});
+
+			const { skills, diagnostics } = loader.getSkills();
+			expect(diagnostics).toEqual([]);
+			const loadedSkill = skills.find((skill) => skill.name === "file-url-skill");
+			expect(loadedSkill).toBeDefined();
+			expect(loadedSkill?.filePath).toBe(skillPath);
+			expect(loadedSkill?.sourceInfo?.source).toBe("extension:file-url");
+		});
+
+		// Regression: extension discovery used to drop package scope/source, collapsing every
+		// autocomplete source tag to [t].
+		it("should keep package metadata for skills, prompts, and themes", async () => {
+			const packageRoot = join(agentDir, "npm", "node_modules", "metadata-pkg");
+			const packageSkillDir = join(packageRoot, "skills", "package-skill");
+			const packagePromptsDir = join(packageRoot, "prompts");
+			const packageThemesDir = join(packageRoot, "themes");
+			mkdirSync(packageSkillDir, { recursive: true });
+			mkdirSync(packagePromptsDir, { recursive: true });
+			mkdirSync(packageThemesDir, { recursive: true });
+			writeFileSync(join(packageRoot, "package.json"), JSON.stringify({ name: "metadata-pkg", version: "1.0.0" }));
+			writeFileSync(
+				join(packageSkillDir, "SKILL.md"),
+				`---
+name: package-skill
+description: Package skill
+---
+Package skill content`,
+			);
+			writeFileSync(
+				join(packagePromptsDir, "package-prompt.md"),
+				`---
+description: Package prompt
+---
+Package prompt content`,
+			);
+			const baseTheme = JSON.parse(readFileSync(join(process.cwd(), "src", "theme", "dark.json"), "utf-8")) as {
+				name: string;
+			};
+			writeFileSync(
+				join(packageThemesDir, "package-theme.json"),
+				JSON.stringify({ ...baseTheme, name: "package-theme" }),
+			);
+
+			const featureResourceDir = join(tempDir, "extension-resources");
+			const featureSkillDir = join(featureResourceDir, "extension-skill");
+			const featurePromptsDir = join(featureResourceDir, "prompts");
+			const featureThemesDir = join(featureResourceDir, "themes");
+			mkdirSync(featureSkillDir, { recursive: true });
+			mkdirSync(featurePromptsDir, { recursive: true });
+			mkdirSync(featureThemesDir, { recursive: true });
+			writeFileSync(
+				join(featureSkillDir, "SKILL.md"),
+				`---
+name: extension-skill
+description: Extension skill
+---
+Extension skill content`,
+			);
+			writeFileSync(
+				join(featurePromptsDir, "extension-prompt.md"),
+				`---
+description: Extension prompt
+---
+Extension prompt content`,
+			);
+			writeFileSync(
+				join(featureThemesDir, "extension.json"),
+				JSON.stringify({ ...baseTheme, name: "extension-theme" }),
+			);
+
+			const loader = new DefaultResourceLoader({
+				cwd,
+				agentDir,
+				settingsManager: SettingsManager.inMemory({ packages: ["npm:metadata-pkg"] }, { projectTrusted: true }),
+			});
+			await loader.reload();
+
+			const featureMetadata = {
+				source: "extension:discovery",
+				scope: "temporary",
+				origin: "top-level",
+			} as const;
+			approveFixtureSkillFiles(
+				[
+					{ name: "package-skill", filePath: join(packageSkillDir, "SKILL.md"), category: "global" },
+					{ name: "extension-skill", filePath: join(featureSkillDir, "SKILL.md"), category: "global" },
+				],
+				cwd,
+			);
+			loader.extendResources({
+				skillPaths: [{ path: featureSkillDir, metadata: featureMetadata }],
+				promptPaths: [{ path: featurePromptsDir, metadata: featureMetadata }],
+				themePaths: [{ path: featureThemesDir, metadata: featureMetadata }],
+			});
+
+			const packageSourceInfo = { source: "npm:metadata-pkg", scope: "user", origin: "package" };
+			expect(loader.getSkills().skills.find((skill) => skill.name === "package-skill")?.sourceInfo).toMatchObject(
+				packageSourceInfo,
+			);
+			expect(loader.getPrompts().prompts.find((prompt) => prompt.name === "package-prompt")?.sourceInfo).toMatchObject(
+				packageSourceInfo,
+			);
+			expect(loader.getThemes().themes.find((theme) => theme.name === "package-theme")?.sourceInfo).toMatchObject(
+				packageSourceInfo,
+			);
+
+			expect(loader.getSkills().skills.find((skill) => skill.name === "extension-skill")?.sourceInfo).toMatchObject(
+				featureMetadata,
+			);
+			expect(
+				loader.getPrompts().prompts.find((prompt) => prompt.name === "extension-prompt")?.sourceInfo,
+			).toMatchObject(featureMetadata);
+			expect(loader.getThemes().themes.find((theme) => theme.name === "extension-theme")?.sourceInfo).toMatchObject(
+				featureMetadata,
+			);
+		});
+	});
+
+	describe("explicit skill paths", () => {
+		it("lets a --skill path win over an installed skill with the same name", async () => {
+			const skill = (dir: string, description: string) => {
+				mkdirSync(dir, { recursive: true });
+				writeFileSync(join(dir, "SKILL.md"), `---\nname: review\ndescription: ${description}\n---\nBody`);
+			};
+			skill(join(agentDir, "skills", "review"), "installed copy");
+			const explicit = join(tempDir, "candidate", "review");
+			skill(explicit, "explicit copy");
+			approveFixtureSkillFiles(
+				[
+					{ name: "review", filePath: join(agentDir, "skills", "review", "SKILL.md"), category: "global" },
+					{ name: "review", filePath: join(explicit, "SKILL.md"), category: "global" },
+				],
+				cwd,
+			);
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				additionalSkillPaths: [explicit],
+			});
+			await loader.reload();
+			expect(loader.getSkills().skills.find((loaded) => loaded.name === "review")?.description).toBe("explicit copy");
+			const collision = loader.getSkills().diagnostics.find((diagnostic) => diagnostic.type === "collision");
+			expect(collision?.collision?.loserPath).toBe(join(agentDir, "skills", "review", "SKILL.md"));
+		});
+	});
+
+	describe("project skills from a subdirectory", () => {
+		it("loads the repository root's .octocode skills as project skills, ahead of user skills", async () => {
+			const skill = (dir: string, description: string) => {
+				mkdirSync(dir, { recursive: true });
+				writeFileSync(join(dir, "SKILL.md"), `---\nname: review\ndescription: ${description}\n---\nBody`);
+			};
+			mkdirSync(join(cwd, ".git"), { recursive: true });
+			skill(join(agentDir, "skills", "review"), "user copy");
+			skill(join(cwd, ".octocode", "skills", "review"), "project copy");
+			const sub = join(cwd, "packages", "a");
+			mkdirSync(sub, { recursive: true });
+			approveFixtureSkillFiles(
+				[
+					{ name: "review", filePath: join(agentDir, "skills", "review", "SKILL.md"), category: "global" },
+					{ name: "review", filePath: join(cwd, ".octocode", "skills", "review", "SKILL.md"), category: "workspace" },
+				],
+				sub,
+			);
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(sub, agentDir, { projectTrusted: true }),
+				cwd: sub,
+				agentDir,
+			});
+			await loader.reload();
+			const { skills } = loader.getSkills();
+			expect(skills.find((loaded) => loaded.name === "review")?.description).toBe("project copy");
+			expect(skills.find((loaded) => loaded.name === "review")?.sourceInfo.scope).toBe("project");
+		});
+	});
+
+	describe("noSkills option", () => {
+		it("should skip skill discovery when noSkills is true", async () => {
+			const skillsDir = join(agentDir, "skills");
+			mkdirSync(skillsDir, { recursive: true });
+			writeFileSync(
+				join(skillsDir, "test-skill.md"),
+				`---
+name: test-skill
+description: A test skill
+---
+Content`,
+			);
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				noSkills: true,
+			});
+			await loader.reload();
+
+			const { skills } = loader.getSkills();
+			expect(skills).toEqual([]);
+		});
+
+		it("should still load additional skill paths when noSkills is true", async () => {
+			const customSkillDir = join(tempDir, "custom-skills");
+			mkdirSync(customSkillDir, { recursive: true });
+			writeFileSync(
+				join(customSkillDir, "custom.md"),
+				`---
+name: custom
+description: Custom skill
+---
+Content`,
+			);
+			approveFixtureSkillFiles(
+				[{ name: "custom", filePath: join(customSkillDir, "custom.md"), category: "global" }],
+				cwd,
+			);
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				noSkills: true,
+				additionalSkillPaths: [customSkillDir],
+			});
+			await loader.reload();
+
+			const { skills } = loader.getSkills();
+			expect(skills.some((s) => s.name === "custom")).toBe(true);
+		});
+	});
+
+	describe("override functions", () => {
+		it("should apply skillsOverride", async () => {
+			const skillDir = join(tempDir, "injected");
+			const skillPath = join(skillDir, "SKILL.md");
+			mkdirSync(skillDir, { recursive: true });
+			writeFileSync(skillPath, "---\nname: injected\ndescription: Injected skill\n---\nInstructions");
+			approveFixtureSkillFiles([{ name: "injected", filePath: skillPath, category: "global" }], cwd);
+			const injectedSkill: Skill = {
+				name: "injected",
+				description: "Injected skill",
+				filePath: skillPath,
+				baseDir: skillDir,
+				sourceInfo: createSyntheticSourceInfo(skillPath, { source: "custom" }),
+				disableModelInvocation: false,
+			};
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				skillsOverride: () => ({
+					skills: [injectedSkill],
+					diagnostics: [],
+				}),
+			});
+			await loader.reload();
+
+			const { skills } = loader.getSkills();
+			expect(skills).toHaveLength(1);
+			expect(skills[0].name).toBe("injected");
+		});
+
+		it("should apply systemPromptOverride", async () => {
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				systemPromptOverride: () => "Custom system prompt",
+			});
+			await loader.reload();
+
+			expect(loader.getSystemPrompt()).toBe("Custom system prompt");
+		});
+	});
+
+	describe("extension conflict detection", () => {
+		it("should detect tool conflicts between features", async () => {
+			const duplicate =
+				(description: string): FeatureRegister =>
+				(api) =>
+					api.tools.register({
+						name: "duplicate-tool",
+						label: "duplicate-tool",
+						description,
+						parameters: Type.Object({}),
+						execute: async () => ({ content: [], details: {} }),
+					});
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				features: testFeatures([
+					{ name: "one", factory: duplicate("First") },
+					{ name: "two", factory: duplicate("Second") },
+				]),
+			});
+			await loader.reload();
+
+			const { errors } = loader.getFeatures();
+			expect(errors.some((e) => e.error.includes("duplicate-tool") && e.error.includes("conflicts"))).toBe(true);
+			// The error names both owners.
+			expect(errors[0]?.error).toContain("<inline:one>");
+			expect(errors[0]?.error).toContain("<inline:two>");
+		});
+
+		it("should keep the first registered feature's tool and number colliding commands in registration order", async () => {
+			const feature =
+				(label: string): FeatureRegister =>
+				(api) => {
+					api.tools.register({
+						name: "duplicate-tool",
+						label: "duplicate-tool",
+						description: `${label} tool`,
+						parameters: Type.Object({}),
+						execute: async () => ({ content: [], details: {} }),
+					});
+					api.commands.register("deploy", { description: `${label} command`, handler: async () => {} });
+				};
+
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				features: testFeatures([
+					{ name: "explicit", factory: feature("explicit") },
+					{ name: "global", factory: feature("global") },
+				]),
+			});
+			await loader.reload();
+
+			const featuresResult = loader.getFeatures();
+			expect(featuresResult.features[0]?.path).toBe("<inline:explicit>");
+
+			const sessionManager = SessionManager.inMemory();
+			const authStorage = AuthStorage.create(join(tempDir, "auth-explicit.json"));
+			const modelRegistry = await createModelRegistry(authStorage);
+			const runner = new FeatureHost(
+				featuresResult.features,
+				featuresResult.runtime,
+				cwd,
+				sessionManager,
+				modelRegistry,
+			);
+
+			expect(runner.getCommand("deploy:1")?.description).toBe("explicit command");
+			expect(runner.getCommand("deploy:2")?.description).toBe("global command");
+			expect(runner.getToolDefinition("duplicate-tool")?.description).toBe("explicit tool");
+		});
+
+		it("should skip disabledFeatures even when an old extensions setting names them", async () => {
+			mkdirSync(join(cwd, ".octocode"), { recursive: true });
+			writeFileSync(join(cwd, ".octocode", "settings.json"), JSON.stringify({ extensions: ["+builtin:mcp"] }));
+			const loaded: string[] = [];
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+				disabledFeatures: ["mcp"],
+				builtinFeatures: [
+					builtin("mcp", () => void loaded.push("mcp")),
+					builtin("other", () => void loaded.push("other")),
+				],
+			});
+			await loader.reload();
+
+			expect(loader.getFeatures().features.map((feature) => feature.path)).toEqual(["builtin:other"]);
+			expect(loader.getFeatures().errors).toEqual([]);
+			expect(loaded).toEqual(["other"]);
+		});
+	});
+
+	describe("loadProjectContextFiles - size cap", () => {
+		it("truncates an oversized context file and says where the rest is", () => {
+			mkdirSync(cwd, { recursive: true });
+			const file = join(cwd, "AGENTS.md");
+			writeFileSync(file, `${"é".repeat(40_000)}TAIL`);
+			const [loaded] = loadProjectContextFiles({ cwd, agentDir }).filter((f) => f.path === file);
+			const [kept, note] = loaded.content.split("\n\n[");
+			expect(Buffer.byteLength(kept)).toBeLessThanOrEqual(64 * 1024);
+			expect(kept).toMatch(/^é+$/);
+			expect(note).toContain(`truncated at 64 KiB; read ${file} for the rest`);
+			expect(loaded.content).not.toContain("TAIL");
+		});
+
+		it("stops at the working folder's repository root, not a parent repository, even when trust is granted above it", () => {
+			const outer = join(tempDir, "parent-repo");
+			const nested = join(outer, ".octocode", "harness", "fixture");
+			const sub = join(nested, "src");
+			mkdirSync(join(outer, ".git"), { recursive: true });
+			mkdirSync(join(nested, ".git"), { recursive: true });
+			mkdirSync(sub, { recursive: true });
+			writeFileSync(join(outer, "AGENTS.md"), "parent repository");
+			writeFileSync(join(nested, "AGENTS.md"), "nested repository");
+			writeFileSync(join(sub, "AGENTS.md"), "subfolder");
+
+			const files = loadProjectContextFiles({ cwd: sub, agentDir, contextRoot: outer });
+			expect(files.map((f) => f.content)).toEqual(["nested repository", "subfolder"]);
+			// The trust limit still applies below the repository root.
+			const trusted = loadProjectContextFiles({ cwd: sub, agentDir, contextRoot: sub });
+			expect(trusted.map((f) => f.content)).toEqual(["subfolder"]);
+		});
+
+		it("reads a CLAUDE.md fallback within the trust grant only, and never from a parent repository", () => {
+			const outer = join(tempDir, "claude-parent");
+			const nested = join(outer, "vendor", "app");
+			const sub = join(nested, "src");
+			mkdirSync(join(outer, ".git"), { recursive: true });
+			mkdirSync(join(nested, ".git"), { recursive: true });
+			mkdirSync(sub, { recursive: true });
+			writeFileSync(join(outer, "CLAUDE.md"), "parent repository");
+			writeFileSync(join(nested, "CLAUDE.md"), "nested repository");
+			writeFileSync(join(sub, "CLAUDE.md"), "subfolder");
+
+			expect(loadProjectContextFiles({ cwd: sub, agentDir, contextRoot: outer }).map((f) => f.content)).toEqual([
+				"nested repository",
+				"subfolder",
+			]);
+			expect(loadProjectContextFiles({ cwd: sub, agentDir, contextRoot: sub }).map((f) => f.content)).toEqual([
+				"subfolder",
+			]);
+		});
+
+		it("delivers a deeper folder's CLAUDE.md on read only when the folder has no AGENTS.md", () => {
+			const plain = join(cwd, "plain");
+			const both = join(cwd, "both");
+			mkdirSync(plain, { recursive: true });
+			mkdirSync(both, { recursive: true });
+			writeFileSync(join(plain, "CLAUDE.md"), "plain claude");
+			writeFileSync(join(both, "AGENTS.md"), "both agents");
+			writeFileSync(join(both, "CLAUDE.md"), "both claude");
+			for (const dir of [plain, both]) writeFileSync(join(dir, "a.ts"), "");
+
+			// Paths come back canonical (`/private/var` on macOS), so compare what each file says.
+			expect(nestedContextFiles(join(plain, "a.ts"), cwd).map((f) => f.content)).toEqual(["plain claude"]);
+			expect(nestedContextFiles(join(both, "a.ts"), cwd).map((f) => f.content)).toEqual(["both agents"]);
+		});
+
+		it("keeps a context file under the cap whole", () => {
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(join(cwd, "AGENTS.md"), "small");
+			expect(loadProjectContextFiles({ cwd, agentDir }).at(-1)?.content).toBe("small");
+		});
+	});
+
+	describe("loadProjectContextFiles - nested worktree dedup", () => {
+		// Builds a linked-worktree skeleton (no git binary needed): the main repo's
+		// `.git/worktrees/<name>/` holds `HEAD` plus a `commondir` pointing back at the
+		// main `.git`, and the worktree's working tree carries a `.git` *file* whose
+		// `gitdir:` resolves to it.
+		const linkWorktree = (mainDir: string, worktreeDir: string, name: string) => {
+			const gitDir = join(mainDir, ".git", "worktrees", name);
+			mkdirSync(gitDir, { recursive: true });
+			// The main repo's own `.git` is a real git dir with a HEAD, as git writes it.
+			writeFileSync(join(mainDir, ".git", "HEAD"), "ref: refs/heads/main\n");
+			writeFileSync(join(gitDir, "HEAD"), "ref: refs/heads/feat\n");
+			// commondir is relative to the worktree gitdir and points at the main .git.
+			writeFileSync(join(gitDir, "commondir"), "../..");
+			writeFileSync(join(worktreeDir, ".git"), `gitdir: ${gitDir}\n`);
+		};
+
+		// Main repo at <tempDir>/outer/main with a linked worktree at main/worktrees/feat.
+		// Each case writes only the AGENTS.md files it needs.
+		const setupNestedWorktree = () => {
+			const outer = join(tempDir, "outer");
+			const main = join(outer, "main");
+			const worktree = join(main, "worktrees", "feat");
+			const worktreeSrc = join(worktree, "src");
+			mkdirSync(worktreeSrc, { recursive: true });
+			linkWorktree(main, worktree, "feat");
+			return { outer, main, worktree, worktreeSrc };
+		};
+
+		it("should skip the main repo's duplicate when the worktree root has its own context", () => {
+			const { main, worktree, worktreeSrc } = setupNestedWorktree();
+			writeFileSync(join(main, "AGENTS.md"), "main repo instructions");
+			writeFileSync(join(worktree, "AGENTS.md"), "worktree instructions");
+
+			const files = loadProjectContextFiles({ cwd: worktreeSrc, agentDir });
+
+			expect(files.map((f) => f.content)).toEqual(["worktree instructions"]);
+		});
+
+		it("should load the worktree's context once when it symlinks to the main repo's file", () => {
+			const { main, worktree, worktreeSrc } = setupNestedWorktree();
+			writeFileSync(join(main, "AGENTS.md"), "main repo instructions");
+			symlinkSync(join(main, "AGENTS.md"), join(worktree, "AGENTS.md"));
+
+			const files = loadProjectContextFiles({ cwd: worktreeSrc, agentDir });
+
+			expect(files.map((f) => f.path)).toEqual([join(worktree, "AGENTS.md")]);
+		});
+
+		it("should skip the main repo's duplicate when the main repo's file is a symlink", () => {
+			const { outer, main, worktree, worktreeSrc } = setupNestedWorktree();
+			const shared = join(outer, "shared-agents.md");
+			writeFileSync(shared, "shared instructions");
+			symlinkSync(shared, join(main, "AGENTS.md"));
+			symlinkSync(shared, join(worktree, "AGENTS.md"));
+
+			const files = loadProjectContextFiles({ cwd: worktreeSrc, agentDir });
+
+			expect(files.map((f) => f.path)).toEqual([join(worktree, "AGENTS.md")]);
+		});
+
+		it("should still inherit the main repo's context when the worktree root has none", () => {
+			const { main, worktreeSrc } = setupNestedWorktree();
+			writeFileSync(join(main, "AGENTS.md"), "main repo instructions");
+
+			const files = loadProjectContextFiles({ cwd: worktreeSrc, agentDir });
+
+			expect(files.map((f) => f.content)).toEqual(["main repo instructions"]);
+		});
+
+		it("should only skip the same filename, not a differently named context file", () => {
+			// The repo tracks AGENTS.override.md; the worktree adds an AGENTS.md. The main repo's
+			// override is nobody's duplicate, so dropping it would lose its content entirely.
+			const { main, worktree, worktreeSrc } = setupNestedWorktree();
+			writeFileSync(join(main, "AGENTS.override.md"), "main repo instructions");
+			writeFileSync(join(worktree, "AGENTS.md"), "worktree instructions");
+
+			const files = loadProjectContextFiles({ cwd: worktreeSrc, agentDir });
+
+			expect(files.map((f) => f.content)).toEqual(["main repo instructions", "worktree instructions"]);
+		});
+
+		it("should NOT skip the container's context in a bare layout (proj/.bare + proj/main)", () => {
+			// `git clone --bare proj/.bare` + `git worktree add ../main` makes commondir
+			// `../..`, so dirname(commonGitDir) is `proj` - a plain directory that tracks
+			// nothing. Its AGENTS.md is not a duplicate of the worktree's. Layout below
+			// matches what real git writes for this setup.
+			const proj = join(tempDir, "proj");
+			const bare = join(proj, ".bare");
+			const worktree = join(proj, "main");
+			const worktreeGitDir = join(bare, "worktrees", "main");
+			mkdirSync(worktreeGitDir, { recursive: true });
+			mkdirSync(worktree, { recursive: true });
+			writeFileSync(join(bare, "HEAD"), "ref: refs/heads/main\n");
+			writeFileSync(join(worktreeGitDir, "HEAD"), "ref: refs/heads/main\n");
+			writeFileSync(join(worktreeGitDir, "commondir"), "../..");
+			writeFileSync(join(worktree, ".git"), `gitdir: ${worktreeGitDir}\n`);
+			writeFileSync(join(proj, "AGENTS.md"), "container instructions");
+			writeFileSync(join(worktree, "AGENTS.md"), "worktree instructions");
+
+			const files = loadProjectContextFiles({ cwd: worktree, agentDir });
+
+			expect(files.map((f) => f.content)).toEqual(["container instructions", "worktree instructions"]);
+		});
+
+		it("should keep loading ancestors above the main repo", () => {
+			const { outer, main, worktree, worktreeSrc } = setupNestedWorktree();
+			writeFileSync(join(outer, "AGENTS.md"), "outer instructions");
+			writeFileSync(join(main, "AGENTS.md"), "main repo instructions");
+			writeFileSync(join(worktree, "AGENTS.md"), "worktree instructions");
+
+			const files = loadProjectContextFiles({ cwd: worktreeSrc, agentDir });
+
+			// Only the main repo root's duplicate is dropped; the unrelated dir above it stays.
+			expect(files.map((f) => f.content)).toEqual(["outer instructions", "worktree instructions"]);
+		});
+
+		it("should NOT skip anything for a sibling worktree (main repo is not an ancestor)", () => {
+			// git worktree add ../feat puts the worktree beside the main repo, so no
+			// duplicate is ever encountered and ancestors above it are unrelated.
+			const outer = join(tempDir, "outer");
+			const main = join(outer, "main");
+			const sib = join(outer, "sib-feat");
+			const sibSrc = join(sib, "src");
+			mkdirSync(sibSrc, { recursive: true });
+			mkdirSync(main, { recursive: true });
+			writeFileSync(join(outer, "AGENTS.md"), "outer instructions");
+			writeFileSync(join(sib, "AGENTS.md"), "sibling worktree instructions");
+			linkWorktree(main, sib, "sib");
+
+			const files = loadProjectContextFiles({ cwd: sibSrc, agentDir });
+
+			expect(files.map((f) => f.content)).toEqual(["outer instructions", "sibling worktree instructions"]);
+		});
+
+		it("should not load the superproject's context from inside a submodule (a parent repository)", () => {
+			// A submodule's `.git` file is also `gitdir:`-style, but its gitdir has no
+			// commondir, so it resolves under `.git/modules` - never an ancestor of cwd.
+			const sup = join(tempDir, "super");
+			const sub = join(sup, "vendor", "lib");
+			const subSrc = join(sub, "src");
+			mkdirSync(subSrc, { recursive: true });
+			writeFileSync(join(sup, "AGENTS.md"), "superproject instructions");
+			writeFileSync(join(sub, "AGENTS.md"), "submodule instructions");
+			const subGitDir = join(sup, ".git", "modules", "vendor", "lib");
+			mkdirSync(subGitDir, { recursive: true });
+			writeFileSync(join(subGitDir, "HEAD"), "ref: refs/heads/main\n");
+			writeFileSync(join(sub, ".git"), `gitdir: ${subGitDir}\n`);
+
+			const files = loadProjectContextFiles({ cwd: subSrc, agentDir });
+
+			expect(files.map((f) => f.content)).toEqual(["submodule instructions"]);
+		});
+
+		it("should keep climbing past an ordinary repo root", () => {
+			const outer = join(tempDir, "outer");
+			const repo = join(outer, "repo");
+			const leaf = join(repo, "src");
+			mkdirSync(leaf, { recursive: true });
+			mkdirSync(join(repo, ".git"), { recursive: true });
+			writeFileSync(join(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
+			writeFileSync(join(outer, "AGENTS.md"), "outer instructions");
+			writeFileSync(join(repo, "AGENTS.md"), "repo instructions");
+			writeFileSync(join(leaf, "AGENTS.md"), "leaf instructions");
+
+			const files = loadProjectContextFiles({ cwd: leaf, agentDir });
+
+			expect(files.map((f) => f.content)).toEqual(["outer instructions", "repo instructions", "leaf instructions"]);
+		});
+
+		it("should climb normally when the gitdir: target does not exist", () => {
+			const repo = join(tempDir, "corrupt");
+			const src = join(repo, "src");
+			mkdirSync(src, { recursive: true });
+			writeFileSync(join(repo, ".git"), "gitdir: /nonexistent/path/worktrees/feat\n");
+			writeFileSync(join(repo, "AGENTS.md"), "repo instructions");
+			writeFileSync(join(src, "AGENTS.md"), "src instructions");
+
+			const files = loadProjectContextFiles({ cwd: src, agentDir });
+
+			expect(files.map((f) => f.content)).toEqual(["repo instructions", "src instructions"]);
+		});
+	});
+});
+
+describe("Pi harness switch on Pi's instruction files", () => {
+	afterEach(() => vi.unstubAllEnvs());
+
+	it("loads Pi's AGENTS.md, SYSTEM.md and APPEND_SYSTEM.md only while harness:pi is on", async () => {
+		const home = join(tmpdir(), `rl-pi-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		const piDir = join(home, ".pi", "agent");
+		const cwd = join(home, "project");
+		mkdirSync(piDir, { recursive: true });
+		mkdirSync(cwd, { recursive: true });
+		vi.stubEnv("HOME", home);
+		vi.stubEnv("OCTOCODE_HOME", "");
+		vi.stubEnv("OCTOCODE_CODING_AGENT_DIR", "");
+		const agentDir = join(home, ".octocode", "octocodecode");
+		mkdirSync(agentDir, { recursive: true });
+		writeFileSync(join(piDir, "AGENTS.md"), "pi agents");
+		writeFileSync(join(piDir, "SYSTEM.md"), "pi system");
+		writeFileSync(join(piDir, "APPEND_SYSTEM.md"), "pi append");
+		const load = async (toggles: Record<string, boolean>) => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ toggles }));
+			const loader = new DefaultResourceLoader({
+				settingsManager: SettingsManager.create(cwd, agentDir, { projectTrusted: true }),
+				cwd,
+				agentDir,
+			});
+			await loader.reload();
+			return loader;
+		};
+
+		const on = await load({});
+		expect(on.getAgentsFiles().agentsFiles.map((file) => file.content)).toContain("pi agents");
+		expect(on.getSystemPrompt()).toBe("pi system");
+		expect(on.getAppendSystemPrompt()).toContain("pi append");
+
+		const off = await load({ "harness:pi": false });
+		expect(off.getAgentsFiles().agentsFiles.map((file) => file.content)).not.toContain("pi agents");
+		expect(off.getSystemPrompt()).toBeUndefined();
+		expect(off.getAppendSystemPrompt()).toEqual([]);
+	});
+});

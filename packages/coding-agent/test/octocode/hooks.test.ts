@@ -1,0 +1,1031 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { hookFiles, loadHooks } from "../../src/octocode/hooks/config.ts";
+import { registerHarnessCommand } from "../../src/octocode/harness/command.ts";
+import { registerHooks } from "../../src/octocode/hooks/register.ts";
+import { CHILD_MODE_NOTE } from "../../src/octocode/hooks/register/report.ts";
+import { registerStopHook } from "../../src/octocode/hooks/register/stop.ts";
+import { STOP_CONTINUE_RUN_CAP } from "../../src/octocode/hooks/register/types.ts";
+import type { HookVerdict } from "../../src/octocode/hooks/contracts.ts";
+import * as hookRunner from "../../src/octocode/hooks/runner.ts";
+import { capContext, HOOK_CONTEXT_MAX_BYTES, interpret, runHook } from "../../src/octocode/hooks/runner.ts";
+import { Subcommands } from "../../src/octocode/shared/commands.ts";
+import { fakeHost, rendered, theme } from "./fake-host.ts";
+import { tmp } from "./helpers.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
+import { commandsFor, hookCalls, toolAliases } from "../../src/octocode/hooks/config/calls.ts";
+import { matchesHook } from "../../src/octocode/hooks/profiles.ts";
+import { parseHooks } from "../../src/octocode/hooks/config/parse.ts";
+
+function project(hooks: unknown, file = path.join(".octocode", "hooks.json")): string {
+	const dir = tmp("octocode-hooks-");
+	fs.mkdirSync(path.join(dir, ".git"));
+	fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+	fs.writeFileSync(path.join(dir, file), JSON.stringify({ hooks }));
+	// The user trusted these hooks (`/trust`): Octocode's own trust never covers commands it did not show.
+	approveFixtureHooks(dir);
+	return dir;
+}
+
+// Trust decisions go to a per-test store, out of the developer's own.
+beforeEach(() => {
+	vi.stubEnv("OCTOCODE_HOME", tmp("octocode-hooks-home-"));
+});
+
+/** Whether a process is still running. */
+function alive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+const context = (cwd: string, trusted = true) => ({
+	cwd,
+	hasUI: false,
+	isProjectTrusted: () => trusted,
+	sessionManager: { getSessionId: () => "sess-1", getSessionFile: () => undefined, getBranch: () => [] },
+	ui: { notify: () => undefined },
+});
+const command = (text: string, matcher = "") => [{ matcher, hooks: [{ type: "command", command: text }] }];
+
+describe("hooks config", () => {
+	it("accepts the wildcard without a contradictory diagnostic", () => {
+		const errors: string[] = [];
+		const config = parseHooks({ hooks: { PreToolUse: command("true", "*") } }, "fixture", undefined, errors);
+		expect(errors).toEqual([]);
+		expect(commandsFor(config, "PreToolUse", ["Bash"])).toHaveLength(1);
+	});
+
+	it.each(["args", "if", "async", "command_windows"])("rejects unsupported execution field %s", (field) => {
+		const errors: string[] = [];
+		const config = parseHooks(
+			{
+				hooks: {
+					PreToolUse: [
+						{
+							hooks: [
+								{ type: "command", command: "must-not-run", [field]: true },
+								{ type: "command", command: "valid" },
+							],
+						},
+					],
+				},
+			},
+			"fixture",
+			undefined,
+			errors,
+		);
+		expect(
+			commandsFor(config, "PreToolUse", ["Bash"]).map((hook) => ("command" in hook ? hook.command : undefined)),
+		).toEqual(["valid"]);
+		expect(errors).toEqual([expect.stringContaining(`fields ${field}; skipped`)]);
+	});
+
+	it("reports unsupported events, handler types and malformed groups", () => {
+		const errors: string[] = [];
+		const config = parseHooks(
+			{
+				hooks: {
+					PostCompact: command("true"),
+					Stop: "invalid",
+					PreToolUse: [
+						{ matcher: 1, hooks: command("true") },
+						{ hooks: [{ type: "prompt", prompt: "check" }] },
+						{ hooks: [{ type: "command", command: "true" }], if: "conditional" },
+					],
+				},
+			},
+			"fixture",
+			undefined,
+			errors,
+		);
+		expect(commandsFor(config, "PreToolUse", ["Bash"])).toEqual([]);
+		expect(errors).toHaveLength(5);
+		expect(errors.every((error) => error.startsWith("fixture:"))).toBe(true);
+	});
+
+	it("accepts SessionEnd in native hook files", () => {
+		const errors: string[] = [];
+		const config = parseHooks({ hooks: { SessionEnd: command("true") } }, "fixture", undefined, errors);
+		expect(errors).toEqual([]);
+		expect(commandsFor(config, "SessionEnd", ["other"])).toHaveLength(1);
+	});
+
+	it("honors a disable switch across sources, but never reads an untrusted project switch", () => {
+		const home = tmp();
+		fs.mkdirSync(path.join(home, ".claude"));
+		fs.writeFileSync(
+			path.join(home, ".claude/settings.json"),
+			JSON.stringify({ hooks: { PreToolUse: command("global") } }),
+		);
+		const cwd = project({ PreToolUse: command("project") });
+		fs.writeFileSync(path.join(cwd, ".octocode/hooks.json"), JSON.stringify({ disableAllHooks: true }));
+		expect(commandsFor(loadHooks(cwd, false, home).config, "PreToolUse", ["Bash"])).toHaveLength(1);
+		const disabled = loadHooks(cwd, true, home);
+		expect(commandsFor(disabled.config, "PreToolUse", ["Bash"])).toEqual([]);
+		expect(disabled.errors).toEqual([expect.stringContaining("disables all loaded hook sources")]);
+	});
+	it("reads project hook files only in trusted projects", () => {
+		const cwd = project({ PreToolUse: command("true") });
+		const home = tmp();
+		// ~/.claude/settings.json, ~/.codex/hooks.json, ~/.codex/config.toml, <Octocode home>/hooks.json
+		expect(hookFiles(path.join(cwd), false, home)).toHaveLength(4);
+		expect(loadHooks(cwd, false, home).config.PreToolUse).toHaveLength(0);
+		expect(loadHooks(cwd, true, home).config.PreToolUse).toHaveLength(1);
+	});
+
+	it("keeps command hooks for mapped events and reports invalid JSON", () => {
+		const config = parseHooks(
+			{
+				hooks: {
+					PreToolUse: [
+						{
+							matcher: "Bash",
+							hooks: [
+								{ type: "command", command: "x", timeout: 5 },
+								{ type: "prompt", prompt: "p" },
+							],
+						},
+					],
+					Stop: command("y"),
+				},
+			},
+			"f",
+		);
+		expect(config.PreToolUse).toEqual([{ matcher: "Bash", hooks: [{ command: "x", timeoutMs: 5000, source: "f" }] }]);
+		const home = tmp();
+		fs.mkdirSync(path.join(home, ".claude"));
+		fs.writeFileSync(path.join(home, ".claude", "settings.json"), "{oops");
+		expect(loadHooks(tmp(), false, home).errors[0]).toContain("settings.json");
+	});
+
+	it("skips a missing hook file but reports one that exists and cannot be read", () => {
+		const home = tmp();
+		fs.mkdirSync(path.join(home, ".claude"));
+		// A directory where the file belongs: reading it fails with EISDIR, not ENOENT.
+		fs.mkdirSync(path.join(home, ".claude", "settings.json"));
+		const { errors } = loadHooks(tmp(), false, home);
+		expect(errors).toEqual([expect.stringContaining(path.join(home, ".claude", "settings.json"))]);
+		expect(errors[0]).toMatch(/EISDIR/);
+		expect(loadHooks(tmp(), false, tmp()).errors).toEqual([]);
+	});
+
+	it("reports a matcher that is not a valid pattern when the file loads, and the group matches nothing", () => {
+		const home = tmp();
+		fs.mkdirSync(path.join(home, ".claude"));
+		fs.writeFileSync(
+			path.join(home, ".claude", "settings.json"),
+			JSON.stringify({ hooks: { PreToolUse: command("x", "Bash(") } }),
+		);
+		const { config, errors } = loadHooks(tmp(), false, home);
+		expect(errors).toEqual([
+			`${path.join(home, ".claude", "settings.json")}: PreToolUse matcher "Bash(" is not a valid pattern, so its hooks never run`,
+		]);
+		expect(commandsFor(config, "PreToolUse", toolAliases("bash"))).toEqual([]);
+	});
+
+	it("matches Claude tool names against Octocode tools", () => {
+		const matches = (matcher: string, names: string[]) => matchesHook("octocode", "PreToolUse", matcher, names);
+		expect(matches("Bash", toolAliases("bash"))).toBe(true);
+		expect(matches("Edit|Write", toolAliases("file"))).toBe(true);
+		expect(matches("", ["anything"])).toBe(true);
+		expect(matches("*", ["anything"])).toBe(true);
+		expect(matches("Read", toolAliases("bash"))).toBe(false);
+		expect(matches("(", ["x"])).toBe(false);
+		expect(
+			commandsFor(parseHooks({ hooks: { PreToolUse: command("a", "Bash") } }, "f"), "PreToolUse", toolAliases("read")),
+		).toEqual([]);
+	});
+});
+
+describe("hook runner", () => {
+	it("passes JSON on stdin and maps exit 2 to a block with stderr", async () => {
+		const cwd = tmp();
+		const run = await runHook(
+			{ command: 'cat > stdin.json; echo "no rm" >&2; exit 2', timeoutMs: 5000, source: "t" },
+			{ tool_name: "bash" },
+			cwd,
+		);
+		expect(JSON.parse(fs.readFileSync(path.join(cwd, "stdin.json"), "utf8"))).toEqual({ tool_name: "bash" });
+		expect(interpret("PreToolUse", run)).toEqual({ block: "no rm" });
+	});
+
+	it("reads JSON decisions and context, ignores other exits and times out", async () => {
+		const deny = {
+			code: 0,
+			stdout: JSON.stringify({
+				hookSpecificOutput: {
+					permissionDecision: "deny",
+					permissionDecisionReason: "nope",
+					additionalContext: "ctx",
+				},
+			}),
+			stderr: "",
+			timedOut: false,
+		};
+		expect(interpret("PreToolUse", deny)).toEqual({ block: "nope", context: "ctx" });
+		expect(interpret("PostToolUse", { ...deny, stdout: '{"decision":"block","reason":"fix lint"}' })).toEqual({
+			block: "fix lint",
+		});
+		expect(interpret("SessionStart", { ...deny, stdout: "plain context\n" })).toEqual({ context: "plain context" });
+		expect(interpret("PreToolUse", { ...deny, code: 2, stdout: "", stderr: "\u001b[31mno\u001b[0m rm\u0007" })).toEqual(
+			{
+				block: "\\u{1b}[31mno\\u{1b}[0m rm\\u{7}",
+			},
+		);
+		// Exit 2 blocks; a JSON blocking decision on stdout supplies the reason instead of stderr (Claude Code).
+		expect(interpret("PreToolUse", { ...deny, code: 2, stderr: "stderr loses" })).toMatchObject({ block: "nope" });
+		expect(
+			interpret("SessionStart", {
+				...deny,
+				stdout: JSON.stringify({ hookSpecificOutput: { additionalContext: "a\u001b]0;title\u0007b" } }),
+			}),
+		).toEqual({ context: "a\\u{1b}]0;title\\u{7}b" });
+		const ask = (decision: string, reason?: string) => ({
+			...deny,
+			stdout: JSON.stringify({
+				hookSpecificOutput: {
+					permissionDecision: decision,
+					...(reason ? { permissionDecisionReason: reason } : {}),
+				},
+			}),
+		});
+		expect(interpret("PreToolUse", ask("ask", "prod \u001b[2Jdeploy"))).toEqual({ ask: "prod \\u{1b}[2Jdeploy" });
+		expect(interpret("PreToolUse", ask("ask"))).toEqual({ ask: expect.stringMatching(/hook asks/) });
+		expect(interpret("PostToolUse", ask("ask", "x"))).toEqual({});
+		// A hook's allow is not honoured: it never skips an ask.
+		expect(interpret("PreToolUse", ask("allow", "fine"))).toEqual({});
+		expect(interpret("PreToolUse", { ...deny, stdout: "plain" })).toEqual({});
+		expect(interpret("PreToolUse", { ...deny, code: 1 })).toEqual({});
+		const slow = await runHook({ command: "sleep 5", timeoutMs: 100, source: "t" }, {}, tmp());
+		expect(slow.timedOut).toBe(true);
+		expect(interpret("PreToolUse", { ...slow, code: 2 })).toEqual({});
+	});
+
+	it.skipIf(process.platform === "win32")(
+		"kills the whole process group on timeout and returns promptly",
+		async () => {
+			const cwd = tmp();
+			// The background grandchild keeps stdout open far past the test timeout: the run returns only if the group is killed.
+			const run = await runHook(
+				{
+					command: "cat > /dev/null; (sleep 60; echo done > survived.txt) & echo $! > child.pid; wait",
+					timeoutMs: 300,
+					source: "t",
+				},
+				{ a: 1 },
+				cwd,
+			);
+			expect(run.timedOut).toBe(true);
+			const pid = Number(fs.readFileSync(path.join(cwd, "child.pid"), "utf8"));
+			await vi.waitFor(() => expect(alive(pid)).toBe(false), { timeout: 4000, interval: 50 });
+			expect(fs.existsSync(path.join(cwd, "survived.txt"))).toBe(false);
+		},
+		10_000,
+	);
+
+	it.skipIf(process.platform === "win32")("kills the process group on abort", async () => {
+		const cwd = tmp();
+		const controller = new AbortController();
+		// Aborted once the hook is running; `sleep 60` outlives the test timeout, so returning at all proves the kill.
+		const running = runHook(
+			{ command: "echo $$ > shell.pid; sleep 60; echo done", timeoutMs: 30_000, source: "t" },
+			{},
+			cwd,
+			{},
+			controller.signal,
+		);
+		await vi.waitFor(() => expect(fs.existsSync(path.join(cwd, "shell.pid"))).toBe(true), {
+			timeout: 4000,
+			interval: 20,
+		});
+		controller.abort();
+		const run = await running;
+		expect(run.timedOut).toBe(false);
+		expect(run.stdout).toBe("");
+	});
+
+	it("keeps context within 16 KB by saving the whole of a longer one to a file it names", () => {
+		const text = Array.from({ length: 2_000 }, (_, i) => `line ${i} ${"é".repeat(10)}`).join("\n");
+		const capped = capContext(text);
+		expect(Buffer.byteLength(capped)).toBeLessThanOrEqual(HOOK_CONTEXT_MAX_BYTES);
+		expect(capped).toMatch(/^line 0 /);
+		expect(capped).toMatch(
+			/line 1999 é+\n\n\[Output trimmed: showing \d+ of 2000 lines .*Full output: \S+hook-\S+\.txt;/,
+		);
+		const shown = /Full output: (\S+);/.exec(capped)![1];
+		expect(fs.readFileSync(shown.startsWith("~") ? path.join(os.homedir(), shown.slice(2)) : shown, "utf8")).toBe(text);
+		expect(capContext("short")).toBe("short");
+	});
+
+	it("says how much output past the read limit was not kept", () => {
+		const run = { code: 0, stdout: "hello", stderr: "", timedOut: false, dropped: { stdout: 2048, stderr: 0 } };
+		expect(interpret("SessionStart", run).context).toBe(
+			"hello\n[… 2.0KB more output not kept: a hook's output is read up to 1.0MB]",
+		);
+		expect(
+			interpret("PreToolUse", { ...run, code: 2, stderr: "no", dropped: { stdout: 0, stderr: 10 } }).block,
+		).toMatch(/^no\n\[… 10B more output not kept/);
+	});
+});
+
+describe("hook payloads", () => {
+	it("sends each file query in Claude Code shape and maps read path to file_path", () => {
+		const cwd = tmp();
+		const abs = (name: string) => path.join(cwd, name);
+		const calls = hookCalls(
+			"file",
+			{
+				queries: [
+					{ reason: "r", type: "edit", path: "a.ts", edits: [{ oldText: "x", newText: "y" }] },
+					{
+						reason: "r",
+						type: "edit",
+						path: "b.ts",
+						edits: [
+							{ oldText: "1", newText: "2" },
+							{ oldText: "3", newText: "4" },
+						],
+					},
+					{ reason: "r", type: "write", path: "c.ts", content: "body" },
+					{ reason: "r", type: "delete", path: "d.ts" },
+				],
+			},
+			cwd,
+		);
+		expect(calls).toEqual([
+			{
+				names: ["file", "Edit"],
+				tool_name: "Edit",
+				tool_input: { file_path: abs("a.ts"), old_string: "x", new_string: "y" },
+			},
+			{
+				names: ["file", "MultiEdit"],
+				tool_name: "MultiEdit",
+				tool_input: {
+					file_path: abs("b.ts"),
+					edits: [
+						{ old_string: "1", new_string: "2" },
+						{ old_string: "3", new_string: "4" },
+					],
+				},
+			},
+			{ names: ["file", "Write"], tool_name: "Write", tool_input: { file_path: abs("c.ts"), content: "body" } },
+			{ names: ["file", "Delete"], tool_name: "Delete", tool_input: { file_path: abs("d.ts") } },
+		]);
+		expect(hookCalls("read", { path: "a.ts", offset: 3 }, cwd)).toEqual([
+			{ names: ["read", "Read"], tool_name: "Read", tool_input: { file_path: abs("a.ts"), offset: 3 } },
+		]);
+		expect(hookCalls("bash", { command: "ls" }, cwd)).toEqual([
+			{ names: ["bash", "Bash"], tool_name: "Bash", tool_input: { command: "ls" } },
+		]);
+		expect(hookCalls("web", { url: "u" }, cwd)[0]).toMatchObject({ tool_name: "web", tool_input: { url: "u" } });
+		expect(hookCalls("file", { queries: "nope" }, cwd)).toEqual([]);
+	});
+});
+
+describe("registerHooks", () => {
+	it("retains failClosed denial for unsupported command fields without executing a duplicate command", async () => {
+		const script = "touch should-not-exist";
+		const cwd = project({
+			PreToolUse: [
+				{
+					matcher: "Bash",
+					hooks: [
+						{ type: "command", command: script },
+						{ type: "command", command: script, args: [], failClosed: true },
+					],
+				},
+			],
+		});
+		const { api, fire } = fakeHost();
+		const audit = vi.fn();
+		const hooks = registerHooks(api, { env: {}, home: tmp(), onFailure: audit });
+		const ctx = context(cwd);
+		await fire("session_start", { reason: "startup" }, ctx);
+		expect(
+			await hooks.preToolUse({ toolName: "bash", toolCallId: "1", input: {} } as never, ctx as never),
+		).toMatchObject({ block: true, reason: expect.stringContaining("failClosed") });
+		expect(fs.existsSync(path.join(cwd, "should-not-exist"))).toBe(false);
+		expect(audit).toHaveBeenCalledWith(expect.any(Array), expect.stringContaining("failClosed"), false);
+	});
+
+	it("does not deliver context from a blocked pre-tool call", async () => {
+		const cwd = project({
+			PreToolUse: command('echo \'{"decision":"block","hookSpecificOutput":{"additionalContext":"hidden"}}\''),
+		});
+		const { api, fire, sent } = fakeHost();
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
+		const ctx = context(cwd);
+		await fire("session_start", { reason: "startup" }, ctx);
+		expect(
+			await hooks.preToolUse({ toolName: "bash", toolCallId: "1", input: {} } as never, ctx as never),
+		).toMatchObject({ block: true });
+		expect(sent).toEqual([]);
+	});
+
+	it("delivers pre-tool context without starting a turn and correlates tool events", async () => {
+		const cwd = project({
+			PreToolUse: command(
+				'cat > pre.json; echo \'{"hookSpecificOutput":{"additionalContext":"check generated files"}}\'',
+				"Bash",
+			),
+			PostToolUse: command("cat > post.json", "Bash"),
+		});
+		const { api, fire, sent } = fakeHost();
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
+		const ctx = context(cwd);
+		await fire("session_start", { reason: "startup" }, ctx);
+		const event = { toolName: "bash", toolCallId: "call-123", input: { command: "true" } };
+		expect(await hooks.preToolUse(event as never, ctx as never)).toBeUndefined();
+		expect(sent).toEqual([
+			{
+				message: {
+					customType: "octocode-hook-context",
+					content: expect.stringMatching(
+						/^\[src hook:PreToolUse ✓proven via in-process\] t\d\nContext from PreToolUse hooks:\n<<<untrusted-[0-9a-f]{16} .*\ncheck generated files\nuntrusted-[0-9a-f]{16}>>>$/,
+					),
+					display: false,
+				},
+				options: { triggerTurn: false },
+			},
+		]);
+		await fire("tool_result", { ...event, content: [], isError: false }, ctx);
+		for (const file of ["pre.json", "post.json"])
+			expect(JSON.parse(fs.readFileSync(path.join(cwd, file), "utf8"))).toMatchObject({ tool_use_id: "call-123" });
+	});
+	it("blocks a file call when an Edit|Write guard exits 2 on one of its queries", async () => {
+		// A typical Claude Code guard: refuse any edit or write to a .env file.
+		const guard = `node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s).tool_input.file_path||'';if(p.endsWith('.env')){console.error('no .env: '+p);process.exit(2)}})"`;
+		const cwd = project({ PreToolUse: command(guard, "Edit|Write") });
+		const { api, fire } = fakeHost();
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
+		const ctx = context(cwd);
+		await fire("session_start", { reason: "startup" }, ctx);
+		const call = (...paths: string[]) => ({
+			toolName: "file",
+			toolCallId: "f",
+			input: { queries: paths.map((p) => ({ reason: "r", type: "write", path: p, content: "x" })) },
+		});
+		expect(await hooks.preToolUse(call("a.ts") as never, ctx as never)).toBeUndefined();
+		const blocked = await hooks.preToolUse(call("a.ts", ".env") as never, ctx as never);
+		expect(blocked).toEqual({
+			block: true,
+			reason: `Blocked by a PreToolUse hook: no .env: ${path.join(cwd, ".env")}`,
+		});
+	}, 10_000);
+
+	it("shows a status while the first prompt waits for SessionStart hooks", async () => {
+		const cwd = project({ SessionStart: command("while [ ! -f go ]; do sleep 0.02; done; echo ready") });
+		const { api, fire } = fakeHost();
+		registerHooks(api, { env: {}, home: tmp() });
+		const statuses: Array<string | undefined> = [];
+		const ctx = {
+			...context(cwd),
+			hasUI: true,
+			ui: { notify: () => undefined, setStatus: (_key: string, text: string | undefined) => statuses.push(text) },
+		};
+		try {
+			await fire("session_start", { reason: "startup" }, ctx);
+			const waiting = fire("before_agent_start", {}, ctx);
+			await vi.waitFor(() => expect(statuses).toEqual(["Waiting for SessionStart hooks…"]));
+			fs.writeFileSync(path.join(cwd, "go"), "");
+			expect(((await waiting) as { message: { content: string } }).message.content).toContain("ready");
+			expect(statuses).toEqual(["Waiting for SessionStart hooks…", undefined]);
+			// Later prompts do not wait or flash the status.
+			await fire("before_agent_start", {}, ctx);
+			expect(statuses).toHaveLength(2);
+		} finally {
+			// A failed assertion must not leave the `while [ ! -f go ]` shell running.
+			await fire("session_shutdown", {}, ctx);
+		}
+	}, 10_000);
+
+	it("is off in a subagent whose profile and task do not turn hooks on", () => {
+		const { api, handlers } = fakeHost();
+		registerHooks(api, { env: { OCTOCODE_SUBAGENT: "1" } });
+		expect([...handlers.keys()].filter((event) => event !== "message_end" && event !== "session_start")).toEqual([]);
+	});
+
+	it("registers only the gates' upkeep in a subagent in the decisions mode", () => {
+		const { api, handlers } = fakeHost();
+		registerHooks(api, { env: { OCTOCODE_SUBAGENT: "1", OCTOCODE_SUBAGENT_HOOKS: "decisions" } });
+		// Loading the hook files and clearing per-call state; no event a hook hangs on (the gates are called by the tool and permission gates).
+		const upkeep = ["message_end", "session_start", "session_shutdown", "turn_end"];
+		expect([...handlers.keys()].filter((event) => !upkeep.includes(event))).toEqual([]);
+	});
+
+	it("maps PreToolUse, PostToolUse, SessionStart and PreCompact to Octocode events", async () => {
+		const cwd = project({
+			PreToolUse: command('cat > pre.json; echo "blocked rm" >&2; exit 2', "Bash"),
+			PostToolUse: command('echo \'{"hookSpecificOutput":{"additionalContext":"lint ok"}}\'', "Edit"),
+			SessionStart: command('echo "repo notes"', "startup"),
+			PreCompact: command("cat > compact.json", "manual"),
+		});
+		const { api, fire } = fakeHost();
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
+		const ctx = context(cwd);
+		await fire("session_start", { type: "session_start", reason: "startup" }, ctx);
+
+		const message = (await fire("before_agent_start", {}, ctx)) as { message: { content: string; display: boolean } };
+		expect(message.message.content).toContain("repo notes");
+		expect(message.message.display).toBe(false);
+		expect(await fire("before_agent_start", {}, ctx)).toBeUndefined();
+
+		const blocked = await hooks.preToolUse(
+			{ toolName: "bash", toolCallId: "1", input: { command: "rm -rf /" } } as never,
+			ctx as never,
+		);
+		expect(blocked).toEqual({ block: true, reason: "Blocked by a PreToolUse hook: blocked rm" });
+		expect(JSON.parse(fs.readFileSync(path.join(cwd, "pre.json"), "utf8"))).toMatchObject({
+			session_id: "sess-1",
+			hook_event_name: "PreToolUse",
+			tool_name: "Bash",
+			octocode_tool_name: "bash",
+			tool_input: { command: "rm -rf /" },
+		});
+		expect(
+			await hooks.preToolUse({ toolName: "read", toolCallId: "2", input: {} } as never, ctx as never),
+		).toBeUndefined();
+
+		const edit = {
+			queries: [{ reason: "r", type: "edit", path: "a.ts", edits: [{ oldText: "a", newText: "b" }] }],
+		};
+		const result = (await fire(
+			"tool_result",
+			{
+				toolName: "file",
+				toolCallId: "3",
+				input: edit,
+				content: [{ type: "text", text: "edited" }],
+				isError: false,
+			},
+			ctx,
+		)) as { content: Array<{ text: string }> };
+		expect(result.content.map((part) => part.text)).toEqual(["edited", "\n[PostToolUse hook] lint ok"]);
+
+		await fire("session_before_compact", { reason: "manual", customInstructions: "keep tests" }, ctx);
+		expect(JSON.parse(fs.readFileSync(path.join(cwd, "compact.json"), "utf8"))).toMatchObject({
+			hook_event_name: "PreCompact",
+			trigger: "manual",
+			custom_instructions: "keep tests",
+			custom_instructions_source: "user",
+		});
+	});
+
+	it("runs SessionStart hooks without holding up session start, and drops a replaced session's result", async () => {
+		// The hook echoes the start source it was given, after a delay.
+		// The hook waits for a `go` file the test writes after both session starts returned.
+		const cwd = project({
+			SessionStart: command(
+				`while [ ! -f go ]; do sleep 0.02; done; node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log('source=' + JSON.parse(s).source))"`,
+			),
+		});
+		const { api, fire } = fakeHost();
+		registerHooks(api, { env: {}, home: tmp() });
+		const ctx = context(cwd);
+		try {
+			await fire("session_start", { type: "session_start", reason: "startup" }, ctx);
+			// A second session starts before the first one's hook finished: only the new session's context reaches its prompt.
+			await fire("session_start", { type: "session_start", reason: "resume" }, ctx);
+			fs.writeFileSync(path.join(cwd, "go"), "");
+			const message = (await fire("before_agent_start", {}, ctx)) as { message: { content: string } };
+			expect(message.message.content).toContain("source=resume");
+			expect(message.message.content).not.toContain("source=startup");
+		} finally {
+			await fire("session_shutdown", {}, ctx);
+		}
+	}, 10_000);
+
+	it("runs SessionStart hooks again after a compaction (source compact), and their context comes with the next prompt", async () => {
+		const cwd = project({
+			SessionStart: command(
+				`node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log('source=' + JSON.parse(s).source))"`,
+				"startup|compact",
+			),
+		});
+		const { api, fire } = fakeHost();
+		registerHooks(api, { env: {}, home: tmp() });
+		const ctx = context(cwd);
+		await fire("session_start", { type: "session_start", reason: "startup" }, ctx);
+		expect(((await fire("before_agent_start", {}, ctx)) as { message: { content: string } }).message.content).toContain(
+			"source=startup",
+		);
+		await fire("session_compact", { type: "session_compact" }, ctx);
+		const message = (await fire("before_agent_start", {}, ctx)) as { message: { content: string } };
+		expect(message.message.content).toContain("source=compact");
+		expect(message.message.content).not.toContain("source=startup");
+		await fire("session_shutdown", {}, ctx);
+	}, 10_000);
+
+	it("reports hooks off with the files it would read, and on with what loaded", async () => {
+		const cwd = project({ PreToolUse: command("echo pre", "Bash") });
+		const home = tmp();
+		const off = registerHooks(fakeHost().api, { env: { OCTOCODE_SUBAGENT: "1" }, home });
+		// The wording itself is pinned once, in hooks-child-decisions.test.ts; here the fact: off, and the report says the same.
+		expect(off.summary()).toBe(CHILD_MODE_NOTE.off);
+		expect(off.summary()).toMatch(/off in this subagent/);
+		expect(off.report(cwd).split("\n")[0]).toBe(`Hooks: ${off.summary()}.`);
+		expect(off.report(cwd)).toContain(`· ~${path.sep}${path.join(".claude", "settings.json")}`);
+		expect(off.report(cwd)).toMatch(/✓ .*hooks\.json \(project\)/);
+
+		const { api, fire } = fakeHost();
+		const on = registerHooks(api, { env: {}, home });
+		await fire("session_start", { reason: "startup" }, context(cwd));
+		expect(on.summary()).toBe("on, 1 hook");
+		expect(on.report(cwd)).toContain("[source octocode; runtime octocode]");
+		expect(on.report(cwd)).toMatch(/Loaded \(1\):\n {2}PreToolUse \[Bash\] echo pre \(.*hooks\.json\)/);
+
+		const commands = new Subcommands();
+		registerHarnessCommand(commands, on, api);
+		const notes: string[] = [];
+		await commands
+			.get("harness")!
+			.handler("hooks", { cwd, ui: { notify: (text: string) => notes.push(text) } } as never);
+		expect(notes[0]).toBe(on.report(cwd));
+	});
+
+	it("warns once when SessionStart hooks cannot run", async () => {
+		const cwd = project({ SessionStart: command("echo hi") });
+		const { api, fire } = fakeHost();
+		registerHooks(api, { env: {}, home: tmp() });
+		const notify = vi.fn();
+		const broken = {
+			...context(cwd),
+			hasUI: true,
+			ui: { notify, setStatus: () => undefined },
+			sessionManager: {
+				getSessionId: () => {
+					throw new Error("no session");
+				},
+				getSessionFile: () => undefined,
+			},
+		};
+		await fire("session_start", { reason: "startup" }, broken);
+		expect(await fire("before_agent_start", {}, broken)).toBeUndefined();
+		await fire("session_start", { reason: "startup" }, broken);
+		await fire("before_agent_start", {}, broken);
+		const warnings = notify.mock.calls.filter(([, level]) => level === "warning");
+		expect(warnings).toHaveLength(1);
+		expect(String(warnings[0][0])).toContain("no session");
+	});
+
+	it("skips project hooks in an untrusted project", async () => {
+		const cwd = project({ PreToolUse: command("exit 2") });
+		const { api, fire } = fakeHost();
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
+		await fire("session_start", { reason: "startup" }, context(cwd, false));
+		expect(
+			await hooks.preToolUse({ toolName: "bash", input: {} } as never, context(cwd, false) as never),
+		).toBeUndefined();
+	});
+});
+
+describe("Stop, Notification and hook timing", () => {
+	const settle = (outcome = "completed") => ({
+		type: "agent_before_settle",
+		outcome,
+		entries: [],
+		continue: false,
+		context: { llmMessages: [{ role: "assistant", content: [{ type: "text", text: "final answer" }] }] },
+	});
+
+	it("continues a completed run once a Stop hook blocks, with Claude Code loop guards", async () => {
+		const stop = `node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const i=JSON.parse(s);require('fs').appendFileSync('stop.log',JSON.stringify(i)+'\\n');if(!i.stop_hook_active)console.log(JSON.stringify({decision:'block',reason:'run the tests'}))})"`;
+		const cwd = project({ Stop: command(stop) });
+		const { api, fire } = fakeHost();
+		registerHooks(api, { env: {}, home: tmp() });
+		const ctx = context(cwd);
+		await fire("session_start", { reason: "startup" }, ctx);
+		expect(await fire("agent_before_settle", settle("aborted"), ctx)).toBeUndefined();
+		const first = (await fire("agent_before_settle", settle(), ctx)) as {
+			entries: Array<{ content: string; customType: string }>;
+			continue: boolean;
+		};
+		expect(first.continue).toBe(true);
+		expect(first.entries[0]).toMatchObject({
+			type: "custom_message",
+			customType: "octocode-hook-stop",
+			content: "Stop hook feedback:\nrun the tests",
+			display: true,
+		});
+		expect(await fire("agent_before_settle", settle(), ctx)).toBeUndefined();
+		const inputs = fs
+			.readFileSync(path.join(cwd, "stop.log"), "utf8")
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line));
+		expect(inputs.map((input) => input.stop_hook_active)).toEqual([false, true]);
+		expect(inputs[0]).toMatchObject({ hook_event_name: "Stop", last_assistant_message: "final answer" });
+		// A prompt resets the guard.
+		await fire("before_agent_start", {}, ctx);
+		// Octocode replaces the boundary's entries with a handler's: entries earlier handlers proposed are kept.
+		const earlier = { type: "custom", customType: "other-extension", data: 1 };
+		const next = (await fire("agent_before_settle", { ...settle(), entries: [earlier] }, ctx)) as {
+			entries: unknown[];
+			continue: boolean;
+		};
+		expect(next.continue).toBe(true);
+		expect(next.entries[0]).toEqual(earlier);
+		expect(next.entries).toHaveLength(2);
+	}, 10_000);
+
+	it("bounds Stop continuations per prompt even when a tool call resets the consecutive count", async () => {
+		const stop = `node -e "console.log(JSON.stringify({decision:'block',reason:'again'}))"`;
+		const cwd = project({ Stop: command(stop) });
+		const { api, fire } = fakeHost();
+		registerHooks(api, { env: {}, home: tmp() });
+		const ctx = context(cwd);
+		await fire("session_start", { reason: "startup" }, ctx);
+		let continued = 0;
+		for (let round = 0; round < 40; round++) {
+			const result = await fire("agent_before_settle", settle(), ctx);
+			if (!result) break;
+			continued++;
+			await fire("tool_execution_start", {}, ctx);
+		}
+		expect(continued).toBe(STOP_CONTINUE_RUN_CAP);
+		await fire("before_agent_start", {}, ctx);
+		expect(await fire("agent_before_settle", settle(), ctx)).toBeDefined();
+	}, 60_000);
+
+	it("shows the running Stop hooks in the footer status (Octocode has removed its working line), then clears it", async () => {
+		const config = parseHooks(
+			{
+				hooks: {
+					Stop: [
+						{
+							matcher: "",
+							hooks: [
+								{
+									type: "command",
+									command: 'node -e "setTimeout(Boolean,1300)" #ghp_abcdefghijklmnopqrstuvwxyz0123456789',
+								},
+								{ type: "command", command: "true" },
+							],
+						},
+					],
+				},
+			},
+			"fixture",
+		);
+		const { api, fire } = fakeHost();
+		const work = Promise.withResolvers<HookVerdict>();
+		registerStopHook(api, { config, errors: [], root: undefined }, () => work.promise);
+		const statuses: Array<string | undefined> = [];
+		const ctx = {
+			...context(tmp()),
+			hasUI: true,
+			mode: "tui",
+			ui: { setStatus: (_key: string, text: string | undefined) => statuses.push(text), notify: () => undefined },
+		};
+		await fire("session_start", { reason: "startup" }, ctx);
+		vi.useFakeTimers();
+		try {
+			const pending = fire("agent_before_settle", settle(), ctx);
+			await vi.advanceTimersByTimeAsync(1_000);
+			expect(statuses[0]).toMatch(/^Stop hook: node -e .*\[redacted\] \+1$/);
+			expect(statuses.at(-1)).toMatch(/ · 1s$/);
+			work.resolve({});
+			expect(await pending).toBeUndefined();
+			expect(statuses.at(-1)).toBeUndefined();
+		} finally {
+			work.resolve({});
+			vi.useRealTimers();
+		}
+	}, 10_000);
+
+	it("draws Stop feedback as a sanitized, collapsible block under a ⚑ header, even with hooks off", () => {
+		const { api, renderers } = fakeHost();
+		registerHooks(api, { env: {}, home: tmp() });
+		const render = renderers.get("octocode-hook-stop");
+		const tail = Array.from({ length: 12 }, (_, index) => `note ${index + 1}`).join("\n");
+		const content = `Stop hook feedback:\n# not a heading\n\u001b]52;c;evil\u0007two\nthree\n${tail}\nfive`;
+		const collapsed = rendered(render({ content }, { expanded: false }, theme));
+		expect(collapsed).toMatch(/^\s*⚑ Stop hook/);
+		expect(collapsed).not.toContain("Stop hook feedback:");
+		expect(collapsed).toContain("# not a heading");
+		expect(collapsed).not.toMatch(/\u001b\]52|\u0007/);
+		expect(collapsed).not.toContain("five");
+		expect(collapsed).toMatch(/… \+11 lines \(ctrl\+o to expand\)/);
+		expect(rendered(render({ content }, { expanded: true }, theme))).toContain("five");
+	});
+
+	it.each(["same output", "stop first", "stop last"])(
+		"honors explicit Stop termination over continuation: %s",
+		async (order) => {
+			const stop = { continue: false, stopReason: "finished" };
+			const block = { decision: "block", reason: "again" };
+			const outputs =
+				order === "same output" ? [{ ...stop, ...block }] : order === "stop first" ? [stop, block] : [block, stop];
+			const cwd = project({
+				Stop: [{ hooks: outputs.map((output) => ({ type: "command", command: `echo '${JSON.stringify(output)}'` })) }],
+			});
+			const { api, fire } = fakeHost();
+			registerHooks(api, { env: {}, home: tmp() });
+			const ctx = context(cwd);
+			await fire("session_start", { reason: "startup" }, ctx);
+			expect(await fire("agent_before_settle", settle(), ctx)).toBeUndefined();
+		},
+	);
+
+	it("stops continuing after 8 blocks in a row unless a tool runs; continue:false is not a block", async () => {
+		const cwd = project({ Stop: command('echo \'{"decision":"block","reason":"again"}\'') });
+		const { api, fire } = fakeHost();
+		registerHooks(api, { env: {}, home: tmp() });
+		const ctx = context(cwd);
+		await fire("session_start", { reason: "startup" }, ctx);
+		for (let index = 0; index < 8; index += 1) expect(await fire("agent_before_settle", settle(), ctx)).toBeDefined();
+		expect(await fire("agent_before_settle", settle(), ctx)).toBeUndefined();
+		await fire("tool_execution_start", { toolCallId: "n", toolName: "x", parentToolCallId: "p" }, ctx);
+		expect(await fire("agent_before_settle", settle(), ctx)).toBeUndefined();
+		await fire("tool_execution_start", { toolCallId: "t", toolName: "x" }, ctx);
+		expect(await fire("agent_before_settle", settle(), ctx)).toBeDefined();
+
+		const quiet = project({ Stop: command('echo \'{"continue":false,"stopReason":"done"}\'') });
+		const other = fakeHost();
+		registerHooks(other.api, { env: {}, home: tmp() });
+		await other.fire("session_start", { reason: "startup" }, context(quiet));
+		expect(await other.fire("agent_before_settle", settle(), context(quiet))).toBeUndefined();
+	}, 20_000);
+
+	it("runs Notification hooks matching the type, in the background", async () => {
+		const cwd = project({ Notification: command("cat > note.json", "permission_prompt") });
+		const { api, fire } = fakeHost();
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
+		await fire("session_start", { reason: "startup" }, context(cwd));
+		// Background: an aborted run (its signal) does not cancel the hook.
+		const aborted = { ...context(cwd), signal: AbortSignal.abort() };
+		hooks.notification({ type: "idle_prompt", message: "idle" }, aborted as never);
+		hooks.notification(
+			{ type: "permission_prompt", message: "Save?", title: "Octocode: waiting for you" },
+			aborted as never,
+		);
+		await vi.waitFor(() =>
+			expect(
+				fs.existsSync(path.join(cwd, "note.json")) && fs.readFileSync(path.join(cwd, "note.json"), "utf8"),
+			).toBeTruthy(),
+		);
+		expect(JSON.parse(fs.readFileSync(path.join(cwd, "note.json"), "utf8"))).toMatchObject({
+			hook_event_name: "Notification",
+			message: "Save?",
+			title: "Octocode: waiting for you",
+			notification_type: "permission_prompt",
+		});
+	}, 10_000);
+
+	it("runs matching hooks in parallel, once per command, and reports their timing", async () => {
+		// A barrier instead of a clock: each hook signs in and leaves only once all three have, so hooks run one after
+		// another would wait for a later one that never starts, and exit 3.
+		const dir = tmp("octocode-hooks-barrier-");
+		const ids = path.join(dir, "ids");
+		const script = path.join(dir, "barrier.cjs");
+		fs.writeFileSync(
+			script,
+			`const fs = require("node:fs");
+fs.appendFileSync(${JSON.stringify(ids)}, process.argv[2] + "\\n");
+const deadline = Date.now() + 8000;
+setInterval(() => {
+	const seen = new Set(fs.readFileSync(${JSON.stringify(ids)}, "utf8").split("\\n").filter(Boolean));
+	if (seen.size >= 3) process.exit(0);
+	if (Date.now() > deadline) process.exit(3);
+}, 10);`,
+		);
+		const hook = (id: string) => ({ type: "command", command: `node ${JSON.stringify(script)} ${id}`, timeout: 20 });
+		const cwd = project({
+			PreToolUse: [{ matcher: "Bash", hooks: [hook("one"), hook("two"), hook("one"), hook("three")] }],
+		});
+		const { api, fire } = fakeHost();
+		const failures: string[] = [];
+		const hooks = registerHooks(api, {
+			env: {},
+			home: tmp(),
+			onFailure: (what) => failures.push(what.join(" · ")),
+		});
+		await fire("session_start", { reason: "startup" }, context(cwd));
+		expect(
+			await hooks.preToolUse(
+				{ toolName: "bash", toolCallId: "1", input: { command: "ls" } } as never,
+				context(cwd) as never,
+			),
+		).toBeUndefined();
+		expect(failures).toEqual([]);
+		// The command configured twice ran once.
+		expect(fs.readFileSync(ids, "utf8").trim().split("\n").sort()).toEqual(["one", "three", "two"]);
+		const report = hooks.report(cwd);
+		// The report counts what runs: the command configured twice is one row with its one run.
+		expect(report).toContain("Loaded (3):");
+		expect(report.match(/ · 1 run, avg \d/g)).toHaveLength(3);
+		expect(hooks.summary()).toBe("on, 3 hooks");
+		expect(report).not.toMatch(/\d failed/);
+	}, 30_000);
+
+	it("joins the reasons of blocking PreToolUse hooks in config order, whichever answers first", async () => {
+		// The first hook answers only after the second has left its mark, so completion order is the reverse of config order.
+		const cwd = project({
+			PreToolUse: [
+				{
+					matcher: "Bash",
+					hooks: [
+						{
+							type: "command",
+							command: "while [ ! -f second-answered ]; do sleep 0.02; done; sleep 0.1; echo A >&2; exit 2",
+						},
+						{ type: "command", command: "echo B >&2; touch second-answered; exit 2" },
+					],
+				},
+			],
+		});
+		const { api, fire } = fakeHost();
+		const hooks = registerHooks(api, { env: {}, home: tmp() });
+		await fire("session_start", { reason: "startup" }, context(cwd));
+		expect(
+			await hooks.preToolUse(
+				{ toolName: "bash", toolCallId: "1", input: { command: "ls" } } as never,
+				context(cwd) as never,
+			),
+		).toEqual({ block: true, reason: "Blocked by a PreToolUse hook: A\n\nB" });
+	}, 15_000);
+
+	it("warns once about a slow PreToolUse hook", async () => {
+		let time = 0;
+		const clock = { now: () => time, deadline: () => new AbortController().signal };
+		try {
+			const cwd = project({ PreToolUse: command("true", "Bash") });
+			const { api, fire } = fakeHost();
+			const hooks = registerHooks(api, { env: {}, home: tmp(), clock });
+			const notes: string[] = [];
+			const ctx = {
+				...context(cwd),
+				hasUI: true,
+				ui: { notify: (message: string) => notes.push(message), setStatus: () => undefined },
+			};
+			await fire("session_start", { reason: "startup" }, ctx);
+			// The hook itself takes the six seconds: the clock moves while it runs, not while its run is logged.
+			const run = vi.spyOn(hookRunner, "runHook").mockImplementation(async () => {
+				time += 6_000;
+				return { code: 0, stdout: "", stderr: "", timedOut: false };
+			});
+			const call = () =>
+				hooks.preToolUse({ toolName: "bash", toolCallId: "1", input: { command: "ls" } } as never, ctx as never);
+			await call();
+			await call();
+			expect(run).toHaveBeenCalledTimes(2);
+			expect(notes).toHaveLength(1);
+			expect(notes[0]).toMatch(/^Slow PreToolUse hook \(6s\): every tool call in a batch waits for it\. true$/);
+		} finally {
+			vi.restoreAllMocks();
+		}
+	}, 10_000);
+});
+
+it("writes hook configuration diagnostics to stderr when the session has no UI", async () => {
+	const cwd = project({ PreToolUse: [{ hooks: [{ type: "command", command: "true", args: [] }] }] });
+	const { api, fire } = fakeHost();
+	registerHooks(api, { env: {}, home: tmp() });
+	const written: string[] = [];
+	const spy = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+		written.push(String(chunk));
+		return true;
+	});
+	try {
+		await fire("session_start", { reason: "startup" }, context(cwd));
+	} finally {
+		spy.mockRestore();
+	}
+	expect(written.join("")).toMatch(/Hook configuration diagnostics: .*args/);
+});
+
+it("says which calls a PreToolUse hook would see, by its matcher, and none while paused", async () => {
+	const cwd = project({ PreToolUse: command("true", "Bash|mcp__research__.*") });
+	const { api, fire } = fakeHost();
+	let paused = false;
+	const hooks = registerHooks(api, { env: {}, home: tmp(), paused: () => paused });
+	await fire("session_start", { reason: "startup" }, context(cwd));
+	expect(hooks.hasPreToolUse("bash", { command: "ls" }, cwd)).toBe(true);
+	expect(hooks.hasPreToolUse("mcp__research__search", {}, cwd)).toBe(true);
+	expect(hooks.hasPreToolUse("mcp__other__search", {}, cwd)).toBe(false);
+	paused = true;
+	expect(hooks.hasPreToolUse("bash", { command: "ls" }, cwd)).toBe(false);
+});
+
+it("pauses executable hooks during planning and permits them after leaving", async () => {
+	const cwd = project({ PreToolUse: command("touch ran", "Bash") });
+	const { api, fire } = fakeHost();
+	let paused = true;
+	const hooks = registerHooks(api, { env: {}, home: tmp(), paused: () => paused });
+	const ctx = context(cwd);
+	await fire("session_start", { reason: "startup" }, ctx);
+	const event = { toolName: "bash", toolCallId: "test", input: { command: "true" } } as never;
+	await hooks.preToolUse(event, ctx as never);
+	expect(fs.existsSync(path.join(cwd, "ran"))).toBe(false);
+	await hooks.suspend?.();
+	paused = false;
+	await hooks.preToolUse(event, ctx as never);
+	expect(fs.existsSync(path.join(cwd, "ran"))).toBe(true);
+});

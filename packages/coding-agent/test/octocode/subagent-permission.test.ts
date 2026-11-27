@@ -1,0 +1,178 @@
+import { withoutSourceHeader } from "../../src/octocode/shared/fence.ts";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import type * as NativeConfig from "../../src/config.ts";
+import { Permission } from "../../src/octocode/permission/ask.ts";
+import { runSubagent } from "../../src/octocode/subagents/process.ts";
+import { doneSummary } from "../../src/octocode/subagents/render.ts";
+import { registerAgentTool } from "../../src/octocode/subagents/tool.ts";
+import { Team } from "../../src/octocode/team/session.ts";
+import { fakeCachePolicy, fakeCtx, fakePermission, fakeHost, meteredBilling } from "./fake-host.ts";
+import { resetOctocodeEnv, tmp } from "./helpers.ts";
+import { NEEDS_APPROVAL } from "../../src/octocode/permission/ask/text.ts";
+
+const FIXTURE = path.join(path.dirname(new URL(import.meta.url).pathname), "subagent-fake-host.cjs");
+const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+const savedArgv = process.argv[1];
+const savedEnv = { ...process.env };
+
+beforeAll(() => {
+	const root = tmp("octocode-agent-permission-");
+	resetOctocodeEnv();
+	Object.assign(process.env, {
+		OCTOCODE_HOME: path.join(root, "home"),
+		OCTOCODE_AGENT_DB: path.join(root, "team.sqlite"),
+		OCTOCODE_FAKE_DENIAL: `${NEEDS_APPROVAL} running a shell command (npm test) needs the user's approval (manual mode) and no one can be asked here.`,
+	});
+	// runSubagent re-runs the current `octocode` script: point it at the scripted stand-in.
+	const bin = path.join(root, "bin");
+	fs.mkdirSync(bin);
+	fs.copyFileSync(FIXTURE, path.join(bin, "octocode"));
+	process.argv[1] = path.join(bin, "octocode");
+});
+
+afterAll(() => {
+	process.argv[1] = savedArgv!;
+	process.env = savedEnv;
+});
+
+describe("a child's refused actions", () => {
+	it("are reported to the parent one by one, apart from ordinary tool failures", async () => {
+		const denials: boolean[] = [];
+		await runSubagent({
+			task: "denied",
+			args: [],
+			cwd: tmp(),
+			identity: { id: "general-000001" },
+			onProgress: ({ denied }) => {
+				if (denied) denials.push(true);
+			},
+		});
+		expect(denials).toHaveLength(2);
+	});
+
+	it("show on the parent's agent row and in its result", async () => {
+		const f = fakeHost();
+		const team = new Team(f.api);
+		registerAgentTool(f.api, { profiles: () => new Map(), team, permission: fakePermission() });
+		const ctx = fakeCtx({ cwd: tmp() });
+		Object.assign(ctx, {
+			model: { provider: "faux", id: "model" },
+			modelRegistry: {
+				...meteredBilling,
+				getAvailable: () => [],
+				find: () => undefined,
+				getCachePolicy: fakeCachePolicy,
+			},
+		});
+		team.start(ctx);
+		const result = await f.tools
+			.get("agent")
+			.execute("call-1", { task: "denied", goal: "try denied things" }, undefined, undefined, ctx);
+		expect(result.details.denied).toBe(2);
+		// The child's report starts with `blocked`: the row says so.
+		expect(result.details.outcome).toBe("blocked");
+		expect(doneSummary(result.details)).toMatch(/^Blocked · /);
+		expect(doneSummary(result.details)).toContain("2 denied");
+		expect(doneSummary({ ...result.details, denied: undefined })).not.toContain("denied");
+		team.stop();
+	}, 20_000);
+
+	it("name the child's outcome in a background report's header and row", async () => {
+		const f = fakeHost();
+		const team = new Team(f.api);
+		registerAgentTool(f.api, { profiles: () => new Map(), team, permission: fakePermission() });
+		const ctx = fakeCtx({ cwd: tmp() });
+		Object.assign(ctx, {
+			model: { provider: "faux", id: "model" },
+			modelRegistry: {
+				...meteredBilling,
+				getAvailable: () => [],
+				find: () => undefined,
+				getCachePolicy: fakeCachePolicy,
+			},
+		});
+		team.start(ctx);
+		await f.tools
+			.get("agent")
+			.execute("call-1", { task: "denied", goal: "try denied things", background: true }, undefined, undefined, ctx);
+		await vi.waitFor(() => expect(f.sent.length).toBeGreaterThan(0));
+		expect(withoutSourceHeader(String(f.sent[0].message.content))).toMatch(
+			/^Background subagent [a-z]+-[a-z]+ \(general: try denied things\) reported blocked \(/,
+		);
+		expect(f.sent[0].message.details).toMatchObject({
+			status: "done",
+			outcome: "blocked",
+			summary: expect.stringMatching(/^Blocked · /),
+		});
+		team.stop();
+	}, 20_000);
+});
+
+describe("kinds allowed for the session", () => {
+	it("reach a child, which cannot ask anyone", async () => {
+		const f = fakeHost();
+		const team = new Team(f.api);
+		const permission = new Permission({ api: f.api, env: { OCTOCODE_PERMISSION: "manual" }, isSubagent: false });
+		registerAgentTool(f.api, { profiles: () => new Map(), team, permission });
+		// Untrusted, so manual: the web ask takes "all web requests", the spawn ask is allowed once.
+		const ctx = Object.assign(
+			fakeCtx({ cwd: tmp(), ui: { selects: ["Allow all web requests for this session", "Allow once"] } }),
+			{ isProjectTrusted: () => false },
+		);
+		Object.assign(ctx, {
+			model: { provider: "faux", id: "model" },
+			modelRegistry: {
+				...meteredBilling,
+				getAvailable: () => [],
+				find: () => undefined,
+				getCachePolicy: fakeCachePolicy,
+			},
+		});
+		permission.start(ctx);
+		team.start(ctx);
+		expect(permission.mode).toBe("manual");
+		await permission.check(ctx, { action: "web", title: "Fetch?", what: ["https://example.com"] });
+		const result = await f.tools
+			.get("agent")
+			.execute("call-1", { task: "grants", goal: "report its grants" }, undefined, undefined, ctx);
+		const text = result.content[0].text as string;
+		expect(text).toContain("mode=manual");
+		expect(/grants=(\S*)/.exec(text)?.[1]?.split(",")).toContain("web");
+		team.stop();
+	}, 20_000);
+});
+
+describe("an isolated child in a worktree of its parent's repository", () => {
+	function worktree(): { repo: string; tree: string } {
+		const repo = fs.realpathSync(tmp("octocode-perm-repo-"));
+		git(repo, "init", "-q", "-b", "main");
+		git(repo, "config", "user.name", "Test");
+		git(repo, "config", "user.email", "test@example.com");
+		fs.writeFileSync(path.join(repo, "a.txt"), "one\n");
+		git(repo, "add", "-A");
+		git(repo, "commit", "-q", "-m", "init");
+		const tree = path.join(fs.realpathSync(tmp("octocode-perm-trees-")), "child");
+		git(repo, "worktree", "add", "-q", tree);
+		return { repo, tree };
+	}
+	const start = (env: NodeJS.ProcessEnv, cwd: string) => {
+		const permission = new Permission({ api: fakeHost().api, env, isSubagent: true });
+		// Octocode has never seen the worktree path: it does not trust it.
+		permission.start({ cwd, isProjectTrusted: () => false, hasUI: false } as never);
+		return permission.mode;
+	};
+
+	it("runs in the mode its parent set, wherever it works; without one it starts in the default full", () => {
+		const { tree } = worktree();
+		expect(start({ OCTOCODE_SUBAGENT: "1", OCTOCODE_PERMISSION: "workspace" }, tree)).toBe("workspace");
+		expect(start({ OCTOCODE_SUBAGENT: "1" }, tree)).toBe("full");
+	});
+});
+
+vi.mock("../../src/config.ts", async (original) => ({
+	...(await original<typeof NativeConfig>()),
+	getCliInvocation: () => ({ command: process.execPath, prefix: [process.argv[1]] }),
+}));

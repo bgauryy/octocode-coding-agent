@@ -1,0 +1,1151 @@
+{
+  "revision": "8eaf5fd115f036d207be236009938261758e30f2",
+  "cases": [
+    {
+      "id": "root-policy-0",
+      "yaml": "",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": null
+      }
+    },
+    {
+      "id": "root-policy-1",
+      "yaml": "null",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "root-policy-2",
+      "yaml": "~",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "root-policy-3",
+      "yaml": "{}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": null
+      }
+    },
+    {
+      "id": "root-policy-4",
+      "yaml": "[]",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "root-policy-5",
+      "yaml": "true",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "root-policy-6",
+      "yaml": "policy: {}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": null,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "root-policy-7",
+      "yaml": "policy: null",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": null
+      }
+    },
+    {
+      "id": "root-policy-8",
+      "yaml": "policy: []",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "root-policy-9",
+      "yaml": "policy: {products: null}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "root-policy-10",
+      "yaml": "policy: {products: []}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": null,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "root-policy-11",
+      "yaml": "policy: {products: [codex, CODEX, chatgpt, ATLAS]}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": null,
+          "products": [
+            "codex",
+            "codex",
+            "chatgpt",
+            "atlas"
+          ]
+        }
+      }
+    },
+    {
+      "id": "root-policy-12",
+      "yaml": "policy: {products: [Codex]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "root-policy-13",
+      "yaml": "policy: {products: [octocode]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "implicit-true",
+      "yaml": "policy: {allow_implicit_invocation: true}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": true,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "implicit-false",
+      "yaml": "policy: {allow_implicit_invocation: false}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "implicit-True",
+      "yaml": "policy: {allow_implicit_invocation: True}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": true,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "implicit-FALSE",
+      "yaml": "policy: {allow_implicit_invocation: FALSE}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "implicit-yes",
+      "yaml": "policy: {allow_implicit_invocation: yes}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "implicit-on",
+      "yaml": "policy: {allow_implicit_invocation: on}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "implicit-1",
+      "yaml": "policy: {allow_implicit_invocation: 1}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "implicit-0",
+      "yaml": "policy: {allow_implicit_invocation: 0}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "implicit-null",
+      "yaml": "policy: {allow_implicit_invocation: null}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": null,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "implicit-\"false\"",
+      "yaml": "policy: {allow_implicit_invocation: \"false\"}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "implicit-[]",
+      "yaml": "policy: {allow_implicit_invocation: []}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "implicit-{}",
+      "yaml": "policy: {allow_implicit_invocation: {}}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "display_name-true",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {display_name: true}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "display_name-1",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {display_name: 1}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "display_name-01",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {display_name: 01}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "display_name-1.5",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {display_name: 1.5}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "display_name-null",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {display_name: null}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "display_name-\"null\"",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {display_name: \"null\"}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "display_name-[]",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {display_name: []}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "display_name-{}",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {display_name: {}}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "icon_small-true",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {icon_small: true}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "icon_small-1",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {icon_small: 1}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "icon_small-01",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {icon_small: 01}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "icon_small-1.5",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {icon_small: 1.5}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "icon_small-null",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {icon_small: null}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "icon_small-\"null\"",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {icon_small: \"null\"}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "icon_small-[]",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {icon_small: []}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "icon_small-{}",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {icon_small: {}}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "tools-null",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: null}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "tools-[]",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: []}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "tools-{}",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: {}}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "tools-[null]",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [null]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "tools-[{type: mcp, value: x}]",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{type: mcp, value: x}]}",
+      "expected": {
+        "dependencies": {
+          "tools": [
+            {
+              "command": null,
+              "description": null,
+              "oauth_callback_port": null,
+              "transport": null,
+              "type": "mcp",
+              "url": null,
+              "value": "x"
+            }
+          ]
+        },
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "tools-[{type: true, value: 0x10}]",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{type: true, value: 0x10}]}",
+      "expected": {
+        "dependencies": {
+          "tools": [
+            {
+              "command": null,
+              "description": null,
+              "oauth_callback_port": null,
+              "transport": null,
+              "type": "true",
+              "url": null,
+              "value": "0x10"
+            }
+          ]
+        },
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "tools-[{type: [], value: x}]",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{type: [], value: x}]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "tools-[{type: mcp, value: x, oauth: {callbackPort: 12, callback_port: 13}}]",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{type: mcp, value: x, oauth: {callbackPort: 12, callback_port: 13}}]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "edge-50",
+      "yaml": "policy: {allow_implicit_invocation: true, allow_implicit_invocation: false}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "edge-51",
+      "yaml": "unknown: 1\nunknown: 2\npolicy: {allow_implicit_invocation: false}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "edge-52",
+      "yaml": "policy: {unknown: 1, unknown: 2, allow_implicit_invocation: false}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "edge-53",
+      "yaml": "policy: {allow_implicit_invocation: false}\n---\n{}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "edge-54",
+      "yaml": "interface: {display_name: null}\npolicy: {allow_implicit_invocation: false}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "edge-55",
+      "yaml": "interface: !!map {display_name: 12}\npolicy: {allow_implicit_invocation: false}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "oauth-65535",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{type: mcp, value: x, oauth: {callbackPort: 65535}}]}",
+      "expected": {
+        "dependencies": {
+          "tools": [
+            {
+              "command": null,
+              "description": null,
+              "oauth_callback_port": 65535,
+              "transport": null,
+              "type": "mcp",
+              "url": null,
+              "value": "x"
+            }
+          ]
+        },
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "oauth-65536",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{type: mcp, value: x, oauth: {callbackPort: 65536}}]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "oauth--1",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{type: mcp, value: x, oauth: {callbackPort: -1}}]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "oauth-1.0",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{type: mcp, value: x, oauth: {callbackPort: 1.0}}]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "oauth-\"12\"",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{type: mcp, value: x, oauth: {callbackPort: \"12\"}}]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "oauth-0x10",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{type: mcp, value: x, oauth: {callbackPort: 0x10}}]}",
+      "expected": {
+        "dependencies": {
+          "tools": [
+            {
+              "command": null,
+              "description": null,
+              "oauth_callback_port": 16,
+              "transport": null,
+              "type": "mcp",
+              "url": null,
+              "value": "x"
+            }
+          ]
+        },
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "oauth-0o10",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{type: mcp, value: x, oauth: {callbackPort: 0o10}}]}",
+      "expected": {
+        "dependencies": {
+          "tools": [
+            {
+              "command": null,
+              "description": null,
+              "oauth_callback_port": 8,
+              "transport": null,
+              "type": "mcp",
+              "url": null,
+              "value": "x"
+            }
+          ]
+        },
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "oauth-+12",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{type: mcp, value: x, oauth: {callbackPort: +12}}]}",
+      "expected": {
+        "dependencies": {
+          "tools": [
+            {
+              "command": null,
+              "description": null,
+              "oauth_callback_port": 12,
+              "transport": null,
+              "type": "mcp",
+              "url": null,
+              "value": "x"
+            }
+          ]
+        },
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "oauth-null",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{type: mcp, value: x, oauth: {callbackPort: null}}]}",
+      "expected": {
+        "dependencies": {
+          "tools": [
+            {
+              "command": null,
+              "description": null,
+              "oauth_callback_port": null,
+              "transport": null,
+              "type": "mcp",
+              "url": null,
+              "value": "x"
+            }
+          ]
+        },
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "oauth-true",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{type: mcp, value: x, oauth: {callbackPort: true}}]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "tag-!!str false",
+      "yaml": "policy: {allow_implicit_invocation: !!str false}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "tag-!!bool \"false\"",
+      "yaml": "policy: {allow_implicit_invocation: !!bool \"false\"}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "tag-!!bool false",
+      "yaml": "policy: {allow_implicit_invocation: !!bool false}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "tag-!!int 0",
+      "yaml": "policy: {allow_implicit_invocation: !!int 0}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "tag-!custom false",
+      "yaml": "policy: {allow_implicit_invocation: !custom false}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "tag-&false false",
+      "yaml": "policy: {allow_implicit_invocation: &false false}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "tag-*false",
+      "yaml": "policy: {allow_implicit_invocation: *false}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "null-!!str null",
+      "yaml": "policy: !!str null",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "null-~",
+      "yaml": "policy: ~",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": null
+      }
+    },
+    {
+      "id": "null-NULL",
+      "yaml": "policy: NULL",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": null
+      }
+    },
+    {
+      "id": "null-Null",
+      "yaml": "policy: Null",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": null
+      }
+    },
+    {
+      "id": "null-\"\"",
+      "yaml": "policy: \"\"",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "edge-78",
+      "yaml": "base: &p {allow_implicit_invocation: false}\npolicy: *p",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "edge-79",
+      "yaml": "base: &p {allow_implicit_invocation: false}\npolicy: {<<: *p}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": null,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "edge-80",
+      "yaml": "---\n",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": null
+      }
+    },
+    {
+      "id": "edge-81",
+      "yaml": "\ufeffpolicy: {allow_implicit_invocation: false}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "empty-tag-82",
+      "yaml": "policy: {products: }",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": null,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "empty-tag-83",
+      "yaml": "dependencies: {tools: }",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": null
+      }
+    },
+    {
+      "id": "empty-tag-84",
+      "yaml": "dependencies: {tools: [ ]}\npolicy: {allow_implicit_invocation: false}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "empty-tag-85",
+      "yaml": "policy: {allow_implicit_invocation: !!null false}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "empty-tag-86",
+      "yaml": "interface: {display_name: !!null false}\npolicy: {allow_implicit_invocation: false}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "empty-tag-87",
+      "yaml": "policy: {products: [!!str CODEX]}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": null,
+          "products": [
+            "codex"
+          ]
+        }
+      }
+    },
+    {
+      "id": "empty-tag-88",
+      "yaml": "policy: {products: [!custom codex]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "empty-tag-89",
+      "yaml": "policy: {products: [{codex: null}]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "aliases-90",
+      "yaml": "x: &x {value: x}\na: *x\nb: *x\npolicy: {allow_implicit_invocation: false}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "aliases-91",
+      "yaml": "x: &x [*x]\npolicy: {allow_implicit_invocation: false}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "aliases-92",
+      "yaml": "policy: &p {allow_implicit_invocation: false}\nunknown: *p",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "aliases-93",
+      "yaml": "policy: {allow_implicit_invocation: false}\nunknown: *missing",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "port-form-01",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{oauth: {callbackPort: 01}}]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "port-form-00",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{oauth: {callbackPort: 00}}]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "port-form-0b10",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{oauth: {callbackPort: 0b10}}]}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "port-form-1_0",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{oauth: {callbackPort: 1_0}}]}",
+      "expected": {
+        "ok": false
+      }
+    },
+    {
+      "id": "port-form-+0x10",
+      "yaml": "policy: {allow_implicit_invocation: false}\ndependencies: {tools: [{oauth: {callbackPort: +0x10}}]}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "tagged-type-99",
+      "yaml": "policy: {products: [!!int codex]}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": null,
+          "products": [
+            "codex"
+          ]
+        }
+      }
+    },
+    {
+      "id": "tagged-type-100",
+      "yaml": "policy: {products: [!!null codex]}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": false,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": null,
+          "products": [
+            "codex"
+          ]
+        }
+      }
+    },
+    {
+      "id": "tagged-type-101",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {display_name: !!int false}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    },
+    {
+      "id": "tagged-type-102",
+      "yaml": "policy: {allow_implicit_invocation: false}\ninterface: {display_name: !!bool text}",
+      "expected": {
+        "dependencies": null,
+        "has_interface": true,
+        "ok": true,
+        "policy": {
+          "allow_implicit_invocation": false,
+          "products": []
+        }
+      }
+    }
+  ]
+}

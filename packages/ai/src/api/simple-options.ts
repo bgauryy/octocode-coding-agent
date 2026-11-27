@@ -1,0 +1,142 @@
+import { bedrockReplyBudget } from "../utils/bedrock-models.ts";
+import { clampThinkingLevel } from "../models/model-helpers.ts";
+import type {
+	Api,
+	Model,
+	ModelThinkingLevel,
+	SamplingParams,
+	SimpleStreamOptions,
+	StreamOptions,
+	ThinkingBudgetReduction,
+	ThinkingBudgets,
+	ThinkingLevel,
+	TranscriptContext,
+} from "../types.ts";
+import { estimateContextTokens } from "../utils/estimate.ts";
+
+export const CONTEXT_SAFETY_TOKENS = 4096;
+const MIN_MAX_TOKENS = 1;
+
+/**
+ * `maxTokens`, lowered so the context, estimated at `model`'s family ratio (as the compaction trigger estimates it), and
+ * a safety margin still fit the window.
+ */
+export function clampMaxTokensToContext(model: Model<Api>, context: TranscriptContext, maxTokens: number): number {
+	const outputLimit = Math.max(MIN_MAX_TOKENS, Math.min(maxTokens, model.maxTokens));
+	if (model.contextWindow <= 0) return outputLimit;
+	const available = model.contextWindow - estimateContextTokens(context, model).tokens - CONTEXT_SAFETY_TOKENS;
+	return Math.min(outputLimit, Math.max(MIN_MAX_TOKENS, available));
+}
+
+export function resolveSamplingParams(
+	model: Model<Api>,
+	thinkingLevel: ModelThinkingLevel,
+	requestParams?: SamplingParams,
+): SamplingParams | undefined {
+	const effectiveThinkingLevel = clampThinkingLevel(model, thinkingLevel);
+	const thinkingLevelParams = model.samplingParamsByThinkingLevel?.[effectiveThinkingLevel];
+	return model.samplingParams || thinkingLevelParams || requestParams
+		? { ...model.samplingParams, ...thinkingLevelParams, ...requestParams }
+		: undefined;
+}
+
+/** The reasoning effort to send: the requested level clamped to what the model supports, or undefined for none or "off". */
+export function requestedReasoningEffort(
+	model: Model<Api>,
+	options: SimpleStreamOptions | undefined,
+): Exclude<ModelThinkingLevel, "off"> | undefined {
+	const clamped = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
+	return clamped === "off" ? undefined : clamped;
+}
+
+export function buildBaseOptions(
+	model: Model<Api>,
+	context: TranscriptContext,
+	options?: SimpleStreamOptions,
+	apiKey?: string,
+): StreamOptions {
+	const samplingParams = resolveSamplingParams(model, options?.reasoning ?? "off", options?.samplingParams);
+	return {
+		temperature: options?.temperature,
+		samplingParams,
+		maxTokens: clampMaxTokensToContext(
+			model,
+			context,
+			bedrockReplyBudget(model, options?.maxTokens) ?? options?.maxTokens ?? model.maxTokens,
+		),
+		signal: options?.signal,
+		telemetry: options?.telemetry,
+		apiKey: apiKey || options?.apiKey,
+		fetch: options?.fetch,
+		transport: options?.transport,
+		cacheRetention: options?.cacheRetention,
+		instructionCacheRetention: options?.instructionCacheRetention,
+		keepInstructionCache: options?.keepInstructionCache,
+		instructionCacheBoundary: options?.instructionCacheBoundary,
+		instructionVolatileBoundary: options?.instructionVolatileBoundary,
+		instructionWorkspaceBoundary: options?.instructionWorkspaceBoundary,
+		toolCacheBoundary: options?.toolCacheBoundary,
+		sessionId: options?.sessionId,
+		promptCacheKey: options?.promptCacheKey,
+		headers: options?.headers,
+		onPayload: options?.onPayload,
+		onTransportRetry: options?.onTransportRetry,
+		onRateLimit: options?.onRateLimit,
+		onResponse: options?.onResponse,
+		onProviderStreamEvent: options?.onProviderStreamEvent,
+		timeoutMs: options?.timeoutMs,
+		streamIdleTimeoutMs: options?.streamIdleTimeoutMs,
+		maxRetries: options?.maxRetries,
+		maxRetryDelayMs: options?.maxRetryDelayMs,
+		metadata: options?.metadata,
+		env: options?.env,
+	};
+}
+
+/** Tokens always left for the answer when a thinking budget shares the response ceiling. */
+const MIN_ANSWER_TOKENS = 1024;
+
+const DEFAULT_THINKING_BUDGETS: ThinkingBudgets = {
+	minimal: 1024,
+	low: 2048,
+	medium: 8192,
+	high: 16384,
+};
+
+export function clampReasoning(effort: ThinkingLevel | undefined): Exclude<ThinkingLevel, "xhigh" | "max"> | undefined {
+	return effort === "xhigh" || effort === "max" ? "high" : effort;
+}
+
+export function thinkingBudgetForLevel(reasoningLevel: ThinkingLevel, customBudgets?: ThinkingBudgets): number {
+	const budgets = { ...DEFAULT_THINKING_BUDGETS, ...customBudgets };
+	const level = clampReasoning(reasoningLevel)!;
+	return budgets[level]!;
+}
+
+/** Cap a thinking budget so at least MIN_ANSWER_TOKENS remain under a shared response ceiling. */
+export function clampThinkingBudgetToAnswerRoom(thinkingBudget: number, ceiling: number): number {
+	return Math.min(thinkingBudget, Math.max(0, ceiling - MIN_ANSWER_TOKENS));
+}
+
+/** The reduction record for a request whose thinking budget shrank from `requested` to `sent`; undefined when it did not. */
+export function thinkingBudgetReduction(requested: number, sent: number): ThinkingBudgetReduction | undefined {
+	return sent < requested ? { requested, sent } : undefined;
+}
+
+export function adjustMaxTokensForThinking(
+	// Undefined means no explicit caller cap. Use the model cap and fit thinking inside it.
+	baseMaxTokens: number | undefined,
+	modelMaxTokens: number,
+	reasoningLevel: ThinkingLevel,
+	customBudgets?: ThinkingBudgets,
+): { maxTokens: number; thinkingBudget: number } {
+	let thinkingBudget = thinkingBudgetForLevel(reasoningLevel, customBudgets);
+	const maxTokens =
+		baseMaxTokens === undefined ? modelMaxTokens : Math.min(baseMaxTokens + thinkingBudget, modelMaxTokens);
+
+	if (maxTokens <= thinkingBudget) {
+		thinkingBudget = clampThinkingBudgetToAnswerRoom(thinkingBudget, maxTokens);
+	}
+
+	return { maxTokens, thinkingBudget };
+}

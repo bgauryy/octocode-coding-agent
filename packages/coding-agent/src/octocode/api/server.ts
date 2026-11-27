@@ -1,0 +1,320 @@
+import fs from "node:fs";
+import http from "node:http";
+import net from "node:net";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
+import { sameSecret } from "@octocodeai/octocode-common/env";
+import { isLoopbackHostname } from "../shared/net.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import type { EventLog } from "./events.ts";
+import {
+	type ApiEvent,
+	ERR,
+	failure,
+	isResponse,
+	MAX_FRAME_BYTES,
+	parseRequest,
+	RpcError,
+	type RpcRequest,
+	type RpcResponse,
+	success,
+} from "./protocol.ts";
+import { removeSocket } from "./registry.ts";
+
+const MAX_CONNECTIONS = 16;
+/** What a client refused for capacity is told to wait before trying again: calls hold a slot only while they run. */
+const OVERLOAD_RETRY_MS = 1_000;
+/** How long a refused connection stays readable for its client to read the refusal; a local client needs milliseconds. */
+const REFUSED_LINGER_MS = 1000;
+/** A client that lets this much output queue up is not reading; drop it instead of buffering without limit. */
+const MAX_QUEUED_BYTES = 4 * 1_048_576;
+
+/**
+ * Limits of the loopback HTTP listener. The timeouts bound how long a peer may take to send a request (not how long the
+ * answer takes), the same 10 s the daemon and the board use; `connectionsCheckingInterval` is how often Node enforces
+ * them. The connection cap leaves room for the event streams (each capped at MAX_CONNECTIONS) and RPC calls.
+ */
+export const API_HTTP_LIMITS = {
+	headersTimeout: 10_000,
+	requestTimeout: 10_000,
+	connectionsCheckingInterval: 1_000,
+	maxConnections: 4 * MAX_CONNECTIONS,
+};
+
+/** What a method handler may do for the connection it was called on. */
+export interface Connection {
+	/** Which listener took this call: what it proves about the caller differs. */
+	transport?: "socket" | "http";
+	/** Start streaming events to this connection. Socket connections get notifications; HTTP clients use GET /events. */
+	subscribe?(options: { since?: number; types?: string[] }): { seq: number; gap: boolean };
+	unsubscribe?(): void;
+}
+
+type Dispatch = (method: string, params: Record<string, unknown>, connection: Connection) => Promise<unknown>;
+
+async function answer(
+	request: RpcRequest,
+	dispatch: Dispatch,
+	connection: Connection,
+): Promise<RpcResponse | undefined> {
+	const id = request.id ?? null;
+	try {
+		const result = await dispatch(request.method, request.params ?? {}, connection);
+		return request.id === undefined ? undefined : success(id, result);
+	} catch (error) {
+		if (request.id === undefined) return undefined;
+		if (error instanceof RpcError) return failure(id, error.code, error.message, error.data);
+		return failure(id, ERR.internal, errorMessage(error));
+	}
+}
+
+export class ApiServer {
+	private unix: net.Server | undefined;
+	private web: http.Server | undefined;
+	private readonly sockets = new Set<net.Socket>();
+	private readonly rejectedSockets = new Set<net.Socket>();
+	private readonly streams = new Set<http.ServerResponse>();
+	socketFile: string | undefined;
+	httpUrl: string | undefined;
+
+	private readonly dispatch: Dispatch;
+	private readonly log: EventLog;
+	private readonly token: string;
+	/** Told of each `GET /events` stream that opens: a read that bypasses `dispatch`. */
+	private readonly onStream: ((connection: Connection) => void) | undefined;
+	/** How long a socket may go without completing a request frame before it is closed. */
+	private readonly frameTimeoutMs: number;
+	constructor(
+		dispatch: Dispatch,
+		log: EventLog,
+		token: string,
+		onStream?: (connection: Connection) => void,
+		frameTimeoutMs: number = API_HTTP_LIMITS.requestTimeout,
+	) {
+		this.frameTimeoutMs = frameTimeoutMs;
+		this.dispatch = dispatch;
+		this.log = log;
+		this.token = token;
+		this.onStream = onStream;
+	}
+
+	/**
+	 * Listen on a Unix socket: owner-only file permissions are the authentication. They are in force from the moment the
+	 * socket exists: the umask masks group and other bits for the `listen` call (which binds synchronously), so no other
+	 * user can connect between the bind and a `chmod`.
+	 */
+	listenUnix(file: string): Promise<void> {
+		fs.rmSync(file, { force: true });
+		const server = net.createServer((socket) => this.accept(socket));
+		this.unix = server;
+		// Set before the bind: a bind that fails still leaves the private folder `socketPath` made for `close` to remove.
+		this.socketFile = file;
+		return new Promise((resolve, reject) => {
+			server.once("error", reject);
+			const umask = process.platform === "win32" ? undefined : process.umask(0o177);
+			try {
+				server.listen(file, () => {
+					server.off("error", reject);
+					// On by default in every session: it must never be what keeps a finished process alive.
+					server.unref();
+					resolve();
+				});
+			} finally {
+				if (umask !== undefined) process.umask(umask);
+			}
+		});
+	}
+
+	/** Listen on loopback only. Every request needs the bearer token; browsers (requests with an Origin) are refused. */
+	listenHttp(port: number, limits: typeof API_HTTP_LIMITS = API_HTTP_LIMITS): Promise<void> {
+		const { maxConnections, ...timeouts } = limits;
+		// A client that resets mid-body rejects the body read; an unhandled rejection would end Octocode.
+		const server = http.createServer(timeouts, (req, res) => {
+			this.request(req, res).catch(() => res.destroy());
+			return undefined;
+		});
+		server.maxConnections = maxConnections;
+		this.web = server;
+		return new Promise((resolve, reject) => {
+			server.once("error", reject);
+			server.listen(port, "127.0.0.1", () => {
+				server.off("error", reject);
+				this.httpUrl = `http://127.0.0.1:${(server.address() as net.AddressInfo).port}`;
+				resolve();
+			});
+		});
+	}
+
+	private accept(socket: net.Socket): void {
+		const rejected = this.sockets.size >= MAX_CONNECTIONS;
+		const owned = rejected ? this.rejectedSockets : this.sockets;
+		owned.add(socket);
+		let subscription: { close(): void } | undefined;
+		// A peer that connects and sends nothing, or stops mid-frame, would hold a slot until it closes. The deadline runs
+		// only while no complete frame is waiting, so an event stream that has made its request stays open.
+		let deadline: NodeJS.Timeout | undefined;
+		let framed = false;
+		const arm = (waiting: boolean): void => {
+			if (waiting && deadline) return; // dripping bytes does not extend the deadline
+			clearTimeout(deadline);
+			deadline = waiting ? setTimeout(() => socket.destroy(), this.frameTimeoutMs) : undefined;
+		};
+		socket.on("close", () => {
+			arm(false);
+			subscription?.close();
+			owned.delete(socket);
+		});
+		socket.on("error", () => socket.destroy());
+		if (rejected) {
+			socket.end(
+				`${JSON.stringify(
+					failure(null, ERR.unavailable, "Too many connections", {
+						execution: "not-sent",
+						reason: "overloaded",
+						retryAfterMs: OVERLOAD_RETRY_MS,
+					}),
+				)}\n`,
+			);
+			// The request this client is writing must not meet a closed socket: that would read as a transport failure,
+			// where the answer is that nothing was sent. So the refused side stays readable, discarding what arrives,
+			// until the client has read the refusal and closed, or the linger ends. A flood gets no linger.
+			if (this.rejectedSockets.size > MAX_CONNECTIONS) {
+				socket.destroy();
+				return;
+			}
+			socket.resume();
+			const linger = setTimeout(() => socket.destroy(), REFUSED_LINGER_MS);
+			linger.unref?.();
+			socket.once("close", () => clearTimeout(linger));
+			return;
+		}
+		const write = (value: unknown): void => {
+			if (socket.destroyed) return;
+			if (socket.writableLength > MAX_QUEUED_BYTES) {
+				socket.destroy();
+				return;
+			}
+			socket.write(`${JSON.stringify(value)}\n`);
+		};
+		const connection: Connection = {
+			transport: "socket",
+			subscribe: (options) => {
+				subscription?.close();
+				const sub = this.log.subscribe((event) => write({ jsonrpc: "2.0", method: "event", params: event }), options);
+				subscription = sub;
+				return { seq: this.log.seq, gap: sub.gap };
+			},
+			unsubscribe: () => {
+				subscription?.close();
+				subscription = undefined;
+			},
+		};
+		let pending = "";
+		arm(true);
+		socket.setEncoding("utf8");
+		// Every frame is held to MAX_FRAME_BYTES in UTF-8 bytes: a complete line after splitting, and the unterminated rest.
+		const tooLarge = (text: string): boolean => {
+			// A UTF-16 unit encodes to at most 3 bytes: skip measuring text that cannot be over the limit.
+			if (text.length * 3 <= MAX_FRAME_BYTES || Buffer.byteLength(text, "utf8") <= MAX_FRAME_BYTES) return false;
+			write(failure(null, ERR.invalidRequest, "Frame too large"));
+			socket.destroy();
+			return true;
+		};
+		socket.on("data", (chunk: string) => {
+			pending += chunk;
+			while (pending.includes("\n")) {
+				const newline = pending.indexOf("\n");
+				const line = pending.slice(0, newline).trim();
+				pending = pending.slice(newline + 1);
+				if (tooLarge(line)) return;
+				if (!line) continue;
+				framed = true;
+				const parsed = parseRequest(line);
+				if (isResponse(parsed)) write(parsed);
+				else void answer(parsed, this.dispatch, connection).then((response) => response && write(response));
+			}
+			if (!tooLarge(pending)) arm(pending.length > 0 || !framed);
+		});
+	}
+
+	private authorized(req: http.IncomingMessage): boolean {
+		const host = (req.headers.host ?? "").replace(/:\d+$/, "");
+		if (!isLoopbackHostname(host) || req.headers.origin !== undefined) return false;
+		return sameSecret(this.token, (req.headers.authorization ?? "").replace(/^Bearer /i, ""));
+	}
+
+	private async request(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+		const reply = (status: number, body: unknown): void => {
+			res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+			res.end(JSON.stringify(body));
+		};
+		if (!this.authorized(req)) return reply(401, failure(null, ERR.invalidRequest, "Unauthorized"));
+		const url = new URL(req.url ?? "/", "http://localhost");
+		if (req.method === "GET" && url.pathname === "/events") return this.stream(req, res, url);
+		if (req.method === "GET" && url.pathname === "/health") return reply(200, { ok: true });
+		if (req.method !== "POST" || url.pathname !== "/rpc")
+			return reply(404, failure(null, ERR.methodNotFound, "Use POST /rpc, GET /events or GET /health"));
+		const chunks: Buffer[] = [];
+		let bytes = 0;
+		for await (const chunk of req as AsyncIterable<Buffer>) {
+			bytes += chunk.length;
+			if (bytes > MAX_FRAME_BYTES) return reply(413, failure(null, ERR.invalidRequest, "Body too large"));
+			chunks.push(chunk);
+		}
+		const parsed = parseRequest(Buffer.concat(chunks, bytes).toString("utf8"));
+		if (isResponse(parsed)) return reply(400, parsed);
+		// Event streaming over HTTP is GET /events; a subscription needs a connection that outlives the request.
+		const response = await answer(parsed, this.dispatch, { transport: "http" });
+		if (response) reply(200, response);
+		else {
+			res.writeHead(204);
+			res.end();
+		}
+	}
+
+	private stream(req: http.IncomingMessage, res: http.ServerResponse, url: URL): void {
+		if (this.streams.size >= MAX_CONNECTIONS) {
+			res.writeHead(503).end();
+			return;
+		}
+		// Replay only what the client asked for: a plain GET /events starts with the next event.
+		const raw = req.headers["last-event-id"] ?? url.searchParams.get("since") ?? "";
+		const last = String(raw).trim() === "" ? Number.NaN : Number(raw);
+		const types = url.searchParams.get("types")?.split(",").filter(Boolean);
+		res.writeHead(200, {
+			"content-type": "text/event-stream",
+			"cache-control": "no-store",
+			connection: "keep-alive",
+		});
+		// Send the headers now: a client must see the stream open before the first event (or keep-alive) arrives.
+		res.flushHeaders();
+		const send = (event: ApiEvent): void => {
+			if (res.writableLength > MAX_QUEUED_BYTES) res.destroy();
+			else res.write(`id: ${event.seq}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+		};
+		this.streams.add(res);
+		this.onStream?.({ transport: "http" });
+		const sub = this.log.subscribe(send, {
+			...(Number.isInteger(last) && last >= 0 ? { since: last } : {}),
+			...(types ? { types } : {}),
+		});
+		if (sub.gap) res.write(": gap\n\n");
+		const stopBeat = sharedClock.subscribe(() => res.write(": keep-alive\n\n"), { everyMs: 15_000 });
+		res.on("close", () => {
+			stopBeat();
+			sub.close();
+			this.streams.delete(res);
+		});
+	}
+
+	async close(): Promise<void> {
+		for (const socket of this.sockets) socket.destroy();
+		for (const socket of this.rejectedSockets) socket.destroy();
+		for (const stream of this.streams) stream.destroy();
+		const closing: Promise<void>[] = [];
+		for (const server of [this.unix, this.web])
+			if (server?.listening) closing.push(new Promise((resolve) => server.close(() => resolve())));
+		this.web?.closeAllConnections();
+		await Promise.all(closing);
+		if (this.socketFile) removeSocket(this.socketFile);
+	}
+}

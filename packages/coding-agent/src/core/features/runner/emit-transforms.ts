@@ -1,0 +1,239 @@
+/** Dispatch of the events whose handlers transform a request, a prompt or user input. */
+
+import type { AgentMessage } from "@octocodeai/octocode-agent-core";
+import type { ImageContent } from "@octocodeai/octocode-ai";
+import {
+	type BuildSystemPromptOptions,
+	buildSystemPrompt,
+	normalizeBuildSystemPromptOptions,
+} from "../../system-prompt.ts";
+import { PolicyRenderError } from "../../system-prompt-spec.ts";
+import type {
+	BeforeAgentStartEvent,
+	BeforeAgentStartEventResult,
+	ContextEvent,
+	ContextEventResult,
+	FeatureContext,
+	InputEvent,
+	InputEventResult,
+	InputSource,
+	ResourcesDiscoverEvent,
+	ResourcesDiscoverResult,
+	UserInputEvent,
+	UserInputEventResult,
+} from "../types.ts";
+import { cloneMessages, onlyReadsMessages } from "./clone-messages.ts";
+import { restoreSystemMessages, sameMessages } from "./event-handlers.ts";
+import type { BeforeAgentStartCombinedResult, BeforeAgentStartTrigger, RunnerHost } from "./types.ts";
+
+/** Run the `context` handlers: they see the conversation only, and Octocode restores the prompt and tool state after each. */
+export async function dispatchContext(host: RunnerHost, messages: AgentMessage[]): Promise<AgentMessage[]> {
+	// A handler may edit the messages in place, so one that may gets an isolated copy, made once per request before the
+	// first such handler runs; every handler after it sees that copy too. A handler declared with `readsMessagesOnly` is
+	// handed the messages themselves, so a request whose handlers only read copies nothing (images included).
+	if (!host.bus.has("context")) {
+		return messages.slice();
+	}
+	const ctx = host.createContext();
+	let currentMessages = messages.slice();
+	let isolated = false;
+
+	for (const { feature: ext, handlers } of host.bus.snapshot("context")) {
+		for (const handler of handlers) {
+			if (!isolated && !onlyReadsMessages(handler)) {
+				currentMessages = cloneMessages(currentMessages);
+				isolated = true;
+			}
+			try {
+				const visibleMessages = currentMessages.filter((message) => message.role !== "system");
+				const visibleSnapshot = visibleMessages.slice();
+				const event: ContextEvent = {
+					type: "context",
+					messages: visibleMessages,
+					transcript: currentMessages.slice(),
+				};
+				const handlerResult = (await handler(event, ctx)) as ContextEventResult | undefined;
+
+				// Handlers may return a new list or edit event.messages in place.
+				const returned =
+					handlerResult?.messages ?? (sameMessages(visibleMessages, visibleSnapshot) ? undefined : visibleMessages);
+				if (!returned) continue;
+				currentMessages = restoreSystemMessages(currentMessages, visibleSnapshot, returned);
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				const stack = err instanceof Error ? err.stack : undefined;
+				host.emitError({
+					source: ext.path,
+					event: "context",
+					error: message,
+					stack,
+				});
+			}
+		}
+	}
+
+	return currentMessages;
+}
+
+export async function dispatchBeforeAgentStart(
+	host: RunnerHost,
+	trigger: BeforeAgentStartTrigger,
+	systemPromptOptions: BuildSystemPromptOptions,
+): Promise<BeforeAgentStartCombinedResult> {
+	const currentOptions = normalizeBuildSystemPromptOptions(systemPromptOptions);
+	const renderCurrentSystemPrompt = (): string => buildSystemPrompt(currentOptions);
+	const ctx = Object.defineProperties({}, Object.getOwnPropertyDescriptors(host.createContext())) as FeatureContext;
+	ctx.getSystemPrompt = () => {
+		host.assertActive();
+		return renderCurrentSystemPrompt();
+	};
+	const messages: NonNullable<BeforeAgentStartEventResult["message"]>[] = [];
+
+	for (const { feature: ext, handlers } of host.bus.snapshot("before_agent_start")) {
+		for (const handler of handlers) {
+			try {
+				const event: BeforeAgentStartEvent = {
+					...trigger,
+					type: "before_agent_start",
+					get systemPrompt() {
+						return renderCurrentSystemPrompt();
+					},
+					systemPromptOptions: currentOptions,
+				};
+				const handlerResult = await handler(event, ctx);
+
+				if (handlerResult) {
+					const result = handlerResult as BeforeAgentStartEventResult;
+					if (result.message) messages.push(result.message);
+					if (result.systemPrompt !== undefined) {
+						currentOptions.forceSystemPrompt = result.systemPrompt;
+					}
+				}
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				const stack = err instanceof Error ? err.stack : undefined;
+				host.emitError({
+					source: ext.path,
+					event: "before_agent_start",
+					error: message,
+					stack,
+				});
+				// The one handler error that is not contained: without its policy sections the run must not start.
+				if (err instanceof PolicyRenderError) throw err;
+			}
+		}
+	}
+
+	return { messages, systemPromptOptions: currentOptions };
+}
+
+export async function dispatchResourcesDiscover(
+	host: RunnerHost,
+	cwd: string,
+	reason: ResourcesDiscoverEvent["reason"],
+): Promise<{
+	skillPaths: Array<{ path: string; source: string }>;
+	promptPaths: Array<{ path: string; source: string }>;
+	themePaths: Array<{ path: string; source: string }>;
+}> {
+	const ctx = host.createContext();
+	const skillPaths: Array<{ path: string; source: string }> = [];
+	const promptPaths: Array<{ path: string; source: string }> = [];
+	const themePaths: Array<{ path: string; source: string }> = [];
+
+	for (const { feature: ext, handlers } of host.bus.snapshot("resources_discover")) {
+		for (const handler of handlers) {
+			try {
+				const event: ResourcesDiscoverEvent = { type: "resources_discover", cwd, reason };
+				const handlerResult = await handler(event, ctx);
+				const result = handlerResult as ResourcesDiscoverResult | undefined;
+
+				if (result?.skillPaths?.length) {
+					skillPaths.push(...result.skillPaths.map((path) => ({ path, source: ext.path })));
+				}
+				if (result?.promptPaths?.length) {
+					promptPaths.push(...result.promptPaths.map((path) => ({ path, source: ext.path })));
+				}
+				if (result?.themePaths?.length) {
+					themePaths.push(...result.themePaths.map((path) => ({ path, source: ext.path })));
+				}
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				const stack = err instanceof Error ? err.stack : undefined;
+				host.emitError({
+					source: ext.path,
+					event: "resources_discover",
+					error: message,
+					stack,
+				});
+			}
+		}
+	}
+
+	return { skillPaths, promptPaths, themePaths };
+}
+
+export async function dispatchUserInput(host: RunnerHost, event: UserInputEvent): Promise<UserInputEventResult> {
+	const ctx = host.createContext();
+	const combined: UserInputEventResult = { additionalContext: [] };
+	for (const { feature: ext, handlers } of host.bus.snapshot("user_input")) {
+		for (const handler of handlers) {
+			if (ctx.signal?.aborted) return combined;
+			try {
+				const result = (await handler(event, ctx)) as UserInputEventResult | undefined;
+				combined.block ||= result?.block;
+				combined.additionalContext!.push(...(result?.additionalContext ?? []));
+			} catch (error) {
+				host.emitError({
+					source: ext.path,
+					event: "user_input",
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+		}
+	}
+	return combined;
+}
+
+/** Emit input event. Transforms chain, "handled" short-circuits. */
+export async function dispatchInput(
+	host: RunnerHost,
+	text: string,
+	images: ImageContent[] | undefined,
+	source: InputSource,
+	streamingBehavior?: "steer" | "followUp",
+): Promise<InputEventResult> {
+	const ctx = host.createContext();
+	let currentText = text;
+	let currentImages = images;
+
+	for (const { feature: ext, handlers } of host.bus.snapshot("input")) {
+		for (const handler of handlers) {
+			try {
+				const event: InputEvent = {
+					type: "input",
+					text: currentText,
+					images: currentImages,
+					source,
+					streamingBehavior,
+				};
+				const result = (await handler(event, ctx)) as InputEventResult | undefined;
+				if (result?.action === "handled") return result;
+				if (result?.action === "transform") {
+					currentText = result.text;
+					currentImages = result.images ?? currentImages;
+				}
+			} catch (err) {
+				host.emitError({
+					source: ext.path,
+					event: "input",
+					error: err instanceof Error ? err.message : String(err),
+					stack: err instanceof Error ? err.stack : undefined,
+				});
+			}
+		}
+	}
+	return currentText !== text || currentImages !== images
+		? { action: "transform", text: currentText, images: currentImages }
+		: { action: "continue" };
+}

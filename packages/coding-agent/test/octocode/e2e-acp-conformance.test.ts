@@ -1,0 +1,286 @@
+import fs from "node:fs";
+import path from "node:path";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { acpClient, initialize } from "./e2e-acp-client.ts";
+import { seedTrust } from "./e2e-helpers/seed-trust.ts";
+import {
+	type Endpoint,
+	killEverything,
+	outputOfRuns,
+	pidFrom,
+	alive,
+	sandbox,
+	type Sandbox,
+	script,
+	startEndpoint,
+	until,
+} from "./e2e-real-process-harness.ts";
+
+/**
+ * The ACP contract through a real broker and real workers on a scripted model: what agentclientprotocol.com/protocol/v1
+ * asks of an agent, on the wire. Every test also checks that stdout carried nothing but JSON-RPC.
+ */
+let endpoint: Endpoint;
+
+vi.setConfig({ testTimeout: 180_000 });
+
+beforeAll(async () => {
+	endpoint = await startEndpoint();
+});
+afterEach(async (context) => {
+	if (context.task.result?.state === "fail") console.error(outputOfRuns());
+	endpoint.requests.length = 0;
+});
+afterAll(async () => {
+	await killEverything();
+	await endpoint?.close();
+});
+
+async function trusted(env: Record<string, string> = {}): Promise<Sandbox> {
+	const box = sandbox(endpoint);
+	Object.assign(box.env, env);
+	seedTrust(box);
+	return box;
+}
+
+function broker(box: Sandbox, answer?: Parameters<typeof acpClient>[1]) {
+	const run = box.start(["--mode", "acp"], { stdin: "pipe", trust: false });
+	return { run, acp: acpClient(run.process, answer) };
+}
+
+function expectOnlyProtocol(lines: readonly string[]): void {
+	for (const line of lines) {
+		const parsed = JSON.parse(line) as { jsonrpc?: string };
+		expect(parsed.jsonrpc).toBe("2.0");
+	}
+}
+
+const MCP_SERVER = `const rl = require("node:readline").createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+	const message = JSON.parse(line);
+	const reply = (result) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }) + "\\n");
+	if (message.method === "initialize")
+		reply({ protocolVersion: message.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "fixture", version: "1" } });
+	else if (message.method === "tools/list")
+		reply({ tools: [{ name: "probe", description: "Returns a marker", inputSchema: { type: "object", properties: {} } }] });
+	else if (message.method === "tools/call")
+		reply({ content: [{ type: "text", text: "probe-result-from-client-server " + process.env.CLIENT_VALUE }] });
+	else if (message.id !== undefined) reply({});
+});
+`;
+
+const newSession = async (acp: ReturnType<typeof acpClient>, cwd: string) =>
+	(await acp.request<{ sessionId: string }>("session/new", { cwd, mcpServers: [] })).sessionId;
+
+/**
+ * One broker serves the cases that need no special environment, one after another: a boot costs more than any case, and
+ * a session's state does not leak into another's. The permission case boots its own broker, in manual mode.
+ */
+describe("a broker with default permissions", () => {
+	let box: Sandbox;
+	let run: ReturnType<typeof broker>["run"];
+	let acp: ReturnType<typeof acpClient>;
+	beforeAll(async () => {
+		box = await trusted();
+		({ run, acp } = broker(box));
+	});
+
+	it("negotiates the version it supports and answers every malformed message without leaving the protocol", async () => {
+		// Before initialize: a request other than initialize gets -32600.
+		const early = await acp.raw("session/list", {});
+		expect(early.error?.code).toBe(-32600);
+
+		// A version this agent does not support: it answers with the latest it does.
+		const init = await acp.request<{
+			protocolVersion: number;
+			agentInfo: { name: string; version: string };
+			authMethods: unknown[];
+			agentCapabilities: {
+				loadSession: boolean;
+				sessionCapabilities: Record<string, unknown>;
+				promptCapabilities: Record<string, unknown>;
+				mcpCapabilities: Record<string, unknown>;
+			};
+		}>("initialize", { protocolVersion: 99, clientCapabilities: {} });
+		expect(init.protocolVersion).toBe(1);
+		expect(init.agentInfo.name).toBe("octocode");
+		expect(init.agentCapabilities.loadSession).toBe(true);
+		expect(Object.keys(init.agentCapabilities.sessionCapabilities).sort()).toEqual(["close", "list", "resume"]);
+
+		// Not JSON: -32700 with a null id, and the connection stays up.
+		acp.write("{ this is not json");
+		await until(() => acp.responses.some((message) => message.error?.code === -32700), "the parse error");
+		expect(acp.responses.find((message) => message.error?.code === -32700)?.id).toBeNull();
+
+		// JSON that is not an object: -32600.
+		acp.write("42");
+		await until(() => acp.responses.some((message) => message.error?.code === -32600 && message.id === null), "-32600");
+
+		expect((await acp.raw("no/such/method", {})).error?.code).toBe(-32601);
+		// Capability-gated methods this agent did not advertise.
+		expect((await acp.raw("session/fork", { sessionId: "x", cwd: box.project, mcpServers: [] })).error?.code).toBe(
+			-32601,
+		);
+		expect((await acp.raw("authenticate", { methodId: "none" })).error?.code).toBe(-32601);
+		// A missing and a relative cwd.
+		expect((await acp.raw("session/new", { mcpServers: [] })).error?.code).toBe(-32602);
+		expect((await acp.raw("session/new", { cwd: "relative/path", mcpServers: [] })).error?.code).toBe(-32602);
+		expect((await acp.raw("session/new", { cwd: path.join(box.root, "gone"), mcpServers: [] })).error?.code).toBe(
+			-32602,
+		);
+		expect((await acp.raw("session/list", { cursor: "not-a-cursor" })).error?.code).toBe(-32602);
+
+		// Unknown sessions: -32002 naming the session; closing one still succeeds; cancelling one is not an error reply.
+		const unknown = await acp.raw("session/prompt", { sessionId: "missing", prompt: [{ type: "text", text: "hi" }] });
+		expect(unknown.error?.code).toBe(-32002);
+		expect(unknown.error?.data?.sessionId).toBe("missing");
+		expect((await acp.raw("session/close", { sessionId: "missing" })).result).toEqual({});
+		const lost = await acp.raw("session/load", { sessionId: "missing", cwd: box.project, mcpServers: [] });
+		expect(lost.error?.code).toBe(-32002);
+		expect(lost.error?.data?.sessionId).toBe("missing");
+		acp.notify("session/cancel", { sessionId: "missing" });
+
+		// Still up after all that.
+		const sessionId = await newSession(acp, box.project);
+		expect((await acp.prompt(sessionId, script([{ text: "still here" }]))).stopReason).toBe("end_turn");
+		expect(acp.said()).toContain("still here");
+	});
+
+	it("streams a tool call in order and answers after its updates", async () => {
+		const sessionId = await newSession(acp, box.project);
+		const firstUpdate = acp.updates.length;
+		const firstMessage = acp.received.length;
+		const steps = script([{ tool: "bash", args: { command: "echo acp-tool" } }, { text: "the reply" }]);
+		const done = await acp.prompt(sessionId, steps);
+		expect(done.stopReason).toBe("end_turn");
+
+		const updates = acp.updates.slice(firstUpdate).map(({ update }) => update);
+		const started = updates.findIndex((update) => update.sessionUpdate === "tool_call");
+		const finished = updates.findIndex(
+			(update) => update.sessionUpdate === "tool_call_update" && update.status === "completed",
+		);
+		const reply = updates.findIndex((update) => update.sessionUpdate === "agent_message_chunk");
+		expect(started).toBeGreaterThanOrEqual(0);
+		expect(finished).toBeGreaterThan(started);
+		expect(reply).toBeGreaterThan(finished);
+		const call = updates[started];
+		expect(call?.toolCallId).toBe(updates[finished]?.toolCallId);
+		// The name is what the protocol asks for, and the kind picks a client's icon.
+		expect(call?.name).toBe("bash");
+		expect(call?.kind).toBe("execute");
+		expect(JSON.stringify(updates[finished]?.content)).toContain("acp-tool");
+
+		// Every update of the turn precedes its response.
+		const turnMessages = acp.received.slice(firstMessage);
+		const responseAt = turnMessages.findIndex(
+			(message) => message.result?.stopReason !== undefined && message.method === undefined,
+		);
+		const lastUpdateAt = turnMessages.findLastIndex(
+			(message) =>
+				message.method === "session/update" &&
+				(message.params?.update as { sessionUpdate?: string } | undefined)?.sessionUpdate !==
+					"available_commands_update",
+		);
+		expect(lastUpdateAt).toBeLessThan(responseAt);
+	});
+
+	it("session/cancel during a running tool stops the command and ends the turn cancelled", async () => {
+		const sessionId = await newSession(acp, box.project);
+		const marker = path.join(box.root, "tool.pid");
+		const turn = acp.prompt(
+			sessionId,
+			script([{ tool: "bash", args: { command: box.holdCommand(marker) } }, { text: "never" }]),
+		);
+		await until(() => fs.existsSync(marker), "the command to start");
+		acp.notify("session/cancel", { sessionId });
+		expect((await turn).stopReason).toBe("cancelled");
+		await until(() => !alive(pidFrom(marker)), "the command to stop");
+	});
+
+	it("$/cancel_request on a prompt also ends the turn cancelled", async () => {
+		const sessionId = await newSession(acp, box.project);
+		const hanging = script([{ hang: true }]);
+		const source = hanging.slice("B64SCRIPT:".length);
+		const requestId = acp.nextId();
+		const turn = acp.raw("session/prompt", { sessionId, prompt: [{ type: "text", text: hanging }] });
+		await until(() => endpoint.requests.some((request) => request.script === source), "the model request");
+		acp.notify("$/cancel_request", { requestId });
+		const answered = await turn;
+		expect(answered.result?.stopReason ?? answered.error?.code).toBe("cancelled");
+	});
+
+	it("a client-supplied stdio server's tool reaches the model and its result comes back", async () => {
+		const server = path.join(box.root, "mcp-server.cjs");
+		fs.writeFileSync(server, MCP_SERVER);
+		const { sessionId } = await acp.request<{ sessionId: string }>("session/new", {
+			cwd: box.project,
+			mcpServers: [
+				{
+					name: "fixture",
+					command: process.execPath,
+					args: [server],
+					env: [{ name: "CLIENT_VALUE", value: "supplied" }],
+				},
+			],
+		});
+		await acp.prompt(sessionId, script([{ text: "first" }]));
+		const declared = endpoint.requests.at(-1)?.tools ?? [];
+		const tool = declared.find((name) => name.startsWith("acp_") || name.includes("probe"));
+		expect(tool, `declared: ${declared.join(", ")}`).toBeDefined();
+		await acp.prompt(sessionId, script([{ tool: tool!, args: {} }, { text: "used it" }]));
+		expect(endpoint.requests.at(-1)?.toolResults.join("\n")).toContain("probe-result-from-client-server supplied");
+
+		// A relative command is refused before anything starts.
+		const relative = await acp.raw("session/new", {
+			cwd: box.project,
+			mcpServers: [{ name: "bad", command: "node", args: [], env: [] }],
+		});
+		expect(relative.error?.code).toBe(-32602);
+	});
+
+	it("leaves when the client does, with nothing but protocol on stdout and no process behind", async () => {
+		run.process.stdin?.end();
+		expect((await run.exited).code).toBe(0);
+		expectOnlyProtocol(acp.lines);
+		expect(box.survivors()).toEqual([]);
+	});
+});
+
+describe("permission requests", () => {
+	const permissionPrompt = (marker: string) =>
+		script([{ tool: "bash", args: { command: `echo granted > ${JSON.stringify(marker)}` } }, { text: "done" }]);
+
+	it("an allowed call runs and a rejected one does not, and neither ends the session", async () => {
+		const box = await trusted({ OCTOCODE_PERMISSION: "manual" });
+		const { run, acp } = broker(box);
+		await acp.request("initialize", initialize);
+		const sessionId = await newSession(acp, box.project);
+
+		const allowed = path.join(box.root, "allowed");
+		expect((await acp.prompt(sessionId, permissionPrompt(allowed))).stopReason).toBe("end_turn");
+		expect(acp.permissions.length).toBeGreaterThan(0);
+		const asked = acp.permissions[0]?.params as {
+			sessionId: string;
+			toolCall: { toolCallId: string; status: string };
+			options: Array<{ kind: string }>;
+		};
+		expect(asked.sessionId).toBe(sessionId);
+		expect(asked.options.map((option) => option.kind).sort()).toEqual(["allow_once", "reject_once"]);
+		// The request's call is the one the client was already told about.
+		expect(acp.updates.some(({ update }) => update.toolCallId === asked.toolCall.toolCallId)).toBe(true);
+		expect(fs.existsSync(allowed)).toBe(true);
+
+		acp.answers.current = "reject";
+		const rejected = path.join(box.root, "rejected");
+		const refused = await acp.prompt(sessionId, permissionPrompt(rejected));
+		expect(refused.stopReason).toBe("end_turn");
+		expect(fs.existsSync(rejected)).toBe(false);
+
+		acp.answers.current = "allow";
+		expect((await acp.prompt(sessionId, script([{ text: "after" }]))).stopReason).toBe("end_turn");
+
+		run.process.stdin?.end();
+		expect((await run.exited).code).toBe(0);
+		expectOnlyProtocol(acp.lines);
+	});
+});

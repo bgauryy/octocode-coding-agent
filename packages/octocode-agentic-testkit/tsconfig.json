@@ -1,0 +1,12 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"declaration": false,
+		"sourceMap": false,
+		"inlineSources": false,
+		"rewriteRelativeImportExtensions": false,
+		"paths": { "@octocodeai/octocode-agentic-testkit": ["./src/index.ts"] }
+	},
+	"include": ["src", "test", "examples/**/*.ts", "vitest.config.ts"]
+}

@@ -1,0 +1,294 @@
+import { getSupportedThinkingLevels } from "@octocodeai/octocode-ai/compat";
+import { builtinDescription } from "../../core/slash-commands.ts";
+import type { CommandContext } from "../../core/features/index.ts";
+import { type Subcommands, say } from "../shared/commands.ts";
+import { modelSizeClass } from "./size-class.ts";
+import { formatTokens } from "../shared/format.ts";
+import { type Catalog, listedCost, lookup } from "../../core/model-catalog/index-shape.ts";
+import {
+	catalogFile,
+	loadCatalog,
+	MODELS_DEV_ENV,
+	modelsDevEnabled,
+	readCatalog,
+} from "../../core/model-catalog/index-store.ts";
+import {
+	canRunTask,
+	currentPrice,
+	type MODEL_TIERS,
+	type ModelRef,
+	type Refused,
+	routeModel,
+	type TierBilling,
+	subagentThinking,
+	taskBlocker,
+} from "./model.ts";
+import { providerState } from "./models-quota.ts";
+import { describeRoutes, profileRuns, tierChoice } from "./models-routes.ts";
+import { type ConfiguredModels, configuredSubagentModels } from "./configured-models.ts";
+import type { AgentProfile } from "./profiles.ts";
+import {
+	checkCandidates,
+	checkProviders,
+	describeHealth,
+	providerHealth,
+	type ProviderStatus,
+} from "./provider-health.ts";
+
+/**
+ * `/modelsettings`: the models this session can use, what each costs and can do, and which one each subagent
+ * purpose (`small`, `medium`) and profile runs on. Refreshes the models.dev index first unless it is turned off.
+ */
+
+const perMillion = (value: number) => `$${value < 1 ? value.toFixed(2) : value.toFixed(value % 1 === 0 ? 0 : 2)}`;
+const contextSize = (tokens: number | undefined) => (tokens ? formatTokens(tokens) : "?");
+const name = (model: ModelRef) => `${model.provider}/${model.id}`;
+
+/** The abilities a model row names and the `models` tool filters by. */
+export const MODEL_ABILITIES = ["tools", "images", "reasoning"] as const;
+type ModelAbility = (typeof MODEL_ABILITIES)[number];
+
+/** What `model` can do, from its own metadata and the models.dev entry; tools unless the catalog says otherwise. */
+export function modelAbilities(model: ModelRef, catalog: Catalog | undefined): ModelAbility[] {
+	const known = lookup(catalog, model.provider, model.id);
+	return [
+		...(known?.toolCall === false ? [] : ["tools" as const]),
+		...((model.input ?? known?.input)?.includes("image") ? ["images" as const] : []),
+		...((model.reasoning ?? known?.reasoning) ? ["reasoning" as const] : []),
+	];
+}
+
+/** The price a model is listed at: its own current rates, else models.dev's. */
+export function modelCost(
+	model: ModelRef,
+	catalog: Catalog | undefined,
+): { input: number; output: number } | undefined {
+	const own = currentPrice(model.cost);
+	return own && own.input + own.output > 0 ? own : listedCost(catalog, model.provider, model.id);
+}
+
+/** Input and output rates as `$in/$out`, or `price ?`. */
+export const priceText = (cost: { input: number; output: number } | undefined): string =>
+	cost ? `${perMillion(cost.input)}/${perMillion(cost.output)}` : "price ?";
+
+/** Blended price for ordering: three input tokens to one output, as agent turns spend; Infinity when unknown. */
+export const priceRank = (cost: { input: number; output: number } | undefined): number =>
+	cost ? 3 * cost.input + cost.output : Infinity;
+
+/** ` · thinking …` with the levels `clampThinkingLevel` would accept, or "" for a model without reasoning. */
+function thinkingLevelsText(model: ModelRef): string {
+	// The registry's model carries `reasoning` and `thinkingLevelMap`; `ModelRef` names only what routing reads.
+	if (!model.reasoning) return "";
+	const levels = getSupportedThinkingLevels(model as Parameters<typeof getSupportedThinkingLevels>[0]).join("/");
+	return ` · thinking ${levels || "provider-managed"}`;
+}
+
+/**
+ * ` · from …`: where the price and the window come from (the entry's origin, or models.dev when the entry has no
+ * price), one word when both agree. Empty for a model whose origin was not looked up and when both are built-in,
+ * the common case (`SOURCE_NOTE` says so).
+ */
+function sourceText(model: ModelRef, catalog: Catalog | undefined): string {
+	if (!model.origin) return "";
+	const own = currentPrice(model.cost);
+	const price =
+		own && own.input + own.output > 0
+			? model.origin
+			: listedCost(catalog, model.provider, model.id)
+				? "models.dev"
+				: "none";
+	const window = model.contextWindow
+		? model.origin
+		: lookup(catalog, model.provider, model.id)?.context
+			? "models.dev"
+			: "none";
+	if (price === "built-in" && window === "built-in") return "";
+	return price === window ? ` · from ${price}` : ` · from ${price} (price), ${window} (window)`;
+}
+
+/** One line under a listing: what an unmarked row means. */
+export const SOURCE_NOTE =
+	"Price and window are built-in data unless a row says `from` models.json or models.dev (a guess when `default`).";
+
+/** One model's line: price, context window and abilities, the parent's marked. */
+export function modelLine(model: ModelRef, parent: ModelRef | undefined, catalog: Catalog | undefined): string {
+	const known = lookup(catalog, model.provider, model.id);
+	const abilities = modelAbilities(model, catalog);
+	const caps = [abilities.includes("tools") ? "" : "no tools", ...abilities].filter(Boolean).join(", ");
+	const mark = parent && name(model) === name(parent) ? "● " : "  ";
+	const levels = thinkingLevelsText(model);
+	const cutoff =
+		known?.knowledge && /^\d{4}-\d{2}(?:-\d{2})?$/.test(known.knowledge) ? ` · cutoff ${known.knowledge}` : "";
+	const window = model.contextWindow !== undefined && model.contextWindow !== 0 ? model.contextWindow : known?.context;
+	const inputLimit = model.inputLimits?.maxInputTokens;
+	const promptCap =
+		inputLimit && (window === undefined || inputLimit < window) ? ` · ${formatTokens(inputLimit)} max input` : "";
+	return `${mark}${name(model)} · ${priceText(modelCost(model, catalog))} per M in/out · ${contextSize(window)}${promptCap} · ${caps}${levels}${cutoff}${sourceText(model, catalog)} · ${modelSizeClass(model)} (estimated size)${model.maxTokens ? ` · ${formatTokens(model.maxTokens)} max output` : ""}`;
+}
+
+/**
+ * Models that cannot run a task (`taskBlocker`), each with why, under their own heading: they are listed so the user
+ * and the agent know them, never as candidates.
+ */
+export function describeUnrunnable(
+	models: readonly ModelRef[],
+	parent: ModelRef | undefined,
+	catalog: Catalog | undefined,
+): string {
+	const rows = models
+		.map((model) => ({ model, why: taskBlocker(model, catalog) }))
+		.filter((row): row is { model: ModelRef; why: string } => row.why !== undefined)
+		.sort((a, b) => name(a.model).localeCompare(name(b.model)));
+	if (rows.length === 0) return "";
+	return [
+		"Available by exact provider/id; skipped by automatic model selection:",
+		...rows.map(({ model, why }) => `${modelLine(model, parent, catalog)} · ${why}`),
+	].join("\n");
+}
+
+/**
+ * One line per available model, the parent's marked, cheapest first; each provider's credential status when known.
+ * `shown` limits the rows; the purposes and profile routes still resolve over every available model, skipping a
+ * provider that `refused` its credential as a run's routing does (`planRun`).
+ */
+export function describeModels(
+	available: readonly ModelRef[],
+	parent: ModelRef | undefined,
+	profiles: Map<string, AgentProfile>,
+	catalog: Catalog | undefined,
+	health: (provider: string) => ProviderStatus | undefined = () => undefined,
+	shown: (model: ModelRef) => boolean = () => true,
+	refused: Refused = (provider, id, proven, cost) => providerHealth.refused(provider, id, proven, cost),
+	configured: ConfiguredModels = configuredSubagentModels(),
+	billing?: TierBilling,
+): string {
+	if (available.length === 0) return "No models are configured.";
+	const rows = available
+		.filter(shown)
+		.map((model) => ({
+			provider: model.provider,
+			sort: priceRank(modelCost(model, catalog)),
+			line: modelLine(model, parent, catalog),
+		}))
+		.sort((a, b) => a.provider.localeCompare(b.provider) || a.sort - b.sort);
+	return [
+		"Models this session can use (● this session; price per million tokens in/out; context window):",
+		...rows.flatMap((row, index) =>
+			index === 0 || rows[index - 1].provider !== row.provider
+				? ["", `${row.provider}:${describeHealth(health(row.provider))}`, row.line]
+				: [row.line],
+		),
+		"",
+		describeRoutes(available, parent, profiles, catalog, refused, configured, billing),
+	].join("\n");
+}
+
+/** Routing facts the coordinator's prompt states (`policy/delegation.md`): what each purpose and profile runs on now. */
+export interface RoutingFacts {
+	sessionModel: string;
+	/** Providers with a usable model, sorted, each with how many of its models can run a task. */
+	providers: Array<{ id: string; count: number }>;
+	small: string;
+	medium: string;
+	/** Profile name to the model it runs on. */
+	profiles: Record<string, string>;
+}
+
+/**
+ * The routes `describeModels` lists, reduced to what the coordinator needs. The prompt states them once per session
+ * and a later change arrives as a notice (`routing-watch.ts`), so the cached prompt stays stable.
+ */
+export function routingFacts(
+	available: readonly ModelRef[],
+	parent: ModelRef | undefined,
+	profiles: Iterable<AgentProfile>,
+	catalog: Catalog | undefined,
+	refused: Refused = (provider, id, proven, cost) => providerHealth.refused(provider, id, proven, cost),
+	configured: ConfiguredModels = configuredSubagentModels(),
+	billing?: TierBilling,
+): RoutingFacts | undefined {
+	if (!parent || available.length === 0) return undefined;
+	const thinking = subagentThinking();
+	const purpose = (tier: (typeof MODEL_TIERS)[number]) => {
+		const choice = tierChoice(tier, available, parent, catalog, refused, configured, billing);
+		return `${choice.model ?? name(parent)}${choice.note ? ` (${choice.note})` : ""}`;
+	};
+	return {
+		sessionModel: name(parent),
+		providers: [
+			...new Set(
+				available
+					.filter((model) => !refused(model.provider, undefined, false, model.cost))
+					.map((model) => model.provider),
+			),
+		]
+			.sort()
+			.map((id) => ({
+				id,
+				count: available.filter((model) => model.provider === id && canRunTask(model, catalog)).length,
+			})),
+		small: purpose("small"),
+		medium: purpose("medium"),
+		profiles: Object.fromEntries(
+			[...profiles].map((profile) => [
+				profile.name,
+				profileRuns(
+					routeModel({ preferred: profile.model, available, parent, catalog, refused, thinking, configured, billing }),
+					available,
+				),
+			]),
+		),
+	};
+}
+
+/**
+ * The model listing (`describeModels`) with where its capabilities and prices come from. Refreshes the models.dev index
+ * first unless it is turned off; `fetching` runs before a refresh that has no index to fall back on.
+ */
+async function modelListing(
+	available: readonly ModelRef[],
+	parent: ModelRef | undefined,
+	profiles: Map<string, AgentProfile>,
+	fetching?: () => void,
+): Promise<string> {
+	const { catalog, source } = await modelCatalog(fetching);
+	const listing = describeModels(available, parent, profiles, catalog, (provider) => providerHealth.get(provider));
+	return `${listing}\n\n${source}\n${CREDENTIAL_MARKS}`;
+}
+
+const CREDENTIAL_MARKS =
+	"Credential marks come from subagent runs and checks; a refused credential stays marked, across sessions, until it is replaced or a check passes. No mark means not yet tried.";
+
+/** The models.dev index unless it is turned off, and a line saying where capabilities and prices come from. */
+export async function modelCatalog(fetching?: () => void): Promise<{ catalog: Catalog | undefined; source: string }> {
+	const enabled = modelsDevEnabled();
+	if (enabled && !readCatalog(catalogFile())) fetching?.();
+	const catalog = enabled ? await loadCatalog({ file: catalogFile() }) : undefined;
+	const source = !enabled
+		? `models.dev is off (${MODELS_DEV_ENV}=0); Octocode's metadata only.`
+		: catalog
+			? `Capabilities and missing prices from models.dev (fetched ${new Date(catalog.fetchedAt).toISOString().slice(0, 10)}).`
+			: "models.dev could not be reached now or within the last hour; Octocode's metadata only.";
+	return { catalog, source };
+}
+
+/** `/modelsettings`: the listing the `models` tool (`models-tool.ts`) gives the model, for the user. */
+export function registerModels(commands: Subcommands, getProfiles: () => Map<string, AgentProfile>): void {
+	commands.add("modelsettings", {
+		description: builtinDescription("modelsettings"),
+		argumentHint: "[check]",
+		handler: async (args, ctx: CommandContext) => {
+			if (args.trim() === "check") {
+				const available = ctx.modelRegistry.getAvailable();
+				const targets = checkCandidates(available, ctx.model);
+				say(ctx, `Checking ${targets.length} provider credential${targets.length === 1 ? "" : "s"}…`);
+				await checkProviders(ctx.modelRegistry, targets, providerHealth, ctx.signal, ctx.cwd);
+			} else if (args.trim()) return say(ctx, "Usage: /modelsettings [check]", "warning");
+			const listing = await modelListing(ctx.modelRegistry.getAvailable(), ctx.model, getProfiles(), () =>
+				say(ctx, "Fetching model data from models.dev…"),
+			);
+			const state = providerState(ctx, ctx.modelRegistry.getAvailable());
+			say(ctx, state ? `${state}\n\n${listing}` : listing);
+		},
+	});
+}

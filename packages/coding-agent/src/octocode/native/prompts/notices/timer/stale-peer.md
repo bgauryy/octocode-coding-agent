@@ -1,0 +1,1 @@
+{{ref}} is still ongoing and held by {{owner}}.{{#if quiet}} Nothing changed on it since you started waiting.{{/if}} It may have landed without a board update. Ask that owner with the agent tool (type message, replyRequired true, `to` its id from `coordinate list`) whether its files are free. Do not wait again.

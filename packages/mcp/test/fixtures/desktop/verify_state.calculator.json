@@ -1,0 +1,28 @@
+{
+ "content": [
+  {
+   "text": "verify_state: satisfied after 2 sample(s) in 2462 ms",
+   "type": "text"
+  }
+ ],
+ "structuredContent": {
+  "elapsed_ms": 2462,
+  "predicates": [
+   {
+    "index": 0,
+    "observed_json": "{\"element_index\":4,\"enabled\":true,\"frame\":{\"h\":48.0,\"w\":48.0,\"x\":1066.0,\"y\":578.0},\"label\":\"Divide\",\"role\":\"AXButton\"}",
+    "status": "satisfied",
+    "unknown_reason": null
+   },
+   {
+    "index": 1,
+    "observed_json": "{\"bounds\":{\"height\":408.0,\"width\":230.0,\"x\":894.0,\"y\":445.0},\"exists\":true}",
+    "status": "satisfied",
+    "unknown_reason": null
+   }
+  ],
+  "samples": 2,
+  "stable": true,
+  "status": "satisfied"
+ }
+}

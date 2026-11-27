@@ -1,0 +1,246 @@
+# Developing octocode-agent
+
+For contributors. To use Octocode, read the [README](README.md). Package ownership and essential rules: [AGENTS.md](AGENTS.md).
+
+Octocode is a fork of [Pi](https://github.com/earendil-works/pi): Pi's agent loop, providers and terminal UI plus native Octocode features (code research, guarded edits, subagents, collaboration, browser work, memory, recovery). The native features live in `packages/coding-agent/src/octocode/` and load automatically.
+
+## Contributor rules
+
+### Change code
+
+- Read the implementation and its callers first. Fix behavior in its owner, a fact in its owning page; reuse existing types, schemas and helpers. Remove a helper or setting only after checking registration, exports, tests and consumers.
+- Modular code, one owner per unit, so agents work in parallel; clean architecture and code; script repeated steps, printing summaries, not logs.
+- **Optimal:** every change is reasoned and optimal. Algorithms: name the hot path's cost (time, memory, I/O, round trips) and take the cheapest correct design. Tokens: agents read and write the fewest that settle a step, and code adds model context only for a measured reason.
+- Stay in scope. Keep safety checks, cancellation, session cleanup and public contracts. Preserve user changes (untracked files too), license notices and changelogs.
+- **Errors:** fail loudly. Catch only the case you expect (a missing file, no credentials) and let the rest propagate or reach a log; never turn damage into an empty result. Every started promise has an owner that awaits or settles it.
+- **Database:** `prepare(...)`, `db.exec(...)` and `node:sqlite` imports (type imports too) live only in `packages/db/src/`, enforced by `check:db-boundary` and oxlint (only `team/peer-leases.ts` is exempt). Search `queries/` before adding a function; one statement in one place; delete a query with its last caller; features use `type Db`. In `db/src`, import sibling packages by relative path, never by package name: the writer worker runs on plain Node.
+- **Names:** no `@earendil-works/*`, `@mariozechner/*` or upstream Pi services. New code says Octocode; Pi stays only for compatibility, attribution or history.
+- **Instructions:** plain language, condition beside action; goals, constraints and decision rules, not mechanical steps or reply templates. Tool descriptions own tool mechanics; policy does not repeat them. Repeatable logic goes in code or a schema. Machine fields (report outcomes, `to: "parent"`, `parentId`) change only with all their consumers.
+- **Configuration:** use the existing path helpers and loaders; keep global/workspace precedence, project trust, and definitions apart from control-only MCP overrides. Update `coding-agent/docs/configuration.md`. Test mutations in isolated user directories, never the real home.
+- **Tools and commands:** check registration and RPC consumers separately. Reads use Octocode local tools, mutations `file`; `bash` is the only tool factory. Built-ins are one word; Claude Code names map to them in `COMMAND_ALIASES` (`core/slash-commands.ts`), hidden from `/`. The package root exports only the CLI and RPC. Document tool enablement, MCP exposure and browser routing in [native features](packages/coding-agent/docs/native-features.md).
+- **Lint:** strict; fix findings. Files stay within 400 lines (tests exempt): split by concern, never add an exception. `import/no-cycle` counts type-only cycles: move the shared type to a leaf. Silence a rule only on its line with a reason: `// oxlint-disable-next-line <rule> -- <reason>`.
+
+### Verification and generated files
+
+- Report failures and skipped checks. Never weaken assertions or thresholds; change a test only for an intended contract change. Test behavior, not instruction wording.
+- An MCP tool that refuses twice or disconnects: restart it with `mcp`, then fall back to bash and say so.
+- Shipped docs (`packages/coding-agent/docs/`, `docs/`) are for users: Mermaid for flows, tables for options, no repository paths or dated counts; verify commands and links. After browser source changes, run `yarn run generate:workspace` and the webview and contracts tests.
+- Change the generator, never its output (`yarn workspace @octocodeai/octocode-agent run <script>`): `generate:schemas`, `generate:references`, `generate:casefold`, `generate:vendor` (after bumping `marked` or `highlight.js-browser`), `yarn run install-lock:coding-agent`.
+- `generate:prompts` (every build runs it) writes each agent's prompt to `.octocode/agent/tmp/agent-prompts/`: read it after changing a prompt, tool description, MCP preset or the sibling `octocode-mcp`. Octocode ships no overrides: an external MCP server's descriptions, schemas and instructions are never rewritten.
+- Research with the session's Octocode MCP server. Fix the cause of each tool error, retry or wrong turn you hit in its owner, or file a backlog item with the trigger and evidence. A child puts the trigger and evidence in its report (Noticed) for its coordinator to file.
+
+## Run from source
+
+Needs Node.js 24.15 or newer within Node 24 (`.node-version` pins the line) and the sibling `octocode` repository checked out at `../octocode` on the `octocode-20.0.0` branch (its default branch lacks the needed packages). `packages/coding-agent/package.json` links the sibling packages `octocode`, `octocode-mcp`, `octocode-native` and `octocode-chrome-devtools` with `link:`; build them first, native binaries included. It also links `@octocodeai/octocode-sandbox-runtime`, Octocode's fork of `@anthropic-ai/sandbox-runtime`, from a checkout at `../octocode-sandbox-runtime` on its `octocode` branch: build it with `npm ci && npm run build` and add its prebuilt helpers as its `FORK.md` describes.
+
+```sh
+yarn install --immutable
+yarn run hydrate:model-data   # downloads the provider model catalog
+yarn start                    # run from source; `yarn start --help` lists options
+```
+
+To update one hydrated provider, run `yarn run generate:models --providers openrouter`. The generator reads the models.dev snapshot that the pinned `@opencode-ai/models` package ships; add `--live` to fetch models.dev itself. The [AI catalog guide](packages/ai/docs/development.md#3-model-generation-scriptsgenerate-modelsts) explains source selection, registration, and how the generator handles failed refreshes.
+
+Inside the app: `/providers` connects an account, `/model` picks a model, `/help` lists commands.
+
+| Command                      | Does                                                                                         |
+| ---------------------------- | -------------------------------------------------------------------------------------------- |
+| `yarn start research --help` | The research CLI (`octocode`; `octocode-cli` in agent shells, where `octocode` is the agent) |
+| `yarn start native --help`   | The native helper CLI                                                                        |
+| `yarn run build:offline`     | Builds every workspace after hydration; run `node packages/coding-agent/dist/bundle/cli.js`  |
+| `yarn run build`             | Refreshes model data, then builds                                                            |
+
+## Verify
+
+```mermaid
+flowchart LR
+  edit[Edit] --> fmt["yarn oxfmt files"] --> focus["Focused vitest"] --> check["yarn run check"] --> e2e["test:e2e after a wave of changes"]
+```
+
+| Command                                                                                 | Does                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `yarn run check`                                                                        | Typecheck, Oxlint, format check, browser smoke, workspace subpaths, bundle and favicon freshness, package, database and MCP boundaries, paid-test isolation, generated reference pages, Knip; rewrites nothing                                                                                                                                                       |
+| `yarn oxfmt <files>`                                                                    | Formats those files (`yarn run format` formats everything)                                                                                                                                                                                                                                                                                                           |
+| `yarn vitest run --config vitest.octocode.config.ts [paths]` in `packages/coding-agent` | Native suite (`test/octocode/`); `yarn run test:changed` runs only tests for changed files                                                                                                                                                                                                                                                                           |
+| `yarn vitest run [paths]` in `packages/coding-agent`                                    | Core suite                                                                                                                                                                                                                                                                                                                                                           |
+| `yarn workspace @octocodeai/octocode-agent run test:e2e`                                | Real sessions on a scripted model, no network; holds the prompt-size ceilings. `OCTOCODE_E2E_CHROME=1` adds the headless-Chrome browser cases, `OCTOCODE_E2E_SOAK=1` the full 320-turn soak                                                                                                                                                                          |
+| `yarn workspace @octocodeai/octocode-agent run test:architecture`                       | Layering rules in the coding-agent                                                                                                                                                                                                                                                                                                                                   |
+| `yarn workspace <name> run test:live`                                                   | Paid tests (`*.live.test.ts`: real provider or model requests, so they cost money) of that workspace; no default `test` script, `./test.sh` or `yarn run check` runs them, whatever keys the shell exports. The tests also need their own credentials and flags (provider API keys, `TESTKIT_LIVE=1`); `ai`, `coding-agent` and `octocode-agentic-testkit` have them |
+| `yarn run test:scripts`                                                                 | Node tests for `scripts/` (not `scripts/agent-eval/`)                                                                                                                                                                                                                                                                                                                |
+| `yarn run test:agentic`                                                                 | Agent-behavior suites: the agentic testkit's free tests and `scripts/agent-eval/` tests; not part of `./test.sh`                                                                                                                                                                                                                                                     |
+| `./test.sh`                                                                             | Every code and UI test with isolated home, config, credentials and temp dir (needs `fd`, `rg`); `yarn run test` is its workspace runner                                                                                                                                                                                                                              |
+| `yarn run test:tmux`, `yarn run test:mcp-conformance`                                   | tmux and MCP conformance suites                                                                                                                                                                                                                                                                                                                                      |
+| `yarn run check:unused`                                                                 | Knip: unused files, exports and dependencies. `knip.jsonc` lists public APIs and dynamic entry points; verify a finding against them before deleting                                                                                                                                                                                                                 |
+
+- Paid tests live in `*.live.test.ts`; every vitest config excludes them unless `OCTOCODE_LIVE_TESTS=1` (set by `test:live`), and `yarn run check:live-tests` fails when a default run would collect one or a test gated on provider credentials. Local Ollama tests are not paid.
+- Run builds and full suites in the background; write long output to `.octocode/agent/tmp/`. Never run two builds or generators at once.
+- One full run at a time on this machine, across sessions, checkouts and worktrees: a whole vitest suite (no file filters) or `yarn run check` waits while another holds `~/.octocode/locks/full-run` and prints the holder (label, pid, session, folder, and the agent, backlog item and bash job when the `bash` tool started the run). Runs that name test files never wait. A killed holder's lock is taken over at once; `OCTOCODE_RUN_LOCK=off` skips it. A full run that ends after files in the tree changed during it prints `tree changed during run: N files` and the first paths, since its result may mix states: rerun it once the tree is settled. To wait for the lock, poll `node scripts/test/full-run-lock.ts --status` (exit 0 when free; it clears a dead holder's lock) rather than the lock file. The core suite, like native and e2e, uses at most 4 workers.
+- After browser source changes run `yarn run generate:workspace`. After prompt, tool description or MCP preset changes run `yarn workspace @octocodeai/octocode-agent run generate:prompts` and read `.octocode/agent/tmp/agent-prompts/`.
+- Harness-based session tests: [suite rules](packages/coding-agent/test/suite/README.md).
+- Known flakes: `team-interpreter-parsed` "gates a 2000-stage pipeline quickly" (400 ms limit) under heavy load; the real-browser e2e can leave a Chrome process behind.
+- `octocode-test.sh` runs the agent from source; it is a launcher, not a suite.
+
+### Database schema compatibility
+
+Each schema migration declares `breaking`. A step that only adds tables, columns, indexes or rows is not breaking and must not raise anything. `schema_meta.min_reader` holds the oldest schema version that can still read the file: a breaking step raises it to that step's target version, and a build opens a file whose `min_reader` is at most its own schema version. A file written by a newer build stays readable by an older one until a breaking step runs.
+
+Moving rows between files is not a schema step. The split of the machine file (`workspaces.db`) into workspace files (`packages/db/src/schema-split.ts`) runs at open only when the host names the workspace folder, after a copy to `workspaces.db.pre-split.bak`, and raises `min_reader` itself once the rows are gone, so an older build refuses the file instead of showing empty boards.
+
+## Release
+
+`@octocodeai/octocode-agent` is published with every other workspace compiled into its one bundle, except the agentic
+testkit, which publishes on its own (below).
+
+```mermaid
+flowchart LR
+  A["yarn run publish:dry or publish"] --> B["Write manifest into the tarball\nwith exact octocodeRelease versions"]
+  B --> C["Add docs/ as docs/project/\nminus internal reviews and audits"]
+  C --> D["Install the tarball from npm,\nrun a real session on a scripted model"]
+  D -->|all pass| E[Publish]
+  D -->|any failure| F[Refuse]
+```
+
+`publish:dry` rehearses; `publish` also requires a clean tree and dependency versions on npm. Local packaging (`pack:packages`, `release:local`) turns `link:` and `file:` dependencies into absolute `file:` references in disposable artifacts: they depend on the sibling checkout and are not portable. What each script does: [scripts/README.md](scripts/README.md).
+
+### Publish the agentic testkit
+
+`@octocodeai/octocode-agentic-testkit` depends on no workspace and ships its own `dist`, `src`, examples and docs.
+
+```sh
+cd packages/octocode-agentic-testkit
+yarn pack --dry-run        # prepack builds, rewrites declaration specifiers and runs check:consumer
+npm publish --access public
+```
+
+Bump `version` and move the CHANGELOG's Unreleased entries under it first. The `agentic-testkit` GitHub workflow runs
+the same checks on Linux and macOS with Node 24 and 26.
+
+### Validate a registry release candidate
+
+Staging runs after `yarn run build:offline`, rewrites no development manifest and publishes nothing. Supply a reviewed JSON map: `schemaVersion: 1` and a `packages` object keyed by dependency name, each with an exact `version`, its `sourceRevision` and the registry's `sha512-…` `integrity` (include reviewed native platform packages and other sibling transitive packages). Seed a disposable registry with the candidate and the reviewed sibling tarballs, then:
+
+```sh
+node scripts/release/stage-registry-release.mjs --prepare --map /path/to/map.json \
+  --registry http://127.0.0.1:4873/ --out /tmp/octocode-registry-candidate
+
+# once the registry serves the exact tarballs:
+node scripts/release/stage-registry-release.mjs --verify --map /path/to/map.json \
+  --registry http://127.0.0.1:4873/ --out /tmp/octocode-registry-candidate
+```
+
+| Phase       | Does                                                                                                                                                                                                                                                                                                                                                |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--prepare` | Saves tarballs, checksums and the map digest in `candidate.json`                                                                                                                                                                                                                                                                                    |
+| `--verify`  | Checks registry metadata and integrities, creates an installer lock under the output directory, installs the single staged tarball in a clean consumer, and checks both CLI entries, public imports, roles, research skills, model data and `--help` paths with isolated configuration. Keeps its bytes on failure; discards any prior fixture lock |
+
+A disposable-registry result is not a production lock: after the dependency tarballs are published, rerun `--verify --registry https://registry.npmjs.org/` on the same tarballs, then review and copy the verified lock through the release process. The command never publishes and refuses to write a fixture lock into the production installer-lock directory. Check supported OS/CPU/libc variants separately so native binaries load. `yarn run check:package-install` covers the local multi-tarball graph instead.
+
+## Packages
+
+`coding-agent` is the only published package (`@octocodeai/octocode-agent`); every other workspace compiles into its one bundle. A **library** builds its own `dist/`. A **hosted** workspace (`octocodeSource` in its manifest) has no build: its sources compile straight into coding-agent, which reaches it only through its `api.ts` or `host.ts`.
+
+| Package                                                                 | Kind     | Owns                                                                                                                                                                    |
+| ----------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [coding-agent](packages/coding-agent/README.md)                         | CLI      | Entry and modes (`src/main/`, `src/modes/`), sessions and prompt assembly (`src/core/`), native tools, permissions, subagents, team, memory and hooks (`src/octocode/`) |
+| [agent](packages/agent/README.md)                                       | library  | The agent loop: streams a model response, runs tool calls, queues steering, emits events                                                                                |
+| [ai](packages/ai/README.md)                                             | library  | Providers, model catalog, auth resolution, streaming, token and cost tracking                                                                                           |
+| [tui](packages/tui/README.md)                                           | library  | Terminal components, input, differential renderer; prebuilt clipboard and modifier-key helpers                                                                          |
+| [webview](packages/webview/README.md)                                   | library  | The `/web` page: views, store, transport; never executes or authorizes                                                                                                  |
+| [projections](packages/projections/README.md)                           | library  | Portable frame interpretation every interface shares: ordering, snapshots, receipts, resync; imports only contracts, no Node, DOM or host code                          |
+| [contracts](packages/contracts/README.md)                               | library  | TypeBox schemas and types that cross a package or interface boundary                                                                                                    |
+| [common](packages/common/README.md)                                     | library  | Host-free utilities: JSON, paths, atomic writes, process helpers, redaction, web guard                                                                                  |
+| [telemetry](packages/telemetry/README.md)                               | library  | Span and metric contracts with a no-op context                                                                                                                          |
+| [mcp](packages/mcp/README.md)                                           | hosted   | MCP client, transports, configuration, registry, lifecycle, default servers                                                                                             |
+| [acp](packages/acp/README.md)                                           | hosted   | ACP server for editors, ACP client for external agents                                                                                                                  |
+| [db](packages/db/README.md)                                             | hosted   | SQLite schema, queries, writer workers, history retention                                                                                                               |
+| [terminal](packages/terminal/README.md)                                 | hosted   | `!`-line shell completion and history ranking                                                                                                                           |
+| [octocode-agentic-testkit](packages/octocode-agentic-testkit/README.md) | test kit | Behavior tests for any agent harness: suites with runs and USD caps, scripted models, MCP mocks, guards, traces, matchers; no workspace depends on it                   |
+
+Allowed imports, enforced by `yarn run check:boundaries` (`PACKAGE_POLICY` in `scripts/check/check-package-boundaries.mjs`). Not drawn: `common` and `contracts`, which most packages use.
+
+```mermaid
+flowchart LR
+  CA[coding-agent] --> AGENT[agent] --> AI[ai] --> TEL[telemetry]
+  CA --> AI
+  CA --> TUI[tui]
+  CA --> WEB[webview] --> PROJ[projections]
+  CA -.->|hosts| MCP[mcp]
+  CA -.->|hosts| ACP[acp]
+  CA -.->|hosts| DB[db]
+  CA -.->|hosts| TERM[terminal]
+  MCP --> AGENT
+  MCP --> AI
+  MCP --> TUI
+  ACP --> MCP
+  ACP --> AI
+```
+
+### From command to tool call
+
+```mermaid
+flowchart TD
+  CLI["octocode: cli.ts, main/<br/>arguments, folder trust, settings"] -->|"--mode acp"| BROKER["acp broker<br/>an RPC worker per session"]
+  CLI --> RT["Runtime (core/)<br/>session manager, models, resource loader"]
+  RT -->|"registers built-in features:<br/>octocode/, mcp, llama.cpp"| FEAT["Tools, commands, event handlers"]
+  RT --> INT["Interactive: modes/interactive on tui"]
+  RT --> PRINT["Print: text or JSON Lines"]
+  RT --> RPC["RPC: stdin and stdout"]
+  BROKER --> RPC
+  INT --> SES["AgentSession (core/agent-session/)"]
+  PRINT --> SES
+  RPC --> SES
+  SES --> LOOP["agent: Agent loop"]
+  LOOP <--> PROV["ai: provider stream"]
+  LOOP -->|tool call| GATE["tool_call gate (octocode/)<br/>invariants, hooks, permission mode"]
+  GATE -->|allowed| TOOL["Tool: file, bash, web, agent, MCP"]
+  GATE -->|refused| LOOP
+  TOOL --> LOOP
+  SES --> STORE[("JSONL transcript;<br/>db: workspaces.db, transcripts.db")]
+  SES --> VIEWS["Application service:<br/>terminal, /web (webview)"]
+```
+
+Each step in depth: [request flows](packages/coding-agent/docs/harness-flows.md), [every tool call](docs/EXECUTION_AND_PERMISSIONS.md), [terminal, web and the host](docs/INTERFACE_ARCHITECTURE.md), [subagents and team mail](docs/AGENT_COMMUNICATION.md), [stored entities](docs/ENTITIES.md).
+
+### Where docs live
+
+| Need                                                  | Page                                                                     |
+| ----------------------------------------------------- | ------------------------------------------------------------------------ |
+| Install and use Octocode                              | [README](README.md), [user guide](packages/coding-agent/README.md)       |
+| Every user page (ships in the package)                | [Documentation index](packages/coding-agent/docs/index.md)               |
+| Designs that cross packages (ship as `docs/project/`) | [Features and owners](docs/FEATURES.md) and its sibling pages in `docs/` |
+| A library's API                                       | Its package README and `docs/` folder                                    |
+| Rules for changing code                               | [AGENTS.md](AGENTS.md)                                                   |
+| Build, check and release scripts                      | [scripts/README.md](scripts/README.md)                                   |
+| Terms: coordinator, subagent, worktree, item          | [Glossary](packages/coding-agent/docs/GLOSSARY.md)                       |
+
+## Interface checks
+
+| Interface   | Run (from `packages/coding-agent` unless noted)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ACP         | `yarn workspace @octocodeai/octocode-acp test` (broker, history, input, permissions, startup, redaction); `yarn vitest run --config vitest.e2e.config.ts test/octocode/e2e-acp.test.ts test/octocode/e2e-acp-conformance.test.ts test/octocode/e2e-reach-process.test.ts`; `yarn vitest run --config vitest.config.ts test/acp-api.test.ts test/acp-command-lifecycle.test.ts`; `yarn node test/octocode/scripts/live-acp-reliability.mjs --fixture` (no provider calls). In disposable environments: `test/octocode/scripts/check-acp-compatibility.mjs` (official ACP TCK checkout, `uv`, Python 3.14+; experimental, not certification) and `check-acp-python.mjs` (Python SDK `agent-client-protocol==0.12.1`, both directions) |
+| Session API | With an isolated `HOME`, exercise `list` → `status` → guarded `send --wait` → same-key retry → `watch`: a retry starts no second `agent.start`, cancellation shows as a settlement event. Tests: `yarn vitest run --config vitest.octocode.config.ts test/octocode/api-cli-subprocess.test.ts test/octocode/api-socket.test.ts test/octocode/api-events.test.ts`, `test/acp-api.test.ts`, `test/acp-command-lifecycle.test.ts` (`vitest.config.ts`), `test/octocode/e2e-reach-process.test.ts`, `test/octocode/e2e-api-events.test.ts` (`vitest.e2e.config.ts`)                                                                                                                                                                     |
+| tmux        | `yarn run test:tmux` (repository root); real-tmux tests use a private server and skip without `tmux` 3.3 or `python3`. `scripts/tmux-cli-check.sh` runs the real CLI in a private server (startup, paste; with `--model` a prompt, `/fork` and image rows; `--cli=<command>` checks another launcher). Image rendering needs a real Kitty or Ghostty window                                                                                                                                                                                                                                                                                                                                                                         |
+
+## Plugin and hook compatibility checks
+
+Normal tests read saved fixtures and need neither Rust nor a vendor binary. Each fixture proves its own narrow contract against source revisions and executables pinned in its manifest, not host equivalence.
+
+| Contract                                                          | Evidence (under `packages/coding-agent/test/`)                                                                                                                                                                                                                                                                                                                                             | Reproduce                                                                                                                                                  |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Codex hook output decisions                                       | `fixtures/hooks/codex-output-contract.json`, read by `hooks-codex-conformance.test.ts`; not exit semantics, timing, permissions or patch rewriting                                                                                                                                                                                                                                         | `node packages/coding-agent/scripts/generate-codex-hook-output-fixtures.mjs [--check]` (Cargo and network)                                                 |
+| Codex patch parsing and bytes                                     | [Patch oracle](packages/coding-agent/test/octocode/fixtures/codex-patch/ADAPTATIONS.md)                                                                                                                                                                                                                                                                                                    | Its page                                                                                                                                                   |
+| Codex skill metadata                                              | [Metadata oracle](packages/coding-agent/test/fixtures/codex-skill-metadata/ADAPTATIONS.md)                                                                                                                                                                                                                                                                                                 | Its page                                                                                                                                                   |
+| Codex skill mentions                                              | [Corpus](packages/coding-agent/test/fixtures/codex-skill-mentions/corpus.json), [manifest](packages/coding-agent/test/fixtures/codex-skill-mentions/manifest.json)                                                                                                                                                                                                                         | `python3 packages/coding-agent/test/fixtures/codex-skill-mentions/replay.py`                                                                               |
+| Claude permission decisions, rewrites, file rewrites, replace-all | [replay.py](packages/coding-agent/test/octocode/fixtures/claude-permissions/replay.py), [rewrites.py](packages/coding-agent/test/octocode/fixtures/claude-permissions/rewrites.py), [file-rewrites.py](packages/coding-agent/test/octocode/fixtures/claude-permissions/file-rewrites.py), [replace-all.py](packages/coding-agent/test/octocode/fixtures/claude-permissions/replace-all.py) | Each with `--claude /absolute/path/to/claude --node /absolute/path/to/node`; the recorded version and hash must match, or pass `--allow-identity-mismatch` |
+| Claude permission updates                                         | [permission-updates.py](packages/coding-agent/test/octocode/fixtures/claude-permissions/permission-updates.py)                                                                                                                                                                                                                                                                             | The same arguments                                                                                                                                         |
+| Claude Bash grammar and wrappers                                  | [grammar.py](packages/coding-agent/test/octocode/fixtures/claude-permissions/grammar.py), [wrappers.py](packages/coding-agent/test/octocode/fixtures/claude-permissions/wrappers.py); narrower than the Bash language, no PowerShell                                                                                                                                                       | The same arguments                                                                                                                                         |
+
+The Claude replays use a local mock provider, temporary settings and a dummy credential, never a live account, and end their process group on a timeout. They use POSIX process handling; Windows is unverified.
+
+## More
+
+[Features and owners](docs/FEATURES.md) · [User docs index](packages/coding-agent/docs/index.md) · [How-to recipes](packages/coding-agent/docs/how-to.md) · [Native features](packages/coding-agent/docs/native-features.md) · [Configuration](packages/coding-agent/docs/configuration.md) · [Prompts](packages/coding-agent/docs/prompts.md) · [Security](SECURITY.md)
+
+## License
+
+[MIT](LICENSE). Independent fork; original Pi copyright notices are retained.

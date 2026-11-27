@@ -1,0 +1,141 @@
+import type { ResponseReasoningItem, ResponseStreamEvent } from "../src/api/ai-sdk/openai-wire-types.ts";
+import { describe, expect, it } from "vitest";
+import { responsesMessages } from "../src/api/ai-sdk/responses-messages.ts";
+import { processResponsesStream } from "../src/api/openai-responses-shared/stream-processing.ts";
+import type { AssistantMessage, Model } from "../src/types.ts";
+import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
+import { normalizeContext } from "../src/utils/transcript.ts";
+
+function createModel(): Model<"azure-openai-responses"> {
+	return {
+		id: "gpt-5-mini",
+		name: "GPT-5 Mini",
+		api: "azure-openai-responses",
+		provider: "azure",
+		baseUrl: "https://example.invalid",
+		reasoning: true,
+		input: ["text"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 400000,
+		maxTokens: 128000,
+	};
+}
+
+function createOutput(model: Model<"azure-openai-responses">): AssistantMessage {
+	return {
+		role: "assistant",
+		content: [],
+		api: model.api,
+		provider: model.provider,
+		model: model.id,
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+		stopReason: "pending",
+		timestamp: Date.now(),
+	};
+}
+
+async function* createEvents(
+	doneItem: ResponseReasoningItem,
+	completedItem: ResponseReasoningItem,
+): AsyncIterable<ResponseStreamEvent> {
+	yield {
+		type: "response.output_item.added",
+		output_index: 0,
+		sequence_number: 0,
+		item: { type: "reasoning", id: doneItem.id, summary: [] },
+	};
+	yield {
+		type: "response.output_item.done",
+		output_index: 0,
+		sequence_number: 1,
+		item: doneItem,
+	};
+	yield {
+		type: "response.completed",
+		sequence_number: 2,
+		response: {
+			id: "resp_test",
+			status: "completed",
+			output: [completedItem],
+		},
+	};
+}
+
+/** The replayed reasoning part: its item id and encrypted content, as the request builder hands them to the SDK. */
+function getReplayedReasoning(model: Model<"azure-openai-responses">, assistant: AssistantMessage) {
+	const context = normalizeContext({
+		messages: [
+			{ role: "user", content: "first", timestamp: Date.now() - 1 },
+			assistant,
+			{ role: "user", content: "follow-up", timestamp: Date.now() },
+		],
+	});
+	const { messages } = responsesMessages(model, context, {});
+	const parts = messages.flatMap((message) =>
+		message.role === "assistant" && Array.isArray(message.content) ? message.content : [],
+	);
+	const part = parts.find((item) => item.type === "reasoning");
+	return part?.providerOptions?.openai;
+}
+
+describe("Azure OpenAI Responses reasoning replay", () => {
+	it("preserves existing encrypted_content from output_item.done", async () => {
+		const model = createModel();
+		const output = createOutput(model);
+		const doneItem: ResponseReasoningItem = {
+			type: "reasoning",
+			id: "rs_done",
+			summary: [],
+			encrypted_content: "from-output-item-done",
+		};
+		const completedItem: ResponseReasoningItem = {
+			...doneItem,
+			encrypted_content: "from-response-completed",
+		};
+
+		await processResponsesStream(
+			createEvents(doneItem, completedItem),
+			output,
+			new AssistantMessageEventStream(),
+			model,
+		);
+
+		expect(getReplayedReasoning(model, output)).toMatchObject({
+			itemId: "rs_done",
+			reasoningEncryptedContent: "from-output-item-done",
+		});
+	});
+
+	it("fills encrypted_content when output_item.done omitted it", async () => {
+		const model = createModel();
+		const output = createOutput(model);
+		const doneItem: ResponseReasoningItem = {
+			type: "reasoning",
+			id: "rs_missing",
+			summary: [],
+		};
+		const completedItem: ResponseReasoningItem = {
+			...doneItem,
+			encrypted_content: "from-response-completed",
+		};
+
+		await processResponsesStream(
+			createEvents(doneItem, completedItem),
+			output,
+			new AssistantMessageEventStream(),
+			model,
+		);
+
+		expect(getReplayedReasoning(model, output)).toMatchObject({
+			itemId: "rs_missing",
+			reasoningEncryptedContent: "from-response-completed",
+		});
+	});
+});

@@ -1,0 +1,251 @@
+import type { DatabaseSync } from "node:sqlite";
+import * as compactions from "./compactions.ts";
+import * as machineSamples from "./machine-samples.ts";
+import * as apiReceipts from "./api-receipts.ts";
+import * as itemHandoffs from "./item-handoffs.ts";
+import * as openings from "./openings.ts";
+import * as processSamples from "./process-samples.ts";
+import { eraseMirror, eraseRows, processes } from "./sessions.ts";
+import { inTransaction } from "./transaction.ts";
+import * as transcripts from "./transcripts.ts";
+
+/**
+ * Rows removed per table by `workspace` and `all`. Keys are table names (`sessions` counts the extras and catalog rows;
+ * transcripts, entries, forks, compactions, events and tasks of a session are counted as `erase` reports them).
+ */
+export type PurgeCounts = Record<string, number>;
+
+/** Audit tables refuse DELETE with a trigger; a purge lifts that guard inside its own transaction only (see `history.deleteRows`). */
+const AUDIT_GUARDS = ["backlog_audits_immutable_delete", "config_audits_immutable_delete"] as const;
+
+/** Meta keys holding per-workspace counters (`backlog_seq:<id>`, `backlog_task_seq:<id>`); other meta rows are settings. */
+const MARKS = ["backlog_seq:", "backlog_task_seq:"] as const;
+
+type Statement = readonly [table: string, sql: string];
+
+/** Runs `statements` in order, each bound to the first `?N` arguments it names, adding each change count to `counts`. */
+function run(db: DatabaseSync, statements: readonly Statement[], counts: PurgeCounts, ...args: string[]): void {
+	for (const [table, sql] of statements) {
+		const used = Math.max(0, ...[...sql.matchAll(/\?(\d+)/g)].map((match) => Number(match[1])));
+		counts[table] = (counts[table] ?? 0) + Number(db.prepare(sql).run(...args.slice(0, used)).changes);
+	}
+}
+
+/** Runs `work` with the audit DELETE guards dropped and restored exactly as stored, inside the caller's transaction. */
+function withoutAuditGuards<T>(db: DatabaseSync, work: () => T): T {
+	const stored = AUDIT_GUARDS.flatMap((name) => {
+		const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?").get(name);
+		return row ? [{ name, sql: String(row.sql) }] : [];
+	});
+	for (const { name } of stored) db.exec(`DROP TRIGGER ${name}`);
+	try {
+		return work();
+	} finally {
+		for (const { sql } of stored) db.exec(sql);
+	}
+}
+
+const marks = (column: string) => MARKS.map((prefix) => `${column} LIKE '${prefix}%'`).join(" OR ");
+
+/** What a purge leaves alone. */
+export interface PurgeOptions {
+	/**
+	 * Sessions that keep every per-session row (sessions, transcripts, entries, compaction summaries, events, tasks,
+	 * command receipts, the team member that runs it) and the workspace row they reference, so a session that is still
+	 * running (the current one) can continue. A fork edge survives only when both of its ends are kept: a kept fork whose
+	 * parent is purged loses its edge, since the edge references the parent's row.
+	 */
+	keepSessions?: readonly string[];
+	/**
+	 * Tells whether the process recorded for a session (`pid`, `pid_started`) still runs. Sessions it accepts are kept
+	 * like `keepSessions`: the check runs when the purge starts, so a session another process opened after the caller
+	 * planned the purge keeps its rows.
+	 */
+	isLive?: (pid: number, pidStarted: string | null) => boolean;
+	/**
+	 * The workspace files holding workspace-owned rows apart from `db` (the machine file, which holds the sessions):
+	 * each loses its rows in a transaction of its own, after `db`'s, and keeps its `workspaces` rows, which only anchor
+	 * the rows of kept sessions there.
+	 */
+	workspaceFiles?: readonly DatabaseSync[];
+}
+
+/** `keepSessions` plus the sessions whose recorded process runs now. */
+function keptSessions(db: DatabaseSync, options: PurgeOptions): string[] {
+	const keep = new Set(options.keepSessions);
+	const { isLive } = options;
+	if (isLive) for (const row of processes(db)) if (isLive(row.pid, row.pid_started)) keep.add(row.id);
+	return [...keep];
+}
+
+const KEPT = "(SELECT value FROM json_each(?2))";
+/** The session ids a statement spares: `?2` is the JSON list of kept ids. */
+const notKept = (column: string) => `COALESCE(${column}, '') NOT IN ${KEPT}`;
+
+/**
+ * Children first: cascades cover backlog links, notes, comments; completions, handoffs (no foreign key) and audits do not
+ * cascade. `?1` workspace, `?2` kept ids.
+ */
+const WORKSPACE: readonly Statement[] = [
+	["backlog_tasks", `DELETE FROM backlog_tasks WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
+	["item_handoffs", "DELETE FROM item_handoffs WHERE item_id IN (SELECT id FROM backlog WHERE workspace_id = ?1)"],
+	[
+		"backlog_completions",
+		"DELETE FROM backlog_completions WHERE item IN (SELECT id FROM backlog WHERE workspace_id = ?1)",
+	],
+	["backlog", "DELETE FROM backlog WHERE workspace_id = ?1"],
+	["backlog_audits", "DELETE FROM backlog_audits WHERE workspace_id = ?1"],
+	["workspace_commands", `DELETE FROM workspace_commands WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
+	["timers", `DELETE FROM timers WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
+	["jobs", `DELETE FROM jobs WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
+	["memories", "DELETE FROM memories WHERE workspace_id = ?1"],
+	["tickets", `DELETE FROM tickets WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
+	["event_subscriptions", `DELETE FROM event_subscriptions WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
+	["event_log", `DELETE FROM event_log WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
+	["agent_events", `DELETE FROM agent_events WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
+	["messages", "DELETE FROM messages WHERE workspace_id = ?1"],
+	["leases", "DELETE FROM leases WHERE workspace_id = ?1"],
+	["edits", "DELETE FROM edits WHERE workspace_id = ?1"],
+	["usage_daily", "DELETE FROM usage_daily WHERE workspace_id = ?1"],
+	["agent_runs", `DELETE FROM agent_runs WHERE workspace_id = ?1 AND ${notKept("session_id")}`],
+	["agents", "UPDATE agents SET lease_workspace_id = NULL WHERE lease_workspace_id = ?1 AND workspace_id <> ?1"],
+	[
+		"agents",
+		`DELETE FROM agents WHERE workspace_id = ?1 AND ${notKept("session_id")} AND ${notKept("lifecycle_session_id")}`,
+	],
+	["meta", `DELETE FROM meta WHERE ${MARKS.map((prefix) => `key = '${prefix}' || ?1`).join(" OR ")}`],
+	// Only kept sessions are left on this workspace by now, and they reference its row.
+	[
+		"workspaces",
+		"DELETE FROM workspaces WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM sessions WHERE workspace_id = ?1)",
+	],
+];
+
+/**
+ * Removes everything the workspace owns, in one transaction of the transcript mirror (`mirror`: its sessions'
+ * transcripts, entries and compaction summaries) and then one of the coordination file: its sessions with their forks,
+ * compaction summaries, events and tasks (`erase`), backlog items with links, notes, comments, completions, tasks,
+ * the handoffs of its items to children and audits, command receipts, workspace-scoped memories, agent events, compaction summaries, team messages (with their
+ * deliveries), leases, edits, its team members with their runs and its backlog counters, then the `workspaces` row. A member of another
+ * workspace that leased files here only loses the lease link (`agents.lease_workspace_id`).
+ *
+ * Kept: `config_audits` (not workspace-scoped), project- and global-scope memories, `trusted_folders` (a trust decision
+ * names a folder, not a workspace), machine-wide rows (samples, provider quota readings and cool-downs), all other `meta`
+ * rows, other workspaces, and what `options.keepSessions` names (with
+ * the `workspaces` row of a kept session of this workspace). Sessions without a workspace are not this workspace's.
+ * Returns the rows removed per table (counts with zero rows are included).
+ */
+export function workspace(
+	db: DatabaseSync,
+	mirror: DatabaseSync,
+	workspaceId: string,
+	options: PurgeOptions = {},
+): PurgeCounts {
+	const keep = keptSessions(db, options);
+	const kept = JSON.stringify(keep);
+	const ids = () => sessionsOf(db, workspaceId).filter((id) => !keep.includes(id));
+	// The mirror first (its lock is always taken before the coordination file's), then the coordination rows.
+	const counts: PurgeCounts = inTransaction(mirror, () => ({
+		...eraseMirror(mirror, ids()),
+		compaction_summaries: compactions.purgeWorkspace(mirror, workspaceId, keep),
+	}));
+	const erased = ids();
+	inTransaction(db, () => {
+		for (const [table, n] of Object.entries(eraseRows(db, erased))) counts[table] = n;
+		withoutAuditGuards(db, () => run(db, WORKSPACE, counts, workspaceId, kept));
+	});
+	for (const file of options.workspaceFiles ?? [])
+		inTransaction(file, () => {
+			for (const [table, n] of Object.entries(eraseRows(file, erased))) counts[table] = (counts[table] ?? 0) + n;
+			withoutAuditGuards(file, () => run(file, WORKSPACE.slice(0, -1), counts, workspaceId, kept));
+		});
+	return counts;
+}
+
+/** The ids of the sessions bound to `workspaceId`. */
+function sessionsOf(db: DatabaseSync, workspaceId: string): string[] {
+	return db
+		.prepare("SELECT id FROM sessions WHERE workspace_id = ?")
+		.all(workspaceId)
+		.map((row) => String(row.id));
+}
+
+/** `?1` is the JSON list of kept session ids. */
+const K = "(SELECT value FROM json_each(?1))";
+const outside = (column: string) => `COALESCE(${column}, '') NOT IN ${K}`;
+const ALL: readonly Statement[] = [
+	["backlog_tasks", `DELETE FROM backlog_tasks WHERE ${outside("session_id")}`],
+	["backlog_completions", "DELETE FROM backlog_completions"],
+	["backlog", "DELETE FROM backlog"],
+	["backlog_audits", "DELETE FROM backlog_audits"],
+	["config_audits", "DELETE FROM config_audits"],
+	["workspace_commands", `DELETE FROM workspace_commands WHERE ${outside("session_id")}`],
+	["timers", `DELETE FROM timers WHERE ${outside("session_id")}`],
+	["jobs", `DELETE FROM jobs WHERE ${outside("session_id")}`],
+	["deliveries", "DELETE FROM deliveries"],
+	["messages", "DELETE FROM messages"],
+	["leases", "DELETE FROM leases"],
+	["edits", "DELETE FROM edits"],
+	["usage_daily", "DELETE FROM usage_daily"],
+	["tickets", `DELETE FROM tickets WHERE ${outside("session_id")}`],
+	["event_subscriptions", `DELETE FROM event_subscriptions WHERE ${outside("session_id")}`],
+	["event_log", `DELETE FROM event_log WHERE ${outside("session_id")}`],
+	["agent_events", `DELETE FROM agent_events WHERE ${outside("session_id")}`],
+	["agents", `DELETE FROM agents WHERE ${outside("session_id")} AND ${outside("lifecycle_session_id")}`],
+	["agent_runs", `DELETE FROM agent_runs WHERE ${outside("session_id")}`],
+	["session_forks", `DELETE FROM session_forks WHERE NOT (child_id IN ${K} AND parent_id IN ${K})`],
+	["sessions", `DELETE FROM sessions WHERE ${outside("id")}`],
+	["memories", "DELETE FROM memories"],
+	["shell_history", "DELETE FROM shell_history"],
+	// Machine-wide provider caches belong to no session: the next response records a reading or a cool-down again.
+	["provider_quota", "DELETE FROM provider_quota"],
+	["provider_cooldowns", "DELETE FROM provider_cooldowns"],
+	["meta", `DELETE FROM meta WHERE ${marks("key")}`],
+	// A kept agent may lease a workspace that goes next: drop that link first, or the workspace delete fails its FK.
+	[
+		"agents",
+		"UPDATE agents SET lease_workspace_id = NULL WHERE lease_workspace_id NOT IN (SELECT workspace_id FROM sessions WHERE workspace_id IS NOT NULL)",
+	],
+	[
+		"workspaces",
+		"DELETE FROM workspaces WHERE id NOT IN (SELECT workspace_id FROM sessions WHERE workspace_id IS NOT NULL)",
+	],
+];
+
+/**
+ * Empties every data table, in one transaction of the transcript mirror (`mirror`) and then one of the coordination
+ * file, and keeps the schema (tables, indexes, triggers, FTS index, application id and `user_version`), so both files
+ * open as before. Machine-wide rows (samples, provider quota readings and rate-limit cool-downs) go too: they belong to no
+ * session, and the next response records quota and cool-downs again. Kept: `trusted_folders` (security decisions, like settings and
+ * authentication outside the database), `meta` rows other than the workspace backlog counters (memory auto-save
+ * setting, registered session folders, sweep claims), and what `options.keepSessions` names with the `workspaces` rows
+ * they reference. Run `maintenance.vacuum` on each file after it to give the space back.
+ */
+export function all(db: DatabaseSync, mirror: DatabaseSync, options: PurgeOptions = {}): PurgeCounts {
+	const keep = keptSessions(db, options);
+	const counts: PurgeCounts = inTransaction(mirror, () => {
+		const removed = transcripts.keepOnly(mirror, keep);
+		return {
+			compaction_summaries: compactions.keepOnly(mirror, keep),
+			session_entries: removed.entries,
+			session_transcripts: removed.transcripts,
+		};
+	});
+	const kept = JSON.stringify(keep);
+	inTransaction(db, () => {
+		withoutAuditGuards(db, () => run(db, ALL, counts, kept));
+		counts.process_samples = processSamples.keepOnly(db, keep);
+		// Machine-wide figures belong to no session, so none is kept.
+		counts.machine_samples = machineSamples.clear(db);
+		counts.worktree_openings = openings.clear(db);
+		counts.api_message_receipts = apiReceipts.clear(db);
+		counts.item_handoffs = itemHandoffs.clear(db);
+	});
+	// A workspace file keeps its `workspaces` rows and lease links: they name no session there to check against.
+	for (const file of options.workspaceFiles ?? [])
+		inTransaction(file, () => {
+			withoutAuditGuards(file, () => run(file, ALL.slice(0, -2), counts, kept));
+			counts.item_handoffs += itemHandoffs.clear(file);
+		});
+	return counts;
+}

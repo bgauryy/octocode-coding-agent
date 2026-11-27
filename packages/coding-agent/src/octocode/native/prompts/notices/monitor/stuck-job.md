@@ -1,0 +1,1 @@
+[Monitor] Background job {{job}} has written no output and used {{cpu}}% CPU for {{minutes}} min: `{{command}}`. Read its log tail ({{log}}). It may wait on input, a lock or a dead peer. Stop it, unblock it, or leave it and say why.

@@ -1,0 +1,139 @@
+import { Value } from "typebox/value";
+import {
+	RemoteLinkSchema,
+	RemoteStatusSchema,
+	type RemoteAccess,
+	type RemoteLink,
+	type RemotePublish,
+	type RemoteStatus,
+} from "@octocodeai/octocode-contracts/daemon";
+import { DAEMON_ROUTES } from "@octocodeai/octocode-contracts/protocol";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
+import type { RemoteSettings } from "../../core/settings-schema.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { cancelledText, say, type Subcommand, wordCompletions } from "../shared/commands.ts";
+import { daemonRequest, type LaunchedDaemon } from "../web-daemon/launcher.ts";
+import { registerSecretValue } from "@octocodeai/octocode-common/sanitize";
+import { describeLink, describeStatus, linkSecret } from "./links.ts";
+
+export interface RemoteHost {
+	/** The daemon with this session attached, started when none runs; rejects when it cannot start or be reached. */
+	daemon(ctx: FeatureContext): Promise<Pick<LaunchedDaemon, "origin" | "token">>;
+	settings(): RemoteSettings;
+}
+
+async function answer<T>(
+	daemon: Pick<LaunchedDaemon, "origin" | "token">,
+	options: { method?: "GET" | "POST" | "DELETE"; body?: unknown },
+	check: (value: unknown) => value is T,
+): Promise<T> {
+	const response = await daemonRequest(daemon, DAEMON_ROUTES.remote, options);
+	if (!response) throw new Error("The web daemon did not answer.");
+	const body = response.json();
+	if (response.status !== 200) {
+		const error = (body as { error?: string } | undefined)?.error;
+		throw new Error(error ?? `The web daemon answered ${response.status}.`);
+	}
+	if (!check(body)) throw new Error("The web daemon's answer was not understood.");
+	return body;
+}
+
+const isLinkAnswer = (value: unknown): value is { link: RemoteLink } =>
+	typeof value === "object" && value !== null && Value.Check(RemoteLinkSchema, (value as { link?: unknown }).link);
+const isStatus = (value: unknown): value is RemoteStatus => Value.Check(RemoteStatusSchema, value);
+
+/**
+ * Publishes one link with the configured transport and registers its capability as a secret (`linkSecret`): the link
+ * is said once, in this terminal, and a view link's holder following this session never reads a control link from it.
+ */
+async function publishLink(host: RemoteHost, ctx: FeatureContext, access: RemoteAccess): Promise<RemoteLink> {
+	const daemon = await host.daemon(ctx);
+	const settings = host.settings();
+	const request: RemotePublish = {
+		transport: settings.transport ?? "ssh",
+		access,
+		...(settings.relayUrl ? { relayUrl: settings.relayUrl } : {}),
+	};
+	const { link } = await answer(daemon, { method: "POST", body: request }, isLinkAnswer);
+	registerSecretValue(linkSecret(link));
+	return link;
+}
+
+/**
+ * `/remote` publishes a control link to this machine's web daemon (every session, the board, approvals); `/remote view`
+ * a read-only one; `/remote status` and `/remote stop`. The transport comes from `remote.transport`: `ssh` prints the
+ * port forward to run, `relay` dials `remote.relayUrl`. Links are shown once, with a QR code to scan; `/remote status`
+ * lists them by fingerprint only.
+ */
+export function remoteCommand(host: RemoteHost): Subcommand {
+	return {
+		description: "Give another device control; asks first",
+		argumentHint: "[view|status|stop]",
+		complete: (prefix) =>
+			wordCompletions(
+				[
+					["view", "A read-only link"],
+					["status", "Published links and the relay"],
+					["stop", "Stop publishing; every link dies"],
+				],
+				prefix,
+			),
+		async handler(args, ctx) {
+			const word = args.trim();
+			if (word && word !== "view" && word !== "status" && word !== "stop") {
+				say(ctx, "Usage: /remote [view|status|stop]", "warning");
+				return;
+			}
+			try {
+				if (word === "status" || word === "stop") {
+					const daemon = await host.daemon(ctx);
+					if (word === "status") say(ctx, describeStatus(await answer(daemon, {}, isStatus)));
+					else {
+						await answer(daemon, { method: "DELETE" }, (value): value is unknown => value !== undefined);
+						say(ctx, "Stopped publishing. Every link, view and control, no longer works.");
+					}
+					return;
+				}
+				// A link lets another device see (view) or drive (control) this machine's sessions: ask whoever is at the keyboard.
+				// Without one (print mode, RPC without dialogs, a subagent) nobody can agree, so refuse and name the explicit
+				// command a script uses instead.
+				const view = word === "view";
+				if (!ctx.hasUI)
+					return say(
+						ctx,
+						view
+							? "/remote view needs a confirmation nobody can give here: a read-only link shows every session on this machine to another device. Publish it with `octocode remote link view`."
+							: "/remote needs a confirmation nobody can give here: a control link lets another device send commands. Publish it with `octocode remote link`, or a read-only link with `octocode remote link view`.",
+						"warning",
+					);
+				const agreed = view
+					? await ctx.ui.confirm(
+							"Publish a read-only link?",
+							"Whoever opens it can watch every session on this machine, including prompts and tool output, but cannot send anything.",
+						)
+					: await ctx.ui.confirm(
+							"Publish a control link?",
+							"Whoever opens it can send commands and answer approvals on every session on this machine. /remote view publishes a read-only link instead.",
+						);
+				if (!agreed) return say(ctx, cancelledText("published"));
+				const link = await publishLink(host, ctx, word === "view" ? "view" : "control");
+				say(ctx, describeLink(link, { qr: ctx.hasUI }));
+			} catch (error) {
+				say(ctx, `Could not publish a remote link: ${errorMessage(error)}`, "error");
+			}
+		},
+	};
+}
+
+/** `remote.autoStart`: publish a link when a session starts, and say where it is. Never for a subagent. */
+export function registerRemoteAutoStart(api: FeatureSetup, host: RemoteHost): void {
+	api.bus.on("session_start", async (_event, ctx) => {
+		const access = host.settings().autoStart ?? "off";
+		if (access === "off") return;
+		try {
+			say(ctx, describeLink(await publishLink(host, ctx, access)));
+		} catch (error) {
+			say(ctx, `Remote auto-start: ${errorMessage(error)}`, "warning");
+		}
+	});
+}

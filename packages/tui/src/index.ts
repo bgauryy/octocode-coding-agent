@@ -1,0 +1,293 @@
+// Core TUI interfaces and classes
+
+export { Marked, type Token, type Tokens } from "marked";
+// Autocomplete support
+export type {
+	AutocompleteItem,
+	AutocompleteProvider,
+	AutocompleteSuggestions,
+	SlashCommand,
+} from "./autocomplete/types.ts";
+export { CombinedAutocompleteProvider } from "./autocomplete.ts";
+// Colors and styling
+export {
+	backgroundAnsi,
+	type Color,
+	type ColorMixSpace,
+	colorToHex,
+	colorToOkhsl,
+	colorToOklch,
+	colorToRgb,
+	foregroundAnsi,
+	type IndexedColor,
+	indexedColor,
+	isColorForced,
+	mixColors,
+	type OkhslChannels,
+	type OklchChannels,
+	type OklchColorValue,
+	okhslColor,
+	oklchColor,
+	parseColor,
+	type RgbColorValue,
+	rgbColor,
+	styleText,
+	styleTextWithAnsi,
+	type TerminalColorMode,
+	type TextAttributes,
+	type TextStyle,
+} from "./colors.ts";
+export { canBlendColors, createGradient, type GradientOptions } from "./gradient.ts";
+export { type ShimmerOptions, shimmerText } from "./shimmer.ts";
+// Design tokens and the shared animation clock
+export { isScreenReaderMode, setScreenReaderMode } from "./tokens/screen-reader.ts";
+export {
+	type AnimationClock,
+	type AnimationKind,
+	type AnimationSubscription,
+	animationClock,
+	spinnerFrame,
+} from "./tokens/clock.ts";
+export {
+	breathe,
+	ELLIPSIS,
+	GLYPH,
+	LIGHT_GLYPH,
+	MOTION,
+	SEPARATOR,
+	SPINNER,
+	setEmojiMarks,
+	settle,
+	TONE,
+	titleMark,
+	type UiState,
+} from "./tokens/design.ts";
+// State binding: views follow a selection of a state source
+export {
+	Connected,
+	type ConnectedOptions,
+	type Equality,
+	shallowEqual,
+	type StateSource,
+	watchSelection,
+} from "./state-source.ts";
+// Components
+export { Box } from "./components/box.ts";
+export { CancellableLoader } from "./components/cancellable-loader.ts";
+export type { EditorWordHighlight, WordRange } from "./components/editor/highlight.ts";
+export type { EditorBorderDecorator, EditorOptions, EditorTheme } from "./components/editor/types.ts";
+export { Editor } from "./components/editor.ts";
+export { HStack } from "./components/h-stack.ts";
+export {
+	Image,
+	type ImageOptions,
+	type ImageTheme,
+	type ImageTranscoder,
+	setImageTranscoder,
+} from "./components/image.ts";
+export { Input } from "./components/input.ts";
+export { Loader, type LoaderIndicatorOptions } from "./components/loader.ts";
+export type { DefaultTextStyle, MarkdownOptions, MarkdownTheme } from "./components/markdown/types.ts";
+export { Markdown } from "./components/markdown.ts";
+export {
+	markdownReferences,
+	markdownReferenceUrl,
+	markdownPlainText,
+	markdownCodeBlocks,
+	type MarkdownReference,
+} from "./markdown-content.ts";
+export { MouseRegion, type MouseRegionHandler } from "./components/mouse-region.ts";
+export {
+	ScrollView,
+	type ScrollViewOptions,
+	type ScrollViewScrollbar,
+	type ScrollViewScrollToOptions,
+} from "./components/scroll-view.ts";
+export {
+	type SelectItem,
+	SelectList,
+	type SelectListLayoutOptions,
+	type SelectListTheme,
+	type SelectListTruncatePrimaryContext,
+} from "./components/select-list.ts";
+export { type SettingItem, SettingsList, type SettingsListTheme } from "./components/settings-list.ts";
+export {
+	ListView,
+	type ListViewOptions,
+	type ListViewTheme,
+	positionLabel,
+	SEARCH_GLYPH,
+} from "./components/list-view.ts";
+export { fitRows, type RowColumn, type RowFit, type RowFitOptions, WRAP_MARK } from "./components/row-fit.ts";
+export { Spacer } from "./components/spacer.ts";
+export { Text } from "./components/text.ts";
+export { TruncatedText } from "./components/truncated-text.ts";
+export type { StackChild, StackEntry, StackEntryOptions, StackOptions } from "./components/stack.ts";
+export { VStack } from "./components/v-stack.ts";
+// Editor component interface (for custom editors)
+export type { EditorComponent } from "./editor-component.ts";
+// Fuzzy matching
+export { type FuzzyMatch, fuzzyFilter, fuzzyMatch } from "./fuzzy.ts";
+// Keybindings
+export {
+	getKeybindings,
+	type Keybinding,
+	type KeybindingConflict,
+	type KeybindingDefinition,
+	type KeybindingDefinitions,
+	type Keybindings,
+	type KeybindingsConfig,
+	KeybindingsManager,
+	setKeybindings,
+	TUI_KEYBINDINGS,
+} from "./keybindings.ts";
+// Keyboard input handling
+export { matchesKey } from "./keys/match.ts";
+export { Key, type KeyId } from "./keys/key-id.ts";
+export { isKittyProtocolActive, setKittyProtocolActive } from "./keys/state.ts";
+export { isKeyRelease, isKeyRepeat, type KeyEventType } from "./keys/sequences.ts";
+export { decodeKittyPrintable, parseKey } from "./keys/parse.ts";
+export { formatKeyText } from "./keys/display.ts";
+export { splitDoubleEscape } from "./keys/double-escape.ts";
+// LaTeX rendering
+export { type RenderLatexOptions, renderLatex } from "./latex.ts";
+// Native platform integration
+export { getNativeClipboard, type NativeClipboard } from "./native-platform.ts";
+export { oklabToOkhslLightness, rgbToOklabLightness } from "./oklab.ts";
+export {
+	isBusyTitle,
+	TITLE_FRAME_MS,
+	type TitleFormat,
+	type TitleSource,
+	type TitleState,
+	TitlePainter,
+} from "./terminal/title-painter.ts";
+// Terminal multiplexer detection and tmux queries
+export {
+	detectMultiplexer,
+	hasTmuxSession,
+	type MultiplexerId,
+	paneTarget,
+	resetMultiplexerCache,
+	type TmuxExecOptions,
+	tmuxClientTermFeatures,
+	tmuxClientTerminalNames,
+	tmuxExec,
+	tmuxGlobalOption,
+	tmuxPaneAllowsPassthrough,
+	wrapTmuxPassthrough,
+} from "./multiplexer.ts";
+// Program status reporting (OSC 7501)
+export { formatProgramStatus, type ProgramStatus } from "./program-status.ts";
+// Input buffering for batch splitting
+export { StdinBuffer, type StdinBufferEventMap, type StdinBufferOptions } from "./stdin-buffer.ts";
+// Terminal interface and implementations
+export { isAppleTerminalSession, type OutputTelemetry, ProcessTerminal, type Terminal } from "./terminal.ts";
+export { isScreenOwned, onScreenOwnerChange } from "./terminal/screen-owner.ts";
+// Terminal colors
+export {
+	parseTerminalColorSchemeReport,
+	type RgbColor,
+	type TerminalColorScheme,
+	type TerminalColors,
+} from "./terminal-colors.ts";
+// Terminal image support
+export {
+	getGifDimensions,
+	getImageDimensions,
+	getJpegDimensions,
+	getPngDimensions,
+	getWebpDimensions,
+} from "./terminal-image/dimensions.ts";
+export { pointerClicksActive, setPointerClicksActive } from "./tui/pointer-clicks.ts";
+export {
+	detectCapabilities,
+	getCapabilities,
+	getCellDimensions,
+	getTerminalColorMode,
+	resetCapabilitiesCache,
+	setCapabilities,
+	setCapabilityOverrides,
+	setCellDimensions,
+} from "./terminal-image/capabilities.ts";
+export type {
+	CellDimensions,
+	ImageDimensions,
+	ImageProtocol,
+	ImageRenderOptions,
+	TerminalCapabilities,
+} from "./terminal-image/types.ts";
+export {
+	allocateImageId,
+	calculateImageRows,
+	deleteAllKittyImages,
+	deleteKittyImage,
+	encodeITerm2,
+	encodeKitty,
+	hyperlink,
+	imageFallback,
+	renderImage,
+} from "./terminal-image.ts";
+export {
+	type Component,
+	Container,
+	CURSOR_MARKER,
+	compositeTuiLine,
+	type Focusable,
+	isFocusable,
+	isRenderStable,
+	isViewportTUI,
+	linkRenderChild,
+	recordUntrackedRenders,
+	type OverlayAnchor,
+	type OverlayBounds,
+	type OverlayHandle,
+	type OverlayMargin,
+	type OverlayOptions,
+	type OverlayUnfocusOptions,
+	renderChanged,
+	renderFakeCursor,
+	renderSerial,
+	computeRenderDelayMs,
+	type RenderErrorListener,
+	type RenderPacingOptions,
+	type RenderPacingStats,
+	settleRender,
+	type SizeValue,
+	trackRenderChanges,
+	type TUI,
+	type TuiInputListener,
+	type TuiInputListenerResult,
+	type TuiMode,
+	type TuiMouseButton,
+	type TuiMouseEvent,
+	type TuiMouseEventResult,
+	type TuiMouseEventType,
+	type TuiStopOptions,
+	type ViewportTUI,
+} from "./tui/exports.ts";
+export type { ScrollToEndIndicatorLabel, TuiAltScreenOptions } from "./tui-alt-screen/types.ts";
+export { copiedAmount, copiedMessage } from "./tui-alt-screen/selection-copy.ts";
+export { TuiAltScreen } from "./tui-alt-screen.ts";
+export type { TuiMainScreenRenderState } from "./tui-main-screen/render-diff.ts";
+export { TuiMainScreen } from "./tui-main-screen.ts";
+// Utilities
+export { wrapTextWithAnsi } from "./utils/wrap.ts";
+export { markFolded, stripRowMarks } from "./utils/row-marks.ts";
+export { visibleWidth } from "./utils/width.ts";
+export { padToWidth, truncateToWidth } from "./utils/truncate.ts";
+export { closeOpenStyles } from "./utils/ansi-tracker.ts";
+export { getOsc8LinkAtColumn, sliceByColumn } from "./utils/columns.ts";
+export { linkPath } from "./utils/link-path.ts";
+export { stripTerminalSequences } from "./utils.ts";
+export { type VisualTruncateResult, VisualLinePreview, truncateToVisualLines } from "./components/visual-truncate.ts";
+export { incompleteAnsiStart } from "./utils/ansi-codes.ts";
+export { terminalWheelModel, type WheelModel, type WheelScrollLines } from "./wheel-scroll.ts";
+export { createChatViewport } from "./layout/chat-viewport.ts";
+export { type HorizontalViewportRow, renderHorizontalViewport } from "./layout/horizontal-viewport.ts";
+export { CountdownTimer } from "./components/countdown-timer.ts";
+export { ThemedText } from "./components/themed-text.ts";
+export { type Header, Lines, type Row } from "./components/lines.ts";
+export { StreamingText } from "./components/markdown/streaming-text.ts";
+export { HighlightCache } from "./components/markdown/highlight-cache.ts";
+export { markPromptRows, Osc133ZoneMarker } from "./terminal/osc133-zone.ts";

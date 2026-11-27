@@ -1,0 +1,1 @@
+To continue it: `agent` type `task` with `resume: {{id}}`, a `goal` and a `task` for what is left. That resume gives it {{allowance}} more requests.{{#if isolated}} It ran isolated. The resume recreates its worktree from its saved ref. If that ref is gone, the resume is refused: then start a new task that cites `report:{{id}}`.{{/if}}

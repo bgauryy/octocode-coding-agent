@@ -1,0 +1,53 @@
+node_modules
+dist/
+.artifacts/
+*.log
+.DS_Store
+*.tsbuildinfo
+# packages/*/node_modules/
+packages/*/dist/
+packages/*/dist-chrome/
+.octocode
+**/.octocode/agent/
+**/.octa/code/
+packages/*/dist-firefox/
+packages/ai/src/providers/data/
+packages/ai/src/providers/.model-generation-*/
+*.cpuprofile
+
+# Environment
+.env
+
+# Editor files
+.vscode/
+.zed/
+.idea/
+.claude/
+# Machine-specific Codex MCP path (sibling octocode checkout)
+.codex/config.toml
+*.swp
+*.swo
+*~
+
+# Package specific
+.npm/
+coverage/
+.nyc_output/
+tui-debug.log
+compaction-results/
+.opencode/
+syntax.jsonl
+out.jsonl
+out.html
+packages/coding-agent/binaries/
+todo.md
+plans/
+collect.sh
+# Yarn
+.yarn/*
+!.yarn/releases
+!.yarn/patches
+.pnp.*
+TMPTMP
+# Disposable host compilation trees
+.context

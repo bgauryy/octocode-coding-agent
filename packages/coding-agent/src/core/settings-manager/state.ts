@@ -1,0 +1,23 @@
+import type { CachePreferences } from "@octocodeai/octocode-ai/utils/cache-policy";
+import type { Settings } from "../settings-schema.ts";
+import type { SettingsError, SettingsPaths, SettingsStorage, SettingsWarning } from "./storage.ts";
+
+/** Mutable state of one SettingsManager, shared by its persistence and its accessors. */
+export interface SettingsState {
+	storage: SettingsStorage;
+	/** Settings read from Pi, under the two scopes. Merged into `settings`; never persisted. */
+	inheritedSettings: Settings;
+	globalSettings: Settings;
+	projectSettings: Settings;
+	/** Global and project settings merged, with overrides. */
+	settings: Settings;
+	/** Overrides applied as durable: part of `settings` after every save and reload, and never written to a file. */
+	durableOverrides: Settings;
+	cacheOverrides: CachePreferences;
+	projectTrusted: boolean;
+	globalSettingsLoadError: Error | null; // Track if global settings file had parse errors
+	projectSettingsLoadError: Error | null; // Track if project settings file had parse errors
+	errors: SettingsError[];
+	warnings: SettingsWarning[];
+	settingsPaths: SettingsPaths;
+}

@@ -1,0 +1,224 @@
+/**
+ * `octocode context`: what agents read of skills, outside a session. `list` shows, for the user folder and for the
+ * project of the working directory (`contextOptimizationDirs`), each skill's source and optimized description;
+ * `check` and `apply` validate and store skill rewrites, each in the store that records the skill (the project's
+ * first, as a session reads them). The `octocode-context-optimization` skill drives these commands.
+ */
+
+import { existsSync, readFileSync } from "node:fs";
+import { parseArgs } from "node:util";
+import { prepareAgentDb } from "../../storage/database.ts";
+import { hostTrust } from "../../../../mcp/src/api.ts";
+import { APP_NAME } from "../../config.ts";
+import { contextSizeWarnings } from "../../core/context-budget.ts";
+import { skillListingBudgetChars } from "../../core/skills/listing-budget.ts";
+import { loadProjectContextFiles } from "../../core/resource-loader/context-files.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { contextOptimizationDirs } from "../shared/home.ts";
+import {
+	applySkillOverrides,
+	checkSkillOverrides,
+	parseSkillOverrides,
+	readSkillsStore,
+	SKILL_DESCRIPTION_MAX_CHARS,
+	type SkillsStore,
+	updateSkillsStore,
+} from "./skills-store.ts";
+
+const CONTEXT_USAGE = `Usage:
+  ${APP_NAME} context list [--json]
+  ${APP_NAME} context check --overrides <file>
+  ${APP_NAME} context apply --overrides <file> [--optimized-by <model>]
+
+Overrides file: { "skills": { "<skill name>": "<description agents read>" } }
+Run in the project whose skills you optimize; user-level skills are shared by every project.`;
+
+interface ContextCommandOptions {
+	agentDir: string;
+	cwd: string;
+	log?: (line: string) => void;
+	error?: (line: string) => void;
+}
+
+/** A scope's folder and its skills store. */
+interface Scope {
+	name: "project" | "user";
+	dir: string;
+	store: SkillsStore;
+}
+
+/** The project's scope first, as sessions read them. */
+function scopes(options: ContextCommandOptions): Scope[] {
+	const dirs = contextOptimizationDirs(options.cwd, options.agentDir);
+	return [
+		...(dirs.project ? [{ name: "project" as const, dir: dirs.project.dir }] : []),
+		{ name: "user" as const, dir: dirs.user },
+	].map((scope) => ({ ...scope, store: readSkillsStore(scope.dir) }));
+}
+
+/** A folder or file that is missing or that this user may not read. */
+const UNREADABLE = new Set(["ENOENT", "ENOTDIR", "EACCES", "EPERM"]);
+
+/**
+ * What a session in this folder would be warned about in `/context`: the project's context files together pass 1% of
+ * the default window. A folder that is missing or cannot be read warns about nothing; any other failure propagates.
+ */
+function sizeWarnings(options: ContextCommandOptions): string[] {
+	let files: Array<{ content: string }>;
+	try {
+		files = loadProjectContextFiles({
+			cwd: options.cwd,
+			agentDir: options.agentDir,
+			projectTrusted: hostTrust().folderTrusted(options.cwd),
+		});
+	} catch (error) {
+		if (UNREADABLE.has((error as NodeJS.ErrnoException).code ?? "")) return [];
+		throw error;
+	}
+	return contextSizeWarnings({
+		servers: [],
+		contextFilesChars: files.reduce((sum, file) => sum + file.content.length, 0),
+	});
+}
+
+function skillRows(store: SkillsStore) {
+	return Object.entries(store.skills)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([name, entry]) => ({
+			name,
+			optimized: entry.description !== undefined,
+			sourceChars: entry.source.length,
+			chars: (entry.description ?? entry.source).length,
+			file: entry.file,
+			// The skill's SKILL.md is gone (the skill was removed or moved): the record only costs store space.
+			stale: !existsSync(entry.file),
+			source: entry.source,
+			...(entry.description ? { description: entry.description } : {}),
+		}));
+}
+
+function list(options: ContextCommandOptions, json: boolean, log: (line: string) => void): number {
+	const rows = scopes(options).map((scope) => ({
+		scope: scope.name,
+		dir: scope.dir,
+		skills: skillRows(scope.store),
+	}));
+	if (json) {
+		log(JSON.stringify({ scopes: rows }, null, 2));
+		return 0;
+	}
+	const all = rows.flatMap((row) => row.skills);
+	if (all.length === 0) log("No skills recorded yet: start a session once, and it records the skills it loads.");
+	else {
+		const before = all.reduce((sum, skill) => sum + skill.sourceChars, 0);
+		const after = all.reduce((sum, skill) => sum + skill.chars, 0);
+		log(
+			`Skills: ${all.filter((skill) => skill.optimized).length}/${all.length} optimized; descriptions ${before} → ${after} characters (the listing's budget is ${skillListingBudgetChars()} with names and paths).`,
+		);
+	}
+	for (const row of rows) {
+		log(`\n${row.scope === "project" ? "Project" : "User"}: ${row.dir}`);
+		for (const skill of row.skills)
+			log(
+				`  skill ${skill.name}  ${skill.optimized ? "optimized" : "source"}  ${skill.sourceChars} → ${skill.chars}${skill.stale ? "  stale (skill file no longer exists)" : ""}`,
+			);
+		if (!row.skills.length) log("  (nothing recorded)");
+	}
+	return 0;
+}
+
+function readOverrides(file: string): Record<string, string> {
+	const parsed = parseSkillOverrides(JSON.parse(readFileSync(file, "utf8")) as unknown);
+	if ("error" in parsed) throw new Error(`${file}: ${parsed.error}`);
+	return parsed.overrides;
+}
+
+/** Each rewrite with the scope whose store records its skill; undefined when no store does. */
+function targets(all: readonly Scope[], overrides: Record<string, string>) {
+	return Object.entries(overrides).map(([name, description]) => ({
+		name,
+		description,
+		scope: all.find((scope) => scope.store.skills[name]),
+	}));
+}
+
+export async function runContextCommand(args: readonly string[], options: ContextCommandOptions): Promise<number> {
+	const log = options.log ?? ((line: string) => console.log(line));
+	const error = options.error ?? ((line: string) => console.error(line));
+	const [action, ...rest] = args;
+	// `octocode context <action> --help` works like `octocode context --help`; a missing action is a usage error (stderr).
+	if (action === "--help" || action === "-h" || action === "help" || rest.includes("--help") || rest.includes("-h")) {
+		log(CONTEXT_USAGE);
+		return 0;
+	}
+	if (!action) {
+		error(CONTEXT_USAGE);
+		return 1;
+	}
+	try {
+		const { values } = parseArgs({
+			args: [...rest],
+			options: { json: { type: "boolean" }, overrides: { type: "string" }, "optimized-by": { type: "string" } },
+			allowPositionals: false,
+		});
+		if (action === "list") {
+			await prepareAgentDb();
+			return list(options, values.json === true, log);
+		}
+		if (action !== "check" && action !== "apply") {
+			error(`Unknown context command "${action}".\n${CONTEXT_USAGE}`);
+			return 1;
+		}
+		if (!values.overrides) {
+			error(`${action} needs --overrides <file>.\n${CONTEXT_USAGE}`);
+			return 1;
+		}
+		const overrides = readOverrides(values.overrides);
+		await prepareAgentDb();
+		const all = scopes(options);
+		const planned = targets(all, overrides);
+		const problems: string[] = [];
+		for (const { name, description, scope } of planned) {
+			if (!scope) {
+				problems.push(`${name}: no recorded skill has this name here; start a session in this project first`);
+				continue;
+			}
+			problems.push(...checkSkillOverrides(scope.store, { [name]: description }));
+			const source = scope.store.skills[name]?.source.length ?? 0;
+			const chars = description.trim().length;
+			log(`  ${scope.name} ${name}  ${source} → ${chars}${chars > source ? "  (longer than the source)" : ""}`);
+		}
+		// Sizes are told, never enforced: a warning is no problem and does not change the exit code.
+		for (const warning of sizeWarnings(options)) log(`Warning: ${warning}`);
+		if (problems.length) {
+			for (const problem of problems) error(problem);
+			error(
+				`${problems.length} problem${problems.length === 1 ? "" : "s"}; descriptions are limited to ${SKILL_DESCRIPTION_MAX_CHARS} characters in one paragraph.`,
+			);
+			return 1;
+		}
+		if (action === "check") {
+			log("0 problems.");
+			return 0;
+		}
+		for (const scope of all) {
+			const mine = Object.fromEntries(
+				planned.filter((entry) => entry.scope === scope).map((entry) => [entry.name, entry.description]),
+			);
+			if (Object.keys(mine).length)
+				await updateSkillsStore(scope.dir, (current) => {
+					for (const name of Object.keys(mine))
+						if (current.skills[name]?.hash !== scope.store.skills[name]?.hash)
+							throw new Error(`${name}: its source changed; check the overrides again before applying.`);
+					return applySkillOverrides(current, mine, values["optimized-by"]);
+				});
+		}
+		log(
+			`Applied ${planned.length} skill description${planned.length === 1 ? "" : "s"}; agents read them from the next session start or /reload.`,
+		);
+		return 0;
+	} catch (failure) {
+		error(errorMessage(failure));
+		return 1;
+	}
+}

@@ -1,0 +1,1 @@
+- Batch and parallelize independent calls and work; wait only on real dependencies. Take the cheapest route per step: fewest calls, reuse, smallest reads. Prefer {{#if shell}}scripts for repeated work and checks, then {{/if}}a tool's structured protocol, then model judgment; check the output.

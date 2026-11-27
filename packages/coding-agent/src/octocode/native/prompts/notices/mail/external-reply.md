@@ -1,0 +1,1 @@
+{{#if waiting}}The caller waits: your final answer goes back to it. {{/if}}{{#if replyRequired}}It asks for an answer. {{/if}}{{#if replyTo}}To message it, use `agent` type `message` with `to` {{replyTo}}.{{/if}}

@@ -1,0 +1,1 @@
+[Fork] These subagents were running when this session was forked. They stopped with the session it was forked from, which receives their reports: {{children}}. To continue one here, call `agent` type `task` with `resume` set to its id. {{> shared/resume-isolated.md}}

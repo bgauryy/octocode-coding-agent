@@ -1,0 +1,377 @@
+/**
+ * Model and thinking-level controls: the /model and /effort commands, their selectors, the scoped-models selector,
+ * keyboard cycling, and the notice for a saved Claude subscription token.
+ */
+
+import { isBedrockCandidate, preflightBedrockSelection } from "../../../core/bedrock-model-access.ts";
+import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
+import type { Model } from "@octocodeai/octocode-ai/compat";
+import { getApplicationPort } from "../../../core/application/index.ts";
+import { DEFAULT_THINKING_LEVEL } from "../../../core/defaults.ts";
+import { findExactModelReferenceMatch, resolveModelScopeFromModels } from "../../../core/model-resolver.ts";
+import { switchCacheNotice } from "../../../core/switch-cache-cost.ts";
+import { showModelSelector } from "../model-picker.ts";
+import { ScopedModelsSelectorComponent } from "../components/scoped-models-selector.ts";
+import { ThinkingSelectorComponent } from "../components/thinking-selector.ts";
+import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
+import { isNoticeShown } from "../state/notices-slice.ts";
+import { confirmUnlistedModel } from "./unlisted-model.ts";
+import type { InteractiveModeHost } from "./host.ts";
+import { claudeSubscriptionRefusal } from "./provider-actions.ts";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { providerAccessLabel } from "../../../core/provider-label.ts";
+
+/** Interactive-mode members used by the model and thinking controls. */
+type ModelControlsHost = Pick<
+	InteractiveModeHost,
+	| "findExactModelMatch"
+	| "maybeWarnAboutAnthropicSubscriptionAuth"
+	| "session"
+	| "settingsManager"
+	| "showConfirmDialog"
+	| "showError"
+	| "showSelectorDialog"
+	| "showModelSelector"
+	| "showSelector"
+	| "showStatus"
+	| "showWarning"
+	| "ui"
+	| "uiStore"
+	| "updateAvailableProviderCount"
+	| "updateEditorBorderColor"
+>;
+
+export function cycleThinkingLevel(host: ModelControlsHost): void {
+	const newLevel = getApplicationPort(host.session).invoke("cycleThinkingLevel");
+	if (newLevel === undefined) {
+		host.showStatus("Current model does not support thinking");
+	} else {
+		host.updateEditorBorderColor();
+		host.showStatus(`Thinking level: ${newLevel}`);
+	}
+}
+
+export async function cycleModel(host: ModelControlsHost, direction: "forward" | "backward"): Promise<void> {
+	try {
+		const result = await getApplicationPort(host.session).invoke("cycleModel", direction);
+		if (result === undefined) {
+			const msg = host.session.scopedModels.length > 0 ? "Only one model in scope" : "Only one model available";
+			host.showStatus(msg);
+		} else {
+			host.updateEditorBorderColor();
+			const thinkingStr =
+				result.model.reasoning && result.thinkingLevel !== "off" ? ` (thinking: ${result.thinkingLevel})` : "";
+			host.showStatus(`Switched to ${result.model.name || result.model.id}${thinkingStr}`);
+			void host.maybeWarnAboutAnthropicSubscriptionAuth(result.model);
+		}
+	} catch (error) {
+		host.showError(errorMessage(error));
+	}
+}
+
+export function handleThinkingCommand(host: ModelControlsHost, searchTerm?: string): void {
+	const { session } = host;
+	const availableLevels = session.getAvailableThinkingLevels();
+	if (availableLevels.length === 0) {
+		host.showStatus("This provider manages reasoning for this model. It exposes no selectable effort on this route.");
+		return;
+	}
+	if (!searchTerm) {
+		const saved = host.settingsManager.getDefaultThinkingLevel();
+		if (saved && saved !== session.thinkingLevel)
+			host.showStatus(`Saved default thinking level: ${saved}; this session runs at ${session.thinkingLevel}`);
+		showThinkingSelector(host);
+		return;
+	}
+
+	const normalized = searchTerm.trim().toLowerCase();
+	const level = availableLevels.find((candidate) => candidate.toLowerCase() === normalized);
+	if (!level) {
+		// A typed level the model lacks is a usage slip, not a failure: say what this model offers.
+		const { model } = session;
+		const name = model ? model.name || model.id : "This model";
+		host.showWarning(
+			availableLevels.length === 1 && availableLevels[0] === "off"
+				? `${name} has no reasoning effort to set: its only level is off. /model switches to a model that reasons.`
+				: `Unknown thinking level "${searchTerm}". ${name} takes ${availableLevels.join(", ")}.`,
+		);
+		return;
+	}
+
+	selectThinkingLevel(host, level, false);
+}
+
+function selectThinkingLevel(host: ModelControlsHost, level: ThinkingLevel, persist: boolean): void {
+	try {
+		getApplicationPort(host.session).invoke("setThinkingLevel", level, { persist });
+		host.updateEditorBorderColor();
+		const effective = host.session.thinkingLevel;
+		const clamped = effective !== level ? ` (this model runs at ${effective})` : "";
+		host.showStatus(`${persist ? "Default thinking level" : "Thinking level"}: ${level}${clamped}`);
+	} catch (error) {
+		host.showError(errorMessage(error));
+	}
+}
+
+function showThinkingSelector(host: ModelControlsHost): void {
+	host.showSelector((done) => {
+		const selectLevel = (level: ThinkingLevel, persist: boolean) => {
+			selectThinkingLevel(host, level, persist);
+			done();
+		};
+		const selector = new ThinkingSelectorComponent(
+			host.session.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
+			host.session.getAvailableThinkingLevels(),
+			(level) => selectLevel(level, false),
+			() => {
+				done();
+				host.ui.requestRender();
+			},
+			(level) => selectLevel(level, true),
+			host.settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL,
+		);
+		return { component: selector, focus: selector };
+	});
+}
+
+export async function handleModelCommand(host: ModelControlsHost, searchTerm?: string): Promise<void> {
+	if (!searchTerm) {
+		host.showModelSelector();
+		return;
+	}
+
+	// `/model <id> --set-default` (alias `--default`): switch this chat and save it as the global default.
+	const setDefault = searchTerm.endsWith("--set-default") || searchTerm.endsWith("--default");
+	const modelTerm = setDefault ? searchTerm.replace(/\s+--(?:set-)?default\s*$/, "").trim() : searchTerm.trim();
+
+	let model = await host.findExactModelMatch(modelTerm);
+	if (!model) {
+		const unlisted = await confirmUnlistedModel(host, modelTerm);
+		if (unlisted === "declined") return;
+		model = unlisted;
+	}
+	if (model) {
+		const { session } = host;
+		try {
+			if (isBedrockCandidate(model)) {
+				host.showStatus(`Checking Bedrock access for ${model.id}…`);
+				const warning = await preflightBedrockSelection(session.modelRuntime, model);
+				if (warning) host.showWarning(warning);
+			}
+			const rewrite = switchCacheNotice(
+				session.messages.findLast((message) => message.role === "assistant"),
+				session.model,
+				model,
+			);
+			await getApplicationPort(session).invoke("setModel", model, {
+				persist: setDefault,
+				scope: setDefault ? "global" : undefined,
+			});
+			host.updateEditorBorderColor();
+			host.showStatus(setDefault ? `Default model: ${model.id}` : `Model: ${model.id}`);
+			if (rewrite) host.showWarning(rewrite);
+			void host.maybeWarnAboutAnthropicSubscriptionAuth(model);
+		} catch (error) {
+			host.showError(errorMessage(error));
+		}
+		return;
+	}
+
+	// With `--set-default` and no exact match, search only the model term so the flag never matches a model.
+	host.showModelSelector(setDefault ? modelTerm : searchTerm);
+}
+
+export async function findExactModelMatch(
+	host: ModelControlsHost,
+	searchTerm: string,
+): Promise<Model<any> | undefined> {
+	const cachedModels =
+		host.session.scopedModels.length > 0
+			? host.session.scopedModels.map((scoped) => scoped.model)
+			: [...host.session.modelRuntime.getAvailableSnapshot()];
+	const cachedMatch = findExactModelReferenceMatch(searchTerm, cachedModels);
+	if (cachedMatch || host.session.scopedModels.length > 0) return cachedMatch;
+
+	host.showStatus("Refreshing model catalogs…");
+	const controller = new AbortController();
+	let timedOut = false;
+	const timeout = setTimeout(() => {
+		timedOut = true;
+		controller.abort();
+	}, 15_000);
+	try {
+		const result = await refreshModelCatalogs(host.session.modelRuntime, controller.signal);
+		if (result.aborted && timedOut) {
+			host.showWarning("Model refresh timed out; searching cached models.");
+		} else if (result.errors.size > 0) {
+			host.showWarning(`Could not refresh ${[...result.errors.keys()].join(", ")}; searching cached models.`);
+		}
+	} catch (error) {
+		host.showWarning(
+			timedOut
+				? "Model refresh timed out; searching cached models."
+				: `Could not refresh model catalogs: ${errorMessage(error)}`,
+		);
+	} finally {
+		clearTimeout(timeout);
+	}
+	return findExactModelReferenceMatch(searchTerm, [...host.session.modelRuntime.getAvailableSnapshot()]);
+}
+
+/**
+ * A Claude subscription token saved before the direct Claude route was removed: say once why it is not used, since it
+ * configures nothing and requests with it are refused. With no `model` (startup) the Anthropic credential is read even
+ * though no Anthropic model is selected: such a token is never offered as one. A non-Anthropic `model` skips the check.
+ */
+export async function maybeWarnAboutAnthropicSubscriptionAuth(
+	host: ModelControlsHost,
+	model?: Model<any>,
+): Promise<void> {
+	if (host.settingsManager.getWarnings().anthropicExtraUsage === false) {
+		return;
+	}
+	const notices = host.uiStore.getState();
+	if (isNoticeShown(notices, "anthropicSubscription")) {
+		return;
+	}
+	if (model && model.provider !== "anthropic") {
+		return;
+	}
+
+	const refusal = await claudeSubscriptionRefusal(host, "anthropic");
+	if (!refusal) return;
+	notices.claimNotice("anthropicSubscription");
+	host.showWarning(refusal);
+}
+
+export function showModelsSelector(host: ModelControlsHost): void {
+	let availableModels = [...host.session.modelRuntime.getAvailableSnapshot()];
+	let availableModelIds = new Set(availableModels.map((model) => `${model.provider}/${model.id}`));
+	const configuredPatterns = host.settingsManager.getEnabledModels();
+	const sessionScopedModels = host.session.scopedModels;
+	const configuredEnabledIds = (models: readonly Model<any>[]): string[] | null => {
+		if (!configuredPatterns?.length) return null;
+		const resolved = resolveModelScopeFromModels(configuredPatterns, models);
+		const ids = resolved.scopedModels.map((scoped) => `${scoped.model.provider}/${scoped.model.id}`);
+		for (const diagnostic of resolved.diagnostics) {
+			if (diagnostic.code === "no-match" && !ids.includes(diagnostic.pattern)) ids.push(diagnostic.pattern);
+		}
+		return ids;
+	};
+
+	let currentEnabledIds =
+		sessionScopedModels.length > 0
+			? sessionScopedModels.map((scoped) => `${scoped.model.provider}/${scoped.model.id}`)
+			: configuredEnabledIds(availableModels);
+	let selectionChanged = false;
+
+	const updateSessionModels = (enabledIds: string[] | null): void => {
+		currentEnabledIds = enabledIds === null ? null : [...enabledIds];
+		const hasEnabledAvailableModel = enabledIds?.some((id) => availableModelIds.has(id)) ?? false;
+		const allAvailableModelsEnabled =
+			enabledIds !== null && [...availableModelIds].every((id) => enabledIds.includes(id));
+		if (enabledIds && hasEnabledAvailableModel && !allAvailableModelsEnabled) {
+			const newScopedModels = resolveModelScopeFromModels(enabledIds, availableModels).scopedModels;
+			getApplicationPort(host.session).invoke(
+				"setScopedModels",
+				newScopedModels.map((scoped) => ({
+					model: scoped.model,
+					thinkingLevel: scoped.thinkingLevel,
+				})),
+			);
+		} else {
+			getApplicationPort(host.session).invoke("setScopedModels", []);
+		}
+		host.updateAvailableProviderCount();
+		host.ui.requestRender();
+	};
+
+	host.showSelector((done) => {
+		let disposed = false;
+		let timedOut = false;
+		const controller = new AbortController();
+		const timeout = setTimeout(() => {
+			timedOut = true;
+			controller.abort();
+		}, 15_000);
+		const selector = new ScopedModelsSelectorComponent(
+			{
+				allModels: availableModels,
+				enabledModelIds: currentEnabledIds,
+				refreshStatus: "Refreshing model catalogs…",
+				providerKind: (provider) => providerAccessLabel(host.session.modelRuntime, provider),
+			},
+			{
+				onChange: (enabledIds) => {
+					selectionChanged = true;
+					updateSessionModels(enabledIds);
+				},
+				onPersist: async (enabledIds) => {
+					const allEnabled =
+						enabledIds !== null &&
+						enabledIds.length === availableModels.length &&
+						enabledIds.every((id) => availableModelIds.has(id));
+					const newPatterns = enabledIds === null || allEnabled ? undefined : enabledIds;
+					await host.settingsManager.saveEnabledModels(newPatterns);
+					const overridden =
+						JSON.stringify(host.settingsManager.getEnabledModels()) !==
+						JSON.stringify(host.settingsManager.getGlobalSettings().enabledModels);
+					host.showStatus(
+						`Model shortcuts saved to global settings${overridden ? ". Workspace or run settings take precedence here." : ""}`,
+					);
+				},
+				requestRender: () => host.ui.requestRender(),
+				onCancel: () => {
+					done();
+					host.ui.requestRender();
+				},
+			},
+		);
+		void refreshModelCatalogs(host.session.modelRuntime, controller.signal)
+			.then((result) => {
+				if (disposed) return;
+				availableModels = [...host.session.modelRuntime.getAvailableSnapshot()];
+				availableModelIds = new Set(availableModels.map((model) => `${model.provider}/${model.id}`));
+				if (!selectionChanged && sessionScopedModels.length === 0) {
+					currentEnabledIds = configuredEnabledIds(availableModels);
+					selector.updateModels(availableModels, currentEnabledIds);
+				} else {
+					selector.updateModels(availableModels);
+				}
+				if (currentEnabledIds !== null) updateSessionModels(currentEnabledIds);
+				if (result.aborted && timedOut) {
+					selector.setRefreshStatus("Model refresh timed out; showing cached models.", "warning");
+				} else if (result.errors.size > 0) {
+					selector.setRefreshStatus(
+						`Could not refresh ${[...result.errors.keys()].join(", ")}; showing cached models.`,
+						"warning",
+					);
+				} else {
+					selector.setRefreshStatus("Model catalogs refreshed.", "success");
+				}
+				host.ui.requestRender();
+			})
+			.catch((error: unknown) => {
+				if (disposed) return;
+				selector.setRefreshStatus(
+					timedOut
+						? "Model refresh timed out; showing cached models."
+						: `Could not refresh model catalogs: ${errorMessage(error)}`,
+					"warning",
+				);
+				host.ui.requestRender();
+			})
+			.finally(() => clearTimeout(timeout));
+		return {
+			component: selector,
+			focus: selector,
+			dispose: () => {
+				disposed = true;
+				clearTimeout(timeout);
+				controller.abort();
+			},
+		};
+	});
+}
+
+export { showModelSelector };

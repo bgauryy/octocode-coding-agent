@@ -1,0 +1,46 @@
+import { envFlag, SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
+import { ApplicationService } from "./service.ts";
+import type { ApplicationSession } from "./session-port.ts";
+
+const services = new WeakMap<ApplicationSession, ApplicationService>();
+const registered = new Set<ApplicationService>();
+const openedListeners = new Set<(service: ApplicationService) => void>();
+
+/**
+ * Calls `listener` each time a port is opened, after it is registered and started (a subagent's: registered), so a
+ * feature that publishes domain events can give a port that appears later (a host attaching to a running session)
+ * what it published before. Returns the function that removes the listener.
+ */
+export function onApplicationPortOpened(listener: (service: ApplicationService) => void): () => void {
+	openedListeners.add(listener);
+	return () => openedListeners.delete(listener);
+}
+
+export function getApplicationPort(session: ApplicationSession): ApplicationService {
+	let service = services.get(session);
+	if (!service) {
+		service = new ApplicationService(session, (disposed) => {
+			registered.delete(disposed);
+			services.delete(session);
+		});
+		services.set(session, service);
+		registered.add(service);
+		// A view may attach to a running session (every other session has an attach endpoint), and then sees the
+		// streamed text and tool progress so far: the port follows from the start. A subagent's session has no endpoint,
+		// so its port follows from its first observer, if one ever comes (`ApplicationService.attach`).
+		if (typeof session.subscribe === "function" && !envFlag(process.env, SUBAGENT_ENV)) service.start();
+		for (const listener of openedListeners) listener(service);
+	}
+	return service;
+}
+
+/** Close the session's port if one is open; never opens one (opening subscribes and projects the transcript). */
+export function disposeApplicationPort(session: ApplicationSession): void {
+	services.get(session)?.dispose();
+}
+
+export function getApplicationPortForSession(sessionId: string): ApplicationService | undefined {
+	const matches = [...registered].filter((service) => service.sessionId === sessionId);
+	if (matches.length > 1) throw new Error("Multiple active application sessions share this session ID");
+	return matches[0];
+}

@@ -1,0 +1,86 @@
+import { describe, expect, test } from "vitest";
+import { findFeatureStackMatches } from "../src/core/crash-log.ts";
+
+type StackFeature = Parameters<typeof findFeatureStackMatches>[1][number];
+
+function packageFeature(source: string, baseDir: string, entry = "extensions/index.ts"): StackFeature {
+	const normalizedBaseDir = baseDir.replace(/\\/g, "/");
+	const path = `${normalizedBaseDir}/${entry}`;
+	return {
+		path,
+		sourceInfo: {
+			path,
+			source,
+			scope: "user",
+			origin: "package",
+			baseDir,
+		},
+	};
+}
+
+describe("extension crash attribution", () => {
+	test("matches stack frames beneath loaded package roots", () => {
+		const memory = packageFeature(
+			"npm:pi-observational-memory",
+			"/home/fedora/.octocode/agent/npm/node_modules/pi-observational-memory",
+		);
+		const unrelated = packageFeature("npm:unrelated", "/home/fedora/.octocode/agent/npm/node_modules/unrelated");
+		const stack =
+			"TypeError: Cannot read properties of undefined (reading 'runtime')\n" +
+			"    at streamSimple (file:///home/fedora/.local/lib/node_modules/@octocodeai/octocode-agent/dist/bundle/chunks/chunk-CMRUVXTE.js:1093:16944)\n" +
+			"    at /home/fedora/.octocode/agent/npm/node_modules/pi-observational-memory/src/agents/worker-stream.ts:43:45";
+
+		expect(findFeatureStackMatches(stack, [memory, unrelated])).toEqual(["npm:pi-observational-memory"]);
+	});
+
+	test("normalizes Windows paths and deduplicates package extensions", () => {
+		const root = "C:\\Users\\reporter\\.pi\\agent\\npm\\node_modules\\@scope\\memory";
+		const first = packageFeature("npm:@scope/memory", root, "extensions/first.ts");
+		const second = packageFeature("npm:@scope/memory", root, "extensions/second.ts");
+		const stack =
+			"Error: broken\n" +
+			"    at run (c:\\users\\reporter\\.pi\\agent\\npm\\node_modules\\@scope\\memory\\src\\worker.ts:4:2)";
+
+		expect(findFeatureStackMatches(stack, [first, second])).toEqual(["npm:@scope/memory"]);
+	});
+
+	test("does not attribute sibling single-file packages", () => {
+		const feature = (name: string): StackFeature => ({
+			path: `/plugins/${name}.ts`,
+			sourceInfo: {
+				path: `/plugins/${name}.ts`,
+				source: `/plugins/${name}.ts`,
+				scope: "user",
+				origin: "package",
+				baseDir: "/plugins",
+			},
+		});
+		const stack = "Error: broken\n    at run (file:///plugins/b.ts:4:2)";
+
+		expect(findFeatureStackMatches(stack, [feature("a"), feature("b")])).toEqual(["/plugins/b.ts"]);
+	});
+
+	test("ignores extension paths in the error message", () => {
+		const feature = packageFeature("npm:memory", "/tmp/node_modules/memory");
+		const stack = `Error: Failed to read ${feature.path}\n    at run (file:///opt/octocode/dist/core.js:4:2)`;
+
+		expect(findFeatureStackMatches(stack, [feature])).toEqual([]);
+	});
+
+	test("decodes frame paths independently from malformed error text", () => {
+		const feature: StackFeature = {
+			path: "/Users/reporter/.octocode/agent/extensions/local memory/index.ts",
+			sourceInfo: {
+				path: "/Users/reporter/.octocode/agent/extensions/local memory/index.ts",
+				source: "local",
+				scope: "user",
+				origin: "top-level",
+				baseDir: "/Users/reporter/.octocode/agent/extensions",
+			},
+		};
+		const stack =
+			"Error: progress 100%\n    at run (file:///Users/reporter/.octocode/agent/extensions/local%20memory/worker.ts:4:2)";
+
+		expect(findFeatureStackMatches(stack, [feature])).toEqual([feature.path]);
+	});
+});

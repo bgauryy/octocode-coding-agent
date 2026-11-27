@@ -1,0 +1,549 @@
+{
+  "identity": {
+    "executable": "/Users/bgaryy/.local/bin/claude",
+    "realpath": "/Users/bgaryy/.local/share/claude/versions/2.1.309",
+    "sha256": "5eadc0009cdcdbc0d06e58110d7b2baf88ced6088b1c33a60a21217fe410619c",
+    "version": "2.1.309 (Claude Code)"
+  },
+  "scope": "Actual Read then source Edit plus PermissionRequest replacement; original bytes decoded without universal newline conversion.",
+  "cases": [
+    {
+      "case": "partial-read-seen-unseen",
+      "exit": 0,
+      "original": "AFTER\nother\nAFTER\n",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Edit",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/project/original.txt",
+            "old_string": "BEFORE",
+            "new_string": "ORIGINAL",
+            "replace_all": true
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"1\\tBEFORE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"1\\tBEFORE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"The file $CASE_ROOT/project/original.txt has been updated. All occurrences were successfully replaced.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "original": "AFTER\nother\nAFTER\n",
+        "hook_count": 1,
+        "last_tool_error": false
+      },
+      "passed": true
+    },
+    {
+      "case": "exact-plus-curly-quote",
+      "exit": 0,
+      "original": "AFTER\n\u201chello\u201d\n",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Edit",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/project/original.txt",
+            "old_string": "\"hello\"",
+            "new_string": "ORIGINAL",
+            "replace_all": true
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"1\\t\\\"hello\\\"\\n2\\t\\u201chello\\u201d\\n3\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"1\\t\\\"hello\\\"\\n2\\t\\u201chello\\u201d\\n3\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"The file $CASE_ROOT/project/original.txt has been updated. All occurrences were successfully replaced. (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "original": "AFTER\n\u201chello\u201d\n",
+        "hook_count": 1,
+        "last_tool_error": false
+      },
+      "passed": true
+    },
+    {
+      "case": "trailing-space-fallback",
+      "exit": 0,
+      "original": "hello   \nhello   \n",
+      "replacement": null,
+      "hook_count": 0,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"1\\thello   \\n2\\thello   \\n3\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"1\\thello   \\n2\\thello   \\n3\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"<tool_use_error>String to replace not found in file.\\nString: hello\\n</tool_use_error>\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "original": "hello   \nhello   \n",
+        "hook_count": 0,
+        "last_tool_error": true
+      },
+      "passed": true
+    },
+    {
+      "case": "overlapping-anchor",
+      "exit": 0,
+      "original": "Xa",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Edit",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/project/original.txt",
+            "old_string": "aa",
+            "new_string": "ORIGINAL",
+            "replace_all": true
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"1\\taaa\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"1\\taaa\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"The file $CASE_ROOT/project/original.txt has been updated. All occurrences were successfully replaced. (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "original": "Xa",
+        "hook_count": 1,
+        "last_tool_error": false
+      },
+      "passed": true
+    },
+    {
+      "case": "replacement-contains-anchor",
+      "exit": 0,
+      "original": "aaaa aaaa",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Edit",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/project/original.txt",
+            "old_string": "aa",
+            "new_string": "ORIGINAL",
+            "replace_all": true
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"1\\taa aa\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"1\\taa aa\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"The file $CASE_ROOT/project/original.txt has been updated. All occurrences were successfully replaced. (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "original": "aaaa aaaa",
+        "hook_count": 1,
+        "last_tool_error": false
+      },
+      "passed": true
+    },
+    {
+      "case": "stale-after-read",
+      "exit": 0,
+      "original": "EXTERNAL AFTER AFTER",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Edit",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/project/original.txt",
+            "old_string": "BEFORE",
+            "new_string": "ORIGINAL",
+            "replace_all": true
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"1\\tBEFORE BEFORE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"1\\tBEFORE BEFORE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"The file $CASE_ROOT/project/original.txt has been updated. All occurrences were successfully replaced. (note: the file had been modified on disk since you last read it \\u2014 the edit applied cleanly, but the file contains other changes not in your context. Read it before edits that depend on surrounding content.)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "original": "EXTERNAL AFTER AFTER",
+        "hook_count": 1,
+        "last_tool_error": false
+      },
+      "passed": true
+    },
+    {
+      "case": "stale-extra-occurrence",
+      "exit": 0,
+      "original": "PREFIX AFTER|AFTER;AFTER",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Edit",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/project/original.txt",
+            "old_string": "BEFORE",
+            "new_string": "ORIGINAL",
+            "replace_all": true
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"1\\tBEFORE|BEFORE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"1\\tBEFORE|BEFORE\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"The file $CASE_ROOT/project/original.txt has been updated. All occurrences were successfully replaced. (note: the file had been modified on disk since you last read it \\u2014 the edit applied cleanly, but the file contains other changes not in your context. Read it before edits that depend on surrounding content.)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "original": "PREFIX AFTER|AFTER;AFTER",
+        "hook_count": 1,
+        "last_tool_error": false
+      },
+      "passed": true
+    },
+    {
+      "case": "curly-quote-only",
+      "exit": 0,
+      "original": "AFTER\nAFTER\n",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Edit",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/project/original.txt",
+            "old_string": "\"hello\"",
+            "new_string": "ORIGINAL",
+            "replace_all": true
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"1\\t\\u201chello\\u201d\\n2\\t\\u201chello\\u201d\\n3\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"1\\t\\u201chello\\u201d\\n2\\t\\u201chello\\u201d\\n3\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"The file $CASE_ROOT/project/original.txt has been updated. All occurrences were successfully replaced. (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "original": "AFTER\nAFTER\n",
+        "hook_count": 1,
+        "last_tool_error": false
+      },
+      "passed": true
+    },
+    {
+      "case": "crlf-normalized",
+      "exit": 0,
+      "original": "AFTER\r\nAFTER\r\n",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Edit",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/project/original.txt",
+            "old_string": "BEFORE\n",
+            "new_string": "ORIGINAL",
+            "replace_all": true
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"1\\tBEFORE\\n2\\tBEFORE\\n3\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"1\\tBEFORE\\n2\\tBEFORE\\n3\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"The file $CASE_ROOT/project/original.txt has been updated. All occurrences were successfully replaced. (file state is current in your context \\u2014 no need to Read it back)\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "original": "AFTER\r\nAFTER\r\n",
+        "hook_count": 1,
+        "last_tool_error": false
+      },
+      "passed": true
+    },
+    {
+      "case": "candidate-trailing-space",
+      "exit": 0,
+      "original": "hello   \nhello   \n",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Edit",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/project/original.txt",
+            "old_string": "hello   \nhello   \n",
+            "new_string": "ORIGINAL",
+            "replace_all": false
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"1\\thello   \\n2\\thello   \\n3\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"1\\thello   \\n2\\thello   \\n3\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"PermissionRequest hook for Edit returned updatedInput that the tool refused: String to replace not found in file.\\nString: hello\\n\\nThe tool input from the model was valid; the hook's rewrite of it was not.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "original": "hello   \nhello   \n",
+        "hook_count": 1,
+        "last_tool_error": true
+      },
+      "passed": true
+    },
+    {
+      "case": "candidate-width-fold",
+      "exit": 0,
+      "original": "\uff22\uff25\uff26\uff2f\uff32\uff25 \uff22\uff25\uff26\uff2f\uff32\uff25",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 3,
+      "rule_config": {},
+      "mode": "manual",
+      "replacement_supplied": true,
+      "hook_inputs": [
+        {
+          "event": "PermissionRequest",
+          "tool": "Edit",
+          "command": "",
+          "input": {
+            "file_path": "$CASE_ROOT/project/original.txt",
+            "old_string": "\uff22\uff25\uff26\uff2f\uff32\uff25 \uff22\uff25\uff26\uff2f\uff32\uff25",
+            "new_string": "ORIGINAL",
+            "replace_all": false
+          }
+        }
+      ],
+      "request_paths": [
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true",
+        "/v1/messages?beta=true"
+      ],
+      "files": {},
+      "tool_results": [
+        {
+          "is_error": false,
+          "content": "\"1\\t\\uff22\\uff25\\uff26\\uff2f\\uff32\\uff25 \\uff22\\uff25\\uff26\\uff2f\\uff32\\uff25\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": false,
+          "content": "\"1\\t\\uff22\\uff25\\uff26\\uff2f\\uff32\\uff25 \\uff22\\uff25\\uff26\\uff2f\\uff32\\uff25\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        },
+        {
+          "is_error": true,
+          "content": "\"PermissionRequest hook for Edit returned updatedInput that the tool refused: String to replace not found in file.\\nString: BEFORE\\nThe tool input from the model was valid; the hook's rewrite of it was not.\\n\\n<system-reminder>\\n<total_tokens>14999998 tokens left</total_tokens>\\n</system-reminder>\""
+        }
+      ],
+      "expected": {
+        "original": "\uff22\uff25\uff26\uff2f\uff32\uff25 \uff22\uff25\uff26\uff2f\uff32\uff25",
+        "hook_count": 1,
+        "last_tool_error": true
+      },
+      "passed": true
+    }
+  ]
+}

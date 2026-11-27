@@ -1,0 +1,381 @@
+import {
+	effectiveOutputTokens,
+	resolveCacheRetention,
+	resolveInstructionCacheRetention,
+} from "@octocodeai/octocode-ai/utils/cache-policy";
+import { warmingDecision } from "./cache-warmer/decision.ts";
+import {
+	estimateInstructionPrefixTokens,
+	getCacheWarmingDelayMs,
+	getPromptCacheLifetime,
+	isReplayable,
+	lastPromptTokens,
+	idleWarmingLimitMs,
+	MAX_WARMING_AGE_MS,
+} from "./cache-warmer/economics.ts";
+import { IdleContinuationPool } from "./cache-warmer/idle-pool.ts";
+import type {
+	ActiveRun,
+	CacheWarmingAction,
+	CacheWarmingDecision,
+	CacheWarmingDecisionEvent,
+	CacheWarmingStatus,
+	CacheWarmRequest,
+} from "./cache-warmer/types.ts";
+import type { ModelRuntime } from "./model-runtime.ts";
+import type { SessionManager, UsageEntry } from "./session-manager.ts";
+import type { CacheWarmingMode } from "./settings-manager.ts";
+
+export {
+	getCacheWarmingDelayMs,
+	getPromptCacheLifetime,
+	getPromptCacheTtlMs,
+	isReplayable,
+} from "./cache-warmer/economics.ts";
+export { formatCacheWarmingStatus, formatCacheWarmingUsage } from "./cache-warmer/format.ts";
+export type {
+	CacheWarmingAction,
+	CacheWarmingDecision,
+	CacheWarmingDecisionEvent,
+	CacheWarmingDecisionEventResult,
+	CacheWarmingStatus,
+	CacheWarmRequest,
+} from "./cache-warmer/types.ts";
+
+/** Where an idle refresh's chance of use comes from, and whether this session's idle gaps join it. */
+export interface CacheWarmerIdleOptions {
+	/** Pooled q(t) per lifetime (`idle-pool.ts`); default: the measured seed and this process's gaps. */
+	pool?: IdleContinuationPool;
+	/** Add this session's idle gaps to the pool: a main session's, not a subagent's, whose waits follow its coordinator. */
+	recordGaps?: boolean;
+}
+
+/** Output cap a refresh asks for; `effectiveOutputTokens` says what the adapter bills. */
+const WARM_OUTPUT_TOKENS = 1;
+
+/** What the warmer sends with, and who pays for it (`getProviderBilling`, the billing every surface uses). */
+type WarmerModels = Pick<ModelRuntime, "streamSimple" | "getProviderBilling"> & Partial<Pick<ModelRuntime, "getAuth">>;
+
+/**
+ * A plan pays for each request, so neither a refresh nor a miss costs the user money, while every refresh spends plan
+ * quota (Copilot counts requests; other plans meter a usage window). The dollar gate can never pass, so a plan-billed
+ * provider is never warmed.
+ */
+const PLAN_BILLED = "provider billed by plan";
+
+/**
+ * Keeps one prompt cache entry alive by re-sending its request with a
+ * one-token output cap before the entry expires. `start` replaces any
+ * previous run; warm requests never extend the fixed safety windows.
+ */
+export class CacheWarmer {
+	private run?: ActiveRun;
+	private inactive: CacheWarmingStatus;
+	private readonly models: WarmerModels;
+	private readonly sessionManager: Pick<SessionManager, "captureUsageWriter" | "getSessionId" | "getBranch">;
+	private readonly getMode: () => CacheWarmingMode;
+	/** Lets features override `event.action`; failures fall back to Octocode's decision. */
+	private readonly decide: (event: CacheWarmingDecisionEvent) => Promise<CacheWarmingAction>;
+	/** Called with the persisted usage entry after each successful refresh. */
+	onWarmed?: (entry: UsageEntry) => void;
+	private readonly idle: IdleContinuationPool;
+	private readonly recordGaps: boolean;
+	/** When the run that settled last finished with its final reply (an idle gap's start), until the next request. */
+	private finishedAt: number | undefined;
+
+	constructor(
+		models: WarmerModels,
+		sessionManager: Pick<SessionManager, "captureUsageWriter" | "getSessionId" | "getBranch">,
+		getMode: () => CacheWarmingMode,
+		decide: (event: CacheWarmingDecisionEvent) => Promise<CacheWarmingAction> = async (event) => event.action,
+		idle: CacheWarmerIdleOptions = {},
+	) {
+		this.models = models;
+		this.sessionManager = sessionManager;
+		this.getMode = getMode;
+		this.decide = decide;
+		this.idle = idle.pool ?? new IdleContinuationPool();
+		this.recordGaps = idle.recordGaps === true;
+		this.inactive = { state: "inactive", reason: "waiting for first request" };
+	}
+
+	get status(): CacheWarmingStatus {
+		if (this.getMode() === "off") return { state: "inactive", reason: "cache warming disabled" };
+		const run = this.run;
+		if (!run) return this.inactive;
+		if (!run.isCurrent()) return { state: "inactive", reason: "conversation context changed" };
+		const decision = this.evaluate(run);
+		const refreshing = run.timer === undefined;
+		if (!decision.economicsAvailable && !refreshing) {
+			return { state: "inactive", reason: "cache economics unavailable" };
+		}
+		return {
+			state: refreshing ? "refreshing" : "scheduled",
+			nextWarmAt: run.nextWarmAt,
+			decision,
+			featureOverride: run.featureOverride,
+		};
+	}
+
+	/** Keep the prompt cache entry written by `request` warm while `isCurrent` holds. */
+	start(request: CacheWarmRequest, isCurrent: () => boolean): void {
+		// The request that ends an idle gap: the gap joins the pool of q(t) estimates.
+		if (this.finishedAt !== undefined && this.recordGaps) this.idle.record(Date.now() - this.finishedAt);
+		this.finishedAt = undefined;
+		this.clearRun();
+		const mode = this.getMode();
+		if (mode === "off") {
+			this.stop("cache warming disabled");
+			return;
+		}
+		if (this.models.getProviderBilling(request.model.provider) === "plan") {
+			this.stop(PLAN_BILLED);
+			return;
+		}
+		if (!isReplayable(request.model, request.options)) {
+			this.stop("request cannot be replayed safely");
+			return;
+		}
+		const options = {
+			...request.options,
+			cacheRetention: resolveCacheRetention(request.options.cacheRetention, request.options.env),
+			instructionCacheRetention: resolveInstructionCacheRetention(request.options),
+		};
+		const lifetime = getPromptCacheLifetime(request.model, options);
+		if (lifetime === undefined) {
+			this.stop(
+				request.options.cacheRetention === "none" ? "request disabled prompt caching" : "cache lifetime unavailable",
+			);
+			return;
+		}
+		const { ttlMs, layered, history: historyTier } = lifetime;
+		const delayMs = getCacheWarmingDelayMs(ttlMs);
+		if (delayMs === undefined) {
+			this.stop("cache lifetime unavailable");
+			return;
+		}
+		this.run = {
+			...request,
+			options,
+			isCurrent,
+			ttlMs,
+			historyTier,
+			instructionTokens: layered ? estimateInstructionPrefixTokens(request.context, request.model) : 0,
+			delayMs,
+			refreshDeadlineAt: 0,
+			startedAt: Date.now(),
+			controller: new AbortController(),
+			phase: "streaming",
+			nextWarmAt: 0,
+			featureOverride: false,
+		};
+		this.schedule(this.run);
+	}
+
+	onAgentSettled(): void {
+		this.finishedAt = finishedReplyAt(this.sessionManager.getBranch());
+		const run = this.run;
+		if (!run) return;
+		if (this.getMode() === "streaming") {
+			this.stop("agent run settled");
+			return;
+		}
+		run.phase = "idle";
+		const deadline = run.startedAt + idleWarmingLimitMs(run.ttlMs);
+		if (run.nextWarmAt > deadline || Date.now() >= deadline) {
+			this.stop("idle safety limit reached");
+		}
+	}
+
+	/** Reconcile an active run after the persisted warming mode changes. */
+	onModeChanged(): void {
+		const run = this.run;
+		if (!run) return;
+		const reason = this.getModeStopReason(run);
+		if (reason) this.stop(reason);
+	}
+
+	cancel(): void {
+		this.stop("inactive");
+	}
+
+	private clearRun(): void {
+		const run = this.run;
+		if (!run) return;
+		this.run = undefined;
+		if (run.timer) clearTimeout(run.timer);
+		run.controller.abort();
+	}
+
+	private stop(reason: string, stopped?: Pick<CacheWarmingStatus, "decision" | "featureOverride">): void {
+		this.clearRun();
+		this.inactive = { state: "inactive", reason, ...stopped };
+	}
+
+	private schedule(run: ActiveRun, refreshedAt = Date.now()): void {
+		run.featureOverride = false;
+		run.nextWarmAt = refreshedAt + run.delayMs;
+		// A timer can run late after sleep or event-loop blockage. Keep half of
+		// the planned pre-expiry margin for that delay and request dispatch; a
+		// late refresh is likely a full-price cache write, not a cache warm.
+		run.refreshDeadlineAt = run.nextWarmAt + Math.floor((run.ttlMs - run.delayMs) / 2);
+		if (this.refreshDeadlineMissed(run)) return;
+		const deadline = run.startedAt + (run.phase === "idle" ? idleWarmingLimitMs(run.ttlMs) : MAX_WARMING_AGE_MS);
+		if (run.nextWarmAt > deadline || Date.now() >= deadline) {
+			this.stop(run.phase === "idle" ? "idle safety limit reached" : "one-hour safety limit reached");
+			return;
+		}
+		run.timer = setTimeout(() => void this.refresh(run), Math.max(0, run.nextWarmAt - Date.now()));
+		run.timer.unref?.();
+	}
+
+	private async refresh(run: ActiveRun): Promise<void> {
+		run.timer = undefined;
+		if (!this.validateRun(run)) return;
+		if (this.refreshDeadlineMissed(run)) return;
+		try {
+			// The credential decides whether the one-token cap is sent at all, so price the request as it will go out.
+			run.warmOutputTokens ??= effectiveOutputTokens(
+				run.model,
+				WARM_OUTPUT_TOKENS,
+				run.options.apiKey ?? (await this.models.getAuth?.(run.model, { env: run.options.env }))?.auth.apiKey,
+			);
+		} catch {
+			if (this.run === run) this.stop("cache refresh failed");
+			return;
+		}
+		if (!this.validateRun(run)) return;
+		let decision: CacheWarmingDecision;
+		let action: CacheWarmingAction;
+		// The agent can settle while a feature is deciding. Its idle probability
+		// changes the economics, so send a fresh decision for the new phase.
+		while (true) {
+			decision = this.evaluate(run);
+			action = decision.action;
+			try {
+				action = await this.decide({
+					type: "cache_warming_decision",
+					warmCost: decision.warmCost,
+					missCost: decision.missCost,
+					continuationProbability: decision.continuationProbability,
+					action,
+				});
+			} catch {
+				// Feature failures fall back to the current economic decision.
+			}
+			if (!this.validateRun(run) || this.refreshDeadlineMissed(run)) return;
+			if (decision.phase === run.phase) break;
+		}
+		const featureOverride = action !== decision.action;
+		if (action === "stop") {
+			const reason = featureOverride
+				? "stopped by feature"
+				: decision.economicsAvailable
+					? "expected savings below threshold"
+					: "cache economics unavailable";
+			this.stop(reason, { decision, featureOverride });
+			return;
+		}
+
+		run.featureOverride = featureOverride;
+		const appendUsage = this.sessionManager.captureUsageWriter();
+		const sessionId = this.sessionManager.getSessionId();
+		const refreshedAt = Date.now();
+		try {
+			const message = await this.models
+				.streamSimple(run.model, run.context, {
+					...run.options,
+					maxTokens: WARM_OUTPUT_TOKENS,
+					requestPriority: "background",
+					maxRetries: 0,
+					signal: run.controller.signal,
+				})
+				.result();
+			const succeeded = message.stopReason !== "error" && message.stopReason !== "aborted";
+			const hasUsage = [
+				message.usage.input,
+				message.usage.output,
+				message.usage.cacheRead,
+				message.usage.cacheWrite,
+				message.usage.totalTokens,
+				message.usage.cost.total,
+			].some((value) => value > 0);
+			if (succeeded || hasUsage) {
+				// The phase says whether the refresh bridged a tool call (streaming) or a wait for the next prompt (idle).
+				const note = [run.phase, featureOverride ? "feature override" : "", succeeded ? "" : message.stopReason]
+					.filter(Boolean)
+					.join(", ");
+				const entry = appendUsage(
+					"cache_warm",
+					message.provider,
+					message.responseModel ?? message.model,
+					message.usage,
+					note,
+					refreshedAt,
+				);
+				if (this.sessionManager.getSessionId() === sessionId) this.onWarmed?.(entry);
+			}
+			if (!this.validateRun(run)) return;
+			if (succeeded) {
+				if (!(message.usage.cacheRead > 0)) {
+					this.stop("refresh reported no cache hit");
+					return;
+				}
+			} else {
+				this.stop("cache refresh failed");
+				return;
+			}
+		} catch {
+			if (this.run === run) this.stop("cache refresh failed");
+			return;
+		}
+		if (this.run === run) this.schedule(run, refreshedAt);
+	}
+
+	private refreshDeadlineMissed(run: ActiveRun): boolean {
+		if (Date.now() <= run.refreshDeadlineAt) return false;
+		this.stop("cache refresh deadline missed");
+		return true;
+	}
+
+	private validateRun(run: ActiveRun): boolean {
+		if (this.run !== run) return false;
+		// Billing can change between refreshes (a subscription sign-in or sign-out).
+		const reason =
+			this.getModeStopReason(run) ??
+			(this.models.getProviderBilling(run.model.provider) === "plan" ? PLAN_BILLED : undefined) ??
+			(!run.isCurrent() ? "conversation context changed" : undefined);
+		if (!reason) return true;
+		this.stop(reason);
+		return false;
+	}
+
+	private getModeStopReason(run: ActiveRun): string | undefined {
+		const mode = this.getMode();
+		if (mode === "off") return "cache warming disabled";
+		if (mode === "streaming" && run.phase === "idle") return "agent run settled";
+		return undefined;
+	}
+
+	private evaluate(run: ActiveRun): CacheWarmingDecision {
+		return warmingDecision(
+			run,
+			lastPromptTokens(this.sessionManager.getBranch()),
+			run.warmOutputTokens ?? effectiveOutputTokens(run.model, WARM_OUTPUT_TOKENS, run.options.apiKey),
+			run.phase === "idle" ? this.idle.probability(Date.now() - run.startedAt, run.ttlMs) : 1,
+		);
+	}
+}
+
+/**
+ * When the branch's last reply finished its run (`stopReason: "stop"`), the start of an idle gap as
+ * `octocode/compaction/cache.ts` counts it; undefined when the run ended otherwise (aborted, failed).
+ */
+function finishedReplyAt(entries: ReturnType<SessionManager["getBranch"]>): number | undefined {
+	for (let index = entries.length - 1; index >= 0; index--) {
+		const entry = entries[index];
+		if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+		return entry.message.stopReason === "stop" ? entry.message.timestamp : undefined;
+	}
+	return undefined;
+}

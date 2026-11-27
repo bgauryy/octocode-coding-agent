@@ -1,0 +1,139 @@
+import { Container } from "@octocodeai/octocode-tui";
+import { beforeAll, describe, expect, test, vi } from "vitest";
+import { NothingToCompactError } from "../src/core/agent-session/compaction-control.ts";
+import { createSessionUI } from "../src/modes/interactive/interactive-mode/session-ui.ts";
+import { createUiStore } from "../src/modes/interactive/state/store.ts";
+import * as display from "../src/modes/interactive/interactive-mode/display.ts";
+import * as sessionCommands from "../src/modes/interactive/interactive-mode/session-commands.ts";
+import { initTheme, theme } from "../src/theme/theme.ts";
+import { stripAnsi } from "../src/utils/ansi.ts";
+import { createFakeHost } from "./interactive-mode-host.ts";
+
+beforeAll(() => initTheme("dark"));
+
+describe("/compact", () => {
+	/** A session with one message on its branch (an empty one is answered before `compact` runs), or with `branch`. */
+	function compactHost(compact: () => Promise<unknown>, branch: unknown[] = [{ type: "message" }]) {
+		const fakeThis: any = {
+			session: { compact },
+			sessionManager: { getBranch: () => branch },
+			settingsManager: { getCompactionKeepRecentTokens: () => 20_000 },
+			clearStatusIndicator: vi.fn(),
+			showStatus: vi.fn(),
+			showError: vi.fn(),
+		};
+		return { fakeThis, host: createFakeHost(fakeThis) };
+	}
+
+	test("an empty session is told there is nothing to compact, before any model is needed", async () => {
+		const compact = vi.fn(() => Promise.reject(new Error("No model selected.")));
+		const { fakeThis, host } = compactHost(compact, []);
+
+		await sessionCommands.handleCompactCommand(host);
+
+		expect(fakeThis.showStatus).toHaveBeenCalledWith("Nothing to compact yet: the session has no messages yet");
+		expect(compact).not.toHaveBeenCalled();
+		expect(fakeThis.showError).not.toHaveBeenCalled();
+	});
+
+	test("a session with nothing to compact gets a status line, not an error", async () => {
+		const { fakeThis, host } = compactHost(() =>
+			Promise.reject(new NothingToCompactError("Nothing to compact (session too small)", "Nothing to compact yet")),
+		);
+
+		await sessionCommands.handleCompactCommand(host);
+
+		expect(fakeThis.showStatus).toHaveBeenCalledWith("Nothing to compact yet");
+		expect(fakeThis.showError).not.toHaveBeenCalled();
+	});
+
+	test("a real failure stays silent here: it is reported by the compaction_end event", async () => {
+		const { fakeThis, host } = compactHost(() => Promise.reject(new Error("provider down")));
+
+		await sessionCommands.handleCompactCommand(host);
+
+		expect(fakeThis.showStatus).not.toHaveBeenCalled();
+		expect(fakeThis.showError).not.toHaveBeenCalled();
+	});
+});
+
+describe("notices", () => {
+	const lines = (chatContainer: Container) =>
+		chatContainer.children
+			.flatMap((child) => child.render(60))
+			.map((line) => stripAnsi(line).trimEnd())
+			.filter((line) => line !== "");
+
+	test("keeps consecutive system notifications as separate transcript messages", () => {
+		const chatContainer = new Container();
+		const host = createFakeHost({
+			chatContainer,
+			uiStore: createUiStore(),
+			ui: { requestRender: vi.fn() },
+		} as any);
+		const ui = createSessionUI(host);
+		ui.notify("Build started", "info");
+		ui.notify("Build finished");
+		expect(lines(chatContainer)).toEqual([" System · Build started", " System · Build finished"]);
+	});
+
+	test.each([
+		["showWarning", display.showWarning, "⚠ ▲", "Project config not loaded (8 files)."],
+		["showError", display.showError, "✗ ◆", "Compaction failed: model returned no summary"],
+	] as const)("%s is one `<glyph> <tone> <sentence>` line at the transcript pad", (_name, show, glyph, message) => {
+		const chatContainer = new Container();
+		const host = createFakeHost({ chatContainer, ui: { requestRender: vi.fn() } } as any);
+
+		show(host, message);
+
+		expect(lines(chatContainer)).toEqual([` ${glyph} ${message}`]);
+	});
+
+	test("notices follow the transcript pad setting", () => {
+		const chatContainer = new Container();
+		const host = createFakeHost({
+			chatContainer,
+			uiStore: createUiStore({ view: { outputPad: 0 } }),
+			ui: { requestRender: vi.fn() },
+		} as any);
+
+		display.showError(host, "boom");
+		chatContainer.addChild(display.noticeLine("success", "New session started", 0));
+
+		expect(lines(chatContainer)).toEqual(["✗ ◆ boom", "✓ ≋ New session started"]);
+	});
+
+	test("the mark carries the state colour and the words stay readable; an error is red throughout", () => {
+		const line = (kind: "success" | "warning" | "error") => display.noticeLine(kind, "x", 0).render(20)[0];
+
+		expect(line("success")).toContain(`${theme.fg("success", "✓ ≋")} ${theme.fg("text", "x")}`);
+		// A long warning is not a wall of amber: only its marks are.
+		expect(line("warning")).toContain(`${theme.fg("warning", "⚠ ▲")} ${theme.fg("text", "x")}`);
+		expect(line("error")).toContain(theme.fg("error", "✗ ◆ x"));
+	});
+
+	test("a wrapped report row keeps its indent, and a wrapped marked line hangs under its text", () => {
+		const report = "Usage today\n  No usage recorded so far in this period of time.";
+		const rows = display
+			.noticeLine("info", report, 0)
+			.render(30)
+			.map((row) => stripAnsi(row).trimEnd());
+		expect(rows).toEqual(["System · Usage today", "  No usage recorded so far in", "  this period of time."]);
+		const warning = display
+			.noticeLine("warning", "Unknown command /session. Search commands with /help.", 0)
+			.render(30)
+			.map((row) => stripAnsi(row).trimEnd());
+		expect(warning[1]?.startsWith("  ")).toBe(true);
+	});
+
+	test("a notice strips terminal controls from its message", () => {
+		// Error and warning text often carries tool output (gh stderr, extension errors): it must not drive the terminal.
+		const rendered = display
+			.noticeLine("error", "gist: \u001b]0;pwned\u0007bad\u001b[2J \u009b31mtoken", 0)
+			.render(80)
+			.join("\n");
+
+		expect(stripAnsi(rendered).trimEnd()).toBe("✗ ◆ gist: bad token");
+		expect(rendered.replace(/\u001b\[[0-9;]*m/g, "")).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
+	});
+});

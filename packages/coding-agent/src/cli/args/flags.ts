@@ -1,0 +1,395 @@
+import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
+import type { TuiMode } from "../../core/settings-schema.ts";
+import { getToolListError } from "../../core/settings-manager/tool-list.ts";
+import { VALID_THINKING_LEVELS } from "../../core/thinking-level.ts";
+import type { Args, FlagSpec, Mode } from "./types.ts";
+import { MODEL_LIST_FLAGS } from "./model-list-flags.ts";
+import { API_KEY_FLAGS } from "./api-key-flags.ts";
+import { CONFIGURATION_FLAGS } from "./configuration-flags.ts";
+import { PERMISSION_FLAGS } from "./permission-flags.ts";
+import { RESUME_FLAG } from "./resume-flag.ts";
+import { WORKTREE_FLAG } from "./worktree-flag.ts";
+
+const csv = (value: string) =>
+	value
+		.split(",")
+		.map((part) => part.trim())
+		.filter(Boolean);
+const push = (list: string[] | undefined, value: string) => [...(list ?? []), value];
+const set = (apply: (args: Args) => void) => (args: Args) => {
+	apply(args);
+	return undefined;
+};
+
+export const FLAG_SPECS: readonly FlagSpec[] = [
+	{
+		name: "--provider",
+		kind: "value",
+		arg: "<name>",
+		completion: "text",
+		help: ["Provider for --model and the auth commands (--model provider/id needs none)"],
+		apply: (a, v) => void (a.provider = v),
+	},
+	{
+		name: "--model",
+		kind: "value",
+		arg: "<pattern>",
+		completion: "text",
+		help: ['Model pattern or ID (supports "provider/id" and optional ":<thinking>")'],
+		apply: (a, v) => void (a.model = v),
+	},
+	...API_KEY_FLAGS,
+	{
+		name: "--system-prompt",
+		kind: "value",
+		arg: "<text>",
+		completion: "text",
+		help: ["System prompt (default: coding assistant prompt)"],
+		apply: (a, v) => void (a.systemPrompt = v),
+	},
+	{
+		name: "--append-system-prompt",
+		kind: "list",
+		arg: "<text>",
+		completion: "text",
+		help: ["Append text or file contents to the system prompt (can be used multiple times)"],
+		apply: (a, v) => void (a.appendSystemPrompt = push(a.appendSystemPrompt, v!)),
+	},
+	{
+		name: "--mode",
+		kind: "value",
+		arg: "<mode>",
+		values: ["text", "json", "rpc", "acp"],
+		label: "mode",
+		help: ["Output mode: text (default), json, rpc, or acp"],
+		apply: (a, v) => void (a.mode = v as Mode),
+	},
+	{
+		name: "--print",
+		short: "-p",
+		kind: "optional",
+		help: ["Non-interactive mode: process prompt and exit"],
+		apply: set((a) => (a.print = true)),
+	},
+	{
+		name: "--no-stdin",
+		kind: "boolean",
+		help: ["Do not read piped stdin (for a parent that leaves the pipe open)"],
+		apply: set((a) => (a.noStdin = true)),
+	},
+	{
+		name: "--no-dialogs",
+		kind: "boolean",
+		help: ["RPC mode: no one answers dialogs, so behave as headless and refuse asks instead of waiting"],
+		apply: set((a) => (a.noDialogs = true)),
+	},
+	{
+		name: "--rpc-ask",
+		kind: "boolean",
+		help: [
+			"RPC mode: this client answers `ask` requests (typed question batches); without it questions arrive as select, confirm and input",
+		],
+		apply: set((a) => (a.rpcAsk = true)),
+	},
+	{
+		name: "--rpc-lean-events",
+		kind: "boolean",
+		help: [
+			"RPC mode: send each message and tool result whole once; later events refer to it (no structured result data or request traces)",
+		],
+		apply: set((a) => (a.rpcLeanEvents = true)),
+	},
+	{
+		name: "--continue",
+		short: "-c",
+		kind: "boolean",
+		help: ["Continue previous session"],
+		apply: set((a) => (a.continue = true)),
+	},
+	RESUME_FLAG,
+	{
+		name: "--session",
+		kind: "value",
+		arg: "<path|id>",
+		completion: "path",
+		help: ["Use specific session file or partial UUID"],
+		apply: (a, v) => void (a.session = v),
+	},
+	{
+		name: "--session-id",
+		kind: "value",
+		arg: "<id>",
+		completion: "text",
+		help: ["Use exact project session ID, creating it if missing"],
+		apply: (a, v) => void (a.sessionId = v),
+	},
+	{
+		name: "--fork",
+		kind: "value",
+		arg: "<path|id>",
+		completion: "path",
+		help: ["Fork specific session file or partial UUID into a new session"],
+		apply: (a, v) => void (a.fork = v),
+	},
+	{
+		name: "--session-dir",
+		kind: "value",
+		arg: "<dir>",
+		completion: "path",
+		help: ["Directory for session storage and lookup"],
+		apply: (a, v) => void (a.sessionDir = v),
+	},
+	WORKTREE_FLAG,
+	{
+		name: "--no-session",
+		kind: "boolean",
+		help: ["Don't save session (ephemeral)"],
+		apply: set((a) => (a.noSession = true)),
+	},
+	{
+		name: "--name",
+		short: "-n",
+		kind: "value",
+		arg: "<name>",
+		completion: "text",
+		help: ["Set session display name"],
+		apply: (a, v) => void (a.name = v),
+	},
+	{
+		name: "--models",
+		kind: "csv",
+		arg: "<patterns>",
+		completion: "text",
+		help: [
+			"Comma-separated model patterns for Ctrl+P cycling",
+			"Supports globs (anthropic/*, *sonnet*) and fuzzy matching",
+		],
+		apply: (a, v) => void (a.models = csv(v!)),
+	},
+	{
+		name: "--no-tools",
+		kind: "boolean",
+		help: ["Disable all tools by default (native and MCP)"],
+		apply: set((a) => (a.noTools = true)),
+	},
+	{
+		name: "--no-builtin-tools",
+		kind: "boolean",
+		help: ["Disable native tools by default; MCP tools stay enabled"],
+		apply: set((a) => (a.noBuiltinTools = true)),
+	},
+	{
+		name: "--tools",
+		short: "-t",
+		kind: "csv",
+		arg: "<tools>",
+		help: [
+			"Comma-separated allowlist of tool names or patterns (*) to enable",
+			"Keeps MCP tools unless an entry starts with mcp__",
+			"Only +name/-name entries add to or remove from the defaults",
+		],
+		apply: (a, v) => {
+			const tools = csv(v!);
+			const error = getToolListError(tools);
+			if (error) return error;
+			a.tools = tools;
+			return undefined;
+		},
+	},
+	{
+		name: "--exclude-tools",
+		kind: "csv",
+		arg: "<tools>",
+		help: [
+			"Comma-separated denylist of tool names or patterns (*) to disable",
+			"Applies to all tools, MCP tools included",
+		],
+		apply: (a, v) => void (a.excludeTools = csv(v!)),
+	},
+	...CONFIGURATION_FLAGS,
+	{
+		name: "--thinking",
+		kind: "value",
+		arg: "<level>",
+		values: VALID_THINKING_LEVELS,
+		label: "thinking level",
+		help: [`Set thinking level: ${VALID_THINKING_LEVELS.join(", ")}`],
+		apply: (a, v) => void (a.thinking = v as ThinkingLevel),
+	},
+	...PERMISSION_FLAGS,
+	{
+		name: "--no-mcp",
+		kind: "boolean",
+		help: ["Disable built-in MCP support: no servers connect and no MCP tools"],
+		apply: set((a) => (a.noMcp = true)),
+	},
+	{
+		name: "--plan",
+		kind: "boolean",
+		help: ["Start in plan mode: read-only research until you approve a plan"],
+		apply: set((a) => (a.plan = true)),
+	},
+	{
+		name: "--skill",
+		kind: "list",
+		arg: "<path>",
+		completion: "path",
+		help: ["Load a skill file or directory (can be used multiple times)"],
+		apply: (a, v) => void (a.skills = push(a.skills, v!)),
+	},
+	{
+		name: "--no-skills",
+		kind: "boolean",
+		help: ["Disable skills discovery and loading"],
+		apply: set((a) => (a.noSkills = true)),
+	},
+	{
+		name: "--prompt-template",
+		kind: "list",
+		arg: "<path>",
+		completion: "path",
+		help: ["Load a prompt template file or directory (can be used multiple times)"],
+		apply: (a, v) => void (a.promptTemplates = push(a.promptTemplates, v!)),
+	},
+	{
+		name: "--no-prompt-templates",
+		kind: "boolean",
+		help: ["Disable prompt template discovery and loading"],
+		apply: set((a) => (a.noPromptTemplates = true)),
+	},
+	{
+		name: "--theme",
+		kind: "list",
+		arg: "<path>",
+		completion: "path",
+		help: ["Load a theme file or directory (can be used multiple times)"],
+		apply: (a, v) => void (a.themes = push(a.themes, v!)),
+	},
+	{
+		name: "--use-theme",
+		kind: "value",
+		arg: "<name[/name]>",
+		completion: "text",
+		missing: "--use-theme requires a theme name",
+		help: ["Set the initial interactive theme for this run"],
+		apply: (a, v) => void (a.useTheme = v),
+	},
+	{
+		name: "--no-themes",
+		kind: "boolean",
+		help: ["Disable theme discovery and loading"],
+		apply: set((a) => (a.noThemes = true)),
+	},
+	{
+		name: "--no-context-files",
+		kind: "boolean",
+		help: ["Disable AGENTS.md discovery and loading"],
+		apply: set((a) => (a.noContextFiles = true)),
+	},
+	{
+		name: "--export",
+		kind: "value",
+		arg: "<file>",
+		completion: "path",
+		help: ["Export session file to HTML and exit"],
+		apply: (a, v) => void (a.export = v),
+	},
+	...MODEL_LIST_FLAGS,
+	{
+		name: "--no-color",
+		kind: "boolean",
+		help: ["Turn off ANSI color, like NO_COLOR (also OCTOCODE_NO_COLOR); bold, dim and underline stay"],
+		apply: set((a) => (a.noColor = true)),
+	},
+	{
+		name: "--color",
+		kind: "boolean",
+		help: [
+			"Keep ANSI color even when NO_COLOR is set or output is not a terminal (like FORCE_COLOR=1); --no-color wins",
+		],
+		apply: set((a) => (a.color = true)),
+	},
+	{
+		name: "--no-input",
+		kind: "boolean",
+		help: ["Never prompt: a question that would wait for an answer fails with a message (also OCTOCODE_NO_INPUT)"],
+		apply: set((a) => (a.noInput = true)),
+	},
+	{
+		name: "--verbose",
+		kind: "boolean",
+		help: ["Force verbose startup (overrides quietStartup setting)"],
+		apply: set((a) => (a.verbose = true)),
+	},
+	{
+		name: "--tui-mode",
+		kind: "value",
+		arg: "<mode>",
+		values: ["fullscreen", "regular"],
+		label: "TUI mode",
+		help: ["TUI mode: fullscreen (default) or regular"],
+		apply: (a, v) => void (a.tuiMode = v as TuiMode),
+	},
+	{
+		name: "--trust",
+		kind: "boolean",
+		help: [
+			"Trust this folder: record your grant, then run (an untrusted folder otherwise stops headless runs)",
+			"The grant stays: later runs need no flag until `octocode trust remove`",
+		],
+		apply: set((a) => (a.trust = true)),
+	},
+	{
+		name: "--offline",
+		kind: "boolean",
+		help: [
+			"Skip automatic network activity: catalog refreshes, version check, downloads (same as OCTOCODE_OFFLINE=1)",
+			"MCP commands you run still connect (mcp list --check, mcp login); update and models discover stay offline",
+		],
+		apply: set((a) => (a.offline = true)),
+	},
+	{ name: "--help", short: "-h", kind: "boolean", help: ["Show this help"], apply: set((a) => (a.help = true)) },
+	{
+		name: "--version",
+		short: "-v",
+		kind: "boolean",
+		help: ["Show version number"],
+		apply: set((a) => (a.version = true)),
+	},
+];
+
+const BY_NAME = new Map(
+	FLAG_SPECS.flatMap((spec) => [[spec.name, spec] as const, ...(spec.short ? [[spec.short, spec] as const] : [])]),
+);
+
+export const flagSpec = (arg: string): FlagSpec | undefined => BY_NAME.get(arg as `--${string}`);
+
+/** "a", "a or b", "a, b, or c". */
+const either = (values: readonly string[]) =>
+	values.length < 3 ? values.join(" or ") : `${values.slice(0, -1).join(", ")}, or ${values.at(-1)}`;
+
+/** The error for a flag given without its value. */
+export const missingValue = (spec: FlagSpec): string =>
+	spec.missing ?? (spec.values ? `${spec.name} requires ${either(spec.values)}` : `${spec.name} requires a value`);
+
+export const invalidValue = (spec: FlagSpec, value: string): string | undefined =>
+	spec.values && !spec.values.includes(value)
+		? `Invalid ${spec.label ?? spec.name.slice(2)} "${value}". Valid values: ${spec.values.join(", ")}`
+		: undefined;
+
+/** A word that cannot be a flag's value: another flag. A lone dash or text such as "- be brief" still can. */
+export const looksLikeFlag = (word: string): boolean => word.startsWith("--") || flagSpec(word) !== undefined;
+
+/** Where `--help` starts each option's text; a longer flag puts its text on the next row, in this column. */
+export const HELP_COLUMN = 33;
+
+/** The Options section of `--help`, one row per flag in table order. */
+export function flagHelpRows(): string[] {
+	const indent = " ".repeat(HELP_COLUMN);
+	return FLAG_SPECS.filter((spec) => !spec.hidden).flatMap((spec) => {
+		const head = `  ${spec.name}${spec.short ? `, ${spec.short}` : ""}${spec.arg ? ` ${spec.arg}` : ""}`;
+		const [first, ...rest] = spec.help;
+		const lead = head.length < HELP_COLUMN ? [`${head.padEnd(HELP_COLUMN)}${first}`] : [head, `${indent}${first}`];
+		return [...lead, ...rest.map((line) => `${indent}${line}`)];
+	});
+}

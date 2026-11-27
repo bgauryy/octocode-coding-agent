@@ -1,0 +1,353 @@
+# Prompt caching
+
+Octocode keeps reusable instructions cached longer than the growing history when the API has separate cache boundaries. What the request contains and what changes it: [Context management](../../../docs/CONTEXT.md); how a request is assembled, the tool loadout and trimming: [how it works](how-it-works.md#what-the-model-reads). A hit needs a matching eligible prefix and the provider's minimum length. A byte-identical prefix only enables reuse; only the provider's cached-token usage fields prove a hit.
+
+```mermaid
+flowchart LR
+    I["Instructions layer<br/>tools + system prompt<br/>(default long)"] --> H["History layer<br/>messages<br/>(default short)"]
+    I -. "own breakpoint and lifetime" .-> P["Provider cache"]
+    H -. "own breakpoint and lifetime" .-> P
+```
+
+## Providers
+
+Enter a key with `/providers`, or set the variable below; never put keys in prompts.
+
+| Provider  | Provider ID               | API-key variable    | Instruction / history policy                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------- | ------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenAI    | `openai`                  | `OPENAI_API_KEY`    | 12h / implicit 30m on models declaring explicit prompt-cache support                                                                                                                                                                                                                                                                                                                                                                    |
+| Anthropic | `anthropic`               | `ANTHROPIC_API_KEY` | 1h / 5m by default (history 1h with `cacheRetention: long`) where long retention is supported                                                                                                                                                                                                                                                                                                                                           |
+| Grok      | `xai`                     | `XAI_API_KEY`       | Automatic provider-managed caching; no configurable TTL assumed. Chat Completions uses `x-grok-conv-id` for session affinity, Responses its cache key                                                                                                                                                                                                                                                                                   |
+| OpenCode  | `opencode`, `opencode-go` | `OPENCODE_API_KEY`  | Claude: 1h instructions and 5m history, with Anthropic lifetimes declared for warming; other Anthropic-protocol models: 5m markers without `ttl`; Responses: `prompt_cache_key` and session headers, no TTL fields; Chat Completions and Google: session-routed implicit caching (Chat Completions sends `prompt_cache_key` only under the rule for OpenAI-compatible hosts below). Every request carries a stable `x-opencode-session` |
+
+- **OpenCode** dispatches each model through its catalog API (Anthropic Messages, OpenAI Responses, Chat Completions or Google); the bundled catalog supplies the definitions, so nothing needs copying into `models.json`.
+- **OpenAI-compatible endpoints**: an endpoint alone does not establish support for 12h fields. Custom models declare capabilities in `models.json`; enable only supported ones. Changing a direct provider's endpoint clears its direct-only cache capabilities, so declare verified `compat` capabilities for a proxy. Unknown models stay selectable with conservative request fields. Claude behind a gateway other than OpenRouter (LiteLLM, another proxy) gets no `cache_control` markers until its model sets `compat.cacheControlFormat: "anthropic"`: only you know whether the gateway forwards them, and a server that validates its request body rejects an unknown field.
+- **Resuming** keeps the routing identity; a different model or changed prefix can still miss.
+- **Gateways.** The provider's `profile` in `models.json` decides which family's cache markers, lifetimes and quirks its models follow; without it the family is detected from the provider id and host. An endpoint that rejects `cache_control` with a 400 gets one resend without markers and no markers afterwards for that endpoint and model until the process ends. See [provider defaults and profiles](models-configuration.md#provider-defaults-and-profiles).
+- **Amazon Bedrock Claude** sends one-hour cache points for long retention only on models AWS lists with the 1h TTL (Claude 5.x, Opus 4.5 and later, Sonnet 4.5 and later, Haiku 4.5). Sonnet 4, Opus 4, Opus 4.1 and Claude 3.x get five-minute points without `ttl`, which they would reject. Application inference profiles are matched by `name`: a profile whose ARN and name name no Claude or Nova model gets no cache points (or `AWS_BEDROCK_FORCE_CACHE=1` for all), and its first reply records a `cache_unavailable` diagnostic saying so. Forced cache points use the five-minute planning lifetime by default; an explicit `compat.supportsLongCacheRetention` overrides the model rule (`false` for a region or profile that rejects `ttl`, `true` for a profile whose model accepts it but whose name is not recognized).
+
+Official references: [OpenAI](https://developers.openai.com/api/docs/guides/prompt-caching), [Anthropic](https://platform.claude.com/docs/en/build-with-claude/prompt-caching), [Grok](https://docs.x.ai/developers/advanced-api-usage/prompt-caching/best-practices), [OpenCode models](https://opencode.ai/v2/docs/console/models/), [OpenCode Go](https://opencode.ai/v2/docs/console/go/), [Azure](https://learn.microsoft.com/azure/foundry/openai/how-to/prompt-caching).
+
+## Retention per layer
+
+The two layers are _instructions_ (tools plus the leading system prompt) and _history_ (the messages). Instructions default to long, history to short. What each choice becomes on the wire:
+
+| Provider                                 | Instructions                                                                                 | History                             | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anthropic, OpenRouter Claude             | `ttl: "1h"` for `long`, 5m for `short`                                                       | 5m, or 1h for `long`                | 1h is Anthropic's maximum; it pays off once a session idles longer than 5 minutes                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Bedrock Claude                           | `ttl: "1h"` for `long` on models with the 1h TTL; 5m (no `ttl`) for `short` and other models | same                                | A `ttl` can fail on 5m-only models with a ValidationException                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Bedrock Nova                             | No `ttl` (5m only) on the system prompt, for `long` and `short`                              | 5m cache points on messages         | Nova 2 Lite, Pro, Lite and Micro take cache points on `system` and `messages` only, never `tools`, at most four. AWS caches at most 20K tokens of a Nova prompt, so a point is sent only where the estimated tokens before it (tools, system, messages: the Converse order) are under 20K; a main session whose tools alone exceed 20K sends Nova no points. Nova Premier and other Nova models keep implicit caching. [AWS models](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html#prompt-caching-models) |
+| OpenAI GPT-5.6 and later (explicit mode) | 12h for `long`, 30m for `short`                                                              | implicit 30m for `short` and `long` | No 1h tier exists. The request TTL covers every turn's new history, so it stays at 30m; 12h goes on the instruction breakpoints only. `none` for both layers sends explicit mode with no breakpoint: no caching at all, not even the automatic cache                                                                                                                                                                                                                                                                                |
+| Google Gemini                            | Implicit                                                                                     | same                                | No cache field is sent; explicit caches cannot hold request-time tools. Through OpenCode, hits need the session header and come in blocks of about 4k tokens, so shorter prompts read nothing                                                                                                                                                                                                                                                                                                                                       |
+| Other OpenAI-compatible endpoints        | Provider-managed                                                                             | same                                | The routing key goes out with `long` where the endpoint supports it                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+
+`/status` reports this mapping for the active model under Cache Warming (including "no caching at all", the 24h tier on older OpenAI models and "provider-managed"): what Octocode sends. With no model selected there is no mapping, and the section shows only the warming mode and status.
+
+### Cache prices
+
+Multiples of the model's base input price per token, from the providers' pages above. Cost estimates use the bundled catalog's prices when a model has them, and Anthropic's ratios otherwise:
+
+| Provider                                 | Short write                  | Long write                                                                             | Read                                                                                              |
+| ---------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Anthropic                                | 1.25× (5 minutes)            | 2× (1 hour)                                                                            | 0.1× on most models; 0.05× or 0.025× on some newer ones. A read renews the entry at no extra cost |
+| OpenAI GPT-5.6 and later (explicit mode) | 1.25× (30 minutes)           | 2.5× (12 hours)                                                                        | 0.1× on most models, 0.05× on some, the same for both lifetimes                                   |
+| OpenAI earlier models                    | no write rate in the catalog | no write rate in the catalog (24h extended retention, typically kept about 30 minutes) | The model's cached-input rate                                                                     |
+
+- These are total write rates, not surcharges. The catalog stores each model's short-write and read rate (every bundled Anthropic model lists 1.25× and the read rates above); the 2× and 2.5× long-write multiples are applied when usage is priced.
+- Not confirmed here: the long-write price on Amazon Bedrock, OpenRouter and other resellers (Octocode prices their 1-hour writes at 2× as on Anthropic), and any price not in the catalog.
+- OpenRouter's Anthropic-format chat completions report one cache-write count with no split by lifetime: it is priced at the 1h rate when every marker the request sent was 1h, else at the 5m rate.
+- One pass over a child's history costs 60% more to write at Anthropic's long tier than at its short tier (2× against 1.25×), which a short foreground task never earns back.
+- A model whose catalog has no cache-write rate pays no write premium. OpenAI explicit writes have a 1,024-token minimum.
+- Usage keeps aggregate `cacheWrite` with optional `cacheWrite1h`, `cacheWrite12h` and `cacheWrite30m` (OpenAI's default tier, priced as a short write); each token is counted once and model pricing tiers are kept.
+- These are catalog estimates: subscription allowances, credits, regional premiums, time-based storage charges and served OpenAI service tiers are not fully represented ([model selection](models.md#select-a-model)). Measure savings with your own workload.
+
+## Configure retention
+
+```text
+/settings set instructionCacheRetention long
+/settings set cacheRetention long
+```
+
+Or set the same fields in global or trusted project `settings.json`. They also work on a provider, model definition or `modelOverrides` entry in `models.json`:
+
+```json
+{
+	"providers": {
+		"anthropic": { "apiKey": "$ANTHROPIC_API_KEY", "cacheRetention": "long" },
+		"openai": { "apiKey": "$OPENAI_API_KEY", "instructionCacheRetention": "long", "cacheRetention": "short" }
+	}
+}
+```
+
+Priority, highest wins:
+
+```mermaid
+flowchart LR
+    A["request options"] --> B["environment"] --> C["model override"] --> D["model definition"] --> E["provider"] --> F["session overrides"] --> G["trusted project settings"] --> H["global settings"] --> I["defaults"]
+```
+
+- **Defaults**: new sessions and `--print` runs use long instructions (the longest tier each provider and model accepts) and short history. Every turn writes its new history, and the next turn usually reads it within minutes, so the short tier's lower write price (1.25× against 2× on Anthropic, 2.5× for OpenAI's 12h) pays; the instructions are read again by later turns, sessions and subagents. Set `cacheRetention: long` when your sessions often pause between 5 and 60 minutes. The lifetime counts from the start of the request that wrote or read the entry, so long replies shorten it.
+- **Scope**: at each level `cacheRetention` controls both layers unless that level also sets `instructionCacheRetention`; an instruction-only value changes only instructions. History `none` disables optional writes for both layers. An invalid value is refused, and the message names the allowed values.
+- **Ordering**: Anthropic Messages, Bedrock Converse and Anthropic-format chat completions require 1h entries before 5m ones, so short instructions over long history send the history at 5m (`/status` says so). Changing a later breakpoint's tier rewrites what it covers: a 5-minute hit counts for nothing when a 1-hour breakpoint after it misses, so switching history from short to long mid-session writes the history again at the long price.
+- **OpenAI explicit-cache models** (GPT-5.6 and later): the request TTL stays at the implicit 30m for short and long history; the instruction option sets the explicit instruction breakpoints (12h for `long`, which a `cacheRetention: long` alone also sets). The library sets instruction breakpoints only when an instruction preference exists (the app's default is `long`; a bare library call with neither layer set sends none). A request with history `none` and `keepInstructionCache: true` keeps its instruction breakpoint at the instruction tier. Azure, whose breakpoints take no TTL, sends `long` history as a 12h request TTL. Older OpenAI and Azure models send `24h` when either layer is long: OpenAI charges no write for it and keeps entries typically about 30 minutes, up to 24 hours, so warming, compaction and clearing plan with 30 minutes. ChatGPT subscription credentials omit these API-only fields.
+- **`/status`** shows the requested preferences, their sources, effective durations and fallbacks.
+- **Pi**: a provider configured in Octocode takes precedence over the same provider in Pi; entries are not merged across files, and an explicit configuration home disables the fallback.
+
+### Subagent cache tier
+
+A subagent's instruction blocks use the session's tier (long by default). Its history tier is chosen per task: a long write costs more ([prices](#cache-prices)) and pays off only when the child pauses past the short window or is read again later.
+
+| Who decides                                                                                              | History tier                                                                                                          |
+| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| A retention you set (settings, provider or model entry, `modelOverrides`, or `OCTOCODE_CACHE_RETENTION`) | Yours, for both layers as configured. It wins over the task and the default                                           |
+| The coordinator's task (`agent` type `task`, field `cache`)                                              | `short`: the provider's short tier (5 minutes on Anthropic). `long`: the session's longest tier (1 hour on Anthropic) |
+| Neither                                                                                                  | The task's shape: see below                                                                                           |
+
+Without a choice, the default follows whether the child is expected to sit idle past the short window and then read its history again:
+
+| Task shape                                                                                                        | Default history tier |
+| ----------------------------------------------------------------------------------------------------------------- | -------------------- |
+| A background run whose profile lingers (`linger`, or `OCTOCODE_SUBAGENT_LINGER_SECONDS`) and that is not isolated | `long`               |
+| A resumed run (`resume`, or a message to a finished child that is still reachable)                                | `long`               |
+| Thinking level `high`, `xhigh` or `max`                                                                           | `long`               |
+| A request budget that is off (`maxRequests: 0`) or above the default 160                                          | `long`               |
+| Anything else, including background and isolated runs                                                             | `short`              |
+
+- A child that works through its task asks again within seconds (in measured runs, 0 s at the median and under 2 minutes at the 99th percentile), so the short tier keeps its history warm at the lower write price; [warming](#warming-and-measurements) covers a long tool call. The coordinator is told to choose `long` when the child will sit idle for minutes (waiting on a timer, a background job or a message) and `short` when it works straight through.
+- The instruction tier never depends on the task: children of one role share their instruction blocks. An `instructionCacheRetention` you set alone changes only the instruction blocks.
+- A subagent does not inherit the parent's resolved pair. Octocode resolves it for the child's model (parent settings, that model's provider and `models.json` entries, parent environment) and passes `OCTOCODE_CACHE_RETENTION` and `OCTOCODE_INSTRUCTION_CACHE_RETENTION`, which outrank the child's own settings.
+
+Environment choices (`OCTOCODE_CACHE_RETENTION` alone applies to both layers):
+
+| Run                                                     | `OCTOCODE_INSTRUCTION_CACHE_RETENTION` | `OCTOCODE_CACHE_RETENTION` |
+| ------------------------------------------------------- | -------------------------------------- | -------------------------- |
+| Turns follow each other without pauses (cheaper writes) | `long`                                 | `short`                    |
+| Brief, continuously active run                          | `short`                                | `short`                    |
+| Anthropic with pauses over five minutes                 | `long`                                 | `long`                     |
+
+Library callers pass `{ cacheRetention, instructionCacheRetention, sessionId }` to `streamSimple` or `completeSimple`; the options are forwarded through simple requests and the agent proxy. `cacheRetention: "none"` overrides the instruction preference in every adapter that places breakpoints, unless the request sets `keepInstructionCache: true`, which keeps the instruction markers (Anthropic, Bedrock, Anthropic-format chat completions). Compaction's cache-sharing summary sets it when the history entry has expired but the long instruction entry has not, and sends no markers when both have. Providers with automatic caching may still cache on their own.
+
+## Wire behavior
+
+- **OpenAI Responses**: direct HTTP with the shared retry policy; the leading system instructions become an explicit content block, history stays implicit.
+- **Anthropic, Bedrock Converse, OpenRouter Anthropic-format**: instruction retention on the initial tools/system breakpoint, history retention on the final eligible history block. Anthropic Messages also marks the previous request's tail (the last eligible block before the final assistant turn) when a slot is free, so a long assistant turn does not push the last write past Anthropic's 20-block lookback; OAuth requests leave the added identity block unmarked, keeping that slot. Bedrock Converse adds the same point when one of its four is free.
+- **OpenRouter Alibaba and DeepSeek models** that its documentation says need explicit breakpoints (`qwen/qwen3-max`, `qwen/qwen-plus`, `qwen/qwen3.6-plus`, `qwen/qwen3-coder-plus`, `qwen/qwen3-coder-flash`, `deepseek/deepseek-v3.2`) use the same format with a fixed 5-minute lifetime.
+- **OpenAI-compatible chat completions** decide `prompt_cache_key` from the model's `cache.key` capability: `api.openai.com` is `cached` (sent unless caching is `none`), any other host is `long` (sent only when retention is `long`) when the model's compat sets `supportsLongCacheRetention: true`, and `never` otherwise. They send `prompt_cache_retention: "24h"` only to `api.openai.com` or a model whose compat sets `supportsLongCacheRetention: true`.
+- **Azure Responses** sends `prompt_cache_retention: "24h"` for `long` history only to models Microsoft lists for extended retention; `compat.supportsLongCacheRetention` overrides the list (`true` for a deployment-named model running a listed model, `false` to send none). It ignores the instruction preference except on GPT-6 Astra, whose leading instructions get 30m explicit breakpoints sent as `{"mode": "explicit"}` (inheriting the request TTL) unless instructions are `none` or history is `none` without `keepInstructionCache`. With no instruction preference set (the app defaults to `long`) it sends none. Azure GPT-5.6 and later models get neither `prompt_cache_retention` (deprecated there) nor `prompt_cache_options`.
+- **Google and Mistral** ignore the instruction preference.
+- After Anthropic rejects preferred strict tools for a model, endpoint and tool set, later requests in the process send the downgraded tools directly.
+
+### Tool list and prefix order
+
+Base instructions, initial project context and tool definitions keep one order for the life of a prefix. The declared tool list is rewritten whenever the active tool set changes (an MCP tool added, removed or redefined, any tool switched on or off). Built-in and extension tools keep their given order; the MCP tools declared at the first request follow, sorted by namespace then name, except that servers whose entry gives tools roles sort first. Connection timing does not decide the order, so sibling sessions and subagents of one profile build the same tool array.
+
+The tools whose presence or declaration depends on the role (`backlog`, `backlogPlan`, `archive`, `memory`, `askUser`, `agent`, `skill`, `models`, `compact`) come last, so every agent declares the same tools first: `bash`, `file`, `web`, `mcp`, the other built-in and extension tools, then the MCP tools. Octocode sends the first role-dependent tool as the `toolCacheBoundary` request option, and every API with explicit markers (Anthropic, Bedrock Claude, and Chat Completions with `cacheControlFormat: "anthropic"`) puts an instruction-tier breakpoint on the tool before it, in place of the last tool's or, with a split prompt, the base block's, so a request keeps at most four. An agent of one role then reads the tool prefix another role wrote on the same model: the main session and its children, or children of different roles. A child that defers its MCP tools (`mcpDefer`: the bundled implementer, and a child started without a role, which gets `mcpDefer: readOnly`) declares them shorter, so it shares that part only with agents that defer the same tools.
+
+A tool change keeps the prefix only on a model whose compat sets `supportsMidConvoSystemMessages` together with a tool-change or tool-addition flag; changes then go out as mid-conversation blocks.
+
+| API                            | Flag                                                                                                                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Anthropic Messages             | `supportsMidConvoToolChanges`, set for the direct `anthropic` provider only (OpenCode Zen and GitHub Copilot forward mid-conversation system messages but reject tool changes) |
+| Responses and Chat Completions | `supportsAdditionalTools`, `supportsToolSearch` or `supportsMidConvoToolAdditions`; additions-only modes do not cover a removal                                                |
+
+Everywhere else (`none`) the top-level tool list stays as declared until the next compaction, whose request rewrites the history anyway: a tool switched off stays declared and its calls are refused, and a tool switched on, including the tools of an MCP server that connects mid-session, is callable at once but declared at that compaction (the prompt's on-demand line and the server's `mcps` block name it meanwhile). A model switch or a redefined tool rewrites the list once and the cache rebuilds; a tool added or redefined later goes to the end of the list, so that session's order can differ from a fresh one's. The first prompt waits for selected MCP servers ([connections](mcp-reference.md#connections-and-caching)), so these changes are rare.
+
+### System updates
+
+On models that accept mid-conversation system messages, later system-prompt changes are incremental conversation updates. Adapters without them (Bedrock, Google, models without `supportsMidConvoSystemMessages`) keep the leading prompt byte-identical and send each update as a marked user message just before the next assistant turn. The Mistral adapter avoids a user turn directly after a tool result (whether the hosted API accepts that order is unverified) while changed tools go out at once.
+
+| Update                                                                                                                                                                                               | Delivery                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| First delivery point follows a tool result (after a result, between a call and its result, or between parallel results; typically an MCP server connecting, changing or dropping during a tool loop) | Folded into the leading system prompt together with every earlier update, so its text keeps system authority, reaches the model with the tool list it describes, and no older update follows a newer one. This rewrites the cacheable prefix once for that request (reuse is not measured); later requests keep it |
+| Anywhere else                                                                                                                                                                                        | A marked user message                                                                                                                                                                                                                                                                                              |
+| Changes nothing                                                                                                                                                                                      | Held and merged into the next user message                                                                                                                                                                                                                                                                         |
+
+Tested offline, not against the live Mistral API. Child identity belongs to the child task. Changed project context, skills or tools still change the prefix; nothing is reordered to manufacture a hit.
+
+### Subagent prefixes
+
+An isolated subagent (`isolate: true`) runs in its own git worktree, but its system prompt keeps the main checkout's working directory and `AGENTS.md` paths, so every isolated child of one profile builds a byte-identical leading prompt. The child's task names its real worktree; tools, permissions and file access use the real directory.
+
+Children of one prefix group share an opaque `OCTOCODE_PROMPT_CACHE_KEY`, whichever session launched them, so a new session's children read the instructions an earlier session's children wrote. On OpenAI's own API before GPT-5.6, where the key routes, the parent spreads its running children of a group over numbered keys of two each (about OpenAI's 15 requests a minute per key); a resumed child keeps its number, and siblings wait for the first child's cache write only on their own key. OpenAI Responses, Codex, Azure Responses, Mistral and supported Chat Completions endpoints use it as `prompt_cache_key`; where a provider routes by header (Codex, xAI, OpenAI Responses, OpenRouter-style endpoints), the routing header carries the same key, so siblings reach the replica holding the shared prefix; Mistral is the exception: its body `prompt_cache_key` is the shared sibling key, while `x-affinity` follows each child's own session (a fork's root key when set), so siblings share a cache key without all being pinned to one replica; this routing is tested offline only Each child's WebSocket pool, transcript and cancellation stay separate. The key is replaced when a child is launched, kept for its message-based continuation, and never contains task text or paths. Provider routing, minimum cache length, expiry and an exact prefix match still decide hits. Disabling caching omits the key (and other generated affinity data), though a provider can still cache implicitly.
+
+A main session on OpenAI's own API keys its requests by prefix group: provider, model, the base instruction block and tool declarations it starts with. The workspace is not part of the key, so workspaces on one machine with the same prefix share it. OpenAI asks for "a stable `prompt_cache_key` for requests that share a reusable prefix", and from GPT-5.6 on separate keys separate reuse, so a key per session kept every new session from reading the instructions earlier ones wrote. Where the key routes (models before GPT-5.6), a group is split into numbered keys of at most two working sessions each, about OpenAI's 15 requests a minute per key; a session keeps its key until a compaction or a model change rewrites its prefix anyway. On other providers a fork (`/fork`, a branch to a new session) has its own session id but its parent's history, so its requests use the id of the first session in its fork chain as `prompt_cache_key` and as the routing header's value (Mistral: `x-affinity`); there unrelated sessions keep separate keys. An explicit key or a subagent's shared key wins.
+
+### Cache profiles
+
+Every provider's cache rules are one entry in a table (`CACHE_PROFILES`), and each adapter reads its profile instead of branching on the provider. An entry states the mechanism, the marker budget and which layers take markers, the lifetimes, whether `prompt_cache_key` is sent, and the request-level retention field where one exists.
+
+| Profile                         | Used for                                                                                                                                          | Mechanism                                                                 | Markers                                 | Lifetimes                      | `prompt_cache_key`  |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------- | ------------------------------ | ------------------- |
+| `anthropic`                     | Anthropic Messages and Anthropic-format hosts on the Messages API (OpenRouter Claude on Chat Completions uses `completions-markers`)              | explicit markers                                                          | tools, instructions, history; 4 at most | 5m, 1h                         | not sent            |
+| `bedrock-claude`                | Claude on Bedrock Converse                                                                                                                        | explicit cache points                                                     | same                                    | 5m, 1h on listed models        | not sent            |
+| `bedrock-nova`                  | Nova 2 Lite, Pro, Lite, Micro                                                                                                                     | explicit cache points, at most 20K cached tokens                          | instructions, history (no tools)        | 5m                             | not sent            |
+| `bedrock-other`                 | Other Converse models (GLM, Kimi, DeepSeek, ...)                                                                                                  | none: AWS lists no explicit caching for them                              | none                                    | –                              | not sent            |
+| `openai-key`                    | OpenAI Responses and Chat Completions before GPT-5.6, Azure                                                                                       | implicit prefix cache of 1,024 tokens or more                             | none                                    | about 30m, 24h retention field | by host rule        |
+| `openai-explicit`               | GPT-5.6 and later, Azure models in explicit mode                                                                                                  | explicit breakpoints                                                      | instructions, history                   | 30m, 12h                       | sent                |
+| `azure-instruction-breakpoints` | Azure GPT-6 Astra outside explicit mode                                                                                                           | `prompt_cache_key` plus a 30m breakpoint on each cached instruction block | instructions                            | 30m                            | sent                |
+| `completions-markers`           | Chat Completions hosts whose compat sets `cacheControlFormat: "anthropic"`                                                                        | Anthropic-style markers                                                   | as `anthropic`                          | 5m, 1h                         | with long retention |
+| `implicit`                      | Bedrock OpenAI-compatible endpoints for non-OpenAI models (Qwen on mantle); Gemini, xAI chat and Mistral also send nothing, by their own adapters | provider-side, nothing sent                                               | none                                    | –                              | not sent            |
+
+**Marker placement.** With explicit markers Octocode gives the four slots out in priority order: the tools boundary, the end of each instruction block shared across workspaces, the last message and the request before it, and last the project-context block. The previous-request marker keeps the cache read past Anthropic's 20-block lookback when one turn adds many parallel tool calls: without it that turn rewrites the whole history. The project-context block only saves rewriting `AGENTS.md` when a new session starts in the same workspace, so it gets a marker only when a slot remains after the tools boundary, the shared blocks and the history. Without project instructions the slots go to the history. A prompt that is only the base block plus project context keeps its base marker.
+
+**Where Octocode sends no cache field.** Bedrock's AWS page lists explicit caching for Claude and some Nova models, and implicit caching for Nova and OpenAI models; no GLM or Qwen model appears on it, so those models get no marker or key. An earlier audit measured 0% cache reads for `zai.glm-4.7` (Bedrock Converse) and `qwen3-coder-next` (mantle) over 133 requests, while Kimi reached about 97% through the same usage mapping (`prompt_tokens_details.cached_tokens` on the OpenAI-compatible route), so the 0% is the provider not caching those models, not a lost usage field. Provider documentation: [Amazon Bedrock prompt caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html).
+
+**Responses and Chat Completions differ on the key.** Responses sends `prompt_cache_key` whenever caching is on: OpenAI documents it for the Responses API ([prompt caching guide](https://developers.openai.com/api/docs/guides/prompt-caching)) and Azure documents it for its Responses deployments ([Azure prompt caching](https://learn.microsoft.com/azure/foundry/openai/how-to/prompt-caching)). The other Responses hosts Octocode supports (xAI, OpenCode, Codex) accept OpenAI's request shape, and the adapter's tests assert the field on their wires; Octocode has not checked each host's own documentation for it. Chat Completions hosts are arbitrary and a server that validates its body rejects an unknown field, so there the key goes only to `api.openai.com`, or with long retention to a model whose compat sets `supportsLongCacheRetention`.
+
+**One-hour lifetimes** are sent only where the provider and host accept them: `anthropic.com`, listed Bedrock models, OpenRouter's Claude models, and any other host only when its model sets `compat.supportsLongCacheRetention: true`. A custom Anthropic-format gateway therefore writes 5-minute entries until you set it. As an estimate from one machine's audit, not a measurement: with about 29k instruction tokens and the Sonnet rates in the [price table](#cache-prices), the 55 first turns that came after 5 minutes or more cost about $4.0 to rewrite at 1.25×, against about $2.65 for 22 one-hour writes and 33 reads. Your savings depend on how long your sessions pause.
+
+### Second instruction block
+
+The leading system prompt can go out as four instruction blocks ([sections and tiers](../../../docs/CONTEXT.md#what-the-model-sees)):
+
+| Block | Holds                                                                        | Breakpoint                   | Rewritten when                                   |
+| ----- | ---------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------ |
+| 1     | Base-tier sections                                                           | Yes, instruction retention   | The tools, the MCP servers or the install change |
+| 2     | Session-tier sections before project context: the policy and its siblings    | Yes, instruction retention   | The policy, the skills or the role change        |
+| 3     | Project context (`AGENTS.md` files) and the session sections after it        | Only a spare slot, see below | The project or its `AGENTS.md` files change      |
+| 4     | Volatile sections: `cwd`, `environment` (the date), `planning`, `mcp_status` | None                         | Sent uncached with each request; it is small     |
+
+- **Block 4** has no breakpoint, so a new day, a different MCP status or the directory line at the start of a session rewrites no cached block: a session in the same project the next day can read blocks 1 to 3 at the cache-read rate.
+- **Blocks 2 and 3**: block 3 differs between workspaces, so a marker before it (end of block 2) lets a session in another workspace read blocks 1 and 2. Block 2 still differs when skills name paths inside them.
+- **Block 1** is identical for sessions and subagents with the same tool set and MCP servers but different project, directory or date; the provider may read it at the cache-read rate once an earlier request has written it (a request started before that cannot reuse it).
+- **Concatenation**: the blocks join to exactly the single-block prompt, so a provider without explicit breakpoints receives the same text in the same order. A session saved by an earlier version, where `cwd` came before the policy, keeps its stored order: only the volatile sections that end its prompt form block 3.
+- **MCP connection state** lives in the last section, `mcp_status`, so a server that connects, fails or drops patches only that section. A drop or failed reconnect leaves the server's tool declarations in place: a call while the server is down waits a bounded time for the reconnect ([`reconnectWaitMs`](mcp-reference.md#connections-and-caching)), then fails with an error naming its state and the `mcp` restart. Tools are withdrawn only when the server is stopped, disabled or removed, or a reconnected server no longer offers them (which rewrites the tool list on transports without native tool changes).
+
+In the default `declared` MCP mode the MCP part of the prefix is fixed for the session: each tool's declaration and each server's `mcps` block stay as first sent, and are described again only at a loadout rebuild (session start, model change, tree navigation) or a catalog change. A catalog change is a `tools/list_changed` notification, or a reconnect returning a different catalog, that changes:
+
+| What changed                     | Effect on the prefix                                           |
+| -------------------------------- | -------------------------------------------------------------- |
+| A tool's description or schema   | The declaration is re-registered, rewriting the tool list once |
+| The server's instructions        | One appended patch to `mcps`                                   |
+| A deferred tool's first sentence | Patches the block                                              |
+
+A reconnect with the same catalog, a dropped connection and a state change keep the prefix. In `compact` mode the server's generated file is the block, renewed on the same changes. The `environment` section is checked at every prompt; a new day patches only it.
+
+Octocode sends the start of block 2 as the `instructionCacheBoundary` request option, the start of block 3 (`project_context`) as `instructionWorkspaceBoundary` and the start of block 4 as `instructionVolatileBoundary`; adapters use them only where the provider takes explicit breakpoints:
+
+| Adapter                        | Behavior                                                                                                                                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Anthropic                      | Markers follow the profile table below: the tools boundary, the end of the last shared block, the last message and the previous request's tail. Blocks 3 and 4 carry none unless a slot is spare |
+| Bedrock                        | The same plan with `cachePoint`s after the marked blocks; the unmarked blocks follow the last point                                                                                              |
+| OpenRouter, Anthropic-format   | Three text parts, the first two marked, when the host takes Anthropic-format markers                                                                                                             |
+| OpenAI and Azure explicit mode | Marks the shared blocks; the rest are parts without a breakpoint                                                                                                                                 |
+| Others                         | Ignore both and send the prompt as one text                                                                                                                                                      |
+
+A forced prompt (an extension's `before_agent_start`) has no sections and is never split. `OCTOCODE_INSTRUCTION_CACHE_SPLIT=off` sends one block and no shared-tools marker; a request that already carries `instructionCacheBoundary`, `instructionWorkspaceBoundary`, `instructionVolatileBoundary` or `toolCacheBoundary` keeps that value. MCP connections also cache validated server instructions and tool metadata in memory, separate from provider caching: [MCP catalog caching](mcp.md#catalog-caching).
+
+## What each event does to the cache
+
+How each provider is asked to cache decides what a change costs.
+
+| Provider               | What Octocode sends                                                                                        | Routing                                                  |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Anthropic              | Up to four explicit cache markers: tools, instruction blocks, the last message and the previous tail       | Session-affinity header on gateways that take one        |
+| OpenAI Responses       | A cache key; 24-hour retention or explicit mode on models that support them                                | `session_id` and `x-client-request-id` carry the session id (`sessionAffinityFormat: "openai"`; `openai-nosession` omits `session_id`) |
+| Codex                  | A cache key                                                                                                | As OpenAI Responses                                      |
+| OpenRouter and similar | A cache key where the model allows it; Anthropic-style markers on models that need them                    | `x-session-id` carries the session id                    |
+| xAI                    | The Responses cache key                                                                                    | `x-grok-conv-id` and `x-client-request-id` carry the session id |
+| Google and Vertex      | Nothing: the provider caches a stable prefix implicitly, so keeping the prefix identical is the only lever | None                                                     |
+
+"Kept" below means the request opens with the previous one, so the cached part is read again; "rewritten once" means the history is billed again once and the next request appends.
+
+| Event                         | Anthropic                                         | OpenAI Responses | Codex          | OpenRouter        | xAI            | Google, Vertex    |
+| ----------------------------- | ------------------------------------------------- | ---------------- | -------------- | ----------------- | -------------- | ----------------- |
+| Next turn                     | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Deferred tool loaded          | Kept                                              | Kept             | Kept           | Kept: tool result | Kept           | Kept: tool result |
+| Refused call returns a schema | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Skill loaded                  | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Images in history             | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Fork                          | Kept                                              | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Child agent                   | Kept: tools, instructions and marker places match | Kept             | Kept           | Kept              | Kept           | Kept              |
+| Model switch                  | Rewritten once                                    | Rewritten once   | Rewritten once | Rewritten once    | Rewritten once | Rewritten once    |
+| Provider switch               | Rewritten once                                    | Rewritten once   | Rewritten once | Rewritten once    | Rewritten once | Rewritten once    |
+| Compaction                    | Rewritten once, tools and instructions kept       | Same             | Same           | Same              | Same           | Same              |
+
+No event rewrites the request on every turn. The deferred-tool row says "kept" for every provider because loading never changes the tools that were sent: a model whose catalog entry allows in-place tool changes (Anthropic tool changes, OpenAI Responses and Codex additional tools, which xAI's endpoint can also carry) gets the definition appended after the breakpoint, and any other model gets the schema as a tool result. The table shows what the request bytes do; a provider's own routing, minimum length and expiry still decide a real hit.
+
+Which tools are `direct`, `deferred` or `onDemand` is decided when the session starts and kept: the set of tools in use is saved with the first prompt, so resume, reload and fork declare the same set. A tool you start using mid-session keeps its starting state, and its first call declares it in full where the model allows ([tool loadout](how-it-works.md#tool-loadout)). A child uses its parent's set, so siblings declare the same tools and share the cached tool prefix; a profile with `mcpDefer` shares only with agents that defer the same tools.
+
+### Forks and children share the parent's cache
+
+```mermaid
+flowchart TD
+    P["Parent session<br/>cache key = its id"] --> FK["Fork"]
+    P --> CH["Child agents"]
+    FK --> K1["Uses the first session of the fork chain as the key<br/>request body and routing headers match the parent's"]
+    CH --> K2["Siblings share one key<br/>same tools, instructions and marker places"]
+    K1 --> H["Same replica, same cached prefix"]
+    K2 --> H
+    K2 -.-> M["Mistral: siblings keep their own affinity;<br/>a fork pins to its parent's"]
+```
+
+A fork sends its parent's request byte for byte, and the routing headers above carry the parent's id, so the fork lands where the parent's prefix is cached. Children of one parent and profile build the same tools and instruction blocks and share one key, so a second child reads what the first wrote (details: [subagent prefixes](#subagent-prefixes)). Each child keeps its own transcript and cancellation. On Mistral a fork pins to its parent's replica, but sibling children keep their own affinity. Disabling caching omits the key and the routing headers.
+
+## Provider-reported miss reasons
+
+Octocode asks the Anthropic API why a request could not reuse the previous prefix; `OCTOCODE_CACHE_DIAGNOSTICS=off` (also `0` or `false`) stops it. Each request carries `diagnostics.previous_message_id` (the previous Anthropic reply's id, `null` on the first), and the API reports the earliest divergence (`model_changed`, `system_changed`, `tools_changed` or `messages_changed`) with the approximate input tokens that would have been read. The reply records it as a `cache_miss` diagnostic, and a counted miss in the transcript and `/status` reads `History cache miss: provider reports tools changed` instead of an inferred cause. `previous_message_not_found`, `unavailable` and a pending comparison record nothing.
+
+The field goes only to `api.anthropic.com` with the `anthropic` provider (a gateway may reject an unknown field). It is on by default: the API charges nothing for it and never fails a request over it, and it keeps only a fingerprint of hashes and token-count estimates, briefly, never prompt text. The feature is eligible for zero data retention but not for HIPAA, so turn it off if your organization needs that. Verified against the SDK types and the [documented format](https://platform.claude.com/docs/en/build-with-claude/cache-diagnostics), not a live account. Fingerprints are kept briefly, so compare closely spaced requests. A miss after an idle gap longer than the cache lifetime reports no divergence: the entry had expired.
+
+### Long retention on custom hosts
+
+Long retention (`instructionCacheRetention`, long by default, and `cacheRetention: "long"`, which is short by default) sends Anthropic-compatible models one-hour cache points (`cache_control.ttl: "1h"`) only where the host's documentation verifies the tier: `api.anthropic.com`, `opencode.ai`, and OpenRouter for its `anthropic/*` models. Every other host (other gateways, a `models.json` provider on its own URL) stays on the five-minute tier. If your host passes the one-hour tier through, opt in per model in `models.json`:
+
+```json
+{
+	"providers": {
+		"my-gateway": {
+			"api": "anthropic-messages",
+			"baseUrl": "https://llm.example.com",
+			"models": [{ "id": "claude-sonnet-4-5", "compat": { "supportsLongCacheRetention": true } }]
+		}
+	}
+}
+```
+
+`false` forces the five-minute tier for a model or region that rejects `ttl`; an explicit value always wins over the host list. OpenAI-style models use the same field for 24h retention. Field reference: [models.json](models-configuration.md).
+
+## Warming and measurements
+
+`cacheWarming` is `off`, `streaming` (refresh while the agent is active) or `idle` (default; also after it settles). It is a global setting: project settings cannot enable paid warming.
+
+```json
+{ "cacheWarming": "idle", "cacheRetention": "long" }
+```
+
+A refresh replays the request with a one-token cap, needs a known cache lifetime and a replay-safe request, and never runs returned tool calls. It stops when context changes, the deadline is missed, a refresh fails or the provider reports no cache read. Active warming ends one hour after the original request; idle warming after thirty minutes or one cache lifetime, whichever is later. `/status` shows usage. Savings are not guaranteed: [prompt caching](prompt-caching.md). How requests are built and kept small (tool exposure, clearing, compaction, fencing): [how it works](how-it-works.md#what-the-model-reads).
+
+An idle refresh is sent only when its expected saving reaches $0.05: the chance of a real request before the history expires, times the miss cost, less the refresh cost (a read of the cached prompt).
+
+| Input             | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chance of request | The share of idle gaps at least this long that ended within the lifetime: this session's own with five or more past waits; else the gaps of main sessions on this machine, pooled in the agent database and pulled toward a measured seed while they are few (about 41% for a 5-minute entry, 43% for 30 minutes, 62% for an hour); 50% while the user is visibly at the terminal (terminal focus, or a key in the last two minutes); all are estimates                                                                                                                                            |
+| Miss cost         | The next request's whole price with the miss less its whole price with a hit, so a context-size price tier is picked by the full prompt. The rewrite is priced at the tier the request wrote its history at. With layered lifetimes (long instructions over short history) a refresh happens before the history entry expires and a miss is priced as the history alone: an upper-bound estimate of the system prompt and tools, which stay readable from their longer entry, is subtracted (over-estimating errs toward not refreshing). With a single lifetime a miss is the whole cached prompt |
+
+On a marker model without a long tier (Bedrock Sonnet 4, Opus 4, Opus 4.1, Claude 3.x), long history goes out at 5m and warming and compaction plan with 5m. Vercel AI Gateway serves its non-Anthropic models on the Anthropic endpoint too; their upstream caches on its own terms, so they get no warming and no planned lifetime.
+
+- **Window**: an idle run may refresh until the later of thirty minutes and one cache lifetime after it started, so a one-hour entry gets one idle refresh when the gate says it pays.
+- **Waiting on work**: while an idle session's background subagents, bash jobs or timers still run, while a question it sent with `replyRequired` is unanswered, or while a subagent's last report is `blocked`, its next request comes without a person, so idle refreshes continue as long as the refreshes of that wait, the next one included, cost no more than the one rewrite they save. The window above still ends the wait.
+- **Active subagents and headless runs** keep the same economic and cancellation checks. Idle, a headless run refreshes only while waiting on work; a settled subagent also refreshes when its own past waits show its coordinator's next message usually comes within the lifetime (the same idle-gap estimate an interactive session uses, counting any request that resumed the session, not only user prompts).
+- **Refreshes stop** on a provider billed by plan (a refresh spends plan quota and a miss costs no money), on unknown lifetimes, short instructions before long history, incompatible thinking settings, changed request context, refresh failures and zero cache reads. No paid startup probe is sent.
+- **Estimates** use the last request's reported cached portion plus the uncached tail's cost. Bedrock reasoning refreshes are disabled because the thinking budget can expand a nominal one-token request.
+- **Accounting**: each refresh's usage note names its phase, `streaming` (it bridged a tool call) or `idle` (a wait for the next prompt), so warming's return can be audited per phase. A refresh that finishes after cancellation or a session switch records its usage in its originating session; failed compaction attempts and fallback requests are recorded individually. Missing provider usage cannot be reconstructed.
+
+Each run's `cache` details record request counts, cumulative prompt/read/write tokens and the latest reply's buckets and provider miss reason. Live tool rows show the latest request's reads and writes, expanded finished rows the conversation rate, and `/agents stats` the token-weighted read rate and write volume per profile. Summary, warming and nested-tool usage count in total spend but not in the conversation rate.
+
+`/status` shows conversation cache hits separately from recorded refresh requests and costs. RPC `get_session_stats` exposes `cache` groups `conversation`, `warming`, `compaction`, `branchSummary`, `tools` and `other`, each with usage entries, prompt tokens, cache reads and writes, token-weighted `hitRate` (null without input usage) and calculated cost. Tool usage may aggregate child calls; inspect a child's session for its own rate. Inferred cache re-billing is labelled an estimate.
+
+Every amount here is an estimate at list prices, written `≈$` with the decimals a decision compares. The Cache Warming section of `/status` shows the warmer's last decision (`expected savings ≈$0.360 >= $0.050 -> warm`; the $0.05 threshold is a fixed amount), `Estimated cache miss penalty: ≈$0.621` and `Estimated refresh cost: ≈$0.013`. With `showCacheMissNotices` each refresh adds a dim transcript line with its cost: `Cache warmed (idle): ≈$0.0295`, or `Cache refresh (no hit): ≈$0.0004` when nothing was read back.
+
+With `showCacheMissNotices` the transcript names the cache area each counted miss re-billed and its likely cause.
+
+| Term                 | Meaning                                                                                                                                                                                                                                               |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Counted miss         | More than 1,024 prompt tokens of the previous request on the branch were not read back (the first request after a compaction or branch summary is not compared)                                                                                       |
+| Notice threshold     | 20,000 tokens or $0.10                                                                                                                                                                                                                                |
+| `History cache miss` | A cached prefix (normally the instructions) was read and the history re-billed                                                                                                                                                                        |
+| `Full cache miss`    | Nothing was read                                                                                                                                                                                                                                      |
+| Causes               | `after model switch`, `after instruction or tool update`, `after Nm idle` when the gap outlasted the history lifetime (5 minutes when unknown), else `after tool-result clearing` or `after context edit` when the history already sent was rewritten |
+
+While `cacheWarming` is not `idle`, an idle miss also names that setting and what one refresh would have cost. Compaction and branch-summary cost notices add how many tokens the summary read from cache: a shared-prefix summary reads it; a standalone one reads little or nothing ([pipeline](../../../docs/CONTEXT.md#the-compaction-pipeline)).
+
+After compaction the changed history needs a new write; unchanged leading instructions can still be reused. Zero reads on a first or below-minimum prompt do not establish a failure. Every child compaction sends the user a start notice and a finished, failed or cancelled notice (with recorded context sizes when available); main-session compactions use the shared lifecycle events and terminal status indicator.

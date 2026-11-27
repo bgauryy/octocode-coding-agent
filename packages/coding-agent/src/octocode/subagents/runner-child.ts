@@ -1,0 +1,144 @@
+import type { Usage } from "@octocodeai/octocode-ai";
+import type { FeatureContext } from "../../core/features/index.ts";
+import { runnerTask } from "../native/prompts/task.ts";
+import { emptyUsage } from "../shared/util.ts";
+import type { ChildProgress } from "./events.ts";
+import type { Identity } from "./process/env.ts";
+import { noAnswerError, type SubagentOutcome } from "./process/outcome.ts";
+import { reportDir } from "./process/session.ts";
+import { ReportTracker } from "./report.ts";
+import type { RunnerBilling, RunnerReply, Runners } from "./runner-port.ts";
+import type { Team } from "../team/session.ts";
+import { readOnlyRole } from "../permission/read-only-role.ts";
+import { renderPrompt } from "../../core/prompt-template.ts";
+import { captureSpend } from "../../core/spend-capture.ts";
+
+/** ACP stop reasons as a report reads them: a cut-off turn is incomplete, a refusal failed, a cancelled turn aborted. */
+const STOP_REASONS: Record<string, string> = {
+	end_turn: "stop",
+	max_tokens: "length",
+	max_turn_requests: "length",
+	refusal: "error",
+	cancelled: "aborted",
+};
+
+/**
+ * The runner's token totals as Octocode's `Usage`. A plan pays for its runner's turns, so the dollar figure it reports
+ * (the API value) is no bill and counts nothing; other runs keep the dollar figure they reported.
+ */
+function usageOf(reply: RunnerReply): Usage {
+	const usage = emptyUsage();
+	const tokens = reply.usage;
+	if (tokens) {
+		usage.input = tokens.inputTokens;
+		usage.output = tokens.outputTokens;
+		usage.cacheRead = tokens.cachedReadTokens ?? 0;
+		usage.cacheWrite = tokens.cachedWriteTokens ?? 0;
+		usage.totalTokens = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+	}
+	if (reply.billing !== "plan" && reply.cost !== undefined && reply.cost > 0) usage.cost.total = reply.cost;
+	return usage;
+}
+
+/** One task run by an external runner, as `spawn.ts` starts it in place of an Octocode child process. */
+export interface RunnerChildInput {
+	runner: string;
+	model?: string;
+	task: string;
+	cwd: string;
+	identity: Identity;
+	signal: AbortSignal | undefined;
+	onProgress: (progress: ChildProgress) => void;
+	onSpawn?: (pid: number) => void;
+	ctx: FeatureContext;
+	team?: Team;
+	/** The CLI's own session id an earlier task of this runner reported (`runnerSession` of its outcome): this turn continues it. */
+	resume?: string;
+}
+
+/**
+ * Runs `task` in a connected runner and reads its answer as a child's report: the same contract, outcome word, scratch
+ * copy and result schema check as a native child (`ReportTracker`). The row hears each tool call it streams. Returns
+ * the outcome with who paid; a turn without an answer fails the way a native child's does.
+ */
+export async function runRunnerChild(
+	runners: Runners,
+	input: RunnerChildInput,
+): Promise<SubagentOutcome & { billing?: RunnerBilling; runnerSession?: string }> {
+	if (input.signal?.aborted) throw new Error("Subagent cancelled");
+	const { identity } = input;
+	const report = new ReportTracker(identity.scratch ?? reportDir(identity.id), identity.resultContract);
+	let usage = emptyUsage();
+	// Progress is display only: a failure there must not end the run.
+	const progress = (update: Omit<ChildProgress, "usage">) => {
+		try {
+			input.onProgress({ ...update, usage });
+		} catch {
+			// The final answer does not depend on the row.
+		}
+	};
+	const model = input.model?.trim();
+	const communication = Boolean(input.team && runners.communication?.includes(input.runner));
+	const tracked = input.team?.trackRunner(identity.id, communication);
+	let bridge: Awaited<ReturnType<Team["runnerBridge"]>> | undefined;
+	try {
+		if (communication)
+			bridge = await input.team!.runnerBridge({
+				id: identity.id,
+				runner: input.runner,
+				goal: identity.goal,
+				model,
+				sessionId: identity.sessionId,
+				cwd: input.cwd,
+				signal: input.signal,
+			});
+		input.signal?.throwIfAborted();
+		const reply = await runners.turn({
+			runner: input.runner,
+			...(model ? { model } : {}),
+			cwd: input.cwd,
+			text:
+				runnerTask(input.task, input.cwd) +
+				(bridge ? `\n\n${renderPrompt("tools/agent/runner-mail.md", { id: identity.id })}` : ""),
+			...(bridge ? { communication: bridge.communication } : {}),
+			// A read-only role's task may not change files: the route decides how it keeps that promise or refuses.
+			...(readOnlyRole() ? { readOnly: true } : {}),
+			...(input.resume ? { resume: input.resume } : {}),
+			signal: input.signal ?? new AbortController().signal,
+			onActivity: (line) => progress({ activity: line }),
+			...(input.onSpawn ? { onStart: input.onSpawn } : {}),
+			ctx: input.ctx,
+		});
+		usage = usageOf(reply);
+		// No session entry of this process carries a runner turn's spend: `/usage` records it here, once.
+		captureSpend({
+			cwd: input.cwd,
+			kind: "runner",
+			provider: input.runner,
+			model: model || input.runner,
+			usage,
+			billing: reply.billing,
+		});
+		progress({ requests: 1 });
+		const stop = STOP_REASONS[reply.stopReason ?? "end_turn"] ?? "stop";
+		report.answer(reply.text, stop, stop === "error" ? `${input.runner} refused the task` : undefined);
+		const result = report.result();
+		if (!result.answered) throw new Error(result.error ?? noAnswerError(undefined));
+		return {
+			text: result.text,
+			usage,
+			billing: reply.billing,
+			...(reply.sessionId ? { runnerSession: reply.sessionId } : {}),
+			...(result.outcome ? { outcome: result.outcome, outcomeSource: result.outcomeSource } : {}),
+			...(result.error ? { error: result.error } : {}),
+			...(result.structured ? { structured: result.structured } : {}),
+			...(result.reportArtifact ? { reportArtifact: result.reportArtifact } : {}),
+		};
+	} finally {
+		try {
+			await bridge?.close();
+		} finally {
+			tracked?.();
+		}
+	}
+}

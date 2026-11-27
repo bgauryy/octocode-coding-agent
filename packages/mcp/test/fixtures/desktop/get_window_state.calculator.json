@@ -1,0 +1,2474 @@
+{
+ "content": [
+  {
+   "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
+   "mimeType": "image/png",
+   "type": "image"
+  },
+  {
+   "text": "window_id=9663 pid=60161 size=460x816 elements=141\n\n- [0] AXWindow \"Calculator\" [id=main actions=[raise]]\n    - AXStaticText = \"‎42‎×‎2\"\n    - AXStaticText = \"‎84\"\n    - [1] AXButton (Delete) [id=Delete help=\"Delete the last digit or operation entered (long press to delete all)\" actions=[press]]\n    - [2] AXButton (All Clear) [id=AllClear actions=[press]]\n    - [3] AXButton (Percent) [id=Percent actions=[press]]\n    - [4] AXButton (Divide) [id=Divide actions=[press]]\n    - [5] AXButton (7) [id=Seven actions=[press]]\n    - [6] AXButton (8) [id=Eight actions=[press]]\n    - [7] AXButton (9) [id=Nine actions=[press]]\n    - [8] AXButton (Multiply) [id=Multiply actions=[press]]\n    - [9] AXButton (4) [id=Four actions=[press]]\n    - [10] AXButton (5) [id=Five actions=[press]]\n    - [11] AXButton (6) [id=Six actions=[press]]\n    - [12] AXButton (Subtract) [id=Subtract actions=[press]]\n    - [13] AXButton (1) [id=One actions=[press]]\n    - [14] AXButton (2) [id=Two actions=[press]]\n    - [15] AXButton (3) [id=Three actions=[press]]\n    - [16] AXButton (Add) [id=Add actions=[press]]\n    - [17] AXButton (Change Sign) [id=Negate help=\"Change sign of a value\" actions=[press]]\n    - [18] AXButton (0) [id=Zero actions=[press]]\n    - [19] AXButton (Point) [id=Decimal actions=[press]]\n    - [20] AXButton (Equals) [id=Equals actions=[press]]\n  - [21] AXToolbar [actions=[showmenu]]\n    - [22] AXButton (Show Sidebar) [id= actions=[increment,decrement,delete,showmenu,cancel,press]]\n    - [23] AXButton (Mode) [id=Mode: basic; unitConversion: false actions=[increment,decrement,delete,showmenu,cancel,press,name:move previous\ntarget:0x0\nselector:(null),name:remove from toolbar\ntarget:0x0\nselector:(null)]]\n  - [24] AXButton [actions=[press]]\n  - [25] AXButton [actions=[press]]\n- [26] AXMenuBar [actions=[cancel]]\n  - [27] AXMenuBarItem \"Apple\" [actions=[cancel,press,pick]]\n    - [28] AXMenu [actions=[cancel]]\n      - [29] AXMenuItem \"About This Mac\" [id=_aboutThisMacRequested: actions=[cancel,press,pick]]\n      - [30] AXMenuItem \"System Information\" [id=_systemInformationRequested: actions=[cancel,press,pick]]\n      - [31] AXMenuItem \"System Settings…\" [id=_systemSettingsRequested: actions=[cancel,press,pick]]\n      - [32] AXMenuItem \"App Store\" [id=_appStoreRequested: actions=[cancel,press,pick]]\n      - [33] AXMenuItem \"Recent Items\" [id=_recentsRequested: actions=[cancel,press,pick]]\n        - [34] AXMenu [actions=[cancel]]\n          - AXMenuItem \"Applications\"\n          - [35] AXMenuItem \"Archive Utility\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [36] AXMenuItem \"Show “Archive Utility” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [37] AXMenuItem \"Codex\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [38] AXMenuItem \"Show “Codex” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [39] AXMenuItem \"Cursor\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [40] AXMenuItem \"Show “Cursor” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [41] AXMenuItem \"Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [42] AXMenuItem \"Show “Finder” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [43] AXMenuItem \"Ghostty\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [44] AXMenuItem \"Show “Ghostty” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [45] AXMenuItem \"Google Chrome\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [46] AXMenuItem \"Show “Google Chrome” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [47] AXMenuItem \"Preview\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [48] AXMenuItem \"Show “Preview” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [49] AXMenuItem \"QuickTime Player\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [50] AXMenuItem \"Show “QuickTime Player” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [51] AXMenuItem \"System Settings\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [52] AXMenuItem \"Show “System Settings” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [53] AXMenuItem \"Visual Studio Code\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [54] AXMenuItem \"Show “Visual Studio Code” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - AXMenuItem \"Documents\"\n          - [55] AXMenuItem \"checking_research\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [56] AXMenuItem \"Show “checking_research” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [57] AXMenuItem \"FreeLlama\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [58] AXMenuItem \"Show “FreeLlama” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [59] AXMenuItem \"mcp.md\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [60] AXMenuItem \"Show “mcp.md” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [61] AXMenuItem \"media-vision\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [62] AXMenuItem \"Show “media-vision” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [63] AXMenuItem \"models-store.json\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [64] AXMenuItem \"Show “models-store.json” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [65] AXMenuItem \"octocode\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [66] AXMenuItem \"Show “octocode” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [67] AXMenuItem \"octocode-mcp-host\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [68] AXMenuItem \"Show “octocode-mcp-host” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [69] AXMenuItem \"octocodecode\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [70] AXMenuItem \"Show “octocodecode” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [71] AXMenuItem \"OctoDeck\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [72] AXMenuItem \"Show “OctoDeck” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [73] AXMenuItem \"Screenshot 2026-11-20 at 18.11.14\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [74] AXMenuItem \"Show “Screenshot 2026-11-20 at 18.11.14” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - AXMenuItem \"Servers\"\n          - [75] AXMenuItem \"Macintosh HD\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [76] AXMenuItem \"Clear Menu\" [id=_clearRecentItemsRequested: actions=[cancel,press,pick]]\n      - [77] AXMenuItem \"Force Quit…\" [id=_forceQuitPanelRequested: actions=[cancel,press,pick]]\n      - [78] AXMenuItem \"Force Quit Calculator\" [id=_forceQuitRequested: actions=[cancel,press,pick]]\n      - AXMenuItem \"Sleep\"\n      - [79] AXMenuItem \"Restart…\" [id=_restartRequested: actions=[cancel,press,pick]]\n      - [80] AXMenuItem \"Restart\" [id=_restartNowRequested: actions=[cancel,press,pick]]\n      - [81] AXMenuItem \"Shut Down…\" [id=_shutDownRequested: actions=[cancel,press,pick]]\n      - [82] AXMenuItem \"Shut Down\" [id=_shutDownNowRequested: actions=[cancel,press,pick]]\n      - [83] AXMenuItem \"Lock Screen\" [id=_lockScreenRequested: actions=[cancel,press,pick]]\n      - [84] AXMenuItem \"Log Out Guy Bary…\" [id=_logOutRequested: actions=[cancel,press,pick]]\n      - [85] AXMenuItem \"Log Out Guy Bary\" [id=_logOutNowRequested: actions=[cancel,press,pick]]\n  - [86] AXMenuBarItem \"Calculator\" [actions=[cancel,press,pick]]\n    - [87] AXMenu [actions=[cancel]]\n      - [88] AXMenuItem \"About Calculator\" [id=menuAction: actions=[cancel,press,pick]]\n      - [89] AXMenuItem \"Services\" [actions=[cancel,press,pick]]\n        - [90] AXMenu [actions=[cancel]]\n          - AXMenuItem \"No Services Apply\"\n          - [91] AXMenuItem \"Services Settings…\" [id=_configureServicesMenu: actions=[cancel,press,pick]]\n      - [92] AXMenuItem \"Hide Calculator\" [id=hide: actions=[cancel,press,pick]]\n      - [93] AXMenuItem \"Hide Others\" [id=hideOtherApplications: actions=[cancel,press,pick]]\n      - AXMenuItem \"Show All\"\n      - [94] AXMenuItem \"Quit Calculator\" [id=terminate: actions=[cancel,press,pick]]\n      - [95] AXMenuItem \"Quit and Keep Windows\" [id=NSAlternateQuitMenuItem actions=[cancel,press,pick]]\n  - [96] AXMenuBarItem \"Edit\" [actions=[cancel,press,pick]]\n    - [97] AXMenu [actions=[cancel]]\n      - AXMenuItem \"Undo\"\n      - AXMenuItem \"Redo\"\n      - AXMenuItem \"Cut\"\n      - AXMenuItem \"Copy\"\n      - AXMenuItem \"Paste\"\n      - AXMenuItem \"Delete\"\n      - AXMenuItem \"Select All\"\n      - [98] AXMenuItem \"AutoFill\" [id=_NSMenuItemAutoFillIdentifier actions=[cancel,press,pick]]\n        - [99] AXMenu [actions=[cancel]]\n          - AXMenuItem \"Contact…\"\n          - AXMenuItem \"Passwords…\"\n          - AXMenuItem \"Credit Card…\"\n  - [100] AXMenuBarItem \"View\" [actions=[cancel,press,pick]]\n    - [101] AXMenu [actions=[cancel]]\n      - [102] AXMenuItem \"Basic\" [id=menuAction: actions=[cancel,press,pick]]\n      - [103] AXMenuItem \"Scientific\" [id=menuAction: actions=[cancel,press,pick]]\n      - [104] AXMenuItem \"Programmer\" [id=menuAction: actions=[cancel,press,pick]]\n      - [105] AXMenuItem \"Convert\" [id=menuAction: actions=[cancel,press,pick]]\n      - [106] AXMenuItem \"RPN Mode\" [id=menuAction: actions=[cancel,press,pick]]\n      - [107] AXMenuItem \"Math Notes…\" [id=menuAction: actions=[cancel,press,pick]]\n      - [108] AXMenuItem \"Hide Thousands Separator\" [id=menuAction: actions=[cancel,press,pick]]\n      - [109] AXMenuItem \"Decimal Places\" [id=ID(id: 10530) actions=[cancel,press,pick]]\n        - [110] AXMenu [actions=[cancel]]\n          - [111] AXMenuItem \"0\" [id=menuAction: actions=[cancel,press,pick]]\n          - [112] AXMenuItem \"1\" [id=menuAction: actions=[cancel,press,pick]]\n          - [113] AXMenuItem \"2\" [id=menuAction: actions=[cancel,press,pick]]\n          - [114] AXMenuItem \"3\" [id=menuAction: actions=[cancel,press,pick]]\n          - [115] AXMenuItem \"4\" [id=menuAction: actions=[cancel,press,pick]]\n          - [116] AXMenuItem \"5\" [id=menuAction: actions=[cancel,press,pick]]\n          - [117] AXMenuItem \"6\" [id=menuAction: actions=[cancel,press,pick]]\n          - [118] AXMenuItem \"7\" [id=menuAction: actions=[cancel,press,pick]]\n          - [119] AXMenuItem \"8\" [id=menuAction: actions=[cancel,press,pick]]\n          - [120] AXMenuItem \"9\" [id=menuAction: actions=[cancel,press,pick]]\n          - [121] AXMenuItem \"10\" [id=menuAction: actions=[cancel,press,pick]]\n          - [122] AXMenuItem \"11\" [id=menuAction: actions=[cancel,press,pick]]\n          - [123] AXMenuItem \"12\" [id=menuAction: actions=[cancel,press,pick]]\n          - [124] AXMenuItem \"13\" [id=menuAction: actions=[cancel,press,pick]]\n          - [125] AXMenuItem \"14\" [id=menuAction: actions=[cancel,press,pick]]\n          - [126] AXMenuItem \"15\" [id=menuAction: actions=[cancel,press,pick]]\n      - [127] AXMenuItem \"Show History\" [id=menuAction: actions=[cancel,press,pick]]\n      - AXMenuItem \"Enter Full Screen\"\n  - [128] AXMenuBarItem \"Window\" [actions=[cancel,press,pick]]\n    - [129] AXMenu [actions=[cancel]]\n      - AXMenuItem \"Close\"\n      - [130] AXMenuItem \"Close All\" [id=closeAll: actions=[cancel,press,pick]]\n      - AXMenuItem \"Minimize\"\n      - [131] AXMenuItem \"Minimize All\" [id=miniaturizeAll: actions=[cancel,press,pick]]\n      - AXMenuItem \"Zoom\"\n      - [132] AXMenuItem \"Zoom All\" [id=zoomAll: actions=[cancel,press,pick]]\n      - AXMenuItem \"Fill\"\n      - AXMenuItem \"Center\"\n      - [133] AXMenuItem \"Move & Resize\" [actions=[cancel,press,pick]]\n        - [134] AXMenu [actions=[cancel]]\n          - AXMenuItem \"Halves\"\n          - AXMenuItem \"Left\"\n          - AXMenuItem \"Right\"\n          - AXMenuItem \"Top\"\n          - AXMenuItem \"Bottom\"\n          - AXMenuItem \"Quarters\"\n          - AXMenuItem \"Top Left\"\n          - AXMenuItem \"Top Right\"\n          - AXMenuItem \"Bottom Left\"\n          - AXMenuItem \"Bottom Right\"\n          - AXMenuItem \"Arrange\"\n          - AXMenuItem \"Left & Right\"\n          - AXMenuItem \"Left & Quarters\"\n          - AXMenuItem \"Right & Left\"\n          - AXMenuItem \"Right & Quarters\"\n          - AXMenuItem \"Top & Bottom\"\n          - AXMenuItem \"Top & Quarters\"\n          - AXMenuItem \"Bottom & Top\"\n          - AXMenuItem \"Bottom & Quarters\"\n          - AXMenuItem \"Quarters\"\n          - AXMenuItem \"Return to Previous Size\"\n      - AXMenuItem \"Full Screen Tile\"\n      - AXMenuItem \"Remove Window from Set\"\n      - [135] AXMenuItem \"Always on Top\" [id=menuAction: actions=[cancel,press,pick]]\n      - [136] AXMenuItem \"Bring All to Front\" [id=arrangeInFront: actions=[cancel,press,pick]]\n      - [137] AXMenuItem \"Arrange in Front\" [id=alternateArrangeInFront: actions=[cancel,press,pick]]\n  - [138] AXMenuBarItem \"Help\" [actions=[cancel,press,pick]]\n    - [139] AXMenu [actions=[cancel]]\n      - [140] AXMenuItem \"Calculator Help\" [id=showHelp: actions=[cancel,press,pick]]\n",
+   "type": "text"
+  }
+ ],
+ "structuredContent": {
+  "_note": "Prefer `elements` — `tree_markdown` will continue to work but new fields will only be added to the structured side. Issue #22865: use `max_elements` / `max_depth` to bound the AX walk on apps with very large trees.",
+  "app_name": "Calculator",
+  "background_input": {
+   "exact_window": {
+    "pid": 60161,
+    "status": "matched",
+    "window_id": 9663
+   },
+   "observation": {
+    "frame_freshness": "unknown",
+    "one_shot_capture": "available"
+   },
+   "routes": [
+    {
+     "route": "accessibility",
+     "status": "available"
+    },
+    {
+     "route": "window_pointer",
+     "status": "available"
+    },
+    {
+     "route": "pid_keyboard",
+     "status": "available"
+    }
+   ]
+  },
+  "capture_id": "capture_7e61547b379545fda052dc3adf05931f_0000000000000021",
+  "element_count": 141,
+  "elements": [
+   {
+    "actions": [
+     "AXRaise"
+    ],
+    "depth": 0,
+    "element_index": 0,
+    "element_token": "s00000041:0",
+    "frame": {
+     "h": 408,
+     "w": 230,
+     "x": 894,
+     "y": 445
+    },
+    "label": "Calculator",
+    "role": "AXWindow",
+    "screenshot_frame": {
+     "h": 816,
+     "w": 460,
+     "x": 0,
+     "y": 0
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 1,
+    "element_token": "s00000041:1",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 904,
+     "y": 578
+    },
+    "label": "Delete",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 20,
+     "y": 266
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 2,
+    "element_token": "s00000041:2",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 958,
+     "y": 578
+    },
+    "label": "All Clear",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 128,
+     "y": 266
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 3,
+    "element_token": "s00000041:3",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1012,
+     "y": 578
+    },
+    "label": "Percent",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 236,
+     "y": 266
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 4,
+    "element_token": "s00000041:4",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1066,
+     "y": 578
+    },
+    "label": "Divide",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 344,
+     "y": 266
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 5,
+    "element_token": "s00000041:5",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 904,
+     "y": 632
+    },
+    "label": "7",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 20,
+     "y": 374
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 6,
+    "element_token": "s00000041:6",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 958,
+     "y": 632
+    },
+    "label": "8",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 128,
+     "y": 374
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 7,
+    "element_token": "s00000041:7",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1012,
+     "y": 632
+    },
+    "label": "9",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 236,
+     "y": 374
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 8,
+    "element_token": "s00000041:8",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1066,
+     "y": 632
+    },
+    "label": "Multiply",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 344,
+     "y": 374
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 9,
+    "element_token": "s00000041:9",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 904,
+     "y": 686
+    },
+    "label": "4",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 20,
+     "y": 482
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 10,
+    "element_token": "s00000041:10",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 958,
+     "y": 686
+    },
+    "label": "5",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 128,
+     "y": 482
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 11,
+    "element_token": "s00000041:11",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1012,
+     "y": 686
+    },
+    "label": "6",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 236,
+     "y": 482
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 12,
+    "element_token": "s00000041:12",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1066,
+     "y": 686
+    },
+    "label": "Subtract",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 344,
+     "y": 482
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 13,
+    "element_token": "s00000041:13",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 904,
+     "y": 740
+    },
+    "label": "1",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 20,
+     "y": 590
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 14,
+    "element_token": "s00000041:14",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 958,
+     "y": 740
+    },
+    "label": "2",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 128,
+     "y": 590
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 15,
+    "element_token": "s00000041:15",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1012,
+     "y": 740
+    },
+    "label": "3",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 236,
+     "y": 590
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 16,
+    "element_token": "s00000041:16",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1066,
+     "y": 740
+    },
+    "label": "Add",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 344,
+     "y": 590
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 17,
+    "element_token": "s00000041:17",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 904,
+     "y": 794
+    },
+    "label": "Change Sign",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 20,
+     "y": 698
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 18,
+    "element_token": "s00000041:18",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 958,
+     "y": 794
+    },
+    "label": "0",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 128,
+     "y": 698
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 19,
+    "element_token": "s00000041:19",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1012,
+     "y": 794
+    },
+    "label": "Point",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 236,
+     "y": 698
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 20,
+    "element_token": "s00000041:20",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1066,
+     "y": 794
+    },
+    "label": "Equals",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 344,
+     "y": 698
+    }
+   },
+   {
+    "actions": [
+     "AXShowMenu"
+    ],
+    "depth": 1,
+    "element_index": 21,
+    "element_token": "s00000041:21",
+    "frame": {
+     "h": 52,
+     "w": 230,
+     "x": 894,
+     "y": 445
+    },
+    "parent_index": 0,
+    "role": "AXToolbar",
+    "screenshot_frame": {
+     "h": 104,
+     "w": 460,
+     "x": 0,
+     "y": 0
+    }
+   },
+   {
+    "actions": [
+     "AXIncrement",
+     "AXDecrement",
+     "AXDelete",
+     "AXShowMenu",
+     "AXCancel",
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 22,
+    "element_token": "s00000041:22",
+    "enabled": true,
+    "frame": {
+     "h": 52,
+     "w": 48,
+     "x": 994,
+     "y": 445
+    },
+    "label": "Show Sidebar",
+    "parent_index": 21,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 104,
+     "w": 96,
+     "x": 200,
+     "y": 0
+    },
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXIncrement",
+     "AXDecrement",
+     "AXDelete",
+     "AXShowMenu",
+     "AXCancel",
+     "AXPress",
+     "Name:Move previous\nTarget:0x0\nSelector:(null)",
+     "Name:Remove from toolbar\nTarget:0x0\nSelector:(null)"
+    ],
+    "depth": 2,
+    "element_index": 23,
+    "element_token": "s00000041:23",
+    "enabled": true,
+    "frame": {
+     "h": 52,
+     "w": 44,
+     "x": 1076,
+     "y": 445
+    },
+    "label": "Mode",
+    "parent_index": 21,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 104,
+     "w": 88,
+     "x": 364,
+     "y": 0
+    },
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 1,
+    "element_index": 24,
+    "element_token": "s00000041:24",
+    "enabled": true,
+    "frame": {
+     "h": 16,
+     "w": 16,
+     "x": 912,
+     "y": 463
+    },
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 32,
+     "w": 32,
+     "x": 36,
+     "y": 36
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 1,
+    "element_index": 25,
+    "element_token": "s00000041:25",
+    "enabled": true,
+    "frame": {
+     "h": 16,
+     "w": 16,
+     "x": 935,
+     "y": 463
+    },
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 32,
+     "w": 32,
+     "x": 82,
+     "y": 36
+    }
+   },
+   {
+    "actions": [
+     "AXCancel"
+    ],
+    "depth": 0,
+    "element_index": 26,
+    "element_token": "s00000041:26",
+    "enabled": true,
+    "frame": {
+     "h": 33,
+     "w": 1728,
+     "x": 0,
+     "y": 0
+    },
+    "role": "AXMenuBar",
+    "screenshot_frame": {
+     "h": 66,
+     "w": 3456,
+     "x": -1788,
+     "y": -890
+    },
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 1,
+    "element_index": 27,
+    "element_token": "s00000041:27",
+    "enabled": true,
+    "frame": {
+     "h": 33,
+     "w": 34,
+     "x": 10,
+     "y": 0
+    },
+    "label": "Apple",
+    "parent_index": 26,
+    "role": "AXMenuBarItem",
+    "screenshot_frame": {
+     "h": 66,
+     "w": 68,
+     "x": -1768,
+     "y": -890
+    },
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel"
+    ],
+    "depth": 2,
+    "element_index": 28,
+    "element_token": "s00000041:28",
+    "enabled": true,
+    "parent_index": 27,
+    "role": "AXMenu",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 29,
+    "element_token": "s00000041:29",
+    "enabled": true,
+    "label": "About This Mac",
+    "parent_index": 28,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 30,
+    "element_token": "s00000041:30",
+    "enabled": true,
+    "label": "System Information",
+    "parent_index": 28,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 31,
+    "element_token": "s00000041:31",
+    "enabled": true,
+    "label": "System Settings…",
+    "parent_index": 28,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 32,
+    "element_token": "s00000041:32",
+    "enabled": true,
+    "label": "App Store",
+    "parent_index": 28,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 33,
+    "element_token": "s00000041:33",
+    "enabled": true,
+    "label": "Recent Items",
+    "parent_index": 28,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel"
+    ],
+    "depth": 4,
+    "element_index": 34,
+    "element_token": "s00000041:34",
+    "enabled": true,
+    "parent_index": 33,
+    "role": "AXMenu",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 35,
+    "element_token": "s00000041:35",
+    "enabled": true,
+    "label": "Archive Utility",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 36,
+    "element_token": "s00000041:36",
+    "enabled": true,
+    "label": "Show “Archive Utility” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 37,
+    "element_token": "s00000041:37",
+    "enabled": true,
+    "label": "Codex",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 38,
+    "element_token": "s00000041:38",
+    "enabled": true,
+    "label": "Show “Codex” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 39,
+    "element_token": "s00000041:39",
+    "enabled": true,
+    "label": "Cursor",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 40,
+    "element_token": "s00000041:40",
+    "enabled": true,
+    "label": "Show “Cursor” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 41,
+    "element_token": "s00000041:41",
+    "enabled": true,
+    "label": "Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 42,
+    "element_token": "s00000041:42",
+    "enabled": true,
+    "label": "Show “Finder” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 43,
+    "element_token": "s00000041:43",
+    "enabled": true,
+    "label": "Ghostty",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 44,
+    "element_token": "s00000041:44",
+    "enabled": true,
+    "label": "Show “Ghostty” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 45,
+    "element_token": "s00000041:45",
+    "enabled": true,
+    "label": "Google Chrome",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 46,
+    "element_token": "s00000041:46",
+    "enabled": true,
+    "label": "Show “Google Chrome” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 47,
+    "element_token": "s00000041:47",
+    "enabled": true,
+    "label": "Preview",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 48,
+    "element_token": "s00000041:48",
+    "enabled": true,
+    "label": "Show “Preview” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 49,
+    "element_token": "s00000041:49",
+    "enabled": true,
+    "label": "QuickTime Player",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 50,
+    "element_token": "s00000041:50",
+    "enabled": true,
+    "label": "Show “QuickTime Player” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 51,
+    "element_token": "s00000041:51",
+    "enabled": true,
+    "label": "System Settings",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 52,
+    "element_token": "s00000041:52",
+    "enabled": true,
+    "label": "Show “System Settings” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 53,
+    "element_token": "s00000041:53",
+    "enabled": true,
+    "label": "Visual Studio Code",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 54,
+    "element_token": "s00000041:54",
+    "enabled": true,
+    "label": "Show “Visual Studio Code” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 55,
+    "element_token": "s00000041:55",
+    "enabled": true,
+    "label": "checking_research",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 56,
+    "element_token": "s00000041:56",
+    "enabled": true,
+    "label": "Show “checking_research” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 57,
+    "element_token": "s00000041:57",
+    "enabled": true,
+    "label": "FreeLlama",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 58,
+    "element_token": "s00000041:58",
+    "enabled": true,
+    "label": "Show “FreeLlama” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 59,
+    "element_token": "s00000041:59",
+    "enabled": true,
+    "label": "mcp.md",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 60,
+    "element_token": "s00000041:60",
+    "enabled": true,
+    "label": "Show “mcp.md” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 61,
+    "element_token": "s00000041:61",
+    "enabled": true,
+    "label": "media-vision",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 62,
+    "element_token": "s00000041:62",
+    "enabled": true,
+    "label": "Show “media-vision” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 63,
+    "element_token": "s00000041:63",
+    "enabled": true,
+    "label": "models-store.json",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 64,
+    "element_token": "s00000041:64",
+    "enabled": true,
+    "label": "Show “models-store.json” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 65,
+    "element_token": "s00000041:65",
+    "enabled": true,
+    "label": "octocode",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 66,
+    "element_token": "s00000041:66",
+    "enabled": true,
+    "label": "Show “octocode” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 67,
+    "element_token": "s00000041:67",
+    "enabled": true,
+    "label": "octocode-mcp-host",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 68,
+    "element_token": "s00000041:68",
+    "enabled": true,
+    "label": "Show “octocode-mcp-host” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 69,
+    "element_token": "s00000041:69",
+    "enabled": true,
+    "label": "octocodecode",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 70,
+    "element_token": "s00000041:70",
+    "enabled": true,
+    "label": "Show “octocodecode” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 71,
+    "element_token": "s00000041:71",
+    "enabled": true,
+    "label": "OctoDeck",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 72,
+    "element_token": "s00000041:72",
+    "enabled": true,
+    "label": "Show “OctoDeck” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 73,
+    "element_token": "s00000041:73",
+    "enabled": true,
+    "label": "Screenshot 2026-11-20 at 18.11.14",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 74,
+    "element_token": "s00000041:74",
+    "enabled": true,
+    "label": "Show “Screenshot 2026-11-20 at 18.11.14” in Finder",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 75,
+    "element_token": "s00000041:75",
+    "enabled": true,
+    "label": "Macintosh HD",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 76,
+    "element_token": "s00000041:76",
+    "enabled": true,
+    "label": "Clear Menu",
+    "parent_index": 34,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 77,
+    "element_token": "s00000041:77",
+    "enabled": true,
+    "label": "Force Quit…",
+    "parent_index": 28,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 78,
+    "element_token": "s00000041:78",
+    "enabled": true,
+    "label": "Force Quit Calculator",
+    "parent_index": 28,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 79,
+    "element_token": "s00000041:79",
+    "enabled": true,
+    "label": "Restart…",
+    "parent_index": 28,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 80,
+    "element_token": "s00000041:80",
+    "enabled": true,
+    "label": "Restart",
+    "parent_index": 28,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 81,
+    "element_token": "s00000041:81",
+    "enabled": true,
+    "label": "Shut Down…",
+    "parent_index": 28,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 82,
+    "element_token": "s00000041:82",
+    "enabled": true,
+    "label": "Shut Down",
+    "parent_index": 28,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 83,
+    "element_token": "s00000041:83",
+    "enabled": true,
+    "label": "Lock Screen",
+    "parent_index": 28,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 84,
+    "element_token": "s00000041:84",
+    "enabled": true,
+    "label": "Log Out Guy Bary…",
+    "parent_index": 28,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 85,
+    "element_token": "s00000041:85",
+    "enabled": true,
+    "label": "Log Out Guy Bary",
+    "parent_index": 28,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 1,
+    "element_index": 86,
+    "element_token": "s00000041:86",
+    "enabled": true,
+    "frame": {
+     "h": 33,
+     "w": 87,
+     "x": 44,
+     "y": 0
+    },
+    "label": "Calculator",
+    "parent_index": 26,
+    "role": "AXMenuBarItem",
+    "screenshot_frame": {
+     "h": 66,
+     "w": 174,
+     "x": -1700,
+     "y": -890
+    },
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel"
+    ],
+    "depth": 2,
+    "element_index": 87,
+    "element_token": "s00000041:87",
+    "enabled": true,
+    "parent_index": 86,
+    "role": "AXMenu",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 88,
+    "element_token": "s00000041:88",
+    "enabled": true,
+    "label": "About Calculator",
+    "parent_index": 87,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 89,
+    "element_token": "s00000041:89",
+    "enabled": true,
+    "label": "Services",
+    "parent_index": 87,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel"
+    ],
+    "depth": 4,
+    "element_index": 90,
+    "element_token": "s00000041:90",
+    "enabled": true,
+    "parent_index": 89,
+    "role": "AXMenu",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 91,
+    "element_token": "s00000041:91",
+    "enabled": true,
+    "label": "Services Settings…",
+    "parent_index": 90,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 92,
+    "element_token": "s00000041:92",
+    "enabled": true,
+    "label": "Hide Calculator",
+    "parent_index": 87,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 93,
+    "element_token": "s00000041:93",
+    "enabled": true,
+    "label": "Hide Others",
+    "parent_index": 87,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 94,
+    "element_token": "s00000041:94",
+    "enabled": true,
+    "label": "Quit Calculator",
+    "parent_index": 87,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 95,
+    "element_token": "s00000041:95",
+    "enabled": true,
+    "label": "Quit and Keep Windows",
+    "parent_index": 87,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 1,
+    "element_index": 96,
+    "element_token": "s00000041:96",
+    "enabled": true,
+    "frame": {
+     "h": 33,
+     "w": 44,
+     "x": 131,
+     "y": 0
+    },
+    "label": "Edit",
+    "parent_index": 26,
+    "role": "AXMenuBarItem",
+    "screenshot_frame": {
+     "h": 66,
+     "w": 88,
+     "x": -1526,
+     "y": -890
+    },
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel"
+    ],
+    "depth": 2,
+    "element_index": 97,
+    "element_token": "s00000041:97",
+    "enabled": true,
+    "parent_index": 96,
+    "role": "AXMenu",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 98,
+    "element_token": "s00000041:98",
+    "enabled": true,
+    "label": "AutoFill",
+    "parent_index": 97,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel"
+    ],
+    "depth": 4,
+    "element_index": 99,
+    "element_token": "s00000041:99",
+    "enabled": true,
+    "parent_index": 98,
+    "role": "AXMenu",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 1,
+    "element_index": 100,
+    "element_token": "s00000041:100",
+    "enabled": true,
+    "frame": {
+     "h": 33,
+     "w": 50,
+     "x": 175,
+     "y": 0
+    },
+    "label": "View",
+    "parent_index": 26,
+    "role": "AXMenuBarItem",
+    "screenshot_frame": {
+     "h": 66,
+     "w": 100,
+     "x": -1438,
+     "y": -890
+    },
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel"
+    ],
+    "depth": 2,
+    "element_index": 101,
+    "element_token": "s00000041:101",
+    "enabled": true,
+    "parent_index": 100,
+    "role": "AXMenu",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 102,
+    "element_token": "s00000041:102",
+    "enabled": true,
+    "label": "Basic",
+    "parent_index": 101,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 103,
+    "element_token": "s00000041:103",
+    "enabled": true,
+    "label": "Scientific",
+    "parent_index": 101,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 104,
+    "element_token": "s00000041:104",
+    "enabled": true,
+    "label": "Programmer",
+    "parent_index": 101,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 105,
+    "element_token": "s00000041:105",
+    "enabled": true,
+    "label": "Convert",
+    "parent_index": 101,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 106,
+    "element_token": "s00000041:106",
+    "enabled": true,
+    "label": "RPN Mode",
+    "parent_index": 101,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 107,
+    "element_token": "s00000041:107",
+    "enabled": true,
+    "label": "Math Notes…",
+    "parent_index": 101,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 108,
+    "element_token": "s00000041:108",
+    "enabled": true,
+    "label": "Hide Thousands Separator",
+    "parent_index": 101,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 109,
+    "element_token": "s00000041:109",
+    "enabled": true,
+    "label": "Decimal Places",
+    "parent_index": 101,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel"
+    ],
+    "depth": 4,
+    "element_index": 110,
+    "element_token": "s00000041:110",
+    "enabled": true,
+    "parent_index": 109,
+    "role": "AXMenu",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 111,
+    "element_token": "s00000041:111",
+    "enabled": true,
+    "label": "0",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 112,
+    "element_token": "s00000041:112",
+    "enabled": true,
+    "label": "1",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 113,
+    "element_token": "s00000041:113",
+    "enabled": true,
+    "label": "2",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 114,
+    "element_token": "s00000041:114",
+    "enabled": true,
+    "label": "3",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 115,
+    "element_token": "s00000041:115",
+    "enabled": true,
+    "label": "4",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 116,
+    "element_token": "s00000041:116",
+    "enabled": true,
+    "label": "5",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 117,
+    "element_token": "s00000041:117",
+    "enabled": true,
+    "label": "6",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 118,
+    "element_token": "s00000041:118",
+    "enabled": true,
+    "label": "7",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 119,
+    "element_token": "s00000041:119",
+    "enabled": true,
+    "label": "8",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 120,
+    "element_token": "s00000041:120",
+    "enabled": true,
+    "label": "9",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 121,
+    "element_token": "s00000041:121",
+    "enabled": true,
+    "label": "10",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 122,
+    "element_token": "s00000041:122",
+    "enabled": true,
+    "label": "11",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 123,
+    "element_token": "s00000041:123",
+    "enabled": true,
+    "label": "12",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 124,
+    "element_token": "s00000041:124",
+    "enabled": true,
+    "label": "13",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 125,
+    "element_token": "s00000041:125",
+    "enabled": true,
+    "label": "14",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 5,
+    "element_index": 126,
+    "element_token": "s00000041:126",
+    "enabled": true,
+    "label": "15",
+    "parent_index": 110,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 127,
+    "element_token": "s00000041:127",
+    "enabled": true,
+    "label": "Show History",
+    "parent_index": 101,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 1,
+    "element_index": 128,
+    "element_token": "s00000041:128",
+    "enabled": true,
+    "frame": {
+     "h": 33,
+     "w": 69,
+     "x": 225,
+     "y": 0
+    },
+    "label": "Window",
+    "parent_index": 26,
+    "role": "AXMenuBarItem",
+    "screenshot_frame": {
+     "h": 66,
+     "w": 138,
+     "x": -1338,
+     "y": -890
+    },
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel"
+    ],
+    "depth": 2,
+    "element_index": 129,
+    "element_token": "s00000041:129",
+    "enabled": true,
+    "parent_index": 128,
+    "role": "AXMenu",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 130,
+    "element_token": "s00000041:130",
+    "enabled": true,
+    "label": "Close All",
+    "parent_index": 129,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 131,
+    "element_token": "s00000041:131",
+    "enabled": true,
+    "label": "Minimize All",
+    "parent_index": 129,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 132,
+    "element_token": "s00000041:132",
+    "enabled": true,
+    "label": "Zoom All",
+    "parent_index": 129,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 133,
+    "element_token": "s00000041:133",
+    "enabled": true,
+    "label": "Move & Resize",
+    "parent_index": 129,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel"
+    ],
+    "depth": 4,
+    "element_index": 134,
+    "element_token": "s00000041:134",
+    "enabled": true,
+    "parent_index": 133,
+    "role": "AXMenu",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 135,
+    "element_token": "s00000041:135",
+    "enabled": true,
+    "label": "Always on Top",
+    "parent_index": 129,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 136,
+    "element_token": "s00000041:136",
+    "enabled": true,
+    "label": "Bring All to Front",
+    "parent_index": 129,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 137,
+    "element_token": "s00000041:137",
+    "enabled": true,
+    "label": "Arrange in Front",
+    "parent_index": 129,
+    "role": "AXMenuItem",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 1,
+    "element_index": 138,
+    "element_token": "s00000041:138",
+    "enabled": true,
+    "frame": {
+     "h": 33,
+     "w": 48,
+     "x": 294,
+     "y": 0
+    },
+    "label": "Help",
+    "parent_index": 26,
+    "role": "AXMenuBarItem",
+    "screenshot_frame": {
+     "h": 66,
+     "w": 96,
+     "x": -1200,
+     "y": -890
+    },
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel"
+    ],
+    "depth": 2,
+    "element_index": 139,
+    "element_token": "s00000041:139",
+    "enabled": true,
+    "parent_index": 138,
+    "role": "AXMenu",
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 3,
+    "element_index": 140,
+    "element_token": "s00000041:140",
+    "enabled": true,
+    "label": "Calculator Help",
+    "parent_index": 139,
+    "role": "AXMenuItem",
+    "selected": false
+   }
+  ],
+  "elements_complete": false,
+  "nodes_pending": 0,
+  "nodes_visited": 223,
+  "pid": 60161,
+  "returned_element_count": 141,
+  "screenshot_frame_valid": true,
+  "screenshot_height": 816,
+  "screenshot_mime_type": "image/png",
+  "screenshot_scale": 2,
+  "screenshot_width": 460,
+  "snapshot_id": "s00000041",
+  "timeout_ms": 1000,
+  "total_element_count": 141,
+  "tree_markdown": "- [0] AXWindow \"Calculator\" [id=main actions=[raise]]\n    - AXStaticText = \"‎42‎×‎2\"\n    - AXStaticText = \"‎84\"\n    - [1] AXButton (Delete) [id=Delete help=\"Delete the last digit or operation entered (long press to delete all)\" actions=[press]]\n    - [2] AXButton (All Clear) [id=AllClear actions=[press]]\n    - [3] AXButton (Percent) [id=Percent actions=[press]]\n    - [4] AXButton (Divide) [id=Divide actions=[press]]\n    - [5] AXButton (7) [id=Seven actions=[press]]\n    - [6] AXButton (8) [id=Eight actions=[press]]\n    - [7] AXButton (9) [id=Nine actions=[press]]\n    - [8] AXButton (Multiply) [id=Multiply actions=[press]]\n    - [9] AXButton (4) [id=Four actions=[press]]\n    - [10] AXButton (5) [id=Five actions=[press]]\n    - [11] AXButton (6) [id=Six actions=[press]]\n    - [12] AXButton (Subtract) [id=Subtract actions=[press]]\n    - [13] AXButton (1) [id=One actions=[press]]\n    - [14] AXButton (2) [id=Two actions=[press]]\n    - [15] AXButton (3) [id=Three actions=[press]]\n    - [16] AXButton (Add) [id=Add actions=[press]]\n    - [17] AXButton (Change Sign) [id=Negate help=\"Change sign of a value\" actions=[press]]\n    - [18] AXButton (0) [id=Zero actions=[press]]\n    - [19] AXButton (Point) [id=Decimal actions=[press]]\n    - [20] AXButton (Equals) [id=Equals actions=[press]]\n  - [21] AXToolbar [actions=[showmenu]]\n    - [22] AXButton (Show Sidebar) [id= actions=[increment,decrement,delete,showmenu,cancel,press]]\n    - [23] AXButton (Mode) [id=Mode: basic; unitConversion: false actions=[increment,decrement,delete,showmenu,cancel,press,name:move previous\ntarget:0x0\nselector:(null),name:remove from toolbar\ntarget:0x0\nselector:(null)]]\n  - [24] AXButton [actions=[press]]\n  - [25] AXButton [actions=[press]]\n- [26] AXMenuBar [actions=[cancel]]\n  - [27] AXMenuBarItem \"Apple\" [actions=[cancel,press,pick]]\n    - [28] AXMenu [actions=[cancel]]\n      - [29] AXMenuItem \"About This Mac\" [id=_aboutThisMacRequested: actions=[cancel,press,pick]]\n      - [30] AXMenuItem \"System Information\" [id=_systemInformationRequested: actions=[cancel,press,pick]]\n      - [31] AXMenuItem \"System Settings…\" [id=_systemSettingsRequested: actions=[cancel,press,pick]]\n      - [32] AXMenuItem \"App Store\" [id=_appStoreRequested: actions=[cancel,press,pick]]\n      - [33] AXMenuItem \"Recent Items\" [id=_recentsRequested: actions=[cancel,press,pick]]\n        - [34] AXMenu [actions=[cancel]]\n          - AXMenuItem \"Applications\"\n          - [35] AXMenuItem \"Archive Utility\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [36] AXMenuItem \"Show “Archive Utility” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [37] AXMenuItem \"Codex\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [38] AXMenuItem \"Show “Codex” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [39] AXMenuItem \"Cursor\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [40] AXMenuItem \"Show “Cursor” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [41] AXMenuItem \"Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [42] AXMenuItem \"Show “Finder” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [43] AXMenuItem \"Ghostty\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [44] AXMenuItem \"Show “Ghostty” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [45] AXMenuItem \"Google Chrome\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [46] AXMenuItem \"Show “Google Chrome” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [47] AXMenuItem \"Preview\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [48] AXMenuItem \"Show “Preview” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [49] AXMenuItem \"QuickTime Player\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [50] AXMenuItem \"Show “QuickTime Player” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [51] AXMenuItem \"System Settings\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [52] AXMenuItem \"Show “System Settings” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [53] AXMenuItem \"Visual Studio Code\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [54] AXMenuItem \"Show “Visual Studio Code” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - AXMenuItem \"Documents\"\n          - [55] AXMenuItem \"checking_research\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [56] AXMenuItem \"Show “checking_research” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [57] AXMenuItem \"FreeLlama\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [58] AXMenuItem \"Show “FreeLlama” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [59] AXMenuItem \"mcp.md\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [60] AXMenuItem \"Show “mcp.md” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [61] AXMenuItem \"media-vision\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [62] AXMenuItem \"Show “media-vision” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [63] AXMenuItem \"models-store.json\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [64] AXMenuItem \"Show “models-store.json” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [65] AXMenuItem \"octocode\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [66] AXMenuItem \"Show “octocode” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [67] AXMenuItem \"octocode-mcp-host\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [68] AXMenuItem \"Show “octocode-mcp-host” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [69] AXMenuItem \"octocodecode\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [70] AXMenuItem \"Show “octocodecode” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [71] AXMenuItem \"OctoDeck\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [72] AXMenuItem \"Show “OctoDeck” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [73] AXMenuItem \"Screenshot 2026-11-20 at 18.11.14\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [74] AXMenuItem \"Show “Screenshot 2026-11-20 at 18.11.14” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - AXMenuItem \"Servers\"\n          - [75] AXMenuItem \"Macintosh HD\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [76] AXMenuItem \"Clear Menu\" [id=_clearRecentItemsRequested: actions=[cancel,press,pick]]\n      - [77] AXMenuItem \"Force Quit…\" [id=_forceQuitPanelRequested: actions=[cancel,press,pick]]\n      - [78] AXMenuItem \"Force Quit Calculator\" [id=_forceQuitRequested: actions=[cancel,press,pick]]\n      - AXMenuItem \"Sleep\"\n      - [79] AXMenuItem \"Restart…\" [id=_restartRequested: actions=[cancel,press,pick]]\n      - [80] AXMenuItem \"Restart\" [id=_restartNowRequested: actions=[cancel,press,pick]]\n      - [81] AXMenuItem \"Shut Down…\" [id=_shutDownRequested: actions=[cancel,press,pick]]\n      - [82] AXMenuItem \"Shut Down\" [id=_shutDownNowRequested: actions=[cancel,press,pick]]\n      - [83] AXMenuItem \"Lock Screen\" [id=_lockScreenRequested: actions=[cancel,press,pick]]\n      - [84] AXMenuItem \"Log Out Guy Bary…\" [id=_logOutRequested: actions=[cancel,press,pick]]\n      - [85] AXMenuItem \"Log Out Guy Bary\" [id=_logOutNowRequested: actions=[cancel,press,pick]]\n  - [86] AXMenuBarItem \"Calculator\" [actions=[cancel,press,pick]]\n    - [87] AXMenu [actions=[cancel]]\n      - [88] AXMenuItem \"About Calculator\" [id=menuAction: actions=[cancel,press,pick]]\n      - [89] AXMenuItem \"Services\" [actions=[cancel,press,pick]]\n        - [90] AXMenu [actions=[cancel]]\n          - AXMenuItem \"No Services Apply\"\n          - [91] AXMenuItem \"Services Settings…\" [id=_configureServicesMenu: actions=[cancel,press,pick]]\n      - [92] AXMenuItem \"Hide Calculator\" [id=hide: actions=[cancel,press,pick]]\n      - [93] AXMenuItem \"Hide Others\" [id=hideOtherApplications: actions=[cancel,press,pick]]\n      - AXMenuItem \"Show All\"\n      - [94] AXMenuItem \"Quit Calculator\" [id=terminate: actions=[cancel,press,pick]]\n      - [95] AXMenuItem \"Quit and Keep Windows\" [id=NSAlternateQuitMenuItem actions=[cancel,press,pick]]\n  - [96] AXMenuBarItem \"Edit\" [actions=[cancel,press,pick]]\n    - [97] AXMenu [actions=[cancel]]\n      - AXMenuItem \"Undo\"\n      - AXMenuItem \"Redo\"\n      - AXMenuItem \"Cut\"\n      - AXMenuItem \"Copy\"\n      - AXMenuItem \"Paste\"\n      - AXMenuItem \"Delete\"\n      - AXMenuItem \"Select All\"\n      - [98] AXMenuItem \"AutoFill\" [id=_NSMenuItemAutoFillIdentifier actions=[cancel,press,pick]]\n        - [99] AXMenu [actions=[cancel]]\n          - AXMenuItem \"Contact…\"\n          - AXMenuItem \"Passwords…\"\n          - AXMenuItem \"Credit Card…\"\n  - [100] AXMenuBarItem \"View\" [actions=[cancel,press,pick]]\n    - [101] AXMenu [actions=[cancel]]\n      - [102] AXMenuItem \"Basic\" [id=menuAction: actions=[cancel,press,pick]]\n      - [103] AXMenuItem \"Scientific\" [id=menuAction: actions=[cancel,press,pick]]\n      - [104] AXMenuItem \"Programmer\" [id=menuAction: actions=[cancel,press,pick]]\n      - [105] AXMenuItem \"Convert\" [id=menuAction: actions=[cancel,press,pick]]\n      - [106] AXMenuItem \"RPN Mode\" [id=menuAction: actions=[cancel,press,pick]]\n      - [107] AXMenuItem \"Math Notes…\" [id=menuAction: actions=[cancel,press,pick]]\n      - [108] AXMenuItem \"Hide Thousands Separator\" [id=menuAction: actions=[cancel,press,pick]]\n      - [109] AXMenuItem \"Decimal Places\" [id=ID(id: 10530) actions=[cancel,press,pick]]\n        - [110] AXMenu [actions=[cancel]]\n          - [111] AXMenuItem \"0\" [id=menuAction: actions=[cancel,press,pick]]\n          - [112] AXMenuItem \"1\" [id=menuAction: actions=[cancel,press,pick]]\n          - [113] AXMenuItem \"2\" [id=menuAction: actions=[cancel,press,pick]]\n          - [114] AXMenuItem \"3\" [id=menuAction: actions=[cancel,press,pick]]\n          - [115] AXMenuItem \"4\" [id=menuAction: actions=[cancel,press,pick]]\n          - [116] AXMenuItem \"5\" [id=menuAction: actions=[cancel,press,pick]]\n          - [117] AXMenuItem \"6\" [id=menuAction: actions=[cancel,press,pick]]\n          - [118] AXMenuItem \"7\" [id=menuAction: actions=[cancel,press,pick]]\n          - [119] AXMenuItem \"8\" [id=menuAction: actions=[cancel,press,pick]]\n          - [120] AXMenuItem \"9\" [id=menuAction: actions=[cancel,press,pick]]\n          - [121] AXMenuItem \"10\" [id=menuAction: actions=[cancel,press,pick]]\n          - [122] AXMenuItem \"11\" [id=menuAction: actions=[cancel,press,pick]]\n          - [123] AXMenuItem \"12\" [id=menuAction: actions=[cancel,press,pick]]\n          - [124] AXMenuItem \"13\" [id=menuAction: actions=[cancel,press,pick]]\n          - [125] AXMenuItem \"14\" [id=menuAction: actions=[cancel,press,pick]]\n          - [126] AXMenuItem \"15\" [id=menuAction: actions=[cancel,press,pick]]\n      - [127] AXMenuItem \"Show History\" [id=menuAction: actions=[cancel,press,pick]]\n      - AXMenuItem \"Enter Full Screen\"\n  - [128] AXMenuBarItem \"Window\" [actions=[cancel,press,pick]]\n    - [129] AXMenu [actions=[cancel]]\n      - AXMenuItem \"Close\"\n      - [130] AXMenuItem \"Close All\" [id=closeAll: actions=[cancel,press,pick]]\n      - AXMenuItem \"Minimize\"\n      - [131] AXMenuItem \"Minimize All\" [id=miniaturizeAll: actions=[cancel,press,pick]]\n      - AXMenuItem \"Zoom\"\n      - [132] AXMenuItem \"Zoom All\" [id=zoomAll: actions=[cancel,press,pick]]\n      - AXMenuItem \"Fill\"\n      - AXMenuItem \"Center\"\n      - [133] AXMenuItem \"Move & Resize\" [actions=[cancel,press,pick]]\n        - [134] AXMenu [actions=[cancel]]\n          - AXMenuItem \"Halves\"\n          - AXMenuItem \"Left\"\n          - AXMenuItem \"Right\"\n          - AXMenuItem \"Top\"\n          - AXMenuItem \"Bottom\"\n          - AXMenuItem \"Quarters\"\n          - AXMenuItem \"Top Left\"\n          - AXMenuItem \"Top Right\"\n          - AXMenuItem \"Bottom Left\"\n          - AXMenuItem \"Bottom Right\"\n          - AXMenuItem \"Arrange\"\n          - AXMenuItem \"Left & Right\"\n          - AXMenuItem \"Left & Quarters\"\n          - AXMenuItem \"Right & Left\"\n          - AXMenuItem \"Right & Quarters\"\n          - AXMenuItem \"Top & Bottom\"\n          - AXMenuItem \"Top & Quarters\"\n          - AXMenuItem \"Bottom & Top\"\n          - AXMenuItem \"Bottom & Quarters\"\n          - AXMenuItem \"Quarters\"\n          - AXMenuItem \"Return to Previous Size\"\n      - AXMenuItem \"Full Screen Tile\"\n      - AXMenuItem \"Remove Window from Set\"\n      - [135] AXMenuItem \"Always on Top\" [id=menuAction: actions=[cancel,press,pick]]\n      - [136] AXMenuItem \"Bring All to Front\" [id=arrangeInFront: actions=[cancel,press,pick]]\n      - [137] AXMenuItem \"Arrange in Front\" [id=alternateArrangeInFront: actions=[cancel,press,pick]]\n  - [138] AXMenuBarItem \"Help\" [actions=[cancel,press,pick]]\n    - [139] AXMenu [actions=[cancel]]\n      - [140] AXMenuItem \"Calculator Help\" [id=showHelp: actions=[cancel,press,pick]]\n",
+  "truncated": false,
+  "walk_elapsed_ms": 244,
+  "window_bounds": {
+   "height": 408,
+   "width": 230,
+   "x": 894,
+   "y": 445
+  },
+  "window_id": 9663,
+  "window_title": "Calculator"
+ }
+}

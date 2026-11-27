@@ -1,0 +1,97 @@
+import { isRecord } from "@octocodeai/octocode-contracts/guards";
+import type { AgentSessionEvent } from "../core/agent-session.ts";
+import { type JsonAgentSessionEvent, toJsonEvent } from "./json-event.ts";
+
+/**
+ * Lean RPC events (`--rpc-lean-events`): each message and tool result travels whole once, and every later event that
+ * repeats it carries a reference. The default events repeat a tool result up to five times (`message_start`,
+ * `message_end`, `tool_execution_end`, `turn_end`, `agent_end`), with a bash result's 1 MiB `structuredContent` and every
+ * assistant message's `requestTrace` each time; a subagent's parent reads none of those copies.
+ *
+ * | Event | Lean form |
+ * | --- | --- |
+ * | `tool_execution_end` | the result without `structuredContent` (the data for programmatic callers) |
+ * | `message_start`, `message_end` of a tool result | the message without `content`, `details` and `structuredContent`: `tool_execution_end` of its `toolCallId` carried them |
+ * | `message_end` of an assistant message | the message without `requestTrace` |
+ * | `message_update` ending a block (`text_end`, `thinking_end`, `toolcall_end`) | the event without the finished block (`content`, `toolCall`): the deltas built it, and `message_end` carries it |
+ * | `turn_end`, `agent_end` | each message as a reference: `role`, `timestamp`, and `toolCallId`, `toolName`, `isError` or `stopReason` when it has them |
+ *
+ * Every other event, and user and custom messages, are the default ones.
+ */
+
+type Record_ = Record<string, unknown>;
+
+const REFERENCE_FIELDS = ["role", "timestamp", "toolCallId", "toolName", "isError", "stopReason"] as const;
+
+/** Streamed updates that end a block and repeat it whole. */
+const BLOCK_ENDS = new Set<unknown>(["text_end", "thinking_end", "toolcall_end"]);
+
+function without(record: Record_, keys: readonly string[]): Record_ {
+	const copy: Record_ = {};
+	for (const key of Object.keys(record)) if (!keys.includes(key)) copy[key] = record[key];
+	return copy;
+}
+
+/** A message as `turn_end` and `agent_end` refer to it. */
+function reference(message: unknown): unknown {
+	if (!isRecord(message)) return message;
+	const ref: Record_ = {};
+	for (const key of REFERENCE_FIELDS) if (message[key] !== undefined) ref[key] = message[key];
+	return ref;
+}
+
+/** A message as `message_start` and `message_end` carry it in lean events. */
+function leanMessage(message: unknown): unknown {
+	if (!isRecord(message)) return message;
+	if (message.role === "toolResult") return without(message, ["content", "details", "structuredContent"]);
+	if (message.role === "assistant" && "requestTrace" in message) return without(message, ["requestTrace"]);
+	return message;
+}
+
+export function toLeanJsonEvent(event: AgentSessionEvent): JsonAgentSessionEvent | Record_ {
+	const json = toJsonEvent(event) as JsonAgentSessionEvent & Record_;
+	switch (json.type) {
+		case "message_start":
+		case "message_end":
+			return { ...json, message: leanMessage(json.message) };
+		case "message_update":
+			return isRecord(json.assistantMessageEvent) && BLOCK_ENDS.has(json.assistantMessageEvent.type)
+				? { ...json, assistantMessageEvent: without(json.assistantMessageEvent, ["content", "toolCall"]) }
+				: json;
+		case "tool_execution_end":
+			return isRecord(json.result) && "structuredContent" in json.result
+				? { ...json, result: without(json.result, ["structuredContent"]) }
+				: json;
+		case "turn_end":
+			return {
+				...json,
+				message: reference(json.message),
+				toolResults: Array.isArray(json.toolResults) ? json.toolResults.map(reference) : json.toolResults,
+			};
+		case "agent_end":
+			return { ...json, messages: Array.isArray(json.messages) ? json.messages.map(reference) : json.messages };
+		default:
+			return json;
+	}
+}
+
+/** Native parents consume tool updates solely as a child-wide liveness stamp. Project before the stdout queue so
+ * neither serialization nor a stalled pipe retains a tool's arguments or partial output. ACP consumes the full update.
+ */
+export function childProgressOutput(write: (event: AgentSessionEvent) => void, now = () => performance.now()) {
+	let next = -Infinity;
+	return (event: AgentSessionEvent): void => {
+		if (event.type !== "tool_execution_update") return write(event);
+		if (event.parentToolCallId) return;
+		const at = now();
+		if (at < next) return;
+		next = at + 250;
+		write({
+			type: event.type,
+			toolCallId: event.toolCallId,
+			toolName: event.toolName,
+			args: undefined,
+			partialResult: undefined,
+		});
+	};
+}

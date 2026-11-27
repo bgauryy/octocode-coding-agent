@@ -1,0 +1,125 @@
+import { SETTINGS_DEFAULTS } from "../../settings-defaults.ts";
+import type { PackageSource, Settings } from "../../settings-schema.ts";
+import type { ResourceSettingsApi } from "../api/resources.ts";
+import { EnvironmentSettingsAccessors } from "./environment.ts";
+
+/** Packages and resource paths (skills, prompt templates, themes). Project setters write project settings. */
+export abstract class ResourceSettingsAccessors extends EnvironmentSettingsAccessors implements ResourceSettingsApi {
+	getPackages(): PackageSource[] {
+		return [...(this.settings.packages ?? [])];
+	}
+
+	setPackages(packages: PackageSource[]): void {
+		this.globalSettings.packages = packages;
+		this.markModified("packages");
+		this.save();
+	}
+
+	setProjectPackages(packages: PackageSource[]): void {
+		this.updateProjectSettings("packages", (settings) => {
+			settings.packages = packages;
+		});
+	}
+
+	getSkillPaths(): string[] {
+		return [...(this.settings.skills ?? [])];
+	}
+
+	setSkillPaths(paths: string[]): void {
+		this.globalSettings.skills = paths;
+		this.markModified("skills");
+		this.save();
+	}
+
+	setProjectSkillPaths(paths: string[]): void {
+		this.updateProjectSettings("skills", (settings) => {
+			settings.skills = paths;
+		});
+	}
+
+	getPromptTemplatePaths(): string[] {
+		return [...(this.settings.prompts ?? [])];
+	}
+
+	setPromptTemplatePaths(paths: string[]): void {
+		this.globalSettings.prompts = paths;
+		this.markModified("prompts");
+		this.save();
+	}
+
+	setProjectPromptTemplatePaths(paths: string[]): void {
+		this.updateProjectSettings("prompts", (settings) => {
+			settings.prompts = paths;
+		});
+	}
+
+	getThemePaths(): string[] {
+		return [...(this.settings.themes ?? [])];
+	}
+
+	setThemePaths(paths: string[]): void {
+		this.globalSettings.themes = paths;
+		this.markModified("themes");
+		this.save();
+	}
+
+	setProjectThemePaths(paths: string[]): void {
+		this.updateProjectSettings("themes", (settings) => {
+			settings.themes = paths;
+		});
+	}
+
+	getEnableSkillCommands(): boolean {
+		return this.settings.enableSkillCommands ?? SETTINGS_DEFAULTS.enableSkillCommands;
+	}
+
+	setEnableSkillCommands(enabled: boolean): void {
+		this.globalSettings.enableSkillCommands = enabled;
+		this.markModified("enableSkillCommands");
+		this.save();
+	}
+
+	getToggles(): Record<string, boolean> {
+		return { ...this.settings.toggles };
+	}
+
+	addPlugin(scope: "global" | "project", entry: { path: string; protocol: "claude" | "codex" }): void {
+		const update = (settings: Settings) => {
+			if (!settings.plugins?.some((plugin) => plugin.path === entry.path))
+				settings.plugins = [...(settings.plugins ?? []), entry];
+		};
+		if (scope === "project") return this.updateProjectSettings("plugins", update);
+		update(this.globalSettings);
+		this.markModified("plugins");
+		this.save();
+	}
+
+	setGlobalPlugins(plugins: NonNullable<Settings["plugins"]>): void {
+		this.globalSettings.plugins = plugins;
+		this.markModified("plugins");
+		this.save();
+	}
+
+	getMarketplaces(): NonNullable<Settings["marketplaces"]> {
+		return { ...this.globalSettings.marketplaces };
+	}
+
+	setMarketplaces(marketplaces: NonNullable<Settings["marketplaces"]>): void {
+		this.globalSettings.marketplaces = marketplaces;
+		this.markModified("marketplaces");
+		this.save();
+	}
+
+	setToggle(scope: "global" | "project", id: string, on: boolean | undefined): void {
+		const update = (settings: Settings) => {
+			const toggles = { ...settings.toggles };
+			if (on === undefined) delete toggles[id];
+			else toggles[id] = on;
+			settings.toggles = toggles;
+		};
+		if (scope === "project") return this.updateProjectSettings("toggles", update, id);
+		update(this.globalSettings);
+		this.markModified("toggles", id);
+		this.save();
+	}
+}

@@ -1,0 +1,42 @@
+{
+	"name": "@octocodeai/octocode-telemetry",
+	"private": true,
+	"version": "1.3.0",
+	"description": "Vendor-neutral telemetry contracts and typed schema utilities for Octocode",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"clean": "shx rm -rf dist",
+		"build": "shx rm -rf dist && tsc -p tsconfig.build.json",
+		"test": "vitest --run"
+	},
+	"keywords": [
+		"telemetry",
+		"tracing",
+		"observability"
+	],
+	"author": "Mario Zechner",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/bgauryy/octocodecode.git",
+		"directory": "packages/telemetry"
+	},
+	"engines": {
+		"node": ">=24.15.0"
+	},
+	"devDependencies": {
+		"@types/node": "^24.19.2",
+		"shx": "^0.4.0",
+		"typescript": "^7.0.2",
+		"vite": "^8.3.8",
+		"vitest": "^5.1.1"
+	}
+}

@@ -1,0 +1,1 @@
+The complete context checkpoint is saved at {{file}}. Search it and read only the relevant bounded line ranges before continuing; do not load the whole file into context. It preserves the summary, user messages, file lists and recovery information without truncation.

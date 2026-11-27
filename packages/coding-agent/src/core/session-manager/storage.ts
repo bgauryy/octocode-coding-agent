@@ -1,0 +1,357 @@
+import {
+	closeSync,
+	existsSync,
+	fsyncSync,
+	mkdirSync,
+	openSync,
+	readdirSync,
+	readSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
+import { join, resolve } from "node:path";
+import { StringDecoder } from "node:string_decoder";
+import { transcripts } from "../../../../db/src/api.ts";
+import { sharedAgentDb } from "../../storage/database.ts";
+import { AGENT_FOLDERS } from "../../storage/agent-layout.ts";
+import { ensureWorkspaceStateDir, workspaceIdentity, workspaceStateDir } from "../../storage/workspace.ts";
+import { atomicWriteFileSync, atomicWriteFileUnlocked } from "@octocodeai/octocode-common/atomic-file";
+import { normalizePath, resolvePath } from "@octocodeai/octocode-common/paths";
+import {
+	assertValidSessionId,
+	createSessionHeader,
+	createSessionId,
+	getSessionFilePath,
+	assertCurrentSessionVersion,
+	parseSessionEntryLine,
+} from "./entries.ts";
+import { decodeSessionRecords, encodeSessionLines, type SessionCodec } from "./codec.ts";
+import { loadSessionFile, loadSessionFileAsync } from "./file-reader.ts";
+export { loadSessionFile } from "./file-reader.ts";
+import type { FileEntry, NewSessionOptions, SessionHeader } from "./types.ts";
+
+/** Default transcript directory shared by all working directories in this checkout. */
+export function getDefaultSessionDirPath(cwd: string): string {
+	return workspaceStateDir(cwd, AGENT_FOLDERS.sessions);
+}
+
+export function getDefaultSessionDir(cwd: string): string {
+	return ensureWorkspaceStateDir(cwd, AGENT_FOLDERS.sessions);
+}
+
+const SESSION_HEADER_READ_BUFFER_SIZE = 4096;
+/** Bound synchronous header discovery while allowing large cwd and custom metadata fields. */
+const MAX_SESSION_HEADER_SCAN_BYTES = 1024 * 1024;
+
+class SessionHeaderScanLimitError extends Error {
+	constructor(filePath: string) {
+		super(`Session header exceeds ${MAX_SESSION_HEADER_SCAN_BYTES}-byte scan limit: ${filePath}`);
+		this.name = "SessionHeaderScanLimitError";
+	}
+}
+
+/** Exported for testing */
+export function loadEntriesFromFile(filePath: string): FileEntry[] {
+	return loadSessionFile(filePath).entries;
+}
+
+/**
+ * Inspect a physical line while searching for the first parsed session entry.
+ * Blank and malformed lines are skipped to match loadEntriesFromFile().
+ * Returns undefined to keep scanning, null for a parsed non-header entry, or the header.
+ */
+function parseSessionHeaderCandidate(line: string): SessionHeader | null | undefined {
+	if (!line.trim()) return undefined;
+	const entry = parseSessionEntryLine(line);
+	if (!entry) return undefined;
+	if (entry.type !== "session" || typeof (entry as { id?: unknown }).id !== "string") return null;
+	return entry;
+}
+
+function readSessionHeader(filePath: string): SessionHeader | null {
+	const fd = openSync(filePath, "r");
+	try {
+		const decoder = new StringDecoder("utf8");
+		const buffer = Buffer.allocUnsafe(SESSION_HEADER_READ_BUFFER_SIZE);
+		const lineChunks: string[] = [];
+		let scannedBytes = 0;
+
+		while (scannedBytes < MAX_SESSION_HEADER_SCAN_BYTES) {
+			const readLength = Math.min(buffer.length, MAX_SESSION_HEADER_SCAN_BYTES - scannedBytes);
+			const bytesRead = readSync(fd, buffer, 0, readLength, null);
+			if (bytesRead === 0) {
+				lineChunks.push(decoder.end());
+				return parseSessionHeaderCandidate(lineChunks.join("")) ?? null;
+			}
+			scannedBytes += bytesRead;
+
+			const chunk = decoder.write(buffer.subarray(0, bytesRead));
+			let lineStart = 0;
+			let newlineIndex = chunk.indexOf("\n", lineStart);
+			while (newlineIndex !== -1) {
+				lineChunks.push(chunk.slice(lineStart, newlineIndex));
+				const header = parseSessionHeaderCandidate(lineChunks.join(""));
+				if (header !== undefined) return header;
+				lineChunks.length = 0;
+				lineStart = newlineIndex + 1;
+				newlineIndex = chunk.indexOf("\n", lineStart);
+			}
+			lineChunks.push(chunk.slice(lineStart));
+		}
+
+		// Probe for EOF so a final header without a newline is allowed when it ends
+		// exactly at the scan limit. Any additional byte exceeds the bounded scan.
+		const probe = Buffer.allocUnsafe(1);
+		if (readSync(fd, probe, 0, probe.length, null) === 0) {
+			lineChunks.push(decoder.end());
+			return parseSessionHeaderCandidate(lineChunks.join("")) ?? null;
+		}
+		throw new SessionHeaderScanLimitError(filePath);
+	} finally {
+		closeSync(fd);
+	}
+}
+
+export function readSessionHeaderForDiscovery(filePath: string): SessionHeader | null {
+	try {
+		return readSessionHeader(filePath);
+	} catch {
+		// Discovery is best-effort: unreadable or oversized files are not sessions,
+		// and one corrupt file must not prevent other sessions from being found.
+		return null;
+	}
+}
+
+export function getSessionHeaderCwd(header: SessionHeader): string | undefined {
+	const cwd = (header as { cwd?: unknown }).cwd;
+	return typeof cwd === "string" ? cwd : undefined;
+}
+
+export function sessionCwdMatches(cwd: string | undefined, resolvedCwd: string): boolean {
+	return cwd !== undefined && cwd !== "" && resolvePath(cwd) === resolvedCwd;
+}
+
+/** Exported for testing */
+export function findMostRecentSession(sessionDir: string, cwd?: string): string | null {
+	const resolvedSessionDir = normalizePath(sessionDir);
+	const resolvedCwd = cwd ? resolvePath(cwd) : undefined;
+	let names: string[];
+	try {
+		names = readdirSync(resolvedSessionDir);
+	} catch (error) {
+		// A folder that does not exist has no recent session; an unreadable one is a failure to report.
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code === "ENOENT" || code === "ENOTDIR") return null;
+		throw error;
+	}
+	const files = names
+		.filter((file) => file.endsWith(".jsonl"))
+		.map((file) => join(resolvedSessionDir, file))
+		.flatMap((path) => {
+			try {
+				const stats = statSync(path);
+				return stats.isFile() ? [{ path, mtime: stats.mtimeMs }] : [];
+			} catch {
+				return [];
+			}
+		})
+		.sort((a, b) => b.mtime - a.mtime);
+
+	for (const { path } of files) {
+		const header = readSessionHeaderForDiscovery(path);
+		if (header && (!resolvedCwd || sessionCwdMatches(getSessionHeaderCwd(header), resolvedCwd))) return path;
+	}
+	return null;
+}
+
+/**
+ * The newest session of `cwd`: in a custom `sessionDir` (only sessions whose header names `cwd`), else in its
+ * workspace transcript folder, or null.
+ */
+export function findMostRecentForCwd(cwd: string, sessionDir?: string): string | null {
+	if (sessionDir && normalizePath(sessionDir) !== getDefaultSessionDirPath(cwd))
+		return findMostRecentSession(sessionDir, cwd);
+	return findMostRecentSession(getDefaultSessionDirPath(cwd));
+}
+
+/**
+ * Create a session file that must not exist yet, writing every entry and syncing before close. Returns the lines
+ * written and the codec that stored them, which the session keeps for its next appends.
+ */
+export function writeNewSessionFile(
+	sessionFile: string,
+	fileEntries: readonly FileEntry[],
+): { lines: string[]; codec: SessionCodec } {
+	const encoded = encodeSessionLines(fileEntries);
+	const fd = openSync(sessionFile, "wx", 0o600);
+	try {
+		for (const line of encoded.lines) {
+			writeFileSync(fd, `${line}\n`);
+		}
+		fsyncSync(fd);
+	} finally {
+		closeSync(fd);
+	}
+	return encoded;
+}
+
+/** Resolved arguments for opening a specific session file. */
+export interface OpenedSessionTarget {
+	cwd: string;
+	dir: string;
+	/** `dir` is the file's own folder because no session directory was given. */
+	dirFromFile: boolean;
+	resolvedPath: string;
+	preloadedFileEntries: FileEntry[] | undefined;
+}
+
+/** Resolve the cwd and session directory used by `SessionManager.open()`. */
+export function resolveOpenedSession(
+	path: string,
+	sessionDir?: string,
+	cwdOverride?: string,
+	loadedHeader?: SessionHeader | null,
+): OpenedSessionTarget {
+	const resolvedPath = resolvePath(path);
+	let header: SessionHeader | null = loadedHeader ?? null;
+	let preloadedFileEntries: FileEntry[] | undefined;
+	if (loadedHeader === undefined && cwdOverride === undefined && existsSync(resolvedPath)) {
+		try {
+			header = readSessionHeader(resolvedPath);
+		} catch (error) {
+			if (!(error instanceof SessionHeaderScanLimitError)) throw error;
+			// The bounded scan is only a discovery optimization. A full load remains
+			// authoritative for legacy files with very large headers or prefixes.
+			preloadedFileEntries = loadEntriesFromFile(resolvedPath);
+			const firstEntry = preloadedFileEntries[0];
+			header = firstEntry?.type === "session" ? firstEntry : null;
+		}
+	}
+	const cwd = cwdOverride ?? (header ? getSessionHeaderCwd(header) : undefined) ?? process.cwd();
+	// Without a sessionDir the file's own folder is kept.
+	const dir = sessionDir ? normalizePath(sessionDir) : resolve(resolvedPath, "..");
+	return { cwd, dir, dirFromFile: !sessionDir, resolvedPath, preloadedFileEntries };
+}
+
+interface ForkSource {
+	file: string;
+	entries: FileEntry[];
+}
+
+interface ForkResult {
+	cwd: string;
+	dir: string;
+	sessionFile: string;
+	sourceFile: string;
+	sourceId: string;
+}
+
+/** The file of the session a stored id names. */
+function storedSessionFile(storedId: string): string {
+	const old = transcripts.stamp(sharedAgentDb().mirror.db, storedId);
+	if (!old) throw new Error(`No saved transcript for session ${storedId}`);
+	return old.file;
+}
+
+/**
+ * The entries of a stored session. The file is the record: its database copy is stale exactly when a mirror rebuild
+ * failed. The copy serves when the file is gone, or no longer holds this session.
+ */
+function storedSessionEntries(storedId: string, onDisk: FileEntry[]): FileEntry[] {
+	if (onDisk[0]?.type === "session" && onDisk[0].id === storedId) return onDisk;
+	const records = transcripts.records(sharedAgentDb().mirror.db, storedId);
+	return decodeSessionRecords(records.map((line) => JSON.parse(line) as FileEntry));
+}
+
+/** Validates the source and builds the fork's file content; the caller writes it. */
+function prepareFork(
+	sourcePath: string | { storedId: string },
+	source: ForkSource,
+	targetCwd: string,
+	sessionDir?: string,
+	options?: NewSessionOptions,
+): { fork: ForkResult; content: string } {
+	const resolvedSourcePath = source.file;
+	const sourceEntries = source.entries;
+	const resolvedTargetCwd = resolvePath(targetCwd);
+	if (sourceEntries.length === 0) {
+		throw new Error(`Cannot fork: source session file is empty or invalid: ${resolvedSourcePath}`);
+	}
+
+	const sourceHeader = sourceEntries.find((e) => e.type === "session");
+	if (!sourceHeader) {
+		throw new Error(`Cannot fork: source session has no header: ${resolvedSourcePath}`);
+	}
+	assertCurrentSessionVersion(sourceHeader, resolvedSourcePath);
+
+	// The fork is new work in targetCwd even when its caller chooses a separate JSONL directory.
+	if (sessionDir && statSync(resolvedTargetCwd, { throwIfNoEntry: false })?.isDirectory())
+		workspaceIdentity(resolvedTargetCwd);
+	const dir = sessionDir ? normalizePath(sessionDir) : getDefaultSessionDir(resolvedTargetCwd);
+	if (!existsSync(dir)) {
+		mkdirSync(dir, { recursive: true });
+	}
+
+	// Create new session file with new ID but forked content
+	if (options?.id !== undefined) {
+		assertValidSessionId(options.id);
+	}
+	const newSessionId = options?.id ?? createSessionId();
+	const timestamp = new Date().toISOString();
+	const newSessionFile = getSessionFilePath(dir, timestamp, newSessionId);
+
+	// A new header pointing to the source as parent, with the target cwd, then every non-header entry of the source.
+	// The copy is written whole to a temporary sibling and renamed into place, so a failure leaves no partial fork.
+	const newHeader = createSessionHeader(newSessionId, timestamp, resolvedTargetCwd, resolvedSourcePath);
+	if (typeof sourcePath !== "string") newHeader.parentSessionId = sourcePath.storedId;
+	const content = encodeSessionLines([newHeader, ...sourceEntries.filter((entry) => entry.type !== "session")])
+		.lines.map((line) => `${line}\n`)
+		.join("");
+	if (existsSync(newSessionFile)) throw new Error(`Cannot fork: session file already exists: ${newSessionFile}`);
+	return {
+		fork: {
+			cwd: resolvedTargetCwd,
+			dir,
+			sessionFile: newSessionFile,
+			sourceFile: resolvedSourcePath,
+			sourceId: sourceHeader.id,
+		},
+		content,
+	};
+}
+
+/**
+ * Write a forked copy of a session file into the target project's session directory.
+ * Returns the arguments `SessionManager.forkFrom()` opens the new session with.
+ */
+export function forkSessionFile(
+	sourcePath: string | { storedId: string },
+	targetCwd: string,
+	sessionDir?: string,
+	options?: NewSessionOptions,
+): ForkResult {
+	const file = typeof sourcePath === "string" ? resolvePath(sourcePath) : storedSessionFile(sourcePath.storedId);
+	const onDisk = loadEntriesFromFile(file);
+	const entries = typeof sourcePath === "string" ? onDisk : storedSessionEntries(sourcePath.storedId, onDisk);
+	const source = { file, entries };
+	const { fork, content } = prepareFork(sourcePath, source, targetCwd, sessionDir, options);
+	atomicWriteFileSync(fork.sessionFile, content, { mode: 0o600 });
+	return fork;
+}
+
+/** `forkSessionFile` reading the source and writing the fork without blocking input; `signal` cancels before the write. */
+export async function forkSessionFileAsync(
+	sourcePath: string | { storedId: string },
+	targetCwd: string,
+	sessionDir?: string,
+	options?: NewSessionOptions,
+	signal?: AbortSignal,
+): Promise<ForkResult> {
+	const file = typeof sourcePath === "string" ? resolvePath(sourcePath) : storedSessionFile(sourcePath.storedId);
+	const onDisk = (await loadSessionFileAsync(file, signal)).entries;
+	const entries = typeof sourcePath === "string" ? onDisk : storedSessionEntries(sourcePath.storedId, onDisk);
+	const source = { file, entries };
+	const { fork, content } = prepareFork(sourcePath, source, targetCwd, sessionDir, options);
+	await atomicWriteFileUnlocked(fork.sessionFile, content, { mode: 0o600, signal });
+	return fork;
+}

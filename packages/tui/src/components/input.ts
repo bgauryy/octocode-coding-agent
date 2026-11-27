@@ -1,0 +1,385 @@
+import { getKeybindings } from "../keybindings.ts";
+import { decodeKittyPrintable } from "../keys/parse.ts";
+import { KillRing } from "../kill-ring.ts";
+import type { Component, Focusable, TuiMouseEvent, TuiMouseEventResult } from "../tui.ts";
+import { UndoStack } from "../undo-stack.ts";
+import { hasControlCharacter, isWhitespaceChar, stripControlCharacters } from "../utils/chars.ts";
+import { getGraphemeSegmenter, visibleWidth } from "../utils/width.ts";
+import { findWordBackward, findWordForward } from "../word-navigation.ts";
+import { BracketedPasteBuffer, singleLinePaste } from "./input/paste.ts";
+import { cursorAtColumn, renderInputLine } from "./input/render.ts";
+
+const segmenter = getGraphemeSegmenter();
+
+interface InputState {
+	value: string;
+	cursor: number;
+}
+
+export interface InputOptions {
+	secret?: boolean;
+	prompt?: string;
+	placeholder?: string;
+	placeholderStyle?: (text: string) => string;
+}
+
+/**
+ * Input component - single-line text input with horizontal scrolling
+ */
+export class Input implements Component, Focusable {
+	private value: string = "";
+	private cursor: number = 0; // Cursor position in the value
+	private readonly prompt: string;
+	private readonly placeholder: string;
+	private readonly placeholderStyle: (text: string) => string;
+	private readonly secret: boolean;
+	private renderedStartColumn = 0;
+	public onSubmit?: (value: string) => void;
+	public onEscape?: () => void;
+
+	/** Focusable interface - set by TUI when focus changes */
+	focused: boolean = false;
+
+	private paste = new BracketedPasteBuffer();
+
+	private killRing = new KillRing();
+	private lastAction: "kill" | "yank" | "type-word" | null = null;
+
+	private undoStack = new UndoStack<InputState>();
+
+	constructor(options: InputOptions = {}) {
+		this.secret = options.secret ?? false;
+		this.prompt = options.prompt ?? "> ";
+		this.placeholder = options.placeholder ?? "";
+		this.placeholderStyle = options.placeholderStyle ?? ((text) => text);
+	}
+
+	getValue(): string {
+		return this.value;
+	}
+
+	/** Like typed and pasted text, a set value (a stored label or name) keeps no control character: it is drawn as is. */
+	setValue(value: string): void {
+		this.value = stripControlCharacters(value.replace(/\r\n|[\r\n]/g, " ").replace(/\t/g, "    "));
+		this.cursor = Math.min(this.cursor, this.value.length);
+	}
+
+	handleInput(data: string): void {
+		const paste = this.paste.take(data);
+		if (paste) {
+			if (paste.content !== undefined) {
+				this.handlePaste(paste.content);
+
+				// Handle any remaining input after the paste marker
+				if (paste.remaining) {
+					this.handleInput(paste.remaining);
+				}
+			}
+			return;
+		}
+
+		const kb = getKeybindings();
+
+		if (kb.matches(data, "tui.select.cancel")) {
+			if (this.onEscape) this.onEscape();
+			return;
+		}
+
+		if (kb.matches(data, "tui.editor.undo")) {
+			this.undo();
+			return;
+		}
+
+		if (kb.matches(data, "tui.input.submit") || data === "\n") {
+			if (this.onSubmit) this.onSubmit(this.value);
+			return;
+		}
+
+		if (kb.matches(data, "tui.editor.deleteCharBackward")) {
+			this.handleBackspace();
+			return;
+		}
+
+		if (kb.matches(data, "tui.editor.deleteCharForward")) {
+			this.handleForwardDelete();
+			return;
+		}
+
+		if (kb.matches(data, "tui.editor.deleteWordBackward")) {
+			this.deleteWordBackwards();
+			return;
+		}
+
+		if (kb.matches(data, "tui.editor.deleteWordForward")) {
+			this.deleteWordForward();
+			return;
+		}
+
+		if (kb.matches(data, "tui.editor.deleteToLineStart")) {
+			this.deleteToLineStart();
+			return;
+		}
+
+		if (kb.matches(data, "tui.editor.deleteToLineEnd")) {
+			this.deleteToLineEnd();
+			return;
+		}
+
+		if (kb.matches(data, "tui.editor.yank")) {
+			this.yank();
+			return;
+		}
+		if (kb.matches(data, "tui.editor.yankPop")) {
+			this.yankPop();
+			return;
+		}
+
+		if (kb.matches(data, "tui.editor.cursorLeft")) {
+			this.lastAction = null;
+			if (this.cursor > 0) {
+				const beforeCursor = this.value.slice(0, this.cursor);
+				const graphemes = [...segmenter.segment(beforeCursor)];
+				const lastGrapheme = graphemes[graphemes.length - 1];
+				this.cursor -= lastGrapheme ? lastGrapheme.segment.length : 1;
+			}
+			return;
+		}
+
+		if (kb.matches(data, "tui.editor.cursorRight")) {
+			this.lastAction = null;
+			if (this.cursor < this.value.length) {
+				const afterCursor = this.value.slice(this.cursor);
+				const graphemes = [...segmenter.segment(afterCursor)];
+				const firstGrapheme = graphemes[0];
+				this.cursor += firstGrapheme ? firstGrapheme.segment.length : 1;
+			}
+			return;
+		}
+
+		if (kb.matches(data, "tui.editor.cursorLineStart")) {
+			this.lastAction = null;
+			this.cursor = 0;
+			return;
+		}
+
+		if (kb.matches(data, "tui.editor.cursorLineEnd")) {
+			this.lastAction = null;
+			this.cursor = this.value.length;
+			return;
+		}
+
+		if (kb.matches(data, "tui.editor.cursorWordLeft")) {
+			this.moveWordBackwards();
+			return;
+		}
+
+		if (kb.matches(data, "tui.editor.cursorWordRight")) {
+			this.moveWordForwards();
+			return;
+		}
+
+		// Kitty CSI-u printable character (e.g. \x1b[97u for 'a').
+		// Terminals with Kitty protocol flag 1 (disambiguate) send CSI-u for all keys,
+		// including plain printable characters. Decode before the control-char check
+		// since CSI-u sequences contain \x1b which would be rejected.
+		const kittyPrintable = decodeKittyPrintable(data);
+		if (kittyPrintable !== undefined) {
+			this.insertCharacter(kittyPrintable);
+			return;
+		}
+
+		// Regular character input - accept printable characters including Unicode,
+		// but reject control characters (C0: 0x00-0x1F, DEL: 0x7F, C1: 0x80-0x9F)
+		if (!hasControlCharacter(data)) {
+			this.insertCharacter(data);
+		}
+	}
+
+	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+		if (event.type !== "press" || event.button !== "left" || event.y !== 0) return undefined;
+		const visibleColumn = Math.max(0, event.x - visibleWidth(this.prompt));
+		const targetColumn = this.renderedStartColumn + visibleColumn;
+		this.cursor = this.secret ? Math.min(this.value.length, targetColumn) : cursorAtColumn(this.value, targetColumn);
+		this.lastAction = null;
+		return { handled: true, focus: true };
+	}
+
+	private insertCharacter(char: string): void {
+		// Undo coalescing: consecutive word chars coalesce into one undo unit
+		if (isWhitespaceChar(char) || this.lastAction !== "type-word") {
+			this.pushUndo();
+		}
+		this.lastAction = "type-word";
+
+		this.value = this.value.slice(0, this.cursor) + char + this.value.slice(this.cursor);
+		this.cursor += char.length;
+	}
+
+	private handleBackspace(): void {
+		this.lastAction = null;
+		if (this.cursor > 0) {
+			this.pushUndo();
+			const beforeCursor = this.value.slice(0, this.cursor);
+			const graphemes = [...segmenter.segment(beforeCursor)];
+			const lastGrapheme = graphemes[graphemes.length - 1];
+			const graphemeLength = lastGrapheme ? lastGrapheme.segment.length : 1;
+			this.value = this.value.slice(0, this.cursor - graphemeLength) + this.value.slice(this.cursor);
+			this.cursor -= graphemeLength;
+		}
+	}
+
+	private handleForwardDelete(): void {
+		this.lastAction = null;
+		if (this.cursor < this.value.length) {
+			this.pushUndo();
+			const afterCursor = this.value.slice(this.cursor);
+			const graphemes = [...segmenter.segment(afterCursor)];
+			const firstGrapheme = graphemes[0];
+			const graphemeLength = firstGrapheme ? firstGrapheme.segment.length : 1;
+			this.value = this.value.slice(0, this.cursor) + this.value.slice(this.cursor + graphemeLength);
+		}
+	}
+
+	private deleteToLineStart(): void {
+		if (this.cursor === 0) return;
+		this.pushUndo();
+		const deletedText = this.value.slice(0, this.cursor);
+		this.killRing.push(deletedText, { prepend: true, accumulate: this.lastAction === "kill" });
+		this.lastAction = "kill";
+		this.value = this.value.slice(this.cursor);
+		this.cursor = 0;
+	}
+
+	private deleteToLineEnd(): void {
+		if (this.cursor >= this.value.length) return;
+		this.pushUndo();
+		const deletedText = this.value.slice(this.cursor);
+		this.killRing.push(deletedText, { prepend: false, accumulate: this.lastAction === "kill" });
+		this.lastAction = "kill";
+		this.value = this.value.slice(0, this.cursor);
+	}
+
+	private deleteWordBackwards(): void {
+		if (this.cursor === 0) return;
+
+		// Save lastAction before cursor movement (moveWordBackwards resets it)
+		const wasKill = this.lastAction === "kill";
+
+		this.pushUndo();
+
+		const oldCursor = this.cursor;
+		this.moveWordBackwards();
+		const deleteFrom = this.cursor;
+		this.cursor = oldCursor;
+
+		const deletedText = this.value.slice(deleteFrom, this.cursor);
+		this.killRing.push(deletedText, { prepend: true, accumulate: wasKill });
+		this.lastAction = "kill";
+
+		this.value = this.value.slice(0, deleteFrom) + this.value.slice(this.cursor);
+		this.cursor = deleteFrom;
+	}
+
+	private deleteWordForward(): void {
+		if (this.cursor >= this.value.length) return;
+
+		// Save lastAction before cursor movement (moveWordForwards resets it)
+		const wasKill = this.lastAction === "kill";
+
+		this.pushUndo();
+
+		const oldCursor = this.cursor;
+		this.moveWordForwards();
+		const deleteTo = this.cursor;
+		this.cursor = oldCursor;
+
+		const deletedText = this.value.slice(this.cursor, deleteTo);
+		this.killRing.push(deletedText, { prepend: false, accumulate: wasKill });
+		this.lastAction = "kill";
+
+		this.value = this.value.slice(0, this.cursor) + this.value.slice(deleteTo);
+	}
+
+	private yank(): void {
+		const text = this.killRing.peek();
+		if (!text) return;
+
+		this.pushUndo();
+
+		this.value = this.value.slice(0, this.cursor) + text + this.value.slice(this.cursor);
+		this.cursor += text.length;
+		this.lastAction = "yank";
+	}
+
+	private yankPop(): void {
+		if (this.lastAction !== "yank" || this.killRing.length <= 1) return;
+
+		this.pushUndo();
+
+		// Delete the previously yanked text (still at end of ring before rotation)
+		const prevText = this.killRing.peek() || "";
+		this.value = this.value.slice(0, this.cursor - prevText.length) + this.value.slice(this.cursor);
+		this.cursor -= prevText.length;
+
+		this.killRing.rotate();
+		const text = this.killRing.peek() || "";
+		this.value = this.value.slice(0, this.cursor) + text + this.value.slice(this.cursor);
+		this.cursor += text.length;
+		this.lastAction = "yank";
+	}
+
+	private pushUndo(): void {
+		this.undoStack.push({ value: this.value, cursor: this.cursor });
+	}
+
+	private undo(): void {
+		const snapshot = this.undoStack.pop();
+		if (!snapshot) return;
+		this.value = snapshot.value;
+		this.cursor = snapshot.cursor;
+		this.lastAction = null;
+	}
+
+	private moveWordBackwards(): void {
+		if (this.cursor === 0) return;
+		this.lastAction = null;
+		this.cursor = findWordBackward(this.value, this.cursor);
+	}
+
+	private moveWordForwards(): void {
+		if (this.cursor >= this.value.length) return;
+		this.lastAction = null;
+		this.cursor = findWordForward(this.value, this.cursor);
+	}
+
+	private handlePaste(pastedText: string): void {
+		this.lastAction = null;
+		this.pushUndo();
+
+		// Clean the pasted text - remove newlines and carriage returns
+		const cleanText = singleLinePaste(pastedText);
+
+		this.value = this.value.slice(0, this.cursor) + cleanText + this.value.slice(this.cursor);
+		this.cursor += cleanText.length;
+	}
+
+	invalidate(): void {
+		// No cached state to invalidate currently
+	}
+
+	render(width: number): string[] {
+		const result = renderInputLine(
+			{
+				prompt: this.prompt,
+				placeholder: this.placeholder,
+				placeholderStyle: this.placeholderStyle,
+				value: this.secret ? "*".repeat(this.value.length) : this.value,
+				cursor: this.cursor,
+				focused: this.focused,
+			},
+			width,
+		);
+		if (result.renderedStartColumn !== undefined) this.renderedStartColumn = result.renderedStartColumn;
+		return result.lines;
+	}
+}

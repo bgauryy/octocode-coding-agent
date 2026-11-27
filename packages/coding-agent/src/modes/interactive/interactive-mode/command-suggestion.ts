@@ -1,0 +1,79 @@
+/**
+ * The warning for a command-shaped `/name` that no command owns, naming the command the user most likely meant.
+ */
+
+import { editDistance } from "../../../octocode/skill/catalog.ts";
+
+/** What the suggestion reads of a command: the fields the /help picker searches. */
+interface CommandEntry {
+	name: string;
+	description?: string;
+}
+
+/** A description's words, lower case. */
+function words(text: string): string[] {
+	return text
+		.toLowerCase()
+		.split(/[^a-z0-9]+/)
+		.filter(Boolean);
+}
+
+/** One command when exactly one matches, so a hint never picks arbitrarily between equals. */
+function only(matches: readonly CommandEntry[]): string | undefined {
+	return matches.length === 1 ? matches[0].name : undefined;
+}
+
+/**
+ * The command a mistyped or unknown name most likely means, read as the /help picker reads a command: its name first,
+ * then the words of its description, and edit distance only when neither matches. Short words tolerate one edit, so
+ * a three-letter word never points at an unrelated three-letter command.
+ */
+function closestCommand(name: string, commands: readonly CommandEntry[]): string | undefined {
+	const wanted = name.toLowerCase();
+	const byName = commands
+		.map((command) => ({ command, lower: command.name.toLowerCase() }))
+		.filter(
+			({ lower }) =>
+				lower.startsWith(wanted) || wanted.startsWith(lower) || (wanted.length >= 3 && lower.includes(wanted)),
+		)
+		.sort(
+			(a, b) =>
+				Math.abs(a.lower.length - wanted.length) - Math.abs(b.lower.length - wanted.length) ||
+				a.lower.localeCompare(b.lower),
+		);
+	if (byName.length > 0) return byName[0].command.name;
+
+	const forms = new Set([wanted, `${wanted}s`, wanted.replace(/s$/, "")]);
+	const byDescription = commands.filter((command) => words(command.description ?? "").some((word) => forms.has(word)));
+	if (byDescription.length > 0) return only(byDescription);
+
+	const limit = wanted.length <= 4 ? 1 : Math.max(2, Math.floor(wanted.length / 3));
+	const [nearest] = commands
+		.map((command) => ({ command, edits: editDistance(wanted, command.name.toLowerCase()) }))
+		.filter(({ edits }) => edits <= limit)
+		.sort((a, b) => a.edits - b.edits || a.command.name.localeCompare(b.command.name));
+	return nearest?.command.name;
+}
+
+const COMMAND_NAME = /^[a-z][a-z0-9-]*$/i;
+
+/**
+ * The warning for `text`, whose command `name` no command owns: the closest command, or /help when none is close.
+ * A doubled slash (`//status`) is a command typed twice, refused like any unknown name; a path (`/tmp/x`) is not.
+ * Undefined when `name` is not command-shaped or exists.
+ */
+export function unknownCommandWarning(
+	text: string,
+	name: string,
+	commands: readonly CommandEntry[],
+): string | undefined {
+	const doubled = name.startsWith("/") && COMMAND_NAME.test(name.slice(1));
+	if (!doubled && !COMMAND_NAME.test(name)) return undefined;
+	const names = commands.map((command) => command.name);
+	if (names.includes(name)) return undefined;
+	const meant = doubled ? name.slice(1) : name;
+	const suggestion = names.includes(meant) ? meant : closestCommand(meant, commands);
+	return suggestion
+		? `Unknown command /${name}. Did you mean /${suggestion}?`
+		: `Unknown command /${name}. Search commands with /help ${meant}.`;
+}

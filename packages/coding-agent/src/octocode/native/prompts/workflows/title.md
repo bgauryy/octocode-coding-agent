@@ -1,0 +1,1 @@
+Write a task title of at most 6 words for the coding session whose request is quoted below. Start with a verb or noun. Keep the key words of the user (names, files, features). Use no quotes, markdown or trailing punctuation. Do not answer the request. If it names no task (a greeting, or a test such as ping), reply {{noTask}}. Reply with only the title.

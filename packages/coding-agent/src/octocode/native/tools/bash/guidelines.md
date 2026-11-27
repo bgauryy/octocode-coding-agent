@@ -1,0 +1,1 @@
+Read trimmed output's saved file by line ranges; do not rerun. Edit source with `file`, not `sed -i` or scripts: only `file` changes are checkpointed for /rewind. Under another agent's reservation, spell paths literally: bash refuses writes it cannot check.

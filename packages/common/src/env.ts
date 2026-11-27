@@ -1,0 +1,251 @@
+import { timingSafeEqual } from "node:crypto";
+import fs from "node:fs";
+
+/** Environment switches: one spelling rule for every `OCTOCODE_*` flag and number. */
+
+/**
+ * Set to `0` and no browser or other application starts from this process or the processes it starts (`openTarget`,
+ * the `/web` app window): the page's address is given instead. Test runs set it (`vitest.tmp.global.ts`, the suites'
+ * `setup-env.ts`), so a suite never opens a window on the machine that runs it; a scripted session can export it too.
+ */
+export const OPEN_BROWSER_ENV = "OCTOCODE_OPEN_BROWSER";
+
+/** Set by the ACP broker (`1`) in the native worker it spawns: the broker, not the worker, owns that session's transcript identity. */
+export const ACP_WORKER_ENV = "OCTOCODE_INTERNAL_ACP_WORKER";
+
+/** Set by the ACP broker in its worker: the private manifest of the client's MCP servers, which the MCP host registers (`mcp/acp-session-servers.ts`). */
+export const ACP_MCP_MANIFEST_ENV = "OCTOCODE_INTERNAL_ACP_MCP_MANIFEST";
+
+/** Set in a subagent: the session id of the Octocode session that started it, whose backlog claims the subagent may update. */
+export const PARENT_SESSION_ENV = "OCTOCODE_PARENT_SESSION";
+/** Set in a subagent: its parent Octocode's pid. The child leaves and shuts down when that process is gone (a crashed parent). */
+export const PARENT_PID_ENV = "OCTOCODE_PARENT_PID";
+/** Set in a subagent: its name, chosen by its parent. */
+export const AGENT_ID_ENV = "OCTOCODE_AGENT_ID";
+/** Set in a subagent: the id of this run (a resume is a new run), which names the stop report either side may save for it. */
+export const AGENT_RUN_ID_ENV = "OCTOCODE_AGENT_RUN_ID";
+/** Set in a subagent: the name of the agent that started it. */
+export const PARENT_ID_ENV = "OCTOCODE_PARENT_ID";
+/** Set in a subagent: the role it was started with (its profile), shown next to its name. */
+export const AGENT_ROLE_ENV = "OCTOCODE_AGENT_ROLE";
+export const PARENT_TRANSCRIPT_ENV = "OCTOCODE_PARENT_TRANSCRIPT";
+/**
+ * Set by the `bash` tool in the commands it runs, so a shared resource they take (the full-run lock) names its owner:
+ * the agent's name, the backlog item the call named (a subagent's own item when the call names none) and, for a
+ * background job, its id.
+ */
+export const OWNER_AGENT_ENV = "OCTOCODE_AGENT_NAME";
+export const OWNER_ITEM_ENV = "OCTOCODE_ITEM";
+export const OWNER_JOB_ENV = "OCTOCODE_JOB_ID";
+/** Set in a subagent started for one backlog item (`agent` `item`): the only item it may update. */
+export const BACKLOG_ITEM_ENV = "OCTOCODE_BACKLOG_ITEM";
+
+/** Set by the parent in a subagent whose profile or task turned the user's hooks on: `decisions` (only a PreToolUse or PermissionRequest hook's deny or ask applies) or `all`; `1` also means `all`. Absent: the child runs no hook. */
+export const SUBAGENT_HOOKS_ENV = "OCTOCODE_SUBAGENT_HOOKS";
+
+/**
+ * `0` keeps the built-in `browser` MCP server (chrome-devtools) unregistered for this process. The parent sets it for a
+ * subagent whose profile cannot use browser tools; the user's own `browser` server definition is unaffected.
+ */
+export const MCP_BROWSER_ENV = "OCTOCODE_MCP_BROWSER";
+
+/** `0` keeps the built-in `desktop` MCP server (Cua Driver) unregistered for this process. */
+export const MCP_DESKTOP_ENV = "OCTOCODE_MCP_DESKTOP";
+
+/**
+ * Absolute path of the `cua-driver` executable the `desktop` MCP server starts (`~` stands for the home folder). Without it
+ * the server looks for `cua-driver` on `PATH`; a value that is not an executable file leaves the server disabled and says so.
+ */
+export const CUA_DRIVER_PATH_ENV = "OCTOCODE_CUA_DRIVER_PATH";
+
+/**
+ * Comma-separated app names (`Cursor,Terminal`) the desktop server may drive although the default denylist refuses them
+ * (`permission/desktop-apps.ts`). Only the user's own environment sets it: an agent's commands cannot change this process.
+ */
+export const DESKTOP_ALLOW_APPS_ENV = "OCTOCODE_DESKTOP_ALLOW_APPS";
+
+/**
+ * Comma-separated app names a desktop subagent's task may control (`Calculator,Notes`). The parent sets it for the child
+ * from the task's `apps` list; the permission layer refuses a desktop call that targets any other app
+ * (`permission/desktop-apps.ts`). The default denylist still applies on top: only `OCTOCODE_DESKTOP_ALLOW_APPS` lifts it.
+ */
+export const DESKTOP_APPS_ENV = "OCTOCODE_DESKTOP_APPS";
+
+/** Disables startup network operations; `--offline` sets it for the process and its children. */
+export const OFFLINE_ENV = "OCTOCODE_OFFLINE";
+
+/** `0` turns automatic memory injection off for this process (`/memory auto off` turns it off everywhere). */
+export const MEMORY_AUTO_ENV = "OCTOCODE_MEMORY_AUTO";
+
+/**
+ * `OCTOCODE_CLEANUP_DAYS` overrides the `retention.days` setting: days output, logs, scratch and session data survive.
+ * `OCTOCODE_SESSION_RETENTION_DAYS` overrides `retention.sessionDays`: days a transcript survives. `0` keeps everything.
+ * Only the names live here; the one resolver is `resolveRetention` in the coding-agent `config/retention.ts`.
+ */
+export const CLEANUP_DAYS_ENV = "OCTOCODE_CLEANUP_DAYS";
+export const SESSION_RETENTION_DAYS_ENV = "OCTOCODE_SESSION_RETENTION_DAYS";
+
+/** Set in child processes so a subagent cannot spawn further subagents (and skips the root session's extras). */
+export const SUBAGENT_ENV = "OCTOCODE_SUBAGENT";
+/** Set for a child of a `lean: true` profile: a short subagent prompt replaces the native policy (`native/prompts/lean.ts`). */
+export const LEAN_ENV = "OCTOCODE_LEAN";
+/**
+ * What the operator of a run took away with `--exclude-tools` (comma-separated) and `--no-mcp` (`1`). The run sets them for
+ * the processes below it, and a child's launch turns them back into flags (`subagents/process/operator-limits.ts`); they
+ * are not a user setting, so neither is in `CHILD_OWNED_ENV`: a chain keeps them to its end.
+ */
+export const OPERATOR_EXCLUDE_TOOLS_ENV = "OCTOCODE_OPERATOR_EXCLUDE_TOOLS";
+export const OPERATOR_NO_MCP_ENV = "OCTOCODE_OPERATOR_NO_MCP";
+/**
+ * Comma-separated skill names a subagent's `skill` tool lists (its profile's `catalog:`); the others stay loadable by
+ * name. Unset: every bundled skill is listed; empty: none is.
+ */
+export const SKILL_CATALOG_ENV = "OCTOCODE_SKILL_CATALOG";
+/** Set for a subagent whose profile is read-only (`readOnly: true`): it investigates and reports, keeping source unchanged. */
+export const READ_ONLY_ENV = "OCTOCODE_READ_ONLY";
+
+/** A subagent's own handoff folder (`<workspace>/.octocode/agent/temp/agents/<id>`): long results go there as files, not into its report. */
+export const AGENT_SCRATCH_ENV = "OCTOCODE_AGENT_SCRATCH";
+/** Absolute path used as-is as the team workspace (e.g. a subagent in a git worktree joins its parent's team). */
+export const TEAM_WORKSPACE_ENV = "OCTOCODE_TEAM_WORKSPACE";
+
+/** `off`, `unfocused` (default: only while the terminal is in the background) or `always`: answer-ready notifications. */
+export const NOTIFY_ENV = "OCTOCODE_NOTIFY";
+
+/** `osc9`, `osc777`, `osc99` or `bel`; unset picks one from the terminal's variables. */
+export const NOTIFY_METHOD_ENV = "OCTOCODE_NOTIFY_METHOD";
+
+/** `0` turns the extra skill directories off everywhere. */
+export const EXTRA_SKILLS_ENV = "OCTOCODE_EXTRA_SKILLS";
+
+/** `manual`, `workspace` or `full`: the permission mode a session starts in (unset: full). Owned by the parent in a subagent. */
+export const PERMISSION_ENV = "OCTOCODE_PERMISSION";
+
+/** Set by the parent in a subagent: the action classes its `agent` spawn was allowed (comma-separated). */
+export const PERMISSION_GRANTS_ENV = "OCTOCODE_PERMISSION_GRANTS";
+
+/** Set by the parent in a subagent whose parent can ask a person: the child sends its approval dialogs to the parent (RPC) instead of denying them. */
+export const PERMISSION_RELAY_ENV = "OCTOCODE_PERMISSION_RELAY";
+
+/**
+ * Set by the parent in each subagent: the path of an owner-only (0600) file holding a random per-child secret, never the
+ * secret itself (an environment is readable through `ps eww` or `/proc/<pid>/environ`, and `delete process.env.X` does not
+ * clear what the OS reports). The child's permission module reads the file once at start and unlinks it (`takeNonce`), then
+ * puts the secret in every permission header and audit notification it sends, so the parent trusts only what carries it (a
+ * dialog the model raised does not). The same secret signs the user's messages to that child (`team/proof.ts`), so the
+ * child can tell them from a forged `user` row. The parent removes the file at the end of the run if the child never took it.
+ *
+ * Residual (out of scope): a process of the same user that can read this process's memory (a debugger, `gcore`) can still
+ * recover the secret, and a same-user process that reads the file in the moments between the spawn and the child's first
+ * read can too. The secret keeps the model's tools, a peer session and a sibling from forging; it is not a sandbox.
+ */
+export const PERMISSION_NONCE_FILE_ENV = "OCTOCODE_PERMISSION_NONCE_FILE";
+
+/** Where this process keeps its nonce once it left the file and the environment: on `globalThis`, so a `/reload` (a fresh module, the file gone) still has it. */
+const NONCE_SLOT = Symbol.for("octocode.permissionNonce");
+const nonceStore = globalThis as { [NONCE_SLOT]?: string };
+/** The same slot for an injected environment (tests, embedders): one per environment object. */
+const injectedNonces = new WeakMap<NodeJS.ProcessEnv, string>();
+
+/** The nonce this process took from its parent's file (`takeNonce`); undefined for a session that is no subagent, or before the take. */
+export function ownNonce(env: NodeJS.ProcessEnv = process.env): string | undefined {
+	return env === process.env ? nonceStore[NONCE_SLOT] : injectedNonces.get(env);
+}
+
+/**
+ * Reads the nonce file named by `env` once, unlinks it, removes the variable (no process this one starts inherits it) and
+ * keeps the secret in the process slot (`ownNonce`). Later calls return the kept secret. A missing or unreadable file gives
+ * undefined: the child then sends no header or audit notification the parent would accept.
+ */
+export function takeNonce(env: NodeJS.ProcessEnv = process.env): string | undefined {
+	const file = env[PERMISSION_NONCE_FILE_ENV];
+	delete env[PERMISSION_NONCE_FILE_ENV];
+	if (file) {
+		let nonce: string | undefined;
+		try {
+			nonce = fs.readFileSync(file, "utf8").trim() || undefined;
+		} catch {
+			// Gone or unreadable: nothing to keep.
+		}
+		try {
+			fs.unlinkSync(file);
+		} catch {
+			// Already gone, or not ours to remove.
+		}
+		if (nonce !== undefined) {
+			if (env === process.env) nonceStore[NONCE_SLOT] = nonce;
+			else injectedNonces.set(env, nonce);
+		}
+	}
+	return ownNonce(env);
+}
+
+/**
+ * Whether `given` (untrusted, any type) is the secret `expected`, compared in constant time over equal-length buffers: the one
+ * check every nonce and proof goes through (permission headers, audit notifications, user-message signatures). False for an
+ * empty `expected`.
+ */
+export function sameSecret(expected: string, given: unknown): boolean {
+	if (expected === "" || typeof given !== "string") return false;
+	const [want, got] = [Buffer.from(expected), Buffer.from(given)];
+	return want.length === got.length && timingSafeEqual(want, got);
+}
+
+/**
+ * Conversation retention, read by octocode-ai and the cache warmer. Instruction retention is independent.
+ * A value the user exported always wins.
+ */
+export const CACHE_RETENTION_ENV = "OCTOCODE_CACHE_RETENTION";
+
+const TRUE = /^(1|true|on|yes)$/i;
+const FALSE = /^(0|false|off|no)$/i;
+
+/** `1|true|on|yes` → true, `0|false|off|no` → false (any case, surrounding space ignored); unset or anything else → `fallback`. */
+export function envFlag(env: NodeJS.ProcessEnv, name: string, fallback = false): boolean {
+	const value = env[name]?.trim() ?? "";
+	if (TRUE.test(value)) return true;
+	if (FALSE.test(value)) return false;
+	return fallback;
+}
+
+/**
+ * One of `choices` from the environment (any case, surrounding space ignored): `{ value }`, `{ invalid }` with the raw
+ * text when it is none of them, or undefined when unset or empty.
+ */
+export function envChoice<T extends string>(
+	env: NodeJS.ProcessEnv,
+	name: string,
+	choices: readonly T[],
+): { value: T } | { invalid: string } | undefined {
+	const raw = env[name]?.trim() ?? "";
+	if (raw === "") return undefined;
+	const value = choices.find((choice) => choice === raw.toLowerCase());
+	return value ? { value } : { invalid: raw };
+}
+
+/** A whole number from the environment, clamped to `[min, max]`; unset or not an integer → `fallback`. */
+export function envInt(
+	env: NodeJS.ProcessEnv,
+	name: string,
+	fallback: number,
+	bounds: { min?: number; max?: number } = {},
+): number {
+	const value = env[name]?.trim() ?? "";
+	if (!/^[+-]?\d+$/.test(value)) return fallback;
+	const parsed = Number.parseInt(value, 10);
+	return Math.min(bounds.max ?? Number.POSITIVE_INFINITY, Math.max(bounds.min ?? Number.NEGATIVE_INFINITY, parsed));
+}
+
+export const SKILL_SNAPSHOT_FILE_ENV = "OCTOCODE_SKILL_SNAPSHOT_FILE";
+
+/** Set in a subagent: an owner-only file listing the heap handles (handle and path) its parent held when it started, which the child may cite or resolve but never change. */
+export const PARENT_HEAP_FILE_ENV = "OCTOCODE_PARENT_HEAP_FILE";
+
+/** Comma-separated MCP tool roles (`readOnly`) whose open tools a child defers instead of declaring (`mcpDefer` in a profile; `mcp/src/deferral.ts`). */
+export const MCP_DEFER_ROLES_ENV = "OCTOCODE_MCP_DEFER_ROLES";
+
+/** JSON array of the MCP tools (`<server>/<tool>`) a child's coordinator counts as in use, so both defer the same tools (`mcpExposure: "recent"`; `mcp/src/deferral.ts`). */
+export const MCP_RECENT_TOOLS_ENV = "OCTOCODE_MCP_RECENT_TOOLS";
+
+/** Owner-only handoff of enabled, non-stopped feature MCP registrations; a child registers them at start (`mcp/session-servers.ts`). */
+export const MCP_SESSION_SERVERS_FILE_ENV = "OCTOCODE_MCP_SESSION_SERVERS_FILE";

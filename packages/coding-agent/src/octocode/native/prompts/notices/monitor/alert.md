@@ -1,0 +1,1 @@
+[Monitor] {{what}} for {{samples}} samples in a row (threshold {{threshold}}). Busiest: {{culprits}}.{{#if own}} Your processes use the most. Decide whether to stop, pause or narrow what you run, or let it finish. Say which.{{else}} Another process causes it{{#if owner}} ({{owner}}){{/if}}. Heavy work that you start now competes with it.{{/if}}

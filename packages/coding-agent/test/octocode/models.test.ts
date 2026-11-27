@@ -1,0 +1,315 @@
+import fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { indexCatalog, lookup } from "../../src/core/model-catalog/index-shape.ts";
+import { loadCatalog, readCatalog } from "../../src/core/model-catalog/index-store.ts";
+// The catalog is fresh for a day.
+import { DAY_MS as CATALOG_TTL_MS } from "../../src/octocode/shared/util.ts";
+import { type ModelRef, resolveTier, routeModel } from "../../src/octocode/subagents/model.ts";
+import { describeModels, modelLine } from "../../src/octocode/subagents/models-command.ts";
+import { tmp } from "./helpers.ts";
+
+const api = {
+	anthropic: {
+		models: {
+			"claude-small-1": {
+				tool_call: true,
+				description: "small one",
+				knowledge: "2025-03",
+				modalities: { input: ["text", "image"] },
+				limit: { context: 200_000 },
+				cost: { input: 1, output: 5 },
+				canonical_model_id: "anthropic/claude-small-1",
+			},
+		},
+	},
+	reseller: {
+		models: {
+			"claude-small-1": {
+				tool_call: true,
+				description: "small one",
+				knowledge: "2025-03",
+				modalities: { input: ["text", "image"] },
+				limit: { context: 200_000 },
+				cost: { input: 2, output: 9 },
+				canonical_model_id: "anthropic/claude-small-1",
+			},
+			"embed-1": { tool_call: false, cost: { input: 0.01, output: 0 } },
+		},
+	},
+};
+
+const m = (provider: string, id: string, input: number, output: number, extra: Partial<ModelRef> = {}): ModelRef => ({
+	provider,
+	id,
+	cost: { input, output },
+	contextWindow: 200_000,
+	input: ["text", "image"],
+	...extra,
+});
+
+describe("models.dev catalog", () => {
+	it("indexes bare ids by the lab listing and keeps a provider entry only where it differs", () => {
+		const catalog = indexCatalog(api, 1);
+		expect(catalog.models["claude-small-1"]).toMatchObject({
+			cost: { input: 1, output: 5 },
+			toolCall: true,
+			context: 200_000,
+			knowledge: "2025-03",
+			input: ["text", "image"],
+		});
+		// Provider listings live apart from bare ids (N3: a key `provider/id` was both a listing and a router's bare id).
+		expect(catalog.listings?.reseller?.["claude-small-1"]).toMatchObject({ cost: { input: 2, output: 9 } });
+		expect(catalog.listings?.anthropic?.["claude-small-1"]).toBe(0);
+		expect(catalog.models["reseller/claude-small-1"]).toBeUndefined();
+		expect(lookup(catalog, "reseller", "claude-small-1")?.cost).toEqual({ input: 2, output: 9 });
+		expect(lookup(catalog, "my-gateway", "claude-small-1")?.cost).toEqual({ input: 1, output: 5 });
+		// A router's id names the model by its last part; descriptions are no longer kept (nothing read them).
+		expect(lookup(catalog, "openrouter", "anthropic/claude-small-1")?.knowledge).toBe("2025-03");
+		expect(lookup(catalog, "openrouter", "anthropic/claude-small-1")).not.toHaveProperty("description");
+		expect(lookup(undefined, "a", "b")).toBeUndefined();
+	});
+
+	it("fetches once, reuses a fresh index, keeps a stale one when offline, and backs off after a failure", async () => {
+		const file = path.join(tmp(), "state", "models-dev.json");
+		let calls = 0;
+		const ok = (async () => {
+			calls += 1;
+			return new Response(JSON.stringify(api));
+		}) as typeof fetch;
+		const down = (async () => {
+			calls += 1;
+			throw new Error("offline");
+		}) as typeof fetch;
+		const t0 = 10 * CATALOG_TTL_MS;
+		expect(
+			Object.keys(
+				(await Promise.all([
+					loadCatalog({ file, now: t0, fetchImpl: ok }),
+					loadCatalog({ file, now: t0, fetchImpl: ok }),
+				]).then(([catalog]) => catalog))!.models,
+			),
+		).toContain("claude-small-1");
+		expect((fs.statSync(file).mode & 0o777).toString(8)).toBe("600");
+		await loadCatalog({ file, now: t0 + 1000, fetchImpl: ok });
+		expect(calls).toBe(1);
+		const stale = await loadCatalog({ file, now: t0 + CATALOG_TTL_MS + 1, fetchImpl: down });
+		expect(stale?.fetchedAt).toBe(t0);
+		expect(calls).toBe(2);
+		await loadCatalog({ file, now: t0 + CATALOG_TTL_MS + 2, fetchImpl: down });
+		expect(calls).toBe(2);
+		expect(readCatalog(path.join(tmp(), "missing.json"))).toBeUndefined();
+	});
+});
+
+it("prints a known cutoff and all supported thinking levels, never marketing copy", () => {
+	const model = { ...m("anthropic", "claude-small-1", 1, 5), reasoning: true };
+	const text = modelLine(model, undefined, indexCatalog(api, 1));
+	expect(text).toContain("cutoff 2025-03");
+	expect(text).toContain("thinking off/minimal/low/medium/high");
+	expect(text).not.toContain("small one");
+});
+
+describe("model purposes", () => {
+	const opus = m("p", "opus", 4, 20);
+	const sonnet = m("p", "sonnet", 2, 10);
+	const haiku = m("p", "haiku", 0.1, 0.5);
+
+	it("small is the cheapest capable model, medium the dearest below the parent when there are two", () => {
+		expect(resolveTier("small", [opus, sonnet, haiku], opus)).toBe(haiku);
+		expect(resolveTier("medium", [opus, sonnet, haiku], opus)).toBe(sonnet);
+		expect(resolveTier("small", [sonnet, haiku], sonnet)).toBe(haiku);
+		expect(resolveTier("medium", [sonnet, haiku], sonnet)).toBeUndefined();
+		expect(resolveTier("small", [haiku], haiku)).toBeUndefined();
+		expect(resolveTier("small", [opus, haiku], undefined)).toBeUndefined();
+	});
+
+	it("skips models that cannot call tools, lack images the parent takes, or have a small window; prefers the parent provider", () => {
+		const catalog = indexCatalog(api, 1);
+		const embed = m("reseller", "embed-1", 0.01, 0);
+		const textOnly = m("p", "text", 0.05, 0.2, { input: ["text"] });
+		const tiny = m("p", "tiny", 0.02, 0.1, { contextWindow: 32_000 });
+		expect(resolveTier("small", [opus, haiku, embed, textOnly, tiny], opus, catalog)).toBe(haiku);
+		const otherCheap = m("q", "cheaper", 0.01, 0.05);
+		expect(resolveTier("small", [opus, haiku, otherCheap], opus)).toBe(haiku);
+		expect(resolveTier("small", [opus, otherCheap], opus)).toBe(otherCheap);
+	});
+
+	it("fills a missing price from models.dev, and stays on the parent when nothing ranks below it", () => {
+		const catalog = indexCatalog(api, 1);
+		const unpriced = { provider: "reseller", id: "claude-small-1", contextWindow: 200_000 };
+		expect(resolveTier("small", [opus, unpriced], opus, catalog)).toBe(unpriced);
+		expect(resolveTier("small", [opus, unpriced], opus)).toBeUndefined();
+		// A provider models.dev does not list (a local runtime) never borrows a cloud price through the bare id.
+		const local = {
+			provider: "ollama-local",
+			id: "claude-small-1",
+			contextWindow: 200_000,
+			cost: { input: 0, output: 0 },
+		};
+		expect(resolveTier("small", [opus, local], opus, catalog)).toBeUndefined();
+		// An unpriced parent is placed by a size-class guess instead (tier-guess.test.ts).
+		expect(resolveTier("medium", [haiku], { provider: "x", id: "mystery" })).toBeUndefined();
+	});
+
+	it("keeps each family to its newest release, skips deprecated and stale models, and prefers the parent lab", () => {
+		const fam = (id: string, family: string, released: string, input: number, extra: Record<string, unknown> = {}) => [
+			id,
+			{
+				tool_call: true,
+				family,
+				release_date: released,
+				limit: { context: 400_000 },
+				modalities: { input: ["text", "image"] },
+				cost: { input, output: input * 5 },
+				canonical_model_id: `lab-a/${id}`,
+				...extra,
+			},
+		];
+		const catalog = indexCatalog(
+			{
+				router: {
+					models: Object.fromEntries([
+						fam("top-2", "top", "2026-09-01", 5),
+						fam("top-1", "top", "2026-03-01", 2),
+						fam("mid-2", "mid", "2026-08-01", 1),
+						fam("mid-1", "mid", "2026-01-01", 0.8),
+						fam("mini-2", "mini", "2026-08-01", 0.2),
+						fam("mini-old", "mini-legacy", "2023-01-01", 0.05),
+						fam("gone", "gone", "2026-09-01", 0.01, { status: "deprecated" }),
+						[
+							"other-cheap",
+							{
+								tool_call: true,
+								family: "x",
+								release_date: "2026-09-01",
+								limit: { context: 400_000 },
+								modalities: { input: ["text", "image"] },
+								cost: { input: 0.01, output: 0.05 },
+								canonical_model_id: "lab-b/other-cheap",
+							},
+						],
+					]),
+				},
+			},
+			1,
+		);
+		const all = ["top-2", "top-1", "mid-2", "mid-1", "mini-2", "mini-old", "gone", "other-cheap"].map((id) => ({
+			provider: "router",
+			id,
+		}));
+		const parent = all[0];
+		expect(resolveTier("small", all, parent, catalog)?.id).toBe("mini-2");
+		expect(resolveTier("medium", all, parent, catalog)?.id).toBe("mid-2");
+		// Only an older generation of a family, and only that: it is still better than staying on the parent.
+		expect(resolveTier("small", [parent, all[5]], parent, catalog)?.id).toBe("mini-old");
+	});
+
+	it("judges a family's newest release among priced models, so an unpriced newer sibling does not hide it (N8)", () => {
+		const catalog = indexCatalog(
+			{
+				anthropic: {
+					models: {
+						opus: { tool_call: true, family: "claude-opus", release_date: "2026-01-01", limit: { context: 200_000 } },
+						"sonnet-4": {
+							tool_call: true,
+							family: "claude-sonnet",
+							release_date: "2025-09-01",
+							limit: { context: 200_000 },
+						},
+						// A fresh listing models.dev has not priced yet.
+						"sonnet-5": {
+							tool_call: true,
+							family: "claude-sonnet",
+							release_date: "2026-11-01",
+							limit: { context: 200_000 },
+						},
+					},
+				},
+			},
+			1,
+		);
+		const opus = m("anthropic", "opus", 5, 25);
+		const sonnet4 = m("anthropic", "sonnet-4", 3, 15);
+		const sonnet5 = m("anthropic", "sonnet-5", 0, 0);
+		expect(resolveTier("medium", [opus, sonnet4], opus, catalog)?.id).toBe("sonnet-4");
+		expect(resolveTier("medium", [opus, sonnet4, sonnet5], opus, catalog)?.id).toBe("sonnet-4");
+	});
+
+	it("keeps a purpose on the parent's provider, whose auth is proven, before a cheaper same-lab model elsewhere", () => {
+		const parent = m("a", "anthropic/claude-opus", 4, 20);
+		const ownHaiku = m("a", "anthropic/claude-haiku", 0.1, 0.5);
+		const otherHaiku = m("b", "anthropic/claude-haiku", 0.08, 0.4);
+		const ownSonnet = m("a", "anthropic/claude-sonnet", 2, 10);
+		const otherSonnet = m("b", "anthropic/claude-sonnet", 1.9, 9);
+		expect(resolveTier("small", [parent, otherHaiku, ownHaiku], parent)).toBe(ownHaiku);
+		expect(resolveTier("medium", [parent, otherSonnet, ownSonnet, otherHaiku], parent)).toBe(ownSonnet);
+		// The parent's provider without a same-lab candidate still comes before another provider.
+		const ownOther = m("a", "other/cheap", 0.2, 1);
+		expect(resolveTier("small", [parent, otherHaiku, ownOther], parent)).toBe(ownOther);
+		// Another provider only when the parent's has no cheaper candidate: same lab first.
+		const foreign = m("c", "other/cheapest", 0.01, 0.05);
+		expect(resolveTier("small", [parent, foreign, otherHaiku], parent)).toBe(otherHaiku);
+		expect(resolveTier("small", [parent, foreign], parent)).toBe(foreign);
+	});
+
+	it("never makes medium a near-copy of the parent", () => {
+		const near = m("p", "near", 3.5, 18);
+		expect(resolveTier("medium", [opus, near, haiku], opus)).toBeUndefined();
+		expect(resolveTier("medium", [opus, near, sonnet, haiku], opus)).toBe(sonnet);
+	});
+
+	it("takes medium from the next tier down: Sonnet alone under Opus, never Haiku under Sonnet", () => {
+		expect(resolveTier("medium", [opus, sonnet], opus)).toBe(sonnet);
+		expect(resolveTier("small", [opus, sonnet], opus)).toBe(sonnet);
+		expect(resolveTier("medium", [sonnet, haiku], sonnet)).toBeUndefined();
+	});
+
+	it("keeps a thinking suffix on a purpose, and lets the agent call name a purpose", () => {
+		expect(routeModel({ preferred: "small:high", available: [opus, haiku], parent: opus })).toEqual({
+			model: "p/haiku:high",
+		});
+		expect(routeModel({ preferred: "medium:low", available: [opus], parent: opus })).toEqual({ model: "p/opus:low" });
+		expect(routeModel({ explicit: "small", available: [opus, haiku], parent: opus })).toEqual({ model: "p/haiku" });
+	});
+
+	it("routes a profile purpose to its model, or to the parent with no cheaper candidate", () => {
+		expect(routeModel({ preferred: "small", available: [opus, sonnet, haiku], parent: opus })).toEqual({
+			model: "p/haiku",
+		});
+		expect(routeModel({ preferred: "medium", available: [sonnet, haiku], parent: sonnet })).toEqual({
+			model: "p/sonnet",
+		});
+	});
+
+	it("groups models by provider, cheapest first within each group, with purposes and profiles", () => {
+		const reasons = (model: ModelRef) => ({ ...model, reasoning: true }) as ModelRef;
+		const text = describeModels(
+			[opus, haiku, sonnet].map(reasons),
+			opus,
+			new Map([["researcher", { name: "researcher", model: "small" } as never]]),
+			indexCatalog(api, 1),
+		);
+		const lines = text.split("\n");
+		expect(lines[2]).toBe("p:");
+		expect(lines[3]).toMatch(/^ {2}p\/haiku · \$0\.10\/\$0\.50 per M in\/out · 200k · tools, images/);
+		expect(lines[5]).toMatch(/^● p\/opus/);
+		expect(text).toContain("small: p/haiku");
+		expect(text).toContain("medium: p/sonnet");
+		expect(text).toContain("researcher: p/haiku:medium (small, a purpose)");
+		expect(text).toContain(
+			"thinking when the call and profile name none: medium (built in; OCTOCODE_SUBAGENT_THINKING sets another), never this session's level",
+		);
+		expect(describeModels([], undefined, new Map(), undefined)).toBe("No models are configured.");
+	});
+
+	it("prices a time-limited model at the rates in effect today: an expired intro price neither wins small nor shows", () => {
+		const after = { input: 3, output: 15 };
+		const expired = m("p", "promo", 0.01, 0.05, { cost: { input: 0.01, output: 0.05, until: "2020-01-01", after } });
+		const current = m("p", "promo", 0.01, 0.05, { cost: { input: 0.01, output: 0.05, until: "2999-12-31", after } });
+		expect(resolveTier("small", [opus, sonnet, haiku, expired], opus)).toBe(haiku);
+		expect(resolveTier("small", [opus, sonnet, haiku, current], opus)).toBe(current);
+		expect(describeModels([opus, expired], opus, new Map(), undefined)).toContain("p/promo · $3/$15 per M in/out");
+		expect(describeModels([opus, current], opus, new Map(), undefined)).toContain("p/promo · $0.01/$0.05 per M in/out");
+	});
+});

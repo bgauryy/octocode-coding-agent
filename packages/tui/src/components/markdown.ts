@@ -1,0 +1,208 @@
+import type { Token } from "marked";
+import { isImageLine } from "../terminal-image.ts";
+import type { Component } from "../tui.ts";
+import { renderChanged, trackRenderChanges } from "../tui/render-signal.ts";
+import { wrapTextWithAnsi } from "../utils/wrap.ts";
+import { fitHorizontalPadding, frameBlankRow, frameContentRows } from "../utils.ts";
+import { renderToken } from "./markdown/blocks.ts";
+import { markdownParser, trimPartialClosingFences } from "./markdown/parser.ts";
+import type {
+	DefaultTextStyle,
+	InlineStyleContext,
+	MarkdownOptions,
+	MarkdownRenderHost,
+	MarkdownTheme,
+} from "./markdown/types.ts";
+
+let nextMarkdownId = 0;
+
+/** The top-level tokens of a Markdown source. */
+interface LexedMarkdown {
+	source: string;
+	tokens: Token[];
+}
+
+export class Markdown implements Component {
+	private text: string;
+	private paddingX: number; // Left/right padding
+	private paddingY: number; // Top/bottom padding
+	private defaultTextStyle?: DefaultTextStyle;
+	private theme: MarkdownTheme;
+	private options: MarkdownOptions;
+	private defaultStylePrefix?: string;
+
+	private cachedText?: string;
+	private cachedWidth?: number;
+	private cachedLines?: string[];
+	// Parsed tokens depend only on the source, so they survive theme and width invalidation. Held weakly: a token tree is
+	// about ten times the size of its source, and every message of a long transcript keeps a Markdown component. The
+	// tokens survive a burst of re-renders, such as a theme preview, and are collected afterwards.
+	private cachedTokens?: WeakRef<LexedMarkdown>;
+	private readonly linkPrefix = `oc${++nextMarkdownId}`;
+
+	constructor(
+		text: string,
+		paddingX: number,
+		paddingY: number,
+		theme: MarkdownTheme,
+		defaultTextStyle?: DefaultTextStyle,
+		options?: MarkdownOptions,
+	) {
+		this.text = text;
+		this.paddingX = paddingX;
+		this.paddingY = paddingY;
+		this.theme = theme;
+		this.defaultTextStyle = defaultTextStyle;
+		this.options = { ...options, cwd: options?.cwd ?? process.cwd() };
+	}
+
+	setText(text: string): void {
+		this.text = text;
+		this.clearOutput();
+		renderChanged(this);
+	}
+
+	invalidate(): void {
+		this.clearOutput();
+		renderChanged(this);
+	}
+
+	private clearOutput(): void {
+		this.cachedText = undefined;
+		this.cachedWidth = undefined;
+		this.cachedLines = undefined;
+	}
+
+	render(width: number): string[] {
+		if (this.cachedLines && this.cachedText === this.text && this.cachedWidth === width) {
+			return this.cachedLines;
+		}
+
+		const paddingX = fitHorizontalPadding(width, this.paddingX);
+		const contentWidth = Math.max(1, width - paddingX * 2);
+		const text = this.options.transform?.(this.text, contentWidth) ?? this.text;
+
+		// Don't render anything if there's no actual text
+		if (!text || text.trim() === "") {
+			const result: string[] = [];
+			this.cachedText = this.text;
+			this.cachedWidth = width;
+			this.cachedLines = result;
+			return result;
+		}
+
+		// Replace tabs with 3 spaces for consistent rendering
+		const normalizedText = text.replace(/\t/g, "   ");
+
+		let lexed = this.cachedTokens?.deref();
+		if (lexed?.source !== normalizedText) {
+			const tokens = markdownParser.lexer(normalizedText);
+			trimPartialClosingFences(tokens);
+			lexed = { source: normalizedText, tokens };
+			this.cachedTokens = new WeakRef(lexed);
+		}
+		const tokens = lexed.tokens;
+
+		// Convert tokens to styled terminal output, then wrap, then pad and apply the background
+		const bg = this.defaultTextStyle?.bgColor;
+		const rows: string[] = [];
+		for (let i = 0; i < tokens.length; i++) {
+			for (const line of renderToken(this.renderHost(i), tokens[i], contentWidth, tokens[i + 1]?.type)) {
+				if (isImageLine(line)) rows.push(line);
+				else rows.push(...wrapTextWithAnsi(line, contentWidth));
+			}
+		}
+		const contentLines = frameContentRows(rows, width, paddingX, bg, isImageLine);
+
+		const blank: string[] = [];
+		for (let i = 0; i < this.paddingY; i++) blank.push(frameBlankRow(width, bg));
+		const result = blank.length === 0 ? contentLines : [...blank, ...contentLines, ...blank];
+
+		this.cachedText = this.text;
+		this.cachedWidth = width;
+		this.cachedLines = result;
+
+		return result.length > 0 ? result : [""];
+	}
+
+	/**
+	 * Apply default text style to a string.
+	 * This is the base styling applied to all text content.
+	 * NOTE: Background color is NOT applied here - it's applied at the padding stage
+	 * to ensure it extends to the full line width.
+	 */
+	private applyDefaultStyle(text: string): string {
+		if (!this.defaultTextStyle) {
+			return text;
+		}
+
+		let styled = text;
+
+		// Apply foreground color (NOT background - that's applied at padding stage)
+		if (this.defaultTextStyle.color) {
+			styled = this.defaultTextStyle.color(styled);
+		}
+
+		// Apply text decorations using this.theme
+		if (this.defaultTextStyle.bold) {
+			styled = this.theme.bold(styled);
+		}
+		if (this.defaultTextStyle.italic) {
+			styled = this.theme.italic(styled);
+		}
+		if (this.defaultTextStyle.strikethrough) {
+			styled = this.theme.strikethrough(styled);
+		}
+		if (this.defaultTextStyle.underline) {
+			styled = this.theme.underline(styled);
+		}
+
+		return styled;
+	}
+
+	private getDefaultStylePrefix(): string {
+		if (!this.defaultTextStyle) {
+			return "";
+		}
+
+		if (this.defaultStylePrefix !== undefined) {
+			return this.defaultStylePrefix;
+		}
+
+		const sentinel = "\u0000";
+		const styled = this.applyDefaultStyle(sentinel);
+		const sentinelIndex = styled.indexOf(sentinel);
+		this.defaultStylePrefix = sentinelIndex >= 0 ? styled.slice(0, sentinelIndex) : "";
+		return this.defaultStylePrefix;
+	}
+
+	private getDefaultInlineStyleContext(): InlineStyleContext {
+		return {
+			applyText: (text: string) => this.applyDefaultStyle(text),
+			stylePrefix: this.getDefaultStylePrefix(),
+		};
+	}
+
+	/** The component's theme, options and default style, as the token renderers read them. */
+	private renderHost(blockIndex: number): MarkdownRenderHost {
+		// Ids follow source order, so a re-render gives each link the same id.
+		const linkIds = new WeakMap<object, number>();
+		let nextLinkId = 0;
+		return {
+			theme: this.theme,
+			options: this.options,
+			linkId: (token, index = 0) => {
+				let id = linkIds.get(token);
+				if (id === undefined) {
+					id = ++nextLinkId;
+					linkIds.set(token, id);
+				}
+				return `${this.linkPrefix}-${blockIndex}-${id}-${index}`;
+			},
+			applyDefaultStyle: (text: string) => this.applyDefaultStyle(text),
+			getDefaultInlineStyleContext: () => this.getDefaultInlineStyleContext(),
+		};
+	}
+}
+
+trackRenderChanges(Markdown.prototype);

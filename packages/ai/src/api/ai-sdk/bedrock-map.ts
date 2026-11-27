@@ -1,0 +1,390 @@
+import { isBedrockNova2 } from "../../utils/bedrock-models.ts";
+import { jsonSchema, tool, type ModelMessage } from "ai";
+import type { Model, TranscriptContext, Usage } from "../../types.ts";
+import { calculateCost } from "../../models/model-helpers.ts";
+import { createUsage, sumUsageTokens } from "../../utils/assistant-message.ts";
+import { collapseSystemMessages, getInitialSystemMessage, getCurrentTools } from "../../utils/transcript.ts";
+import { splitSystemMessageIntoBlocks } from "../../utils/instruction-split.ts";
+import { CACHE_PROFILES, countHistoryTurns, planCacheMarkers } from "../../utils/cache-profiles.ts";
+import { resolveLayeredCacheRetention } from "../../utils/cache-policy.ts";
+import { charsToTokens, ESTIMATED_IMAGE_TOKENS } from "../../utils/estimate.ts";
+import type { BedrockOptions } from "../bedrock-converse-stream/types.ts";
+import { REDACTED_THINKING_PLACEHOLDER } from "../bedrock-converse-stream/types.ts";
+import { buildAdditionalModelRequestFields } from "../bedrock-converse-stream/request-fields.ts";
+import {
+	supportsPromptCaching,
+	bedrockCacheProfile,
+	isAnthropicClaudeModel,
+	isUnrecognizedCacheProfile,
+} from "../bedrock-converse-stream/model-match.ts";
+import { appendAssistantMessageDiagnostic, type AssistantMessageDiagnostic } from "../../utils/diagnostics.ts";
+import { longCacheTtl, supportsThinkingSignature } from "../bedrock-converse-stream/model-support.ts";
+import { transformMessages } from "../transform-messages.ts";
+import { fitToolCallId } from "../tool-call-id.ts";
+import { normalizeBedrockMessages } from "./bedrock-normalize.ts";
+import { sdkMessages } from "./messages.ts";
+import { bedrockRichEvents } from "../bedrock-converse-stream/sdk-rich-events.ts";
+import { anthropicSdkTools } from "./anthropic-map.ts";
+import { sdkUsage } from "./events.ts";
+import { bedrockNetworkFetch, bedrockSdkModel } from "./bedrock-provider.ts";
+import { appendBedrockFailureDiagnostic, formatBedrockError } from "../bedrock-converse-stream/errors.ts";
+import { parseRetryAfterMs } from "../../utils/retry.ts";
+import { capCacheBreakpoints } from "../anthropic-messages/cache-breakpoints.ts";
+import { modelKey, requestDiagnostics } from "./request-diagnostics.ts";
+import type { SdkMapping } from "./stream.ts";
+
+/** Profiles whose missing cache points this process already reported: once per profile, not on every reply. */
+const reportedUncachedProfiles = new Set<string>();
+
+/** The one-time notice that an application inference profile runs uncached, with the fix. */
+function uncachedProfileDiagnostic(model: Model<"bedrock-converse-stream">): AssistantMessageDiagnostic {
+	return {
+		type: "cache_unavailable",
+		timestamp: Date.now(),
+		details: {
+			reason: "unrecognized_inference_profile",
+			model: model.id,
+			fix: 'Neither the profile ARN nor its name names a model that takes cache points, so none are sent. If it serves Claude or Amazon Nova, set the model\'s "name" in models.json to that model (for example "Claude Sonnet 4.5"), or set AWS_BEDROCK_FORCE_CACHE=1.',
+		},
+	};
+}
+
+export function bedrockSdkMapping(
+	model: Model<"bedrock-converse-stream">,
+	context: TranscriptContext,
+	options: BedrockOptions,
+): SdkMapping {
+	const normalized = collapseSystemMessages({
+		...context,
+		messages: normalizeBedrockMessages(
+			transformMessages(context.messages, model, (id) => fitToolCallId(id)),
+			{
+				splitErrorImages: isAnthropicClaudeModel(model),
+				signedThinking: supportsThinkingSignature(model),
+			},
+		),
+	});
+	const messages = sdkMessages(model, normalized).filter(
+		(message) => message.role !== "system" || message.content.trim().length > 0,
+	);
+	const emptyMessages = messages.length === 0;
+	if (emptyMessages) messages.push({ role: "user", content: "<empty>" });
+	const assistants = normalized.messages.filter((m) => m.role === "assistant");
+	let assistantIndex = 0;
+	for (const message of messages) {
+		if (message.role !== "assistant") continue;
+		const original = assistants[assistantIndex++];
+		if (typeof message.content === "string") continue;
+		let reasoningIndex = 0;
+		const reasoning = original.content.filter((b) => b.type === "thinking");
+		for (const part of message.content) {
+			if (part.type !== "reasoning") continue;
+			const block = reasoning[reasoningIndex++];
+			if (block?.thinkingSignature)
+				part.providerOptions = {
+					bedrock: block.redacted
+						? { redactedContent: block.thinkingSignature }
+						: { signature: block.thinkingSignature },
+				};
+			if (block?.redacted) part.text = "";
+		}
+	}
+	const tools =
+		options.toolChoice === "none"
+			? {}
+			: anthropicSdkTools(getCurrentTools(normalized.messages), model.compat?.supportsStrictMode ?? false);
+	const syntheticTools = Object.keys(tools).length === 0;
+	if (syntheticTools) {
+		for (const message of messages) {
+			if (!Array.isArray(message.content)) continue;
+			for (const part of message.content) {
+				if (part.type === "tool-call" || part.type === "tool-result")
+					tools[part.toolName] = tool({ inputSchema: jsonSchema({ type: "object", properties: {} }) });
+			}
+		}
+	}
+	const retention = resolveLayeredCacheRetention(options);
+	const shortInstructions = retention.instructions !== "none" && !longCacheTtl(model, retention.instructions).ttl;
+	const history = shortInstructions && longCacheTtl(model, retention.history).ttl ? "short" : retention.history;
+	const point = (value: typeof retention.history) =>
+		value !== "none" && supportsPromptCaching(model, options.env)
+			? { bedrock: { cachePoint: { type: "default", ...longCacheTtl(model, value) } } }
+			: undefined;
+	const uncachedProfile =
+		(retention.history !== "none" || retention.instructions !== "none") &&
+		!reportedUncachedProfiles.has(model.id) &&
+		isUnrecognizedCacheProfile(model, options.env);
+	const names = syntheticTools ? [] : Object.keys(tools);
+	const profile = bedrockCacheProfile(model, options.env);
+	const toolPoints = names.length > 0 && profile.markers.tools && point(retention.instructions) !== undefined;
+	// The end of the tools every role declares alike: its point lets an agent of one role read the tool prefix another
+	// role wrote, and takes the base block's slot when the prompt is split, as on Anthropic (`anthropic-cache.ts`).
+	const sharedEnd = toolPoints && options.toolCacheBoundary ? Math.max(0, names.indexOf(options.toolCacheBoundary)) : 0;
+	const initial = getInitialSystemMessage(normalized.messages);
+	const split = initial
+		? splitSystemMessageIntoBlocks(
+				initial,
+				options.instructionCacheBoundary,
+				options.instructionVolatileBoundary,
+				options.instructionWorkspaceBoundary,
+			)
+		: undefined;
+	const systemIndex = messages.findIndex((m) => m.role === "system");
+	const plan = planCacheMarkers(profile, {
+		instructionBlocks: split ? split.cached.length : systemIndex >= 0 ? 1 : 0,
+		workspaceBlock: split?.workspace === true,
+		instructions: point(retention.instructions) !== undefined,
+		history: point(history) !== undefined,
+		historyTurns: countHistoryTurns(messages),
+		tools: names.length,
+		toolBoundary: sharedEnd > 0,
+	});
+	if (systemIndex >= 0 && split) {
+		const system: ModelMessage[] = split.cached.map((content, index) => ({
+			role: "system",
+			content,
+			providerOptions: plan.blocks[index] ? point(retention.instructions) : undefined,
+		}));
+		if (split.volatile !== undefined) system.push({ role: "system", content: split.volatile });
+		messages.splice(systemIndex, 1, ...system);
+	} else if (systemIndex >= 0)
+		messages[systemIndex].providerOptions = plan.blocks[0] ? point(retention.instructions) : undefined;
+	const toolCachePoint = plan.tool && toolPoints ? point(retention.instructions)?.bedrock.cachePoint : undefined;
+	const sharedTool = sharedEnd > 0 ? names[sharedEnd - 1] : undefined;
+	const last = messages.at(-1);
+	if (last?.role === "user" || last?.role === "tool") {
+		last.providerOptions = plan.history > 0 ? point(history) : undefined;
+		const assistant = messages.findLastIndex((m) => m.role === "assistant");
+		const previous = messages[assistant - 1];
+		if (previous && (previous.role === "user" || previous.role === "tool") && plan.history > 1)
+			previous.providerOptions = point(history);
+	}
+	const diagnostics = requestDiagnostics();
+	const longRequested =
+		(retention.instructions === "long" && (toolPoints || plan.blocks.some(Boolean))) ||
+		(retention.history === "long" && plan.history > 0);
+	if (
+		profile === CACHE_PROFILES.bedrockClaude &&
+		longRequested &&
+		point("long") !== undefined &&
+		!longCacheTtl(model, "long").ttl
+	)
+		diagnostics.report(
+			"cache_retention_downgraded",
+			{
+				requested: "1h",
+				sent: "5m",
+				model: model.id,
+				fix: "This model is not verified for 1-hour cache points. If it accepts them, set the model's compat.supportsLongCacheRetention to true.",
+			},
+			modelKey(model),
+		);
+	if (profile.maxCachedTokens !== undefined) {
+		let prefix = charsToTokens(JSON.stringify(syntheticTools ? {} : tools).length);
+		let stripped = 0;
+		for (const message of messages) {
+			prefix += charsToTokens(JSON.stringify(message.content).length);
+			if (Array.isArray(message.content))
+				prefix += message.content.filter((p) => p.type === "image").length * ESTIMATED_IMAGE_TOKENS;
+			if (prefix >= profile.maxCachedTokens) {
+				if (message.providerOptions?.bedrock?.cachePoint) stripped++;
+				delete message.providerOptions;
+			}
+		}
+		if (stripped > 0)
+			// Once per model: every later request of a long session is past the limit too.
+			diagnostics.report(
+				"cache_markers_stripped",
+				{
+					reason: "estimated_prefix_over_cache_limit",
+					model: model.id,
+					stripped,
+					maxCachedTokens: profile.maxCachedTokens,
+					estimatedPrefixTokens: prefix,
+				},
+				modelKey(model),
+			);
+	}
+	const rich = bedrockRichEvents();
+	let rawUsage: Usage | undefined;
+	let redactedChunks: Uint8Array[] = [];
+	let redactedIndex: number | undefined;
+	const redactedSignature = () => Buffer.concat(redactedChunks).toString("base64");
+	let requestId: string | undefined;
+	let responseRetryAfterMs: number | undefined;
+	return {
+		messages,
+		tools,
+		model: (fetch) => bedrockSdkModel(model, options, fetch),
+		networkFetch: bedrockNetworkFetch(model, options, (response) => {
+			requestId = response.headers.get("x-amzn-requestid") ?? undefined;
+			responseRetryAfterMs = parseRetryAfterMs(response.headers);
+		}),
+		augmentRequest(body) {
+			if (isBedrockNova2(model.id) && ["high", "xhigh", "max"].includes(options.reasoning ?? "")) {
+				const inference = body.inferenceConfig as { temperature?: number; topP?: number } | undefined;
+				if (inference) {
+					delete inference.temperature;
+					delete inference.topP;
+				}
+			}
+			if (profile.maxMarkers > 0) {
+				const removed = capCacheBreakpoints(body, profile.maxMarkers);
+				if (removed > 0)
+					diagnostics.report("cache_markers_capped", { removed, max: profile.maxMarkers, model: model.id });
+			}
+			if (Array.isArray(body.system) && body.system.length === 0) delete body.system;
+			if (emptyMessages) body.messages = [];
+			if (syntheticTools) delete body.toolConfig;
+			const wireMessages = body.messages as {
+				content: { toolResult?: { toolUseId: string; status?: string; content: unknown[] } }[];
+			}[];
+			for (const message of wireMessages)
+				for (const block of message.content) {
+					const result = block.toolResult;
+					if (!result) continue;
+					const original = normalized.messages.find(
+						(m) => m.role === "toolResult" && m.toolCallId === result.toolUseId,
+					);
+					if (original?.role !== "toolResult") continue;
+					result.status = original.isError ? "error" : "success";
+					if (original.content.every((part) => part.type === "text"))
+						result.content = original.content.map((part) => ({ text: part.text }));
+				}
+			const wireTools = (
+				body.toolConfig as
+					| { tools?: { toolSpec?: { strict?: boolean; inputSchema?: { json?: { required?: unknown[] } } } }[] }
+					| undefined
+			)?.tools;
+			for (const entry of wireTools ?? []) {
+				const schema = entry.toolSpec?.inputSchema?.json;
+				if (!entry.toolSpec?.strict && schema?.required?.length === 0) delete schema.required;
+			}
+			const config = body.toolConfig as
+				| { tools?: { toolSpec?: { name?: string }; cachePoint?: typeof toolCachePoint }[] }
+				| undefined;
+			if (toolCachePoint && config?.tools?.length) {
+				const after = sharedTool ? config.tools.findIndex((entry) => entry.toolSpec?.name === sharedTool) + 1 : 0;
+				config.tools.splice(after > 0 ? after : config.tools.length, 0, { cachePoint: toolCachePoint });
+			}
+		},
+		toolChoice:
+			options.toolChoice === "any"
+				? "required"
+				: typeof options.toolChoice === "object"
+					? { type: "tool", toolName: options.toolChoice.name }
+					: options.toolChoice,
+		includeRawChunks: true,
+		providerOptions: {
+			bedrock: {
+				additionalModelRequestFields: buildAdditionalModelRequestFields(model, options),
+				requestMetadata: options.requestMetadata,
+			},
+		},
+		usage: (usage) => {
+			const result = rawUsage ?? sdkUsage(usage);
+			calculateCost(model, result);
+			return result;
+		},
+		onPart(part, output, stream) {
+			if (part.type === "finish" || part.type === "error") diagnostics.flush(output);
+			if (part.type === "finish" && part.rawFinishReason === "model_context_window_exceeded")
+				part.finishReason = "length";
+			if (part.type === "finish" && uncachedProfile && !reportedUncachedProfiles.has(model.id)) {
+				reportedUncachedProfiles.add(model.id);
+				appendAssistantMessageDiagnostic(output, uncachedProfileDiagnostic(model));
+			}
+			if (part.type === "error" && rich.handledError(part.error)) return true;
+			if (
+				(part.type === "text-start" || part.type === "text-delta" || part.type === "text-end") &&
+				rich.isNative(part.id)
+			)
+				return true;
+			if (part.type === "finish-step") requestId = part.response.id;
+			if (part.type === "error") {
+				appendBedrockFailureDiagnostic(output, part.error, requestId);
+				// Stream errors carry the exception in `type`; an HTTP error response names it in `x-amzn-errortype`
+				// ("ValidationException:http://...").
+				const error = part.error as Error & { type?: unknown; responseHeaders?: Record<string, string> };
+				const type =
+					typeof error?.type === "string" ? error.type : error?.responseHeaders?.["x-amzn-errortype"]?.split(":")[0];
+				if (part.error instanceof Error && type?.endsWith("Exception")) {
+					const name = type[0].toUpperCase() + type.slice(1);
+					part.error.message = formatBedrockError(Object.assign(new Error(part.error.message), { name }));
+					if (responseRetryAfterMs !== undefined) output.retryAfterMs = responseRetryAfterMs;
+				}
+			}
+			if (options.thinkingBudgetReduction) output.thinkingBudget = options.thinkingBudgetReduction;
+			if (part.type === "raw") {
+				rich.accept(part.rawValue, output, stream);
+				const event = part.rawValue as {
+					contentBlockDelta?: {
+						contentBlockIndex?: number;
+						delta?: { reasoningContent?: { redactedContent?: string } };
+					};
+					contentBlockStart?: unknown;
+					messageStop?: unknown;
+					metadata?: {
+						usage?: {
+							inputTokens?: number;
+							outputTokens?: number;
+							totalTokens?: number;
+							cacheReadInputTokens?: number;
+							cacheWriteInputTokens?: number;
+							cacheDetails?: { ttl?: string; inputTokens?: number }[];
+						};
+					};
+				};
+				if (event.contentBlockStart) redactedChunks = [];
+				const encrypted = event.contentBlockDelta?.delta?.reasoningContent?.redactedContent;
+				if (encrypted) {
+					if (redactedIndex !== event.contentBlockDelta?.contentBlockIndex) redactedChunks = [];
+					redactedIndex = event.contentBlockDelta?.contentBlockIndex;
+					redactedChunks.push(Buffer.from(encrypted, "base64"));
+				}
+				if (event.messageStop && redactedChunks.length) {
+					const thinking = output.content.findLast((block) => block.type === "thinking");
+					if (thinking?.type === "thinking") {
+						thinking.redacted = true;
+						thinking.thinkingSignature = redactedSignature();
+						thinking.thinking = REDACTED_THINKING_PLACEHOLDER;
+					}
+				}
+				const usage = event.metadata?.usage;
+				if (usage) {
+					rawUsage = createUsage({
+						input: usage.inputTokens ?? 0,
+						output: usage.outputTokens ?? 0,
+						cacheRead: usage.cacheReadInputTokens ?? 0,
+						cacheWrite: usage.cacheWriteInputTokens ?? 0,
+					});
+					rawUsage.cacheWrite1h = usage.cacheDetails?.reduce(
+						(total, d) => total + (d.ttl === "1h" ? (d.inputTokens ?? 0) : 0),
+						0,
+					);
+					rawUsage.totalTokens = sumUsageTokens(rawUsage, usage.totalTokens);
+					output.usage = rawUsage;
+					calculateCost(model, output.usage);
+				}
+			}
+			if (part.type === "reasoning-end" || part.type === "reasoning-delta") {
+				const meta = part.providerMetadata?.bedrock ?? part.providerMetadata?.amazonBedrock;
+				const block = output.content.findLast((b) => b.type === "thinking");
+				if (block?.type === "thinking") {
+					if (typeof meta?.signature === "string")
+						block.thinkingSignature = (block.thinkingSignature ?? "") + meta.signature;
+					if (typeof meta?.redactedContent === "string" || redactedChunks.length > 0) {
+						block.redacted = true;
+						block.thinkingSignature = redactedChunks.length
+							? redactedSignature()
+							: typeof meta?.redactedContent === "string"
+								? meta.redactedContent
+								: undefined;
+						block.thinking = REDACTED_THINKING_PLACEHOLDER;
+					}
+				}
+			}
+			return false;
+		},
+	};
+}

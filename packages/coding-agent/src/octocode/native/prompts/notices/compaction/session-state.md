@@ -1,0 +1,1 @@
+[After compaction] {{lines}}

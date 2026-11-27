@@ -1,0 +1,56 @@
+{
+ "content": [
+  {
+   "type": "text",
+   "text": "✅ Found 4 app(s): 2 running, 2 installed-not-running.\n- Alpha Notes (pid 101) [com.example.alpha]\n- Beta Mail (pid 102) [com.example.beta]"
+  }
+ ],
+ "structuredContent": {
+  "apps": [
+   {
+    "active": false,
+    "bundle_id": "com.example.alpha",
+    "kind": "desktop",
+    "last_used": "2026-01-01T00:00:00Z",
+    "launch_path": "/Applications/Alpha Notes.app",
+    "name": "Alpha Notes",
+    "pid": 101,
+    "running": true,
+    "windows": []
+   },
+   {
+    "active": false,
+    "bundle_id": "com.example.beta",
+    "kind": "desktop",
+    "last_used": "2026-01-01T00:00:00Z",
+    "launch_path": "/Applications/Beta Mail.app",
+    "name": "Beta Mail",
+    "pid": 102,
+    "running": true,
+    "windows": []
+   },
+   {
+    "active": false,
+    "bundle_id": "com.example.gamma",
+    "kind": "desktop",
+    "last_used": "2026-01-01T00:00:00Z",
+    "launch_path": "/Applications/Gamma Paint.app",
+    "name": "Gamma Paint",
+    "pid": 0,
+    "running": false,
+    "windows": []
+   },
+   {
+    "active": false,
+    "bundle_id": "com.example.delta",
+    "kind": "desktop",
+    "last_used": "2026-01-01T00:00:00Z",
+    "launch_path": "/Applications/Delta Sheets.app",
+    "name": "Delta Sheets",
+    "pid": 0,
+    "running": false,
+    "windows": []
+   }
+  ]
+ }
+}

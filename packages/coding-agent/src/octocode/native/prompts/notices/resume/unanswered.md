@@ -1,0 +1,1 @@
+No result was recorded for {{calls}}. Each may have run: check the current state before you repeat it.{{#if children}} The subagents that the call started stopped with the earlier process: {{children}}. Continue one with `agent` type `task` and `resume` set to its id, or leave it.{{/if}}

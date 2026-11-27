@@ -1,0 +1,166 @@
+import fs from "node:fs";
+import fsp from "node:fs/promises";
+import path from "node:path";
+import { atomicWriteFile, sha256 } from "@octocodeai/octocode-common/atomic-file";
+import { canonicalPath } from "@octocodeai/octocode-common/canonical-path";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
+import type { PolicySource } from "./source-policy/rules.ts";
+import {
+	applyRuleUpdates,
+	type SourcePermissionDestination,
+	type SourcePermissionUpdate,
+	type SourceRuleArrays,
+} from "../shared/permission-updates.ts";
+
+interface SettingsWrite {
+	source: PolicySource;
+	destination: SourcePermissionDestination;
+	settings: Record<string, unknown>;
+	expectedSha: string | null;
+	before?: string;
+	canonical: string;
+	preparationError?: string;
+}
+export function stageSettingsWrite(
+	source: PolicySource,
+	destination: SourcePermissionDestination,
+	updates: readonly SourcePermissionUpdate[],
+): SettingsWrite {
+	const captured = readPolicy(source.path);
+	let settings: Record<string, unknown> = {};
+	let preparationError = captured.error ? `Cannot read regular settings file ${source.path}` : undefined;
+	if (captured.text !== undefined) {
+		try {
+			const parsed: unknown = JSON.parse(captured.text);
+			if (!isRecord(parsed)) throw new Error("settings must be an object");
+			settings = parsed;
+		} catch {
+			preparationError = `Invalid settings JSON at ${source.path}`;
+		}
+	}
+	const existing = settings.permissions;
+	if (existing !== undefined && !isRecord(existing)) throw new Error(`Invalid permissions object at ${source.path}`);
+	const permissions = asRecord(existing);
+	const arrays: SourceRuleArrays = { allow: [], deny: [], ask: [] };
+	for (const behavior of ["allow", "deny", "ask"] as const) {
+		const entries = permissions[behavior];
+		if (
+			entries !== undefined &&
+			(!Array.isArray(entries) || entries.length > 4096 || entries.some((entry) => typeof entry !== "string"))
+		)
+			throw new Error(`Invalid ${behavior} rules at ${source.path}`);
+		arrays[behavior] = entries === undefined ? [] : [...(entries as string[])];
+	}
+	if (
+		permissions.additionalDirectories !== undefined &&
+		(!Array.isArray(permissions.additionalDirectories) ||
+			permissions.additionalDirectories.some((dir) => typeof dir !== "string" || !dir))
+	)
+		throw new Error(`Invalid additionalDirectories at ${source.path}`);
+	const next = applyRuleUpdates(
+		{
+			...arrays,
+			...(permissions.defaultMode === undefined
+				? {}
+				: { defaultMode: permissions.defaultMode as SourceRuleArrays["defaultMode"] }),
+			...(permissions.additionalDirectories === undefined
+				? {}
+				: { additionalDirectories: permissions.additionalDirectories as string[] }),
+		},
+		updates,
+		destination,
+	);
+	settings = { ...settings, permissions: { ...permissions, ...next } };
+	if (Buffer.byteLength(JSON.stringify(settings)) > 1024 * 1024)
+		throw new Error("Permission settings exceed the byte limit");
+	return {
+		source,
+		destination,
+		settings,
+		expectedSha: captured.text === undefined ? null : sha256(captured.text),
+		...(captured.text === undefined ? {} : { before: captured.text }),
+		canonical: canonicalPath(source.path),
+		...(preparationError ? { preparationError } : {}),
+	};
+}
+export async function persistSettingsWrite(
+	plan: SettingsWrite,
+	signal: AbortSignal,
+): Promise<{ written: true; message?: string } | { written: false; message: string }> {
+	signal.throwIfAborted();
+	if (plan.preparationError) return { written: false, message: plan.preparationError };
+	try {
+		await fs.promises.mkdir(path.dirname(plan.source.path), {
+			recursive: true,
+			mode: 0o700,
+		});
+		signal.throwIfAborted();
+		await atomicWriteFile(plan.source.path, `${JSON.stringify(plan.settings, null, 2)}\n`, plan.expectedSha, {
+			signal,
+			beforeCommit: () => {
+				if (canonicalPath(plan.source.path) !== plan.canonical)
+					throw new Error("Permission settings target identity changed");
+			},
+		});
+		return { written: true };
+	} catch (error) {
+		if (error instanceof Error && "mutationCompleted" in error && error.mutationCompleted === true)
+			return { written: true, message: error.message };
+		signal.throwIfAborted();
+		if (!(error instanceof Error) || !("code" in error)) throw error;
+		return {
+			written: false,
+			message: `Permission settings were not saved at ${plan.source.path}: ${error.message}`,
+		};
+	}
+}
+
+const POLICY_LIMIT = 1024 * 1024;
+const POLICY_FLAGS = fs.constants.O_RDONLY | fs.constants.O_NONBLOCK;
+
+/** The text of a policy file, or why it is unusable: not a regular file, over 1 MiB or not UTF-8 is an error; a missing file is neither. */
+function decodePolicy(bytes: Buffer, count: number): { text?: string; error?: boolean } {
+	if (count > POLICY_LIMIT) return { error: true };
+	return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, count)) };
+}
+
+function readPolicy(file: string): { text?: string; error?: boolean } {
+	let fd: number | undefined;
+	try {
+		fd = fs.openSync(file, POLICY_FLAGS);
+		if (!fs.fstatSync(fd).isFile()) return { error: true };
+		const bytes = Buffer.alloc(POLICY_LIMIT + 1);
+		let count = 0;
+		while (count < bytes.length) {
+			const read = fs.readSync(fd, bytes, count, bytes.length - count, null);
+			if (!read) break;
+			count += read;
+		}
+		return decodePolicy(bytes, count);
+	} catch (error) {
+		return { error: (error as NodeJS.ErrnoException).code !== "ENOENT" };
+	} finally {
+		if (fd !== undefined) fs.closeSync(fd);
+	}
+}
+
+/** `readPolicy` on the thread pool, for the per-turn reload: the open and read do not block the event loop. */
+export async function readPolicyAsync(file: string): Promise<{ text?: string; error?: boolean }> {
+	let handle: fsp.FileHandle | undefined;
+	try {
+		handle = await fsp.open(file, POLICY_FLAGS);
+		if (!(await handle.stat()).isFile()) return { error: true };
+		const bytes = Buffer.alloc(POLICY_LIMIT + 1);
+		let count = 0;
+		while (count < bytes.length) {
+			const { bytesRead } = await handle.read(bytes, count, bytes.length - count, null);
+			if (!bytesRead) break;
+			count += bytesRead;
+		}
+		return decodePolicy(bytes, count);
+	} catch (error) {
+		return { error: (error as NodeJS.ErrnoException).code !== "ENOENT" };
+	} finally {
+		await handle?.close();
+	}
+}

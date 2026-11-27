@@ -1,0 +1,212 @@
+import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { BACKLOG_PEER_TYPE } from "../../../src/octocode/backlog/peer-notify.ts";
+import { MAX_EVENT_WINDOW_SECONDS, RUNTIME_DEFAULTS } from "../../../src/core/settings-schema/runtime.ts";
+import type { AgentEvent } from "../../../src/octocode/wake/catalog.ts";
+import {
+	blockingTool,
+	count,
+	createRig,
+	expectHeld,
+	pendingWakes,
+	quiet,
+	wakeGateOf,
+	wakeRows,
+	type Rig,
+} from "./rig.ts";
+
+/**
+ * Characterization of the wake gate in a real session (RFC agent-event-loop R0, §4). Every case pins what the code does
+ * today; a comment names the R-item that changes it on purpose.
+ */
+
+const rigs: Rig[] = [];
+afterEach(() => {
+	for (const rig of rigs.splice(0)) rig.cleanup();
+});
+async function rig(options: Parameters<typeof createRig>[0] = {}) {
+	const made = await createRig(options);
+	rigs.push(made);
+	return made;
+}
+
+const exit = (job: string): AgentEvent => ({ kind: "job.exit", job, exit: 0, durationMs: 1, startedAt: 0 });
+const ended = (agent: string): AgentEvent => ({ kind: "agent.ended", agent, reason: "done" });
+const message = (text: string) => ({ customType: "loop-test", content: text, display: true });
+const wake = { triggerTurn: true, deliverAs: "followUp" as const, together: true };
+
+/** The default window. */
+const defaultWindows = {
+	runtime: { eventWindowSeconds: RUNTIME_DEFAULTS.eventWindowSeconds },
+};
+
+describe("the wake gate with the default hold window", () => {
+	it("defaults the window to 2 s", () => {
+		expect(RUNTIME_DEFAULTS.eventWindowSeconds).toBe(2);
+	});
+
+	it("merges two wakes sent back to back while idle into one turn, sent once the window ends", async () => {
+		const r = await rig({ settings: defaultWindows });
+		r.harness.setResponses([r.reply("merged"), r.reply("never used")]);
+		const gate = wakeGateOf(r.api);
+		const began = Date.now();
+		await Promise.all([
+			gate.emit(ended("child-1"), message("WAKE-A"), wake),
+			gate.emit(ended("child-2"), message("WAKE-B"), wake),
+		]);
+		await vi.waitFor(() => expect(r.requests).toHaveLength(1), { timeout: 10_000 });
+		await r.harness.session.waitForIdle();
+		expect(Date.now() - began).toBeGreaterThanOrEqual(RUNTIME_DEFAULTS.eventWindowSeconds * 1000 - 50);
+		expect(r.requests).toHaveLength(1);
+		expect(count(r.requests[0], "WAKE-A")).toBe(1);
+		expect(count(r.requests[0], "WAKE-B")).toBe(1);
+	});
+
+	it("delivers every slice of a held completion batch in the typed prompt's first request", async () => {
+		const r = await rig({ settings: { runtime: { eventWindowSeconds: 60 } } });
+		r.harness.setResponses([r.reply("done"), r.reply("unexpected")]);
+		const gate = wakeGateOf(r.api);
+		const ids = Array.from({ length: 80 }, (_, i) => `child-${i}`);
+		await Promise.all(ids.map((id) => gate.emit(ended(id), message(`completed ${id}.`), wake)));
+		await r.harness.session.prompt("join my completions");
+		await r.harness.session.waitForIdle();
+		expect(r.requests).toHaveLength(1);
+		for (const id of ids) expect(count(r.requests[0], `completed ${id}.`)).toBe(1);
+	});
+
+	it("starts a prompt sent inside the window at once and still delivers the held wake, once", async () => {
+		const r = await rig({ settings: { runtime: { eventWindowSeconds: 0.3 } } });
+		r.harness.setResponses([r.reply("answered the prompt"), r.reply("answered the wake")]);
+		const held = wakeGateOf(r.api).emit(ended("child-1"), message("WAKE-HELD"), wake);
+		await r.harness.session.prompt("PROMPT-NOW");
+		expect(count(r.requests[0], "PROMPT-NOW")).toBe(1);
+		await held;
+		const carrying = () => r.requests.findIndex((request) => count(request, "WAKE-HELD") > 0);
+		await vi.waitFor(() => expect(carrying()).toBeGreaterThanOrEqual(0), { timeout: 10_000 });
+		await r.harness.session.waitForIdle();
+		expect(carrying()).toBe(0);
+		expect(count(r.requests.at(-1) ?? [], "WAKE-HELD")).toBe(1);
+		expect(r.harness.session.agent.hasQueuedMessages()).toBe(false);
+	});
+});
+
+describe("the wake gate without a hold window (the suite's pinned 0)", () => {
+	it("wakes an idle session at once, in one turn that carries the message (no hold)", async () => {
+		const r = await rig();
+		r.harness.setResponses([r.reply("woken")]);
+		await wakeGateOf(r.api).emit(exit("bash-1"), message("WAKE-A"), wake);
+		await r.harness.session.waitForIdle();
+		expect(r.requests).toHaveLength(1);
+		expect(count(r.requests[0], "WAKE-A")).toBe(1);
+	});
+
+	it("delivers concurrent idle completions once each in the available model turn", async () => {
+		const r = await rig();
+		r.harness.setResponses([r.reply("first"), r.reply("second")]);
+		const gate = wakeGateOf(r.api);
+		const first = gate.emit(exit("bash-1"), message("WAKE-A"), wake);
+		const second = gate.emit(exit("bash-2"), message("WAKE-B"), wake);
+		await Promise.all([first, second]);
+		await r.harness.session.waitForIdle();
+		expect(r.requests).toHaveLength(1);
+		expect(count(r.requests[0], "WAKE-A")).toBe(1);
+		expect(count(r.requests[0], "WAKE-B")).toBe(1);
+	});
+
+	it("draws no wake row without a UI (the harness has none)", async () => {
+		const r = await rig();
+		r.harness.setResponses([r.reply("woken")]);
+		await wakeGateOf(r.api).emit(exit("bash-1"), message("WAKE-A"), wake);
+		await r.harness.session.waitForIdle();
+		expect(wakeRows(r.harness)).toEqual([]);
+	});
+
+	it("merges wakes arriving inside a configured window into one turn, only while idle", async () => {
+		const r = await rig({ settings: { runtime: { eventWindowSeconds: 0.5 } } });
+		r.harness.setResponses([r.reply("merged"), r.reply("never used")]);
+		const gate = wakeGateOf(r.api);
+		await gate.emit(ended("child-1"), message("WAKE-A"), wake);
+		// Held: the session had every chance to start a turn for the first wake and did not.
+		await expectHeld(r, "WAKE-A");
+		await gate.emit(ended("child-2"), message("WAKE-B"), wake);
+		await vi.waitFor(() => expect(r.requests).toHaveLength(1), { timeout: 10_000 });
+		await quiet(r);
+		// One turn, and its first request already carries both: the first wake did not go ahead alone.
+		expect(r.requests).toHaveLength(1);
+		expect(count(r.requests[0], "WAKE-A")).toBe(1);
+		expect(count(r.requests[0], "WAKE-B")).toBe(1);
+		expect(r.harness.getPendingResponseCount()).toBe(1);
+	});
+
+	it("never holds a wake that arrives while a run is in progress, even with a window set", async () => {
+		const slow = blockingTool();
+		// The longest window there is: a wake it held would miss the run's next request and cost a turn of its own later.
+		const r = await rig({
+			tools: [slow.tool],
+			settings: {
+				runtime: { eventWindowSeconds: MAX_EVENT_WINDOW_SECONDS },
+			},
+		});
+		r.harness.setResponses([
+			fauxAssistantMessage(fauxToolCall("slow", {}), { stopReason: "toolUse" }),
+			r.reply("after the steer"),
+			r.reply("unexpected second turn"),
+		]);
+		const running = r.harness.session.prompt("go");
+		await slow.started;
+		await wakeGateOf(r.api).emit(exit("bash-1"), message("WAKE-STEER"), {
+			triggerTurn: true,
+			deliverAs: "steer",
+		});
+		slow.release();
+		await running;
+		await quiet(r);
+		// The steer joined the run: the next request after the tool result carries it, and it cost no turn of its own.
+		expect(r.requests).toHaveLength(1);
+		expect(count(r.requests[0], "WAKE-STEER")).toBe(1);
+		expect(count(r.requests[0], "slow-result")).toBe(1);
+		expect(r.requests[0].findIndex((line) => line.includes("WAKE-STEER"))).toBeGreaterThan(
+			r.requests[0].findIndex((line) => line.includes("slow-result")),
+		);
+		expect(pendingWakes(r)).toEqual([]);
+		expect(r.harness.getPendingResponseCount()).toBe(1);
+	});
+
+	it("delivers a background completion with the tool result at the next model request", async () => {
+		const slow = blockingTool();
+		const r = await rig({ tools: [slow.tool] });
+		r.harness.setResponses([
+			fauxAssistantMessage(fauxToolCall("slow", {}), { stopReason: "toolUse" }),
+			r.reply("first answer"),
+			r.reply("answer to the wake"),
+		]);
+		const running = r.harness.session.prompt("go");
+		await slow.started;
+		await wakeGateOf(r.api).emit(exit("bash-1"), message("WAKE-FOLLOW"), wake);
+		slow.release();
+		await running;
+		await r.harness.session.waitForIdle();
+		expect(r.requests).toHaveLength(1);
+		expect(count(r.requests[0], "WAKE-FOLLOW")).toBe(1);
+		expect(count(r.requests[0], "slow-result")).toBe(1);
+		expect(r.harness.getPendingResponseCount()).toBe(1);
+	});
+});
+
+describe("a backlog peer wake (compose-backlog.ts:23-28)", () => {
+	it("is a hidden follow-up: an idle session answers it with one turn that carries the fact", async () => {
+		const r = await rig();
+		r.harness.setResponses([r.reply("looked at the peer change")]);
+		await wakeGateOf(r.api).emit(
+			{ kind: "item.peer", ref: "B2", change: "closed", by: "agent-a", relation: "dependent", id: 7 },
+			{ customType: BACKLOG_PEER_TYPE, content: "PEER-FACT B2 closed", display: false },
+			{ triggerTurn: true, deliverAs: "followUp" },
+		);
+		await r.harness.session.waitForIdle();
+		expect(r.requests).toHaveLength(1);
+		expect(count(r.requests[0], "PEER-FACT B2 closed")).toBe(1);
+		expect(
+			r.harness.session.messages.filter((m) => m.role === "custom" && m.customType === BACKLOG_PEER_TYPE),
+		).toMatchObject([{ display: false }]);
+	});
+});

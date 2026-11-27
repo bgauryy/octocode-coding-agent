@@ -1,0 +1,162 @@
+import fs from "node:fs";
+import path from "node:path";
+import { Type } from "typebox";
+import { afterEach, expect, it, vi } from "vitest";
+import { registerHooks } from "../../src/octocode/hooks/register.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { HOOK_SETTINGS, tmp } from "./helpers.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
+afterEach(() => vi.unstubAllEnvs());
+it.each(["claude", "codex"] as const)("validates %s rewritten arguments before changing the call", async (protocol) => {
+	const home = tmp();
+	vi.stubEnv("OCTOCODE_HOME", tmp());
+	const file = path.join(home, `.${protocol}`, protocol === "claude" ? "settings.json" : "hooks.json");
+	fs.mkdirSync(path.dirname(file), { recursive: true });
+	const fake = fakeHost(HOOK_SETTINGS);
+	fake.tools.set("bash", { name: "bash", description: "Run", parameters: Type.Object({ command: Type.String() }) });
+	const hooks = registerHooks(fake.api, { env: {}, home });
+	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
+	for (const command of ["rewritten", { invalid: true }]) {
+		const output = {
+			hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", updatedInput: { command } },
+		};
+		const script = path.join(tmp(), "rewrite.cjs");
+		fs.writeFileSync(script, `console.log(${JSON.stringify(JSON.stringify(output))});`);
+		fs.writeFileSync(
+			file,
+			JSON.stringify({
+				hooks: {
+					PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: `${process.execPath} ${script}` }] }],
+				},
+			}),
+		);
+		approveFixtureHooks(ctx.cwd, home);
+		await fake.fire("session_start", { reason: "reload" }, ctx);
+		const event = { toolName: "bash", toolCallId: "rewrite", input: { command: "original" } };
+		const result = await hooks.preToolUse(event as never, ctx);
+		if (typeof command === "string") {
+			expect(event.input.command).toBe(command);
+			expect(result).toMatchObject({ rewritten: true });
+		} else {
+			expect(result).toMatchObject({ block: true });
+			expect(event.input.command).toBe("original");
+		}
+	}
+});
+it("applies Claude file rewrites through the registered native schema", async () => {
+	const home = tmp();
+	vi.stubEnv("OCTOCODE_HOME", tmp());
+	fs.mkdirSync(path.join(home, ".claude"));
+	const script = path.join(tmp(), "rewrite-file.cjs");
+	fs.writeFileSync(
+		script,
+		'console.log(JSON.stringify({hookSpecificOutput:{hookEventName:"PreToolUse",updatedInput:{file_path:"/new.txt",content:"new"}}}));',
+	);
+	fs.writeFileSync(
+		path.join(home, ".claude/settings.json"),
+		JSON.stringify({
+			hooks: {
+				PreToolUse: [{ matcher: "Write", hooks: [{ type: "command", command: `${process.execPath} ${script}` }] }],
+			},
+		}),
+	);
+	const fake = fakeHost(HOOK_SETTINGS);
+	fake.tools.set("file", {
+		name: "file",
+		description: "Files",
+		parameters: Type.Object({
+			queries: Type.Array(
+				Type.Object({
+					type: Type.Literal("write"),
+					path: Type.String(),
+					content: Type.String(),
+					reason: Type.String(),
+				}),
+			),
+		}),
+	});
+	const hooks = registerHooks(fake.api, { env: {}, home });
+	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
+	approveFixtureHooks(ctx.cwd, home);
+	await fake.fire("session_start", { reason: "startup" }, ctx);
+	const event = {
+		toolName: "file",
+		toolCallId: "rewrite-file",
+		input: { queries: [{ type: "write", path: "old.txt", content: "old", reason: "create" }] },
+	};
+	expect(await hooks.preToolUse(event as never, ctx)).toMatchObject({ rewritten: true });
+	expect(event.input.queries).toEqual([{ type: "write", path: "/new.txt", content: "new", reason: "create" }]);
+});
+
+it("projects Codex Bash command input and preserves native execution options on rewrite", async () => {
+	const home = tmp();
+	vi.stubEnv("OCTOCODE_HOME", tmp());
+	fs.mkdirSync(path.join(home, ".codex"));
+	const capture = path.join(home, "input.json");
+	const script = path.join(home, "rewrite.cjs");
+	fs.writeFileSync(
+		script,
+		`let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{require('fs').writeFileSync(${JSON.stringify(capture)},s);console.log(JSON.stringify({hookSpecificOutput:{hookEventName:'PreToolUse',permissionDecision:'allow',updatedInput:{command:'rewritten',timeout:999}}}));});`,
+	);
+	fs.writeFileSync(
+		path.join(home, ".codex/hooks.json"),
+		JSON.stringify({
+			hooks: {
+				PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: `${process.execPath} ${script}` }] }],
+			},
+		}),
+	);
+	const fake = fakeHost(HOOK_SETTINGS);
+	fake.tools.set("bash", {
+		name: "bash",
+		description: "Run",
+		parameters: Type.Object({ command: Type.String(), timeout: Type.Number(), background: Type.Boolean() }),
+	});
+	const hooks = registerHooks(fake.api, { env: {}, home });
+	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
+	approveFixtureHooks(ctx.cwd, home);
+	await fake.fire("session_start", { reason: "startup" }, ctx);
+	const event = {
+		toolName: "bash",
+		toolCallId: "command-options",
+		input: { command: "original", timeout: 10, background: true },
+	};
+	expect(await hooks.preToolUse(event as never, ctx)).toMatchObject({ rewritten: true });
+	expect(JSON.parse(fs.readFileSync(capture, "utf8")).tool_input).toEqual({ command: "original" });
+	expect(event.input).toEqual({ command: "rewritten", timeout: 10, background: true });
+});
+
+it("refuses a call two hooks rewrite differently, and applies a rewrite they agree on", async () => {
+	const home = tmp();
+	vi.stubEnv("OCTOCODE_HOME", tmp());
+	fs.mkdirSync(path.join(home, ".claude"));
+	const fake = fakeHost(HOOK_SETTINGS);
+	fake.tools.set("bash", { name: "bash", description: "Run", parameters: Type.Object({ command: Type.String() }) });
+	const hooks = registerHooks(fake.api, { env: {}, home });
+	const ctx = fakeCtx({ cwd: tmp(), hasUI: false });
+	// Two scripts, so the two hooks are distinct commands even when they print the same rewrite.
+	const rewriteTo = (name: string, command: string) => {
+		const script = path.join(home, `${name}.cjs`);
+		const output = { hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: { command } } };
+		fs.writeFileSync(script, `console.log(${JSON.stringify(JSON.stringify(output))});`);
+		return { type: "command", command: `${process.execPath} ${script}` };
+	};
+	const call = async (first: string, second: string) => {
+		fs.writeFileSync(
+			path.join(home, ".claude/settings.json"),
+			JSON.stringify({
+				hooks: { PreToolUse: [{ matcher: "Bash", hooks: [rewriteTo("first", first), rewriteTo("second", second)] }] },
+			}),
+		);
+		approveFixtureHooks(ctx.cwd, home);
+		await fake.fire("session_start", { reason: "reload" }, ctx);
+		const event = { toolName: "bash", toolCallId: "rewrite", input: { command: "original" } };
+		return { result: await hooks.preToolUse(event as never, ctx), command: event.input.command };
+	};
+	expect(await call("one", "two")).toEqual({
+		result: { block: true, reason: "Blocked by a PreToolUse hook: Conflicting hook input rewrites; call not executed" },
+		command: "original",
+	});
+	expect(await call("same", "same")).toEqual({ result: { rewritten: true }, command: "same" });
+	await fake.fire("session_shutdown", { reason: "quit" }, ctx);
+});

@@ -1,0 +1,166 @@
+import fs from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { pendingReportsDir, type Report, savePendingReport } from "../../src/octocode/subagents/handoff/pending.ts";
+import { LateReports } from "../../src/octocode/subagents/late.ts";
+import { SUBAGENT_STOP_GRACE_MS } from "../../src/octocode/subagents/process/outcome.ts";
+
+const stops: Array<() => void> = [];
+afterEach(() => {
+	vi.restoreAllMocks();
+	for (const stop of stops.splice(0)) stop();
+	vi.useRealTimers();
+});
+
+const report = (id: string): Report => ({
+	content: `Background subagent ${id} finished`,
+	details: { id, status: "done", summary: "Done" },
+	wake: false,
+});
+let sessions = 0;
+
+/** A started `LateReports` over an empty pending folder, with the reports it handed to the queue. */
+async function started() {
+	const added: Report[] = [];
+	const runs = {
+		reports: {
+			pendingDir: undefined as string | undefined,
+			add: (taken: Report) => {
+				added.push(taken);
+				return undefined;
+			},
+		},
+	};
+	const reports = new LateReports(runs as never);
+	const sessionId = `late-poll-${process.pid}-${++sessions}`;
+	await reports.start(sessionId);
+	stops.push(() => reports.stop());
+	return { reports, added, dir: pendingReportsDir(sessionId) };
+}
+
+describe("the late-report poll", () => {
+	it("takes one final snapshot when polling ends during a slow scan", async () => {
+		vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+		const { reports, dir, added } = await started();
+		savePendingReport(dir, "general-a", report("general-a"));
+		let release!: () => void;
+		let entered!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const reading = new Promise<void>((resolve) => {
+			entered = resolve;
+		});
+		const read = fs.promises.readFile;
+		vi.spyOn(fs.promises, "readFile").mockImplementationOnce(async (...args) => {
+			entered();
+			await gate;
+			return read(...args);
+		});
+		const pending = reports.take();
+		await reading;
+		try {
+			savePendingReport(dir, "general-b", report("general-b"));
+			await vi.advanceTimersByTimeAsync(4 * SUBAGENT_STOP_GRACE_MS);
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			release();
+		}
+		await pending;
+		await vi.waitFor(() => expect(added.map((taken) => taken.details.id)).toEqual(["general-a", "general-b"]));
+	});
+
+	it("does not queue timer scans behind a slow read, and still scans after a settled turn", async () => {
+		vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+		const { reports, dir, added } = await started();
+		savePendingReport(dir, "general-a", report("general-a"));
+		let release!: () => void;
+		let entered!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const reading = new Promise<void>((resolve) => {
+			entered = resolve;
+		});
+		const read = fs.promises.readFile;
+		vi.spyOn(fs.promises, "readFile").mockImplementationOnce(async (...args) => {
+			entered();
+			await gate;
+			return read(...args);
+		});
+		const listing = vi.spyOn(fs.promises, "readdir");
+		const pending = reports.take();
+		await reading;
+		const readsPerScan = listing.mock.calls.length;
+		try {
+			await vi.advanceTimersByTimeAsync(10_000);
+			expect(listing).toHaveBeenCalledTimes(readsPerScan);
+		} finally {
+			release();
+		}
+		await pending;
+		savePendingReport(dir, "general-b", report("general-b"));
+		await reports.take();
+		// The next scan sees the first report's claim, so it lists again after checking claims.
+		expect(listing).toHaveBeenCalledTimes(readsPerScan + 2);
+		expect(added.map((taken) => taken.details.id)).toEqual(["general-a", "general-b"]);
+		reports.stop();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("returns an in-flight scan to its original session after a switch", async () => {
+		const { reports, added, dir } = await started();
+		savePendingReport(dir, "general-old", report("general-old"));
+		let release!: () => void;
+		let entered!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const reading = new Promise<void>((resolve) => {
+			entered = resolve;
+		});
+		const read = fs.promises.readFile;
+		const spy = vi.spyOn(fs.promises, "readFile").mockImplementationOnce(async (...args) => {
+			entered();
+			await gate;
+			return read(...args);
+		});
+		const pending = reports.take();
+		await reading;
+		reports.stop();
+		const next = reports.start(`late-switch-${process.pid}-${++sessions}`);
+		release();
+		await Promise.all([pending, next]);
+		spy.mockRestore();
+		expect(added).toEqual([]);
+		expect(fs.readdirSync(dir)).toHaveLength(1);
+		expect(fs.readdirSync(dir)[0]).toMatch(/\.json$/);
+	});
+	it("reads the pending folder with async calls only, so a poll never blocks the event loop on the disk", async () => {
+		const { reports, added, dir } = await started();
+		savePendingReport(dir, "general-a", report("general-a"));
+		savePendingReport(dir, "general-b", report("general-b"));
+		const spies = (["readdirSync", "readFileSync", "renameSync", "rmSync", "statSync", "existsSync"] as const).map(
+			(name) => vi.spyOn(fs, name),
+		);
+		await reports.take();
+		const touching = spies.flatMap((spy) => spy.mock.calls.filter((call) => String(call[0]).startsWith(dir)));
+		expect(touching).toEqual([]);
+		expect(added.map((taken) => taken.details.id).sort()).toEqual(["general-a", "general-b"]);
+	});
+
+	it("hands over a report once when polls overlap", async () => {
+		const { reports, added, dir } = await started();
+		savePendingReport(dir, "general-a", report("general-a"));
+		await Promise.all(Array.from({ length: 5 }, () => reports.take()));
+		expect(added).toHaveLength(1);
+	});
+
+	it("looks at nothing after it stops", async () => {
+		const { reports, added, dir } = await started();
+		reports.stop();
+		savePendingReport(dir, "general-a", report("general-a"));
+		await reports.take();
+		expect(added).toEqual([]);
+		expect(fs.readdirSync(dir)).toHaveLength(1);
+	});
+});

@@ -1,0 +1,1 @@
+{{#if child}}{{#if reported}}Its report is report:{{who}}. {{/if}}To still send it, resume {{who}} with the agent tool (resume: {{who}}), or start a new agent with the context if it ran isolated.{{else}}Send it to another agent, or tell the user if it matters.{{/if}}

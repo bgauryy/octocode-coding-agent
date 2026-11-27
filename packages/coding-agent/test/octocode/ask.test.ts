@@ -1,0 +1,740 @@
+import { CURSOR_MARKER, visibleWidth } from "@octocodeai/octocode-tui";
+import { describe, expect, it, vi } from "vitest";
+import { KeybindingsManager } from "../../src/core/keybindings.ts";
+import { showAskDialog } from "./ask-dialog-helper.ts";
+import { formatAnswers, registerAskUser } from "../../src/octocode/native/tools/ask-user/tool.ts";
+import { promptTitle, withDialog } from "../../src/octocode/shared/locks.ts";
+import { fakeCtx, fakeHost, rendered, theme } from "./fake-host.ts";
+import type { AskQuestion, AskResult } from "../../src/octocode/ask/dialog/answers.ts";
+
+const KEY = {
+	enter: "\r",
+	escape: "\x1b",
+	tab: "\t",
+	shiftTab: "\x1b[Z",
+	up: "\x1b[A",
+	down: "\x1b[B",
+	right: "\x1b[C",
+	left: "\x1b[D",
+	space: " ",
+};
+const tui = { requestRender: () => undefined, terminal: { rows: 40, columns: 100 } };
+
+type Dialog = {
+	render(width: number): string[];
+	handleInput(data: string): void;
+	invalidate(): void;
+	dispose(): void;
+	focused: boolean;
+};
+
+/** Open the dialog in a fake TUI, feed it keys, and return the result plus the frames seen after each key. */
+async function drive(
+	questions: AskQuestion[],
+	keys: string[],
+	signal?: AbortSignal,
+	keybindings = new KeybindingsManager(),
+): Promise<{ result: AskResult; frames: string[] }> {
+	const frames: string[] = [];
+	const ctx = fakeCtx({
+		cwd: process.cwd(),
+		ui: {
+			custom: (factory) =>
+				new Promise((resolve) => {
+					const dialog = factory(tui, theme, keybindings, resolve) as Dialog;
+					dialog.focused = true;
+					expect(dialog.focused).toBe(true);
+					frames.push(dialog.render(80).join("\n"));
+					for (const key of keys) {
+						dialog.handleInput(key);
+						frames.push(dialog.render(80).join("\n"));
+					}
+					dialog.invalidate();
+				}),
+		},
+	});
+	const result = await showAskDialog(ctx, questions, signal);
+	return { result, frames };
+}
+
+const scope: AskQuestion = {
+	question: "Which scope?",
+	header: "Scope",
+	options: [
+		{ label: "Small (Recommended)", description: "One file" },
+		{ label: "Large", description: "Whole repo" },
+	],
+};
+const extras: AskQuestion = {
+	question: "Which extras?",
+	header: "Extras",
+	multiSelect: true,
+	options: [
+		{ label: "Docs", description: "why Docs" },
+		{ label: "Tests", description: "why Tests" },
+		{ label: "Bench", description: "why Bench" },
+	],
+};
+
+/** `extras` as the model sends it: the `type` field, not the internal multiSelect flag. */
+const { multiSelect: _multi, ...extrasArgs } = extras;
+
+describe("askUser", () => {
+	it("shows configured question navigation, toggles and cancel keys", async () => {
+		const keybindings = new KeybindingsManager({
+			"app.ask.next": "n",
+			"app.ask.previous": "p",
+			"app.ask.toggle": "x",
+			"tui.select.confirm": "y",
+			"tui.select.cancel": "q",
+		});
+		const { result, frames } = await drive(
+			[extras, scope],
+			["n", "p", "x", "5", "y", "y", "y"],
+			undefined,
+			keybindings,
+		);
+		expect(frames[0]).toContain("p/n questions");
+		expect(frames[0]).toContain("x/y toggle");
+		expect(frames[0]).toMatch(/q\s+cancel/);
+		expect(result.answers.map((answer) => answer.answer)).toEqual(["Docs", "Small (Recommended)"]);
+		keybindings.setUserBindings({ "app.ask.toggle": [], "tui.select.cancel": "q" });
+		const disabled = await drive([extras], ["q"], undefined, keybindings);
+		expect(disabled.frames[0]).toContain("unbound/enter toggle");
+		expect(disabled.result.cancelled).toBe(true);
+	});
+
+	it("uses configured navigation and confirmation keys", async () => {
+		const keybindings = new KeybindingsManager({ "tui.select.down": "j", "tui.select.confirm": "y" });
+		const { result, frames } = await drive([scope], [KEY.down, "j", "y"], undefined, keybindings);
+		expect(result.answers[0]?.answer).toBe("Large");
+		expect(frames[0]).toContain("up/j/1-9 move · y select");
+		expect(frames[0]).not.toContain("enter select");
+	});
+	it("rewraps on resize and strips terminal controls from question text", async () => {
+		const ctx = fakeCtx({
+			cwd: ".",
+			ui: {
+				custom: (factory) =>
+					new Promise((resolve) => {
+						const dialog = factory(tui, theme, new KeybindingsManager(), resolve) as Dialog;
+						const wide = dialog.render(80);
+						const narrow = dialog.render(12);
+						expect(narrow).not.toEqual(wide);
+						expect(narrow.every((line) => visibleWidth(line) <= 12)).toBe(true);
+						expect(narrow.join("\n")).not.toContain("\u001b]0;hidden");
+						dialog.handleInput(KEY.escape);
+					}),
+			},
+		});
+		await showAskDialog(ctx, [{ ...scope, question: "Which\u001b]0;hidden\u0007 scope?" }]);
+	});
+
+	it("titles its dialog with the question, the count first, for the working line and notifications", async () => {
+		const titles: Array<string | undefined> = [];
+		const ctx = fakeCtx({
+			cwd: ".",
+			ui: {
+				custom: async () => {
+					titles.push(promptTitle({ kind: "custom" }));
+					return [];
+				},
+			},
+		});
+		await showAskDialog(ctx, [scope]);
+		await showAskDialog(ctx, [scope, extras]);
+		expect(titles).toEqual([scope.question, `2 questions: ${scope.question}`]);
+		expect(promptTitle({ kind: "custom" })).toBeUndefined();
+	});
+
+	it("redraws on a focus change, so the cursor marker follows focus", async () => {
+		const frames: string[] = [];
+		const ctx = fakeCtx({
+			cwd: ".",
+			ui: {
+				custom: (factory) =>
+					new Promise((resolve) => {
+						const dialog = factory(tui, theme, new KeybindingsManager(), resolve) as Dialog;
+						frames.push(dialog.render(80).join("\n"));
+						dialog.focused = true;
+						frames.push(dialog.render(80).join("\n"));
+						dialog.focused = false;
+						frames.push(dialog.render(80).join("\n"));
+						resolve([]);
+					}),
+			},
+		});
+		await showAskDialog(ctx, [{ question: "Your name?", header: "Name", options: [] }]);
+		expect(frames.map((frame) => frame.includes(CURSOR_MARKER))).toEqual([false, true, false]);
+	});
+
+	it("formats askUser answers and declines", () => {
+		expect(formatAnswers({ cancelled: false, answers: [{ question: "Which?", answer: "A", custom: false }] })).toBe(
+			'"Which?" → A',
+		);
+		// A cancelled call opens with its status, never with answer-shaped lines, and is not an error result.
+		expect(formatAnswers({ cancelled: true, answers: [] })).toMatch(
+			/^Cancelled \(declined\)\. The user declined to answer\./,
+		);
+		expect(formatAnswers({ cancelled: true, reason: "unavailable", answers: [] })).toMatch(
+			/^Cancelled \(unavailable\)\. No interactive user/,
+		);
+		expect(formatAnswers({ cancelled: true, reason: "aborted", answers: [] })).toMatch(
+			/^Cancelled \(interrupted\)\. The question was interrupted/,
+		);
+		const partial = formatAnswers({ cancelled: true, answers: [{ question: "Which?", answer: "A", custom: false }] });
+		expect(partial).toMatch(/^Cancelled \(declined\)\. The user declined to answer the remaining questions\./);
+		expect(partial).toMatch(/\nAnswered before that:\n"Which\?" → A\n/);
+		expect(formatAnswers({ cancelled: false, answers: [{ question: "Q?", answer: "mine", custom: true }] })).toBe(
+			'"Q?" → (typed) mine',
+		);
+		expect(
+			formatAnswers({
+				cancelled: false,
+				answers: [{ question: "Q?", answer: "A, B, mine", custom: true, picks: ["A", "B"], typed: "mine" }],
+			}),
+		).toBe('"Q?" → A, B + (typed) mine');
+	});
+
+	it("picks a single answer with the arrows and Enter, stopping at the ends", async () => {
+		const { result, frames } = await drive([scope], [KEY.down, KEY.up, KEY.up, KEY.down, KEY.enter]);
+		expect(result).toEqual({
+			cancelled: false,
+			answers: [{ question: "Which scope?", answer: "Large", custom: false }],
+		});
+		expect(frames[0]).toContain("Which scope?");
+		expect(frames[0]).toContain("› 1. Small (Recommended)");
+		expect(frames[0]).toContain("One file");
+		expect(frames[0]).toContain("3. Write an answer");
+		expect(frames[0]).toContain("up/down/1-9 move · enter select · esc/ctrl+c cancel");
+		expect(frames[0]).toContain("Choose one");
+		expect(frames[0]).not.toContain("Submit");
+	});
+
+	it("jumps with number keys, types a custom answer, and backs out of typing with Esc", async () => {
+		const typed = await drive([scope], ["9", "3", KEY.enter, "x", KEY.escape, KEY.enter, ..." my own", KEY.enter]);
+		expect(typed.result).toEqual({
+			cancelled: false,
+			answers: [{ question: "Which scope?", answer: "x my own", custom: true }],
+		});
+		expect(typed.frames[3]).toContain("enter submit · esc/ctrl+c back");
+		// An empty submission keeps the dialog open and leaves typing mode.
+		const empty = await drive([scope], ["3", KEY.enter, KEY.enter, KEY.escape]);
+		expect(empty.frames[3]).toContain("enter select");
+		const cancelled = await drive([scope], ["q", KEY.escape]);
+		expect(cancelled.result).toEqual({ cancelled: true, answers: [] });
+	});
+
+	it("opens the editor for a free-text question reached by Tab, with its draft", async () => {
+		const { result, frames } = await drive(
+			[scope, { question: "Why?", header: "Why", options: [] }],
+			[KEY.enter, ..."abc", KEY.escape, KEY.shiftTab, KEY.tab, KEY.enter, KEY.enter],
+		);
+		expect(frames[7]).toContain("enter submit · esc/ctrl+c back");
+		expect(frames[7]).toContain("abc");
+		expect(result.answers).toEqual([
+			{ question: "Which scope?", answer: "Small (Recommended)", custom: false },
+			{ question: "Why?", answer: "abc", custom: true },
+		]);
+	});
+
+	it("keeps a pasted draft whole when its free-text question is left and reopened", async () => {
+		const pasted = Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n");
+		const { result } = await drive(
+			[scope, { question: "Why?", header: "Why", options: [] }],
+			[KEY.enter, `\x1b[200~${pasted}\x1b[201~`, KEY.escape, KEY.shiftTab, KEY.tab, KEY.enter, KEY.enter],
+		);
+		expect(result.answers.at(-1)).toEqual({ question: "Why?", answer: pasted, custom: true });
+	});
+
+	it("opens the editor directly for free-text questions", async () => {
+		const { result, frames } = await drive([{ question: "Which region?", options: [] }], [..."eu-west-1", KEY.enter]);
+		expect(frames[0]).toContain("enter submit");
+		expect(result.answers).toEqual([{ question: "Which region?", answer: "eu-west-1", custom: true }]);
+	});
+
+	it("toggles several options, adds typed text, and submits a multi-question dialog", async () => {
+		const keys = [
+			KEY.enter, // Scope: Small → moves to Extras
+			KEY.space,
+			KEY.down,
+			KEY.down,
+			KEY.space,
+			KEY.space,
+			KEY.space, // toggle Docs and Bench (Bench twice off, then on)
+			"5",
+			KEY.enter, // Submit selection row: Extras → Docs, Bench → Submit tab
+			KEY.left,
+			KEY.right,
+			KEY.tab,
+			KEY.shiftTab, // wander between tabs and back to Submit
+			KEY.enter,
+		];
+		const { result, frames } = await drive([scope, extras], keys);
+		expect(result).toEqual({
+			cancelled: false,
+			answers: [
+				{ question: "Which scope?", answer: "Small (Recommended)", custom: false },
+				{ question: "Which extras?", answer: "Docs, Bench", custom: false },
+			],
+		});
+		expect(frames[0]).toContain("◇ Scope");
+		expect(frames[0]).toContain("✓ Submit");
+		expect(frames[2]).toContain("[x] Docs");
+		expect(frames[2]).toContain("space/enter toggle");
+		expect(frames[2]).toContain("Choose one or more, then Submit selection");
+		expect(frames[7]).toContain("✓ Submit selection (2 selected)");
+		expect(frames[9]).toContain("Scope: Small (Recommended)");
+		expect(frames[9]).toContain("enter to submit");
+
+		// Submit refuses until every question is answered; typed text joins the toggled options.
+		const typed = await drive(
+			[scope, extras],
+			[
+				KEY.tab,
+				KEY.tab,
+				KEY.enter,
+				KEY.shiftTab,
+				KEY.space,
+				"4",
+				KEY.enter,
+				..."CI",
+				KEY.enter,
+				KEY.tab,
+				KEY.enter,
+				KEY.tab,
+				KEY.enter,
+			],
+		);
+		expect(typed.frames[3]).toContain("Answer every question to submit");
+		expect(typed.frames[3]).toContain("(unanswered)");
+		expect(typed.result).toEqual({
+			cancelled: false,
+			answers: [
+				{ question: "Which scope?", answer: "Small (Recommended)", custom: false },
+				{ question: "Which extras?", answer: "Docs, CI", custom: true, picks: ["Docs"], typed: "CI" },
+			],
+		});
+
+		// Multi-select: Enter toggles instead of answering; Submit selection needs at least one pick.
+		const plain = await drive(
+			[extras],
+			[KEY.down, KEY.enter, KEY.enter, "5", KEY.enter, "1", KEY.enter, "3", KEY.enter, "5", KEY.enter],
+		);
+		expect(plain.frames[2]).toContain("[x] Tests");
+		expect(plain.frames[3]).toContain("[ ] Tests");
+		expect(plain.frames[5]).toContain("Select at least one option");
+		expect(plain.frames[6]).not.toContain("Select at least one option");
+		expect(plain.result).toEqual({
+			cancelled: false,
+			answers: [{ question: "Which extras?", answer: "Docs, Bench", custom: false }],
+		});
+	});
+
+	it("closes as cancelled when the turn is aborted", async () => {
+		const controller = new AbortController();
+		controller.abort();
+		const early = await drive([scope], [], controller.signal);
+		expect(early.result).toEqual({ cancelled: true, reason: "aborted", answers: [] });
+
+		const later = new AbortController();
+		const pending = drive([scope, extras], [KEY.enter], later.signal);
+		later.abort();
+		const { result } = await pending;
+		expect(result).toEqual({
+			cancelled: true,
+			reason: "aborted",
+			answers: [{ question: "Which scope?", answer: "Small (Recommended)", custom: false }],
+		});
+	});
+});
+
+describe("askUser tool", () => {
+	const fake = fakeHost();
+	registerAskUser(fake.api);
+	const tool = fake.tools.get("askUser");
+	const params = {
+		questions: [
+			{ ...scope, header: "A very long header" },
+			{ ...extrasArgs, type: "multi" as const },
+		],
+	};
+
+	it("does not open a cancelled queued question over an active dialog", async () => {
+		let release!: () => void;
+		const holder = withDialog(
+			() =>
+				new Promise<void>((resolve) => {
+					release = resolve;
+				}),
+		);
+		await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+		const custom = vi.fn();
+		const ctx = fakeCtx({ cwd: ".", ui: { custom } });
+		const controller = new AbortController();
+		try {
+			const pending = tool.execute("queued", params, controller.signal, undefined, ctx);
+			controller.abort();
+			expect((await pending).details).toMatchObject({ cancelled: true, reason: "aborted" });
+			expect(custom).not.toHaveBeenCalled();
+		} finally {
+			release();
+			await holder;
+		}
+	});
+
+	it("answers for a missing user when there is no UI", async () => {
+		const result = await tool.execute("c", params, undefined, undefined, fakeCtx({ cwd: ".", hasUI: false }));
+		expect(result.content[0].text).toMatch(/^Cancelled \(unavailable\)\. No interactive user/);
+		expect(result.isError).toBeFalsy();
+		expect(result.details).toMatchObject({ answers: [], cancelled: true });
+		expect(result.content[0].text).not.toContain("Proceed with the recommended option");
+		expect(result.content[0].text).toContain("approval");
+		expect(rendered(tool.renderResult(result, {}, theme, {}))).toContain("Unavailable");
+	});
+
+	it("accepts a free-text question without manufactured choices and respects interruption", async () => {
+		const params = { questions: [{ question: "What is the deployment region?" }] };
+		const ctx = fakeCtx({ cwd: ".", mode: "rpc", ui: { inputs: ["eu-west-1"] } });
+		const result = await tool.execute("c", params, undefined, undefined, ctx);
+		expect(result.details).toMatchObject({ cancelled: false, answers: [{ answer: "eu-west-1", custom: true }] });
+		const controller = new AbortController();
+		controller.abort();
+		const aborted = await tool.execute("c", params, controller.signal, undefined, ctx);
+		expect(aborted.details).toMatchObject({ cancelled: true, reason: "aborted", answers: [] });
+	});
+
+	it("falls back to select and input dialogs in RPC mode", async () => {
+		const ctx = fakeCtx({
+			cwd: ".",
+			mode: "rpc",
+			ui: { selects: ["2. Large — Whole repo", "Write an answer"], inputs: ["  just docs  "] },
+		});
+		const result = await tool.execute("c", params, undefined, undefined, ctx);
+		expect(result.details).toMatchObject({
+			cancelled: false,
+			answers: [
+				{ question: "Which scope?", answer: "Large", custom: false },
+				{ question: "Which extras?", answer: "just docs", custom: true },
+			],
+		});
+		// Labels with a description map back to the bare label.
+		const described = await tool.execute(
+			"c",
+			params,
+			undefined,
+			undefined,
+			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. Small (Recommended) — One file", undefined] } }),
+		);
+		expect(described.details).toMatchObject({
+			cancelled: true,
+			answers: [{ question: "Which scope?", answer: "Small (Recommended)", custom: false }],
+		});
+		const emptyTyped = await tool.execute(
+			"c",
+			params,
+			undefined,
+			undefined,
+			fakeCtx({
+				cwd: ".",
+				mode: "rpc",
+				ui: { selects: ["Write an answer", "2. Large — Whole repo", "Write an answer"], inputs: ["   ", "tests"] },
+			}),
+		);
+		expect(emptyTyped.details).toMatchObject({
+			cancelled: false,
+			answers: [
+				{ question: "Which scope?", answer: "Large", custom: false },
+				{ question: "Which extras?", answer: "tests", custom: true },
+			],
+		});
+		// Multi-select in RPC: one pick per round until Done, every option, or typed text.
+		const multi = { questions: [{ ...extrasArgs, type: "multi" as const }] };
+		const done = await tool.execute(
+			"c",
+			multi,
+			undefined,
+			undefined,
+			fakeCtx({
+				cwd: ".",
+				mode: "rpc",
+				ui: { selects: ["3. Bench — why Bench", "1. Docs — why Docs", "Submit selection"] },
+			}),
+		);
+		expect(done.details).toMatchObject({
+			cancelled: false,
+			answers: [{ question: "Which extras?", answer: "Docs, Bench", custom: false }],
+		});
+		const all = await tool.execute(
+			"c",
+			multi,
+			undefined,
+			undefined,
+			fakeCtx({
+				cwd: ".",
+				mode: "rpc",
+				ui: { selects: ["1. Docs — why Docs", "2. Tests — why Tests", "3. Bench — why Bench"] },
+			}),
+		);
+		expect(all.details.answers[0].answer).toBe("Docs, Tests, Bench");
+		const typed = await tool.execute(
+			"c",
+			multi,
+			undefined,
+			undefined,
+			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["2. Tests — why Tests", "Write an answer"], inputs: ["CI"] } }),
+		);
+		expect(typed.details.answers[0]).toEqual({
+			question: "Which extras?",
+			answer: "Tests, CI",
+			custom: true,
+			picks: ["Tests"],
+			typed: "CI",
+		});
+		expect(typed.content[0].text).toBe('"Which extras?" → Tests + (typed) CI');
+	});
+
+	it("bounds options and questions at 4", async () => {
+		// Strict-mode schemas refuse maxItems; the code enforces the limit.
+		expect(JSON.stringify(tool.parameters)).not.toContain("maxItems");
+		const questions = Array.from({ length: 6 }, (_, i) => ({
+			question: `Q${i}?`,
+			options: ["A", "B", "C", "D", "E"].map((label) => ({ label, description: `why ${label}` })),
+		}));
+		const ctx = fakeCtx({
+			cwd: ".",
+			mode: "rpc",
+			ui: { selects: ["1. A — why A", "1. A — why A", "1. A — why A", "1. A — why A"] },
+		});
+		await expect(tool.execute("c", { questions }, undefined, undefined, ctx)).rejects.toThrow(
+			/at most 4 questions; got 6/,
+		);
+		const four = await tool.execute("c", { questions: questions.slice(0, 4) }, undefined, undefined, ctx);
+		expect((four.details as AskResult).answers).toHaveLength(4);
+		expect(four.content[0].text).toContain("(Not asked: 4 options past the first 4.)");
+	});
+
+	it("drops only a bare write-in option and refuses a lone option", async () => {
+		const ctx = () =>
+			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["2. Other tools only — why Other tools only"] } });
+		const kept = await tool.execute(
+			"c",
+			{
+				questions: [
+					{
+						question: "Which?",
+						options: [
+							{ label: "A", description: "why A" },
+							{ label: "Other tools only", description: "why Other tools only" },
+							{ label: "Other (specify)", description: "why Other (specify)" },
+							{ label: "Other", description: "why Other" },
+						],
+					},
+				],
+			},
+			undefined,
+			undefined,
+			ctx(),
+		);
+		expect(kept.content[0].text).toBe(
+			'"Which?" → Other tools only\n(Not asked: 2 "Other" options (the UI adds a write-in).)',
+		);
+		await expect(
+			tool.execute(
+				"c",
+				{ questions: [{ question: "Which?", options: [{ label: "A", description: "why A" }] }] },
+				undefined,
+				undefined,
+				ctx(),
+			),
+		).rejects.toThrow(/one usable option; give 2-4/);
+	});
+
+	it("says how many empty questions and options it did not ask", async () => {
+		const questions = [
+			{
+				question: "Which?",
+				options: [
+					{ label: "A", description: "why A" },
+					{ label: "B", description: "why B" },
+					{ label: "  " },
+					{ label: "" },
+				],
+			},
+			{ question: "   " },
+			{ question: "" },
+			{ question: " " },
+		];
+		const result = await tool.execute(
+			"c",
+			{ questions },
+			undefined,
+			undefined,
+			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A — why A"] } }),
+		);
+		expect(result.content[0].text).toBe(
+			'"Which?" → A\n(Not asked: 3 empty questions and 2 options with an empty label.)',
+		);
+		const one = await tool.execute(
+			"c",
+			{
+				questions: [
+					{
+						question: "Which?",
+						options: [
+							{ label: "A", description: "why A" },
+							{ label: "B", description: "why B" },
+						],
+					},
+					{ question: "" },
+				],
+			},
+			undefined,
+			undefined,
+			fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A — why A"] } }),
+		);
+		expect(one.content[0].text).toBe('"Which?" → A\n(Not asked: 1 empty question.)');
+		// Nothing skipped, nothing said.
+		expect(
+			(
+				await tool.execute(
+					"c",
+					{
+						questions: [
+							{
+								question: "Which?",
+								options: [
+									{ label: "A", description: "why A" },
+									{ label: "B", description: "why B" },
+								],
+							},
+						],
+					},
+					undefined,
+					undefined,
+					fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["1. A — why A"] } }),
+				)
+			).content[0].text,
+		).toBe('"Which?" → A');
+	});
+
+	it("distinguishes duplicate labels and choices named after UI actions in RPC mode", async () => {
+		const questions = [
+			{
+				question: "Which?",
+				options: [
+					{ label: "Done.", description: "first" },
+					{ label: "Done.", description: "second" },
+					{ label: "Write an answer", description: "why Write an answer" },
+				],
+			},
+		];
+		const ctx = fakeCtx({ cwd: ".", mode: "rpc", ui: { selects: ["2. Done. — second"] } });
+		const result = await tool.execute("c", { questions }, undefined, undefined, ctx);
+		expect(result.details).toMatchObject({ cancelled: false, answers: [{ answer: "Done.", custom: false }] });
+	});
+
+	it("opens the inline dialog in the TUI with headers clipped to 12 characters", async () => {
+		let headerSeen = "";
+		const ctx = fakeCtx({
+			cwd: ".",
+			ui: {
+				custom: (factory) =>
+					new Promise((resolve) => {
+						const dialog = factory(tui, theme, new KeybindingsManager(), resolve) as Dialog;
+						headerSeen = dialog.render(80).join("\n");
+						dialog.handleInput(KEY.escape);
+						dialog.dispose();
+					}),
+			},
+		});
+		const result = await tool.execute("c", params, undefined, undefined, ctx);
+		expect(headerSeen).toContain("A very long…");
+		expect(headerSeen).not.toContain("A very long header");
+		expect(result.content[0].text).toMatch(/declined/);
+	});
+
+	it("renders the call and the answers", () => {
+		expect(rendered(tool.renderCall(params, theme, {}))).toBe("○ Ask(A very long header, Extras)");
+		expect(rendered(tool.renderCall({ questions: [{ header: "bad\u001b[31m\nnext" }] }, theme, {}))).toBe("○ Ask(bad)");
+		expect(rendered(tool.renderCall({}, theme, {}))).toBe("○ Ask");
+		// Without headers the row names the first question's first line, and how many more follow.
+		expect(
+			rendered(
+				tool.renderCall(
+					{
+						questions: [
+							{ question: "Implement fixes 1-3?\nThey touch three guards." },
+							{ question: "Run a reviewer?" },
+						],
+					},
+					theme,
+					{},
+				),
+			),
+		).toBe("○ Ask(Implement fixes 1-3? +1 more)");
+		expect(rendered(tool.renderResult({ content: [] }, {}, theme, {}))).toBe("");
+		const answered = {
+			content: [],
+			details: {
+				cancelled: true,
+				answers: [{ question: "Which scope?", answer: "Large\u001b]0;x\u0007", custom: false }],
+			},
+		};
+		expect(rendered(tool.renderResult(answered, {}, theme, {}))).toBe(
+			"  ⎿  ✓ Which scope? → Large\n     ✗ Declined the remaining questions",
+		);
+		expect(rendered(tool.renderResult({ content: [], details: { cancelled: true, answers: [] } }, {}, theme, {}))).toBe(
+			"  ⎿  ✗ Declined",
+		);
+		expect(
+			rendered(tool.renderResult({ content: [{ type: "text", text: "No interactive user" }] }, {}, theme, {})),
+		).toBe("  ⎿  No interactive user");
+	});
+
+	describe("forward", () => {
+		const setup = (stored: (id: number) => { from: string; text: string } | { error: string }) => {
+			const f = fakeHost();
+			registerAskUser(f.api, stored);
+			return f.tools.get("askUser");
+		};
+		const headlessDialogs = () => Object.assign(fakeCtx({ cwd: "." }), { mode: "rpc" });
+
+		it("shows the child's question word for word above the parent's", async () => {
+			const seen: string[] = [];
+			const ctx = headlessDialogs();
+			ctx.ui.input = async (title: string) => {
+				seen.push(title);
+				return "the second";
+			};
+			const result = await setup((id) => ({ from: "jolly-tentacle", text: `Exact question ${id}` })).execute(
+				"1",
+				{ forward: 7, questions: [{ question: "Which do you want?" }] },
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect(seen[0]).toContain("jolly-tentacle asks (message #7):\nExact question 7\n\nWhich do you want?");
+			expect(result.content[0].text).toContain("the second");
+		});
+
+		it("refuses a message it cannot read, and asks nothing", async () => {
+			const ctx = headlessDialogs();
+			let asked = false;
+			ctx.ui.input = async () => {
+				asked = true;
+				return "x";
+			};
+			await expect(
+				setup(() => ({ error: "no message #9 that you can read" })).execute(
+					"1",
+					{ forward: 9, questions: [{ question: "Which?" }] },
+					undefined,
+					undefined,
+					ctx,
+				),
+			).rejects.toThrow("Cannot forward message #9: no message #9 that you can read");
+			expect(asked).toBe(false);
+		});
+	});
+});

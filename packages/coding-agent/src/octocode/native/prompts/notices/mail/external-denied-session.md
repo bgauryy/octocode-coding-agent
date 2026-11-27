@@ -1,0 +1,1 @@
+The user of {{self}} denied messages from {{sender}} for this session{{#if note}}, saying: {{note}}{{/if}}. Nothing reached its agent. Later messages from {{sender}} are refused the same way without asking. Do not resend: only its user can lift this, with `/permissions grants clear messages` there.

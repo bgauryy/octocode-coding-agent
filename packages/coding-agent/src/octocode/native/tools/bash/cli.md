@@ -1,0 +1,4 @@
+Host: {{os}} {{arch}}. PATH: {{present}}{{#if missing}}; missing: {{missing}}{{/if}}. gh: {{gh}}. Other tools: `command -v`.
+{{#if darwin}}BSD: `sed -i ''`, `stat -f`, `date -v`, `shasum`, `rg -P` (not `grep -P`), tool timeout (not GNU `timeout`); `top`, `lsof`.{{/if}}{{#if linux}}GNU: `sed -i`, `stat -c`, `date -d`, `sha256sum`, `grep -P`; `ps`, `ss`.{{/if}}{{#if windows}}Git Bash GNU tools; Windows state: `type: powershell` with `Get-Process`, `Get-NetTCPConnection`.{{/if}} Check flags with `--help`: GNU/BSD differ.
+Narrow output, logs, JSON and git (not source) before reading: names and counts first (`rg -l`/`-c`, `wc`, `jq 'keys'`, `git diff --stat`), then only the part needed (`sed -n 'a,bp'`, a `jq` path, `git diff -- path`).
+Runners: count failures (vitest `×`, `N failed`), not lines. Name output caps before claiming absence.

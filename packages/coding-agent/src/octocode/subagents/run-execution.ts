@@ -1,0 +1,398 @@
+import { reportDigest } from "./report-digest.ts";
+import type { AgentEnd } from "../team/panel/state.ts";
+import { AgentToolExecutionError } from "@octocodeai/octocode-agent-core";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { formatDuration, formatSpend, toolCallCount } from "../shared/format.ts";
+import { shortPath } from "../../utils/display-path.ts";
+import { USER_SENDER } from "../shared/messages.ts";
+import { reportRef } from "../child-sessions/references.ts";
+import { firstLine } from "../shared/util.ts";
+import type { AgentRuns, Run } from "./claim.ts";
+import type { BackgroundRun } from "./command.ts";
+import { withStopFacts } from "./budget.ts";
+import { hintEnd, hintOnStop, stopReason } from "./end-hint.ts";
+import { type HandOver, SPENT, untilBudget } from "./foreground-budget.ts";
+import { pendingReportsDir, type Report, savePendingReport } from "./handoff/pending.ts";
+import { parentGoneReportId } from "./handoff/parent-gone.ts";
+import type { LingerWindow } from "./linger.ts";
+import { awaitedReply, closeAnswered, readMailFirst } from "./report-steps.ts";
+import { healthModel, providerHealth, spentNothing } from "./provider-health.ts";
+import type { runSubagent } from "./process.ts";
+import { USER_STOP } from "./process/outcome.ts";
+import { capitalize, compactionLabel, deniedLabel, doneSummary, noticeLines } from "./render.ts";
+import {
+	failedAdvice,
+	foregroundExtras,
+	PERMISSION_STOP,
+	ranOn,
+	reportMessage,
+	routeSuffix,
+	stoppedError,
+} from "./report-text.ts";
+import { unavailableResult } from "./result-schema.ts";
+import type { RunDetails } from "./run-types.ts";
+import { beginRun, endRun, type RunEnd } from "./run-audit.ts";
+import { typedResultFailure } from "./typed-result.ts";
+import { stopFacts } from "./stop-facts.ts";
+import { evidenceNotes } from "./evidence.ts";
+import { bookkeepingFailed } from "./child-tasks.ts";
+import { type AgentUpdate, reportFacts, runFooter, withShot } from "./tracking.ts";
+
+type Outcome = Awaited<ReturnType<typeof runSubagent>>;
+
+/** The bundled desktop specialist's reports cite screenshots as proof: the harness opens them (`evidence.ts`). */
+const evidenceFor = (details: RunDetails, text: string): string[] =>
+	details.profile === "desktop" ? evidenceNotes(text, details.startedAt) : [];
+
+/** ` · cite as report:<id>`: how a later task or external prompt passes this report on without retyping it. */
+const citable = (id: string): string => ` · cite as ${reportRef(id)}`;
+
+/** The parent's own bookkeeping after a run: the child's report does not depend on it, so a failure rides in the footer. */
+const noted = (bookkeeping: Promise<string>): Promise<string> => bookkeeping.catch(bookkeepingFailed);
+
+/** A background child settled: its report is in flight until its run ends, and its siblings' reports wait for it. */
+export function reportInFlight(runs: AgentRuns, id: string): void {
+	runs.groups.settled(id);
+}
+
+/**
+ * Runs the subagent in the background; its report (or why it stopped) arrives as a message, and then it gives its slot
+ * back. `finish` gets the outcome when there is a report, so the parent's own notes on it (its backlog item) ride in the footer.
+ * `adopted`: the controller of a foreground run that is handed over; its audit row and stop hint already exist.
+ */
+export function startBackground(
+	runs: AgentRuns,
+	run: Run,
+	details: RunDetails,
+	task: string,
+	launch: (signal: AbortSignal) => Promise<Outcome>,
+	finish: (outcome?: Outcome, lingers?: boolean, stopped?: boolean) => Promise<string>,
+	sessionId: string,
+	linger?: LingerWindow,
+	adopted?: AbortController,
+): void {
+	const { background, read } = runs;
+	const { identity } = run;
+	const session = runs.session;
+	// A report that arrives after its session ended (a reload, a switch, a shutdown) is kept for the next start of that
+	// Octocode session, under the id the child's own stop report uses when its parent is gone: only one of them is delivered.
+	const reports = {
+		add: (report: Report) =>
+			session === runs.session
+				? runs.reports.add(report)
+				: savePendingReport(pendingReportsDir(sessionId), identity.id, {
+						...report,
+						...(details.runId ? { reportId: parentGoneReportId(identity.id, details.runId) } : {}),
+					}),
+	};
+	const controller = adopted ?? new AbortController();
+	const entry: BackgroundRun = { controller, done: Promise.resolve() };
+	background.set(identity.id, entry);
+	if (!adopted) {
+		hintOnStop(runs, identity.id, entry);
+		beginRun(runs, run);
+	}
+	runs.changed();
+	read.track(identity.id, identity.scratch);
+	// The parent may have many runs going: every report names the agent, its role and its goal.
+	const who = `${identity.id} (${identity.role}: ${identity.goal})`;
+	// For the renderer: the expanded report shows the whole prompt.
+	const shown = { task, goal: identity.goal ?? "", profile: identity.role ?? "" };
+	let end: AgentEnd | undefined;
+	let audit: RunEnd | undefined;
+	// The process is over from here on: the rest (worktree, report) is the parent's own bookkeeping, no silence of the child.
+	const exited = () => runs.team.approvals.noteExited(identity.id);
+	entry.done = (async () => {
+		try {
+			const outcome = withStopFacts(await launch(controller.signal).finally(exited), details, runs.team);
+			providerHealth.noteRun(healthModel(run.route.model, details.ran), outcome.error, spentNothing(outcome.usage));
+			if (outcome.error) hintEnd(runs, identity.id, "failed");
+			const awaited = linger && !outcome.error ? awaitedReply(runs, identity.id, details) : undefined;
+			// Asked before the footer is written: a child that stays reachable has not ended, and its item's graph line says so.
+			const note = await noted(finish(outcome, !outcome.error && (linger?.stays(outcome.outcome, awaited) ?? false)));
+			// The latest report determines the outcome; a failed follow-up overrides earlier success.
+			const reported = outcome.error ? "failed" : outcome.outcome;
+			if (reported) details.outcome = reported;
+			const source = outcome.error ? undefined : outcome.outcomeSource;
+			if (source) details.outcomeSource = source;
+			if (outcome.structured) details.structured = outcome.structured;
+			if (outcome.reportArtifact) details.reportArtifact = outcome.reportArtifact;
+			audit = {
+				reason: outcome.error ? "failed" : "completed",
+				error: outcome.error,
+				outcome: reported,
+				outcomeSource: source,
+				reportPath: outcome.reportArtifact?.path,
+			};
+			const typedFailure = typedResultFailure(identity.resultContract, reported, outcome.structured);
+			const stats = [
+				formatDuration(Date.now() - details.startedAt),
+				toolCallCount(details.toolCalls),
+				deniedLabel(details),
+				compactionLabel(details),
+				formatSpend(details, details.billing),
+			]
+				.filter(Boolean)
+				.join(" · ");
+			const head = `${
+				outcome.error
+					? `Background subagent ${who} failed`
+					: `Background subagent ${who} ${reported ? `reported ${reported}` : "finished"} (${stats})`
+			}${outcome.error ? "" : routeSuffix(ranOn(run.route, details.ran))}${citable(identity.id)}`;
+			const durationMs = Date.now() - details.startedAt;
+			const summary = outcome.error ? `Failed: ${firstLine(outcome.error)}` : doneSummary(details);
+			end = {
+				outcome: outcome.error ? "failed" : (reported ?? "done"),
+				headline: firstLine(outcome.error ?? outcome.text),
+			};
+			const alreadyRead = read.consume(identity.id, outcome.reportArtifact);
+			const next = outcome.error ? failedAdvice(run.route, outcome.error, outcome, details) : "";
+			const notices = noticeLines(details).join("\n");
+			// A successful run that lingers stays reachable: the report says for how long and how to use or end it. One with an unanswered ask to its parent or a peer lingers whatever it reported.
+			// A plan's turns have no price to weigh: the line names the requests alone.
+			const spent = {
+				requests: details.requests,
+				cost: details.billing === "plan" ? "" : formatSpend(details, undefined),
+			};
+			const reachable = outcome.error ? "" : (linger?.(reported, awaited, spent) ?? "");
+			// The child's own notices sit with its words, inside the fence: only the parent's counts ride in the footer.
+			const text = [
+				reportDigest(
+					outcome.text || "(no text)",
+					outcome.structured || outcome.error ? undefined : outcome.reportArtifact?.path,
+				),
+				notices,
+			]
+				.filter(Boolean)
+				.join("\n\n");
+			const body = outcome.error ? `Error: ${outcome.error}\n${text}` : text;
+			const shot = details.shot ? `(Last screenshot: ${shortPath(details.shot)})` : "";
+			if (!outcome.error) await closeAnswered(runs, identity.id);
+			readMailFirst(runs);
+			reports.add({
+				content: reportMessage(head, body, [
+					...(typedFailure ? [typedFailure] : []),
+					// A failure's `next` names the route; a success's header does.
+					next,
+					...runFooter(details, Boolean(outcome.error)),
+					shot,
+					...evidenceFor(details, outcome.text),
+					note,
+					reachable,
+				]),
+				details: {
+					id: identity.id,
+					status: outcome.error ? "failed" : "done",
+					...(reported ? { outcome: reported } : {}),
+					...(source ? { outcomeSource: source } : {}),
+					summary,
+					durationMs,
+					...shown,
+					...reportFacts(details),
+				},
+				wake: runs.graph?.wakes(identity.id, !alreadyRead) ?? !alreadyRead,
+			});
+		} catch (error) {
+			if (identity.resultContract) details.structured = unavailableResult(identity.resultContract);
+			const note = await noted(
+				finish(
+					undefined,
+					entry.stoppedBy === PERMISSION_STOP && (linger?.stays() ?? false),
+					Boolean(entry.stoppedBy) || controller.signal.aborted,
+				),
+			);
+			read.consume(identity.id);
+			const by = entry.stoppedBy;
+			if (!by) hintEnd(runs, identity.id, "failed");
+			audit = {
+				reason: by ? stopReason(by) : "failed",
+				error: by ? undefined : errorMessage(error),
+				outcome: by ? undefined : "failed",
+			};
+			const reason =
+				by === USER_SENDER ? "cancelled by the user" : by ? `stopped by ${by}` : `stopped: ${errorMessage(error)}`;
+			const reachable = by === PERMISSION_STOP ? (linger?.() ?? "") : "";
+			end = { outcome: by ? "stopped" : "failed", headline: reason };
+			reports.add({
+				// A stop someone asked for is the parent's own word; any other cause (a crash, a stall) quotes the child's output.
+				content: by
+					? `Background subagent ${who} ${reason}${by === PERMISSION_STOP ? stopFacts(details, runs.team) : ""}${note}${reachable}`
+					: reportMessage(
+							`Background subagent ${who} stopped${citable(identity.id)}`,
+							[errorMessage(error), ...noticeLines(details)].join("\n\n"),
+							[ranOn(run.route, details.ran), ...runFooter(details, true), note, reachable],
+						),
+				details: {
+					id: identity.id,
+					status: "stopped",
+					...(by ? { requested: true } : { outcome: "failed" as const }),
+					summary: capitalize(reason),
+					durationMs: Date.now() - details.startedAt,
+					...shown,
+					...reportFacts(details),
+				},
+				wake: runs.graph?.wakes(identity.id, !by) ?? !by,
+			});
+		} finally {
+			background.delete(identity.id);
+			// Its report is queued, or the run ended without one: reports held for it go now.
+			runs.groups.leave(identity.id);
+			runs.reports.reportingChanged();
+			if (audit) {
+				endRun(runs, identity.id, audit);
+			}
+			if (end) runs.ended?.(identity.id, end);
+			runs.changed();
+		}
+	})().catch((error: unknown) => {
+		// Something in the report path itself threw: the parent still learns that the run is over, and `done` never rejects.
+		try {
+			reports.add({
+				content: `Background subagent ${who} ended, but its report could not be built: ${errorMessage(error)}`,
+				details: {
+					id: identity.id,
+					status: "failed",
+					...(details.runId ? { runId: details.runId } : {}),
+					startedAt: details.startedAt,
+					outcome: "failed",
+					summary: `Failed: ${firstLine(errorMessage(error))}`,
+					durationMs: Date.now() - details.startedAt,
+					...shown,
+				},
+				wake: true,
+			});
+		} catch {
+			// The session is gone; the child's scratch folder still holds what it wrote.
+		}
+	});
+}
+
+/**
+ * Runs the subagent and waits for its report; the child's model usage counts toward this session's totals. A stop
+ * redraws the call's row (`onUpdate`) the moment it begins: the child, and an isolated run's worktree, still take a moment
+ * to close. With `handOver`, a run that outlasts the budget continues as a background run and the call returns its id.
+ */
+export async function runForeground(
+	runs: AgentRuns,
+	run: Run,
+	details: RunDetails,
+	launch: (signal: AbortSignal) => Promise<Outcome>,
+	finish: (outcome?: Outcome, lingers?: boolean, stopped?: boolean) => Promise<string>,
+	warning: string,
+	signal: AbortSignal | undefined,
+	onUpdate: AgentUpdate | undefined,
+	handOver?: HandOver,
+) {
+	const { identity } = run;
+	const stopping = () => {
+		details.stopping = true;
+		onUpdate?.({ content: [{ type: "text", text: "stopping…" }], details: { ...details } });
+	};
+	// Its own controller, so `/agents kill` can stop this run without aborting the parent's turn. Esc is the user's stop.
+	const controller = new AbortController();
+	const entry: BackgroundRun = { controller, done: Promise.resolve() };
+	const abort = () => controller.abort(USER_STOP);
+	controller.signal.addEventListener("abort", stopping, { once: true });
+	if (signal?.aborted) abort();
+	signal?.addEventListener("abort", abort, { once: true });
+	runs.foreground.set(identity.id, entry);
+	hintOnStop(runs, identity.id, entry);
+	beginRun(runs, run);
+	let outcome: Outcome;
+	let handedOver = false;
+	const exited = () => runs.team.approvals.noteExited(identity.id);
+	try {
+		const running = launch(controller.signal).finally(exited);
+		const first = handOver ? await untilBudget(running, handOver.afterMs) : await running;
+		// An abort that raced the budget is the call's end, not a hand-over.
+		if (first === SPENT && handOver && !controller.signal.aborted) {
+			handedOver = true;
+			controller.signal.removeEventListener("abort", stopping);
+			return handOver.takeOver(running, controller);
+		}
+		outcome = withStopFacts(first === SPENT ? await running : first, details, runs.team);
+		providerHealth.noteRun(healthModel(run.route.model, details.ran), outcome.error, spentNothing(outcome.usage));
+		if (outcome.error) hintEnd(runs, identity.id, "failed");
+	} catch (error) {
+		// An Esc aborts the controller without `stoppedBy`: that stop already left its hint.
+		if (!entry.stoppedBy && !controller.signal.aborted) hintEnd(runs, identity.id, "failed");
+		const stopped = Boolean(entry.stoppedBy) || controller.signal.aborted;
+		const note = `${entry.stoppedBy === PERMISSION_STOP ? stopFacts(details, runs.team) : ""}${await noted(finish(undefined, false, stopped))}${entry.stoppedBy ? "" : foregroundExtras(details, true)}`;
+		const reason = entry.stoppedBy ? stoppedError(identity.id, entry.stoppedBy) : error;
+		endRun(runs, identity.id, {
+			reason: stopped ? stopReason(entry.stoppedBy) : "failed",
+			error: entry.stoppedBy ? undefined : errorMessage(error),
+			outcome: entry.stoppedBy ? undefined : "failed",
+		});
+		const text = `${errorMessage(reason)}${note}`;
+		runs.ended?.(identity.id, {
+			outcome: entry.stoppedBy ? "stopped" : "failed",
+			headline: firstLine(errorMessage(reason)),
+		});
+		// The result keeps the run's details, so the session records the child (its folder, a startup failure) for `resume`,
+		// and what it spent until it stopped, so this session's totals count it.
+		details.status = "failed";
+		if (!entry.stoppedBy) details.outcome = "failed";
+		const { usage } = reportFacts(details);
+		throw new AgentToolExecutionError(text, {
+			content: [{ type: "text", text }],
+			details,
+			...(usage ? { usage } : {}),
+		});
+	} finally {
+		signal?.removeEventListener("abort", abort);
+		runs.foreground.delete(identity.id);
+		// A handed-over child is still running: the background run leaves its group when it ends.
+		if (!handedOver) {
+			runs.groups.leave(identity.id);
+			runs.reports.reportingChanged();
+		}
+	}
+	const note = `${await noted(finish(outcome))}${warning}${foregroundExtras(details, Boolean(outcome.error))}`;
+	if (!outcome.error) await closeAnswered(runs, identity.id);
+	if (outcome.structured) details.structured = outcome.structured;
+	if (outcome.reportArtifact) details.reportArtifact = outcome.reportArtifact;
+	endRun(runs, identity.id, {
+		reason: outcome.error ? "failed" : "completed",
+		error: outcome.error,
+		outcome: outcome.error ? "failed" : outcome.outcome,
+		outcomeSource: outcome.error ? undefined : outcome.outcomeSource,
+		reportPath: outcome.reportArtifact?.path,
+	});
+	runs.ended?.(identity.id, {
+		outcome: outcome.error ? "failed" : (outcome.outcome ?? "done"),
+		headline: firstLine(outcome.error ?? outcome.text),
+	});
+	if (outcome.error) {
+		// An error result rather than a throw, so the child's spent tokens still reach this session's totals.
+		details.status = "failed";
+		details.outcome = "failed";
+		const text = reportMessage(
+			`Subagent ${identity.id} failed${citable(identity.id)}`,
+			`${outcome.error}${outcome.text ? `\n\nPartial answer:\n${outcome.text}` : ""}`,
+			[failedAdvice(run.route, outcome.error, outcome, details), note],
+		);
+		return { isError: true, content: [{ type: "text" as const, text }], details, usage: outcome.usage };
+	}
+	details.status = "done";
+	const reported = outcome.outcome;
+	if (reported) details.outcome = reported;
+	if (outcome.outcomeSource) details.outcomeSource = outcome.outcomeSource;
+	const heading = reported ? `Subagent ${identity.id} reported ${reported}` : "";
+	const typedFailure = typedResultFailure(identity.resultContract, reported, outcome.structured);
+	return {
+		...(typedFailure ? { isError: true } : {}),
+		content: [
+			{
+				type: "text" as const,
+				text: reportMessage(
+					`${heading || `Subagent ${identity.id} finished`}${routeSuffix(ranOn(run.route, details.ran))}${citable(identity.id)}`,
+					withShot(details, outcome.text || "(subagent returned no text)"),
+					[typedFailure ?? "", ...evidenceFor(details, outcome.text), note],
+				),
+			},
+		],
+		details,
+		usage: outcome.usage,
+	};
+}

@@ -1,0 +1,136 @@
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { cliStyle } from "../utils/cli-style.ts";
+import { parseArgs } from "../cli/args.ts";
+import {
+	type AuthCheckResult,
+	checkProviderAuth,
+	formatAuthCheck,
+	createAuthCheckModelRuntime,
+	getProviderCredential,
+} from "../cli/auth-check.ts";
+import {
+	type AuthCommand,
+	AuthCommandError,
+	getAuthCommandName,
+	getAuthCommandUsage,
+	isAuthCommandHelp,
+	parseAuthCommand,
+	printAuthCommandHelp,
+	validateAuthCommandArgs,
+} from "../cli/auth-command.ts";
+import { credentialErrorCause } from "../core/credential-cause.ts";
+import { resolveCredentialForPrint } from "../cli/credential-print.ts";
+import { APP_NAME, getAgentDir } from "../config.ts";
+import { ModelRuntime } from "../core/model-runtime.ts";
+import { createDefaultCredentialStore } from "../core/model-runtime/create.ts";
+import { providerSourceGate } from "../core/provider-sources/gate.ts";
+import { SettingsManager } from "../core/settings-manager.ts";
+
+export async function runAuthCommand(args: string[]): Promise<boolean> {
+	if (isAuthCommandHelp(args)) {
+		printAuthCommandHelp();
+		return true;
+	}
+
+	// A bare `auth` names no command: usage on stderr, like any other missing or unknown word.
+	if (args[0] === "auth" && args[1] === undefined) {
+		printAuthCommandHelp((text) => console.error(text));
+		process.exitCode = 1;
+		return true;
+	}
+
+	let command: AuthCommand | undefined;
+	try {
+		command = parseAuthCommand(args);
+	} catch (error) {
+		const message = error instanceof AuthCommandError ? error.message : "Failed to parse auth command";
+		console.error(cliStyle.error(`Error: ${message}`));
+		process.exitCode = 1;
+		return true;
+	}
+	if (!command) return false;
+
+	const parsed = parseArgs(command.args);
+	if (parsed.unknownFlags.length > 0) {
+		const option = parsed.unknownFlags[0];
+		console.error(cliStyle.error(`Unknown option --${option} for "${getAuthCommandName(command.kind)}".`));
+		console.error(cliStyle.dim(`Use "${APP_NAME} --help" or "${getAuthCommandUsage(command.kind)}".`));
+		process.exitCode = 1;
+		return true;
+	}
+	let modelRuntime: ModelRuntime | undefined;
+	try {
+		if (parsed.diagnostics.length > 0) {
+			throw new AuthCommandError(parsed.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
+		}
+		const settings = SettingsManager.create(process.cwd(), getAgentDir());
+		providerSourceGate.set(settings.getProviderSources());
+		const signal = AbortSignal.timeout(15_000);
+		if (command.kind !== "check") {
+			modelRuntime = await ModelRuntime.create({ allowModelNetwork: false, signal });
+			const credential = await resolveCredentialForPrint(
+				parsed,
+				modelRuntime,
+				command.kind,
+				command.minExpiryMs,
+				signal,
+			);
+			process.stdout.write(`${credential}\n`);
+			return true;
+		}
+
+		const requestedAuth = validateAuthCommandArgs(parsed, command.kind);
+		let result: AuthCheckResult;
+		let credential: string | undefined;
+		try {
+			const credentials = createDefaultCredentialStore({ readOnlyCredentials: command.noRefresh });
+			// The workspace's models.json counts as in a session: read when the folder is trusted, named when it is not.
+			modelRuntime = await createAuthCheckModelRuntime(credentials, signal, {
+				cwd: process.cwd(),
+				isTrusted: () => settings.isProjectTrusted(),
+			});
+			// `--model` resolves as a session's does, which prefers a matching provider with credentials: that needs the
+			// availability pass a session start runs (local reads and credential checks only, no refresh or download).
+			if (parsed.model) await modelRuntime.refresh({ allowNetwork: false, signal });
+			result = await checkProviderAuth(parsed, modelRuntime, { refresh: !command.noRefresh, signal });
+			if (command.credentials && result.status === "ready") {
+				credential = await getProviderCredential(result.provider, modelRuntime, credentials, {
+					refresh: !command.noRefresh,
+					signal,
+				});
+				if (!credential) {
+					result = {
+						status: "not_ready",
+						provider: result.provider,
+						reason: "credential_not_available",
+						verified: false,
+					};
+				}
+			}
+		} catch (error) {
+			// A `--model` or `--provider` the resolver refuses is the user's input: its own message, below.
+			if (error instanceof AuthCommandError) throw error;
+			// Anything else is unreadable credential state: the result says so, and the cause stays visible.
+			console.error(cliStyle.dim(`auth check: ${errorMessage(error)}`));
+			result = {
+				status: "invalid",
+				provider: requestedAuth.provider ?? requestedAuth.model!,
+				reason: "invalid_state",
+				detail: credentialErrorCause(error),
+				verified: false,
+			};
+		}
+		const output = command.json
+			? JSON.stringify({ ...result, ...(credential ? { credentials: credential } : {}) })
+			: (credential ?? formatAuthCheck(result));
+		process.stdout.write(`${output}\n`);
+		process.exitCode = result.status === "ready" ? 0 : result.status === "not_ready" ? 1 : 2;
+	} catch (error) {
+		const message = error instanceof AuthCommandError ? error.message : "Failed to resolve credential";
+		console.error(cliStyle.error(`Error: ${message}`));
+		process.exitCode = command.kind === "check" ? 2 : 1;
+	} finally {
+		modelRuntime?.dispose();
+	}
+	return true;
+}

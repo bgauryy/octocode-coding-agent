@@ -1,0 +1,349 @@
+import type { ThinkingLevel } from "@octocodeai/octocode-agent-core";
+import {
+	backgroundAnsi,
+	type Color,
+	colorToOklch,
+	foregroundAnsi,
+	mixColors,
+	parseColor,
+	type RgbColor,
+	rgbColor,
+	styleTextWithAnsi,
+	type TerminalColorMode,
+	type TerminalColors,
+	type TextAttributes,
+} from "@octocodeai/octocode-tui";
+import type { SourceInfo } from "../core/source-info.ts";
+import type { ThemeColorValue } from "./theme-schema.ts";
+import { getTerminalColors, getTerminalTheme } from "./theme-terminal.ts";
+import type { ThemeAppearance } from "./theme-types.ts";
+import {
+	type ResolvedThemeColorValues,
+	THEME_TOKENS,
+	type ThemeBg,
+	type ThemeColor,
+	type ThemeColorValues,
+	type ThemeToken,
+} from "./theme-tokens.ts";
+
+/**
+ * Tokens are only accepted in their own slot, because "" (terminal default) means the default foreground
+ * or background depending on the slot. Use `theme.colors[token]` to use a token's color in the other slot.
+ */
+export interface ThemeStyle extends TextAttributes {
+	fg?: ThemeColor | Color;
+	bg?: ThemeBg | Color;
+}
+
+// Color Utilities
+
+export function resolveVarRefs(
+	value: ThemeColorValue,
+	vars: Record<string, ThemeColorValue>,
+	visited = new Set<string>(),
+): string | number {
+	if (typeof value === "number" || value === "" || value.startsWith("#") || /^ok(lch|hsl)\(/i.test(value)) {
+		return value;
+	}
+	if (visited.has(value)) {
+		throw new Error(`Circular variable reference detected: ${value}`);
+	}
+	if (!(value in vars)) {
+		throw new Error(`Variable reference not found: ${value}`);
+	}
+	visited.add(value);
+	return resolveVarRefs(vars[value], vars, visited);
+}
+
+export function resolveThemeColors<T extends Record<string, ThemeColorValue>>(
+	colors: T,
+	vars: Record<string, ThemeColorValue> = {},
+): Record<keyof T, string | number> {
+	const resolved: Record<string, string | number> = {};
+	for (const [key, value] of Object.entries(colors)) {
+		resolved[key] = resolveVarRefs(value, vars);
+	}
+	return resolved as Record<keyof T, string | number>;
+}
+
+export function withThemeTokenFallbacks<Value>(values: ThemeColorValues<Value>): ResolvedThemeColorValues<Value> {
+	const resolved = { ...values } as Partial<ResolvedThemeColorValues<Value>>;
+	for (const [rawName, descriptor] of Object.entries(THEME_TOKENS)) {
+		if (!("fallback" in descriptor)) continue;
+		const name = rawName as ThemeToken;
+		if (resolved[name] !== undefined) continue;
+		const fallback = descriptor.fallback as ThemeToken;
+		const fallbackValue = resolved[fallback];
+		if (fallbackValue === undefined) {
+			throw new Error(`Theme token ${rawName} has unresolved fallback ${descriptor.fallback}`);
+		}
+		resolved[name] = fallbackValue;
+	}
+	return resolved as ResolvedThemeColorValues<Value>;
+}
+
+export function splitThemeColors(colors: ResolvedThemeColorValues<string | number>): {
+	fgColors: Record<ThemeColor, string | number>;
+	bgColors: Record<ThemeBg, string | number>;
+} {
+	const fgColors = {} as Record<ThemeColor, string | number>;
+	const bgColors = {} as Record<ThemeBg, string | number>;
+	for (const [key, value] of Object.entries(colors)) {
+		if (THEME_TOKENS[key as ThemeToken].slot === "background") {
+			bgColors[key as ThemeBg] = value;
+		} else {
+			fgColors[key as ThemeColor] = value;
+		}
+	}
+	return { fgColors, bgColors };
+}
+
+/** Assumed terminal default colors when the terminal does not report them. */
+const GUESSED_DEFAULT_COLORS: Record<ThemeAppearance, { foreground: Color; background: Color }> = {
+	dark: { foreground: parseColor("#e5e5e7"), background: parseColor("#000000") },
+	light: { foreground: parseColor("#000000"), background: parseColor("#ffffff") },
+};
+
+function averageLightness(colors: Color[]): number | undefined {
+	// Palette colors 0-15 follow the user's terminal palette, so they say nothing about the theme.
+	const fixed = colors.filter((color) => color.kind !== "indexed" || color.index >= 16);
+	if (fixed.length === 0) return undefined;
+	return fixed.reduce((sum, color) => sum + colorToOklch(color).l, 0) / fixed.length;
+}
+
+/** Detect the background a theme is designed for from the lightness of its own colors. */
+function detectAppearance(foregrounds: Color[], backgrounds: Color[]): ThemeAppearance | undefined {
+	const fg = averageLightness(foregrounds);
+	const bg = averageLightness(backgrounds);
+	if (fg !== undefined && bg !== undefined) return bg < fg ? "dark" : "light";
+	if (bg !== undefined) return bg < 0.5 ? "dark" : "light";
+	if (fg !== undefined) return fg > 0.5 ? "dark" : "light";
+	return undefined;
+}
+
+// Theme Class
+
+export class Theme {
+	readonly name?: string;
+	readonly sourcePath?: string;
+	sourceInfo?: SourceInfo;
+	private mode: TerminalColorMode;
+	// Precomputed escape sequences keep fg()/bg() on the render hot path to a lookup and concat.
+	private readonly fgAnsi = new Map<ThemeColor, string>();
+	private readonly bgAnsi = new Map<ThemeBg, string>();
+	// Tokens set to "" have no color of their own; `colors` fills them from the terminal defaults.
+	private readonly concreteColors: Partial<Record<ThemeToken, Color>> = {};
+	private readonly defaultForegroundTokens: ThemeToken[] = [];
+	private readonly defaultBackgroundTokens: ThemeToken[] = [];
+	// Foreground tokens rendered faint (SGR 2) on top of their color.
+	private readonly dimTokens: ReadonlySet<ThemeColor>;
+	private readonly ownAppearance: ThemeAppearance | undefined;
+	private resolvedColors:
+		| {
+				terminal: TerminalColors;
+				appearance: ThemeAppearance;
+				colors: Readonly<Record<ThemeToken, Color>>;
+				defaults: { foreground: Color; background: Color };
+		  }
+		| undefined;
+
+	constructor(
+		fgColors: Pick<ThemeColorValues<string | number>, ThemeColor>,
+		bgColors: Pick<ThemeColorValues<string | number>, ThemeBg>,
+		mode: TerminalColorMode,
+		options: {
+			name?: string;
+			sourcePath?: string;
+			sourceInfo?: SourceInfo;
+			appearance?: ThemeAppearance;
+			/** Foreground tokens to render faint (SGR 2). */
+			dim?: readonly ThemeColor[];
+		} = {},
+	) {
+		this.name = options.name;
+		this.sourcePath = options.sourcePath;
+		this.sourceInfo = options.sourceInfo;
+		this.mode = mode;
+		this.dimTokens = new Set(options.dim);
+		const { fgColors: foregrounds, bgColors: backgrounds } = splitThemeColors(
+			withThemeTokenFallbacks({ ...fgColors, ...bgColors }),
+		);
+		const concreteForegrounds: Color[] = [];
+		const concreteBackgrounds: Color[] = [];
+		const addToken = (token: ThemeToken, value: string | number, isBackground: boolean): string => {
+			if (value === "") {
+				(isBackground ? this.defaultBackgroundTokens : this.defaultForegroundTokens).push(token);
+				if (mode === "none") return "";
+				return isBackground ? "\x1b[49m" : "\x1b[39m";
+			}
+			const color = parseColor(value);
+			this.concreteColors[token] = color;
+			(isBackground ? concreteBackgrounds : concreteForegrounds).push(color);
+			return isBackground ? backgroundAnsi(color, mode) : foregroundAnsi(color, mode);
+		};
+		for (const [token, value] of Object.entries(foregrounds) as [ThemeColor, string | number][]) {
+			this.fgAnsi.set(token, addToken(token, value, false));
+		}
+		for (const [token, value] of Object.entries(backgrounds) as [ThemeBg, string | number][]) {
+			this.bgAnsi.set(token, addToken(token, value, true));
+		}
+		this.ownAppearance = options.appearance ?? detectAppearance(concreteForegrounds, concreteBackgrounds);
+	}
+
+	/**
+	 * The background the theme is designed for: declared in the theme JSON, detected from its colors,
+	 * or, for themes without usable colors, the terminal's appearance.
+	 */
+	get appearance(): ThemeAppearance {
+		return this.ownAppearance ?? getTerminalTheme();
+	}
+
+	/**
+	 * Concrete colors for all tokens. Tokens set to "" (terminal default) use the terminal's reported
+	 * default colors, or a guess based on `appearance` when the terminal did not report them. Faint
+	 * tokens are approximated by mixing their color toward the background.
+	 */
+	get colors(): Readonly<Record<ThemeToken, Color>> {
+		return this.resolve().colors;
+	}
+
+	/** The terminal's default foreground and background (a guess by `appearance` until the terminal reports them). */
+	get terminalDefaults(): { readonly foreground: Color; readonly background: Color } {
+		return this.resolve().defaults;
+	}
+
+	private resolve() {
+		const terminal = getTerminalColors();
+		const appearance = this.appearance;
+		if (this.resolvedColors?.terminal !== terminal || this.resolvedColors.appearance !== appearance) {
+			const guess = GUESSED_DEFAULT_COLORS[appearance];
+			const toColor = (rgb: RgbColor | undefined, fallback: Color) => (rgb ? rgbColor(rgb.r, rgb.g, rgb.b) : fallback);
+			const foreground = toColor(terminal.foreground, guess.foreground);
+			const background = toColor(terminal.background, guess.background);
+			const colors = { ...this.concreteColors };
+			for (const token of this.defaultForegroundTokens) colors[token] = foreground;
+			for (const token of this.defaultBackgroundTokens) colors[token] = background;
+			for (const token of this.dimTokens) {
+				const color = colors[token];
+				if (color) colors[token] = mixColors(color, background, 0.4);
+			}
+			this.resolvedColors = {
+				terminal,
+				appearance,
+				colors: Object.freeze(colors as Record<ThemeToken, Color>),
+				defaults: { foreground, background },
+			};
+		}
+		return this.resolvedColors;
+	}
+
+	style(text: string, requested: ThemeStyle): string {
+		const { fg, bg } = requested;
+		const options = typeof fg === "string" && this.dimTokens.has(fg) ? { ...requested, dim: true } : requested;
+		return styleTextWithAnsi(
+			text,
+			fg === undefined
+				? undefined
+				: typeof fg === "string"
+					? this.tokenAnsi(this.fgAnsi, fg)
+					: foregroundAnsi(fg, this.mode),
+			bg === undefined
+				? undefined
+				: typeof bg === "string"
+					? this.tokenAnsi(this.bgAnsi, bg)
+					: backgroundAnsi(bg, this.mode),
+			options,
+		);
+	}
+
+	fg(color: ThemeColor, text: string): string {
+		const ansi = this.tokenAnsi(this.fgAnsi, color);
+		const dim = this.dimTokens.has(color);
+		// No color mode: no color sequence and no closer; a faint token keeps its attribute.
+		if (this.mode === "none") return dim ? `\x1b[2m${text}\x1b[22m` : text;
+		if (dim) return `${ansi}\x1b[2m${text}\x1b[22;39m`;
+		return `${ansi}${text}\x1b[39m`;
+	}
+
+	bg(color: ThemeBg, text: string): string {
+		const ansi = this.tokenAnsi(this.bgAnsi, color);
+		return this.mode === "none" ? text : `${ansi}${text}\x1b[49m`;
+	}
+
+	private tokenAnsi<T extends ThemeToken>(ansi: Map<T, string>, token: T): string {
+		const value = ansi.get(token);
+		if (value === undefined) throw new Error(`Unknown theme color: ${token}`);
+		return value;
+	}
+
+	// Text attributes are not colors: they apply in every color mode, including "none" (NO_COLOR).
+	bold(text: string): string {
+		return styleTextWithAnsi(text, undefined, undefined, { bold: true });
+	}
+
+	italic(text: string): string {
+		return styleTextWithAnsi(text, undefined, undefined, { italic: true });
+	}
+
+	underline(text: string): string {
+		return styleTextWithAnsi(text, undefined, undefined, { underline: true });
+	}
+
+	inverse(text: string): string {
+		return styleTextWithAnsi(text, undefined, undefined, { inverse: true });
+	}
+
+	strikethrough(text: string): string {
+		return styleTextWithAnsi(text, undefined, undefined, { strikethrough: true });
+	}
+
+	/** Opening escape sequence for a foreground token. Faint tokens include SGR 2, which `\x1b[22m` closes. */
+	getFgAnsi(color: ThemeColor): string {
+		const ansi = this.tokenAnsi(this.fgAnsi, color);
+		return this.dimTokens.has(color) ? `${ansi}\x1b[2m` : ansi;
+	}
+
+	getBgAnsi(color: ThemeBg): string {
+		return this.tokenAnsi(this.bgAnsi, color);
+	}
+
+	/** Whether the token paints a background band: false for a terminal-default token and in the no-color mode. */
+	paintsBackground(color: ThemeBg): boolean {
+		return this.mode !== "none" && !this.defaultBackgroundTokens.includes(color);
+	}
+
+	getColorMode(): TerminalColorMode {
+		return this.mode;
+	}
+
+	/** The token an editor border tone paints with: bash mode, else the thinking level's dedicated color. */
+	getEditorBorderToken(tone: ThinkingLevel | "bash"): ThemeColor {
+		switch (tone) {
+			case "bash":
+				return "bashMode";
+			case "minimal":
+				return "thinkingMinimal";
+			case "low":
+				return "thinkingLow";
+			case "medium":
+				return "thinkingMedium";
+			case "high":
+				return "thinkingHigh";
+			case "xhigh":
+				return "thinkingXhigh";
+			case "max":
+				return "thinkingMax";
+			default:
+				return "thinkingOff";
+		}
+	}
+
+	getThinkingBorderColor(level: ThinkingLevel): (str: string) => string {
+		const token = this.getEditorBorderToken(level);
+		return (str: string) => this.fg(token, str);
+	}
+
+	getBashModeBorderColor(): (str: string) => string {
+		return (str: string) => this.fg("bashMode", str);
+	}
+}

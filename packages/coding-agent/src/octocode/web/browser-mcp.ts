@@ -1,0 +1,125 @@
+import { browserEscalations } from "../permission/browser-escalation.ts";
+import type { ActionClass } from "../permission/mode.ts";
+import type { PermissionRequest } from "../permission/request.ts";
+import { browserMcpTool, browserMcpUrls } from "@octocodeai/octocode-common/browser-mcp";
+import {
+	classifyHost,
+	defaultLookup,
+	type HostLookup,
+	isHttpUrl,
+	metadataRefusal,
+	reachesMetadata,
+} from "@octocodeai/octocode-common/web-guard";
+
+const VERDICT_TTL_MS = 60 * 60_000;
+const VERDICTS_MAX = 500;
+/** What the permission check decided for each `hostname:port` it saw: true when it was a `net.private` ask. */
+const verdicts = new Map<string, { asked: boolean; at: number }>();
+
+function remember(key: string, asked: boolean): void {
+	verdicts.delete(key);
+	verdicts.set(key, { asked, at: Date.now() });
+	for (const [old, { at }] of verdicts) {
+		if (verdicts.size <= VERDICTS_MAX && Date.now() - at < VERDICT_TTL_MS) break;
+		verdicts.delete(old);
+	}
+}
+
+/**
+ * Whether the permission check asked `net.private` for `key` (`hostname:port`, brackets off an IPv6 literal), or
+ * undefined when it has not seen the host recently (no permission check ran: an SDK session). The page-request filter
+ * approves a host for the pages it loads only when the check asked about it and the call then ran, so a name that
+ * resolved public at the check and private later (DNS rebinding) is never approved.
+ */
+export function browserMcpAsked(key: string): boolean | undefined {
+	const verdict = verdicts.get(key);
+	return verdict && Date.now() - verdict.at < VERDICT_TTL_MS ? verdict.asked : undefined;
+}
+
+/** The refusal for a browser MCP call that opens a cloud metadata address, an invariant in every mode as for `web`; undefined otherwise. */
+export async function browserMetadataRefusal(
+	toolName: string,
+	input: Record<string, unknown>,
+	lookup: HostLookup = defaultLookup,
+): Promise<string | undefined> {
+	for (const raw of browserMcpUrls(toolName, input)) {
+		const url = URL.canParse(raw) ? new URL(raw) : undefined;
+		if (url && isHttpUrl(url) && (await reachesMetadata(url, lookup))) return metadataRefusal(url.host);
+	}
+	return undefined;
+}
+
+/**
+ * The permission a browser MCP call needs beyond the generic MCP class, or undefined when it needs none. A page the
+ * agent asks Chrome to open at a private or local address, or under a name that does not resolve here (it may resolve
+ * to one in Chrome), is a `net.private` ask with a per-host session grant, like `web`; a non-web URL (`file:`,
+ * `chrome:`, `data:`) asks the same way without a grant. Requests the opened page makes itself are not checked here:
+ * the browser server's Chrome runs behind a filtering proxy that approves only these hosts
+ * (`mcp/src/presets/browser/proxy.ts`). Page scripts, attaching to the user's browser or another program as the
+ * browser, and raw CDP on downloads are `browser.control`; raw CDP is
+ * `browser.cookies`, which no profile permission or spawn grant answers: the user is asked, and one answer can cover the session; files from outside the workspace (`cwd`'s)
+ * sent to a page are `upload.outside` (`permission/browser-escalation.ts`). A call that is several of these asks once,
+ * naming them all, with no session grant.
+ */
+export async function browserMcpRequest(
+	toolName: string,
+	input: Record<string, unknown>,
+	lookup?: HostLookup,
+	cwd: string = process.cwd(),
+): Promise<PermissionRequest | undefined> {
+	const tool = browserMcpTool(toolName);
+	if (tool === undefined) return undefined;
+	const escalations = browserEscalations(toolName, input, cwd);
+	const { control, cookies } = escalations;
+	const risky: Array<{ key?: string; what: string }> = [];
+	for (const raw of browserMcpUrls(toolName, input)) {
+		let url: URL;
+		try {
+			url = new URL(raw);
+		} catch {
+			continue; // The server refuses an invalid URL itself.
+		}
+		if (url.protocol === "about:") continue;
+		if (!isHttpUrl(url)) {
+			risky.push({ what: `The browser wants to open ${raw}, which is not a web address.` });
+			continue;
+		}
+		const host = await classifyHost(url, lookup);
+		const port = url.port || (url.protocol === "https:" ? "443" : "80");
+		remember(`${url.hostname.replace(/^\[|\]$/g, "")}:${port}`, host.kind !== "public");
+		if (host.kind === "public") continue;
+		risky.push({
+			key: `${url.hostname}:${port}`,
+			what: `The browser wants to open ${url.host}, ${
+				host.kind === "private"
+					? "a local or private network address"
+					: "a name that does not resolve here and may reach a local or private address"
+			}.`,
+		});
+	}
+	const classes: ActionClass[] = [
+		...(control.length > 0 ? ["browser.control" as const] : []),
+		...(cookies.length > 0 ? ["browser.cookies" as const] : []),
+		...(escalations.outside.length > 0 ? ["upload.outside" as const] : []),
+		...(risky.length > 0 ? ["net.private" as const] : []),
+	];
+	const [action, ...also] = classes;
+	if (action === undefined) return undefined;
+	const keys = [...new Set(risky.map((entry) => entry.key))];
+	return {
+		action,
+		...(also.length > 0 ? { also } : {}),
+		title:
+			action === "browser.control"
+				? "Take control of the browser?"
+				: action === "browser.cookies"
+					? "Read or change the browser's cookies?"
+					: action === "upload.outside"
+						? "Upload files from outside the workspace to the page?"
+						: "Open a private address in the browser?",
+		what: [...control, ...cookies, ...escalations.outside, ...risky.map((entry) => entry.what)],
+		...(action === "net.private" && also.length === 0 && keys.length === 1 && keys[0]
+			? { grant: { key: keys[0], label: keys[0] } }
+			: {}),
+	};
+}

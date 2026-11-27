@@ -1,0 +1,178 @@
+import { type Component, truncateToWidth, visibleWidth } from "@octocodeai/octocode-tui";
+import { theme } from "../../../../theme/theme.ts";
+import { keyHint, keyText, moveHint, renderHintLine } from "../../../../theme/theme-tui-helpers.ts";
+import { plainText } from "../styled-line.ts";
+import type { NameFilter, SortMode } from "../session-selector-search.ts";
+import type { SessionScope } from "./types.ts";
+
+export type { SessionScope };
+
+/** Where the selection stands: its position among the rows shown, how many are shown, how many sessions there are. The list's foot shows the position; the header shows only the marks. */
+export interface SessionCounts {
+	position: number;
+	shown: number;
+	total: number;
+	/** Rows marked for deletion. */
+	marked?: number;
+	/** A search is typed: Esc clears it before it closes the picker. */
+	searching?: boolean;
+}
+
+const sep = () => theme.fg("muted", " · ");
+
+export class SessionSelectorHeader implements Component {
+	private scope: SessionScope;
+	private sortMode: SortMode;
+	private nameFilter: NameFilter;
+	private requestRender: () => void;
+	private loading = false;
+	private loadProgress: { loaded: number; total: number } | null = null;
+	private showPath = false;
+	private confirmingDeleteCount = 0;
+	private statusMessage: { type: "info" | "error"; message: string } | null = null;
+	private statusTimeout: ReturnType<typeof setTimeout> | null = null;
+	private showRenameHint = false;
+	private showActionsHint = false;
+	private previewOpen = false;
+	private counts: () => SessionCounts = () => ({ position: 0, shown: 0, total: 0 });
+
+	constructor(scope: SessionScope, sortMode: SortMode, nameFilter: NameFilter, requestRender: () => void) {
+		this.scope = scope;
+		this.sortMode = sortMode;
+		this.nameFilter = nameFilter;
+		this.requestRender = requestRender;
+	}
+
+	setScope(scope: SessionScope): void {
+		this.scope = scope;
+	}
+
+	setSortMode(sortMode: SortMode): void {
+		this.sortMode = sortMode;
+	}
+
+	setNameFilter(nameFilter: NameFilter): void {
+		this.nameFilter = nameFilter;
+	}
+
+	setLoading(loading: boolean): void {
+		this.loading = loading;
+		// Progress is scoped to the current load; clear whenever the loading state is set
+		this.loadProgress = null;
+	}
+
+	setProgress(loaded: number, total: number): void {
+		this.loadProgress = { loaded, total };
+	}
+
+	setShowPath(showPath: boolean): void {
+		this.showPath = showPath;
+	}
+
+	setShowRenameHint(show: boolean): void {
+		this.showRenameHint = show;
+	}
+
+	setShowActionsHint(show: boolean): void {
+		this.showActionsHint = show;
+	}
+
+	setPreviewOpen(open: boolean): void {
+		this.previewOpen = open;
+	}
+
+	/** Where the header reads how many rows are marked. */
+	setCounts(counts: () => SessionCounts): void {
+		this.counts = counts;
+	}
+
+	/** How many sessions the delete question covers; 0 when none is open. */
+	setConfirmingDeleteCount(count: number): void {
+		this.confirmingDeleteCount = count;
+	}
+
+	private clearStatusTimeout(): void {
+		if (!this.statusTimeout) return;
+		clearTimeout(this.statusTimeout);
+		this.statusTimeout = null;
+	}
+
+	setStatusMessage(msg: { type: "info" | "error"; message: string } | null, autoHideMs?: number): void {
+		this.clearStatusTimeout();
+		this.statusMessage = msg ? { ...msg, message: plainText(msg.message) } : null;
+		if (!msg || !autoHideMs) return;
+
+		this.statusTimeout = setTimeout(() => {
+			this.statusMessage = null;
+			this.statusTimeout = null;
+			this.requestRender();
+		}, autoHideMs);
+	}
+
+	invalidate(): void {}
+
+	/**
+	 * ` Resume session      this folder · threaded`: the title, then the scope, load, filter, marks and sort as one muted
+	 * fact at the right edge. A narrow width cuts the fact first, then the title.
+	 */
+	render(width: number): string[] {
+		const { marked = 0 } = this.counts();
+		const title = ` ${theme.fg("accent", theme.bold("Resume session"))}`;
+		const parts = [theme.fg("muted", this.scope === "all" ? "all folders" : "this folder")];
+		if (this.loading) {
+			const progress = this.loadProgress ? ` ${this.loadProgress.loaded}/${this.loadProgress.total}` : "…";
+			parts.push(theme.fg("muted", `loading${progress}`));
+		}
+		if (this.nameFilter === "named") parts.push(theme.fg("muted", "named only"));
+		if (marked > 0) parts.push(theme.fg("error", `${marked} marked`));
+		parts.push(theme.fg("muted", this.sortMode === "relevance" ? "fuzzy" : this.sortMode));
+		const fact = parts.join(sep());
+		// Two columns between the title and the fact, one after the fact.
+		const room = width - visibleWidth(title) - 3;
+		if (room < 4) return [truncateToWidth(title, width, "…")];
+		const shown = visibleWidth(fact) <= room ? fact : truncateToWidth(fact, room, theme.fg("muted", "…"));
+		return [`${title}${" ".repeat(width - 1 - visibleWidth(title) - visibleWidth(shown))}${shown} `];
+	}
+
+	/** One line: the hints that fit, most useful first; a delete confirmation or status message replaces them. */
+	renderFooter(width: number): string[] {
+		if (this.confirmingDeleteCount > 0) {
+			const what = this.confirmingDeleteCount === 1 ? "session" : `${this.confirmingDeleteCount} sessions`;
+			const confirmHint = `Delete ${what}? ${keyHint("tui.select.confirm", "confirm")} · ${keyHint("tui.select.cancel", "cancel")}`;
+			return [theme.fg("error", truncateToWidth(confirmHint, width, "…"))];
+		}
+		if (this.statusMessage) {
+			const color = this.statusMessage.type === "error" ? "error" : "accent";
+			return [theme.fg(color, truncateToWidth(this.statusMessage.message, width, "…"))];
+		}
+		const { marked = 0, searching = false } = this.counts();
+		// What Esc does now, in the order the list handles it: the preview, then the marks, then the search, then the picker.
+		const cancel = this.previewOpen
+			? "close preview"
+			: marked > 0
+				? "clear marks"
+				: searching
+					? "clear search"
+					: "close";
+		return [
+			renderHintLine(
+				[
+					moveHint(11),
+					[keyText("tui.select.confirm"), "resume", 0],
+					["space", this.previewOpen ? "close preview" : "preview", 6],
+					[keyText("tui.input.tab"), "scope", 3],
+					...(this.showRenameHint ? [[keyText("app.session.rename"), "rename", 7] as const] : []),
+					[keyText("app.session.mark"), "mark", 5],
+					[keyText("app.session.delete"), "delete", 2],
+					...(this.showActionsHint ? [[keyText("app.session.actions"), "actions", 4] as const] : []),
+					[keyText("app.session.toggleSort"), "sort", 8],
+					[keyText("app.session.toggleNamedFilter"), "named", 9],
+					[keyText("app.session.togglePath"), `path ${this.showPath ? "(on)" : "(off)"}`, 10],
+					[keyText("tui.select.cancel"), cancel, 1],
+				],
+				width,
+				1,
+			),
+		];
+	}
+}

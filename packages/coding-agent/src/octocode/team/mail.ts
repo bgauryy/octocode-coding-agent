@@ -1,0 +1,296 @@
+import type { SetupPick } from "../../core/features/index.ts";
+import { PeerNotices, type PeerNoticeHost } from "./peer-left.ts";
+import { INTERNAL_MESSAGE_TYPE, USER_SENDER } from "../shared/messages.ts";
+import type { DeadLetter, MailDetails, Message, RecipientKind } from "./model.ts";
+import { parentProofValid, userProofValid } from "./proof.ts";
+import { mailSource, TEAM_NOTICE_SOURCE } from "./mail-source.ts";
+import { deadLetterText, messageText } from "./routing.ts";
+import { spillIntact } from "./spill.ts";
+import type { TeamStore } from "./store.ts";
+import type { Source } from "../events/source-types.ts";
+import { busy } from "./store/patient.ts";
+import type { PayloadEvent as AgentEvent } from "../events/topics.ts";
+import { wakeGateOf } from "../wake/gate.ts";
+import type { SessionStop } from "../wake/gate-types.ts";
+import { Asked } from "./asked.ts";
+
+const mailEvent = (message: Message): AgentEvent => ({
+	kind: "agent.message",
+	from: message.from,
+	id: message.id,
+	replyRequired: message.replyRequired,
+	interrupt: message.interrupt === true,
+});
+
+/** Puts team mail and team notices in front of this agent's model, one Octocode custom message each (`MailDetails`). */
+export class Mail {
+	/** Raised when a question from the coordinator reached a running session (`deliver`). */
+	private readonly questions = new Asked();
+	/** Notices already handed to Octocode whose database acknowledgement still needs retrying. */
+	private notified: DeadLetter[] = [];
+	/** A dead-letter notice awaiting the host's asynchronous acceptance; do not hand it over twice. */
+	private noticePending = false;
+	private generation = 0;
+	/** Exact messages this process created for the user; shared database ids and sender columns alone are forgeable. */
+	private readonly forUser = new Map<number, { text: string; recipients: Set<string> }>();
+	private lastProvenancePrune = 0;
+
+	/** `secret`: what the parent gave this process (a subagent), which checks a user message the parent signed (`userProof`). */
+	private readonly api: SetupPick<"session", "sendMessage">;
+	private readonly secret: () => string | undefined;
+	constructor(api: SetupPick<"session", "sendMessage">, secret: () => string | undefined = () => undefined) {
+		this.api = api;
+		this.secret = secret;
+	}
+
+	/**
+	 * Whether the message is verifiably the user's: created here for the user, or signed with this process's secret by the
+	 * parent (the signature covers the head and the path of a long message), and in both cases the file it points at, if any,
+	 * still holds what was saved (the file is read outside the signature).
+	 */
+	private verified(message: Message): boolean {
+		const created = this.forUser.get(message.id);
+		return (
+			message.from === USER_SENDER &&
+			((created?.text === message.text && created.recipients.has(message.to)) ||
+				userProofValid(this.secret(), message)) &&
+			spillIntact(message.text)
+		);
+	}
+
+	/** Whether the parent signed `message` for this process, and the file it points at, if any, still holds what was saved. */
+	private parentSigned(message: Message): boolean {
+		return parentProofValid(this.secret(), message) && spillIntact(message.text);
+	}
+
+	/** Binds in-process user provenance to the exact text and recipients, as the child proof does. */
+	createdForUser(id: number, text: string, recipients: readonly string[]): void {
+		this.forUser.set(id, { text, recipients: new Set(recipients) });
+	}
+
+	/** A recipient reached the model or left without reading; retain proof only for recipients still awaiting mail. */
+	forgetForUser(id: number, recipient: string): void {
+		const created = this.forUser.get(id);
+		if (!created) return;
+		created.recipients.delete(recipient);
+		if (created.recipients.size === 0) this.forUser.delete(id);
+	}
+
+	/** Retire proofs for agents whose process can no longer receive their queued message. */
+	pruneForUser(db: TeamStore, now = Date.now()): void {
+		if (this.forUser.size === 0 || (now >= this.lastProvenancePrune && now - this.lastProvenancePrune < 30_000)) return;
+		const live = db.reachable();
+		for (const [id, created] of this.forUser)
+			for (const recipient of created.recipients) if (!live.has(recipient)) this.forgetForUser(id, recipient);
+		this.lastProvenancePrune = now;
+	}
+
+	/** A team notice for this agent, read at its next step; never starts a turn. False when the session cannot take it. */
+	notice(text: string, onRejected?: () => void, onAccepted?: () => void): boolean {
+		return this.inject(
+			text,
+			{ messages: [{ from: "team", text, at: Date.now() }] },
+			{ triggerTurn: false, deliverAs: "steer" },
+			onRejected,
+			onAccepted,
+			[],
+			[TEAM_NOTICE_SOURCE],
+		);
+	}
+
+	private peers: PeerNotices | undefined;
+
+	/** Starts telling this agent when a peer it corresponded with ends (`peer-left.ts`); `reset` stops it. */
+	followPeers(host: Omit<PeerNoticeHost, "mail">): void {
+		this.peers ??= new PeerNotices({ ...host, mail: this });
+		this.peers.watch();
+	}
+
+	/**
+	 * One Octocode message for the whole batch, so a busy agent reads all of it at its next step (steer); only a batch with a
+	 * message that wants action wakes an idle one. False when the session cannot take it: the messages stay pending.
+	 */
+	deliver(batch: Message[], parentId: string | undefined, ctx?: SessionStop, onRejected?: () => void): boolean {
+		// An interrupt is the wake gate's to carry out (`wake/gate.ts`): it stops the busy session's run and holds the send until
+		// the run has settled. Mail only says which session that is and sends.
+		// The interrupt is not tied to `verified`, on purpose: the agent that started this one is legitimately not "the user"
+		// and may stop it. What limits who can interrupt is the sender (`interruptRefusal`, checked where a message is sent):
+		// only the agent that started the recipient, or the user of its session (`/agents tell --interrupt`; an API client
+		// and a peer cannot). A row written around that check (same-user write access to the shared database) can still stop a
+		// run; it cannot make it read the text as the user's, because that needs the signature (`verified`).
+		if (ctx) wakeGateOf(this.api).bindSession(ctx);
+		const sent = this.send(batch, parentId, onRejected);
+		// The coordinator wants an answer, not a stopped job: a wait at the end of the run ends, and the queued question
+		// continues it. The job keeps running, and the next answer holds for it again.
+		if (sent && ctx && !ctx.isIdle() && batch.some((message) => message.replyRequired && message.from === parentId))
+			this.questions.raise();
+		return sent;
+	}
+
+	/** Signalled while an interrupt holds mail for the stopped run. */
+	get interrupted(): AbortSignal {
+		return wakeGateOf(this.api).interrupted;
+	}
+
+	/** Signalled while a question from the coordinator waits for this agent's model (`deliver`). */
+	get asked(): AbortSignal {
+		return this.questions.signal;
+	}
+
+	/** The model is being called, so a question delivered before is in front of it: the next wait holds again. */
+	modelCalled(): void {
+		this.questions.renew();
+	}
+
+	/** One Octocode message for the batch. The text says a step was stopped only when the gate did stop one (`stopped`). */
+	private send(batch: Message[], parentId: string | undefined, onRejected?: () => void): boolean {
+		const content = (stopped: boolean) =>
+			batch
+				.map((message) =>
+					messageText(message, {
+						parentId,
+						stopped,
+						fromUser: this.verified(message),
+						parentUnverified: !this.parentSigned(message),
+					}),
+				)
+				.join("\n\n");
+		const sourceOf = (message: Message) =>
+			mailSource(message, parentId, { fromUser: this.verified(message), parentSigned: this.parentSigned(message) });
+		const waking = batch.filter((message) => message.wake);
+		const quiet = batch.filter((message) => !message.wake);
+		return this.inject(
+			content,
+			{ messages: batch },
+			{ triggerTurn: waking.length > 0, deliverAs: "steer" },
+			onRejected,
+			undefined,
+			waking.map(mailEvent),
+			[...waking.map(sourceOf), ...quiet.map(sourceOf)],
+		);
+	}
+
+	/**
+	 * The run settled: the interrupt's held mail starts the next turn (Octocode runs a turn triggered while it settles before it
+	 * reports idle, so a headless subagent continues instead of exiting). True when it did.
+	 */
+	settled(): boolean {
+		return wakeGateOf(this.api).releaseHeld();
+	}
+
+	/** Forgets held mail (the agent left): never started, it stays undelivered. */
+	reset(): void {
+		this.generation++;
+		this.notified = [];
+		this.noticePending = false;
+		this.forUser.clear();
+		this.lastProvenancePrune = 0;
+		wakeGateOf(this.api).forgetHeld();
+		this.questions.renew();
+		this.peers?.stop();
+	}
+
+	/**
+	 * Tells this agent, once and without waking it, about messages it sent that their recipients left without reading or
+	 * answering. A child leaves before its report is built, so a question it read waits while `reporting` says that report is
+	 * still to come: the report closes it (`closeQuestionsTo`), and only a run that ends without one reports it unanswered.
+	 * `kind` says which recipients were this agent's children, so the notice names the next step for each.
+	 */
+	reportDeadLetters(
+		db: TeamStore,
+		id: string,
+		reporting: (recipient: string) => boolean = () => false,
+		kind?: (recipient: string) => RecipientKind,
+	): void {
+		this.recordNotices(db);
+		if (this.noticePending) return;
+		const letters = db.deadLetters(id).filter((letter) => !letter.read?.some(reporting));
+		if (letters.length === 0) return;
+		const generation = this.generation;
+		this.noticePending = true;
+		const current = () => generation === this.generation;
+		if (
+			!this.notice(
+				letters
+					.map((letter) =>
+						deadLetterText(
+							kind ? { ...letter, kinds: Object.fromEntries(letter.recipients.map((to) => [to, kind(to)])) } : letter,
+						),
+					)
+					.join("\n\n"),
+				() => {
+					if (current()) this.noticePending = false;
+				},
+				() => {
+					if (!current()) return;
+					this.noticePending = false;
+					this.notified = letters;
+					try {
+						db.quick(() => this.recordNotices(db));
+					} catch (error) {
+						// A busy database keeps them in `notified`: the next heartbeat's `reportDeadLetters` records them.
+						if (!busy(error)) throw error;
+					}
+				},
+			)
+		)
+			this.noticePending = false;
+	}
+
+	private recordNotices(db: TeamStore): void {
+		if (this.notified.length === 0) return;
+		db.markNotified(this.notified);
+		this.notified = [];
+	}
+
+	private inject(
+		content: string | ((stopped: boolean) => string),
+		details: MailDetails,
+		options: { triggerTurn?: boolean; deliverAs: "steer" },
+		onRejected?: () => void,
+		onAccepted?: () => void,
+		wakes: readonly AgentEvent[] = [],
+		sources?: readonly Source[],
+	): boolean {
+		let sending: void | Promise<void>;
+		try {
+			const message = (stopped: boolean) => ({
+				customType: INTERNAL_MESSAGE_TYPE,
+				content: typeof content === "function" ? content(stopped) : content,
+				display: true,
+				details,
+			});
+			sending = wakeGateOf(this.api).emit(wakes, message, options, undefined, sources, () => onRejected?.());
+		} catch {
+			return false; // The session ended or is not ready.
+		}
+		if (sending && typeof sending.then === "function")
+			void Promise.resolve(sending).then(
+				() => {
+					try {
+						onAccepted?.();
+					} catch {
+						// Database acknowledgement is retained and retried on the next heartbeat.
+					}
+				},
+				() => onRejected?.(),
+			);
+		else {
+			try {
+				onAccepted?.();
+			} catch {
+				// The message is delivered; the acknowledgement is retried like the asynchronous one.
+			}
+		}
+		return true;
+	}
+}
+
+/** The ids of the messages to `me` that an Octocode message carries, when it is team mail (details are untrusted data). */
+export function mailIds(message: { role?: string; customType?: string; details?: unknown }, me: string): number[] {
+	if (message.role !== "custom" || message.customType !== INTERNAL_MESSAGE_TYPE) return [];
+	const mail = (message.details as Partial<MailDetails> | undefined)?.messages;
+	return Array.isArray(mail)
+		? mail.flatMap((entry) => (typeof entry?.id === "number" && entry.to === me ? [entry.id] : []))
+		: [];
+}

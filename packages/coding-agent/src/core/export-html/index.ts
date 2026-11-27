@@ -1,0 +1,336 @@
+import type { AgentState } from "@octocodeai/octocode-agent-core";
+import { OCTOCODE_FAVICON_DATA_URI } from "@octocodeai/octocode-webview";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, join } from "node:path";
+import { APP_NAME, getExportTemplateDir } from "../../config.ts";
+import { getResolvedThemeColors, getThemeExportColors } from "../../theme/theme.ts";
+import { normalizePath, resolvePath } from "@octocodeai/octocode-common/paths";
+import { redactData, redactSecrets } from "@octocodeai/octocode-common/sanitize";
+import { compactionSummaryDisplay } from "../messages.ts";
+import type { ToolDefinition } from "../features/types.ts";
+import type { SessionEntry } from "../session-manager.ts";
+import { SessionManager } from "../session-manager.ts";
+import { redactEntry } from "../session-manager/codec-redact.ts";
+import { writeSessionExport } from "../export-target.ts";
+import { readTemplateScript } from "./template-script.ts";
+
+/**
+ * Interface for rendering custom tools to HTML.
+ * Used by agent-session to pre-render feature tool output.
+ */
+export interface ToolHtmlRenderer {
+	/** Render a tool call to HTML. Returns undefined if tool has no custom renderer. */
+	renderCall(toolCallId: string, toolName: string, args: unknown): string | undefined;
+	/** Render a tool result to HTML. Returns collapsed/expanded or undefined if tool has no custom renderer. */
+	renderResult(
+		toolCallId: string,
+		toolName: string,
+		result: Array<{ type: string; text?: string; data?: string; mimeType?: string }>,
+		details: unknown,
+		isError: boolean,
+		/** The result's structured data, where an MCP result may state its call's purpose. */
+		structuredContent?: unknown,
+	): { collapsed?: string; expanded?: string } | undefined;
+}
+
+/** Pre-rendered HTML for a custom tool call and result */
+interface RenderedToolHtml {
+	callHtml?: string;
+	resultHtmlCollapsed?: string;
+	resultHtmlExpanded?: string;
+}
+
+interface ExportOptions {
+	outputPath?: string;
+	themeName?: string;
+	toolRenderer?: ToolHtmlRenderer;
+}
+
+/** Parse a color string to RGB values. Supports hex (#RRGGBB) and rgb(r,g,b) formats. */
+function parseColor(color: string): { r: number; g: number; b: number } | undefined {
+	const hexMatch = color.match(/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/);
+	if (hexMatch) {
+		return {
+			r: Number.parseInt(hexMatch[1], 16),
+			g: Number.parseInt(hexMatch[2], 16),
+			b: Number.parseInt(hexMatch[3], 16),
+		};
+	}
+	const rgbMatch = color.match(/^rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/);
+	if (rgbMatch) {
+		return {
+			r: Number.parseInt(rgbMatch[1], 10),
+			g: Number.parseInt(rgbMatch[2], 10),
+			b: Number.parseInt(rgbMatch[3], 10),
+		};
+	}
+	return undefined;
+}
+
+/** Calculate relative luminance of a color (0-1, higher = lighter). */
+function getLuminance(r: number, g: number, b: number): number {
+	const toLinear = (c: number) => {
+		const s = c / 255;
+		return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+	};
+	return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+}
+
+/** Adjust color brightness. Factor > 1 lightens, < 1 darkens. */
+function adjustBrightness(color: string, factor: number): string {
+	const parsed = parseColor(color);
+	if (!parsed) return color;
+	const adjust = (c: number) => Math.min(255, Math.max(0, Math.round(c * factor)));
+	return `rgb(${adjust(parsed.r)}, ${adjust(parsed.g)}, ${adjust(parsed.b)})`;
+}
+
+/** Derive export background colors from a base color (e.g., userMessageBg). */
+function deriveExportColors(baseColor: string): { pageBg: string; cardBg: string; infoBg: string } {
+	const parsed = parseColor(baseColor);
+	if (!parsed) {
+		return {
+			pageBg: "rgb(24, 24, 30)",
+			cardBg: "rgb(30, 30, 36)",
+			infoBg: "rgb(60, 55, 40)",
+		};
+	}
+
+	const luminance = getLuminance(parsed.r, parsed.g, parsed.b);
+	const isLight = luminance > 0.5;
+
+	if (isLight) {
+		return {
+			pageBg: adjustBrightness(baseColor, 0.96),
+			cardBg: baseColor,
+			infoBg: `rgb(${Math.min(255, parsed.r + 10)}, ${Math.min(255, parsed.g + 5)}, ${Math.max(0, parsed.b - 20)})`,
+		};
+	}
+	return {
+		pageBg: adjustBrightness(baseColor, 0.7),
+		cardBg: adjustBrightness(baseColor, 0.85),
+		infoBg: `rgb(${Math.min(255, parsed.r + 20)}, ${Math.min(255, parsed.g + 15)}, ${parsed.b})`,
+	};
+}
+
+/**
+ * Generate CSS custom property declarations from theme colors.
+ */
+function generateThemeVars(themeName?: string): string {
+	const colors = getResolvedThemeColors(themeName);
+	const lines: string[] = [];
+	for (const [key, value] of Object.entries(colors)) {
+		lines.push(`--${key}: ${value};`);
+	}
+
+	// Use explicit theme export colors if available, otherwise derive from userMessageBg
+	const themeExport = getThemeExportColors(themeName);
+	const userMessageBg = colors.userMessageBg || "#343541";
+	const derivedColors = deriveExportColors(userMessageBg);
+
+	lines.push(`--exportPageBg: ${themeExport.pageBg ?? derivedColors.pageBg};`);
+	lines.push(`--exportCardBg: ${themeExport.cardBg ?? derivedColors.cardBg};`);
+	lines.push(`--exportInfoBg: ${themeExport.infoBg ?? derivedColors.infoBg};`);
+
+	return lines.join("\n      ");
+}
+
+interface SessionData {
+	header: ReturnType<SessionManager["getHeader"]>;
+	entries: ReturnType<SessionManager["getEntries"]>;
+	leafId: string | null;
+	systemPrompt?: string;
+	tools?: Array<Pick<ToolDefinition, "name" | "description" | "parameters">>;
+	/** Pre-rendered HTML for custom tool calls/results, keyed by tool call ID */
+	renderedTools?: Record<string, RenderedToolHtml>;
+}
+
+/**
+ * A compaction entry carries the summary written for the model (tags, Recovery instructions). The page shows the
+ * summary as the terminal does, so the host sends it already read; `summary` stays as the record.
+ */
+function withSummaryDisplay(entry: SessionEntry): SessionEntry | (SessionEntry & { summaryDisplay: string }) {
+	return entry.type === "compaction" ? { ...entry, summaryDisplay: compactionSummaryDisplay(entry) } : entry;
+}
+
+/**
+ * Core HTML generation logic shared by both export functions.
+ */
+function generateHtml(sessionData: SessionData, themeName?: string): string {
+	const templateDir = getExportTemplateDir();
+	const template = readFileSync(join(templateDir, "template.html"), "utf-8");
+	const templateCss = readFileSync(join(templateDir, "template.css"), "utf-8");
+	const templateJs = readTemplateScript(templateDir);
+	const markedJs = readFileSync(join(templateDir, "vendor", "marked.min.js"), "utf-8");
+	const hljsJs = readFileSync(join(templateDir, "vendor", "highlight.min.js"), "utf-8");
+
+	const themeVars = generateThemeVars(themeName);
+	const colors = getResolvedThemeColors(themeName);
+	const themeExport = getThemeExportColors(themeName);
+	const derivedExportColors = deriveExportColors(colors.userMessageBg || "#343541");
+	const bodyBg = themeExport.pageBg ?? derivedExportColors.pageBg;
+	const containerBg = themeExport.cardBg ?? derivedExportColors.cardBg;
+	const infoBg = themeExport.infoBg ?? derivedExportColors.infoBg;
+
+	// Base64 encode session data to avoid escaping issues
+	const sessionDataBase64 = Buffer.from(
+		JSON.stringify({
+			...sessionData,
+			// Read from memory, not the session file: credentials come out here as the file's encoding removes them.
+			entries: sessionData.entries.map((entry) => withSummaryDisplay(redactEntry(entry))),
+			systemPrompt: sessionData.systemPrompt === undefined ? undefined : redactSecrets(sessionData.systemPrompt),
+			renderedTools: sessionData.renderedTools && redactData(sessionData.renderedTools),
+		}),
+	).toString("base64");
+
+	// Function replacers insert each value verbatim: a string replacement would read `$$`, `$&` and `$'` in the
+	// inlined scripts as patterns (the page script writes the cost as `$${totalCost...}`).
+	// Build the CSS with theme variables injected
+	const css = templateCss
+		.replace("{{THEME_VARS}}", () => themeVars)
+		.replace("{{BODY_BG}}", () => bodyBg)
+		.replace("{{CONTAINER_BG}}", () => containerBg)
+		.replace("{{INFO_BG}}", () => infoBg);
+
+	return template
+		.replace("{{FAVICON}}", () => OCTOCODE_FAVICON_DATA_URI)
+		.replace("{{CSS}}", () => css)
+		.replace("{{JS}}", () => templateJs)
+		.replace("{{SESSION_DATA}}", () => sessionDataBase64)
+		.replace("{{MARKED_JS}}", () => markedJs)
+		.replace("{{HIGHLIGHT_JS}}", () => hljsJs);
+}
+
+/**
+ * Pre-render custom tools to HTML using their TUI renderers.
+ */
+function preRenderCustomTools(
+	entries: SessionEntry[],
+	toolRenderer: ToolHtmlRenderer,
+): Record<string, RenderedToolHtml> {
+	const renderedTools: Record<string, RenderedToolHtml> = {};
+
+	for (const entry of entries) {
+		if (entry.type !== "message") continue;
+		const msg = entry.message;
+
+		// Find tool calls in assistant messages
+		if (msg.role === "assistant" && Array.isArray(msg.content)) {
+			for (const block of msg.content) {
+				if (block.type === "toolCall") {
+					const callHtml = toolRenderer.renderCall(block.id, block.name, block.arguments);
+					if (callHtml) {
+						renderedTools[block.id] = { callHtml };
+					}
+				}
+			}
+		}
+
+		if (msg.role === "toolResult" && msg.toolCallId) {
+			const toolName = msg.toolName || "";
+			const existing = renderedTools[msg.toolCallId];
+			const rendered = toolRenderer.renderResult(
+				msg.toolCallId,
+				toolName,
+				msg.content,
+				msg.details,
+				msg.isError || false,
+				msg.structuredContent,
+			);
+			if (rendered) {
+				renderedTools[msg.toolCallId] = {
+					...existing,
+					resultHtmlCollapsed: rendered.collapsed,
+					resultHtmlExpanded: rendered.expanded,
+				};
+			}
+		}
+	}
+
+	return renderedTools;
+}
+
+/**
+ * Export session to HTML using SessionManager and AgentState.
+ * Used by TUI's /export command.
+ */
+export async function exportSessionToHtml(
+	sm: SessionManager,
+	state?: AgentState,
+	options?: ExportOptions | string,
+): Promise<string> {
+	const opts: ExportOptions = typeof options === "string" ? { outputPath: options } : (options ?? {});
+
+	const sessionFile = sm.getSessionFile();
+	if (!sessionFile) {
+		throw new Error("Cannot export in-memory session to HTML");
+	}
+	if (!existsSync(sessionFile)) {
+		throw new Error("Nothing to export yet - start a conversation first");
+	}
+
+	const entries = sm.getEntries();
+
+	// Pre-render custom tools if a tool renderer is provided
+	let renderedTools: Record<string, RenderedToolHtml> | undefined;
+	if (opts.toolRenderer) {
+		renderedTools = preRenderCustomTools(entries, opts.toolRenderer);
+		// Only include if we actually rendered something
+		if (Object.keys(renderedTools).length === 0) {
+			renderedTools = undefined;
+		}
+	}
+
+	const sessionData: SessionData = {
+		header: sm.getHeader(),
+		entries,
+		leafId: sm.getLeafId(),
+		systemPrompt: state?.systemPrompt,
+		tools: state?.tools?.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })),
+		renderedTools,
+	};
+
+	const html = generateHtml(sessionData, opts.themeName);
+
+	let outputPath = opts.outputPath ? normalizePath(opts.outputPath) : undefined;
+	if (!outputPath) {
+		const sessionBasename = basename(sessionFile, ".jsonl");
+		outputPath = `${APP_NAME}-session-${sessionBasename}.html`;
+	}
+
+	writeSessionExport(outputPath, html, sessionFile);
+	return outputPath;
+}
+
+/**
+ * Export session file to HTML (standalone, without AgentState).
+ * Used by CLI for exporting arbitrary session files.
+ */
+export async function exportFromFile(inputPath: string, options?: ExportOptions | string): Promise<string> {
+	const opts: ExportOptions = typeof options === "string" ? { outputPath: options } : (options ?? {});
+	const resolvedInputPath = resolvePath(inputPath);
+
+	if (!existsSync(resolvedInputPath)) {
+		throw new Error(`File not found: ${resolvedInputPath}`);
+	}
+
+	const sm = await SessionManager.openAsync(resolvedInputPath);
+
+	const sessionData: SessionData = {
+		header: sm.getHeader(),
+		entries: sm.getEntries(),
+		leafId: sm.getLeafId(),
+		systemPrompt: undefined,
+		tools: undefined,
+	};
+
+	const html = generateHtml(sessionData, opts.themeName);
+
+	let outputPath = opts.outputPath ? normalizePath(opts.outputPath) : undefined;
+	if (!outputPath) {
+		const inputBasename = basename(resolvedInputPath, ".jsonl");
+		outputPath = `${APP_NAME}-session-${inputBasename}.html`;
+	}
+
+	writeSessionExport(outputPath, html, resolvedInputPath);
+	return outputPath;
+}

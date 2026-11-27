@@ -1,0 +1,331 @@
+import { renderPrompt } from "../../core/prompt-template.ts";
+import { USER_AUTHOR } from "../../../../db/src/api.ts";
+import { harnessSource, sourcedText } from "../events/source.ts";
+import { clipText, contentText } from "../shared/util.ts";
+import { isCandidate } from "./file/candidate-tags.ts";
+import { NOTE_CHARS, pinnedBudget, totalBudget } from "./limits.ts";
+import { clearsFloor, MAX_QUERY_TERMS, memoryLabel, stem, terms } from "./query.ts";
+import {
+	type Memory,
+	type MemoryKind,
+	type MemoryStore,
+	memoryGetCall,
+	memoryTags,
+	type ScopeFilter,
+} from "./store.ts";
+import { asRecord, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { BranchIndex, type BranchSource } from "../shared/branch-index.ts";
+
+export const MEMORY_MESSAGE_TYPE = "octocode-memory";
+/** The `memory` tool's name, whose save results count as shown memories (`savedResult`). */
+export const MEMORY_TOOL_NAME = "memory";
+export const MEMORY_HEADER = renderPrompt("notices/memory-header.md", { again: false });
+/** The message text an injection is sent as: under the memory source's header. */
+export const memoryMessageText = (content: string): string => sourcedText(content, harnessSource("memory"));
+
+/** Whether an injection's message text opens with the whole caveat (after its source header). */
+const opensWhole = (text: string): boolean =>
+	text.startsWith(MEMORY_HEADER) || text.startsWith(memoryMessageText(MEMORY_HEADER));
+
+/** The header of a later injection, while one with the whole caveat is still in context (`headerInContext`). */
+export const MEMORY_HEADER_AGAIN = renderPrompt("notices/memory-header.md", { again: true });
+
+/** Characters of pinned memory lines per injection, and of the whole injected message (header and notes included), for a window of the floor size; `selectInjection` grows both with its `contextWindow`. */
+export const PINNED_BUDGET = pinnedBudget();
+export const TOTAL_BUDGET = totalBudget();
+/** Unseen pinned memories read per injection: more than the shortest lines that fit `PINNED_BUDGET`. */
+const PINNED_WINDOW = 50;
+/** Hits fetched per wanted one: the relevance filter drops some, so irrelevant top hits must not crowd out relevant lower ones. */
+const SEARCH_WINDOW = 3;
+/** A hit scoring below this share of the best hit is noise. */
+const RELATIVE_THRESHOLD = 0.3;
+/** Shorter prompt words (`ts`, `ok`) match too much by chance to pull a memory in. */
+const MIN_TERM_LENGTH = 3;
+/** Characters reserved for a body when the title needs clipping too. */
+const BODY_RESERVE = 80;
+
+export interface Injection {
+	content: string;
+	ids: number[];
+	/** Each injected memory's `updatedAt`, in `ids` order: an edit after this makes it new again. */
+	updated: number[];
+	/** The session notes the message carries (`lead`). */
+	sessionNotes?: Array<{ id: number; version: number }>;
+}
+
+/**
+ * Ids injected earlier on this branch, each with the `updatedAt` of the version injected (undefined for an injection
+ * that did not record it), from the `octocode-memory` custom messages in `entries`, oldest first, and from the results
+ * of `memory` tool saves, which show the saved version to the model already. A compaction
+ * summarizes the messages before its first kept entry away, so only injections from that entry on count (all of them
+ * are dropped when the kept entry is unknown). An omitted or changed injection no longer suppresses recall.
+ */
+export function injectedIds(entries: readonly unknown[]): Map<number, number | undefined> {
+	return new Map(keptInjections(entries).flatMap((injection) => (injection.intact ? injection.ids : [])));
+}
+
+/**
+ * Whether an injection that opens with the whole caveat (`MEMORY_HEADER`) is still in context on this branch, by the
+ * same rule as `injectedIds`: a later injection then opens with `MEMORY_HEADER_AGAIN`. After a compaction that kept
+ * none, or kept only later ones, the next injection states the caveat whole again.
+ */
+export function headerInContext(entries: readonly unknown[]): boolean {
+	return keptInjections(entries).some((injection) => injection.whole);
+}
+
+type KeptInjection = {
+	at: number;
+	id: string | undefined;
+	content: string;
+	ids: Array<[number, number | undefined]>;
+	intact: boolean;
+	whole: boolean;
+};
+
+/** A fold of a branch into the injections a compaction has not summarized away (`keptInjections`). */
+interface InjectionFold {
+	/** How many entries the fold has read: the next entry's position. */
+	read: number;
+	/** Each entry's position by id, so a compaction can find its first kept entry. */
+	readonly position: Map<string, number>;
+	injections: KeptInjection[];
+}
+
+const startFold = (): InjectionFold => ({ read: 0, position: new Map(), injections: [] });
+
+function foldInjection(fold: InjectionFold, entry: unknown): void {
+	const at = fold.read++;
+	if (!isRecord(entry)) return;
+	if (typeof entry.id === "string") fold.position.set(entry.id, at);
+	if (entry.type === "compaction") {
+		const kept = typeof entry.firstKeptEntryId === "string" ? fold.position.get(entry.firstKeptEntryId) : undefined;
+		fold.injections = kept === undefined ? [] : fold.injections.filter((injection) => injection.at >= kept);
+		return;
+	}
+	if (entry.type === "context_edit") {
+		if (typeof entry.targetId !== "string") return;
+		const injection = fold.injections.find((injection) => injection.id === entry.targetId);
+		if (injection) {
+			const replacement = asRecord(entry.replacement).content;
+			const text = contentText(replacement);
+			injection.intact = entry.replacement !== null && text === injection.content;
+			injection.whole = opensWhole(text);
+		}
+		return;
+	}
+	const saved = savedResult(entry);
+	if (!saved && (entry.type !== "custom_message" || entry.customType !== MEMORY_MESSAGE_TYPE)) return;
+	const details = asRecord(saved ? saved.details : entry.details);
+	const list = Array.isArray(details.ids) ? details.ids : [];
+	const updated = Array.isArray(details.updated) ? details.updated : [];
+	const content = contentText(saved ? saved.content : entry.content);
+	fold.injections.push({
+		at,
+		id: typeof entry.id === "string" ? entry.id : undefined,
+		content,
+		intact: true,
+		whole: !saved && opensWhole(content),
+		ids: list.flatMap((id, index): Array<[number, number | undefined]> =>
+			typeof id === "number" ? [[id, typeof updated[index] === "number" ? updated[index] : undefined]] : [],
+		),
+	});
+}
+
+/**
+ * The message of a successful `memory` tool save in `entry`: its details name the saved version (`updated`), which the
+ * result shows. Reads and deletes record no version, so they never count a memory as seen.
+ */
+function savedResult(entry: Record<string, unknown>): Record<string, unknown> | undefined {
+	if (entry.type !== "message") return undefined;
+	const message = asRecord(entry.message);
+	if (message.role !== "toolResult" || message.toolName !== MEMORY_TOOL_NAME || message.isError === true)
+		return undefined;
+	return Array.isArray(asRecord(message.details).updated) ? message : undefined;
+}
+
+/** The injections a compaction has not summarized away, oldest first. */
+function keptInjections(entries: readonly unknown[]): KeptInjection[] {
+	const fold = startFold();
+	for (const entry of entries) foldInjection(fold, entry);
+	return fold.injections;
+}
+
+const injectionIndex = new BranchIndex<InjectionFold>(startFold, foldInjection);
+
+/**
+ * `injectedIds` and `headerInContext` of the session's current branch, read once per prompt: the branch is folded only
+ * from where the last prompt's read ended (`BranchIndex`), and again from its start on another branch.
+ */
+export function sessionInjections(session: BranchSource): {
+	injected: Map<number, number | undefined>;
+	headerInContext: boolean;
+} {
+	const kept = injectionIndex.read(session).injections;
+	return {
+		injected: new Map(kept.flatMap((injection) => (injection.intact ? injection.ids : []))),
+		headerInContext: kept.some((injection) => injection.whole),
+	};
+}
+
+/** Of the `injected` ids, those whose memory is unchanged since: a memory edited after its injection is sent again. */
+export function unchangedIds(
+	store: Pick<MemoryStore, "updatedAt">,
+	injected: ReadonlyMap<number, number | undefined>,
+): Set<number> {
+	const current = store.updatedAt([...injected.keys()]);
+	return new Set([...injected].flatMap(([id, at]) => (at === undefined || current.get(id) === at ? [id] : [])));
+}
+
+/** The content of the latest `octocode-memory` message in `entries`, for `/memory last`. */
+export function lastInjection(entries: readonly unknown[]): string | undefined {
+	for (let index = entries.length - 1; index >= 0; index--) {
+		const entry = entries[index];
+		if (isRecord(entry) && entry.type === "custom_message" && entry.customType === MEMORY_MESSAGE_TYPE)
+			return typeof entry.content === "string" ? entry.content : undefined;
+	}
+	return undefined;
+}
+
+/** The memory ids of the injection `lastInjection` shows (empty when it recorded none). */
+export function lastInjectionIds(entries: readonly unknown[]): number[] {
+	for (let index = entries.length - 1; index >= 0; index--) {
+		const entry = entries[index];
+		if (isRecord(entry) && entry.type === "custom_message" && entry.customType === MEMORY_MESSAGE_TYPE) {
+			const ids = isRecord(entry.details) ? entry.details.ids : undefined;
+			return Array.isArray(ids) ? ids.filter((id): id is number => typeof id === "number") : [];
+		}
+	}
+	return [];
+}
+
+/**
+ * What to inject before a prompt: pinned memories (up to `pinnedBudget` chars; skipped with `pinned: false`, only
+ * those of `pinnedKind` when it is set), then the top `topK` BM25 hits for the prompt's words of 3+ letters that clear the absolute floor (`clearsFloor`) and score at least
+ * `RELATIVE_THRESHOLD` of the best such hit, the whole message (header and held-back note too) within `totalBudget`,
+ * skipping `seen` ids. An empty `query` injects pinned memories only. Undefined when nothing
+ * new qualifies. The first line is the caveat, whole unless `headerInContext` says an earlier injection still shows it.
+ */
+export function selectInjection(
+	store: MemoryStore,
+	options: {
+		query: string;
+		scope: ScopeFilter;
+		seen: ReadonlySet<number>;
+		topK: number;
+		pinned?: boolean;
+		/** Only pinned memories of this kind are injected as pins and counted as held back; hits are not narrowed. */
+		pinnedKind?: MemoryKind;
+		/** The whole caveat is already in context (`headerInContext`): open with the short header. */
+		headerInContext?: boolean;
+		/** Session notes the model cannot see (`session-notes-inject.ts`): their lines come first, outside `TOTAL_BUDGET`, and the message is sent even when no memory qualifies. */
+		lead?: { lines: string[]; notes: Array<{ id: number; version: number }> };
+		now?: number;
+		/** The model's context window in tokens: the budgets grow with it (`limits.ts`); the line cut does not. */
+		contextWindow?: number;
+	},
+): Injection | undefined {
+	const now = options.now ?? Date.now();
+	const lines: string[] = [];
+	const ids: number[] = [];
+	const updated: number[] = [];
+	const pinnedMax = pinnedBudget(options.contextWindow);
+	const totalMax = totalBudget(options.contextWindow);
+	const lineMax = NOTE_CHARS;
+	const header = options.headerInContext === true ? MEMORY_HEADER_AGAIN : MEMORY_HEADER;
+	// The whole message counts toward `TOTAL_BUDGET`: the header, each line and its newline, and the held-back note.
+	let used = header.length;
+	let pinnedUsed = 0;
+	const take = (memory: Memory, pinned: boolean): boolean => {
+		if (options.seen.has(memory.id) || ids.includes(memory.id)) return false;
+		const line = injectedLine(memory, now, lineMax);
+		if (used + line.length + 1 > totalMax) return false;
+		if (pinned && pinnedUsed + line.length + 1 > pinnedMax) return false;
+		lines.push(line);
+		ids.push(memory.id);
+		updated.push(memory.updatedAt);
+		used += line.length + 1;
+		if (pinned) pinnedUsed += line.length + 1;
+		return true;
+	};
+	// Pinned memories that do not fit wait for a later prompt; the model is told how many instead of meeting silence. Seen
+	// ones are left out of the listing, so each prompt reaches the next ones, and the count covers every one held back.
+	let heldBack = 0;
+	if (options.pinned !== false) {
+		const unseen = {
+			pinnedOnly: true,
+			exclude: options.seen,
+			...(options.pinnedKind ? { kind: options.pinnedKind } : {}),
+		};
+		for (const memory of store.list(options.scope, PINNED_WINDOW, unseen)) take(memory, true);
+		heldBack = store.count(options.scope, unseen) - ids.length;
+	}
+	const note =
+		heldBack > 0 ? [renderPrompt("notices/memory-held-back.md", { count: heldBack, several: heldBack !== 1 })] : [];
+	for (const line of note) used += line.length + 1;
+	const words = terms(options.query, MAX_QUERY_TERMS, MIN_TERM_LENGTH);
+	const stems = new Set(words.map(stem));
+	const found =
+		words.length > 0
+			? store.search(words.join(" "), options.scope, options.topK * SEARCH_WINDOW, new Set([...options.seen, ...ids]))
+			: [];
+	// A queued lesson candidate is checkpoint detail waiting for a pass, not a saved note (`file/candidate-tags.ts`).
+	const hits = found.filter((hit) => !isCandidate(hit) && clearsFloor(hit, stems));
+	const best = hits[0]?.score ?? 0;
+	let added = 0;
+	for (const hit of hits) {
+		if (added >= options.topK || hit.score < best * RELATIVE_THRESHOLD) break;
+		if (take(hit, false)) added++;
+	}
+	const lead = options.lead ?? { lines: [], notes: [] };
+	if (ids.length === 0 && lead.lines.length === 0) return undefined;
+	return {
+		content: [header, ...lead.lines, ...lines, ...note].join("\n"),
+		ids,
+		updated,
+		...(options.lead ? { sessionNotes: lead.notes } : {}),
+	};
+}
+
+/**
+ * One memory on one line within `lineMax`: its label, tags with its age, `(agent-written)` unless the user wrote it, then
+ * the title and the body, each as one JSON string. The quotes and escapes keep either from ending its line, imitating
+ * another entry or reading as a directive. A body that does not fit is cut and ends with the call that reads it whole.
+ */
+function injectedLine(memory: Memory, now: number, lineMax: number): string {
+	const prefix = `${memoryLabel(memory.id)} (${memoryTags(memory, now)})${memory.author === USER_AUTHOR ? "" : " (agent-written)"} `;
+	return quotedLine(prefix, memory.title, memory.body, memoryGetCall(memory.id), lineMax);
+}
+
+/** `prefix`, then the title and the body as JSON strings on one line within `lineMax`; a longer one ends with `pointer`, the call that reads it whole. */
+export function quotedLine(
+	prefix: string,
+	rawTitle: string,
+	rawBody: string,
+	call: string,
+	lineMax = NOTE_CHARS,
+): string {
+	const flat = (text: string) => text.replace(/\s+/g, " ").trim();
+	const title = flat(rawTitle);
+	const head = `${prefix}${JSON.stringify(title)}`;
+	const body = flat(rawBody);
+	const line = `${head}${body ? ` — ${JSON.stringify(body)}` : ""}`;
+	if (line.length <= lineMax) return line;
+	const pointer = ` (${call})`;
+	const room = lineMax - prefix.length - pointer.length;
+	// Leave room for the body when an oversized title competes with it. The stored memory stays whole.
+	const quotedTitle = boundedQuote(title, body ? room - BODY_RESERVE - 3 : room);
+	const quotedBody = body ? ` — ${boundedQuote(body, room - quotedTitle.length - 3)}` : "";
+	return `${prefix}${quotedTitle}${quotedBody}${pointer}`;
+}
+
+/** Clip the text before quoting, counting JSON escapes too, while preserving complete quotes and code points. */
+function boundedQuote(text: string, budget: number): string {
+	let low = 0;
+	let high = Math.min(text.length, Math.max(0, budget - 2));
+	while (low < high) {
+		const mid = Math.ceil((low + high) / 2);
+		if (JSON.stringify(clipText(text, mid)).length <= budget) low = mid;
+		else high = mid - 1;
+	}
+	return JSON.stringify(clipText(text, low));
+}

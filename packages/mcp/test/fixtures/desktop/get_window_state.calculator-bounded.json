@@ -1,0 +1,765 @@
+{
+ "content": [
+  {
+   "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
+   "mimeType": "image/png",
+   "type": "image"
+  },
+  {
+   "text": "window_id=9663 pid=60161 size=460x816 elements=29\n\n- [0] AXWindow \"Calculator\" [id=main actions=[raise]]\n    - AXStaticText = \"‎42‎×‎2\"\n    - AXStaticText = \"‎84\"\n    - [1] AXButton (Delete) [id=Delete help=\"Delete the last digit or operation entered (long press to delete all)\" actions=[press]]\n    - [2] AXButton (All Clear) [id=AllClear actions=[press]]\n    - [3] AXButton (Percent) [id=Percent actions=[press]]\n    - [4] AXButton (Divide) [id=Divide actions=[press]]\n    - [5] AXButton (7) [id=Seven actions=[press]]\n    - [6] AXButton (8) [id=Eight actions=[press]]\n    - [7] AXButton (9) [id=Nine actions=[press]]\n    - [8] AXButton (Multiply) [id=Multiply actions=[press]]\n    - [9] AXButton (4) [id=Four actions=[press]]\n    - [10] AXButton (5) [id=Five actions=[press]]\n    - [11] AXButton (6) [id=Six actions=[press]]\n    - [12] AXButton (Subtract) [id=Subtract actions=[press]]\n    - [13] AXButton (1) [id=One actions=[press]]\n    - [14] AXButton (2) [id=Two actions=[press]]\n    - [15] AXButton (3) [id=Three actions=[press]]\n    - [16] AXButton (Add) [id=Add actions=[press]]\n    - [17] AXButton (Change Sign) [id=Negate help=\"Change sign of a value\" actions=[press]]\n    - [18] AXButton (0) [id=Zero actions=[press]]\n    - [19] AXButton (Point) [id=Decimal actions=[press]]\n    - [20] AXButton (Equals) [id=Equals actions=[press]]\n  - [21] AXToolbar [actions=[showmenu]]\n    - [22] AXButton (Show Sidebar) [id= actions=[increment,decrement,delete,showmenu,cancel,press]]\n    - [23] AXButton (Mode) [id=Mode: basic; unitConversion: false actions=[increment,decrement,delete,showmenu,cancel,press,name:move previous\ntarget:0x0\nselector:(null),name:remove from toolbar\ntarget:0x0\nselector:(null)]]\n  - [24] AXButton [actions=[press]]\n  - [25] AXButton [actions=[press]]\n- [26] AXMenuBar [actions=[cancel]]\n  - [27] AXMenuBarItem \"Apple\" [actions=[cancel,press,pick]]\n    - [28] AXMenu [actions=[cancel]]\n\n⚠️ PARTIAL TREE: the max_elements node budget ran out after 40 node(s) (26 discovered but not visited). Every element listed is real; elements after the cut are missing. If the element you need is absent, retry with a larger timeout_ms (e.g. 5000) or narrow with query / max_depth.",
+   "type": "text"
+  }
+ ],
+ "structuredContent": {
+  "_note": "Prefer `elements` — `tree_markdown` will continue to work but new fields will only be added to the structured side. Issue #22865: use `max_elements` / `max_depth` to bound the AX walk on apps with very large trees.",
+  "app_name": "Calculator",
+  "background_input": {
+   "exact_window": {
+    "pid": 60161,
+    "status": "matched",
+    "window_id": 9663
+   },
+   "observation": {
+    "frame_freshness": "unknown",
+    "one_shot_capture": "available"
+   },
+   "routes": [
+    {
+     "route": "accessibility",
+     "status": "available"
+    },
+    {
+     "route": "window_pointer",
+     "status": "available"
+    },
+    {
+     "route": "pid_keyboard",
+     "status": "available"
+    }
+   ]
+  },
+  "capture_id": "capture_7e61547b379545fda052dc3adf05931f_0000000000000022",
+  "element_count": 29,
+  "elements": [
+   {
+    "actions": [
+     "AXRaise"
+    ],
+    "depth": 0,
+    "element_index": 0,
+    "element_token": "s00000042:0",
+    "frame": {
+     "h": 408,
+     "w": 230,
+     "x": 894,
+     "y": 445
+    },
+    "label": "Calculator",
+    "role": "AXWindow",
+    "screenshot_frame": {
+     "h": 816,
+     "w": 460,
+     "x": 0,
+     "y": 0
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 1,
+    "element_token": "s00000042:1",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 904,
+     "y": 578
+    },
+    "label": "Delete",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 20,
+     "y": 266
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 2,
+    "element_token": "s00000042:2",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 958,
+     "y": 578
+    },
+    "label": "All Clear",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 128,
+     "y": 266
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 3,
+    "element_token": "s00000042:3",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1012,
+     "y": 578
+    },
+    "label": "Percent",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 236,
+     "y": 266
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 4,
+    "element_token": "s00000042:4",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1066,
+     "y": 578
+    },
+    "label": "Divide",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 344,
+     "y": 266
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 5,
+    "element_token": "s00000042:5",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 904,
+     "y": 632
+    },
+    "label": "7",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 20,
+     "y": 374
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 6,
+    "element_token": "s00000042:6",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 958,
+     "y": 632
+    },
+    "label": "8",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 128,
+     "y": 374
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 7,
+    "element_token": "s00000042:7",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1012,
+     "y": 632
+    },
+    "label": "9",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 236,
+     "y": 374
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 8,
+    "element_token": "s00000042:8",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1066,
+     "y": 632
+    },
+    "label": "Multiply",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 344,
+     "y": 374
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 9,
+    "element_token": "s00000042:9",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 904,
+     "y": 686
+    },
+    "label": "4",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 20,
+     "y": 482
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 10,
+    "element_token": "s00000042:10",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 958,
+     "y": 686
+    },
+    "label": "5",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 128,
+     "y": 482
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 11,
+    "element_token": "s00000042:11",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1012,
+     "y": 686
+    },
+    "label": "6",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 236,
+     "y": 482
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 12,
+    "element_token": "s00000042:12",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1066,
+     "y": 686
+    },
+    "label": "Subtract",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 344,
+     "y": 482
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 13,
+    "element_token": "s00000042:13",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 904,
+     "y": 740
+    },
+    "label": "1",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 20,
+     "y": 590
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 14,
+    "element_token": "s00000042:14",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 958,
+     "y": 740
+    },
+    "label": "2",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 128,
+     "y": 590
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 15,
+    "element_token": "s00000042:15",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1012,
+     "y": 740
+    },
+    "label": "3",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 236,
+     "y": 590
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 16,
+    "element_token": "s00000042:16",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1066,
+     "y": 740
+    },
+    "label": "Add",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 344,
+     "y": 590
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 17,
+    "element_token": "s00000042:17",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 904,
+     "y": 794
+    },
+    "label": "Change Sign",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 20,
+     "y": 698
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 18,
+    "element_token": "s00000042:18",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 958,
+     "y": 794
+    },
+    "label": "0",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 128,
+     "y": 698
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 19,
+    "element_token": "s00000042:19",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1012,
+     "y": 794
+    },
+    "label": "Point",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 236,
+     "y": 698
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 20,
+    "element_token": "s00000042:20",
+    "enabled": true,
+    "frame": {
+     "h": 48,
+     "w": 48,
+     "x": 1066,
+     "y": 794
+    },
+    "label": "Equals",
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 96,
+     "w": 96,
+     "x": 344,
+     "y": 698
+    }
+   },
+   {
+    "actions": [
+     "AXShowMenu"
+    ],
+    "depth": 1,
+    "element_index": 21,
+    "element_token": "s00000042:21",
+    "frame": {
+     "h": 52,
+     "w": 230,
+     "x": 894,
+     "y": 445
+    },
+    "parent_index": 0,
+    "role": "AXToolbar",
+    "screenshot_frame": {
+     "h": 104,
+     "w": 460,
+     "x": 0,
+     "y": 0
+    }
+   },
+   {
+    "actions": [
+     "AXIncrement",
+     "AXDecrement",
+     "AXDelete",
+     "AXShowMenu",
+     "AXCancel",
+     "AXPress"
+    ],
+    "depth": 2,
+    "element_index": 22,
+    "element_token": "s00000042:22",
+    "enabled": true,
+    "frame": {
+     "h": 52,
+     "w": 48,
+     "x": 994,
+     "y": 445
+    },
+    "label": "Show Sidebar",
+    "parent_index": 21,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 104,
+     "w": 96,
+     "x": 200,
+     "y": 0
+    },
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXIncrement",
+     "AXDecrement",
+     "AXDelete",
+     "AXShowMenu",
+     "AXCancel",
+     "AXPress",
+     "Name:Move previous\nTarget:0x0\nSelector:(null)",
+     "Name:Remove from toolbar\nTarget:0x0\nSelector:(null)"
+    ],
+    "depth": 2,
+    "element_index": 23,
+    "element_token": "s00000042:23",
+    "enabled": true,
+    "frame": {
+     "h": 52,
+     "w": 44,
+     "x": 1076,
+     "y": 445
+    },
+    "label": "Mode",
+    "parent_index": 21,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 104,
+     "w": 88,
+     "x": 364,
+     "y": 0
+    },
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 1,
+    "element_index": 24,
+    "element_token": "s00000042:24",
+    "enabled": true,
+    "frame": {
+     "h": 16,
+     "w": 16,
+     "x": 912,
+     "y": 463
+    },
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 32,
+     "w": 32,
+     "x": 36,
+     "y": 36
+    }
+   },
+   {
+    "actions": [
+     "AXPress"
+    ],
+    "depth": 1,
+    "element_index": 25,
+    "element_token": "s00000042:25",
+    "enabled": true,
+    "frame": {
+     "h": 16,
+     "w": 16,
+     "x": 935,
+     "y": 463
+    },
+    "parent_index": 0,
+    "role": "AXButton",
+    "screenshot_frame": {
+     "h": 32,
+     "w": 32,
+     "x": 82,
+     "y": 36
+    }
+   },
+   {
+    "actions": [
+     "AXCancel"
+    ],
+    "depth": 0,
+    "element_index": 26,
+    "element_token": "s00000042:26",
+    "enabled": true,
+    "frame": {
+     "h": 33,
+     "w": 1728,
+     "x": 0,
+     "y": 0
+    },
+    "role": "AXMenuBar",
+    "screenshot_frame": {
+     "h": 66,
+     "w": 3456,
+     "x": -1788,
+     "y": -890
+    },
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel",
+     "AXPress",
+     "AXPick"
+    ],
+    "depth": 1,
+    "element_index": 27,
+    "element_token": "s00000042:27",
+    "enabled": true,
+    "frame": {
+     "h": 33,
+     "w": 34,
+     "x": 10,
+     "y": 0
+    },
+    "label": "Apple",
+    "parent_index": 26,
+    "role": "AXMenuBarItem",
+    "screenshot_frame": {
+     "h": 66,
+     "w": 68,
+     "x": -1768,
+     "y": -890
+    },
+    "selected": false
+   },
+   {
+    "actions": [
+     "AXCancel"
+    ],
+    "depth": 2,
+    "element_index": 28,
+    "element_token": "s00000042:28",
+    "enabled": true,
+    "parent_index": 27,
+    "role": "AXMenu",
+    "selected": false
+   }
+  ],
+  "elements_complete": false,
+  "nodes_pending": 26,
+  "nodes_visited": 40,
+  "pid": 60161,
+  "returned_element_count": 29,
+  "screenshot_frame_valid": true,
+  "screenshot_height": 816,
+  "screenshot_mime_type": "image/png",
+  "screenshot_scale": 2,
+  "screenshot_width": 460,
+  "snapshot_id": "s00000042",
+  "timeout_ms": 1000,
+  "total_element_count": 29,
+  "tree_markdown": "- [0] AXWindow \"Calculator\" [id=main actions=[raise]]\n    - AXStaticText = \"‎42‎×‎2\"\n    - AXStaticText = \"‎84\"\n    - [1] AXButton (Delete) [id=Delete help=\"Delete the last digit or operation entered (long press to delete all)\" actions=[press]]\n    - [2] AXButton (All Clear) [id=AllClear actions=[press]]\n    - [3] AXButton (Percent) [id=Percent actions=[press]]\n    - [4] AXButton (Divide) [id=Divide actions=[press]]\n    - [5] AXButton (7) [id=Seven actions=[press]]\n    - [6] AXButton (8) [id=Eight actions=[press]]\n    - [7] AXButton (9) [id=Nine actions=[press]]\n    - [8] AXButton (Multiply) [id=Multiply actions=[press]]\n    - [9] AXButton (4) [id=Four actions=[press]]\n    - [10] AXButton (5) [id=Five actions=[press]]\n    - [11] AXButton (6) [id=Six actions=[press]]\n    - [12] AXButton (Subtract) [id=Subtract actions=[press]]\n    - [13] AXButton (1) [id=One actions=[press]]\n    - [14] AXButton (2) [id=Two actions=[press]]\n    - [15] AXButton (3) [id=Three actions=[press]]\n    - [16] AXButton (Add) [id=Add actions=[press]]\n    - [17] AXButton (Change Sign) [id=Negate help=\"Change sign of a value\" actions=[press]]\n    - [18] AXButton (0) [id=Zero actions=[press]]\n    - [19] AXButton (Point) [id=Decimal actions=[press]]\n    - [20] AXButton (Equals) [id=Equals actions=[press]]\n  - [21] AXToolbar [actions=[showmenu]]\n    - [22] AXButton (Show Sidebar) [id= actions=[increment,decrement,delete,showmenu,cancel,press]]\n    - [23] AXButton (Mode) [id=Mode: basic; unitConversion: false actions=[increment,decrement,delete,showmenu,cancel,press,name:move previous\ntarget:0x0\nselector:(null),name:remove from toolbar\ntarget:0x0\nselector:(null)]]\n  - [24] AXButton [actions=[press]]\n  - [25] AXButton [actions=[press]]\n- [26] AXMenuBar [actions=[cancel]]\n  - [27] AXMenuBarItem \"Apple\" [actions=[cancel,press,pick]]\n    - [28] AXMenu [actions=[cancel]]\n\n⚠️ PARTIAL TREE: the max_elements node budget ran out after 40 node(s) (26 discovered but not visited). Every element listed is real; elements after the cut are missing. If the element you need is absent, retry with a larger timeout_ms (e.g. 5000) or narrow with query / max_depth.",
+  "truncated": true,
+  "truncation_reason": "node_budget",
+  "walk_elapsed_ms": 58,
+  "window_bounds": {
+   "height": 408,
+   "width": 230,
+   "x": 894,
+   "y": 445
+  },
+  "window_id": 9663,
+  "window_title": "Calculator"
+ }
+}

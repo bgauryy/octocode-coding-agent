@@ -1,0 +1,1 @@
+[Context] {{used}} of {{limit}} usable tokens used ({{percent}}%); about {{left}} left before automatic compaction summarizes older turns. The window is {{window}}.{{#if compactHint}} At a task or item boundary, `compact` now puts the compaction there instead of mid-task.{{/if}}

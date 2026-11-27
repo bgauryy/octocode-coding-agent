@@ -1,0 +1,162 @@
+import fs from "node:fs";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { maintenance, purge, type MaintenanceResult, type PurgeCounts } from "../../../../db/src/api.ts";
+import { formatBytes } from "@octocodeai/octocode-common/bytes";
+import { type PurgeKind, type PurgePlan, type PurgeScope, planPurge, type PlanOptions } from "./purge-plan.ts";
+import type { SessionIndex } from "./store.ts";
+import { sameProcess } from "../shared/process.ts";
+import { strictlyInside } from "./sweep-fs.ts";
+
+export { planPurge };
+export type { PurgePlan, PurgeScope };
+
+export interface PurgeResult {
+	scope: PurgeScope;
+	/** Entries removed per kind, and their bytes as planned. */
+	removed: Partial<Record<PurgeKind, number>>;
+	bytes: number;
+	failed: { path: string; error: string }[];
+	/** Database rows removed per table. */
+	rows: PurgeCounts;
+	vacuum?: MaintenanceResult;
+}
+
+const KIND_LABEL: Record<PurgeKind, string> = {
+	transcript: "session transcripts",
+	"session-data": "session data folders",
+	temp: "temp entries",
+	scratch: ".octocode/agent/tmp entries",
+};
+
+/** What the plan would remove, one line per kind with counts and sizes, then the database and what stays. */
+export function previewLines(plan: PurgePlan, dbBytes: number): string[] {
+	const lines: string[] = [];
+	const none: string[] = [];
+	for (const kind of Object.keys(KIND_LABEL) as PurgeKind[]) {
+		const items = plan.items.filter((item) => item.kind === kind);
+		if (items.length === 0) {
+			none.push(KIND_LABEL[kind]);
+			continue;
+		}
+		const bytes = items.reduce((sum, item) => sum + item.bytes, 0);
+		lines.push(`  ${items.length} ${KIND_LABEL[kind]} (${formatBytes(bytes)})`);
+	}
+	// Every kind the purge removes is named: one with nothing to remove says so, rather than going unmentioned.
+	if (none.length > 0) lines.push(`  none found: ${none.join(", ")}`);
+	const where =
+		plan.scope === "all"
+			? "every registered workspace"
+			: plan.workspaces.map((w) => w.root).join(", ") || "this workspace";
+	lines.push(
+		`  database rows of ${where}${plan.scope === "all" ? " (schema, trusted folders and settings kept)" : ""} (database ${formatBytes(dbBytes)}, shrunk afterwards)`,
+	);
+	if (plan.skipped.length > 0)
+		lines.push(`  skipped: ${plan.skipped.map((s) => `${s.path} (${s.reason})`).join("; ")}`);
+	lines.push(
+		"  kept: settings, auth.json, mcp-auth.json, child-credentials, MCP configuration, workspace ids, trusted folders, other .octocode folders and your own files",
+	);
+	if (plan.current) lines.push(`  the current session (${plan.current}) is kept, so it can continue`);
+	return lines;
+}
+
+/** Why the purge is refused while other processes hold sessions in scope; undefined when none does. */
+export function blockerText(plan: PurgePlan): string | undefined {
+	if (plan.blockers.length === 0) return undefined;
+	return `Another Octocode process holds data in scope; close it first: ${plan.blockers.map((b) => `${b.what} (pid ${b.pid})`).join(", ")}.`;
+}
+
+/** The size of the agent database's files (machine, workspace files and transcript mirror), for the preview. */
+export const databaseBytes = (index: SessionIndex): number =>
+	[...index.files().map((file) => file.db), index.agent.mirror.db].reduce(
+		(sum, db) => sum + maintenance.checkpoint(db).bytesAfter,
+		0,
+	);
+
+/** Every file's `VACUUM`, as one result: their sizes summed, busy when any was. */
+function vacuumBoth(index: SessionIndex): MaintenanceResult {
+	const parts = [index.agent.mirror.db, ...index.files().map((file) => file.db)].map((db) => maintenance.vacuum(db));
+	return {
+		busy: parts.some((part) => part.busy),
+		bytesBefore: parts.reduce((sum, part) => sum + part.bytesBefore, 0),
+		bytesAfter: parts.reduce((sum, part) => sum + part.bytesAfter, 0),
+	};
+}
+
+/**
+ * Removes what `plan` lists, then the database rows (`purge.workspace` per workspace, or `purge.all`), and vacuums. Each path is checked again to lie strictly inside its root; a
+ * path that cannot be removed lands in `failed` and the rest go on. The current session keeps working: the database purge
+ * spares all of its rows. Never throws.
+ */
+async function applyPurge(index: SessionIndex, plan: PurgePlan): Promise<PurgeResult> {
+	const result: PurgeResult = { scope: plan.scope, removed: {}, bytes: 0, failed: [], rows: {} };
+	for (const item of plan.items) {
+		if (!strictlyInside(item.root, item.path)) {
+			result.failed.push({ path: item.path, error: "outside its root" });
+			continue;
+		}
+		try {
+			await fs.promises.rm(item.path, { recursive: true, force: true });
+			result.removed[item.kind] = (result.removed[item.kind] ?? 0) + 1;
+			result.bytes += item.bytes;
+		} catch (error) {
+			result.failed.push({ path: item.path, error: errorMessage(error) });
+		}
+	}
+	try {
+		const { db } = index.agent;
+		const mirror = index.agent.mirror.db;
+		// The current session keeps every row (mirror, compaction summaries, tasks) and the workspace row it references.
+		const keepSessions = plan.current ? [plan.current] : [];
+		// Another process that opened a session since the plan keeps it (this process's own sessions stay purgeable, as planned).
+		const isLive = (pid: number, started: string | null) => pid !== process.pid && sameProcess(pid, started);
+		const workspaceFiles = index
+			.files()
+			.slice(1)
+			.map((file) => file.db);
+		if (plan.scope === "all") result.rows = purge.all(db, mirror, { keepSessions, isLive, workspaceFiles });
+		else
+			for (const workspace of plan.workspaces)
+				for (const [table, n] of Object.entries(
+					purge.workspace(db, mirror, workspace.id, { keepSessions, isLive, workspaceFiles }),
+				))
+					result.rows[table] = (result.rows[table] ?? 0) + n;
+		result.vacuum = vacuumBoth(index);
+	} catch (error) {
+		result.failed.push({ path: "agent database", error: errorMessage(error) });
+	}
+	return result;
+}
+
+/** The outcome as text: counts, failures, and the database size before and after. */
+export function resultLines(result: PurgeResult): string[] {
+	const removed = (Object.keys(KIND_LABEL) as PurgeKind[])
+		.filter((kind) => result.removed[kind])
+		.map((kind) => `${result.removed[kind]} ${KIND_LABEL[kind]}`);
+	const rows = Object.values(result.rows).reduce((sum, n) => sum + n, 0);
+	const lines = [
+		`Purged ${result.scope}: ${removed.join(", ") || "no files"} (${formatBytes(result.bytes)}), ${rows} database rows.`,
+	];
+	if (result.vacuum)
+		lines.push(
+			result.vacuum.busy
+				? `Database ${formatBytes(result.vacuum.bytesBefore)}; compaction was blocked by another connection, so it was not shrunk.`
+				: `Database ${formatBytes(result.vacuum.bytesBefore)} → ${formatBytes(result.vacuum.bytesAfter)}.`,
+		);
+	for (const { path: file, error } of result.failed) lines.push(`Could not remove ${file}: ${error}`);
+	return lines;
+}
+
+/**
+ * The purge as one operation for the command and RPC: plans afresh (the preview may be stale), refuses while another
+ * process holds data in scope, then applies. `refused` carries the reason when nothing was removed.
+ */
+export async function executePurge(
+	index: SessionIndex,
+	scope: PurgeScope,
+	options: PlanOptions,
+): Promise<{ refused: string } | { result: PurgeResult }> {
+	const plan = await planPurge(index, scope, options);
+	const blocked = blockerText(plan);
+	if (blocked) return { refused: blocked };
+	return { result: await applyPurge(index, plan) };
+}

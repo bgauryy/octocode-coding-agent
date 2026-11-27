@@ -1,0 +1,290 @@
+import { stringOrEmpty } from "../shared/util.ts";
+import { language, readCapped, TIMEOUT_MS, USER_AGENT } from "./fetch.ts";
+import { deadline } from "@octocodeai/octocode-common/deadline";
+import { isHttpUrl, type PublicFetchInit, publicFetch } from "@octocodeai/octocode-common/web-guard";
+import { decodeEntities, htmlToText } from "./html.ts";
+import { errorMessage, isRecord } from "@octocodeai/octocode-contracts/guards";
+import { untilAborted } from "@octocodeai/octocode-common/abort";
+import { searchSite } from "./search-site.ts";
+import { queryTerms, relatedHit } from "./search-relevance.ts";
+
+interface SearchHit {
+	title: string;
+	url: string;
+	snippet: string;
+}
+
+export function parseDuckDuckGo(html: string, max: number): SearchHit[] {
+	const hits: SearchHit[] = [];
+	const blocks = html.split(/<div[^>]+class="[^"]*result__body/).slice(1);
+	for (const block of blocks) {
+		const link = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/.exec(block);
+		if (!link) continue;
+		const snippet = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/.exec(block)?.[1] ?? "";
+		const url = unwrapDuckDuckGo(decodeEntities(link[1]));
+		if (!url) continue;
+		hits.push({ url, title: htmlToText(link[2]), snippet: htmlToText(snippet) });
+		if (hits.length >= max) break;
+	}
+	return hits;
+}
+
+/** DuckDuckGo lite's table layout: an `a.result-link` per hit, its `td.result-snippet` before the next hit. */
+export function parseDuckDuckGoLite(html: string, max: number): SearchHit[] {
+	const hits: SearchHit[] = [];
+	const links = [...html.matchAll(/<a\b([^>]*class=['"]result-link['"][^>]*)>([\s\S]*?)<\/a>/gi)];
+	links.forEach((link, index) => {
+		const href = /href=['"]([^'"]+)['"]/.exec(link[1])?.[1];
+		if (!href || hits.length >= max) return;
+		const rest = html.slice(link.index + link[0].length, links[index + 1]?.index ?? html.length);
+		const snippet = /<td[^>]*class=['"]result-snippet['"][^>]*>([\s\S]*?)<\/td>/i.exec(rest)?.[1] ?? "";
+		const url = unwrapDuckDuckGo(decodeEntities(href));
+		if (url) hits.push({ url, title: htmlToText(link[2]), snippet: htmlToText(snippet) });
+	});
+	return hits;
+}
+
+/** Bing's HTML results: an `li.b_algo` per hit, with the link in its `h2` and the snippet in its first paragraph. */
+export function parseBing(html: string, max: number): SearchHit[] {
+	const hits: SearchHit[] = [];
+	for (const block of html.split(/<li class="b_algo"/).slice(1)) {
+		const link = /<h2[^>]*>\s*<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/.exec(block);
+		if (!link) continue;
+		const snippet = /<p\b[^>]*>([\s\S]*?)<\/p>/.exec(block)?.[1] ?? "";
+		const url = unwrapBing(decodeEntities(link[1]));
+		if (!url) continue;
+		hits.push({ url, title: htmlToText(link[2]), snippet: htmlToText(snippet) });
+		if (hits.length >= max) break;
+	}
+	return hits;
+}
+
+/** `candidate` when it is an absolute http(s) URL; a result linking anywhere else (`javascript:`, `data:`) is dropped. */
+function httpUrl(candidate: string | null | undefined): string | undefined {
+	if (!candidate) return undefined;
+	try {
+		return isHttpUrl(new URL(candidate)) ? candidate : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** Bing wraps result links in a click tracker whose `u` parameter is `a1` plus the base64url target. */
+function unwrapBing(href: string): string | undefined {
+	try {
+		const url = new URL(href);
+		const target = url.searchParams.get("u");
+		if (!url.hostname.endsWith("bing.com") || !target?.startsWith("a1")) return httpUrl(href);
+		const decoded = Buffer.from(target.slice(2), "base64url")
+			.toString("utf8")
+			.replace(/["'\s<>].*$/s, "");
+		return httpUrl(decoded) ?? httpUrl(href);
+	} catch {
+		return undefined;
+	}
+}
+
+/** DuckDuckGo links are relative trackers whose `uddg` parameter is the target. */
+function unwrapDuckDuckGo(href: string): string | undefined {
+	try {
+		const url = new URL(href, "https://duckduckgo.com");
+		return httpUrl(url.searchParams.get("uddg") ?? url.toString());
+	} catch {
+		return undefined;
+	}
+}
+
+/** An API answer as JSON; a body cut at the size cap or in transit does not parse, so it is reported as such. */
+function parseJson({ text, truncated, cut }: BodyText, url: string): unknown {
+	if (truncated) throw new Error(`the answer from ${new URL(url).host} is over the size limit`);
+	if (cut) throw new Error(`the answer from ${new URL(url).host} was cut short in transit`);
+	return JSON.parse(text);
+}
+
+type BodyText = Awaited<ReturnType<typeof readCapped>>;
+
+interface SearchOutcome {
+	provider: string;
+	hits: SearchHit[];
+	/** Providers tried before the one that answered, with why they did not. */
+	failures: string[];
+}
+
+/**
+ * Searches through a chain: every configured API (Tavily, Serper, Exa, Brave), then the keyless HTML pages
+ * (DuckDuckGo, Bing, DuckDuckGo lite). A provider that fails (a bad key, a rate limit) passes to the next, and so
+ * does one with no hits (a block page often parses as empty, and another index may know the query) or, for a keyless
+ * page, none sharing a word with the query (a decoy answer). Throws only when every provider failed or the shared
+ * 30-second deadline expires.
+ */
+export async function search(
+	query: string,
+	max: number,
+	env: NodeJS.ProcessEnv,
+	signal?: AbortSignal,
+): Promise<SearchOutcome> {
+	const limit = deadline(TIMEOUT_MS, signal);
+	try {
+		return await searchWithin(query, max, env, limit.signal, signal);
+	} finally {
+		limit.clear();
+	}
+}
+
+async function searchWithin(
+	query: string,
+	max: number,
+	env: NodeJS.ProcessEnv,
+	deadline: AbortSignal,
+	/** The caller's own signal: its abort ends the search instead of passing to the next provider. */
+	signal: AbortSignal | undefined,
+): Promise<SearchOutcome> {
+	// Every provider call goes through the guarded request: public addresses only, pinned connection, no redirect for a
+	// keyed API (it carries a secret), and a body read to at most the shared cap.
+	const site = searchSite(query);
+	const parseLimit = site ? 20 : max;
+	const send = (url: string, init: PublicFetchInit) => publicFetch(url, { ...init, signal: deadline });
+	const read = async (response: Response): Promise<BodyText> =>
+		readCapped(response, response.headers.get("content-type") ?? "");
+	const post = async (url: string, headers: Record<string, string>, body: unknown) => {
+		const response = await send(url, {
+			method: "POST",
+			headers: { "content-type": "application/json", ...headers },
+			body: JSON.stringify(body),
+			redirect: "error",
+		});
+		if (!response.ok) throw new Error(`HTTP ${response.status} from ${new URL(url).host}`);
+		return parseJson(await read(response), url) as Record<string, unknown>;
+	};
+	const page = async (url: string, headers: Record<string, string> = {}, redirect: "follow" | "error" = "follow") => {
+		const response = await send(url, {
+			headers: { "user-agent": USER_AGENT, "accept-language": language(), ...headers },
+			redirect,
+		});
+		// Search pages answer rate limits with a non-200 challenge page; report it instead of "No results".
+		if (response.status !== 200)
+			throw new Error(
+				`HTTP ${response.status} from ${new URL(url).host}${response.status === 202 || response.status === 429 ? " (rate limited)" : ""}`,
+			);
+		return read(response);
+	};
+	const q = encodeURIComponent(query);
+	// API results are untrusted like scraped ones: only http(s) links become hits.
+	const hits = (
+		value: unknown,
+		url: string,
+		snippet: string,
+		clean: (text: string) => string = (text) => text,
+	): SearchHit[] =>
+		(Array.isArray(value) ? value.filter(isRecord) : []).flatMap((r) => {
+			const link = httpUrl(stringOrEmpty(r[url]));
+			return link ? [{ title: stringOrEmpty(r.title), url: link, snippet: clean(stringOrEmpty(r[snippet])) }] : [];
+		});
+	const keyed = [
+		{
+			key: "TAVILY_API_KEY",
+			name: "tavily",
+			run: async (key: string) =>
+				hits(
+					(await post("https://api.tavily.com/search", { authorization: `Bearer ${key}` }, { query, max_results: max }))
+						.results,
+					"url",
+					"content",
+				),
+		},
+		{
+			key: "SERPER_API_KEY",
+			name: "serper",
+			run: async (key: string) =>
+				hits(
+					(await post("https://google.serper.dev/search", { "x-api-key": key }, { q: query, num: max })).organic,
+					"link",
+					"snippet",
+				),
+		},
+		{
+			key: "EXA_API_KEY",
+			name: "exa",
+			run: async (key: string) =>
+				hits(
+					(
+						await post(
+							"https://api.exa.ai/search",
+							{ "x-api-key": key },
+							{ query, numResults: max, contents: { text: { maxCharacters: 400 } } },
+						)
+					).results,
+					"url",
+					"text",
+				),
+		},
+		{
+			key: "BRAVE_API_KEY",
+			name: "brave",
+			run: async (key: string) => {
+				const data = parseJson(
+					await page(
+						`https://api.search.brave.com/res/v1/web/search?q=${q}&count=${max}`,
+						{ accept: "application/json", "x-subscription-token": key },
+						"error",
+					),
+					"https://api.search.brave.com",
+				) as Record<string, unknown>;
+				return hits(isRecord(data.web) ? data.web.results : undefined, "url", "description", htmlToText);
+			},
+		},
+	].flatMap(({ key, name, run }) => {
+		const value = env[key];
+		return value ? [{ name, run: () => run(value) }] : [];
+	});
+	const keyless = [
+		{
+			name: "duckduckgo",
+			run: async () => parseDuckDuckGo((await page(`https://html.duckduckgo.com/html/?q=${q}`)).text, parseLimit),
+		},
+		{
+			name: "bing",
+			run: async () => parseBing((await page(`https://www.bing.com/search?q=${q}&count=${max}`)).text, parseLimit),
+		},
+		{
+			name: "duckduckgo-lite",
+			run: async () => parseDuckDuckGoLite((await page(`https://lite.duckduckgo.com/lite/?q=${q}`)).text, parseLimit),
+		},
+	];
+	const failures: string[] = [];
+	const empty: string[] = [];
+	const terms = queryTerms(query);
+	const scraped = new Set(keyless);
+	for (const provider of [...keyed, ...keyless]) {
+		try {
+			deadline.throwIfAborted();
+			const received = await untilAborted(provider.run(), deadline);
+			const inSite = site ? received.filter((hit) => site(hit.url)) : received;
+			if (inSite.length < Math.min(received.length, max) && site)
+				failures.push(`${provider.name}: discarded results outside the site restriction`);
+			const hits = (scraped.has(provider) ? inSite.filter((hit) => relatedHit(terms, hit)) : inSite).slice(0, max);
+			if (inSite.length > 0 && hits.length === 0) {
+				failures.push(`${provider.name}: results unrelated to the query`);
+				continue;
+			}
+			if (hits.length > 0)
+				return {
+					provider: provider.name,
+					hits,
+					failures: [...failures, ...empty.map((name) => `${name}: no results`)],
+				};
+			empty.push(provider.name);
+		} catch (error) {
+			if (signal?.aborted) throw error;
+			failures.push(`${provider.name}: ${errorMessage(error)}`);
+			if (deadline.aborted)
+				throw new Error(`Search deadline reached (${failures.join("; ")}). Try a known URL or a narrower search.`, {
+					cause: error,
+				});
+		}
+	}
+	if (empty.length > 0) return { provider: empty.join(", "), hits: [], failures };
+	throw new Error(
+		`every provider failed (${failures.join("; ")}). Do not repeat the same search: fetch a URL you already know with \`web\`, or ask the user to set TAVILY_API_KEY, SERPER_API_KEY, EXA_API_KEY or BRAVE_API_KEY for reliable search.`,
+	);
+}

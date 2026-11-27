@@ -1,0 +1,762 @@
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, parse } from "node:path";
+import { fauxAssistantMessage, fauxToolCall, registerFauxProvider } from "@octocodeai/octocode-ai/compat";
+import { Type } from "typebox";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+	type CreateAgentSessionRuntimeFactory,
+	createSessionFromServices,
+	createAgentSessionRuntime,
+	createAgentSessionServices,
+} from "../../src/core/agent-session-runtime.ts";
+import { AuthStorage } from "../../src/core/auth-storage.ts";
+import { SessionManager } from "../../src/core/session-manager.ts";
+import type {
+	AgentToolResult,
+	FeatureSetup,
+	FeatureRegister,
+	SessionBeforeForkEvent,
+	SessionBeforeSwitchEvent,
+	SessionShutdownEvent,
+	SessionStartEvent,
+} from "../../src/core/features/index.ts";
+import { testFeatures } from "../helpers/features.ts";
+import { nativeFeatureSet } from "../helpers/native-features.ts";
+
+type RecordedSessionEvent =
+	| SessionBeforeSwitchEvent
+	| SessionBeforeForkEvent
+	| SessionShutdownEvent
+	| SessionStartEvent;
+
+describe("AgentSessionRuntime characterization", () => {
+	const cleanups: Array<() => Promise<void> | void> = [];
+
+	afterEach(async () => {
+		while (cleanups.length > 0) {
+			await cleanups.pop()?.();
+		}
+	});
+
+	async function createRuntimeForTest(
+		featureFactory: FeatureRegister,
+		options?: { cwd?: string; bootstrapModel?: boolean; bootstrapThinkingLevel?: boolean },
+	) {
+		const tempDir =
+			options?.cwd ?? join(tmpdir(), `octocode-runtime-suite-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		mkdirSync(tempDir, { recursive: true });
+
+		const faux = registerFauxProvider({
+			models: [
+				{ id: "faux-1", reasoning: true },
+				{ id: "faux-2", reasoning: false },
+			],
+		});
+		faux.setResponses([fauxAssistantMessage("one"), fauxAssistantMessage("two"), fauxAssistantMessage("three")]);
+
+		const authStorage = AuthStorage.inMemory();
+		await authStorage.modify(faux.getModel().provider, async () => ({ type: "api_key", key: "faux-key" }));
+
+		const runtimeOptions = {
+			agentDir: tempDir,
+			authStorage,
+			model: options?.bootstrapModel === false ? undefined : faux.getModel(),
+			thinkingLevel: options?.bootstrapThinkingLevel === false ? undefined : undefined,
+			resourceLoaderOptions: {
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures([
+					(api: FeatureSetup) => {
+						api.providers.register(faux.getModel().provider, {
+							baseUrl: faux.getModel().baseUrl,
+							apiKey: "faux-key",
+							api: faux.api,
+							models: faux.models.map((registeredModel) => ({
+								id: registeredModel.id,
+								name: registeredModel.name,
+								api: registeredModel.api,
+								reasoning: registeredModel.reasoning,
+								input: registeredModel.input,
+								cost: registeredModel.cost,
+								contextWindow: registeredModel.contextWindow,
+								maxTokens: registeredModel.maxTokens,
+							})),
+						});
+						featureFactory(api);
+					},
+				]),
+				noSkills: true,
+				noPromptTemplates: true,
+				noThemes: true,
+			},
+		};
+		const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
+			const services = await createAgentSessionServices({
+				...runtimeOptions,
+				cwd,
+			});
+			return {
+				...(await createSessionFromServices({
+					services,
+					sessionManager,
+					sessionStartEvent,
+					model: runtimeOptions.model,
+					thinkingLevel: runtimeOptions.thinkingLevel,
+				})),
+				services,
+				diagnostics: services.diagnostics,
+			};
+		};
+		const runtime = await createAgentSessionRuntime(createRuntime, {
+			cwd: tempDir,
+			agentDir: tempDir,
+			sessionManager: SessionManager.create(tempDir),
+		});
+		await runtime.session.bindFeatures({});
+
+		cleanups.push(async () => {
+			await runtime.dispose();
+			faux.unregister();
+			if (existsSync(tempDir)) {
+				rmSync(tempDir, { recursive: true, force: true });
+			}
+		});
+
+		return { runtime, faux, tempDir };
+	}
+
+	it("persists message_end assistant replacements to the session manager", async () => {
+		const { runtime } = await createRuntimeForTest((api: FeatureSetup) => {
+			api.bus.on("message_end", (event) => {
+				if (event.message.role !== "assistant") return;
+
+				return {
+					message: {
+						...event.message,
+						usage: {
+							...event.message.usage,
+							cost: {
+								...event.message.usage.cost,
+								total: 0.123,
+							},
+						},
+					},
+				};
+			});
+		});
+
+		await runtime.session.prompt("hello");
+
+		const sessionAssistant = runtime.session.messages.find((message) => message.role === "assistant");
+		expect(sessionAssistant?.role).toBe("assistant");
+		if (sessionAssistant?.role !== "assistant") {
+			throw new Error("missing assistant message");
+		}
+		expect(sessionAssistant.usage.cost.total).toBe(0.123);
+
+		const persistedAssistant = runtime.session.sessionManager
+			.getEntries()
+			.filter((entry) => entry.type === "message")
+			.map((entry) => entry.message)
+			.find((message) => message.role === "assistant");
+		expect(persistedAssistant?.role).toBe("assistant");
+		if (persistedAssistant?.role !== "assistant") {
+			throw new Error("missing persisted assistant message");
+		}
+		expect(persistedAssistant.usage.cost.total).toBe(0.123);
+	});
+
+	it("settles the active response before session replacement", async () => {
+		let toolStarted!: () => void;
+		const toolStartedPromise = new Promise<void>((resolve) => {
+			toolStarted = resolve;
+		});
+		const { runtime, faux } = await createRuntimeForTest((api: FeatureSetup) => {
+			api.tools.register({
+				name: "block",
+				label: "Block",
+				description: "Blocks until aborted",
+				parameters: Type.Object({}),
+				execute: (_toolCallId, _params, signal) =>
+					new Promise<AgentToolResult<unknown>>((resolve) => {
+						toolStarted();
+						signal?.addEventListener("abort", () =>
+							resolve({ content: [{ type: "text", text: "tool aborted" }], details: {} }),
+						);
+					}),
+			});
+		});
+
+		await runtime.session.prompt("hello");
+		const firstSessionFile = runtime.session.sessionFile!;
+		await runtime.newSession();
+		await runtime.session.bindFeatures({});
+
+		faux.setResponses([fauxAssistantMessage(fauxToolCall("block", {}), { stopReason: "toolUse" })]);
+		const outgoingSession = runtime.session;
+		const promptPromise = outgoingSession.prompt("start blocking tool");
+		await toolStartedPromise;
+
+		const switchResult = await runtime.switchSession(firstSessionFile);
+		await promptPromise;
+
+		expect(switchResult.cancelled).toBe(false);
+		expect(runtime.session.sessionFile).toBe(firstSessionFile);
+		// The outgoing session settled before replacement: the interrupted tool
+		// call has a persisted tool result instead of dangling forever.
+		const outgoingEntries = SessionManager.open(outgoingSession.sessionFile!)
+			.getEntries()
+			.filter((entry) => entry.type === "message");
+		expect(outgoingEntries.map((entry) => entry.message.role)).toEqual([
+			"system",
+			"user",
+			"assistant",
+			"toolResult",
+			"assistant",
+		]);
+	});
+
+	it("preserves an existing session when importing a file with the same name", async () => {
+		const { runtime, tempDir } = await createRuntimeForTest(() => {});
+		const sessionDir = runtime.session.sessionManager.getSessionDir();
+		const importDir = join(tempDir, "import");
+		const filename = "collision.jsonl";
+		const storedPath = join(sessionDir, filename);
+		const importPath = join(importDir, filename);
+		const storedSession = `${JSON.stringify({
+			type: "session",
+			version: 3,
+			id: "stored",
+			timestamp: new Date().toISOString(),
+			cwd: tempDir,
+		})}\n`;
+		const importedSession = `${JSON.stringify({
+			type: "session",
+			version: 3,
+			id: "imported",
+			timestamp: new Date().toISOString(),
+			cwd: tempDir,
+		})}\n`;
+		mkdirSync(sessionDir, { recursive: true });
+		mkdirSync(importDir, { recursive: true });
+		writeFileSync(storedPath, storedSession);
+		writeFileSync(importPath, importedSession);
+
+		await runtime.importFromJsonl(importPath);
+
+		expect(readFileSync(storedPath, "utf8")).toBe(storedSession);
+		expect(runtime.session.sessionFile).not.toBe(storedPath);
+		expect(readFileSync(runtime.session.sessionFile!, "utf8")).toContain('"id":"imported"');
+	});
+
+	it("emits session_before_switch and session_start for new and resume flows", async () => {
+		const events: RecordedSessionEvent[] = [];
+		const { runtime } = await createRuntimeForTest((api: FeatureSetup) => {
+			api.bus.on("session_before_switch", (event) => {
+				events.push(event);
+			});
+			api.bus.on("session_shutdown", (event) => {
+				events.push(event);
+			});
+			api.bus.on("session_start", (event) => {
+				events.push(event);
+			});
+		});
+
+		expect(events).toEqual([{ type: "session_start", reason: "startup" }]);
+		events.length = 0;
+
+		await runtime.session.prompt("hello");
+		const originalSessionFile = runtime.session.sessionFile;
+		const originalSession = runtime.session;
+
+		const newSessionResult = await runtime.newSession();
+		expect(newSessionResult.cancelled).toBe(false);
+		await runtime.session.bindFeatures({});
+		expect(runtime.session).not.toBe(originalSession);
+		expect(runtime.session.messages).toEqual([]);
+		const secondSessionFile = runtime.session.sessionFile;
+		expect(events).toEqual([
+			{ type: "session_before_switch", reason: "new", targetSessionFile: undefined },
+			{ type: "session_shutdown", reason: "new", targetSessionFile: secondSessionFile },
+			{ type: "session_start", reason: "new", previousSessionFile: originalSessionFile },
+		]);
+
+		events.length = 0;
+
+		const switchResult = await runtime.switchSession(originalSessionFile!);
+		expect(switchResult.cancelled).toBe(false);
+		await runtime.session.bindFeatures({});
+		expect(events).toEqual([
+			{ type: "session_before_switch", reason: "resume", targetSessionFile: originalSessionFile },
+			{ type: "session_shutdown", reason: "resume", targetSessionFile: originalSessionFile },
+			{ type: "session_start", reason: "resume", previousSessionFile: secondSessionFile },
+		]);
+	});
+
+	it("honors session_before_switch cancellation for new and resume", async () => {
+		const events: RecordedSessionEvent[] = [];
+		let cancelReason: "new" | "resume" | undefined;
+		const { runtime } = await createRuntimeForTest((api: FeatureSetup) => {
+			api.bus.on("session_before_switch", (event) => {
+				events.push(event);
+				if (event.reason === cancelReason) {
+					return { cancel: true };
+				}
+			});
+			api.bus.on("session_start", (event) => {
+				events.push(event);
+			});
+		});
+
+		await runtime.session.prompt("hello");
+		const originalSessionFile = runtime.session.sessionFile;
+
+		cancelReason = "new";
+		const newResult = await runtime.newSession();
+		expect(newResult.cancelled).toBe(true);
+		expect(runtime.session.sessionFile).toBe(originalSessionFile);
+
+		events.length = 0;
+		const otherDir = join(tmpdir(), `octocode-runtime-other-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		mkdirSync(otherDir, { recursive: true });
+		const otherSession = SessionManager.create(otherDir);
+		otherSession.appendMessage({ role: "user", content: [{ type: "text", text: "other" }], timestamp: Date.now() });
+		const otherSessionFile = otherSession.getSessionFile();
+		cancelReason = "resume";
+		const resumeResult = await runtime.switchSession(otherSessionFile!);
+		expect(resumeResult.cancelled).toBe(true);
+		expect(runtime.session.sessionFile).toBe(originalSessionFile);
+	});
+
+	it("emits session_before_fork and session_start and honors cancellation", async () => {
+		const events: RecordedSessionEvent[] = [];
+		let cancelNextFork = false;
+		const { runtime } = await createRuntimeForTest((api: FeatureSetup) => {
+			api.bus.on("session_before_fork", (event) => {
+				events.push(event);
+				if (cancelNextFork) {
+					cancelNextFork = false;
+					return { cancel: true };
+				}
+			});
+			api.bus.on("session_shutdown", (event) => {
+				events.push(event);
+			});
+			api.bus.on("session_start", (event) => {
+				events.push(event);
+			});
+		});
+
+		events.length = 0;
+		await runtime.session.prompt("hello");
+		const userMessage = runtime.session.getUserMessagesForForking()[0];
+		const previousSessionFile = runtime.session.sessionFile;
+
+		const successResult = await runtime.fork(userMessage.entryId);
+		expect(successResult.cancelled).toBe(false);
+		expect(successResult.selectedText).toBe("hello");
+		await runtime.session.bindFeatures({});
+		expect(events).toEqual([
+			{ type: "session_before_fork", entryId: userMessage.entryId, position: "before" },
+			{ type: "session_shutdown", reason: "fork", targetSessionFile: runtime.session.sessionFile },
+			{ type: "session_start", reason: "fork", previousSessionFile },
+		]);
+		const sessionFileName = parse(runtime.session.sessionFile!).name;
+		expect(sessionFileName.endsWith(`_${runtime.session.sessionId}`)).toBe(true);
+
+		events.length = 0;
+		cancelNextFork = true;
+		const cancelResult = await runtime.fork(userMessage.entryId);
+		expect(cancelResult).toEqual({ cancelled: true });
+		expect(events).toEqual([{ type: "session_before_fork", entryId: userMessage.entryId, position: "before" }]);
+
+		events.length = 0;
+		cancelNextFork = true;
+		const cancelAtResult = await runtime.fork("missing-entry", { position: "at" });
+		expect(cancelAtResult).toEqual({ cancelled: true });
+		expect(events).toEqual([{ type: "session_before_fork", entryId: "missing-entry", position: "at" }]);
+	});
+
+	it("starts an empty session when forking one with no file yet, since it holds no conversation", async () => {
+		const { runtime } = await createRuntimeForTest(() => {});
+		const sessionFile = runtime.session.sessionFile;
+		const leafId = runtime.session.sessionManager.getLeafId();
+		expect(sessionFile).toBeDefined();
+		expect(existsSync(sessionFile!)).toBe(false);
+		expect(leafId).toBeTruthy();
+
+		await expect(runtime.fork(leafId!, { position: "at" })).resolves.toEqual({
+			cancelled: false,
+			selectedText: undefined,
+		});
+		expect(runtime.session.sessionFile).not.toBe(sessionFile);
+		// A file that was never written cannot be its parent.
+		expect(runtime.session.sessionManager.getHeader()?.parentSession).toBeUndefined();
+		expect(runtime.session.messages).toEqual([]);
+		expect(existsSync(sessionFile!)).toBe(false);
+	});
+
+	it("duplicates the current active branch when forking at the current position", async () => {
+		const { runtime } = await createRuntimeForTest(() => {});
+		await runtime.session.prompt("hello");
+		await runtime.session.prompt("again");
+
+		const beforeMessages = runtime.session.messages.map((message) => ({
+			role: message.role,
+			text:
+				message.role === "user"
+					? typeof message.content === "string"
+						? message.content
+						: message.content
+								.filter((part): part is { type: "text"; text: string } => part.type === "text")
+								.map((part) => part.text)
+								.join("")
+					: undefined,
+		}));
+		const previousSessionFile = runtime.session.sessionFile;
+		const leafId = runtime.session.sessionManager.getLeafId();
+		expect(leafId).toBeTruthy();
+
+		const result = await runtime.fork(leafId!, { position: "at" });
+		expect(result).toEqual({ cancelled: false, selectedText: undefined });
+		expect(runtime.session.sessionFile).not.toBe(previousSessionFile);
+		expect(
+			runtime.session.messages.map((message) => ({
+				role: message.role,
+				text:
+					message.role === "user"
+						? typeof message.content === "string"
+							? message.content
+							: message.content
+									.filter((part): part is { type: "text"; text: string } => part.type === "text")
+									.map((part) => part.text)
+									.join("")
+						: undefined,
+			})),
+		).toEqual(beforeMessages);
+	});
+
+	it("duplicates the current active branch in-memory when forking at the current position", async () => {
+		const tempDir = join(
+			tmpdir(),
+			`octocode-runtime-suite-in-memory-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+		);
+		mkdirSync(tempDir, { recursive: true });
+
+		const faux = registerFauxProvider({
+			models: [
+				{ id: "faux-1", reasoning: true },
+				{ id: "faux-2", reasoning: false },
+			],
+		});
+		faux.setResponses([fauxAssistantMessage("one"), fauxAssistantMessage("two"), fauxAssistantMessage("three")]);
+
+		const authStorage = AuthStorage.inMemory();
+		await authStorage.modify(faux.getModel().provider, async () => ({ type: "api_key", key: "faux-key" }));
+
+		const runtimeOptions = {
+			agentDir: tempDir,
+			authStorage,
+			model: faux.getModel(),
+			resourceLoaderOptions: {
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures([
+					(api: FeatureSetup) => {
+						api.providers.register(faux.getModel().provider, {
+							baseUrl: faux.getModel().baseUrl,
+							apiKey: "faux-key",
+							api: faux.api,
+							models: faux.models.map((registeredModel) => ({
+								id: registeredModel.id,
+								name: registeredModel.name,
+								api: registeredModel.api,
+								reasoning: registeredModel.reasoning,
+								input: registeredModel.input,
+								cost: registeredModel.cost,
+								contextWindow: registeredModel.contextWindow,
+								maxTokens: registeredModel.maxTokens,
+							})),
+						});
+					},
+				]),
+				noSkills: true,
+				noPromptTemplates: true,
+				noThemes: true,
+			},
+		};
+		const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
+			const services = await createAgentSessionServices({
+				...runtimeOptions,
+				cwd,
+			});
+			return {
+				...(await createSessionFromServices({
+					services,
+					sessionManager,
+					sessionStartEvent,
+					model: runtimeOptions.model,
+				})),
+				services,
+				diagnostics: services.diagnostics,
+			};
+		};
+		const runtime = await createAgentSessionRuntime(createRuntime, {
+			cwd: tempDir,
+			agentDir: tempDir,
+			sessionManager: SessionManager.inMemory(tempDir),
+		});
+		await runtime.session.bindFeatures({});
+		cleanups.push(async () => {
+			await runtime.dispose();
+			faux.unregister();
+			if (existsSync(tempDir)) {
+				rmSync(tempDir, { recursive: true, force: true });
+			}
+		});
+
+		await runtime.session.prompt("hello");
+		await runtime.session.prompt("again");
+
+		const beforeMessages = runtime.session.messages.map((message) => ({
+			role: message.role,
+			text:
+				message.role === "user"
+					? typeof message.content === "string"
+						? message.content
+						: message.content
+								.filter((part): part is { type: "text"; text: string } => part.type === "text")
+								.map((part) => part.text)
+								.join("")
+					: undefined,
+		}));
+		const leafId = runtime.session.sessionManager.getLeafId();
+		expect(leafId).toBeTruthy();
+		expect(runtime.session.sessionFile).toBeUndefined();
+
+		const result = await runtime.fork(leafId!, { position: "at" });
+		expect(result).toEqual({ cancelled: false, selectedText: undefined });
+		expect(runtime.session.sessionFile).toBeUndefined();
+		expect(
+			runtime.session.messages.map((message) => ({
+				role: message.role,
+				text:
+					message.role === "user"
+						? typeof message.content === "string"
+							? message.content
+							: message.content
+									.filter((part): part is { type: "text"; text: string } => part.type === "text")
+									.map((part) => part.text)
+									.join("")
+						: undefined,
+			})),
+		).toEqual(beforeMessages);
+	});
+
+	it("throws when forking with an invalid entry id", async () => {
+		const { runtime } = await createRuntimeForTest(() => {});
+		await expect(runtime.fork("missing-entry")).rejects.toThrow("Invalid entry ID for forking");
+	});
+
+	it("keeps a resumed session's cwd override when forking it", async () => {
+		const { runtime } = await createRuntimeForTest(() => {});
+		await runtime.session.prompt("hello");
+		const sessionFile = runtime.session.sessionFile!;
+		const movedDir = join(tmpdir(), `octocode-runtime-moved-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		mkdirSync(movedDir, { recursive: true });
+		cleanups.push(() => rmSync(movedDir, { recursive: true, force: true }));
+
+		await runtime.switchSession(sessionFile, { cwdOverride: movedDir });
+		expect(realpathSync(runtime.session.sessionManager.getCwd())).toBe(realpathSync(movedDir));
+		await runtime.fork(runtime.session.sessionManager.getLeafId()!, { position: "at" });
+
+		expect(runtime.session.sessionFile).not.toBe(sessionFile);
+		expect(realpathSync(runtime.session.sessionManager.getCwd())).toBe(realpathSync(movedDir));
+		expect(realpathSync(runtime.cwd)).toBe(realpathSync(movedDir));
+		const header = JSON.parse(readFileSync(runtime.session.sessionFile!, "utf8").split("\n")[0]);
+		expect(realpathSync(header.cwd)).toBe(realpathSync(movedDir));
+	});
+
+	it("updates the runtime session cwd on cross-cwd session replacement", async () => {
+		const firstDir = join(tmpdir(), `octocode-runtime-cwd-a-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		const secondDir = join(tmpdir(), `octocode-runtime-cwd-b-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+		mkdirSync(firstDir, { recursive: true });
+		mkdirSync(secondDir, { recursive: true });
+		const { runtime, faux, tempDir } = await createRuntimeForTest(() => {}, { cwd: firstDir });
+		const otherAuthStorage = AuthStorage.inMemory();
+		await otherAuthStorage.modify(faux.getModel().provider, async () => ({ type: "api_key", key: "faux-key" }));
+		const otherRuntimeOptions = {
+			agentDir: tempDir,
+			authStorage: otherAuthStorage,
+			resourceLoaderOptions: {
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures([
+					(api: FeatureSetup) => {
+						api.providers.register(faux.getModel().provider, {
+							baseUrl: faux.getModel().baseUrl,
+							apiKey: "faux-key",
+							api: faux.api,
+							models: faux.models.map((registeredModel) => ({
+								id: registeredModel.id,
+								name: registeredModel.name,
+								api: registeredModel.api,
+								reasoning: registeredModel.reasoning,
+								input: registeredModel.input,
+								cost: registeredModel.cost,
+								contextWindow: registeredModel.contextWindow,
+								maxTokens: registeredModel.maxTokens,
+							})),
+						});
+					},
+				]),
+				noSkills: true,
+				noPromptTemplates: true,
+				noThemes: true,
+			},
+		};
+		const createOtherRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
+			const services = await createAgentSessionServices({
+				...otherRuntimeOptions,
+				cwd,
+			});
+			return {
+				...(await createSessionFromServices({
+					services,
+					sessionManager,
+					sessionStartEvent,
+				})),
+				services,
+				diagnostics: services.diagnostics,
+			};
+		};
+		const otherRuntime = await createAgentSessionRuntime(createOtherRuntime, {
+			cwd: secondDir,
+			agentDir: tempDir,
+			sessionManager: SessionManager.create(secondDir),
+		});
+		cleanups.push(async () => {
+			await otherRuntime.dispose();
+		});
+		await otherRuntime.session.prompt("other");
+		const otherSessionFile = otherRuntime.session.sessionFile!;
+
+		await runtime.switchSession(otherSessionFile);
+
+		expect(realpathSync(runtime.session.sessionManager.getCwd())).toBe(realpathSync(secondDir));
+		expect(realpathSync(runtime.cwd)).toBe(realpathSync(secondDir));
+	});
+
+	it("starts a new session in a separately declared workspace and keeps the old one saved", async () => {
+		const { runtime, tempDir } = await createRuntimeForTest(() => {});
+		const otherDir = join(tempDir, "worktree");
+		mkdirSync(join(otherDir, ".octocode", "agent", "workspace"), { recursive: true });
+		await runtime.session.prompt("before");
+		const oldFile = runtime.session.sessionFile!;
+
+		const result = await runtime.newSession({ cwd: otherDir });
+
+		expect(result).toEqual({ cancelled: false });
+		expect(realpathSync(runtime.cwd)).toBe(realpathSync(otherDir));
+		expect(runtime.session.sessionManager.getCwd()).toBe(otherDir);
+		expect(runtime.session.sessionFile).not.toBe(oldFile);
+		expect(existsSync(oldFile)).toBe(true);
+		// The new session is saved with the worktree's own sessions, not with the old folder's.
+		expect(runtime.session.sessionManager.getSessionDir()).not.toBe(SessionManager.open(oldFile).getSessionDir());
+		await runtime.session.prompt("after");
+		const header = JSON.parse(readFileSync(runtime.session.sessionFile!, "utf8").split("\n")[0]);
+		expect(header.cwd).toBe(otherDir);
+	});
+
+	it("resolves a relative new-session folder against the session's folder, not the process directory", async () => {
+		const { runtime, tempDir } = await createRuntimeForTest(() => {});
+		const workspaceDir = runtime.session.sessionManager.getSessionDir();
+		mkdirSync(join(tempDir, "worktree"));
+		expect(realpathSync(process.cwd())).not.toBe(realpathSync(tempDir));
+		await runtime.newSession({ cwd: "worktree" });
+		expect(realpathSync(runtime.cwd)).toBe(realpathSync(join(tempDir, "worktree")));
+		expect(runtime.session.sessionManager.getSessionDir()).toBe(workspaceDir);
+		// From there, `..` is the folder the session just left.
+		await runtime.newSession({ cwd: ".." });
+		expect(realpathSync(runtime.cwd)).toBe(realpathSync(tempDir));
+	});
+
+	it("refuses a new-session folder that does not exist and changes nothing", async () => {
+		const { runtime, tempDir } = await createRuntimeForTest(() => {});
+		const before = runtime.session.sessionFile;
+		await expect(runtime.newSession({ cwd: join(tempDir, "missing") })).rejects.toThrow(/not a folder/u);
+		expect(runtime.session.sessionFile).toBe(before);
+		expect(runtime.cwd).toBe(tempDir);
+	});
+
+	it("restores model and thinking state from the destination session", async () => {
+		const { runtime, faux, tempDir } = await createRuntimeForTest(() => {}, {
+			bootstrapModel: false,
+			bootstrapThinkingLevel: false,
+		});
+		const otherDir = join(tempDir, "other");
+		mkdirSync(otherDir, { recursive: true });
+		const otherAuthStorage = AuthStorage.inMemory();
+		await otherAuthStorage.modify(faux.getModel().provider, async () => ({ type: "api_key", key: "faux-key" }));
+		const otherRuntimeOptions = {
+			agentDir: tempDir,
+			authStorage: otherAuthStorage,
+			resourceLoaderOptions: {
+				nativeFeatures: nativeFeatureSet(),
+				features: testFeatures([
+					(api: FeatureSetup) => {
+						api.providers.register(faux.getModel().provider, {
+							baseUrl: faux.getModel().baseUrl,
+							apiKey: "faux-key",
+							api: faux.api,
+							models: faux.models.map((registeredModel) => ({
+								id: registeredModel.id,
+								name: registeredModel.name,
+								api: registeredModel.api,
+								reasoning: registeredModel.reasoning,
+								input: registeredModel.input,
+								cost: registeredModel.cost,
+								contextWindow: registeredModel.contextWindow,
+								maxTokens: registeredModel.maxTokens,
+							})),
+						});
+					},
+				]),
+				noSkills: true,
+				noPromptTemplates: true,
+				noThemes: true,
+			},
+		};
+		const createOtherRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
+			const services = await createAgentSessionServices({
+				...otherRuntimeOptions,
+				cwd,
+			});
+			return {
+				...(await createSessionFromServices({
+					services,
+					sessionManager,
+					sessionStartEvent,
+				})),
+				services,
+				diagnostics: services.diagnostics,
+			};
+		};
+		const otherRuntime = await createAgentSessionRuntime(createOtherRuntime, {
+			cwd: otherDir,
+			agentDir: tempDir,
+			sessionManager: SessionManager.create(otherDir),
+		});
+		cleanups.push(async () => {
+			await otherRuntime.dispose();
+		});
+		await otherRuntime.session.setModel(faux.getModel("faux-2")!);
+		otherRuntime.session.setThinkingLevel("off");
+		await otherRuntime.session.prompt("hello");
+		const targetSessionFile = otherRuntime.session.sessionFile!;
+
+		await runtime.switchSession(targetSessionFile);
+
+		expect(runtime.session.model?.id).toBe("faux-2");
+		expect(runtime.session.thinkingLevel).toBe("off");
+	});
+});

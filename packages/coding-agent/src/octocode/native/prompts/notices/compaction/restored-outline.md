@@ -1,0 +1,1 @@
+[… outline only: {{shown}} of {{count}} declarations of a file of {{total}} lines, each with its line number{{#if fromLast}}; the mark shows where you last read or changed it{{/if}}. This is not the file's text. Before you rely on or change them, read the lines you need (with an offset)]

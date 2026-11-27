@@ -1,0 +1,123 @@
+import { describe, expect, test } from "vitest";
+import { UserMessageComponent } from "../src/modes/interactive/components/user-message.ts";
+import { initTheme, setThemeInstance, theme } from "../src/theme/theme.ts";
+import { loadTheme } from "../src/theme/theme-loader.ts";
+import { stripAnsi } from "../src/utils/ansi.ts";
+
+const OSC133_ZONE_START = "\x1b]133;A\x07";
+const OSC133_ZONE_END = "\x1b]133;B\x07";
+const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
+const BG_RESET = "\x1b[49m";
+const OSC_ZONE = /\x1b\][^\x07]*\x07/g;
+
+describe("UserMessageComponent", () => {
+	test("folds a long prompt at its rendered width and restores its middle when expanded", () => {
+		initTheme("dark");
+		const body = Array.from({ length: 150 }, (_, i) => `paragraph ${i}.`).join("\n\n");
+		const message = new UserMessageComponent(body);
+		const collapsed = message.render(40).join("\n");
+		expect(collapsed).toContain("lines hidden");
+		expect(collapsed).not.toContain("paragraph 71.");
+		message.setExpanded(true);
+		expect(message.render(40).join("\n")).toContain("paragraph 71.");
+		message.setExpanded(false);
+		expect(message.render(40).join("\n")).toBe(collapsed);
+	});
+
+	test("keeps user message height stable while moving closing OSC markers off line end", () => {
+		setThemeInstance(loadTheme("dark", "truecolor"));
+
+		const component = new UserMessageComponent("hello");
+		const lines = component.render(20);
+
+		expect(lines).toHaveLength(3);
+		expect(lines[0]).toContain(OSC133_ZONE_START);
+		expect(lines[0].endsWith(BG_RESET)).toBe(true);
+		expect(lines[0]).not.toContain(OSC133_ZONE_END);
+		expect(lines[1]).toContain("hello");
+		expect(lines[2].startsWith(OSC133_ZONE_END + OSC133_ZONE_FINAL)).toBe(true);
+		expect(lines[2].endsWith(BG_RESET)).toBe(true);
+	});
+
+	test("chains Markdown transformers with user message context", () => {
+		initTheme("dark");
+		const calls: string[] = [];
+		const component = new UserMessageComponent("The input is $x^2$.", undefined, 1, [
+			(markdown, context) => {
+				calls.push("formula");
+				expect(context).toEqual({ messageType: "user", isStreaming: false, availableWidth: 78 });
+				return markdown.replace("$x^2$", "x²");
+			},
+			(markdown) => {
+				calls.push("suffix");
+				return `${markdown} Done.`;
+			},
+		]);
+
+		expect(stripAnsi(component.render(80).join("\n"))).toContain("The input is x². Done.");
+		expect(calls).toEqual(["formula", "suffix"]);
+	});
+
+	test("reapplies Markdown transformers when invalidated", () => {
+		initTheme("dark");
+		let suffix = "before";
+		const component = new UserMessageComponent("Message", undefined, 1, [(markdown) => `${markdown} ${suffix}`]);
+
+		expect(stripAnsi(component.render(80).join("\n"))).toContain("Message before");
+
+		suffix = "after";
+		component.invalidate();
+
+		expect(stripAnsi(component.render(80).join("\n"))).toContain("Message after");
+	});
+
+	test("marks every row with an accent bar in the padding column and leaves the text where it was", () => {
+		initTheme("dark");
+		const bar = theme.fg("accent", "▎");
+
+		const lines = new UserMessageComponent("hello\n\nsecond").render(20);
+
+		expect(lines).toHaveLength(5);
+		for (const line of lines) {
+			expect(line).toContain(bar);
+			expect(stripAnsi(line.replace(OSC_ZONE, "")).startsWith("▎")).toBe(true);
+		}
+		expect(stripAnsi(lines[1])).toBe("▎hello              ");
+		expect(stripAnsi(lines[3])).toBe("▎second             ");
+		expect(lines[0]).toContain(OSC133_ZONE_START);
+	});
+
+	test("repaints the accent bar in the new theme's color after a theme switch", () => {
+		setThemeInstance(loadTheme("dark", "truecolor"));
+		const component = new UserMessageComponent("hello");
+		const dark = component.render(20);
+		expect(component.render(20)).toEqual(dark);
+
+		setThemeInstance(loadTheme("light", "truecolor"));
+		const lightBar = theme.fg("accent", "▎");
+		const light = component.render(20);
+		setThemeInstance(loadTheme("dark", "truecolor"));
+
+		expect(lightBar).not.toBe(theme.fg("accent", "▎"));
+		for (const line of light) expect(line).toContain(lightBar);
+	});
+
+	test("leaves a message without a padding column unmarked", () => {
+		initTheme("dark");
+
+		const lines = new UserMessageComponent("hello", undefined, 0).render(20);
+
+		expect(stripAnsi(lines[1])).toBe("hello               ");
+	});
+
+	test("shows the typed text without the source header the model reads", () => {
+		initTheme("dark");
+
+		const text = stripAnsi(
+			new UserMessageComponent("[src terminal:terminal \u2713proven via terminal] t4\nhello").render(30).join("\n"),
+		);
+
+		expect(text).toContain("hello");
+		expect(text).not.toContain("[src");
+	});
+});

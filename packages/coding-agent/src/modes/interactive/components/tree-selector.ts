@@ -1,0 +1,122 @@
+import { Container, type Focusable, Spacer, Text } from "@octocodeai/octocode-tui";
+import type { SessionTreeNode } from "../../../core/session-manager.ts";
+import { theme } from "../../../theme/theme.ts";
+import { DynamicBorder } from "../../../theme/dynamic-border.ts";
+import { HintBar, keyText, moveHint } from "../../../theme/theme-tui-helpers.ts";
+import { LabelInput, TreeHelp } from "./tree-selector/chrome.ts";
+import { TreeList } from "./tree-selector/tree-list.ts";
+import type { FilterMode } from "./tree-selector/types.ts";
+
+/**
+ * Component that renders a session tree selector for navigation
+ */
+export class TreeSelectorComponent extends Container implements Focusable {
+	private treeList: TreeList;
+	private labelInput: LabelInput | null = null;
+	private labelInputContainer: Container;
+	private treeContainer: Container;
+	private onLabelChangeCallback?: (entryId: string, label: string | undefined) => void;
+	public onCopy?: (text: string | undefined) => void;
+
+	// Focusable implementation - propagate to labelInput when active for IME cursor positioning
+	private _focused = false;
+	get focused(): boolean {
+		return this._focused;
+	}
+	set focused(value: boolean) {
+		this._focused = value;
+		// The search line shows the hardware cursor while no label is being edited.
+		this.treeList.focused = value && !this.labelInput;
+		// Propagate to labelInput when it's active
+		if (this.labelInput) {
+			this.labelInput.focused = value;
+		}
+	}
+
+	constructor(
+		tree: SessionTreeNode[],
+		currentLeafId: string | null,
+		terminalHeight: number,
+		onSelect: (entryId: string) => void,
+		onCancel: () => void,
+		onLabelChange?: (entryId: string, label: string | undefined) => void,
+		initialSelectedId?: string,
+		initialFilterMode?: FilterMode,
+	) {
+		super();
+
+		this.onLabelChangeCallback = onLabelChange;
+		const maxVisibleLines = Math.max(5, Math.floor(terminalHeight / 2));
+
+		this.treeList = new TreeList(tree, currentLeafId, maxVisibleLines, initialSelectedId, initialFilterMode);
+		this.treeList.onSelect = onSelect;
+		this.treeList.onCancel = onCancel;
+		this.treeList.onCopy = (text) => this.onCopy?.(text);
+		this.treeList.onLabelEdit = (entryId, currentLabel) => this.showLabelInput(entryId, currentLabel);
+
+		this.treeContainer = new Container();
+		this.treeContainer.addChild(this.treeList);
+
+		this.labelInputContainer = new Container();
+
+		this.addChild(new Spacer(1));
+		this.addChild(new DynamicBorder());
+		this.addChild(new Text(theme.bold("  Session Tree"), 1, 0));
+		this.addChild(new TreeHelp());
+		this.addChild(new DynamicBorder());
+		this.addChild(new Spacer(1));
+		this.addChild(this.treeContainer);
+		this.addChild(this.labelInputContainer);
+		this.addChild(new Spacer(1));
+		this.addChild(
+			new HintBar([
+				moveHint(2),
+				[keyText("tui.select.confirm"), "select", 1],
+				[keyText("tui.select.cancel"), "cancel", 0],
+			]),
+		);
+		this.addChild(new DynamicBorder());
+
+		if (tree.length === 0) {
+			setTimeout(() => onCancel(), 100);
+		}
+	}
+
+	private showLabelInput(entryId: string, currentLabel: string | undefined): void {
+		this.labelInput = new LabelInput(entryId, currentLabel);
+		this.labelInput.onSubmit = (id, label) => {
+			this.treeList.updateNodeLabel(id, label);
+			this.onLabelChangeCallback?.(id, label);
+			this.hideLabelInput();
+		};
+		this.labelInput.onCancel = () => this.hideLabelInput();
+
+		// Propagate current focused state to the new labelInput
+		this.labelInput.focused = this._focused;
+		this.treeList.focused = false;
+
+		this.treeContainer.clear();
+		this.labelInputContainer.clear();
+		this.labelInputContainer.addChild(this.labelInput);
+	}
+
+	private hideLabelInput(): void {
+		this.labelInput = null;
+		this.treeList.focused = this._focused;
+		this.labelInputContainer.clear();
+		this.treeContainer.clear();
+		this.treeContainer.addChild(this.treeList);
+	}
+
+	handleInput(keyData: string): void {
+		if (this.labelInput) {
+			this.labelInput.handleInput(keyData);
+		} else {
+			this.treeList.handleInput(keyData);
+		}
+	}
+
+	getTreeList(): TreeList {
+		return this.treeList;
+	}
+}

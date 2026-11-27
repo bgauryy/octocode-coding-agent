@@ -1,0 +1,88 @@
+import { ELLIPSIS } from "@octocodeai/octocode-tui";
+import { expandHint } from "../../../octocode/shared/text.ts";
+import { formatDuration } from "../../../octocode/shared/format.ts";
+import { keyText } from "../../../theme/theme-tui-helpers.ts";
+
+/** Reasoning shorter than this reads as `0s` or `1s` noise: the label omits the time. */
+const MIN_SHOWN_MS = 1_000;
+
+/** One timed thinking block: when it began, when its text last grew, and when the next block appeared. */
+interface ThinkingSpan {
+	chars: number;
+	first?: number;
+	last?: number;
+	end?: number;
+}
+
+/**
+ * Spans by block id, shared by every component that draws the block: the transcript may rebuild a message's component
+ * when it completes, and the new one must still know how long the reasoning took. Oldest forgotten first.
+ */
+const spans = new Map<string, ThinkingSpan>();
+const MAX_SPANS = 500;
+
+/** Forget every span (tests). */
+export function resetThinkingSpans(): void {
+	spans.clear();
+}
+
+/**
+ * Note that block `id` has `chars` of text at `now`. Only a block first seen while `streaming` is timed; one first seen
+ * complete (a resumed session) stays unknown. `followed` is true once another block follows it.
+ */
+export function observeThinking(id: string, chars: number, followed: boolean, now: number, streaming: boolean): void {
+	let span = spans.get(id);
+	if (!span) {
+		// A block first seen while streaming began now, even before its first token: a provider may deliver its whole
+		// summary in one piece after the wait.
+		span = { chars: 0, ...(streaming ? { first: now, last: now } : {}) };
+		spans.set(id, span);
+		if (spans.size > MAX_SPANS) spans.delete(spans.keys().next().value!);
+	}
+	if (chars > span.chars && span.first !== undefined) span.last = now;
+	span.chars = chars;
+	if (followed && span.end === undefined && span.last !== undefined) span.end = now;
+}
+
+/** How long a run of thinking blocks took, or undefined when unknown (a resumed session) or too short to say. */
+export function thinkingMs(ids: readonly string[]): number | undefined {
+	let total = 0;
+	for (const id of ids) {
+		const span = spans.get(id);
+		if (span?.first === undefined) continue;
+		total += (span.end ?? span.last ?? span.first) - span.first;
+	}
+	return total >= MIN_SHOWN_MS ? total : undefined;
+}
+
+/** ` for 4s`, or nothing when the time is unknown: the end of "Thought for 4s". */
+function thoughtDuration(ms: number | undefined): string {
+	return ms === undefined ? "" : ` for ${formatDuration(ms)}`;
+}
+
+/** The affordance of a hidden block: the shared expand hint with the thinking key. */
+export function revealHint(): string {
+	return expandHint("expand", keyText("app.thinking.toggle"));
+}
+
+const ABORT_WORDING =
+	/^(?:this operation was aborted|the operation was aborted|request was aborted|operation aborted|aborted)\.?$/i;
+
+/** Whether a runtime abort message (`AbortError` text from fetch, a provider's own wording) says only that the user stopped. */
+export function isAbortWording(message: string | undefined): boolean {
+	return ABORT_WORDING.test(message?.trim() ?? "");
+}
+
+/** The one line for an interrupted turn: product wording for the runtime's, a specific message (retries) as it is. */
+export function interruptedText(message: string | undefined): string {
+	const text = message?.trim();
+	return !text || isAbortWording(text) ? "Interrupted" : text;
+}
+
+/** The label of a block that still streams: the one word the working line also shows while the model reasons. */
+export const THINKING_LABEL = `Thinking${ELLIPSIS}`;
+
+/** The label of a finished block: `Thought` (with its time) or, once interrupted, `Thinking stopped`. */
+export function finishedLabel(interrupted: boolean, ms: number | undefined): string {
+	return interrupted ? "Thinking stopped" : `Thought${thoughtDuration(ms)}`;
+}

@@ -1,0 +1,6 @@
+# Ignored files a new worktree copies from this checkout, so typecheck and tests run without an install or a build.
+# Octocode links the installed node_modules folders itself; these are generated files they do not hold.
+# Generated model data (yarn run build refreshes it).
+packages/ai/src/providers/data/
+# The testkit's built types, which its examples import by package name.
+packages/octocode-agentic-testkit/dist/

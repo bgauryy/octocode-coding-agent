@@ -1,0 +1,130 @@
+import type { JobRow } from "../../../../../db/src/api.ts";
+import { formatDuration } from "../../shared/format.ts";
+import { shortPath } from "../../../utils/display-path.ts";
+import { firstLine } from "../../shared/util.ts";
+import { sharedClock } from "@octocodeai/octocode-common/clock";
+import { cutText } from "@octocodeai/octocode-common/text";
+import type { JobEnd } from "./message.ts";
+import { ownerAlive } from "../../shared/job-standing.ts";
+import type { JobLedger } from "./ledger.ts";
+
+/** How often a joined job is looked at with no change hint to wait for. */
+const POLL_MS = 2_000;
+/**
+ * The slow look beside a change hint: a job's end writes its row (the hint), but an owner killed from outside writes
+ * nothing, and only this look finds it.
+ */
+const SAFETY_MS = 30_000;
+
+const key = (row: Pick<JobRow, "session_id" | "job">) => `${row.session_id}\u0000${row.job}`;
+
+/**
+ * Watches the running jobs of other sessions that this session joined, and calls `ended` once for each when it ends: its row
+ * says so, or its owner is gone without recording it. The timer runs only while a job is watched and never keeps the
+ * process alive; `stop` ends it. With a `hint` (the database's change follower) a poll runs when the file moves and every
+ `SAFETY_MS` for owners that vanish without writing; without one it polls every 2 s.
+ */
+export class JoinWatch {
+	private readonly watching = new Map<string, JobRow>();
+	private stopTimer: (() => void) | undefined;
+	private stopHint: (() => void) | undefined;
+
+	private readonly ledger: JobLedger;
+	private readonly ended: (row: JobRow, how: "ended" | "owner gone") => void;
+	private readonly failed: (error: unknown) => void;
+	private readonly pollMs: number;
+	private readonly hint: ((poke: () => void) => () => void) | undefined;
+
+	constructor(
+		ledger: JobLedger,
+		ended: (row: JobRow, how: "ended" | "owner gone") => void,
+		failed: (error: unknown) => void,
+		hint?: (poke: () => void) => () => void,
+		pollMs = hint ? SAFETY_MS : POLL_MS,
+	) {
+		this.hint = hint;
+		this.ledger = ledger;
+		this.ended = ended;
+		this.failed = failed;
+		this.pollMs = pollMs;
+	}
+
+	watch(row: JobRow): void {
+		this.watching.set(key(row), row);
+		this.stopTimer ??= sharedClock.subscribe(() => this.poll(), { everyMs: this.pollMs });
+		this.stopHint ??= this.hint?.(() => this.poll());
+	}
+
+	stop(): void {
+		this.stopTimer?.();
+		this.stopTimer = undefined;
+		this.stopHint?.();
+		this.stopHint = undefined;
+		this.watching.clear();
+	}
+
+	private poll(): void {
+		try {
+			for (const [id, row] of this.watching) {
+				const now = this.ledger.current(row);
+				if (now !== undefined && now.state === "running" && ownerAlive(now)) continue;
+				this.watching.delete(id);
+				this.ended(now ?? row, now === undefined || now.state === "running" ? "owner gone" : "ended");
+			}
+		} catch (error) {
+			// A broken database stops the watch; the caller says so once instead of retrying it on every tick.
+			this.stop();
+			this.failed(error);
+		}
+		if (this.watching.size === 0) this.stop();
+	}
+}
+
+/** `joined bash-4 (running 3m, log .octocode/agent/tmp/check.log)`: what a second identical start is told. */
+export function joinedText(row: JobRow, cwd: string, now: number): string {
+	const who = [row.agent && `agent ${row.agent}`, row.item && `item ${row.item}`].filter(Boolean).join(", ");
+	return `joined ${row.job} (running ${formatDuration(now - row.started_at)}, log ${shortPath(row.log, cwd)}); its exit wakes you.${who ? ` Started by ${who}.` : ""} Pass fresh: true to start a new run instead.`;
+}
+
+/** The seconds a joined job ran, and how it ended in words, from its ledger row. */
+function joinedEnd(row: JobRow, how: "ended" | "owner gone"): JobEnd {
+	const verdict =
+		how === "owner gone"
+			? "ended without recording how"
+			: row.state === "stopped"
+				? "was stopped"
+				: row.exit_code === 0
+					? "finished"
+					: `failed with exit code ${row.exit_code ?? "?"}`;
+	return {
+		how: verdict,
+		ok: how === "ended" && row.state !== "stopped" && row.exit_code === 0,
+		...(row.state === "stopped" ? { interrupted: true as const } : {}),
+		seconds: Math.round(((row.ended_at ?? row.updated_at) - row.started_at) / 1000),
+	};
+}
+
+/** The details of a joined job's end message, read by the job renderer (`JobEnd` beside the job's identity). */
+export function joinedDetails(row: JobRow, how: "ended" | "owner gone", wake: boolean) {
+	return {
+		id: row.job,
+		command: row.command,
+		log: row.log,
+		...joinedEnd(row, how),
+		...(wake ? {} : { quiet: true as const }),
+	};
+}
+
+/** The message a joined job's end sends: the status header, then the `Background bash …` line. */
+export function joinedReport(row: JobRow, how: "ended" | "owner gone"): string {
+	const status =
+		how === "owner gone" || row.state === "stopped"
+			? row.state === "stopped"
+				? "stopped"
+				: "owner gone"
+			: row.exit_code === 0
+				? "exit 0"
+				: `exit ${row.exit_code ?? "?"}`;
+	const end = joinedEnd(row, how);
+	return `[${status} · ${end.seconds}s · log: ${shortPath(row.log, row.cwd)}]\nBackground bash ${row.job} ${end.how}: ${cutText(firstLine(row.command), 60, { chars: true })}\nYou joined this job instead of starting it${row.agent ? `; it was started by ${row.agent}` : ""}. Read its output in the log.`;
+}

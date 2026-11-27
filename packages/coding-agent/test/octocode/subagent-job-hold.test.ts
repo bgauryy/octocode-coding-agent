@@ -1,0 +1,349 @@
+import path from "node:path";
+import { fauxAssistantMessage, fauxToolCall } from "@octocodeai/octocode-ai";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { SUBAGENT_ENV } from "@octocodeai/octocode-common/env";
+import { SessionManager } from "../../src/core/session-manager.ts";
+import { registerBashTool } from "../../src/octocode/native/tools/bash/tool.ts";
+import { BashJobs } from "../../src/octocode/files/bash-jobs.ts";
+import { foregroundPlan } from "../../src/octocode/files/bash/auto.ts";
+import { JOB_HOLD_TYPE } from "../../src/octocode/files/bash/child-hold.ts";
+import { registerNativeSessionLifecycle } from "../../src/octocode/session-lifecycle.ts";
+import { registerWake } from "../../src/octocode/wake/register.ts";
+import { onSecond } from "../../src/octocode/shared/clock.ts";
+import { Subcommands } from "../../src/octocode/shared/commands.ts";
+import { ReportTracker } from "../../src/octocode/subagents/report.ts";
+import { createHarness, getMessageText, type Harness } from "../suite/harness.ts";
+import { tmp } from "./helpers.ts";
+import { testFeatures } from "../helpers/features.ts";
+
+const posix = process.platform !== "win32";
+
+/** A subagent session (RPC child) with the real bash tool and the native run-end hold. */
+async function child({ isSubagent = true, ...options }: { jobHoldMs?: number; isSubagent?: boolean } = {}) {
+	const root = tmp();
+	const jobs = new BashJobs(tmp());
+	const harness = await createHarness({
+		sessionManager: SessionManager.create(root, path.join(root, "sessions")),
+		features: testFeatures([
+			(api) => {
+				registerWake(api);
+				registerBashTool(api, new Subcommands(), jobs, () => ({ backgroundAfterSeconds: 0 }));
+				registerNativeSessionLifecycle(api, {
+					isSubagent,
+					team: { interrupted: new AbortController().signal, id: "child" } as never,
+					permission: { shutdown: () => undefined } as never,
+					jobs,
+					...options,
+				});
+			},
+		]),
+	});
+	await harness.session.bindFeatures({});
+	return { harness, jobs };
+}
+
+/** The notes that told the child its jobs outlasted the hold, as the session recorded them. */
+const holdNotes = (harness: Harness) =>
+	harness.session.messages
+		.filter((message) => message.role === "custom" && message.customType === JOB_HOLD_TYPE)
+		.map((message) => getMessageText(message));
+
+/** Resolves after the shared one-second clock, which drives every timer, ticked `count` more times: each wait due by then had its chance. */
+const afterClockTicks = (count: number): Promise<void> =>
+	new Promise((resolve) => {
+		let left = count;
+		const stop = onSecond(() => {
+			if (--left > 0) return;
+			stop();
+			resolve();
+		});
+	});
+
+const requestText = (context: { messages: Parameters<typeof getMessageText>[0][] }) =>
+	context.messages.map((message) => getMessageText(message)).join("\n");
+
+describe.runIf(posix)("a subagent whose own background job is still running when it answers (B82)", () => {
+	const open: Array<{ harness: Harness; jobs: BashJobs }> = [];
+	afterEach(async () => {
+		vi.unstubAllEnvs();
+		for (const { harness, jobs } of open.splice(0)) {
+			await jobs.stopAll("session end");
+			harness.cleanup();
+		}
+	});
+
+	it("holds the run until the job ends, keeps the untimed job running, and gives its completion to the model in one more turn", async () => {
+		vi.stubEnv(SUBAGENT_ENV, "1");
+		const session = await child();
+		open.push(session);
+		let last = "";
+		session.harness.setResponses([
+			fauxAssistantMessage(
+				[fauxToolCall("bash", { command: "sleep 1; echo job-finished-marker", background: true, reason: "suite" })],
+				{ stopReason: "toolUse" },
+			),
+			fauxAssistantMessage("I'll wait for the completion message."),
+			(context) => {
+				last = requestText(context);
+				return fauxAssistantMessage("done. The suite printed job-finished-marker.");
+			},
+		]);
+		await session.harness.session.prompt("run the suite and report");
+		expect(session.harness.faux.state.callCount).toBe(3);
+		expect(last).toContain("job-finished-marker");
+		expect(last).not.toMatch(/stopped[^\n]*run end/i);
+		expect(session.jobs.running()).toHaveLength(0);
+	});
+
+	it("gives a job that ends while the child's answer is still being written one more turn", async () => {
+		vi.stubEnv(SUBAGENT_ENV, "1");
+		const session = await child();
+		open.push(session);
+		let last = "";
+		session.harness.setResponses([
+			fauxAssistantMessage(
+				[fauxToolCall("bash", { command: "sleep 1; echo late-job-marker", background: true, reason: "build" })],
+				{ stopReason: "toolUse" },
+			),
+			async () => {
+				// The job ends while this answer is still being written.
+				await vi.waitFor(() => expect(session.jobs.running()).toHaveLength(0), { timeout: 30_000, interval: 20 });
+				return fauxAssistantMessage("Waiting for the build message.");
+			},
+			(context) => {
+				last = requestText(context);
+				return fauxAssistantMessage("done. The build printed late-job-marker.");
+			},
+		]);
+		await session.harness.session.prompt("build and report");
+		expect(session.harness.faux.state.callCount).toBe(3);
+		expect(last).toContain("late-job-marker");
+	});
+
+	it("delivers a job that ends mid-run at the child's next step", async () => {
+		vi.stubEnv(SUBAGENT_ENV, "1");
+		const session = await child();
+		open.push(session);
+		let third = "";
+		session.harness.setResponses([
+			fauxAssistantMessage(
+				[fauxToolCall("bash", { command: "echo early-job-marker", background: true, reason: "quick" })],
+				{
+					stopReason: "toolUse",
+				},
+			),
+			fauxAssistantMessage([fauxToolCall("bash", { command: "sleep 2", reason: "other work" })], {
+				stopReason: "toolUse",
+			}),
+			(context) => {
+				third = requestText(context);
+				return fauxAssistantMessage("done.");
+			},
+		]);
+		await session.harness.session.prompt("work");
+		expect(session.harness.faux.state.callCount).toBe(3);
+		expect(third).toContain("early-job-marker");
+	});
+
+	it("warns once when the job outlasts the hold, then stops it at run end if the child answers again", async () => {
+		vi.stubEnv(SUBAGENT_ENV, "1");
+		const session = await child({ jobHoldMs: 300 });
+		open.push(session);
+		let warned = "";
+		let server: { id: string; pid: number; log: string } | undefined;
+		session.harness.setResponses([
+			fauxAssistantMessage([fauxToolCall("bash", { command: "sleep 60", background: true, reason: "server" })], {
+				stopReason: "toolUse",
+			}),
+			fauxAssistantMessage("waiting for it"),
+			(context) => {
+				warned = requestText(context);
+				const [job] = session.jobs.running();
+				server = { id: job.id, pid: job.pid, log: job.log };
+				return fauxAssistantMessage("done. I leave the server; it is stopped at run end.");
+			},
+		]);
+		// The run ends when the hold does, not when `sleep 60` does: this prompt would otherwise outlast the test timeout.
+		await session.harness.session.prompt("start a server");
+		// One extra model call, for one note: it names the job that still ran (its id, process, command and log).
+		expect(session.harness.faux.state.callCount).toBe(3);
+		const notes = holdNotes(session.harness);
+		expect(notes).toHaveLength(1);
+		expect(server?.id).toBe("bash-1");
+		for (const fact of [server!.id, String(server!.pid), "sleep 60", server!.log]) expect(notes[0]).toContain(fact);
+		expect(warned).toContain(notes[0]);
+		expect(session.jobs.running()).toHaveLength(0);
+	});
+
+	it("holds again when the child answers the note without a report, and gives it the job's completion (B193)", async () => {
+		vi.stubEnv(SUBAGENT_ENV, "1");
+		// The first 1s hold ends with the job still running; the job ends 0.5s into the second.
+		const session = await child({ jobHoldMs: 1000 });
+		open.push(session);
+		let warned = "";
+		let runningWhenWarned: string[] = [];
+		let last = "";
+		session.harness.setResponses([
+			fauxAssistantMessage(
+				[fauxToolCall("bash", { command: "sleep 1.5; echo slow-job-marker", background: true, reason: "suite" })],
+				{ stopReason: "toolUse" },
+			),
+			fauxAssistantMessage("I'll wait for the completion message."),
+			(context) => {
+				warned = requestText(context);
+				runningWhenWarned = session.jobs.running().map((job) => job.id);
+				return fauxAssistantMessage("The job is still running, so I'll keep waiting.");
+			},
+			(context) => {
+				last = requestText(context);
+				return fauxAssistantMessage("done. The suite printed slow-job-marker.");
+			},
+		]);
+		await session.harness.session.prompt("run the suite and report");
+		// The note went to the model once (the third call), naming the job; the answer without a report made the run hold
+		// again instead of ending, and that second hold brought the job's completion in a fourth call, with no second note.
+		const notes = holdNotes(session.harness);
+		expect(notes).toHaveLength(1);
+		expect(notes[0]).toContain("bash-1");
+		expect(warned).toContain(notes[0]);
+		expect(runningWhenWarned).toEqual(["bash-1"]);
+		expect(session.harness.faux.state.callCount).toBe(4);
+		expect(last).toContain("slow-job-marker");
+		expect(last).not.toMatch(/stopped[^\n]*run end/i);
+		expect(session.jobs.running()).toHaveLength(0);
+	});
+
+	it("does not hold a top-level headless session's untimed job: it is stopped at run end as before", async () => {
+		const session = await child({ isSubagent: false });
+		open.push(session);
+		session.harness.setResponses([
+			fauxAssistantMessage([fauxToolCall("bash", { command: "sleep 60", background: true, reason: "server" })], {
+				stopReason: "toolUse",
+			}),
+			fauxAssistantMessage("started"),
+			fauxAssistantMessage("read the stop report"),
+		]);
+		await session.harness.session.prompt("start a server");
+		expect(session.jobs.running()).toHaveLength(0);
+	});
+});
+
+describe.runIf(posix)("a subagent's own waits around its report (B744)", () => {
+	const open: Array<{ harness: Harness; jobs: BashJobs }> = [];
+	afterEach(async () => {
+		vi.unstubAllEnvs();
+		for (const { harness, jobs } of open.splice(0)) {
+			await jobs.stopAll("session end");
+			harness.cleanup();
+		}
+	});
+	const setWait = (after: number) =>
+		fauxAssistantMessage([fauxToolCall("notify", { op: "set", after, note: "check the build", reason: "build" })], {
+			stopReason: "toolUse",
+		});
+	const listWaits = async (session: { harness: Harness }) => {
+		let listed = "";
+		session.harness.setResponses([
+			fauxAssistantMessage([fauxToolCall("notify", { op: "list", all: true, reason: "check" })], {
+				stopReason: "toolUse",
+			}),
+			(context) => {
+				listed = requestText(context);
+				return fauxAssistantMessage("done. listed");
+			},
+		]);
+		await session.harness.session.prompt("list waits");
+		return listed;
+	};
+
+	it("ends the waits a child set when it reports: the run ends at once and no wake starts a turn later", async () => {
+		vi.stubEnv(SUBAGENT_ENV, "1");
+		const session = await child();
+		open.push(session);
+		session.harness.setResponses([setWait(1), fauxAssistantMessage("done. The build is green.")]);
+		await session.harness.session.prompt("build and report");
+		expect(session.harness.faux.state.callCount).toBe(2);
+		// The wait was due 1 s after it was set; two ticks of the clock that fires waits pass that point.
+		await afterClockTicks(2);
+		expect(session.harness.faux.state.callCount).toBe(2);
+		const listed = await listWaits(session);
+		// listWaits ran two calls of its own: a wake turn would have made it more.
+		expect(session.harness.faux.state.callCount).toBe(4);
+		expect(listed).toMatch(/cancel/i);
+		expect(listed).not.toMatch(/\bactive\b/i);
+	});
+
+	it("keeps a wait the child answers without a report: the run holds and the wake starts its next turn", async () => {
+		vi.stubEnv(SUBAGENT_ENV, "1");
+		const session = await child();
+		open.push(session);
+		session.harness.setResponses([
+			setWait(1),
+			fauxAssistantMessage("Waiting for the build."),
+			fauxAssistantMessage("done. The build is green."),
+		]);
+		await session.harness.session.prompt("build and report");
+		expect(session.harness.faux.state.callCount).toBe(3);
+	});
+
+	it("leaves a top-level headless session's waits alone: its run still holds for the wake after a report-like answer", async () => {
+		const session = await child({ isSubagent: false });
+		open.push(session);
+		session.harness.setResponses([
+			setWait(1),
+			fauxAssistantMessage("done. Reminder set."),
+			fauxAssistantMessage("done. Reminded."),
+		]);
+		await session.harness.session.prompt("remind me");
+		expect(session.harness.faux.state.callCount).toBe(3);
+	});
+});
+
+describe("the report of a child held for its own job", () => {
+	it("keeps the answer to the job's completion as a follow-up section, not glued to the answer before it", () => {
+		const report = new ReportTracker();
+		report.answer("I'll wait for the completion message.", "stop");
+		report.incoming("custom", "bash-1 exited 0 after 1s", true);
+		report.answer("done: the suite passed", "stop");
+		const { text, outcome } = report.result();
+		expect(text).not.toContain("message.done:");
+		expect(text).toMatch(
+			/I'll wait[\s\S]*Follow-up to the report above \(bash-1 exited 0 after 1s\):\ndone: the suite passed/,
+		);
+		expect(outcome).toBe("done");
+	});
+
+	it("adds only the job's line when no turn follows it", () => {
+		const report = new ReportTracker();
+		report.answer("done: started the server", "stop");
+		report.incoming("custom", "bash-1 stopped (run end)", true);
+		expect(report.result().text).toMatch(/done: started the server\n\nAfter this report: bash-1 stopped \(run end\)$/);
+	});
+});
+
+describe("a deliberate foreground wait on a command that never exits by itself", () => {
+	it("moves `tail -f | grep -m1` to the background at the long-command threshold instead of waiting out its timeout", () => {
+		const plan = foregroundPlan(
+			{ command: "tail -n +1 -f run.log | grep -m1 'e2e exit'", background: false, timeout: 3000 },
+			90,
+			{},
+		);
+		expect(plan).toMatchObject({ deliberate: false, auto: true, timeout: 30 });
+		for (const command of [
+			"tail -F app.log",
+			"tail --follow=name app.log",
+			"journalctl -f -u web",
+			"kubectl logs -f pod/web",
+		])
+			expect(foregroundPlan({ command, background: false, timeout: 600 }, 90, {}).auto).toBe(true);
+	});
+
+	it("still honours a deliberate wait on an ordinary command, and a plain tail", () => {
+		expect(foregroundPlan({ command: "make all", background: false, timeout: 600 }, 90, {})).toMatchObject({
+			deliberate: true,
+			auto: false,
+		});
+		for (const command of ["tail -n 50 app.log", "tail -n 5 a.log && grep -f patterns b.log", "yarn watch-docs"])
+			expect(foregroundPlan({ command, background: false, timeout: 600 }, 90, {}).deliberate).toBe(true);
+	});
+});

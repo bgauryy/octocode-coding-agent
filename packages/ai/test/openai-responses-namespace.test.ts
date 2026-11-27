@@ -1,0 +1,237 @@
+import type { ResponseStreamEvent } from "../src/api/ai-sdk/openai-wire-types.ts";
+import { Type } from "typebox";
+import { describe, expect, it } from "vitest";
+import { replayedResponsesInput } from "./capture-responses-payload.ts";
+import { processResponsesStream } from "../src/api/openai-responses-shared/stream-processing.ts";
+import type { AssistantMessage, Model, Tool, ToolCall } from "../src/types.ts";
+import { AssistantMessageEventStream } from "../src/utils/event-stream.ts";
+import { normalizeContext } from "../src/utils/transcript.ts";
+
+const model: Model<"openai-responses"> = {
+	id: "gpt-5.4",
+	name: "GPT-5.4",
+	api: "openai-responses",
+	provider: "openai",
+	baseUrl: "https://api.openai.com/v1",
+	reasoning: true,
+	input: ["text"],
+	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+	contextWindow: 400000,
+	maxTokens: 128000,
+};
+
+const grammarModel: Model<"openai-responses"> = { ...model, compat: { supportsOpenAIGrammarTools: true } };
+const grammarTool: Tool = {
+	name: "query",
+	description: "Query",
+	parameters: Type.Object({ input: Type.String() }, { additionalProperties: false }),
+	constrainedSampling: { type: "grammar", variants: { openai_regex: "[a-z]+" } },
+};
+
+function createOutput(): AssistantMessage {
+	return {
+		role: "assistant",
+		content: [],
+		api: model.api,
+		provider: model.provider,
+		model: model.id,
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+		stopReason: "pending",
+		timestamp: Date.now(),
+	};
+}
+
+async function* createFunctionCallEvents(): AsyncIterable<ResponseStreamEvent> {
+	yield {
+		type: "response.output_item.added",
+		sequence_number: 0,
+		output_index: 0,
+		item: {
+			type: "function_call",
+			id: "fc_test",
+			call_id: "call_test",
+			name: "lookup",
+			arguments: "",
+		},
+	};
+	yield {
+		type: "response.output_item.done",
+		sequence_number: 1,
+		output_index: 0,
+		item: {
+			type: "function_call",
+			id: "fc_test",
+			call_id: "call_test",
+			name: "lookup",
+			arguments: '{"value":"hello"}',
+			namespace: "dynamic_tools",
+		},
+	};
+	yield {
+		type: "response.completed",
+		sequence_number: 2,
+		response: { id: "resp_test", status: "completed" },
+	} as ResponseStreamEvent;
+}
+
+async function* createCustomToolCallEvents(): AsyncIterable<ResponseStreamEvent> {
+	yield {
+		type: "response.output_item.added",
+		sequence_number: 0,
+		output_index: 0,
+		item: {
+			type: "custom_tool_call",
+			id: "ctc_test",
+			call_id: "call_test",
+			name: "query",
+			input: "",
+		},
+	};
+	yield {
+		type: "response.output_item.done",
+		sequence_number: 1,
+		output_index: 0,
+		item: {
+			type: "custom_tool_call",
+			id: "ctc_test",
+			call_id: "call_test",
+			name: "query",
+			input: "hello",
+			namespace: "dynamic_tools",
+		},
+	};
+	yield {
+		type: "response.completed",
+		sequence_number: 2,
+		response: { id: "resp_test", status: "completed" },
+	} as ResponseStreamEvent;
+}
+
+function getToolCall(output: AssistantMessage): ToolCall {
+	const block = output.content[0];
+	if (!block || block.type !== "toolCall") throw new Error("Expected toolCall block");
+	return block;
+}
+
+describe("OpenAI Responses terminal messages", () => {
+	it("omits an absent error message", async () => {
+		const output = createOutput();
+		await processResponsesStream(createFunctionCallEvents(), output, new AssistantMessageEventStream(), model);
+
+		expect(output).not.toHaveProperty("errorMessage");
+	});
+});
+
+describe("OpenAI Responses tool-call namespaces", () => {
+	it("round-trips a function namespace received only on output_item.done", async () => {
+		const output = createOutput();
+		await processResponsesStream(createFunctionCallEvents(), output, new AssistantMessageEventStream(), model);
+
+		const toolCall = getToolCall(output);
+		expect(toolCall).toMatchObject({
+			id: "call_test|fc_test",
+			name: "lookup",
+			arguments: { value: "hello" },
+			namespace: "dynamic_tools",
+		});
+
+		const replayed = (await replayedResponsesInput(model, normalizeContext({ messages: [output] }))).find(
+			(item) => item.type === "function_call",
+		);
+		expect(replayed).toMatchObject({
+			type: "function_call",
+			id: "fc_test",
+			call_id: "call_test",
+			name: "lookup",
+			arguments: '{"value":"hello"}',
+			namespace: "dynamic_tools",
+		});
+	});
+
+	it("round-trips a custom-tool namespace received only on output_item.done", async () => {
+		const output = createOutput();
+		await processResponsesStream(createCustomToolCallEvents(), output, new AssistantMessageEventStream(), model, {
+			grammarToolInputProperties: new Map([["query", "input"]]),
+		});
+
+		const toolCall = getToolCall(output);
+		expect(toolCall).toMatchObject({
+			id: "call_test|ctc_test",
+			name: "query",
+			arguments: { input: "hello" },
+			namespace: "dynamic_tools",
+		});
+
+		const replayed = (
+			await replayedResponsesInput(grammarModel, normalizeContext({ messages: [output], tools: [grammarTool] }))
+		).find((item) => item.type === "custom_tool_call");
+		expect(replayed).toMatchObject({
+			type: "custom_tool_call",
+			id: "ctc_test",
+			call_id: "call_test",
+			name: "query",
+			input: "hello",
+			namespace: "dynamic_tools",
+		});
+	});
+
+	it("drops namespaces when the target cannot replay their load items", async () => {
+		const output = createOutput();
+		output.content.push(
+			{
+				type: "toolCall",
+				id: "call_function|fc_test",
+				name: "lookup",
+				arguments: { value: "hello" },
+				namespace: "dynamic_tools",
+			},
+			{
+				type: "toolCall",
+				id: "call_custom|ctc_test",
+				name: "query",
+				arguments: { input: "hello" },
+				namespace: "dynamic_tools",
+			},
+		);
+		const targetModels: Model<"openai-responses">[] = [
+			{ ...grammarModel, id: "gpt-5.2", name: "GPT-5.2" },
+			{ ...grammarModel, provider: "azure" },
+		];
+
+		for (const targetModel of targetModels) {
+			const replayed = await replayedResponsesInput(
+				targetModel,
+				normalizeContext({ messages: [output], tools: [grammarTool] }),
+			);
+			const functionCall = replayed.find((item) => item.type === "function_call");
+			const customToolCall = replayed.find((item) => item.type === "custom_tool_call");
+			expect(functionCall).toBeDefined();
+			expect(functionCall).not.toHaveProperty("namespace");
+			expect(customToolCall).toBeDefined();
+			expect(customToolCall).not.toHaveProperty("namespace");
+		}
+	});
+
+	it("does not add a namespace to ordinary function calls", async () => {
+		const output = createOutput();
+		output.content.push({
+			type: "toolCall",
+			id: "call_test|fc_test",
+			name: "lookup",
+			arguments: { value: "hello" },
+		});
+
+		const replayed = (await replayedResponsesInput(model, normalizeContext({ messages: [output] }))).find(
+			(item) => item.type === "function_call",
+		);
+		expect(replayed).toBeDefined();
+		expect(replayed).not.toHaveProperty("namespace");
+	});
+});

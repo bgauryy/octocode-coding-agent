@@ -1,0 +1,393 @@
+import type { ScrollView } from "../components/scroll-view.ts";
+import type { LayoutBox, LayoutFrame } from "../layout/types.ts";
+import { getScrollViewBox, getScrollViewsAt } from "../layout.ts";
+import type { Terminal } from "../terminal.ts";
+import type { TuiMouseDispatchResult, TuiMouseEvent } from "../tui.ts";
+import { getOsc8LinkAtColumn } from "../utils/columns.ts";
+import type { LayoutHit } from "./mouse-gesture.ts";
+import { COPY_ERROR_FLASH_DURATION_MS } from "./constants.ts";
+import { SelectionAutoScroll } from "./selection-auto-scroll.ts";
+import {
+	applySelectionToScreen,
+	getSelectionBounds,
+	getSelectionText,
+	rebasePoint,
+	scrollSelectionPoint,
+	selectedLines,
+	selectedTextLines,
+} from "./selection.ts";
+import {
+	collectSelectionText,
+	copyTextToClipboard,
+	NATIVE_CLIPBOARD_BYTES,
+	TERMINAL_CLIPBOARD_BYTES,
+} from "./selection-copy.ts";
+export { NATIVE_CLIPBOARD_BYTES };
+import { lineRangeAt, nextClick, wordRangeAt } from "./selection-units.ts";
+import type { ClickTarget, SelectionGranularity, SelectionPoint, SelectionRange, SgrMouseEvent } from "./types.ts";
+
+/** Alternate-screen state and operations the text selection reads and calls live. */
+export interface AltScreenSelectionHost {
+	getTerminal(): Terminal;
+	getCurrentLayout(): LayoutFrame | undefined;
+	/** The lines of the last rendered frame. */
+	getPreviousScreen(): readonly string[];
+	hasOverlay(): boolean;
+	requestRender(): void;
+	getCopyOnSelect(): boolean;
+	/** Copy text with the configured clipboard; when omitted, write OSC 52. */
+	readonly copySelection?: (text: string) => Promise<boolean | string>;
+	/** A hint for the next copy confirmation, shown once (how to select with the terminal instead). */
+	copyHint?(): string | undefined;
+	flash(message: string, durationMs?: number): void;
+	openUrl?(url: string): void;
+	createMouseEvent(
+		type: TuiMouseEvent["type"],
+		button: number,
+		x: number,
+		y: number,
+		extra?: Partial<Pick<TuiMouseEvent, "wheelDelta" | "clickCount">>,
+	): TuiMouseEvent;
+	dispatchMouseToOverlay(event: TuiMouseEvent): { hit: boolean; result?: TuiMouseDispatchResult };
+	dispatchMouseToLayout(event: TuiMouseEvent, hits?: readonly LayoutHit[]): TuiMouseDispatchResult | undefined;
+	hitLayoutAt(x: number, y: number): LayoutHit[];
+	applyMouseDispatchResult(event: TuiMouseEvent, result: TuiMouseDispatchResult): boolean;
+}
+
+/** Application-owned text selection: anchor and focus, multi-click granularity, URL clicks and auto-scroll. */
+export class AltScreenSelection {
+	selectionAnchor?: SelectionPoint;
+	selectionFocus?: SelectionPoint;
+	selectionGranularity: SelectionGranularity = "character";
+	selectionInitialRange?: SelectionRange;
+	lastClick?: ClickTarget;
+	private readonly autoScroll: SelectionAutoScroll;
+	selectionPressActive = false;
+	private copyGeneration = 0;
+	pressedUrl?: string;
+	selectionDragged = false;
+	/** Where the press landed on screen and the components it hit: a click is decided by the cell, not by content rows. */
+	private pressCell?: { x: number; y: number; hits: LayoutHit[] };
+	private readonly host: AltScreenSelectionHost;
+
+	constructor(host: AltScreenSelectionHost) {
+		this.host = host;
+		this.autoScroll = new SelectionAutoScroll({
+			visibleRows: () => {
+				const scrollView = this.selectionAnchor?.scrollView;
+				const visible = scrollView && this.getVisibleScrollViewRows(scrollView);
+				return visible ? { scrollView, ...visible } : undefined;
+			},
+			extendTo: (scrollView, x, y) => {
+				const point = this.getScrollSelectionPoint(scrollView, x, y);
+				if (point) this.updateSelectionFocus(point);
+			},
+			requestRender: () => this.host.requestRender(),
+		});
+	}
+
+	clearTextSelection(): void {
+		this.stopSelectionAutoScroll();
+		this.selectionPressActive = false;
+		this.selectionAnchor = undefined;
+		this.selectionFocus = undefined;
+		this.selectionGranularity = "character";
+		this.selectionInitialRange = undefined;
+		this.pressedUrl = undefined;
+		this.selectionDragged = false;
+		this.pressCell = undefined;
+	}
+
+	/** End a press whose release never arrived, keeping the selection it made. */
+	endSelectionPress(): void {
+		if (!this.selectionPressActive) return;
+		this.selectionPressActive = false;
+		this.stopSelectionAutoScroll();
+		this.pressCell = undefined;
+		this.pressedUrl = undefined;
+		this.host.requestRender();
+	}
+
+	/** Drop the anchor, focus, multi-click history and pressed URL without stopping auto-scroll. */
+	resetSelectionPoints(): void {
+		this.selectionAnchor = undefined;
+		this.selectionFocus = undefined;
+		this.selectionGranularity = "character";
+		this.selectionInitialRange = undefined;
+		this.lastClick = undefined;
+		this.pressedUrl = undefined;
+		this.selectionDragged = false;
+	}
+
+	/** The laid-out box of a scroll view and its first and last terminal rows on screen. */
+	private getVisibleScrollViewRows(
+		scrollView: ScrollView,
+	): { box: LayoutBox; visibleTop: number; visibleBottom: number } | undefined {
+		const currentLayout = this.host.getCurrentLayout();
+		if (!currentLayout) return undefined;
+		const box = getScrollViewBox(currentLayout, scrollView);
+		if (!box || box.rect.height <= 0 || box.clip.height <= 0) return undefined;
+		const visibleTop = Math.max(0, box.rect.y, box.clip.y);
+		const visibleBottom = Math.min(
+			this.host.getTerminal().rows - 1,
+			box.rect.y + box.rect.height - 1,
+			box.clip.y + box.clip.height - 1,
+		);
+		return { box, visibleTop, visibleBottom };
+	}
+
+	private getScrollSelectionPoint(scrollView: ScrollView, x: number, y: number): SelectionPoint | undefined {
+		const visible = this.getVisibleScrollViewRows(scrollView);
+		if (!visible || visible.visibleBottom < visible.visibleTop) return undefined;
+		return scrollSelectionPoint(visible, scrollView, x, y);
+	}
+
+	/** An explicit wheel gesture extends a held selection even when the pointer stays in its press cell. */
+	wheelScrolled(scrollView: ScrollView, x: number, y: number): void {
+		if (!this.selectionPressActive || this.selectionAnchor?.scrollView !== scrollView) return;
+		const point = this.getScrollSelectionPoint(scrollView, x, y);
+		if (!point) return;
+		this.pressCell = undefined;
+		this.selectionDragged = true;
+		this.updateSelectionFocus(point);
+	}
+
+	private getSelectionPoint(event: SgrMouseEvent, scrollView?: ScrollView): SelectionPoint {
+		if (scrollView) {
+			const point = this.getScrollSelectionPoint(scrollView, event.x, event.y);
+			if (point) return point;
+		}
+		return {
+			row: Math.max(0, Math.min(this.host.getTerminal().rows - 1, event.y)),
+			col: Math.max(0, Math.min(this.host.getTerminal().columns - 1, event.x)),
+		};
+	}
+
+	private getWordSelection(point: SelectionPoint): SelectionRange | undefined {
+		return wordRangeAt(point, this.host.getCurrentLayout(), this.host.getPreviousScreen());
+	}
+
+	private getLineSelection(point: SelectionPoint): SelectionRange {
+		return lineRangeAt(point, this.host.getCurrentLayout(), this.host.getPreviousScreen());
+	}
+
+	private updateSelectionFocus(point: SelectionPoint): void {
+		if (this.selectionGranularity === "character" || !this.selectionInitialRange) {
+			this.selectionFocus = point;
+			return;
+		}
+		const range = this.selectionGranularity === "word" ? this.getWordSelection(point) : this.getLineSelection(point);
+		if (!range) return;
+		const initial = this.selectionInitialRange;
+		const targetBeforeInitial =
+			range.start.row < initial.start.row ||
+			(range.start.row === initial.start.row && range.start.col < initial.start.col);
+		if (targetBeforeInitial) {
+			this.selectionAnchor = initial.end;
+			this.selectionFocus = range.start;
+		} else {
+			this.selectionAnchor = initial.start;
+			this.selectionFocus = range.end;
+		}
+	}
+
+	/**
+	 * Shift-press with a selection showing: move its focus to the pointer, by the unit it was made with, and keep
+	 * extending while the button is held. Only terminals that pass Shift with the mouse report get here; most take
+	 * Shift-drag for their own selection.
+	 */
+	private extendFromPress(event: SgrMouseEvent): boolean {
+		const anchor = this.selectionAnchor;
+		if (!anchor || !getSelectionBounds(anchor, this.selectionFocus)) return false;
+		this.stopSelectionAutoScroll();
+		this.selectionPressActive = true;
+		this.selectionDragged = true;
+		this.pressCell = undefined;
+		this.pressedUrl = undefined;
+		this.lastClick = undefined;
+		this.updateSelectionFocus(this.getSelectionPoint(event, anchor.scrollView));
+		this.host.requestRender();
+		return true;
+	}
+
+	/** Drop a selection that shows (Escape): true when there was one to drop. */
+	clearVisibleSelection(): boolean {
+		if (this.selectionPressActive || !this.hasActiveSelection()) return false;
+		this.clearTextSelection();
+		this.lastClick = undefined;
+		this.host.requestRender();
+		return true;
+	}
+
+	stopSelectionAutoScroll(): void {
+		this.autoScroll.stop();
+	}
+
+	private urlAt(x: number, y: number): string | undefined {
+		const row = Math.max(0, Math.min(this.host.getTerminal().rows - 1, y));
+		const col = Math.max(0, Math.min(this.host.getTerminal().columns - 1, x));
+		return getOsc8LinkAtColumn(this.host.getPreviousScreen()[row] ?? "", col);
+	}
+
+	private dispatchCellClick(
+		event: SgrMouseEvent,
+		hits: readonly LayoutHit[] | undefined,
+		clickedUrl: string | undefined,
+		clickCount: number,
+		clearSelection: boolean,
+	): boolean {
+		if (clickedUrl && this.host.openUrl) {
+			if (clearSelection) this.resetSelectionPoints();
+			try {
+				this.host.openUrl(clickedUrl);
+			} catch {
+				// URL activation is best-effort.
+			}
+			if (clearSelection) this.host.requestRender();
+			return true;
+		}
+		const clickEvent = this.host.createMouseEvent("click", event.button, event.x, event.y, { clickCount });
+		const overlay = this.host.dispatchMouseToOverlay(clickEvent);
+		const result = overlay.result ?? (overlay.hit ? undefined : this.host.dispatchMouseToLayout(clickEvent, hits));
+		if (!result) return false;
+		const render = this.host.applyMouseDispatchResult(clickEvent, result);
+		if (clearSelection) this.clearTextSelection();
+		if (render) this.host.requestRender();
+		return true;
+	}
+
+	/** Press-to-release click & OSC 8 link dispatch when text selection is disabled. */
+	handleClickOnlyMouseEvent(event: SgrMouseEvent): void {
+		const button = event.button & 3;
+		if (button !== 0 && !(event.release && button === 3)) return;
+		if (event.release) {
+			const { pressCell: press, pressedUrl: url } = this;
+			this.pressCell = undefined;
+			this.pressedUrl = undefined;
+			if (press && press.x === event.x && press.y === event.y) this.dispatchCellClick(event, press.hits, url, 1, false);
+			return;
+		}
+		if ((event.button & 32) !== 0) {
+			if (this.pressCell && (this.pressCell.x !== event.x || this.pressCell.y !== event.y)) {
+				this.pressCell = undefined;
+				this.pressedUrl = undefined;
+			}
+			return;
+		}
+		this.pressCell = { x: event.x, y: event.y, hits: this.host.hitLayoutAt(event.x, event.y) };
+		this.pressedUrl = this.urlAt(event.x, event.y);
+	}
+
+	handleSelectionMouseEvent(event: SgrMouseEvent): void {
+		this.syncSelectionRows();
+		const button = event.button & 3;
+		if (button !== 0 && !(event.release && button === 3)) return;
+		const anchorScrollView = this.selectionAnchor?.scrollView;
+		const point = this.getSelectionPoint(event, anchorScrollView);
+		if (event.release) {
+			if (!this.selectionPressActive) return;
+			this.selectionPressActive = false;
+			this.stopSelectionAutoScroll();
+			if (!this.selectionAnchor) return;
+			const press = this.pressCell;
+			// Same screen cell as the press: content that moved meanwhile (streaming, scrolling) does not turn it into a drag.
+			const isClick = !this.selectionDragged && press !== undefined && press.x === event.x && press.y === event.y;
+			// A click keeps a word or line range from a multi-click and drops the one-cell range of a plain click.
+			if (!isClick) this.updateSelectionFocus(point);
+			else if (this.selectionGranularity === "character") this.selectionFocus = this.selectionAnchor;
+			const clickedUrl = isClick ? this.pressedUrl : undefined;
+			this.pressedUrl = undefined;
+			if (isClick && this.dispatchCellClick(event, press?.hits, clickedUrl, this.lastClick?.count ?? 1, true)) return;
+			if (this.host.getCopyOnSelect()) void this.copySelectionToClipboard();
+			this.host.requestRender();
+			return;
+		}
+		if ((event.button & 32) !== 0) {
+			if (!this.selectionPressActive || !this.selectionAnchor) return;
+			// Jitter inside the press cell is still a click; the pointer must leave the cell for a drag.
+			const press = this.pressCell;
+			this.selectionDragged = press === undefined || press.x !== event.x || press.y !== event.y;
+			if (this.selectionDragged) {
+				this.lastClick = undefined;
+				this.pressedUrl = undefined;
+			}
+			this.updateSelectionFocus(point);
+			this.autoScroll.update(event);
+			this.host.requestRender();
+			return;
+		}
+		if ((event.button & 4) !== 0 && this.extendFromPress(event)) return;
+		this.stopSelectionAutoScroll();
+		this.selectionPressActive = true;
+		const currentLayout = this.host.getCurrentLayout();
+		const scrollView =
+			!this.host.hasOverlay() && currentLayout ? getScrollViewsAt(currentLayout, event.x, event.y)[0] : undefined;
+		const anchor = this.getSelectionPoint(event, scrollView);
+		const word = this.getWordSelection(anchor);
+		this.lastClick = nextClick(this.lastClick, anchor, word);
+		const clickCount = this.lastClick.count;
+		const range = clickCount === 2 ? word : clickCount === 3 ? this.getLineSelection(anchor) : undefined;
+		this.selectionGranularity = range ? (clickCount === 2 ? "word" : "line") : "character";
+		this.selectionInitialRange = range;
+		this.selectionAnchor = range?.start ?? anchor;
+		this.selectionFocus = range?.end ?? anchor;
+		this.selectionDragged = false;
+		this.pressCell = { x: event.x, y: event.y, hits: this.host.hitLayoutAt(event.x, event.y) };
+		this.pressedUrl = range ? undefined : this.urlAt(event.x, event.y);
+		this.host.requestRender();
+	}
+
+	/** Re-derive the rows of anchored points: a virtualized view's rows move as items above them are measured. */
+	private syncSelectionRows(layout: LayoutFrame | undefined = this.host.getCurrentLayout()): void {
+		if (!layout) return;
+		const rebase = (point: SelectionPoint | undefined): SelectionPoint | undefined =>
+			point?.anchor && point.scrollView ? rebasePoint(point, getScrollViewBox(layout, point.scrollView)) : point;
+		this.selectionAnchor = rebase(this.selectionAnchor);
+		this.selectionFocus = rebase(this.selectionFocus);
+		const initial = this.selectionInitialRange;
+		if (initial) this.selectionInitialRange = { start: rebase(initial.start)!, end: rebase(initial.end)! };
+	}
+
+	getSelectionBounds(layout?: LayoutFrame): { start: SelectionPoint; end: SelectionPoint } | undefined {
+		this.syncSelectionRows(layout);
+		return getSelectionBounds(this.selectionAnchor, this.selectionFocus);
+	}
+
+	getActiveSelectionText(): string | undefined {
+		return getSelectionText(this.getSelectionBounds(), this.host.getPreviousScreen(), this.host.getCurrentLayout());
+	}
+
+	hasActiveSelection(): boolean {
+		let rows = 0;
+		for (const line of selectedTextLines(
+			this.getSelectionBounds(),
+			this.host.getPreviousScreen(),
+			this.host.getCurrentLayout(),
+		)) {
+			if (++rows > 1 || line.length > 0) return true;
+		}
+		return false;
+	}
+
+	async copySelectionToClipboard(): Promise<boolean> {
+		const generation = ++this.copyGeneration;
+		const result = await collectSelectionText(
+			selectedLines(this.getSelectionBounds(), this.host.getPreviousScreen(), this.host.getCurrentLayout()),
+			this.host.copySelection ? NATIVE_CLIPBOARD_BYTES : TERMINAL_CLIPBOARD_BYTES,
+			() => generation !== this.copyGeneration,
+		);
+		if (result.error) {
+			this.host.flash(result.error, COPY_ERROR_FLASH_DURATION_MS);
+			return false;
+		}
+		return result.text ? this.copyTextToClipboard(result.text) : false;
+	}
+
+	copyTextToClipboard(text: string): Promise<boolean> {
+		return copyTextToClipboard(this.host, text);
+	}
+
+	applySelection(screen: string[], layout: LayoutFrame | undefined): string[] {
+		return applySelectionToScreen(screen, this.getSelectionBounds(layout), layout, this.host.getTerminal().columns);
+	}
+}

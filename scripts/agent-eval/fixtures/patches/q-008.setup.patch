@@ -1,0 +1,11 @@
+--- a/packages/common/src/text.ts
++++ b/packages/common/src/text.ts
+@@ -22,7 +22,7 @@
+ 		if (text.length <= limit) return text;
+ 		if (tail) {
+ 			let start = text.length - limit;
+-			if (isLowSurrogate(text.charCodeAt(start))) start++;
++			if (isHighSurrogate(text.charCodeAt(start))) start++;
+ 			return text.slice(start);
+ 		}
+ 		let end = limit;

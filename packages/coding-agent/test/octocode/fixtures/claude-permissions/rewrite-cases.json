@@ -1,0 +1,446 @@
+[
+  {
+    "name": "host-original-control",
+    "rules": {},
+    "rewrite": false,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "permission_host": true,
+    "expected_host_count": 1
+  },
+  {
+    "name": "host-rewrite-control",
+    "rules": {},
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "permission_host": true,
+    "expected_host_count": 1
+  },
+  {
+    "name": "host-rewrite-new-ask",
+    "rules": {
+      "ask": [
+        "Bash(printf REWRITTEN *)"
+      ]
+    },
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "permission_host": true,
+    "expected_host_count": 1
+  },
+  {
+    "name": "host-rewrite-original-ask",
+    "rules": {
+      "ask": [
+        "Bash"
+      ]
+    },
+    "rewrite": "same",
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "permission_host": true,
+    "expected_host_count": 1
+  },
+  {
+    "name": "host-rewrite-new-deny",
+    "rules": {
+      "deny": [
+        "Bash(printf REWRITTEN *)"
+      ]
+    },
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "permission_host": true,
+    "expected_host_count": 1
+  },
+  {
+    "name": "host-only",
+    "rules": {},
+    "rewrite": false,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "permission_host": true,
+    "expected_host_count": 1,
+    "hook_output": {}
+  },
+  {
+    "name": "empty",
+    "rules": {},
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": "ORIGINAL",
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "hook_output": {
+      "hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {
+          "behavior": "allow",
+          "updatedInput": {}
+        }
+      }
+    }
+  },
+  {
+    "name": "null",
+    "rules": {},
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "hook_output": {
+      "hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {
+          "behavior": "allow",
+          "updatedInput": null
+        }
+      }
+    }
+  },
+  {
+    "name": "string",
+    "rules": {},
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "hook_output": {
+      "hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {
+          "behavior": "allow",
+          "updatedInput": "wrong"
+        }
+      }
+    }
+  },
+  {
+    "name": "deny-invalid",
+    "rules": {},
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "hook_output": {
+      "hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {
+          "behavior": "deny",
+          "updatedInput": "wrong",
+          "message": "DENY_WINS"
+        }
+      }
+    }
+  },
+  {
+    "name": "empty-permissions",
+    "rules": {},
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "hook_output": {
+      "hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {
+          "behavior": "allow",
+          "updatedInput": {
+            "command": "$REPLACEMENT_COMMAND",
+            "description": "Rewritten safe fixture"
+          },
+          "updatedPermissions": []
+        }
+      }
+    }
+  },
+  {
+    "name": "unknown-field",
+    "rules": {},
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "hook_output": {
+      "hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {
+          "behavior": "allow",
+          "updatedInput": {
+            "command": "$REPLACEMENT_COMMAND",
+            "description": "Rewritten safe fixture",
+            "extra": "extra"
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "bad-command",
+    "rules": {},
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "hook_output": {
+      "hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {
+          "behavior": "allow",
+          "updatedInput": {
+            "command": 123
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "conflicting",
+    "rules": {},
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": false,
+    "second_output": {
+      "hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {
+          "behavior": "allow",
+          "updatedInput": {
+            "command": "$OTHER_COMMAND"
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "fast-allow-late-deny",
+    "rules": {},
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2,
+      "second_events": "started\n"
+    },
+    "tool_error": false,
+    "second_output": {
+      "hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {
+          "behavior": "deny",
+          "message": "LATE_DENY"
+        }
+      }
+    }
+  },
+  {
+    "name": "fast-deny-late-allow",
+    "rules": {},
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2,
+      "second_events": "started\n"
+    },
+    "tool_error": true,
+    "second_output": {
+      "hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {
+          "behavior": "allow",
+          "updatedInput": {
+            "command": "$OTHER_COMMAND"
+          }
+        }
+      }
+    },
+    "hook_output": {
+      "hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {
+          "behavior": "deny",
+          "message": "FAST_DENY"
+        }
+      }
+    }
+  },
+  {
+    "name": "same-reply",
+    "rules": {},
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2,
+      "second_events": "started\n"
+    },
+    "tool_error": false,
+    "second_output": {
+      "hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {
+          "behavior": "allow",
+          "updatedInput": {
+            "command": "$REPLACEMENT_COMMAND"
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "different-reply",
+    "rules": {},
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": "REWRITTEN",
+      "hook_count": 1,
+      "request_count": 2,
+      "second_events": "started\n"
+    },
+    "tool_error": false,
+    "second_output": {
+      "hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {
+          "behavior": "allow",
+          "updatedInput": {
+            "command": "$OTHER_COMMAND"
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "empty-original-ask",
+    "rules": {
+      "ask": [
+        "Bash"
+      ]
+    },
+    "rewrite": true,
+    "mode": "manual",
+    "expected": {
+      "exit": 0,
+      "original": null,
+      "replacement": null,
+      "hook_count": 1,
+      "request_count": 2
+    },
+    "tool_error": true,
+    "hook_output": {
+      "hookSpecificOutput": {
+        "hookEventName": "PermissionRequest",
+        "decision": {
+          "behavior": "allow",
+          "updatedInput": {}
+        }
+      }
+    }
+  }
+]

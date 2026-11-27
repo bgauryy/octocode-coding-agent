@@ -1,0 +1,397 @@
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { realpathSync, statSync } from "node:fs";
+import { Readable, Writable } from "node:stream";
+import {
+	type ClientConnection,
+	type McpServer,
+	client,
+	methods,
+	ndJsonStream,
+	PROTOCOL_VERSION,
+	type RequestPermissionRequest,
+	type RequestPermissionResponse,
+	type SessionNotification,
+} from "@agentclientprotocol/sdk";
+import type { AcpClientHost } from "../host.ts";
+import type { ExternalBackend, ExternalReply } from "@octocodeai/octocode-contracts/external";
+import { errorMessage } from "@octocodeai/octocode-contracts/guards";
+import { withAuthentication } from "./auth.ts";
+import { AcpError, AcpRefusal, timeoutSignal } from "./errors.ts";
+import { AcpDiagnostics, AcpOutput } from "./output.ts";
+import {
+	type AcpCapabilities,
+	type AcpImage,
+	type AcpModels,
+	acpCapabilities,
+	acpModels,
+	modelRefusal,
+	promptBlocks,
+	selectModel,
+} from "./session-config.ts";
+import { untilAborted } from "@octocodeai/octocode-common/abort";
+import type { AcpTurnUpdate, Turn } from "./turn.ts";
+export type { AcpTurnUpdate } from "./turn.ts";
+
+export { AcpError } from "./errors.ts";
+
+export interface AcpConnectInput {
+	command: string;
+	args?: string[];
+	vendor: string;
+	cwd: string;
+	sessionId?: string;
+	/** An advertised model ID, selected before the connection is returned. */
+	model?: string;
+	/** MCP servers the agent's session starts with; none by default. */
+	mcpServers?: McpServer[];
+	/** The agent's own session options, sent as `_meta` when the session is created, resumed or loaded. */
+	sessionMeta?: Record<string, unknown>;
+	timeoutMs?: number;
+	/** false: an `auth_required` answer fails the connect instead of authenticating (a sign-in probe changes nothing). */
+	authenticate?: boolean;
+}
+
+export type AcpPermission = (
+	request: RequestPermissionRequest,
+	signal: AbortSignal,
+) => Promise<RequestPermissionResponse>;
+
+export class AcpBackend implements ExternalBackend {
+	private connection?: ClientConnection;
+	private readonly lifetime = new AbortController();
+	private active?: Turn;
+	private closing?: Promise<void>;
+	private cancelling?: Promise<void>;
+	private readonly stderr: AcpDiagnostics;
+	private readonly host: AcpClientHost;
+	private readonly child: ChildProcessWithoutNullStreams;
+	readonly cwd: string;
+	private currentSessionId: string;
+	private currentModels?: AcpModels;
+	private currentCapabilities: AcpCapabilities = { image: false, mcpHttp: false };
+	/** The peer advertised `session/close` and a session is open on it. */
+	private closeOnShutdown = false;
+	private readonly permission: AcpPermission;
+	private constructor(
+		host: AcpClientHost,
+		child: ChildProcessWithoutNullStreams,
+		cwd: string,
+		currentSessionId: string,
+		permission: AcpPermission,
+	) {
+		this.host = host;
+		this.stderr = new AcpDiagnostics(host.saveOutput);
+		this.child = child;
+		this.cwd = cwd;
+		this.currentSessionId = currentSessionId;
+		this.permission = permission;
+
+		child.stderr.setEncoding("utf8");
+		child.stderr.on("data", (text: string) => {
+			this.stderr.append(text);
+		});
+		child.once("error", (error) => {
+			void this.shutdown(error);
+		});
+		child.once("exit", (code, signal) => {
+			void this.shutdown(new Error(`ACP process exited (${signal ?? code}).`));
+		});
+		child.stdin.on("error", (error) => {
+			void this.shutdown(error);
+		});
+		child.stdout.on("error", (error) => {
+			void this.shutdown(error);
+		});
+	}
+
+	get sessionId(): string {
+		return this.currentSessionId;
+	}
+
+	get models(): AcpModels | undefined {
+		return this.currentModels;
+	}
+
+	/** What the agent accepts, from its `initialize` answer. */
+	get capabilities(): AcpCapabilities {
+		return this.currentCapabilities;
+	}
+
+	get isClosed(): boolean {
+		return this.lifetime.signal.aborted;
+	}
+
+	get isBusy(): boolean {
+		return this.active !== undefined && !this.isClosed;
+	}
+
+	/** The agent process this connection owns (its process tree is stopped on close). */
+	get pid(): number | undefined {
+		return this.child.pid;
+	}
+
+	static async connect(
+		host: AcpClientHost,
+		input: AcpConnectInput,
+		permission: AcpPermission,
+		signal?: AbortSignal,
+	): Promise<AcpBackend> {
+		const startup = AbortSignal.any([timeoutSignal(input.timeoutMs ?? 60_000), ...(signal ? [signal] : [])]);
+		startup.throwIfAborted();
+		const cwd = realpathSync(input.cwd);
+		if (!statSync(cwd).isDirectory()) throw new Error("ACP cwd must be a directory.");
+		if (!input.command.trim() || !input.vendor.trim())
+			throw new Error("ACP requires an executable and the real host vendor.");
+		await untilAborted(host.processTree.prepare(), startup);
+		startup.throwIfAborted();
+		const child = spawn(input.command, input.args ?? [], {
+			cwd,
+			// Never this process's own environment as is: the host removes its credentials and internal variables.
+			env: host.childEnv(input.vendor),
+			stdio: ["pipe", "pipe", "pipe"],
+			detached: process.platform !== "win32",
+			windowsHide: true,
+		});
+		host.processTree.adopt(child.pid);
+		const backend = new AcpBackend(host, child, cwd, input.sessionId ?? "", permission);
+		let phase = "initialize";
+		try {
+			const stream = ndJsonStream(
+				Writable.toWeb(child.stdin),
+				Readable.toWeb(child.stdout) as unknown as ReadableStream<Uint8Array>,
+			);
+			const connection = client({ name: "octocode-external" })
+				.onRequest(methods.client.session.requestPermission, (ctx) => backend.requestPermission(ctx.params, ctx.signal))
+				.onNotification(methods.client.session.update, (ctx) => backend.update(ctx.params))
+				.connect(stream);
+			backend.connection = connection;
+			connection.signal.addEventListener(
+				"abort",
+				() => {
+					void backend.shutdown(new Error("ACP connection closed."));
+				},
+				{ once: true },
+			);
+			const initialization = await untilAborted(
+				connection.agent.request(methods.agent.initialize, {
+					protocolVersion: PROTOCOL_VERSION,
+					clientCapabilities: {},
+				}),
+				AbortSignal.any([startup, backend.lifetime.signal]),
+			);
+			if (initialization.protocolVersion !== PROTOCOL_VERSION)
+				throw new Error(`Unsupported ACP protocol version ${initialization.protocolVersion}.`);
+			const mcpServers = input.mcpServers ?? [];
+			const meta = input.sessionMeta ? { _meta: input.sessionMeta } : {};
+			const capabilities = initialization.agentCapabilities;
+			backend.currentCapabilities = acpCapabilities(capabilities);
+			const authenticated = <T>(request: () => Promise<T>) =>
+				withAuthentication(connection, initialization.authMethods, startup, request, input.authenticate !== false);
+			if (input.sessionId) {
+				const resume = capabilities?.sessionCapabilities?.resume != null;
+				phase = resume ? "session/resume" : "session/load";
+				if (!resume && !capabilities?.loadSession)
+					throw new Error(
+						"ACP agent does not advertise session/resume or session/load; existing session was not replaced.",
+					);
+				const restored = await authenticated(() =>
+					untilAborted(
+						connection.agent.request(resume ? methods.agent.session.resume : methods.agent.session.load, {
+							sessionId: input.sessionId!,
+							cwd,
+							mcpServers,
+							...meta,
+						}),
+						startup,
+					),
+				);
+				backend.currentModels = acpModels(restored ?? {});
+			} else {
+				phase = "session/new";
+				const session = await authenticated(() =>
+					untilAborted(connection.agent.request(methods.agent.session.new, { cwd, mcpServers, ...meta }), startup),
+				);
+				if (!session.sessionId) throw new Error("ACP agent returned an empty session ID.");
+				backend.currentSessionId = session.sessionId;
+				backend.currentModels = acpModels(session);
+			}
+			backend.closeOnShutdown = capabilities?.sessionCapabilities?.close != null;
+			if (input.model) {
+				phase = backend.currentModels?.configId ? "session/set_config_option" : "session/set_model";
+				const refusal = modelRefusal(backend.currentModels, input.model);
+				if (refusal) throw new Error(refusal);
+				const { currentSessionId: id, currentModels: models } = backend;
+				backend.currentModels = await selectModel(connection, id, models!, input.model, startup);
+			}
+			startup.throwIfAborted();
+			backend.lifetime.signal.throwIfAborted();
+			return backend;
+		} catch (error) {
+			await backend.shutdown(error);
+			throw new Error(`ACP connection failed during ${phase}: ${errorMessage(error)}`, { cause: error });
+		}
+	}
+
+	async prompt(
+		text: string,
+		options: { timeoutMs: number; signal?: AbortSignal; key?: string; onUpdate?: AcpTurnUpdate; images?: AcpImage[] },
+	): Promise<ExternalReply> {
+		if (this.active) throw new AcpRefusal("ACP session already has an active prompt.");
+		if (!this.connection || this.closing)
+			throw new AcpRefusal("ACP connection is closed; connect explicitly before sending another prompt.");
+		const controller = new AbortController();
+		const requestSignal = AbortSignal.any([
+			this.lifetime.signal,
+			controller.signal,
+			...(options.signal ? [options.signal] : []),
+		]);
+		const deadline = timeoutSignal(options.timeoutMs);
+		const signal = AbortSignal.any([requestSignal, deadline]);
+		if (signal.aborted) throw new AcpRefusal("ACP prompt aborted before it was sent.");
+		const turn: Turn = {
+			controller,
+			protocolCancel: new AbortController(),
+			signal,
+			output: new AcpOutput(this.host.saveOutput),
+			onUpdate: options.onUpdate,
+		};
+		this.active = turn;
+		// A timed-out request can still emit session-scoped updates. Keep its slot until the peer
+		// settles it so a new turn cannot receive those updates. Cancellation still closes the process.
+		const cancelled = () => {
+			void this.terminatePrompt(options.signal?.reason);
+		};
+		options.signal?.addEventListener("abort", cancelled, { once: true });
+		const pending = this.connection.agent
+			.request(
+				methods.agent.session.prompt,
+				{ sessionId: this.sessionId, prompt: promptBlocks(text, options.images) },
+				// Local cancellation invalidates the turn immediately; protocol cancellation waits for owned-tree capture.
+				{ cancellationSignal: turn.protocolCancel.signal },
+			)
+			.finally(() => {
+				options.signal?.removeEventListener("abort", cancelled);
+				if (this.active === turn) this.active = undefined;
+			});
+		try {
+			const response = await untilAborted(pending, signal);
+			return turn.output.reply(response);
+		} catch (error) {
+			if (!deadline.aborted || requestSignal.aborted) await this.terminatePrompt(error);
+			throw new AcpError(
+				`ACP prompt failed: ${errorMessage(error)}`,
+				turn.output.reply(),
+				this.stderr.toString(),
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Ignore unrelated sessions and thoughts; the turn capture owns bounded previews and overflow evidence. Config updates
+	 * refresh the model state between turns too. Slash-command catalogs are the peer's own UI: they can run to hundreds of
+	 * entries and repeat every turn, so they never reach the reply.
+	 */
+	private update(notification: SessionNotification): void {
+		if (notification.sessionId !== this.sessionId) return;
+		const update = notification.update;
+		if (update.sessionUpdate === "config_option_update") {
+			this.currentModels = acpModels(update) ?? this.currentModels;
+			return;
+		}
+		if (update.sessionUpdate === "available_commands_update") return;
+		const turn = this.active;
+		if (!turn || turn.signal.aborted || update.sessionUpdate === "agent_thought_chunk") return;
+		turn.output.append(notification);
+		try {
+			turn.onUpdate?.(update);
+		} catch {
+			// The listener only displays progress: its failure must not end the turn.
+		}
+	}
+
+	private async requestPermission(
+		request: RequestPermissionRequest,
+		requestSignal: AbortSignal,
+	): Promise<RequestPermissionResponse> {
+		const cancelled: RequestPermissionResponse = { outcome: { outcome: "cancelled" } };
+		const turn = this.active;
+		if (!turn || request.sessionId !== this.sessionId || turn.signal.aborted) return cancelled;
+		const signal = AbortSignal.any([requestSignal, turn.signal]);
+		try {
+			signal.throwIfAborted();
+			const response = await untilAborted(this.permission(request, signal), signal);
+			signal.throwIfAborted();
+			const outcome = response.outcome;
+			if (outcome.outcome === "selected" && !request.options.some((option) => option.optionId === outcome.optionId)) {
+				throw new Error("ACP permission callback selected an unadvertised option.");
+			}
+			return response;
+		} catch (error) {
+			if (!signal.aborted) void this.shutdown(error);
+			return cancelled;
+		}
+	}
+
+	async cancel(): Promise<void> {
+		if (this.active) await this.terminatePrompt(new Error("ACP prompt cancelled"));
+	}
+
+	private terminatePrompt(reason: unknown): Promise<void> {
+		if (this.cancelling) return this.cancelling;
+		this.active?.controller.abort(reason);
+		this.cancelling = this.shutdown(reason, true);
+		return this.cancelling;
+	}
+
+	close(): Promise<void> {
+		return this.shutdown(new Error("ACP connection closed"));
+	}
+
+	/** Tells a peer that supports it to release the session; the process is stopped next whether or not it answers. */
+	private async closeSession(): Promise<void> {
+		const connection = this.connection;
+		if (!this.closeOnShutdown || !connection || connection.signal.aborted) return;
+		this.closeOnShutdown = false;
+		try {
+			await untilAborted(
+				connection.agent.request(methods.agent.session.close, { sessionId: this.sessionId }),
+				timeoutSignal(this.host.processTree.graceMs),
+			);
+		} catch {
+			/* The peer may be gone or slow; stopping the owned process is authoritative. */
+		}
+	}
+
+	private shutdown(reason: unknown, cancel = false): Promise<void> {
+		if (this.closing) return this.closing;
+		const turn = this.active;
+		this.closing = Promise.resolve().then(async () => {
+			try {
+				await this.host.processTree.stop(this.child.pid, async () => {
+					turn?.protocolCancel.abort(reason);
+					if (cancel && this.connection && !this.connection.signal.aborted) {
+						try {
+							await untilAborted(
+								this.connection.agent.notify(methods.agent.session.cancel, { sessionId: this.sessionId }),
+								timeoutSignal(this.host.processTree.graceMs),
+							);
+						} catch {
+							/* Owned tree shutdown is authoritative when cancellation cannot be sent. */
+						}
+					}
+					await this.closeSession();
+					this.connection?.close(reason);
+				});
+			} finally {
+				this.child.stdin.destroy();
+				this.child.stdout.destroy();
+				this.child.stderr.destroy();
+			}
+		});
+		this.lifetime.abort(reason);
+		// Child and stream listeners start this without awaiting it; awaiting callers (`close`) still see a failure.
+		this.closing.catch(() => undefined);
+		return this.closing;
+	}
+}

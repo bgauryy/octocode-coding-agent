@@ -1,0 +1,440 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { closeSharedAgentDb, compactions } from "../../../db/src/api.ts";
+import { openAgentDb, sharedAgentDb } from "../../src/storage/database.ts";
+import { SessionIndex } from "../../src/octocode/sessions/store.ts";
+import { sweepSessions } from "../../src/octocode/sessions/sweep.ts";
+import { sessionDir, sessionOutputDir, setCurrentSession } from "../../src/octocode/shared/home.ts";
+import { processStartTime } from "../../src/octocode/shared/process.ts";
+import { shotsDir } from "../../src/octocode/subagents/screenshots.ts";
+import { tmp } from "./helpers.ts";
+
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+const DEAD_PID = 9_999_999;
+
+let saved: { home?: string; db?: string };
+let home: string;
+
+beforeEach(() => {
+	saved = { home: process.env.OCTOCODE_HOME, db: process.env.OCTOCODE_AGENT_DB };
+	home = tmp();
+	process.env.OCTOCODE_HOME = home;
+	delete process.env.OCTOCODE_AGENT_DB;
+});
+
+afterEach(() => {
+	closeSharedAgentDb();
+	setCurrentSession(undefined);
+	for (const [key, value] of [
+		["OCTOCODE_HOME", saved.home],
+		["OCTOCODE_AGENT_DB", saved.db],
+	] as const) {
+		if (value === undefined) delete process.env[key];
+		else process.env[key] = value;
+	}
+});
+
+describe("session sweep", () => {
+	it("keeps an aged output or bash log the session's latest checkpoint names, in its text or its saved-results list file", async () => {
+		const agent = sharedAgentDb();
+		const index = new SessionIndex(agent);
+		agent.db.prepare("INSERT INTO workspaces (id, name, root, binding) VALUES ('w', 'w', ?, 'path')").run(tmp());
+		agent.db.prepare("INSERT INTO sessions (id, workspace_id) VALUES ('kept', 'w')").run();
+		const dir = path.join(home, "agent", "sessions", "kept");
+		const files: Record<string, string> = {};
+		for (const [kind, name] of [
+			["output", "named.txt"],
+			["output", "listed.txt"],
+			["output", "saved-results-1-1.txt"],
+			["output", "earlier.txt"],
+			["output", "unnamed.txt"],
+			["bash", "job-named.log"],
+			["bash", "job-unnamed.log"],
+		]) {
+			fs.mkdirSync(path.join(dir, kind), { recursive: true });
+			files[name] = path.join(dir, kind, name);
+			fs.writeFileSync(files[name], "x");
+		}
+		// The list too long for the summary: the checkpoint names the list file, and the list names the evidence.
+		fs.writeFileSync(files["saved-results-1-1.txt"], "~/.octocode/agent/sessions/kept/output/listed.txt\n");
+		const old = new Date(Date.now() - 31 * DAY);
+		for (const file of Object.values(files)) fs.utimesSync(file, old, old);
+		const summary = (entryId: string, text: string) =>
+			compactions.save(agent.mirror.db, {
+				workspace: "w",
+				sessionId: "kept",
+				entryId,
+				summary: text,
+				committedAt: Date.now(),
+				originVerified: true,
+				metadata: {},
+				detailFile: null,
+				detailState: "missing",
+			});
+		// Only the latest checkpoint counts: what an earlier one named and this one dropped ages out.
+		summary("e1", `## Goal\nx\n<saved-results>\n${files["earlier.txt"]}\n</saved-results>`);
+		summary(
+			"e2",
+			[
+				"## Goal\nship it",
+				`Full output: ${files["named.txt"]}`,
+				'<saved-results count="40">',
+				"The 40 saved files are listed in ~/.octocode/agent/sessions/kept/output/saved-results-1-1.txt",
+				"agent/sessions/kept/bash/job-named.log",
+				"</saved-results>",
+			].join("\n"),
+		);
+
+		await sweepSessions(index, "other", { listed: async () => new Set(["kept"]) });
+		const left = Object.keys(files).filter((name) => fs.existsSync(files[name]));
+		expect(left.sort()).toEqual(["job-named.log", "listed.txt", "named.txt", "saved-results-1-1.txt"]);
+	});
+
+	it("removes aged output of a session without a checkpoint, as before", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		sharedAgentDb().db.prepare("INSERT INTO sessions (id) VALUES (?)").run("plain");
+		const file = path.join(home, "agent", "sessions", "plain", "output", "old.txt");
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(file, "x");
+		fs.utimesSync(file, new Date(Date.now() - 31 * DAY), new Date(Date.now() - 31 * DAY));
+		await sweepSessions(index, "other", { listed: async () => new Set(["plain"]) });
+		expect(fs.existsSync(file)).toBe(false);
+	});
+
+	it("does not wait for another connection's reader before it checkpoints what it removed", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		sharedAgentDb().db.prepare("INSERT INTO sessions (id) VALUES (?)").run("plain");
+		const file = path.join(home, "agent", "sessions", "plain", "output", "old.txt");
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(file, "x");
+		fs.utimesSync(file, new Date(Date.now() - 31 * DAY), new Date(Date.now() - 31 * DAY));
+		// A reader holding a snapshot: a truncating checkpoint waits for it up to its busy timeout.
+		const reader = openAgentDb(sharedAgentDb().file);
+		try {
+			reader.db.exec("BEGIN");
+			reader.db.prepare("SELECT COUNT(*) FROM sessions").get();
+			const started = Date.now();
+			await sweepSessions(index, "other", { listed: async () => new Set(["plain"]) });
+			expect(fs.existsSync(file)).toBe(false);
+			expect(Date.now() - started).toBeLessThan(500);
+		} finally {
+			reader.db.exec("ROLLBACK");
+			reader.close();
+		}
+	});
+
+	const age = (dir: string, ms: number) => {
+		const at = new Date(Date.now() - ms);
+		for (const file of [dir, ...fs.readdirSync(dir, { recursive: true }).map((name) => path.join(dir, String(name)))])
+			fs.utimesSync(file, at, at);
+	};
+	const folder = (name: string, kinds = ["output"]) => {
+		const dir = path.join(home, "agent", "sessions", name);
+		for (const kind of kinds) fs.mkdirSync(path.join(dir, kind), { recursive: true });
+		return dir;
+	};
+
+	it("removes data of sessions Octocode no longer lists, keeps live and current ones, trims old output, and runs at most every 6 hours", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		const insert = (id: string, pid: number | null, started: string | null = null) =>
+			sharedAgentDb().db.prepare("INSERT INTO sessions (id, pid, pid_started) VALUES (?, ?, ?)").run(id, pid, started);
+		const listed = async () => new Set(["kept-file", "current"]);
+		insert("gone-file", null);
+		insert("recent-gone-file", null);
+		insert("kept-file", null);
+		insert("gone-live", process.pid);
+		// Its pid is alive but belongs to another process now (another start time): the session is gone.
+		insert("gone-reused", process.pid, "Thu Jan  1 00:00:00 1970");
+		insert("no-folder", null);
+		insert("current", DEAD_PID);
+		for (const name of ["gone-file", "kept-file", "gone-live", "gone-reused", "current"]) age(folder(name), 31 * DAY);
+		age(folder("recent-gone-file"), DAY);
+		age(folder(`_pid-${DEAD_PID}`), 31 * DAY);
+		// A folder Octocode does not list (a subagent's, a deleted session's) keeps its files as long as kept sessions keep output.
+		age(folder("subagent-recent"), 8 * DAY);
+		age(folder(`_pid-${process.pid}`), 20 * DAY);
+		age(folder("unindexed-old"), 31 * DAY);
+		age(folder("unindexed-new"), 3 * DAY);
+		const oldLog = path.join(folder("kept-file"), "output", "old.txt");
+		const newLog = path.join(folder("kept-file"), "output", "new.txt");
+		fs.writeFileSync(oldLog, "x");
+		fs.writeFileSync(newLog, "x");
+		fs.utimesSync(oldLog, new Date(Date.now() - 31 * DAY), new Date(Date.now() - 31 * DAY));
+
+		const removed = await sweepSessions(index, "current", { listed });
+		expect(removed.sort()).toEqual(["_pid-9999999", "gone-file", "gone-reused", "unindexed-old"]);
+		const left = fs.readdirSync(path.join(home, "agent", "sessions")).sort();
+		expect(left).toEqual(
+			[
+				`_pid-${process.pid}`,
+				"current",
+				"gone-live",
+				"kept-file",
+				"recent-gone-file",
+				"subagent-recent",
+				"unindexed-new",
+			].sort(),
+		);
+		expect(index.get("gone-file")).toBeUndefined();
+		expect(index.get("no-folder")).toBeUndefined();
+		expect(index.get("current")).toBeDefined();
+		expect(index.get("kept-file")).toBeDefined();
+		expect(fs.existsSync(oldLog)).toBe(false);
+		expect(fs.existsSync(newLog)).toBe(true);
+
+		age(folder("unindexed-new"), 30 * DAY);
+		expect(await sweepSessions(index, "current", { listed })).toEqual([]);
+		expect(await sweepSessions(index, "current", { listed, now: Date.now() + 7 * HOUR })).toEqual(["unindexed-new"]);
+	});
+
+	it("walks and removes without synchronous file calls, so a large sessions folder never blocks the UI", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		// Both database files open before the spies, as they are in a running session: opening one is not a walk.
+		expect(index.agent.mirror.db.isOpen).toBe(true);
+		age(folder("unindexed-old", ["output", "bash", "checkpoints/blobs"]), 31 * DAY);
+		const log = path.join(folder("kept"), "output", "old.txt");
+		fs.writeFileSync(log, "x");
+		fs.utimesSync(log, new Date(Date.now() - 31 * DAY), new Date(Date.now() - 31 * DAY));
+		const sync = (["statSync", "readdirSync", "rmSync", "existsSync"] as const).map((name) => vi.spyOn(fs, name));
+		try {
+			expect(await sweepSessions(index, "current", { force: true, listed: async () => new Set(["kept"]) })).toEqual([
+				"unindexed-old",
+			]);
+			for (const spy of sync) expect(spy, spy.getMockName()).not.toHaveBeenCalled();
+		} finally {
+			for (const spy of sync) spy.mockRestore();
+		}
+		expect(fs.existsSync(log)).toBe(false);
+	});
+
+	it("preserves orphan archive copies whose complete summary and committed time cannot be recovered", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		const sessions = path.join(home, "agent", "sessions");
+		// Everything else in both folders is old; one has just archived a compaction, the other has not for a month.
+		const active = folder("unindexed-archiving", ["output", "archive"]);
+		const idle = folder("unindexed-idle", ["output", "archive"]);
+		fs.writeFileSync(path.join(active, "archive", "1-c1.md"), "segment");
+		fs.writeFileSync(path.join(idle, "archive", "1-c1.md"), "segment");
+		age(active, 31 * DAY);
+		age(idle, 31 * DAY);
+		fs.utimesSync(path.join(active, "archive"), new Date(), new Date());
+		expect(await sweepSessions(index, "current", { force: true, listed: async () => new Set<string>() })).toEqual([]);
+		expect(fs.existsSync(path.join(sessions, "unindexed-idle", "archive", "1-c1.md"))).toBe(true);
+		expect(fs.existsSync(path.join(active, "archive", "1-c1.md"))).toBe(true);
+		// A kept session keeps its archive: it is the searchable twin of the transcript.
+		const kept = folder("kept", ["output", "archive"]);
+		fs.writeFileSync(path.join(kept, "archive", "1-c1.md"), "segment");
+		age(kept, 31 * DAY);
+		expect(await sweepSessions(index, "current", { force: true, listed: async () => new Set(["kept"]) })).toEqual([]);
+		expect(fs.existsSync(path.join(kept, "archive", "1-c1.md"))).toBe(true);
+		// Age alone never deletes an archive without a verifiable retained summary.
+		age(active, 31 * DAY);
+		expect(await sweepSessions(index, "current", { force: true, listed: async () => new Set(["kept"]) })).toEqual([]);
+		expect(fs.existsSync(path.join(active, "archive", "1-c1.md"))).toBe(true);
+	});
+
+	it("skips a malformed session id instead of abandoning the sweep", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		age(folder("unindexed-old"), 31 * DAY);
+		expect(
+			await sweepSessions(index, "current", { force: true, listed: async () => new Set(["..", "", "kept"]) }),
+		).toEqual(["unindexed-old"]);
+	});
+
+	it("removes nothing when Octocode cannot list its sessions", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		age(folder("unindexed-old"), 31 * DAY);
+		expect(
+			await sweepSessions(index, "current", { force: true, listed: async () => Promise.reject(new Error("no")) }),
+		).toEqual([]);
+		expect(fs.existsSync(path.join(home, "agent", "sessions", "unindexed-old"))).toBe(true);
+		// The failed sweep does not count: the next session start tries again instead of waiting 6 hours.
+		expect(await sweepSessions(index, "current", { listed: async () => Promise.reject(new Error("no")) })).toEqual([]);
+		expect(await sweepSessions(index, "current", { listed: async () => new Set<string>() })).toEqual(["unindexed-old"]);
+	});
+
+	it("keeps the folders of sessions Octocode keeps in a recorded custom session dir, still removes true orphans", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		const savedAgentDir = process.env.OCTOCODE_CODING_AGENT_DIR;
+		process.env.OCTOCODE_CODING_AGENT_DIR = tmp();
+		try {
+			const custom = tmp();
+			const id = "01a1f000-0000-7000-8000-000000000001";
+			const header = { type: "session", version: 3, id, timestamp: new Date().toISOString(), cwd: tmp() };
+			fs.writeFileSync(path.join(custom, `2026-01-01T00-00-00-000Z_${id}.jsonl`), `${JSON.stringify(header)}\n`);
+			index.addSessionDir(custom);
+			index.addSessionDir(custom);
+			expect(index.sessionDirs()).toEqual([custom]);
+			age(folder(id), 31 * DAY);
+			age(folder("orphan"), 31 * DAY);
+			expect(await sweepSessions(index, "current", { force: true })).toEqual(["orphan"]);
+			expect(fs.existsSync(path.join(home, "agent", "sessions", id))).toBe(true);
+		} finally {
+			if (savedAgentDir === undefined) delete process.env.OCTOCODE_CODING_AGENT_DIR;
+			else process.env.OCTOCODE_CODING_AGENT_DIR = savedAgentDir;
+		}
+	});
+
+	it("keeps the sessions of a recorded dir that cannot be read, and still sweeps everything else", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		const savedAgentDir = process.env.OCTOCODE_CODING_AGENT_DIR;
+		process.env.OCTOCODE_CODING_AGENT_DIR = tmp();
+		try {
+			const missing = path.join(tmp(), "removed");
+			fs.mkdirSync(missing);
+			index.addSessionDir(missing);
+			index.start("in-missing", missing);
+			index.end("in-missing");
+			// A row from before the dir was recorded: where its session lived is unknown, so it is kept too.
+			sharedAgentDb().db.prepare("INSERT INTO sessions (id) VALUES (?)").run("unknown-dir");
+			fs.rmSync(missing, { recursive: true });
+			for (const name of ["in-missing", "unknown-dir", "orphan"]) age(folder(name), 31 * DAY);
+			expect(await sweepSessions(index, "current", { force: true })).toEqual(["orphan"]);
+			for (const name of ["in-missing", "unknown-dir"])
+				expect(fs.existsSync(path.join(home, "agent", "sessions", name))).toBe(true);
+			expect(index.get("in-missing")).toBeDefined();
+			expect(index.get("unknown-dir")).toBeDefined();
+			// The dir stays recorded: once it can be read again (remounted), its sessions are listed from it.
+			expect(index.sessionDirs()).toEqual([missing]);
+		} finally {
+			if (savedAgentDir === undefined) delete process.env.OCTOCODE_CODING_AGENT_DIR;
+			else process.env.OCTOCODE_CODING_AGENT_DIR = savedAgentDir;
+		}
+	});
+
+	it("keeps the reports waiting for a kept session's next start however old; they go with an unlisted session's folder", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		const waiting = (name: string) => {
+			const dir = folder(name, ["output", "reports/pending"]);
+			fs.writeFileSync(path.join(dir, "reports", "pending", "1-a-general-ab12.json"), "{}");
+			age(dir, 31 * DAY);
+			return path.join(dir, "reports", "pending", "1-a-general-ab12.json");
+		};
+		const kept = waiting("kept");
+		const gone = waiting("gone");
+		expect(await sweepSessions(index, "current", { force: true, listed: async () => new Set(["kept"]) })).toEqual([
+			"gone",
+		]);
+		expect(fs.existsSync(kept)).toBe(true);
+		expect(fs.existsSync(gone)).toBe(false);
+	});
+
+	it("follows OCTOCODE_CLEANUP_DAYS: 0 turns the sweep off, N days sets how long output is kept", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		const listed = async () => new Set<string>();
+		age(folder("unindexed-old"), 31 * DAY);
+		const log = path.join(folder("current"), "output", "log.txt");
+		fs.writeFileSync(log, "x");
+		fs.utimesSync(log, new Date(Date.now() - 3 * DAY), new Date(Date.now() - 3 * DAY));
+		expect(
+			await sweepSessions(index, "current", {
+				listed,
+				force: true,
+				env: { ...process.env, OCTOCODE_CLEANUP_DAYS: "0" },
+			}),
+		).toEqual([]);
+		expect(fs.existsSync(path.join(home, "agent", "sessions", "unindexed-old"))).toBe(true);
+		await sweepSessions(index, "current", {
+			listed,
+			force: true,
+			env: { ...process.env, OCTOCODE_CLEANUP_DAYS: "5" },
+		});
+		expect(fs.existsSync(log)).toBe(true);
+		await sweepSessions(index, "current", {
+			listed,
+			force: true,
+			env: { ...process.env, OCTOCODE_CLEANUP_DAYS: "2" },
+		});
+		expect(fs.existsSync(log)).toBe(false);
+	});
+
+	it("removes the checkpoints of a kept session left alone for OCTOCODE_CLEANUP_DAYS, never the current or a running session's", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		sharedAgentDb().db.prepare("INSERT INTO sessions (id, pid) VALUES (?, ?)").run("live", process.pid);
+		const listed = async () => new Set(["idle", "active", "current", "live"]);
+		const checkpoints = (name: string, days: number) => {
+			const dir = path.join(folder(name, ["output", "checkpoints/blobs"]), "checkpoints");
+			fs.writeFileSync(path.join(dir, "journal.jsonl"), "{}\n");
+			fs.writeFileSync(path.join(dir, "blobs", "abc"), "x");
+			age(dir, days * DAY);
+			return dir;
+		};
+		const idle = checkpoints("idle", 31);
+		const current = checkpoints("current", 31);
+		const live = checkpoints("live", 31);
+		// A recent journal keeps its old blobs: they may still be what a rewind restores.
+		const active = checkpoints("active", 31);
+		fs.utimesSync(path.join(active, "journal.jsonl"), new Date(), new Date());
+		await sweepSessions(index, "current", { listed, force: true });
+		expect(fs.existsSync(idle)).toBe(false);
+		expect(fs.existsSync(path.dirname(idle))).toBe(true);
+		for (const dir of [current, live, active]) expect(fs.existsSync(path.join(dir, "blobs", "abc"))).toBe(true);
+	});
+
+	it("keeps the owner record and logs of a job whose Octocode still runs, however old, and ages out the rest", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		const bash = path.join(folder("kept", ["bash"]), "bash");
+		const job = (name: string, owner: Record<string, unknown>, host?: string) => {
+			const log = path.join(bash, `${name}.log`);
+			for (const file of [log, `${log}.1`]) fs.writeFileSync(file, "x");
+			fs.writeFileSync(
+				path.join(bash, `${name}.job.json`),
+				JSON.stringify({ id: name, pid: DEAD_PID, command: "server", log, owner, ...(host ? { host } : {}) }),
+			);
+		};
+		job("bash-1-1", { pid: process.pid, started: processStartTime(process.pid) }, os.hostname());
+		job("bash-2-1", { pid: DEAD_PID });
+		// Its owner runs on another host sharing this folder: it cannot be judged here, so it stays.
+		job("bash-3-1", { pid: DEAD_PID }, `not-${os.hostname()}`);
+		age(bash, 31 * DAY);
+		await sweepSessions(index, "current", { listed: async () => new Set(["kept"]), force: true });
+		expect(fs.readdirSync(bash).sort()).toEqual([
+			"bash-1-1.job.json",
+			"bash-1-1.log",
+			"bash-1-1.log.1",
+			"bash-3-1.job.json",
+			"bash-3-1.log",
+			"bash-3-1.log.1",
+		]);
+	});
+
+	it("keeps a job record that cannot be read, with its log, and ages out one that reads but is not a record", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		const bash = path.join(folder("kept", ["bash"]), "bash");
+		// A directory under a record's name cannot be read as a file: the job cannot be judged, so it is not swept.
+		fs.mkdirSync(path.join(bash, "bash-4-1.job.json"));
+		fs.writeFileSync(path.join(bash, "bash-4-1.log"), "x");
+		fs.writeFileSync(path.join(bash, "bash-4-1.log.1"), "x");
+		fs.writeFileSync(path.join(bash, "bash-5-1.job.json"), "not json");
+		fs.writeFileSync(path.join(bash, "bash-5-1.log"), "x");
+		age(bash, 31 * DAY);
+		await sweepSessions(index, "current", { listed: async () => new Set(["kept"]), force: true });
+		expect(fs.readdirSync(bash).sort()).toEqual(["bash-4-1.job.json", "bash-4-1.log", "bash-4-1.log.1"]);
+	});
+
+	it("removes old subagent screenshots, following OCTOCODE_CLEANUP_DAYS", async () => {
+		const index = new SessionIndex(sharedAgentDb());
+		const dir = shotsDir();
+		fs.mkdirSync(dir, { recursive: true });
+		const old = path.join(dir, "old-1.png");
+		const fresh = path.join(dir, "new-1.png");
+		fs.writeFileSync(old, "x");
+		fs.writeFileSync(fresh, "x");
+		fs.utimesSync(old, new Date(Date.now() - 31 * DAY), new Date(Date.now() - 31 * DAY));
+		await sweepSessions(index, "current", { listed: async () => new Set<string>(), force: true });
+		expect(fs.existsSync(old)).toBe(false);
+		expect(fs.existsSync(fresh)).toBe(true);
+	});
+
+	it("writes session output under the current session folder, owner-only", () => {
+		setCurrentSession("a/b");
+		const dir = sessionOutputDir("bash");
+		expect(dir).toBe(path.join(sessionDir("a/b"), "bash"));
+		if (process.platform !== "win32")
+			for (const each of [dir, sessionDir("a/b"), path.dirname(sessionDir("a/b"))])
+				expect(fs.statSync(each).mode & 0o777).toBe(0o700);
+	});
+});

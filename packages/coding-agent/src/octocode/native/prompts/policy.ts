@@ -1,0 +1,151 @@
+import { resolveRetention } from "../../../storage/retention.ts";
+import { renderPrompt } from "../../../core/prompt-template.ts";
+import { childReportRules } from "./child-reports.ts";
+import { renderPolicySection, renderSectionChunks, SYSTEM_PROMPT_SECTIONS } from "../../../core/system-prompt-spec.ts";
+import type { ResolvedRoles } from "../../../../../mcp/src/api.ts";
+
+/** The research server the policy routes code search to: its namespace prefix and full tool names, by role. */
+export type ResearchContext = Pick<NonNullable<ResolvedRoles["research"]>, "prefix" | "reader" | "search" | "judge">;
+
+/**
+ * Octocode guidance, added to Octocode's structured system prompt as the `octocode` sections (Octocode wraps each section
+ * in tags and records only changed sections). `sections/index.md` lists them with each one's ordered chunk list
+ * of prompt files (see `README.md` beside this file); this file derives the flags once and renders those templates.
+ * Octocode already lists the active tools with their guidelines, AGENTS.md context and skills, so the policy only adds
+ * judgment and routing; per-tool usage lives in each tool's description and guidelines. Octocode's base prompt already
+ * sets the identity; the skills section owns when to load a skill; a child's task owns its report contract (`report.ts`).
+ * It is rebuilt only when its inputs change, preserving a stable prefix; cache reuse depends on the provider. A subagent's
+ * prompt carries nothing unique to that child (its id, parent and scratch folder arrive in its task), so siblings can
+ * share a stable prefix.
+ */
+interface PromptInputs {
+	/** The research MCP server, from its entry's roles, when this agent can reach it: the research section then routes code search to it and names its tools. */
+	research?: ResearchContext | undefined;
+	/** Subagent profile names and one-line descriptions, with the model each runs on when known. */
+	profiles: Array<{ name: string; description: string; model?: string | undefined }>;
+	/** The coordinator's model, providers and purpose routes, frozen per session (`subagents/routing-watch.ts`). */
+	routing?:
+		| { sessionModel: string; providers: Array<{ id: string; count: number }>; small: string; medium: string }
+		| undefined;
+	/** Browser specialists to use when the main session has no browser tool. */
+	browserProfiles?: string[];
+	/** Desktop specialists to use for native apps; empty without Cua Driver, or when the main session holds the desktop tools. */
+	desktopProfiles?: string[];
+	/** False inside a subagent: no delegation, report back to the parent. */
+	canDelegate: boolean;
+	/** Whether this top-level session runs in a linked worktree: a proxy of the orchestrator that created it. */
+	linked?: boolean;
+	/** Whether the current request exposes the agent tool. */
+	canUseAgent?: boolean;
+	/** Whether the agent tool declares `runner`: an installed vendor CLI can take a task. */
+	canStartRunner?: boolean;
+	/** Profile-level read-only role of a subagent (the main session never is one), enforced separately by the permission layer. */
+	readOnly?: boolean;
+	/** Whether a file-writing tool is active (default true): a read-only agent may still save permitted reports and evidence. */
+	canSave?: boolean;
+	/** Whether `bash` is active; a read-only agent's commands must then be read-only. */
+	canShell?: boolean;
+	/** Whether the research server's file reader is declared (default true): the research section names it only then. */
+	canReadLocal?: boolean;
+	/** Whether the tool that asks the user is declared (default true). */
+	canAsk?: boolean;
+	/** Whether the current request exposes the web lookup tool. */
+	canWeb?: boolean;
+	/** Whether the `backlog` and `backlogPlan` tools are declared (default true): delegation plans and waits on items only then. */
+	canBacklog?: boolean;
+	/** Whether MCP tools are available; their tools can write too. */
+	canMcp?: boolean;
+	/** Whether this agent drives its own isolated browser: its profile declares `browser.control` and it holds the browser server. */
+	browserControl?: boolean;
+	/** Whether this agent controls the desktop: its profile declares `desktop.control`. */
+	desktopControl?: boolean;
+	/**
+	 * Whether the main session can load the `octocode-subagents` skill, which its first child task delivers: the children
+	 * section then leaves the report rules to it.
+	 */
+	subagentsSkill?: boolean;
+	/** Days an untouched scratch folder is kept (`retention.days`; 0 keeps it); default from `resolveRetention`. */
+	scratchDays?: number;
+}
+
+/** The flags every policy file reads, derived once from the inputs. */
+function policyFlags(input: PromptInputs) {
+	const main = input.canDelegate;
+	// Only a subagent is read-only: `turn.ts` derives the input from the child's profile.
+	const readOnly = input.readOnly === true && !main;
+	const shell = input.canShell !== false;
+	const web = input.canWeb !== false;
+	const days = input.scratchDays ?? resolveRetention().days;
+	const research = input.research;
+	return {
+		// Audience: the session that answers the user, or a subagent working to its task (which its parent wrote for the user).
+		main,
+		// A lean child renders `lean.ts` instead of these sections; shared partials read the flag.
+		lean: false,
+		requester: main ? "the user" : "your task",
+		readOnly,
+		// Tools this request holds. The research route names the server by its namespace (`core/system-prompt.ts` reads it
+		// there) and the reader by name behind `localReader`; its search tools stay unnamed, since no flag says which are declared.
+		research: research !== undefined,
+		"research.prefix": research?.prefix ?? "",
+		"research.reader": research ? `\`${research.reader}\`` : "",
+		shell,
+		web,
+		mcp: input.canMcp !== false,
+		localReader: input.canReadLocal !== false,
+		askUser: input.canAsk !== false,
+		backlog: input.canBacklog !== false,
+		browserControl: input.browserControl === true,
+		desktopControl: input.desktopControl === true,
+		canSave: input.canSave !== false,
+		linked: input.linked === true,
+		agentTool: input.canUseAgent !== false,
+		runner: input.canStartRunner === true,
+		subagentsSkill: main && input.subagentsSkill === true,
+		// Rendered only when that skill cannot be loaded; its text is the skill's own section.
+		childReports: main && input.subagentsSkill !== true ? childReportRules() : "",
+		// Combinations a template reads by name.
+		gitState: !main && shell,
+		// A browser or desktop specialist: code and dependency research routes do not apply to it.
+		controlsApp: input.browserControl === true || input.desktopControl === true,
+		// The scratch sweep's own setting.
+		retention: renderPrompt("policy/scratch.md", { main, keepsScratch: days === 0, days, oneDay: days === 1 }),
+	};
+}
+
+/** A model route in backticks, or as prose when it is a routing error. */
+const quote = (value: string) => (/\s/.test(value) ? value : `\`${value}\``);
+
+/** A provider with how many of its models can run a task: `openai` (41). */
+export const providerCount = ({ id, count }: { id: string; count: number }): string => `${quote(id)} (${count})`;
+
+/** Throws `PolicyRenderError` when a section's template does not render: the caller must not go on without the policy. */
+export function octocodePromptSections(input: PromptInputs): Record<string, string> {
+	const routing = input.routing;
+	const values = {
+		...renderPolicySection("policy", () => policyFlags(input)),
+		browserProfiles: (input.browserProfiles ?? []).map((name) => `\`${name}\``).join(", "),
+		desktopProfiles: (input.desktopProfiles ?? []).map((name) => `\`${name}\``).join(", "),
+		profiles: input.profiles
+			.map(
+				(profile) =>
+					`  - ${profile.name}${profile.model ? ` (${quote(profile.model)})` : ""}${profile.description ? `: ${profile.description}` : ""}`,
+			)
+			.join("\n"),
+		providers: routing ? routing.providers.map(providerCount).join(", ") : "",
+		sessionModel: routing ? quote(routing.sessionModel) : "",
+		smallRoute: routing ? quote(routing.small) : "",
+		mediumRoute: routing ? quote(routing.medium) : "",
+	};
+	return Object.fromEntries(
+		SYSTEM_PROMPT_SECTIONS.filter((section) => section.group === "policy").map(({ name }) => [
+			name,
+			renderPolicySection(name, () => renderSectionChunks(name, values)),
+		]),
+	);
+}
+
+/** Complete policy text for SDK consumers and prompt inspection: every section, `children` included. */
+export function octocodePrompt(input: PromptInputs): string {
+	return Object.values(octocodePromptSections(input)).filter(Boolean).join("\n\n");
+}

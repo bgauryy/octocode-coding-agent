@@ -1,0 +1,172 @@
+import type { ApplicationAwaiting, Question } from "@octocodeai/octocode-contracts";
+import { getApplicationPortForSession } from "../../core/application/index.ts";
+import type { FeatureSetup, FeatureContext } from "../../core/features/index.ts";
+import type { AskView } from "../../core/features/types.ts";
+import { redactSecrets } from "@octocodeai/octocode-common/sanitize";
+import { clipText, firstLine } from "../shared/util.ts";
+import { promptTitle } from "../shared/locks.ts";
+
+/**
+ * What a dialog asks, for the browser: a confirmation and an `ask` dialog with an approval question (every permission
+ * prompt) are approvals; a choice, an input or a custom dialog is a question. With the dialog's `id` (the broker's), its
+ * options and whether it takes text, a client can answer it with the `answer` command; an editor dialog, or a custom one
+ * without a remote answer shape, carries no id and stays terminal-only.
+ */
+export function awaitingFor(event: {
+	kind: string;
+	title?: string;
+	id?: string;
+	options?: string[];
+	allowsText?: boolean;
+	approval?: boolean;
+	ask?: AskView;
+	questions?: Question[];
+}): ApplicationAwaiting {
+	const title = promptTitle(event);
+	// The heading is one clipped line; the whole question (the card's own, else the title's later lines) rides beside it.
+	const full = clipText(redactSecrets((event.ask?.question ?? title ?? "").trim()), 4000);
+	const shortTitle = title ? clipText(redactSecrets(firstLine(title)), 200) : undefined;
+	const question = full && full !== shortTitle ? full : undefined;
+	// A custom dialog is answerable only when it opened with a remote answer shape (askUser), which gives it options.
+	const answerable =
+		event.id !== undefined &&
+		(["select", "confirm", "input"].includes(event.kind) || (event.kind === "custom" && event.options !== undefined));
+	if (event.questions) {
+		// The typed questions carry everything (options by id, write-ins, approval roles); the older fields stay empty.
+		return {
+			kind: event.approval ? "approval" : "question",
+			...(shortTitle ? { title: shortTitle } : {}),
+			...(question ? { question } : {}),
+			...(event.id !== undefined ? { id: event.id, options: [], allowsText: false } : {}),
+			questions: event.questions.map(redactedQuestion),
+		};
+	}
+	return {
+		kind: event.kind === "confirm" || event.approval ? "approval" : "question",
+		...(shortTitle ? { title: shortTitle } : {}),
+		...(question ? { question } : {}),
+		...(answerable
+			? {
+					id: event.id,
+					options: (event.options ?? []).slice(0, 50).map((option) => clipText(redactSecrets(option), 200)),
+					allowsText: event.allowsText === true,
+					...(event.ask ? cardFields(event.ask, event.options?.length ?? 0) : {}),
+				}
+			: {}),
+	};
+}
+
+const text = (value: string, max: number) => clipText(redactSecrets(value), max);
+
+/** A question for the browser: every string redacted; its shape and bounds are the contract's own. */
+function redactedQuestion(q: Question): Question {
+	const redacted = (value: string) => redactSecrets(value);
+	return {
+		...q,
+		question: redacted(q.question),
+		...(q.header ? { header: redacted(q.header) } : {}),
+		...(q.meta ? { meta: q.meta.map(redacted) } : {}),
+		...(q.body ? { body: { ...q.body, text: redacted(q.body.text) } } : {}),
+		...(q.notes ? { notes: q.notes.map((note) => ({ ...note, text: redacted(note.text) })) } : {}),
+		...(q.options
+			? {
+					options: q.options.map((option) => ({
+						...option,
+						label: redacted(option.label),
+						...(option.description ? { description: redacted(option.description) } : {}),
+					})),
+				}
+			: {}),
+		...(q.approval ? { approval: { ...q.approval, targets: q.approval.targets.map(redacted) } } : {}),
+	};
+}
+
+/**
+ * The ask card's content for the browser, from the dialog's own view: every string redacted and bounded, the option
+ * descriptions aligned with the dialog's options (a view whose options differ from them is not drawn).
+ */
+function cardFields(ask: AskView, optionCount: number): Partial<ApplicationAwaiting> {
+	const meta = (ask.meta ?? []).slice(0, 12).map((line) => text(line, 400));
+	const body = ask.body && {
+		text: text(ask.body.text, 20_000),
+		...(ask.body.label ? { label: text(ask.body.label, 400) } : {}),
+		...(ask.body.collapsible ? { collapsible: true } : {}),
+		...(ask.body.previewLines ? { previewLines: Math.min(100, Math.max(1, Math.floor(ask.body.previewLines))) } : {}),
+	};
+	const details = (ask.notes ?? []).slice(0, 12).map((note) => ({ text: text(note.text, 800), tone: note.tone }));
+	const aligned = ask.options.length === optionCount;
+	const optionInfo = aligned
+		? ask.options.slice(0, 50).map((option) => ({
+				...(option.description ? { description: text(option.description, 400) } : {}),
+				...(option.recommended ? { recommended: true } : {}),
+				...(option.tone === "danger" ? { danger: true } : {}),
+			}))
+		: [];
+	return {
+		...(meta.length ? { meta } : {}),
+		...(body ? { body } : {}),
+		...(details.length ? { details } : {}),
+		...(optionInfo.some((info) => Object.keys(info).length) ? { optionInfo } : {}),
+		...(aligned && ask.writeIn ? { writeIn: text(ask.writeIn.label, 200) } : {}),
+		...(aligned && ask.timeoutSeconds ? { timeoutSeconds: ask.timeoutSeconds } : {}),
+	};
+}
+
+interface OpenDialog {
+	/** The broker's id of the dialog (`ui_prompt_start.id`), which `ui_prompt_end` repeats. */
+	id: string | undefined;
+	awaiting: ApplicationAwaiting;
+	/** The dialog stays a wait when the run settles (a subagent's dialog, relayed to this session). */
+	blocking: boolean;
+}
+
+/**
+ * Tell the application snapshot that the session is blocked on a dialog, so the browser shows "waiting for you" instead
+ * of the last tool or "Thinking", and can answer it when the dialog carries an id. Dialogs the user opens while no run is
+ * active (a `/permissions` picker) are not waits and are not reported; dialogs opened as `blocking` (a background
+ * subagent's approval, relayed to this session) are, idle or not, and outlive the run's end. Nested dialogs (an input over
+ * a select) are reported too, so the client always sees the dialog that is actually open. Open dialogs are tracked by
+ * the broker's id: a close removes its own dialog, whatever order dialogs close in.
+ */
+export function registerAwaiting(api: FeatureSetup): void {
+	const publish = (ctx: FeatureContext, awaiting?: ApplicationAwaiting) =>
+		getApplicationPortForSession(ctx.sessionManager.getSessionId())?.publishDomain({
+			type: "session.awaiting",
+			...(awaiting ? { awaiting } : {}),
+		});
+	// Dialogs can stack (an approval over a question); the newest open one is shown until all close.
+	let open: OpenDialog[] = [];
+	api.bus.on("session_start", async () => {
+		open = [];
+	});
+	api.bus.on("ui_prompt_start", async (event, ctx) => {
+		const blocking = event.blocking === true;
+		if (ctx.isIdle() && !blocking) return;
+		const awaiting = awaitingFor(event);
+		open.push({ id: event.id, awaiting, blocking });
+		publish(ctx, awaiting);
+	});
+	api.bus.on("ui_prompt_end", async (event, ctx) => {
+		const index = open.findIndex((dialog) => dialog.id === event.id);
+		if (index < 0) return;
+		open.splice(index, 1);
+		publish(ctx, open.at(-1)?.awaiting);
+	});
+	// /new or /resume replaces the session and disposes its application service: tell the page the dialog is gone first.
+	api.bus.on("session_shutdown", async (_event, ctx) => {
+		if (open.length === 0) return;
+		open = [];
+		try {
+			publish(ctx);
+		} catch {
+			// The service is already closed; the session is gone with its snapshot.
+		}
+	});
+	// The run is over: what it waited on is not a wait any more, but a relayed subagent dialog still is.
+	api.bus.on("agent_settled", async (_event, ctx) => {
+		const kept = open.filter((dialog) => dialog.blocking);
+		if (kept.length === open.length) return;
+		open = kept;
+		publish(ctx, open.at(-1)?.awaiting);
+	});
+}

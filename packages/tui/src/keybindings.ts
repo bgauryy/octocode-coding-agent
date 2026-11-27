@@ -1,0 +1,368 @@
+import { matchesParsedKey } from "./keys/match.ts";
+import { type ParsedKeyId, parseKeyId } from "./keys/parse-key-id.ts";
+import { isKittyProtocolActive } from "./keys/state.ts";
+import type { KeyId } from "./keys/key-id.ts";
+
+/**
+ * Global keybinding registry.
+ * Downstream packages can add keybindings via declaration merging.
+ */
+export interface Keybindings {
+	// Editor navigation and editing
+	"tui.editor.cursorUp": true;
+	"tui.editor.cursorDown": true;
+	"tui.editor.historyPrevious": true;
+	"tui.editor.historyNext": true;
+	"tui.editor.cursorLeft": true;
+	"tui.editor.cursorRight": true;
+	"tui.editor.cursorWordLeft": true;
+	"tui.editor.cursorWordRight": true;
+	"tui.editor.cursorLineStart": true;
+	"tui.editor.cursorLineEnd": true;
+	"tui.editor.jumpForward": true;
+	"tui.editor.jumpBackward": true;
+	"tui.editor.pageUp": true;
+	"tui.editor.pageDown": true;
+	"tui.editor.deleteCharBackward": true;
+	"tui.editor.deleteCharForward": true;
+	"tui.editor.deleteWordBackward": true;
+	"tui.editor.deleteWordForward": true;
+	"tui.editor.deleteToLineStart": true;
+	"tui.editor.deleteToLineEnd": true;
+	"tui.editor.yank": true;
+	"tui.editor.yankPop": true;
+	"tui.editor.undo": true;
+	// Generic input actions
+	"tui.input.newLine": true;
+	"tui.input.submit": true;
+	"tui.input.tab": true;
+	"tui.input.copy": true;
+	// Generic selection actions
+	"tui.select.up": true;
+	"tui.select.down": true;
+	"tui.select.pageUp": true;
+	"tui.select.pageDown": true;
+	"tui.select.home": true;
+	"tui.select.end": true;
+	"tui.select.confirm": true;
+	"tui.select.cancel": true;
+	// Alternate-screen viewport navigation
+	"tui.altScreen.pageUp": true;
+	"tui.altScreen.pageDown": true;
+	"tui.altScreen.halfPageUp": true;
+	"tui.altScreen.halfPageDown": true;
+	"tui.altScreen.lineUp": true;
+	"tui.altScreen.lineDown": true;
+	"tui.altScreen.previousPrompt": true;
+	"tui.altScreen.nextPrompt": true;
+	"tui.altScreen.search": true;
+	"tui.altScreen.searchNext": true;
+	"tui.altScreen.searchPrevious": true;
+	"tui.altScreen.searchClose": true;
+	"tui.altScreen.top": true;
+	"tui.altScreen.bottom": true;
+	"tui.altScreen.toggleMouse": true;
+}
+
+export type Keybinding = keyof Keybindings;
+
+export interface KeybindingDefinition {
+	defaultKeys: KeyId | KeyId[];
+	description?: string;
+}
+
+export type KeybindingDefinitions = Record<string, KeybindingDefinition>;
+export type KeybindingsConfig = Record<string, KeyId | KeyId[] | undefined>;
+
+export const TUI_KEYBINDINGS = {
+	"tui.editor.cursorUp": { defaultKeys: "up", description: "Move cursor up" },
+	"tui.editor.cursorDown": { defaultKeys: "down", description: "Move cursor down" },
+	"tui.editor.historyPrevious": {
+		defaultKeys: [],
+		description: "Select previous prompt history entry",
+	},
+	"tui.editor.historyNext": {
+		defaultKeys: [],
+		description: "Select next prompt history entry",
+	},
+	"tui.editor.cursorLeft": {
+		defaultKeys: ["left", "ctrl+b"],
+		description: "Move cursor left",
+	},
+	"tui.editor.cursorRight": {
+		defaultKeys: ["right", "ctrl+f"],
+		description: "Move cursor right",
+	},
+	"tui.editor.cursorWordLeft": {
+		defaultKeys: ["alt+left", "ctrl+left", "alt+b"],
+		description: "Move cursor word left",
+	},
+	"tui.editor.cursorWordRight": {
+		defaultKeys: ["alt+right", "ctrl+right", "alt+f"],
+		description: "Move cursor word right",
+	},
+	"tui.editor.cursorLineStart": {
+		defaultKeys: ["home", "ctrl+a"],
+		description: "Move to line start",
+	},
+	"tui.editor.cursorLineEnd": {
+		defaultKeys: ["end", "ctrl+e"],
+		description: "Move to line end",
+	},
+	"tui.editor.jumpForward": {
+		defaultKeys: "ctrl+]",
+		description: "Jump forward to character",
+	},
+	"tui.editor.jumpBackward": {
+		defaultKeys: "ctrl+alt+]",
+		description: "Jump backward to character",
+	},
+	"tui.editor.pageUp": { defaultKeys: ["pageUp", "ctrl+pageUp"], description: "Page up" },
+	"tui.editor.pageDown": { defaultKeys: ["pageDown", "ctrl+pageDown"], description: "Page down" },
+	"tui.editor.deleteCharBackward": {
+		defaultKeys: "backspace",
+		description: "Delete character backward",
+	},
+	"tui.editor.deleteCharForward": {
+		defaultKeys: ["delete", "ctrl+d"],
+		description: "Delete character forward",
+	},
+	"tui.editor.deleteWordBackward": {
+		defaultKeys: ["ctrl+w", "alt+backspace"],
+		description: "Delete word backward",
+	},
+	"tui.editor.deleteWordForward": {
+		defaultKeys: ["alt+d", "alt+delete"],
+		description: "Delete word forward",
+	},
+	"tui.editor.deleteToLineStart": {
+		defaultKeys: "ctrl+u",
+		description: "Delete to line start",
+	},
+	"tui.editor.deleteToLineEnd": {
+		defaultKeys: "ctrl+k",
+		description: "Delete to line end",
+	},
+	"tui.editor.yank": { defaultKeys: "ctrl+y", description: "Yank" },
+	"tui.editor.yankPop": { defaultKeys: "alt+y", description: "Yank pop" },
+	"tui.editor.undo": { defaultKeys: "ctrl+-", description: "Undo" },
+	"tui.input.newLine": { defaultKeys: ["shift+enter", "ctrl+j"], description: "Insert newline" },
+	"tui.input.submit": { defaultKeys: "enter", description: "Submit input" },
+	"tui.input.tab": { defaultKeys: "tab", description: "Tab / autocomplete" },
+	"tui.input.copy": { defaultKeys: "ctrl+c", description: "Copy selection" },
+	"tui.select.up": { defaultKeys: "up", description: "Move selection up" },
+	"tui.select.down": { defaultKeys: "down", description: "Move selection down" },
+	"tui.select.pageUp": { defaultKeys: "pageUp", description: "Selection page up" },
+	"tui.select.pageDown": {
+		defaultKeys: "pageDown",
+		description: "Selection page down",
+	},
+	"tui.select.home": { defaultKeys: "home", description: "Select the first item" },
+	"tui.select.end": { defaultKeys: "end", description: "Select the last item" },
+	"tui.select.confirm": { defaultKeys: "enter", description: "Confirm selection" },
+	"tui.select.cancel": {
+		defaultKeys: ["escape", "ctrl+c"],
+		description: "Cancel selection",
+	},
+	// These intentionally shadow the unmodified editor bindings in fullscreen mode.
+	"tui.altScreen.pageUp": {
+		defaultKeys: "pageUp",
+		description: "Scroll viewport up one page",
+	},
+	"tui.altScreen.pageDown": {
+		defaultKeys: "pageDown",
+		description: "Scroll viewport down one page",
+	},
+	"tui.altScreen.halfPageUp": {
+		defaultKeys: "shift+pageUp",
+		description: "Scroll viewport up half a page",
+	},
+	"tui.altScreen.halfPageDown": {
+		defaultKeys: "shift+pageDown",
+		description: "Scroll viewport down half a page",
+	},
+	"tui.altScreen.lineUp": {
+		defaultKeys: [],
+		description: "Scroll viewport up one line",
+	},
+	"tui.altScreen.lineDown": {
+		defaultKeys: [],
+		description: "Scroll viewport down one line",
+	},
+	"tui.altScreen.previousPrompt": {
+		defaultKeys: ["ctrl+shift+up", "ctrl+up"],
+		description: "Jump to previous semantic prompt",
+	},
+	"tui.altScreen.nextPrompt": {
+		defaultKeys: ["ctrl+shift+down", "ctrl+down"],
+		description: "Jump to next semantic prompt",
+	},
+	"tui.altScreen.search": {
+		defaultKeys: "ctrl+shift+f",
+		description: "Search the primary scroll view",
+	},
+	"tui.altScreen.searchNext": {
+		defaultKeys: ["enter", "ctrl+g"],
+		description: "Select the next search match",
+	},
+	"tui.altScreen.searchPrevious": {
+		defaultKeys: ["shift+enter", "ctrl+shift+g"],
+		description: "Select the previous search match",
+	},
+	"tui.altScreen.searchClose": {
+		defaultKeys: "escape",
+		description: "Close transcript search",
+	},
+	"tui.altScreen.top": { defaultKeys: "ctrl+home", description: "Scroll viewport to top" },
+	"tui.altScreen.bottom": { defaultKeys: "ctrl+end", description: "Scroll viewport to bottom" },
+	"tui.altScreen.toggleMouse": {
+		defaultKeys: "alt+m",
+		description: "Hand the mouse to the terminal's own selection, or take it back",
+	},
+} as const satisfies KeybindingDefinitions;
+
+export interface KeybindingConflict {
+	key: KeyId;
+	keybindings: string[];
+}
+
+function normalizeKeys(keys: KeyId | KeyId[] | undefined): KeyId[] {
+	if (keys === undefined) return [];
+	const keyList = Array.isArray(keys) ? keys : [keys];
+	const seen = new Set<KeyId>();
+	const result: KeyId[] = [];
+	for (const key of keyList) {
+		if (!seen.has(key)) {
+			seen.add(key);
+			result.push(key);
+		}
+	}
+	return result;
+}
+
+export class KeybindingsManager {
+	private definitions: KeybindingDefinitions;
+	private userBindings: KeybindingsConfig;
+	private keysById = new Map<Keybinding, KeyId[]>();
+	/** Each binding's keys parsed once, so a key event is matched without parsing key ids again. */
+	private parsedById = new Map<Keybinding, ParsedKeyId[]>();
+	/** Per printable ASCII character, the bindings its key matches; built on first use for the Kitty state. */
+	private typedByChar: Map<string, ReadonlySet<Keybinding>> | undefined;
+	private typedKitty = false;
+	private conflicts: KeybindingConflict[] = [];
+
+	constructor(definitions: KeybindingDefinitions, userBindings: KeybindingsConfig = {}) {
+		this.definitions = definitions;
+		this.userBindings = userBindings;
+		this.rebuild();
+	}
+
+	private rebuild(): void {
+		this.keysById.clear();
+		this.parsedById.clear();
+		this.typedByChar = undefined;
+		this.conflicts = [];
+
+		const userClaims = new Map<KeyId, Set<Keybinding>>();
+		for (const [keybinding, keys] of Object.entries(this.userBindings)) {
+			if (!(keybinding in this.definitions)) continue;
+			for (const key of normalizeKeys(keys)) {
+				const claimants = userClaims.get(key) ?? new Set<Keybinding>();
+				claimants.add(keybinding as Keybinding);
+				userClaims.set(key, claimants);
+			}
+		}
+
+		for (const [key, keybindings] of userClaims) {
+			if (keybindings.size > 1) {
+				this.conflicts.push({ key, keybindings: [...keybindings] });
+			}
+		}
+
+		for (const [id, definition] of Object.entries(this.definitions)) {
+			const userKeys = this.userBindings[id];
+			const keys = userKeys === undefined ? normalizeKeys(definition.defaultKeys) : normalizeKeys(userKeys);
+			this.keysById.set(id as Keybinding, keys);
+			this.parsedById.set(
+				id as Keybinding,
+				keys.map((key) => parseKeyId(key)).filter((parsed): parsed is ParsedKeyId => parsed !== null),
+			);
+		}
+	}
+
+	matches(data: string, keybinding: Keybinding): boolean {
+		const keys = this.parsedById.get(keybinding);
+		if (!keys) return false;
+		// A typed character is checked against every binding: answer from the bindings each character matches.
+		const typed = this.typedBindings(data);
+		if (typed) return typed.has(keybinding);
+		for (const key of keys) {
+			if (matchesParsedKey(data, key)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * The bindings `data` matches when it is one printable ASCII character (found with the matcher itself, per Kitty
+	 * protocol state), else undefined. Most characters match none, so a typed character is routed without matching.
+	 */
+	typedBindings(data: string): ReadonlySet<Keybinding> | undefined {
+		const code = data.length === 1 ? data.charCodeAt(0) : 0;
+		if (code < 0x20 || code >= 0x7f) return undefined;
+		const kitty = isKittyProtocolActive();
+		if (!this.typedByChar || kitty !== this.typedKitty) {
+			this.typedByChar = new Map();
+			this.typedKitty = kitty;
+			for (let char = 0x20; char < 0x7f; char++) {
+				const text = String.fromCharCode(char);
+				const bindings = new Set<Keybinding>();
+				for (const [id, keys] of this.parsedById) {
+					if (keys.some((key) => matchesParsedKey(text, key))) bindings.add(id);
+				}
+				this.typedByChar.set(text, bindings);
+			}
+		}
+		return this.typedByChar.get(data);
+	}
+
+	getKeys(keybinding: Keybinding): KeyId[] {
+		return [...(this.keysById.get(keybinding) ?? [])];
+	}
+
+	getDefinition(keybinding: Keybinding): KeybindingDefinition {
+		return this.definitions[keybinding];
+	}
+
+	getConflicts(): KeybindingConflict[] {
+		return this.conflicts.map((conflict) => ({ ...conflict, keybindings: [...conflict.keybindings] }));
+	}
+
+	setUserBindings(userBindings: KeybindingsConfig): void {
+		this.userBindings = userBindings;
+		this.rebuild();
+	}
+
+	getUserBindings(): KeybindingsConfig {
+		return { ...this.userBindings };
+	}
+
+	getResolvedBindings(): KeybindingsConfig {
+		const resolved: KeybindingsConfig = {};
+		for (const id of Object.keys(this.definitions)) {
+			const keys = this.keysById.get(id as Keybinding) ?? [];
+			resolved[id] = keys.length === 1 ? keys[0] : [...keys];
+		}
+		return resolved;
+	}
+}
+
+let globalKeybindings: KeybindingsManager | null = null;
+
+export function setKeybindings(keybindings: KeybindingsManager): void {
+	globalKeybindings = keybindings;
+}
+
+export function getKeybindings(): KeybindingsManager {
+	globalKeybindings ??= new KeybindingsManager(TUI_KEYBINDINGS);
+	return globalKeybindings;
+}

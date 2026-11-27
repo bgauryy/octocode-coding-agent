@@ -1,0 +1,1 @@
+[Octocode notice] {{id}} was resumed after it wrote this report. Any line above that says it waits for a reply or has an unanswered ask is out of date. Its next report replaces this one. Wait for it before you conclude from this one.

@@ -1,0 +1,345 @@
+import fs from "node:fs";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { FeatureContext } from "../../src/core/features/index.ts";
+import { registerHooks } from "../../src/octocode/hooks/register.ts";
+import { approveFixtureHooks } from "./guard-helpers.ts";
+import { interpret } from "../../src/octocode/hooks/runner.ts";
+import type { MessageEnvelope } from "../../src/octocode/shared/messages.ts";
+import { INTERNAL_MESSAGE_TYPE } from "../../src/octocode/shared/messages.ts";
+import { Team } from "../../src/octocode/team/session.ts";
+import { TeamStore } from "../../src/octocode/team/store.ts";
+import { registerCollab } from "../../src/octocode/native/tools/coordinate/tool.ts";
+import { fakeCtx, fakeHost } from "./fake-host.ts";
+import { tmp } from "./helpers.ts";
+
+type Command = { type: "command"; command: string; timeout?: number; failClosed?: boolean };
+const group = (command: string, matcher = "", extra: Partial<Command> = {}) => [
+	{ matcher, hooks: [{ type: "command", command, ...extra }] },
+];
+const outbound = (extra: Partial<MessageEnvelope> = {}): MessageEnvelope => ({
+	channel: "internal",
+	direction: "outbound",
+	from: "sender-a",
+	to: "receiver-b",
+	text: "original body",
+	...extra,
+});
+const inbound = (extra: Partial<MessageEnvelope> = {}): MessageEnvelope =>
+	outbound({ direction: "inbound", id: "m-1", ...extra });
+
+function project(hooks: unknown): string {
+	const cwd = tmp("octocode-message-hooks-");
+	fs.mkdirSync(path.join(cwd, ".git"));
+	fs.mkdirSync(path.join(cwd, ".octocode"));
+	fs.writeFileSync(path.join(cwd, ".octocode", "hooks.json"), JSON.stringify({ hooks }));
+	approveFixtureHooks(cwd);
+	return cwd;
+}
+
+const teams: Team[] = [];
+beforeEach(() => vi.stubEnv("OCTOCODE_HOME", tmp("octocode-message-hook-home-")));
+afterEach(() => {
+	for (const team of teams.splice(0)) team.stop();
+});
+
+async function setup(config: unknown, enabled = true) {
+	const cwd = project(config);
+	const fake = fakeHost();
+	const ctx = fakeCtx({ cwd, hasUI: false });
+	const failures: unknown[] = [];
+	const hooks = registerHooks(fake.api, {
+		env: enabled ? {} : { OCTOCODE_SUBAGENT: "1" },
+		home: tmp(),
+		onFailure: (...failure) => failures.push(failure),
+	});
+	await fake.fire("session_start", { reason: "startup" }, ctx);
+	return { ...fake, cwd, ctx, hooks, failures };
+}
+
+const recorded = (cwd: string, file = "received.jsonl") =>
+	fs
+		.readFileSync(path.join(cwd, file), "utf8")
+		.trim()
+		.split("\n")
+		.map((line) => JSON.parse(line));
+
+describe("message hooks", () => {
+	it("does nothing while hooks are off, including receive event registration", async () => {
+		const { hooks, ctx, cwd, handlers } = await setup(
+			{ PreMessageSend: group("touch sent"), PostMessageReceive: group("touch received") },
+			false,
+		);
+		expect(await hooks.messageSend(outbound(), ctx)).toBeUndefined();
+		await hooks.messageReceive(inbound(), ctx);
+		expect(handlers.has("context")).toBe(false);
+		expect(fs.existsSync(path.join(cwd, "sent"))).toBe(false);
+		expect(fs.existsSync(path.join(cwd, "received"))).toBe(false);
+	});
+
+	it("matches internal/external direction and carries original sender, body and correlation once per command", async () => {
+		const command = `cat >> sent.jsonl; printf '\\n' >> sent.jsonl`;
+		const { hooks, ctx, cwd } = await setup({
+			PreMessageSend: [...group(command, "internal.outbound"), ...group(command, "internal")],
+		});
+		const message = outbound({ replyTo: "17" });
+		expect(await hooks.messageSend(message, ctx)).toBeUndefined();
+		expect(recorded(cwd, "sent.jsonl")).toEqual([
+			expect.objectContaining({
+				hook_event_name: "PreMessageSend",
+				session_id: ctx.sessionManager.getSessionId(),
+				message,
+			}),
+		]);
+		await hooks.messageSend(outbound({ channel: "external" }), ctx);
+		expect(recorded(cwd, "sent.jsonl")).toHaveLength(1);
+	});
+
+	it("supports deny/ask while discarding context and ignores every receive verdict", async () => {
+		const run = {
+			code: 0,
+			stdout: JSON.stringify({
+				hookSpecificOutput: {
+					permissionDecision: "ask",
+					permissionDecisionReason: "confirm destination",
+					additionalContext: "rewrite this",
+				},
+			}),
+			stderr: "",
+			timedOut: false,
+		};
+		expect(interpret("PreMessageSend", run)).toEqual({ ask: "confirm destination" });
+		expect(interpret("PostMessageReceive", { ...run, code: 2, stderr: "deny" })).toEqual({});
+		expect(interpret("PostMessageReceive", { ...run, stdout: '{"decision":"block","reason":"send a reply"}' })).toEqual(
+			{},
+		);
+		const { hooks, ctx } = await setup({ PreMessageSend: group(`echo '${run.stdout}'`) });
+		expect(await hooks.messageSend(outbound(), ctx)).toEqual({ ask: "confirm destination" });
+	});
+
+	it("audits fail-open timeout and denies a failClosed timeout", async () => {
+		for (const failClosed of [false, true]) {
+			const { hooks, ctx, failures } = await setup({
+				PreMessageSend: group("sleep 5", "", { timeout: 0.1, failClosed }),
+			});
+			const result = await hooks.messageSend(outbound(), ctx);
+			expect(result).toEqual(
+				failClosed
+					? { block: expect.stringContaining("PreMessageSend hook timed out after 0.1s and is set to failClosed") }
+					: undefined,
+			);
+			expect(failures).toEqual([
+				[
+					["PreMessageSend hook timed out after 0.1s: sleep 5", "message: sender-a -> receiver-b"],
+					expect.any(String),
+					!failClosed,
+				],
+			]);
+		}
+	});
+
+	it("observes actual internal and API delivery once without acknowledging, replying or changing context", async () => {
+		const command = `cat >> received.jsonl; printf '\\n' >> received.jsonl; echo '{"decision":"block","reason":"reply now"}'`;
+		const { fire, ctx, cwd, sent } = await setup({ PostMessageReceive: group(command) });
+		const mail = {
+			role: "custom",
+			customType: INTERNAL_MESSAGE_TYPE,
+			details: { messages: [{ id: 4, from: "agent-a", to: "agent-b", text: "internal body", replyTo: 3 }] },
+		};
+		const apiMessage = inbound({ channel: "external", from: "api-client", id: "api-1", text: "raw external body" });
+		const api = {
+			role: "custom",
+			customType: "octocode-external-message",
+			content: "fenced body",
+			details: { message: apiMessage },
+		};
+		const messages = [mail, api];
+		expect(await fire("context", { messages }, ctx)).toBeUndefined();
+		await fire("context", { messages: structuredClone(messages) }, ctx);
+		expect(recorded(cwd).map((record) => record.message)).toEqual([
+			inbound({ id: "4", from: "agent-a", to: "agent-b", text: "internal body", replyTo: "3" }),
+			apiMessage,
+		]);
+		expect(mail.details.messages[0]).not.toHaveProperty("acked");
+		expect(sent).toEqual([]);
+		expect(messages).toEqual([mail, api]);
+	});
+
+	it("discards a late receive and rejects a late send after the same session resumes in another workspace", async () => {
+		const { fire, hooks, ctx } = await setup({});
+		const config = {
+			PreMessageSend: group("touch sent"),
+			PostMessageReceive: group("cat >> received.jsonl; echo >> received.jsonl"),
+		};
+		const resumed = fakeCtx({ cwd: project(config), hasUI: false });
+		await fire("session_start", { reason: "resume" }, resumed);
+		await hooks.messageReceive(inbound(), ctx);
+		await hooks.messageReceive(inbound(), resumed);
+		expect(fs.existsSync(path.join(ctx.cwd, "received.jsonl"))).toBe(false);
+		expect(recorded(resumed.cwd)).toHaveLength(1);
+		await expect(hooks.messageSend(outbound(), ctx)).rejects.toThrow("different session");
+		expect(await hooks.messageSend(outbound(), resumed)).toBeUndefined();
+		expect(fs.existsSync(path.join(ctx.cwd, "sent"))).toBe(false);
+		expect(fs.existsSync(path.join(resumed.cwd, "sent"))).toBe(true);
+	});
+
+	it("skips resumed history and resets receive identity when the session changes", async () => {
+		const { fire, hooks, ctx, cwd } = await setup({
+			PostMessageReceive: group(`cat >> received.jsonl; printf '\\n' >> received.jsonl`),
+		});
+		const message = inbound({ channel: "external" });
+		const entry = { type: "custom_message", customType: "octocode-external-message", details: { message } };
+		const restored = { ...ctx, sessionManager: { ...ctx.sessionManager, getBranch: () => [entry] } };
+		await fire("session_start", { reason: "resume" }, restored);
+		await hooks.messageReceive(message, restored as never);
+		expect(fs.existsSync(path.join(cwd, "received.jsonl"))).toBe(false);
+		await fire("session_start", { reason: "new" }, ctx);
+		await hooks.messageReceive(message, ctx);
+		expect(recorded(cwd)).toHaveLength(1);
+	});
+
+	it("cancels old session sends and observers without returning observer failures", async () => {
+		const command = "echo ready > started; sleep 10; echo finished > finished";
+		const { hooks, fire, ctx, cwd } = await setup({
+			PreMessageSend: group(command),
+			PostMessageReceive: group(command),
+		});
+		const send = hooks.messageSend(outbound(), ctx);
+		const rejected = expect(send).rejects.toThrow();
+		await vi.waitFor(() => expect(fs.existsSync(path.join(cwd, "started"))).toBe(true));
+		await fire("session_start", { reason: "new" }, ctx);
+		await rejected;
+		fs.unlinkSync(path.join(cwd, "started"));
+		const receive = hooks.messageReceive(inbound(), ctx);
+		await vi.waitFor(() => expect(fs.existsSync(path.join(cwd, "started"))).toBe(true));
+		await fire("session_shutdown", {}, ctx);
+		await expect(receive).resolves.toBeUndefined();
+		expect(fs.existsSync(path.join(cwd, "finished"))).toBe(false);
+	});
+
+	it("denies direct, tool and API-origin Team sends before storage or finished-agent resume", async () => {
+		const { hooks, api, ctx, tools, cwd } = await setup({
+			PreMessageSend: group("echo forbidden >&2; exit 2", "internal"),
+		});
+		const dbFile = path.join(tmp(), "team.sqlite");
+		const team = new Team(api, { OCTOCODE_AGENT_DB: dbFile });
+		const other = new Team(fakeHost().api, { OCTOCODE_AGENT_DB: dbFile });
+		teams.push(team, other);
+		registerCollab(api, team);
+		team.start(ctx);
+		other.start(ctx);
+		team.join();
+		const receiver = other.join().id;
+		const gate = vi.fn(async (message: MessageEnvelope, context: FeatureContext) => {
+			const verdict = await hooks.messageSend(message, context);
+			if (verdict?.block) throw new Error(verdict.block);
+		});
+		team.setMessageHook(gate);
+		for (const from of [undefined, "api:client"]) {
+			expect(await team.send(receiver, "do work", { from })).toEqual({
+				error: "Blocked by a PreMessageSend hook: forbidden",
+			});
+		}
+		const tool = tools.get("sendMessage");
+		await expect(tool.execute("t1", { to: receiver, message: "tool body" }, undefined, undefined, ctx)).rejects.toThrow(
+			"forbidden",
+		);
+		const resumed = vi.fn(async () => "resumed");
+		team.rememberFinished("done-aaaaaa", "done");
+		team.setResumer(resumed);
+		expect(await team.send("done-aaaaaa", "more work")).toEqual({
+			error: "Blocked by a PreMessageSend hook: forbidden",
+		});
+		expect(resumed).not.toHaveBeenCalled();
+		expect(gate.mock.calls.map(([message]) => [message.from, message.to])).toEqual([
+			[team.id, receiver],
+			["api:client", receiver],
+			[team.id, receiver],
+			[team.id, "done-aaaaaa"],
+		]);
+		const store = TeamStore.open(cwd, dbFile, {});
+		try {
+			expect(store.recent()).toEqual([]);
+		} finally {
+			store.close();
+		}
+	});
+
+	it("cancels a Team send hook on the tool signal before its own timeout", async () => {
+		const { hooks, api, ctx, fire, cwd } = await setup({
+			PreMessageSend: group("echo running > hook-started; sleep 10; echo done > hook-finished", "", { timeout: 2 }),
+		});
+		const dbFile = path.join(tmp(), "team.sqlite");
+		const team = new Team(api, { OCTOCODE_AGENT_DB: dbFile });
+		const peer = new Team(fakeHost().api, { OCTOCODE_AGENT_DB: dbFile });
+		teams.push(team, peer);
+		team.start(ctx);
+		peer.start(ctx);
+		team.join();
+		const receiver = peer.join().id;
+		team.setMessageHook(async (message, context, signal) => {
+			const verdict = await hooks.messageSend(message, signal ? { ...context, signal } : context);
+			if (verdict?.block) throw new Error(verdict.block);
+		});
+		const controller = new AbortController();
+		const sending = team.send(receiver, "cancel me", { signal: controller.signal });
+		let timer: NodeJS.Timeout | undefined;
+		try {
+			await vi.waitFor(() => expect(fs.existsSync(path.join(cwd, "hook-started"))).toBe(true));
+			controller.abort();
+			const deadline = new Promise<string>((resolve) => {
+				timer = setTimeout(() => resolve("hook did not cancel promptly"), 1_000);
+			});
+			expect(await Promise.race([sending, deadline])).toEqual({ error: expect.any(String) });
+			expect(fs.existsSync(path.join(cwd, "hook-finished"))).toBe(false);
+			const store = TeamStore.open(cwd, dbFile, {});
+			try {
+				expect(store.recent()).toEqual([]);
+			} finally {
+				store.close();
+			}
+		} finally {
+			clearTimeout(timer);
+			await fire("session_shutdown", {}, ctx);
+			await sending;
+		}
+	});
+
+	it("shows a send hook whether the message asks for a reply, wakes or interrupts, and a receive hook what it carried", async () => {
+		const { ctx, fire, cwd } = await setup({
+			PostMessageReceive: group(`cat >> received.jsonl; printf '\\n' >> received.jsonl`),
+		});
+		const seen: MessageEnvelope[] = [];
+		const dbFile = path.join(tmp(), "team.sqlite");
+		const team = new Team(fakeHost().api, { OCTOCODE_AGENT_DB: dbFile });
+		const peer = new Team(fakeHost().api, { OCTOCODE_AGENT_DB: dbFile });
+		teams.push(team, peer);
+		team.start(ctx);
+		peer.start(ctx);
+		team.join();
+		const receiver = peer.join().id;
+		team.setMessageHook(async (message) => void seen.push(message));
+		await team.send(receiver, "fyi", { wake: false });
+		await team.send(receiver, "look");
+		await team.send(receiver, "question", { replyRequired: true });
+		// A new message to a named agent wakes it by default; `wake: false` leaves it for the recipient's next turn.
+		expect(seen.map(({ replyRequired, wake, interrupt }) => ({ replyRequired, wake, interrupt }))).toEqual([
+			{ replyRequired: false, wake: false, interrupt: false },
+			{ replyRequired: false, wake: true, interrupt: false },
+			{ replyRequired: true, wake: true, interrupt: false },
+		]);
+
+		const details = {
+			id: 9,
+			from: "agent-a",
+			to: "agent-b",
+			text: "look",
+			replyRequired: false,
+			wake: true,
+			interrupt: true,
+		};
+		const mail = { role: "custom", customType: INTERNAL_MESSAGE_TYPE, details: { messages: [details] } };
+		await fire("context", { messages: [mail] }, ctx);
+		expect(recorded(cwd).map((record) => record.message)).toEqual([inbound({ ...details, id: "9" })]);
+	});
+});
